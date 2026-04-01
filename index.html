@@ -242,9 +242,6 @@
             border-radius: 4px;
             filter: grayscale(15%);
             transition: filter 0.4s ease;
-            will-change: filter;
-            -webkit-backface-visibility: hidden;
-            backface-visibility: hidden;
         }
 
         .headshot:hover {
@@ -522,7 +519,10 @@
         <div class="section-label reveal">About</div>
         <div class="about-top">
             <div class="headshot-wrapper reveal">
-                <img src="images/Headshot.jpg" alt="Isaac Ure" class="headshot" loading="lazy">
+                <img src="images/Headshot-sm.jpg"
+                     srcset="images/Headshot-sm.jpg 440w, images/Headshot-md.jpg 880w, images/Headshot.jpg 6436w"
+                     sizes="(max-width: 768px) 200px, 220px"
+                     alt="Isaac Ure" class="headshot" loading="lazy">
             </div>
             <div class="about-content">
                 <p class="reveal">I'm a first-year at Rice double-majoring in Mathematical Economic Analysis and Finance with interests spanning energy infrastructure, financial management, and automotive engineering. I believe the best work happens when you mix rigor and creativity, which is why I try to push myself in unique ventures.</p>
