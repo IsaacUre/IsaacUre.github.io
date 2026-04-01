@@ -242,6 +242,9 @@
             border-radius: 4px;
             filter: grayscale(15%);
             transition: filter 0.4s ease;
+            will-change: filter;
+            -webkit-backface-visibility: hidden;
+            backface-visibility: hidden;
         }
 
         .headshot:hover {
