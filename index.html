@@ -451,45 +451,45 @@
         /* All phases hidden by default */
         .icon-camera, .icon-excel, .icon-eye { opacity: 0; }
 
-        /* Phase 1: Camera — 3.5s total, flash at ~1.5s */
+        /* Phase 1: Camera — 4.5s total, flash at ~1.5s */
         .good-eye-icon.animating .icon-camera {
-            animation: cameraShow 3.5s ease forwards;
+            animation: cameraShow 4.5s ease forwards;
         }
 
         @keyframes cameraShow {
             0%, 5% { opacity: 1; }
-            88%, 100% { opacity: 0; }
+            90%, 100% { opacity: 0; }
         }
 
         .good-eye-icon.animating .camera-flash-ring {
-            animation: flashBurst 3.5s ease forwards;
+            animation: flashBurst 4.5s ease forwards;
         }
 
         @keyframes flashBurst {
-            0%, 38% { opacity: 0; r: 10; }
-            43% { opacity: 0.9; r: 10; }
-            55% { opacity: 0; r: 20; }
+            0%, 29% { opacity: 0; r: 10; }
+            33% { opacity: 0.9; r: 10; }
+            45% { opacity: 0; r: 20; }
             100% { opacity: 0; r: 20; }
         }
 
         .good-eye-icon.animating .camera-body,
         .good-eye-icon.animating .camera-lens,
         .good-eye-icon.animating .camera-top {
-            animation: cameraShake 3.5s ease forwards;
+            animation: cameraShake 4.5s ease forwards;
         }
 
         @keyframes cameraShake {
-            0%, 40% { transform: translate(0, 0); }
-            42% { transform: translate(0, -1px); }
-            43% { transform: translate(0, 0); }
-            45% { transform: translate(0, 1px); }
-            47% { transform: translate(0, 0); }
+            0%, 30% { transform: translate(0, 0); }
+            32% { transform: translate(0, -1px); }
+            33% { transform: translate(0, 0); }
+            35% { transform: translate(0, 1px); }
+            37% { transform: translate(0, 0); }
             100% { transform: translate(0, 0); }
         }
 
-        /* Phase 2: Excel — 3.3s delay, plays once */
+        /* Phase 2: Excel — 4.3s delay, plays once */
         .good-eye-icon.animating .icon-excel {
-            animation: excelShow 2s ease 3.3s forwards;
+            animation: excelShow 2s ease 4.3s forwards;
         }
 
         @keyframes excelShow {
@@ -500,7 +500,7 @@
         }
 
         .good-eye-icon.animating .excel-cell-fill {
-            animation: cellFill 2s ease 3.3s forwards;
+            animation: cellFill 2s ease 4.3s forwards;
         }
 
         @keyframes cellFill {
@@ -512,7 +512,7 @@
 
         /* Phase 3: Eye — 5s delay, fades in and stays */
         .good-eye-icon.animating .icon-eye {
-            animation: eyeShow 1s ease 5s forwards;
+            animation: eyeShow 1s ease 6s forwards;
         }
 
         @keyframes eyeShow {
@@ -534,7 +534,7 @@
         /* Black blink: closes from eyelid edges toward center, then reopens */
         .good-eye-icon.animating .lid-dark-top,
         .good-eye-icon.animating .lid-dark-bot {
-            animation: blinkOpen 0.4s ease 6.5s forwards;
+            animation: blinkOpen 0.4s ease 7.5s forwards;
         }
 
         @keyframes blinkOpen {
@@ -547,12 +547,12 @@
         /* White blink: closes from eyelid edges and stays shut (covers border) */
         .good-eye-icon.animating .lid-light-top {
             transform-origin: 24px 10px;
-            animation: blinkShut 0.4s ease 8.5s forwards;
+            animation: blinkShut 0.4s ease 9.5s forwards;
         }
 
         .good-eye-icon.animating .lid-light-bot {
             transform-origin: 24px 38px;
-            animation: blinkShut 0.4s ease 8.5s forwards;
+            animation: blinkShut 0.4s ease 9.5s forwards;
         }
 
         @keyframes blinkShut {
@@ -636,7 +636,7 @@
 
     <div class="hero">
         <p class="hero-greeting">Houston, TX</p>
-        <h1>Finance, strategy,<br>and a good eye.<span class="good-eye-icon" aria-hidden="true"><svg viewBox="0 0 48 48" width="48" height="48"><g class="icon-camera"><rect class="camera-body" x="10" y="16" width="28" height="20" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><circle class="camera-lens" cx="24" cy="26" r="6" fill="none" stroke="currentColor" stroke-width="2"/><rect class="camera-top" x="18" y="12" width="12" height="4" rx="1" fill="none" stroke="currentColor" stroke-width="2"/><circle class="camera-flash-ring" cx="24" cy="26" r="10" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0"/></g><g class="icon-excel" opacity="0"><rect x="8" y="10" width="32" height="28" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><line x1="8" y1="18" x2="40" y2="18" stroke="currentColor" stroke-width="1.5"/><line x1="8" y1="26" x2="40" y2="26" stroke="currentColor" stroke-width="1.5"/><line x1="8" y1="34" x2="40" y2="34" stroke="currentColor" stroke-width="1.5" opacity="0.5"/><line x1="20" y1="10" x2="20" y2="38" stroke="currentColor" stroke-width="1.5"/><line x1="32" y1="10" x2="32" y2="38" stroke="currentColor" stroke-width="1.5"/><rect class="excel-cell-fill" x="21" y="19" width="10" height="6" fill="currentColor" opacity="0"/></g><g class="icon-eye" opacity="0"><path d="M6 24 C6 24 14 12 24 12 C34 12 42 24 42 24 C42 24 34 36 24 36 C14 36 6 24 6 24Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="24" cy="24" r="5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="24" cy="24" r="2" fill="currentColor"/><rect class="lid-dark-top" x="0" y="12" width="48" height="12" fill="var(--text, #1A1A18)"/><rect class="lid-dark-bot" x="0" y="24" width="48" height="12" fill="var(--text, #1A1A18)"/></g><rect class="lid-light-top" x="0" y="10" width="48" height="14" fill="var(--bg, #FAFAF8)"/><rect class="lid-light-bot" x="0" y="24" width="48" height="14" fill="var(--bg, #FAFAF8)"/></svg></span></h1>
+        <h1>Finance, strategy,<br>and a good eye.<span class="good-eye-icon" aria-hidden="true"><svg viewBox="0 0 48 48" width="48" height="48"><defs><clipPath id="eyeClip"><path d="M6 24 C6 24 14 12 24 12 C34 12 42 24 42 24 C42 24 34 36 24 36 C14 36 6 24 6 24Z"/></clipPath></defs><g class="icon-camera"><rect class="camera-body" x="10" y="16" width="28" height="20" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><circle class="camera-lens" cx="24" cy="26" r="6" fill="none" stroke="currentColor" stroke-width="2"/><rect class="camera-top" x="18" y="12" width="12" height="4" rx="1" fill="none" stroke="currentColor" stroke-width="2"/><circle class="camera-flash-ring" cx="24" cy="26" r="10" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0"/></g><g class="icon-excel" opacity="0"><rect x="8" y="10" width="32" height="28" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><line x1="8" y1="18" x2="40" y2="18" stroke="currentColor" stroke-width="1.5"/><line x1="8" y1="26" x2="40" y2="26" stroke="currentColor" stroke-width="1.5"/><line x1="8" y1="34" x2="40" y2="34" stroke="currentColor" stroke-width="1.5" opacity="0.5"/><line x1="20" y1="10" x2="20" y2="38" stroke="currentColor" stroke-width="1.5"/><line x1="32" y1="10" x2="32" y2="38" stroke="currentColor" stroke-width="1.5"/><rect class="excel-cell-fill" x="21" y="19" width="10" height="6" fill="currentColor" opacity="0"/></g><g class="icon-eye" opacity="0"><path d="M6 24 C6 24 14 12 24 12 C34 12 42 24 42 24 C42 24 34 36 24 36 C14 36 6 24 6 24Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="24" cy="24" r="5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="24" cy="24" r="2" fill="currentColor"/><g clip-path="url(#eyeClip)"><rect class="lid-dark-top" x="0" y="12" width="48" height="12" fill="var(--text, #1A1A18)"/><rect class="lid-dark-bot" x="0" y="24" width="48" height="12" fill="var(--text, #1A1A18)"/></g></g><rect class="lid-light-top" x="0" y="10" width="48" height="14" fill="var(--bg, #FAFAF8)"/><rect class="lid-light-bot" x="0" y="24" width="48" height="14" fill="var(--bg, #FAFAF8)"/></svg></span></h1>
         <p>Freshman at Rice University studying Mathematical Economic Analysis and Finance. Building things that matter, from budgets to race cars.</p>
         <div class="scroll-hint">
             <div class="scroll-line"></div>
