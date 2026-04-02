@@ -750,7 +750,7 @@
             nav.classList.toggle('scrolled', window.scrollY > 50);
         });
 
-        // Reveal on scroll
+        // Reveal on scroll — re-triggers when scrolling back
         const reveals = document.querySelectorAll('.reveal');
         const observer = new IntersectionObserver((entries) => {
             entries.forEach((entry, i) => {
@@ -758,7 +758,8 @@
                     setTimeout(() => {
                         entry.target.classList.add('visible');
                     }, i * 100);
-                    observer.unobserve(entry.target);
+                } else {
+                    entry.target.classList.remove('visible');
                 }
             });
         }, { threshold: 0.15 });
