@@ -452,67 +452,67 @@
         /* All phases hidden by default */
         .icon-camera, .icon-excel, .icon-eye { opacity: 0; }
 
-        /* Phase 1: Camera — 4.5s total, flash at ~1.5s */
+        /* Phase 1: Camera — 4s total, flash at ~1.5s */
         .good-eye-icon.animating .icon-camera {
-            animation: cameraShow 4.5s ease forwards;
+            animation: cameraShow 4s ease forwards;
         }
 
         @keyframes cameraShow {
             0%, 5% { opacity: 1; }
-            98% { opacity: 1; }
+            92% { opacity: 1; }
             100% { opacity: 0; }
         }
 
         .good-eye-icon.animating .camera-flash-ring {
-            animation: flashBurst 4.5s ease forwards;
+            animation: flashBurst 4s ease forwards;
         }
 
         @keyframes flashBurst {
-            0%, 29% { opacity: 0; r: 10; }
-            33% { opacity: 0.9; r: 10; }
-            45% { opacity: 0; r: 20; }
+            0%, 33% { opacity: 0; r: 10; }
+            38% { opacity: 0.9; r: 10; }
+            50% { opacity: 0; r: 20; }
             100% { opacity: 0; r: 20; }
         }
 
         .good-eye-icon.animating .camera-body,
         .good-eye-icon.animating .camera-lens,
         .good-eye-icon.animating .camera-top {
-            animation: cameraShake 4.5s ease forwards;
+            animation: cameraShake 4s ease forwards;
         }
 
         @keyframes cameraShake {
-            0%, 30% { transform: translate(0, 0); }
-            32% { transform: translate(0, -1px); }
-            33% { transform: translate(0, 0); }
-            35% { transform: translate(0, 1px); }
-            37% { transform: translate(0, 0); }
+            0%, 34% { transform: translate(0, 0); }
+            36% { transform: translate(0, -1px); }
+            38% { transform: translate(0, 0); }
+            40% { transform: translate(0, 1px); }
+            42% { transform: translate(0, 0); }
             100% { transform: translate(0, 0); }
         }
 
-        /* Phase 2: Excel — 4.3s delay, plays once */
+        /* Phase 2: Excel — 3.8s delay, 2.5s duration */
         .good-eye-icon.animating .icon-excel {
-            animation: excelShow 2s ease 4.3s forwards;
+            animation: excelShow 2.5s ease 3.8s forwards;
         }
 
         @keyframes excelShow {
             0% { opacity: 0; }
-            15% { opacity: 1; }
-            80% { opacity: 1; }
+            12% { opacity: 1; }
+            82% { opacity: 1; }
             100% { opacity: 0; }
         }
 
         .good-eye-icon.animating .excel-cell-fill {
-            animation: cellFill 2s ease 4.3s forwards;
+            animation: cellFill 2.5s ease 3.8s forwards;
         }
 
         @keyframes cellFill {
-            0%, 15% { opacity: 0; }
-            35% { opacity: 0.15; }
-            80% { opacity: 0.15; }
+            0%, 12% { opacity: 0; }
+            30% { opacity: 0.15; }
+            82% { opacity: 0.15; }
             100% { opacity: 0; }
         }
 
-        /* Phase 3: Eye — 5s delay, fades in and stays */
+        /* Phase 3: Eye — 6s delay, fades in and stays */
         .good-eye-icon.animating .icon-eye {
             animation: eyeShow 1s ease 6s forwards;
         }
