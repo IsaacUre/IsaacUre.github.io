@@ -448,87 +448,93 @@
             overflow: visible;
         }
 
-        /* Phase 1: Camera (0s–2s visible, flash at 1.2s) */
-        .icon-camera {
-            animation: cameraShow 6s ease infinite;
+        /* All phases hidden by default */
+        .icon-camera, .icon-excel, .icon-eye { opacity: 0; }
+
+        /* Phase 1: Camera — plays once, holds at opacity 0 */
+        .good-eye-icon.animating .icon-camera {
+            animation: cameraShow 2s ease forwards;
         }
 
         @keyframes cameraShow {
-            0%, 5% { opacity: 1; }
-            28%, 100% { opacity: 0; }
+            0%, 10% { opacity: 1; }
+            85%, 100% { opacity: 0; }
         }
 
-        .camera-flash-ring {
-            animation: flashBurst 6s ease infinite;
+        .good-eye-icon.animating .camera-flash-ring {
+            animation: flashBurst 2s ease forwards;
         }
 
         @keyframes flashBurst {
-            0%, 15% { opacity: 0; r: 10; }
-            20% { opacity: 0.9; r: 10; }
-            28% { opacity: 0; r: 20; }
+            0%, 50% { opacity: 0; r: 10; }
+            65% { opacity: 0.9; r: 10; }
+            85% { opacity: 0; r: 20; }
             100% { opacity: 0; r: 20; }
         }
 
-        .camera-body, .camera-lens, .camera-top {
-            animation: cameraShake 6s ease infinite;
+        .good-eye-icon.animating .camera-body,
+        .good-eye-icon.animating .camera-lens,
+        .good-eye-icon.animating .camera-top {
+            animation: cameraShake 2s ease forwards;
         }
 
         @keyframes cameraShake {
-            0%, 18% { transform: translate(0, 0); }
-            19% { transform: translate(0, -1px); }
-            20% { transform: translate(0, 0); }
-            21% { transform: translate(0, 1px); }
-            22% { transform: translate(0, 0); }
+            0%, 60% { transform: translate(0, 0); }
+            63% { transform: translate(0, -1px); }
+            66% { transform: translate(0, 0); }
+            69% { transform: translate(0, 1px); }
+            72% { transform: translate(0, 0); }
             100% { transform: translate(0, 0); }
         }
 
-        /* Phase 2: Excel grid (2s–4s) */
-        .icon-excel {
-            animation: excelShow 6s ease infinite;
+        /* Phase 2: Excel — 2s delay, plays once */
+        .good-eye-icon.animating .icon-excel {
+            animation: excelShow 2s ease 1.8s forwards;
         }
 
         @keyframes excelShow {
-            0%, 28% { opacity: 0; }
-            35% { opacity: 1; }
-            60% { opacity: 1; }
-            68%, 100% { opacity: 0; }
-        }
-
-        .excel-cell-fill {
-            animation: cellFill 6s ease infinite;
-        }
-
-        @keyframes cellFill {
-            0%, 35% { opacity: 0; width: 0; }
-            42% { opacity: 0.15; width: 10; }
-            48% { opacity: 0.15; width: 10; x: 21; }
-            54% { opacity: 0.15; width: 10; }
-            60% { opacity: 0.15; }
-            68%, 100% { opacity: 0; }
-        }
-
-        /* Phase 3: Eye (4s–6s) */
-        .icon-eye {
-            animation: eyeShow 6s ease infinite;
-        }
-
-        @keyframes eyeShow {
-            0%, 68% { opacity: 0; }
-            75% { opacity: 1; }
-            95% { opacity: 1; }
+            0% { opacity: 0; }
+            15% { opacity: 1; }
+            80% { opacity: 1; }
             100% { opacity: 0; }
         }
 
-        .eye-pupil {
-            animation: pupilLook 6s ease infinite;
+        .good-eye-icon.animating .excel-cell-fill {
+            animation: cellFill 2s ease 1.8s forwards;
         }
 
-        @keyframes pupilLook {
-            0%, 72% { transform: translate(0, 0); }
-            78% { transform: translate(2px, 0); }
-            84% { transform: translate(-2px, 0); }
-            90% { transform: translate(0, 0); }
-            100% { transform: translate(0, 0); }
+        @keyframes cellFill {
+            0%, 15% { opacity: 0; }
+            35% { opacity: 0.15; }
+            80% { opacity: 0.15; }
+            100% { opacity: 0; }
+        }
+
+        /* Phase 3: Eye — 3.6s delay, fades in and STAYS */
+        .good-eye-icon.animating .icon-eye {
+            animation: eyeShow 1s ease 3.5s forwards;
+        }
+
+        @keyframes eyeShow {
+            0% { opacity: 0; }
+            100% { opacity: 1; }
+        }
+
+        /* Blink: eyelid closes and reopens */
+        .eye-lid {
+            transform-origin: 24px 24px;
+            transform: scaleY(0);
+        }
+
+        .good-eye-icon.animating .eye-lid {
+            animation: blink 0.3s ease 4.8s forwards, blink 0.3s ease 6.5s forwards;
+        }
+
+        @keyframes blink {
+            0% { transform: scaleY(0); }
+            45% { transform: scaleY(1); }
+            55% { transform: scaleY(1); }
+            100% { transform: scaleY(0); }
         }
 
         /* ── RESPONSIVE ── */
@@ -606,7 +612,7 @@
 
     <div class="hero">
         <p class="hero-greeting">Houston, TX</p>
-        <h1>Finance, strategy,<br>and a good eye.<span class="good-eye-icon" aria-hidden="true"><svg viewBox="0 0 48 48" width="48" height="48"><g class="icon-camera"><rect class="camera-body" x="10" y="16" width="28" height="20" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><circle class="camera-lens" cx="24" cy="26" r="6" fill="none" stroke="currentColor" stroke-width="2"/><rect class="camera-top" x="18" y="12" width="12" height="4" rx="1" fill="none" stroke="currentColor" stroke-width="2"/><circle class="camera-flash-ring" cx="24" cy="26" r="10" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0"/></g><g class="icon-excel" opacity="0"><rect x="8" y="10" width="32" height="28" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><line x1="8" y1="18" x2="40" y2="18" stroke="currentColor" stroke-width="1.5"/><line x1="8" y1="26" x2="40" y2="26" stroke="currentColor" stroke-width="1.5"/><line x1="8" y1="34" x2="40" y2="34" stroke="currentColor" stroke-width="1.5" opacity="0.5"/><line x1="20" y1="10" x2="20" y2="38" stroke="currentColor" stroke-width="1.5"/><line x1="32" y1="10" x2="32" y2="38" stroke="currentColor" stroke-width="1.5"/><rect class="excel-cell-fill" x="21" y="19" width="10" height="6" fill="currentColor" opacity="0"/></g><g class="icon-eye" opacity="0"><path d="M6 24 C6 24 14 12 24 12 C34 12 42 24 42 24 C42 24 34 36 24 36 C14 36 6 24 6 24Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="24" cy="24" r="5" fill="none" stroke="currentColor" stroke-width="2"/><circle class="eye-pupil" cx="24" cy="24" r="2" fill="currentColor"/></g></svg></span></h1>
+        <h1>Finance, strategy,<br>and a good eye.<span class="good-eye-icon" aria-hidden="true"><svg viewBox="0 0 48 48" width="48" height="48"><g class="icon-camera"><rect class="camera-body" x="10" y="16" width="28" height="20" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><circle class="camera-lens" cx="24" cy="26" r="6" fill="none" stroke="currentColor" stroke-width="2"/><rect class="camera-top" x="18" y="12" width="12" height="4" rx="1" fill="none" stroke="currentColor" stroke-width="2"/><circle class="camera-flash-ring" cx="24" cy="26" r="10" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0"/></g><g class="icon-excel" opacity="0"><rect x="8" y="10" width="32" height="28" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><line x1="8" y1="18" x2="40" y2="18" stroke="currentColor" stroke-width="1.5"/><line x1="8" y1="26" x2="40" y2="26" stroke="currentColor" stroke-width="1.5"/><line x1="8" y1="34" x2="40" y2="34" stroke="currentColor" stroke-width="1.5" opacity="0.5"/><line x1="20" y1="10" x2="20" y2="38" stroke="currentColor" stroke-width="1.5"/><line x1="32" y1="10" x2="32" y2="38" stroke="currentColor" stroke-width="1.5"/><rect class="excel-cell-fill" x="21" y="19" width="10" height="6" fill="currentColor" opacity="0"/></g><g class="icon-eye" opacity="0"><path d="M6 24 C6 24 14 12 24 12 C34 12 42 24 42 24 C42 24 34 36 24 36 C14 36 6 24 6 24Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="24" cy="24" r="5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="24" cy="24" r="2" fill="currentColor"/><path class="eye-lid" d="M6 24 C6 24 14 12 24 12 C34 12 42 24 42 24 C42 24 34 36 24 36 C14 36 6 24 6 24Z" fill="var(--bg, #FAFAF8)" stroke="none"/></g></svg></span></h1>
         <p>Freshman at Rice University studying Mathematical Economic Analysis and Finance. Building things that matter, from budgets to race cars.</p>
         <div class="scroll-hint">
             <div class="scroll-line"></div>
@@ -732,6 +738,21 @@
         }, { threshold: 0.15 });
 
         reveals.forEach(el => observer.observe(el));
+
+        // Good-eye icon: play once, reset on scroll away & back
+        const goodEyeIcon = document.querySelector('.good-eye-icon');
+        if (goodEyeIcon) {
+            const iconObserver = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        goodEyeIcon.classList.add('animating');
+                    } else {
+                        goodEyeIcon.classList.remove('animating');
+                    }
+                });
+            }, { threshold: 0.5 });
+            iconObserver.observe(goodEyeIcon);
+        }
 
         // Smooth scroll for nav links
         document.querySelectorAll('.nav-links a').forEach(link => {
