@@ -452,9 +452,9 @@
         /* All phases hidden by default */
         .icon-camera, .icon-excel, .icon-eye { opacity: 0; }
 
-        /* Phase 1: Camera — 4s total, flash at ~1.5s */
+        /* Phase 1: Camera — 3.5s total, flash at ~1.3s */
         .good-eye-icon.animating .icon-camera {
-            animation: cameraShow 4s ease forwards;
+            animation: cameraShow 3.5s ease forwards;
         }
 
         @keyframes cameraShow {
@@ -464,7 +464,7 @@
         }
 
         .good-eye-icon.animating .camera-flash-ring {
-            animation: flashBurst 4s ease forwards;
+            animation: flashBurst 3.5s ease forwards;
         }
 
         @keyframes flashBurst {
@@ -477,7 +477,7 @@
         .good-eye-icon.animating .camera-body,
         .good-eye-icon.animating .camera-lens,
         .good-eye-icon.animating .camera-top {
-            animation: cameraShake 4s ease forwards;
+            animation: cameraShake 3.5s ease forwards;
         }
 
         @keyframes cameraShake {
@@ -489,9 +489,9 @@
             100% { transform: translate(0, 0); }
         }
 
-        /* Phase 2: Excel — 3.8s delay, 2.5s duration */
+        /* Phase 2: Excel — 3.3s delay, 2.5s duration */
         .good-eye-icon.animating .icon-excel {
-            animation: excelShow 2.5s ease 3.8s forwards;
+            animation: excelShow 2.5s ease 3.3s forwards;
         }
 
         @keyframes excelShow {
@@ -502,7 +502,7 @@
         }
 
         .good-eye-icon.animating .excel-cell-fill {
-            animation: cellFill 2.5s ease 3.8s forwards;
+            animation: cellFill 2.5s ease 3.3s forwards;
         }
 
         @keyframes cellFill {
@@ -512,9 +512,9 @@
             100% { opacity: 0; }
         }
 
-        /* Phase 3: Eye — 6s delay, fades in and stays */
+        /* Phase 3: Eye — 5.6s delay, fades in and stays */
         .good-eye-icon.animating .icon-eye {
-            animation: eyeShow 1s ease 6s forwards;
+            animation: eyeShow 1s ease 5.6s forwards;
         }
 
         @keyframes eyeShow {
@@ -536,7 +536,7 @@
         /* Black blink: closes from eyelid edges toward center, then reopens */
         .good-eye-icon.animating .lid-dark-top,
         .good-eye-icon.animating .lid-dark-bot {
-            animation: blinkOpen 0.4s ease 7.5s forwards;
+            animation: blinkOpen 0.4s ease 7.1s forwards;
         }
 
         @keyframes blinkOpen {
@@ -549,12 +549,12 @@
         /* White blink: closes from eyelid edges and stays shut (covers border) */
         .good-eye-icon.animating .lid-light-top {
             transform-origin: 24px 10px;
-            animation: blinkShut 0.4s ease 9.5s forwards;
+            animation: blinkShut 0.4s ease 9.1s forwards;
         }
 
         .good-eye-icon.animating .lid-light-bot {
             transform-origin: 24px 38px;
-            animation: blinkShut 0.4s ease 9.5s forwards;
+            animation: blinkShut 0.4s ease 9.1s forwards;
         }
 
         @keyframes blinkShut {
