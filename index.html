@@ -133,6 +133,8 @@
             justify-content: center;
             padding: 0 3rem;
             max-width: 900px;
+            position: relative;
+            overflow: visible;
         }
 
         .hero-greeting {
@@ -449,20 +451,23 @@
 
         /* ── GOOD EYE ICON ANIMATION ── */
         .good-eye-icon {
-            display: block;
-            width: 2.5rem;
-            height: 2.5rem;
-            margin-top: 1.2rem;
-            margin-bottom: 0.5rem;
+            position: absolute;
+            right: 3rem;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 18rem;
+            height: 18rem;
             opacity: 0;
             animation: fadeUp 0.8s ease forwards;
             animation-delay: 0.5s;
+            pointer-events: none;
         }
 
         .good-eye-icon svg {
             width: 100%;
             height: 100%;
             overflow: visible;
+            opacity: 0.08;
         }
 
         /* All phases hidden by default */
