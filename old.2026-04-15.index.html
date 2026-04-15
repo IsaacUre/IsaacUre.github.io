@@ -5,18 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Isaac; Finance & Strategy</title>
     <link rel="icon" type="image/svg+xml" href="favicon.svg">
-    <script>
-        // Runs before first paint: decide whether the intro sequence should play.
-        (function() {
-            try {
-                var skip = sessionStorage.getItem('introPlayed') === '1';
-                var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-                if (!skip && !reduce) {
-                    document.documentElement.classList.add('intro-active');
-                }
-            } catch (e) {}
-        })();
-    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
@@ -581,210 +569,6 @@
             100% { opacity: 0; transform: scaleY(0.05); }
         }
 
-        /* ── INTRO OVERLAY & REVEAL ── */
-        .intro-overlay {
-            position: fixed;
-            inset: 0;
-            background: var(--bg);
-            z-index: 9999;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            opacity: 0;
-            visibility: hidden;
-            pointer-events: none;
-            transition: opacity 0.9s ease, visibility 0s linear 0.9s;
-        }
-
-        html.intro-active .intro-overlay {
-            opacity: 1;
-            visibility: visible;
-            transition: none;
-            pointer-events: auto;
-        }
-
-        html.intro-active,
-        html.intro-active body {
-            overflow: hidden;
-            height: 100%;
-        }
-
-        .intro-row {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: var(--text);
-            padding: 0 1.5rem;
-            max-width: 100%;
-        }
-
-        .intro-icon {
-            width: clamp(4.5rem, 9vw, 7rem);
-            height: clamp(4.5rem, 9vw, 7rem);
-            flex-shrink: 0;
-            opacity: 0;
-            transform: translateY(28px) scale(0.94);
-        }
-
-        .intro-icon svg {
-            width: 100%;
-            height: 100%;
-            overflow: visible;
-            display: block;
-        }
-
-        .intro-connector {
-            flex-shrink: 0;
-            width: clamp(2rem, 5vw, 4.5rem);
-            height: 1px;
-            background: var(--text);
-            opacity: 0;
-            transform: scaleX(0);
-            transform-origin: left center;
-            margin: 0 clamp(0.75rem, 2vw, 1.75rem);
-            align-self: center;
-        }
-
-        /* Icons slide up and fade in sequentially */
-        html.intro-active .intro-slot-camera {
-            animation: introReveal 0.75s cubic-bezier(0.22, 0.75, 0.26, 1) 0.4s forwards;
-        }
-        html.intro-active .intro-slot-excel {
-            animation: introReveal 0.75s cubic-bezier(0.22, 0.75, 0.26, 1) 2.2s forwards;
-        }
-        html.intro-active .intro-slot-eye {
-            animation: introReveal 0.75s cubic-bezier(0.22, 0.75, 0.26, 1) 4.4s forwards;
-        }
-
-        @keyframes introReveal {
-            0% { opacity: 0; transform: translateY(28px) scale(0.94); }
-            100% { opacity: 1; transform: translateY(0) scale(1); }
-        }
-
-        /* Connector lines draw in between icons as the sequence progresses */
-        html.intro-active .intro-connector-1 {
-            animation: introConnect 0.65s cubic-bezier(0.4, 0, 0.2, 1) 1.95s forwards;
-        }
-        html.intro-active .intro-connector-2 {
-            animation: introConnect 0.65s cubic-bezier(0.4, 0, 0.2, 1) 4.15s forwards;
-        }
-
-        @keyframes introConnect {
-            0% { transform: scaleX(0); opacity: 0; }
-            20% { opacity: 0.3; }
-            100% { transform: scaleX(1); opacity: 0.3; }
-        }
-
-        /* Intro phase 1 — camera flash + shake */
-        html.intro-active .intro-slot-camera .camera-flash-ring {
-            animation: introFlash 1.2s ease 1.5s forwards;
-        }
-
-        @keyframes introFlash {
-            0% { opacity: 0; r: 10; }
-            10% { opacity: 0.95; r: 10; }
-            42% { opacity: 0; r: 24; }
-            100% { opacity: 0; r: 24; }
-        }
-
-        html.intro-active .intro-slot-camera .camera-body,
-        html.intro-active .intro-slot-camera .camera-lens,
-        html.intro-active .intro-slot-camera .camera-top {
-            animation: introShake 0.55s ease 1.5s;
-            transform-box: fill-box;
-            transform-origin: center;
-        }
-
-        @keyframes introShake {
-            0%, 10% { transform: translate(0, 0); }
-            22% { transform: translate(0, -1.2px); }
-            36% { transform: translate(0, 0); }
-            50% { transform: translate(0, 1.2px); }
-            64% { transform: translate(0, 0); }
-            100% { transform: translate(0, 0); }
-        }
-
-        /* Intro phase 2 — spreadsheet cell fills in */
-        html.intro-active .intro-slot-excel .excel-cell-fill {
-            animation: introCellFill 1.3s ease 3.3s forwards;
-        }
-
-        @keyframes introCellFill {
-            0% { opacity: 0; }
-            40% { opacity: 0.22; }
-            100% { opacity: 0.22; }
-        }
-
-        /* Intro phase 3 — eye blink */
-        .intro-slot-eye .eye-group {
-            transform-origin: 24px 24px;
-            transform-box: fill-box;
-        }
-        html.intro-active .intro-slot-eye .eye-group {
-            animation: introBlink 0.5s ease 5.5s forwards;
-        }
-
-        @keyframes introBlink {
-            0% { transform: scaleY(1); }
-            44% { transform: scaleY(0.06); }
-            60% { transform: scaleY(0.06); }
-            100% { transform: scaleY(1); }
-        }
-
-        /* Hide main content while the intro is playing */
-        html.intro-active nav,
-        html.intro-active .hero-greeting,
-        html.intro-active .hero h1,
-        html.intro-active .hero p,
-        html.intro-active .scroll-hint,
-        html.intro-active .good-eye-icon,
-        html.intro-active section,
-        html.intro-active footer {
-            opacity: 0 !important;
-            animation: none !important;
-        }
-
-        /* After the intro: nav drops in, hero + watermark swoop up from below */
-        html.intro-ended nav {
-            opacity: 0;
-            animation: swoopDown 1s cubic-bezier(0.22, 0.75, 0.26, 1) 0.1s forwards !important;
-        }
-
-        html.intro-ended .hero-greeting {
-            opacity: 0;
-            animation: swoopUp 1.05s cubic-bezier(0.22, 0.75, 0.26, 1) 0.3s forwards !important;
-        }
-        html.intro-ended .hero h1 {
-            opacity: 0;
-            animation: swoopUp 1.05s cubic-bezier(0.22, 0.75, 0.26, 1) 0.42s forwards !important;
-        }
-        html.intro-ended .hero p {
-            opacity: 0;
-            animation: swoopUp 1.05s cubic-bezier(0.22, 0.75, 0.26, 1) 0.56s forwards !important;
-        }
-        html.intro-ended .scroll-hint {
-            opacity: 0;
-            animation: swoopUp 1.05s cubic-bezier(0.22, 0.75, 0.26, 1) 0.9s forwards !important;
-        }
-        html.intro-ended .good-eye-icon {
-            opacity: 0;
-            animation: swoopUp 1.15s cubic-bezier(0.22, 0.75, 0.26, 1) 0.7s forwards !important;
-        }
-
-        @keyframes swoopUp {
-            0% { opacity: 0; transform: translateY(70px); }
-            100% { opacity: 1; transform: translateY(0); }
-        }
-
-        @keyframes swoopDown {
-            0% { opacity: 0; transform: translateY(-32px); }
-            100% { opacity: 1; transform: translateY(0); }
-        }
-
-        @media (prefers-reduced-motion: reduce) {
-            .intro-overlay { display: none !important; }
-        }
-
         /* ── RESPONSIVE ── */
         @media (max-width: 768px) {
             nav {
@@ -848,41 +632,6 @@
     </style>
 </head>
 <body>
-
-    <div class="intro-overlay" aria-hidden="true">
-        <div class="intro-row">
-            <div class="intro-icon intro-slot-camera">
-                <svg viewBox="0 0 48 48">
-                    <rect class="camera-body" x="10" y="16" width="28" height="20" rx="3" fill="none" stroke="currentColor" stroke-width="2"/>
-                    <circle class="camera-lens" cx="24" cy="26" r="6" fill="none" stroke="currentColor" stroke-width="2"/>
-                    <rect class="camera-top" x="18" y="12" width="12" height="4" rx="1" fill="none" stroke="currentColor" stroke-width="2"/>
-                    <circle class="camera-flash-ring" cx="24" cy="26" r="10" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0"/>
-                </svg>
-            </div>
-            <div class="intro-connector intro-connector-1"></div>
-            <div class="intro-icon intro-slot-excel">
-                <svg viewBox="0 0 48 48">
-                    <rect x="8" y="10" width="32" height="28" rx="2" fill="none" stroke="currentColor" stroke-width="2"/>
-                    <line x1="8" y1="18" x2="40" y2="18" stroke="currentColor" stroke-width="1.5"/>
-                    <line x1="8" y1="26" x2="40" y2="26" stroke="currentColor" stroke-width="1.5"/>
-                    <line x1="8" y1="34" x2="40" y2="34" stroke="currentColor" stroke-width="1.5"/>
-                    <line x1="20" y1="10" x2="20" y2="38" stroke="currentColor" stroke-width="1.5"/>
-                    <line x1="32" y1="10" x2="32" y2="38" stroke="currentColor" stroke-width="1.5"/>
-                    <rect class="excel-cell-fill" x="21" y="19" width="10" height="6" fill="currentColor" opacity="0"/>
-                </svg>
-            </div>
-            <div class="intro-connector intro-connector-2"></div>
-            <div class="intro-icon intro-slot-eye">
-                <svg viewBox="0 0 48 48">
-                    <g class="eye-group">
-                        <path d="M9 10 C13 13 31 17 39 24 C31 31 13 35 9 38" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-                        <path d="M16 14 Q11 24 16 34 Q21 24 16 14Z" fill="none" stroke="currentColor" stroke-width="1.8"/>
-                        <path d="M16 17 Q13 24 16 31 Q19 24 16 17Z" fill="currentColor" opacity="0.3"/>
-                    </g>
-                </svg>
-            </div>
-        </div>
-    </div>
 
     <nav>
         <a href="#" class="nav-name"><span class="nav-logo"><svg viewBox="0 0 48 48" aria-hidden="true"><path d="M9 10 C13 13 31 17 39 24 C31 31 13 35 9 38" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 14 Q11 24 16 34 Q21 24 16 14Z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M16 17 Q13 24 16 31 Q19 24 16 17Z" fill="currentColor" opacity="0.3"/></svg>saac</span> Ure</a>
@@ -1031,11 +780,9 @@
 
         reveals.forEach(el => observer.observe(el));
 
-        // Good-eye watermark icon: observer is attached lazily so its cycle
-        // doesn't overlap with the intro sequence on first load.
+        // Good-eye icon: play once, reset on scroll away & back
         const goodEyeIcon = document.querySelector('.good-eye-icon');
-        function attachGoodEyeObserver() {
-            if (!goodEyeIcon) return;
+        if (goodEyeIcon) {
             const iconObserver = new IntersectionObserver((entries) => {
                 entries.forEach(entry => {
                     if (entry.isIntersecting) {
@@ -1047,29 +794,6 @@
             }, { threshold: 0.5 });
             iconObserver.observe(goodEyeIcon);
         }
-
-        // Intro sequence orchestration
-        (function() {
-            const root = document.documentElement;
-            if (root.classList.contains('intro-active')) {
-                // Icons finish settling at ~6.3s, then the swoop-up reveal kicks in.
-                const INTRO_END = 6300;
-                setTimeout(() => {
-                    root.classList.remove('intro-active');
-                    root.classList.add('intro-ended');
-                    try { sessionStorage.setItem('introPlayed', '1'); } catch (e) {}
-                    // Delay the watermark cycle so it doesn't fight the hero swoop.
-                    setTimeout(attachGoodEyeObserver, 1100);
-                    // Remove the overlay from the DOM once it has fully faded out.
-                    setTimeout(() => {
-                        const overlay = document.querySelector('.intro-overlay');
-                        if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
-                    }, 1400);
-                }, INTRO_END);
-            } else {
-                attachGoodEyeObserver();
-            }
-        })();
 
         // Smooth scroll for nav links
         document.querySelectorAll('.nav-links a').forEach(link => {
