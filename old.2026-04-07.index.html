@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Isaac; Finance & Strategy</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg: #FAFAF8;
+            --text: #1A1A18;
+            --text-secondary: #6B6B64;
+            --accent: #3D3D3A;
+            --border: #E2E0DB;
+            --card-bg: #FFFFFF;
+            --subtle: #F2F1EE;
+        }
+
+        html {
+            scroll-behavior: smooth;
+            font-size: 16px;
+        }
+
+        body {
+            font-family: 'DM Sans', sans-serif;
+            font-weight: 300;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.7;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        ::selection {
+            background: var(--text);
+            color: var(--bg);
+        }
+
+        /* ── NAV ── */
+        nav {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            z-index: 100;
+            padding: 1.5rem 3rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(250, 250, 248, 0.85);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-bottom: 1px solid transparent;
+            transition: border-color 0.3s ease;
+        }
+
+        nav.scrolled {
+            border-bottom-color: var(--border);
+        }
+
+        .nav-name {
+            font-family: 'Cormorant Garamond', serif;
+            font-weight: 600;
+            font-size: 1.15rem;
+            letter-spacing: 0.02em;
+            color: var(--text);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+        }
+
+        .nav-logo {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.05rem;
+        }
+
+        .nav-logo svg {
+            width: 1.05em;
+            height: 1.05em;
+            vertical-align: middle;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 2.5rem;
+            list-style: none;
+        }
+
+        .nav-links a {
+            font-size: 0.8rem;
+            font-weight: 400;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            text-decoration: none;
+            transition: color 0.25s ease;
+            position: relative;
+        }
+
+        .nav-links a::after {
+            content: '';
+            position: absolute;
+            bottom: -4px;
+            left: 0;
+            width: 0;
+            height: 1px;
+            background: var(--text);
+            transition: width 0.3s ease;
+        }
+
+        .nav-links a:hover {
+            color: var(--text);
+        }
+
+        .nav-links a:hover::after {
+            width: 100%;
+        }
+
+        /* ── HERO ── */
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding: 0 3rem;
+            max-width: 900px;
+        }
+
+        .hero-greeting {
+            font-size: 0.8rem;
+            font-weight: 400;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            margin-bottom: 1.5rem;
+            opacity: 0;
+            animation: fadeUp 0.8s ease forwards;
+            animation-delay: 0.2s;
+        }
+
+        .hero h1 {
+            font-family: 'Cormorant Garamond', serif;
+            font-weight: 400;
+            font-size: clamp(2.8rem, 5.5vw, 4.5rem);
+            line-height: 1.15;
+            letter-spacing: -0.01em;
+            margin-bottom: 1.8rem;
+            opacity: 0;
+            animation: fadeUp 0.8s ease forwards;
+            animation-delay: 0.4s;
+        }
+
+        .hero p {
+            max-width: 520px;
+            color: var(--text-secondary);
+            font-size: 1.05rem;
+            line-height: 1.8;
+            opacity: 0;
+            animation: fadeUp 0.8s ease forwards;
+            animation-delay: 0.6s;
+        }
+
+        .scroll-hint {
+            position: absolute;
+            bottom: 3rem;
+            left: 3rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-size: 0.7rem;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            opacity: 0;
+            animation: fadeUp 0.8s ease forwards;
+            animation-delay: 1s;
+        }
+
+        .scroll-line {
+            width: 40px;
+            height: 1px;
+            background: var(--border);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .scroll-line::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: var(--text-secondary);
+            animation: scrollPulse 2s ease infinite;
+        }
+
+        /* ── SECTIONS ── */
+        section {
+            padding: 7rem 3rem;
+            max-width: 900px;
+        }
+
+        .section-label {
+            font-size: 0.7rem;
+            font-weight: 500;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            margin-bottom: 3rem;
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+        }
+
+        .section-label::after {
+            content: '';
+            flex: 1;
+            max-width: 60px;
+            height: 1px;
+            background: var(--border);
+        }
+
+        /* ── ABOUT ── */
+        .about-top {
+            display: grid;
+            grid-template-columns: 220px 1fr;
+            gap: 3rem;
+            align-items: start;
+            margin-bottom: 0.5rem;
+        }
+
+        .headshot-wrapper {
+            position: relative;
+            opacity: 0;
+            transform: translateY(20px);
+        }
+
+        .headshot-wrapper.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .headshot {
+            width: 100%;
+            aspect-ratio: 3 / 4;
+            object-fit: cover;
+            object-position: center top;
+            border-radius: 4px;
+            transition: transform 0.4s ease;
+        }
+
+        .headshot:hover {
+            transform: scale(1.15);
+        }
+
+        .about-content {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 2rem;
+        }
+
+        .about-content p {
+            font-size: 1.1rem;
+            line-height: 1.9;
+            color: var(--text);
+            max-width: 620px;
+        }
+
+        .about-content p + p {
+            color: var(--text-secondary);
+            font-size: 1rem;
+        }
+
+        .detail-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1px;
+            background: var(--border);
+            border: 1px solid var(--border);
+            margin-top: 2.5rem;
+        }
+
+        .detail-item {
+            background: var(--card-bg);
+            padding: 1.5rem;
+        }
+
+        .detail-item .label {
+            font-size: 0.65rem;
+            font-weight: 500;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+        }
+
+        .detail-item .value {
+            font-family: 'Cormorant Garamond', serif;
+            font-weight: 500;
+            font-size: 1.05rem;
+        }
+
+        /* ── EXPERIENCE ── */
+        .experience-list {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .experience-item {
+            display: grid;
+            grid-template-columns: 140px 1fr;
+            gap: 2rem;
+            padding: 2.5rem 0;
+            border-bottom: 1px solid var(--border);
+            align-items: start;
+        }
+
+        .experience-item:first-child {
+            border-top: 1px solid var(--border);
+        }
+
+        .exp-date {
+            font-size: 0.75rem;
+            font-weight: 400;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            padding-top: 0.2rem;
+        }
+
+        .exp-content h3 {
+            font-family: 'Cormorant Garamond', serif;
+            font-weight: 500;
+            font-size: 1.3rem;
+            margin-bottom: 0.3rem;
+        }
+
+        .exp-content .org {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.8rem;
+        }
+
+        .exp-content p {
+            font-size: 0.9rem;
+            line-height: 1.7;
+            color: var(--text-secondary);
+            max-width: 480px;
+        }
+
+        /* ── CONTACT ── */
+        .contact-inner {
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+        }
+
+        .contact-inner p {
+            font-size: 1.1rem;
+            color: var(--text-secondary);
+            max-width: 480px;
+            line-height: 1.8;
+        }
+
+        .contact-links {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .contact-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-size: 0.95rem;
+            color: var(--text);
+            text-decoration: none;
+            transition: color 0.25s ease;
+            width: fit-content;
+        }
+
+        .contact-link:hover {
+            color: var(--text-secondary);
+        }
+
+        .contact-link svg {
+            width: 16px;
+            height: 16px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 1.5;
+        }
+
+        /* ── FOOTER ── */
+        footer {
+            padding: 3rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-top: 1px solid var(--border);
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            letter-spacing: 0.04em;
+        }
+
+        /* ── ANIMATIONS ── */
+        @keyframes fadeUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes scrollPulse {
+            0% { left: -100%; }
+            50% { left: 100%; }
+            100% { left: 100%; }
+        }
+
+        .reveal {
+            opacity: 1;
+            transform: translateY(0);
+            transition: opacity 0.6s ease, transform 0.6s ease;
+        }
+
+        .js-ready .reveal {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+
+        .js-ready .reveal.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* ── GOOD EYE ICON ANIMATION ── */
+        .good-eye-icon {
+            display: inline-block;
+            vertical-align: middle;
+            margin-left: 0.15em;
+            width: 1em;
+            height: 1em;
+            position: relative;
+        }
+
+        .good-eye-icon svg {
+            width: 100%;
+            height: 100%;
+            overflow: visible;
+        }
+
+        /* All phases hidden by default */
+        .icon-camera, .icon-excel, .icon-eye { opacity: 0; }
+
+        /* Phase 1: Camera — 3.5s total, flash at ~1.3s */
+        .good-eye-icon.animating .icon-camera {
+            animation: cameraShow 3.5s ease forwards;
+        }
+
+        @keyframes cameraShow {
+            0%, 5% { opacity: 1; }
+            92% { opacity: 1; }
+            100% { opacity: 0; }
+        }
+
+        .good-eye-icon.animating .camera-flash-ring {
+            animation: flashBurst 3.5s ease forwards;
+        }
+
+        @keyframes flashBurst {
+            0%, 43% { opacity: 0; r: 10; }
+            48% { opacity: 0.9; r: 10; }
+            60% { opacity: 0; r: 20; }
+            100% { opacity: 0; r: 20; }
+        }
+
+        .good-eye-icon.animating .camera-body,
+        .good-eye-icon.animating .camera-lens,
+        .good-eye-icon.animating .camera-top {
+            animation: cameraShake 3.5s ease forwards;
+        }
+
+        @keyframes cameraShake {
+            0%, 44% { transform: translate(0, 0); }
+            46% { transform: translate(0, -1px); }
+            48% { transform: translate(0, 0); }
+            50% { transform: translate(0, 1px); }
+            52% { transform: translate(0, 0); }
+            100% { transform: translate(0, 0); }
+        }
+
+        /* Phase 2: Excel — 3.3s delay, 2.5s duration */
+        .good-eye-icon.animating .icon-excel {
+            animation: excelShow 2.5s ease 3.3s forwards;
+        }
+
+        @keyframes excelShow {
+            0% { opacity: 0; }
+            12% { opacity: 1; }
+            82% { opacity: 1; }
+            100% { opacity: 0; }
+        }
+
+        .good-eye-icon.animating .excel-cell-fill {
+            animation: cellFill 2.5s ease 3.3s forwards;
+        }
+
+        @keyframes cellFill {
+            0%, 12% { opacity: 0; }
+            30% { opacity: 0.15; }
+            82% { opacity: 0.15; }
+            100% { opacity: 0; }
+        }
+
+        /* Phase 3: Eye — 5.6s delay, fades in and stays */
+        .good-eye-icon.animating .icon-eye {
+            animation: eyeShow 1s ease 5.6s forwards;
+        }
+
+        @keyframes eyeShow {
+            0% { opacity: 0; }
+            100% { opacity: 1; }
+        }
+
+        /* Eye blink — flatten the whole eye shape from center */
+        .icon-eye {
+            transform-origin: 24px 24px;
+        }
+
+        /* Black blink: eye flattens shut then reopens */
+        .good-eye-icon.animating .icon-eye {
+            animation: eyeShow 1s ease 5.6s forwards,
+                       blinkFlatten 0.35s ease 7.1s forwards,
+                       blinkFlattenShut 0.4s ease 9.1s forwards;
+        }
+
+        @keyframes blinkFlatten {
+            0% { opacity: 1; transform: scaleY(1); }
+            40% { opacity: 1; transform: scaleY(0.05); }
+            60% { opacity: 1; transform: scaleY(0.05); }
+            100% { opacity: 1; transform: scaleY(1); }
+        }
+
+        /* White blink: flattens and stays shut (disappears) */
+        @keyframes blinkFlattenShut {
+            0% { opacity: 1; transform: scaleY(1); }
+            50% { opacity: 1; transform: scaleY(0.05); }
+            100% { opacity: 0; transform: scaleY(0.05); }
+        }
+
+        /* ── RESPONSIVE ── */
+        @media (max-width: 768px) {
+            nav {
+                padding: 1.25rem 1.5rem;
+            }
+
+            .nav-links {
+                gap: 1.5rem;
+            }
+
+            .hero {
+                padding: 0 1.5rem;
+            }
+
+            section {
+                padding: 5rem 1.5rem;
+            }
+
+            .scroll-hint {
+                left: 1.5rem;
+            }
+
+            .about-top {
+                grid-template-columns: 1fr;
+                gap: 2rem;
+            }
+
+            .headshot-wrapper {
+                max-width: 200px;
+            }
+
+            .experience-item {
+                grid-template-columns: 1fr;
+                gap: 0.5rem;
+            }
+
+            .detail-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+
+            footer {
+                padding: 2rem 1.5rem;
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .nav-links {
+                gap: 1rem;
+            }
+
+            .nav-links a {
+                font-size: 0.7rem;
+            }
+
+            .detail-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <nav>
+        <a href="#" class="nav-name"><span class="nav-logo"><svg viewBox="0 0 48 48" aria-hidden="true"><path d="M9 10 C13 13 31 17 39 24 C31 31 13 35 9 38" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 14 Q11 24 16 34 Q21 24 16 14Z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M16 17 Q13 24 16 31 Q19 24 16 17Z" fill="currentColor" opacity="0.3"/></svg>saac</span> Ure</a>
+        <ul class="nav-links">
+            <li><a href="#about">About</a></li>
+            <li><a href="#experience">Experience</a></li>
+            <li><a href="#contact">Contact</a></li>
+        </ul>
+    </nav>
+
+    <div class="hero">
+        <p class="hero-greeting">Houston, TX</p>
+        <h1>Finance, strategy,<br>and a good eye.<span class="good-eye-icon" aria-hidden="true"><svg viewBox="0 0 48 48" width="48" height="48"><g class="icon-camera"><rect class="camera-body" x="10" y="16" width="28" height="20" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><circle class="camera-lens" cx="24" cy="26" r="6" fill="none" stroke="currentColor" stroke-width="2"/><rect class="camera-top" x="18" y="12" width="12" height="4" rx="1" fill="none" stroke="currentColor" stroke-width="2"/><circle class="camera-flash-ring" cx="24" cy="26" r="10" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0"/></g><g class="icon-excel" opacity="0"><rect x="8" y="10" width="32" height="28" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><line x1="8" y1="18" x2="40" y2="18" stroke="currentColor" stroke-width="1.5"/><line x1="8" y1="26" x2="40" y2="26" stroke="currentColor" stroke-width="1.5"/><line x1="8" y1="34" x2="40" y2="34" stroke="currentColor" stroke-width="1.5" opacity="0.5"/><line x1="20" y1="10" x2="20" y2="38" stroke="currentColor" stroke-width="1.5"/><line x1="32" y1="10" x2="32" y2="38" stroke="currentColor" stroke-width="1.5"/><rect class="excel-cell-fill" x="21" y="19" width="10" height="6" fill="currentColor" opacity="0"/></g><g class="icon-eye" opacity="0"><path d="M9 10 C13 13 31 17 39 24 C31 31 13 35 9 38" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 14 Q11 24 16 34 Q21 24 16 14Z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M16 17 Q13 24 16 31 Q19 24 16 17Z" fill="currentColor" opacity="0.3"/></g></svg></span></h1>
+        <p>Freshman at Rice University studying Mathematical Economic Analysis and Finance. Building things that matter, from budgets to race cars.</p>
+        <div class="scroll-hint">
+            <div class="scroll-line"></div>
+            Scroll
+        </div>
+    </div>
+
+    <section id="about">
+        <div class="section-label reveal">About</div>
+        <div class="about-top">
+            <div class="headshot-wrapper reveal">
+                <img src="images/Headshot-sm.jpg"
+                     srcset="images/Headshot-sm.jpg 440w, images/Headshot-md.jpg 880w, images/Headshot.jpg 6436w"
+                     sizes="(max-width: 768px) 200px, 220px"
+                     alt="Isaac Ure" class="headshot" loading="lazy">
+            </div>
+            <div class="about-content">
+                <p class="reveal">I'm a first-year at Rice double-majoring in Mathematical Economic Analysis and Finance with interests spanning energy infrastructure, financial management, and automotive engineering. I believe the best work happens when you mix rigor and creativity, which is why I try to push myself in unique ventures.</p>
+                <p class="reveal">Outside of coursework, I shoot photography for The Rice Thresher and with Rice Raw Photography, and I like to spend more time than I should working on my MK8 GTI.</p>
+            </div>
+        </div>
+        <div class="detail-grid reveal">
+            <div class="detail-item">
+                <div class="label">University</div>
+                <div class="value">Rice University '29</div>
+            </div>
+            <div class="detail-item">
+                <div class="label">Focus</div>
+                <div class="value">MTEC & Finance</div>
+            </div>
+            <div class="detail-item">
+                <div class="label">Based in</div>
+                <div class="value">Houston, TX</div>
+            </div>
+            <div class="detail-item">
+                <div class="label">Previously</div>
+                <div class="value">The John Cooper School</div>
+            </div>
+            <div class="detail-item">
+                <div class="label">Graduated</div>
+                <div class="value">Cum Laude</div>
+            </div>
+            <div class="detail-item">
+                <div class="label">Based in</div>
+                <div class="value">The Woodlands, TX</div>
+            </div>
+        </div>
+    </section>
+
+    <section id="experience">
+        <div class="section-label reveal">Experience</div>
+        <div class="experience-list">
+            <div class="experience-item reveal">
+                <div class="exp-date">Summer 2026</div>
+                <div class="exp-content">
+                    <h3>Summer Intern</h3>
+                    <div class="org">Deep Blue Midland Basin</div>
+                    <p>PE-backed midstream water infrastructure platform operating in the Permian Basin. Backed by Five Point Infrastructure and Diamondback Energy.</p>
+                </div>
+            </div>
+            <div class="experience-item reveal">
+                <div class="exp-date">2024 — Present</div>
+                <div class="exp-content">
+                    <h3>Director of Financing</h3>
+                    <div class="org">Rice Racing — Formula SAE</div>
+                    <p>Leading budgeting, financial strategy, and helping with sponsor outreach for Rice's Formula SAE race team.</p>
+                </div>
+            </div>
+            <div class="experience-item reveal">
+                <div class="exp-date">2024 — Present</div>
+                <div class="exp-content">
+                    <h3>Analyst</h3>
+                    <div class="org">Rice Undergraduate Wealth Management Club</div>
+                    <p>Portfolio research focusing on client relationship and stability; proven through analysis and Monte Carlo simulation.</p>
+                </div>
+            </div>
+            <div class="experience-item reveal">
+                <div class="exp-date">2020 — 2024</div>
+                <div class="exp-content">
+                    <h3>Student — Cum Laude</h3>
+                    <div class="org">The John Cooper School</div>
+                    <p>Founded the D&D club and became co-president of the greater Tabletop Club. Developed early interests in finance, economics, and cars.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="contact">
+        <div class="section-label reveal">Contact</div>
+        <div class="contact-inner">
+            <p class="reveal">I'm always open to connecting! Whether it's about finance, energy, cars, or anything in between, feel free to reach out.</p>
+            <div class="contact-links reveal">
+                <a href="mailto:iu2@rice.edu" class="contact-link">
+                    <svg viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                    iu2@rice.edu
+                </a>
+                <a href="https://www.linkedin.com/in/isaacure/" target="_blank" class="contact-link">
+                    <svg viewBox="0 0 24 24"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/><rect x="2" y="9" width="4" height="12"/><circle cx="4" cy="4" r="2"/></svg>
+                    LinkedIn
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <footer>
+        <span>2026 Isaac Ure</span>
+        <span>Vroooooooooooom.</span>
+    </footer>
+
+    <script>
+        // Enable scroll animations only when JS is available
+        document.body.classList.add('js-ready');
+
+        // Nav scroll effect
+        const nav = document.querySelector('nav');
+        window.addEventListener('scroll', () => {
+            nav.classList.toggle('scrolled', window.scrollY > 50);
+        });
+
+        // Reveal on scroll — re-triggers when scrolling back
+        const reveals = document.querySelectorAll('.reveal');
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach((entry, i) => {
+                if (entry.isIntersecting) {
+                    setTimeout(() => {
+                        entry.target.classList.add('visible');
+                    }, i * 100);
+                } else {
+                    entry.target.classList.remove('visible');
+                }
+            });
+        }, { threshold: 0.15 });
+
+        reveals.forEach(el => observer.observe(el));
+
+        // Good-eye icon: play once, reset on scroll away & back
+        const goodEyeIcon = document.querySelector('.good-eye-icon');
+        if (goodEyeIcon) {
+            const iconObserver = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        goodEyeIcon.classList.add('animating');
+                    } else {
+                        goodEyeIcon.classList.remove('animating');
+                    }
+                });
+            }, { threshold: 0.5 });
+            iconObserver.observe(goodEyeIcon);
+        }
+
+        // Smooth scroll for nav links
+        document.querySelectorAll('.nav-links a').forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                const target = document.querySelector(link.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            });
+        });
+    </script>
+
+</body>
+</html>
