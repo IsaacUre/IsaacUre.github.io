@@ -4,6 +4,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Isaac; Finance & Strategy</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <script>
+        // Runs before first paint: decide whether the intro sequence should play.
+        (function() {
+            try {
+                var skip = sessionStorage.getItem('introPlayed') === '1';
+                var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+                if (!skip && !reduce) {
+                    document.documentElement.classList.add('intro-active');
+                }
+            } catch (e) {}
+        })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
@@ -71,6 +84,21 @@
             letter-spacing: 0.02em;
             color: var(--text);
             text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+        }
+
+        .nav-logo {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.05rem;
+        }
+
+        .nav-logo svg {
+            width: 1.05em;
+            height: 1.05em;
+            vertical-align: middle;
         }
 
         .nav-links {
@@ -117,6 +145,8 @@
             justify-content: center;
             padding: 0 3rem;
             max-width: 900px;
+            position: relative;
+            overflow: visible;
         }
 
         .hero-greeting {
@@ -141,6 +171,7 @@
             opacity: 0;
             animation: fadeUp 0.8s ease forwards;
             animation-delay: 0.4s;
+            position: relative;
         }
 
         .hero p {
@@ -240,12 +271,11 @@
             object-fit: cover;
             object-position: center top;
             border-radius: 4px;
-            filter: grayscale(15%);
-            transition: filter 0.4s ease;
+            transition: transform 0.4s ease;
         }
 
         .headshot:hover {
-            filter: grayscale(0%);
+            transform: scale(1.15);
         }
 
         .about-content {
@@ -434,85 +464,90 @@
 
         /* ── GOOD EYE ICON ANIMATION ── */
         .good-eye-icon {
-            display: inline-block;
-            vertical-align: middle;
-            margin-left: 0.15em;
-            width: 1em;
-            height: 1em;
-            position: relative;
+            position: absolute;
+            right: 4rem;
+            top: -3rem;
+            width: 18rem;
+            height: 18rem;
+            opacity: 0;
+            animation: fadeUp 0.8s ease forwards;
+            animation-delay: 0.5s;
+            pointer-events: none;
         }
 
         .good-eye-icon svg {
             width: 100%;
             height: 100%;
             overflow: visible;
+            opacity: 0.08;
         }
 
         /* All phases hidden by default */
         .icon-camera, .icon-excel, .icon-eye { opacity: 0; }
 
-        /* Phase 1: Camera — plays once, holds at opacity 0 */
+        /* Phase 1: Camera — 3.5s total, flash at ~1.3s */
         .good-eye-icon.animating .icon-camera {
-            animation: cameraShow 2s ease forwards;
+            animation: cameraShow 3.5s ease forwards;
         }
 
         @keyframes cameraShow {
-            0%, 10% { opacity: 1; }
-            85%, 100% { opacity: 0; }
+            0%, 5% { opacity: 1; }
+            92% { opacity: 1; }
+            100% { opacity: 0; }
         }
 
         .good-eye-icon.animating .camera-flash-ring {
-            animation: flashBurst 2s ease forwards;
+            animation: flashBurst 3.5s ease forwards;
         }
 
         @keyframes flashBurst {
-            0%, 50% { opacity: 0; r: 10; }
-            65% { opacity: 0.9; r: 10; }
-            85% { opacity: 0; r: 20; }
+            0%, 43% { opacity: 0; r: 10; }
+            48% { opacity: 0.9; r: 10; }
+            60% { opacity: 0; r: 20; }
             100% { opacity: 0; r: 20; }
         }
 
         .good-eye-icon.animating .camera-body,
         .good-eye-icon.animating .camera-lens,
         .good-eye-icon.animating .camera-top {
-            animation: cameraShake 2s ease forwards;
+            animation: cameraShake 3.5s ease forwards;
         }
 
         @keyframes cameraShake {
-            0%, 60% { transform: translate(0, 0); }
-            63% { transform: translate(0, -1px); }
-            66% { transform: translate(0, 0); }
-            69% { transform: translate(0, 1px); }
-            72% { transform: translate(0, 0); }
+            0%, 44% { transform: translate(0, 0); }
+            46% { transform: translate(0, -1px); }
+            48% { transform: translate(0, 0); }
+            50% { transform: translate(0, 1px); }
+            52% { transform: translate(0, 0); }
             100% { transform: translate(0, 0); }
         }
 
-        /* Phase 2: Excel — 2s delay, plays once */
+        /* Phase 2: Excel — 3.3s delay, 2.5s duration */
         .good-eye-icon.animating .icon-excel {
-            animation: excelShow 2s ease 1.8s forwards;
+            animation: excelShow 2.5s ease 3.3s forwards;
         }
 
         @keyframes excelShow {
             0% { opacity: 0; }
-            15% { opacity: 1; }
-            80% { opacity: 1; }
+            12% { opacity: 1; }
+            82% { opacity: 1; }
             100% { opacity: 0; }
         }
 
         .good-eye-icon.animating .excel-cell-fill {
-            animation: cellFill 2s ease 1.8s forwards;
+            animation: cellFill 2.5s ease 3.3s forwards;
         }
 
         @keyframes cellFill {
-            0%, 15% { opacity: 0; }
-            35% { opacity: 0.15; }
-            80% { opacity: 0.15; }
+            0%, 12% { opacity: 0; }
+            30% { opacity: 0.15; }
+            82% { opacity: 0.15; }
             100% { opacity: 0; }
         }
 
-        /* Phase 3: Eye — 3.6s delay, fades in and STAYS */
+        /* Phase 3: Eye — 5.6s delay, fades in and stays */
         .good-eye-icon.animating .icon-eye {
-            animation: eyeShow 1s ease 3.5s forwards;
+            animation: eyeShow 1s ease 5.6s forwards;
         }
 
         @keyframes eyeShow {
@@ -520,21 +555,234 @@
             100% { opacity: 1; }
         }
 
-        /* Blink: eyelid closes and reopens */
-        .eye-lid {
+        /* Eye blink — flatten the whole eye shape from center */
+        .icon-eye {
             transform-origin: 24px 24px;
-            transform: scaleY(0);
         }
 
-        .good-eye-icon.animating .eye-lid {
-            animation: blink 0.3s ease 4.8s forwards, blink 0.3s ease 6.5s forwards;
+        /* Black blink: eye flattens shut then reopens */
+        .good-eye-icon.animating .icon-eye {
+            animation: eyeShow 1s ease 5.6s forwards,
+                       blinkFlatten 0.35s ease 7.1s forwards,
+                       blinkFlattenShut 0.4s ease 9.1s forwards;
         }
 
-        @keyframes blink {
-            0% { transform: scaleY(0); }
-            45% { transform: scaleY(1); }
-            55% { transform: scaleY(1); }
-            100% { transform: scaleY(0); }
+        @keyframes blinkFlatten {
+            0% { opacity: 1; transform: scaleY(1); }
+            40% { opacity: 1; transform: scaleY(0.05); }
+            60% { opacity: 1; transform: scaleY(0.05); }
+            100% { opacity: 1; transform: scaleY(1); }
+        }
+
+        /* White blink: flattens and stays shut (disappears) */
+        @keyframes blinkFlattenShut {
+            0% { opacity: 1; transform: scaleY(1); }
+            50% { opacity: 1; transform: scaleY(0.05); }
+            100% { opacity: 0; transform: scaleY(0.05); }
+        }
+
+        /* ── INTRO OVERLAY & REVEAL ── */
+        .intro-overlay {
+            position: fixed;
+            inset: 0;
+            background: var(--bg);
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+            transition: opacity 0.9s ease, visibility 0s linear 0.9s;
+        }
+
+        html.intro-active .intro-overlay {
+            opacity: 1;
+            visibility: visible;
+            transition: none;
+            pointer-events: auto;
+        }
+
+        html.intro-active,
+        html.intro-active body {
+            overflow: hidden;
+            height: 100%;
+        }
+
+        .intro-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text);
+            padding: 0 1.5rem;
+            max-width: 100%;
+        }
+
+        .intro-icon {
+            width: clamp(4.5rem, 9vw, 7rem);
+            height: clamp(4.5rem, 9vw, 7rem);
+            flex-shrink: 0;
+            opacity: 0;
+            transform: translateY(28px) scale(0.94);
+        }
+
+        .intro-icon svg {
+            width: 100%;
+            height: 100%;
+            overflow: visible;
+            display: block;
+        }
+
+        .intro-connector {
+            flex-shrink: 0;
+            width: clamp(2rem, 5vw, 4.5rem);
+            height: 1px;
+            background: var(--text);
+            opacity: 0;
+            transform: scaleX(0);
+            transform-origin: left center;
+            margin: 0 clamp(0.75rem, 2vw, 1.75rem);
+            align-self: center;
+        }
+
+        /* Icons slide up and fade in sequentially */
+        html.intro-active .intro-slot-camera {
+            animation: introReveal 0.75s cubic-bezier(0.22, 0.75, 0.26, 1) 0.4s forwards;
+        }
+        html.intro-active .intro-slot-excel {
+            animation: introReveal 0.75s cubic-bezier(0.22, 0.75, 0.26, 1) 2.2s forwards;
+        }
+        html.intro-active .intro-slot-eye {
+            animation: introReveal 0.75s cubic-bezier(0.22, 0.75, 0.26, 1) 4.4s forwards;
+        }
+
+        @keyframes introReveal {
+            0% { opacity: 0; transform: translateY(28px) scale(0.94); }
+            100% { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        /* Connector lines draw in between icons as the sequence progresses */
+        html.intro-active .intro-connector-1 {
+            animation: introConnect 0.65s cubic-bezier(0.4, 0, 0.2, 1) 1.95s forwards;
+        }
+        html.intro-active .intro-connector-2 {
+            animation: introConnect 0.65s cubic-bezier(0.4, 0, 0.2, 1) 4.15s forwards;
+        }
+
+        @keyframes introConnect {
+            0% { transform: scaleX(0); opacity: 0; }
+            20% { opacity: 0.3; }
+            100% { transform: scaleX(1); opacity: 0.3; }
+        }
+
+        /* Intro phase 1 — camera flash + shake */
+        html.intro-active .intro-slot-camera .camera-flash-ring {
+            animation: introFlash 1.2s ease 1.5s forwards;
+        }
+
+        @keyframes introFlash {
+            0% { opacity: 0; r: 10; }
+            10% { opacity: 0.95; r: 10; }
+            42% { opacity: 0; r: 24; }
+            100% { opacity: 0; r: 24; }
+        }
+
+        html.intro-active .intro-slot-camera .camera-body,
+        html.intro-active .intro-slot-camera .camera-lens,
+        html.intro-active .intro-slot-camera .camera-top {
+            animation: introShake 0.55s ease 1.5s;
+            transform-box: fill-box;
+            transform-origin: center;
+        }
+
+        @keyframes introShake {
+            0%, 10% { transform: translate(0, 0); }
+            22% { transform: translate(0, -1.2px); }
+            36% { transform: translate(0, 0); }
+            50% { transform: translate(0, 1.2px); }
+            64% { transform: translate(0, 0); }
+            100% { transform: translate(0, 0); }
+        }
+
+        /* Intro phase 2 — spreadsheet cell fills in */
+        html.intro-active .intro-slot-excel .excel-cell-fill {
+            animation: introCellFill 1.3s ease 3.3s forwards;
+        }
+
+        @keyframes introCellFill {
+            0% { opacity: 0; }
+            40% { opacity: 0.22; }
+            100% { opacity: 0.22; }
+        }
+
+        /* Intro phase 3 — eye blink */
+        .intro-slot-eye .eye-group {
+            transform-origin: 24px 24px;
+            transform-box: fill-box;
+        }
+        html.intro-active .intro-slot-eye .eye-group {
+            animation: introBlink 0.5s ease 5.5s forwards;
+        }
+
+        @keyframes introBlink {
+            0% { transform: scaleY(1); }
+            44% { transform: scaleY(0.06); }
+            60% { transform: scaleY(0.06); }
+            100% { transform: scaleY(1); }
+        }
+
+        /* Hide main content while the intro is playing */
+        html.intro-active nav,
+        html.intro-active .hero-greeting,
+        html.intro-active .hero h1,
+        html.intro-active .hero p,
+        html.intro-active .scroll-hint,
+        html.intro-active .good-eye-icon,
+        html.intro-active section,
+        html.intro-active footer {
+            opacity: 0 !important;
+            animation: none !important;
+        }
+
+        /* After the intro: nav drops in, hero + watermark swoop up from below */
+        html.intro-ended nav {
+            opacity: 0;
+            animation: swoopDown 1s cubic-bezier(0.22, 0.75, 0.26, 1) 0.1s forwards !important;
+        }
+
+        html.intro-ended .hero-greeting {
+            opacity: 0;
+            animation: swoopUp 1.05s cubic-bezier(0.22, 0.75, 0.26, 1) 0.3s forwards !important;
+        }
+        html.intro-ended .hero h1 {
+            opacity: 0;
+            animation: swoopUp 1.05s cubic-bezier(0.22, 0.75, 0.26, 1) 0.42s forwards !important;
+        }
+        html.intro-ended .hero p {
+            opacity: 0;
+            animation: swoopUp 1.05s cubic-bezier(0.22, 0.75, 0.26, 1) 0.56s forwards !important;
+        }
+        html.intro-ended .scroll-hint {
+            opacity: 0;
+            animation: swoopUp 1.05s cubic-bezier(0.22, 0.75, 0.26, 1) 0.9s forwards !important;
+        }
+        html.intro-ended .good-eye-icon {
+            opacity: 0;
+            animation: swoopUp 1.15s cubic-bezier(0.22, 0.75, 0.26, 1) 0.7s forwards !important;
+        }
+
+        @keyframes swoopUp {
+            0% { opacity: 0; transform: translateY(70px); }
+            100% { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes swoopDown {
+            0% { opacity: 0; transform: translateY(-32px); }
+            100% { opacity: 1; transform: translateY(0); }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .intro-overlay { display: none !important; }
         }
 
         /* ── RESPONSIVE ── */
@@ -601,8 +849,43 @@
 </head>
 <body>
 
+    <div class="intro-overlay" aria-hidden="true">
+        <div class="intro-row">
+            <div class="intro-icon intro-slot-camera">
+                <svg viewBox="0 0 48 48">
+                    <rect class="camera-body" x="10" y="16" width="28" height="20" rx="3" fill="none" stroke="currentColor" stroke-width="2"/>
+                    <circle class="camera-lens" cx="24" cy="26" r="6" fill="none" stroke="currentColor" stroke-width="2"/>
+                    <rect class="camera-top" x="18" y="12" width="12" height="4" rx="1" fill="none" stroke="currentColor" stroke-width="2"/>
+                    <circle class="camera-flash-ring" cx="24" cy="26" r="10" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0"/>
+                </svg>
+            </div>
+            <div class="intro-connector intro-connector-1"></div>
+            <div class="intro-icon intro-slot-excel">
+                <svg viewBox="0 0 48 48">
+                    <rect x="8" y="10" width="32" height="28" rx="2" fill="none" stroke="currentColor" stroke-width="2"/>
+                    <line x1="8" y1="18" x2="40" y2="18" stroke="currentColor" stroke-width="1.5"/>
+                    <line x1="8" y1="26" x2="40" y2="26" stroke="currentColor" stroke-width="1.5"/>
+                    <line x1="8" y1="34" x2="40" y2="34" stroke="currentColor" stroke-width="1.5"/>
+                    <line x1="20" y1="10" x2="20" y2="38" stroke="currentColor" stroke-width="1.5"/>
+                    <line x1="32" y1="10" x2="32" y2="38" stroke="currentColor" stroke-width="1.5"/>
+                    <rect class="excel-cell-fill" x="21" y="19" width="10" height="6" fill="currentColor" opacity="0"/>
+                </svg>
+            </div>
+            <div class="intro-connector intro-connector-2"></div>
+            <div class="intro-icon intro-slot-eye">
+                <svg viewBox="0 0 48 48">
+                    <g class="eye-group">
+                        <path d="M9 10 C13 13 31 17 39 24 C31 31 13 35 9 38" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M16 14 Q11 24 16 34 Q21 24 16 14Z" fill="none" stroke="currentColor" stroke-width="1.8"/>
+                        <path d="M16 17 Q13 24 16 31 Q19 24 16 17Z" fill="currentColor" opacity="0.3"/>
+                    </g>
+                </svg>
+            </div>
+        </div>
+    </div>
+
     <nav>
-        <a href="#" class="nav-name">Isaac Ure</a>
+        <a href="#" class="nav-name"><span class="nav-logo"><svg viewBox="0 0 48 48" aria-hidden="true"><path d="M9 10 C13 13 31 17 39 24 C31 31 13 35 9 38" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 14 Q11 24 16 34 Q21 24 16 14Z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M16 17 Q13 24 16 31 Q19 24 16 17Z" fill="currentColor" opacity="0.3"/></svg>saac</span> Ure</a>
         <ul class="nav-links">
             <li><a href="#about">About</a></li>
             <li><a href="#experience">Experience</a></li>
@@ -612,7 +895,7 @@
 
     <div class="hero">
         <p class="hero-greeting">Houston, TX</p>
-        <h1>Finance, strategy,<br>and a good eye.<span class="good-eye-icon" aria-hidden="true"><svg viewBox="0 0 48 48" width="48" height="48"><g class="icon-camera"><rect class="camera-body" x="10" y="16" width="28" height="20" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><circle class="camera-lens" cx="24" cy="26" r="6" fill="none" stroke="currentColor" stroke-width="2"/><rect class="camera-top" x="18" y="12" width="12" height="4" rx="1" fill="none" stroke="currentColor" stroke-width="2"/><circle class="camera-flash-ring" cx="24" cy="26" r="10" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0"/></g><g class="icon-excel" opacity="0"><rect x="8" y="10" width="32" height="28" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><line x1="8" y1="18" x2="40" y2="18" stroke="currentColor" stroke-width="1.5"/><line x1="8" y1="26" x2="40" y2="26" stroke="currentColor" stroke-width="1.5"/><line x1="8" y1="34" x2="40" y2="34" stroke="currentColor" stroke-width="1.5" opacity="0.5"/><line x1="20" y1="10" x2="20" y2="38" stroke="currentColor" stroke-width="1.5"/><line x1="32" y1="10" x2="32" y2="38" stroke="currentColor" stroke-width="1.5"/><rect class="excel-cell-fill" x="21" y="19" width="10" height="6" fill="currentColor" opacity="0"/></g><g class="icon-eye" opacity="0"><path d="M6 24 C6 24 14 12 24 12 C34 12 42 24 42 24 C42 24 34 36 24 36 C14 36 6 24 6 24Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="24" cy="24" r="5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="24" cy="24" r="2" fill="currentColor"/><path class="eye-lid" d="M6 24 C6 24 14 12 24 12 C34 12 42 24 42 24 C42 24 34 36 24 36 C14 36 6 24 6 24Z" fill="var(--bg, #FAFAF8)" stroke="none"/></g></svg></span></h1>
+        <h1>Finance, strategy,<br>and a good eye.<div class="good-eye-icon" aria-hidden="true"><svg viewBox="0 0 48 48" width="48" height="48"><g class="icon-camera"><rect class="camera-body" x="10" y="16" width="28" height="20" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><circle class="camera-lens" cx="24" cy="26" r="6" fill="none" stroke="currentColor" stroke-width="2"/><rect class="camera-top" x="18" y="12" width="12" height="4" rx="1" fill="none" stroke="currentColor" stroke-width="2"/><circle class="camera-flash-ring" cx="24" cy="26" r="10" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0"/></g><g class="icon-excel" opacity="0"><rect x="8" y="10" width="32" height="28" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><line x1="8" y1="18" x2="40" y2="18" stroke="currentColor" stroke-width="1.5"/><line x1="8" y1="26" x2="40" y2="26" stroke="currentColor" stroke-width="1.5"/><line x1="8" y1="34" x2="40" y2="34" stroke="currentColor" stroke-width="1.5"/><line x1="20" y1="10" x2="20" y2="38" stroke="currentColor" stroke-width="1.5"/><line x1="32" y1="10" x2="32" y2="38" stroke="currentColor" stroke-width="1.5"/><rect class="excel-cell-fill" x="21" y="19" width="10" height="6" fill="currentColor" opacity="0"/></g><g class="icon-eye" opacity="0"><path d="M9 10 C13 13 31 17 39 24 C31 31 13 35 9 38" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 14 Q11 24 16 34 Q21 24 16 14Z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M16 17 Q13 24 16 31 Q19 24 16 17Z" fill="currentColor" opacity="0.3"/></g></svg></div></h1>
         <p>Freshman at Rice University studying Mathematical Economic Analysis and Finance. Building things that matter, from budgets to race cars.</p>
         <div class="scroll-hint">
             <div class="scroll-line"></div>
@@ -650,6 +933,14 @@
             <div class="detail-item">
                 <div class="label">Previously</div>
                 <div class="value">The John Cooper School</div>
+            </div>
+            <div class="detail-item">
+                <div class="label">Graduated</div>
+                <div class="value">Cum Laude</div>
+            </div>
+            <div class="detail-item">
+                <div class="label">Based in</div>
+                <div class="value">The Woodlands, TX</div>
             </div>
         </div>
     </section>
@@ -710,7 +1001,7 @@
     </section>
 
     <footer>
-        <span>&copy; 2026 Isaac Ure</span>
+        <span>2026 Isaac Ure</span>
         <span>Vroooooooooooom.</span>
     </footer>
 
@@ -724,7 +1015,7 @@
             nav.classList.toggle('scrolled', window.scrollY > 50);
         });
 
-        // Reveal on scroll
+        // Reveal on scroll — re-triggers when scrolling back
         const reveals = document.querySelectorAll('.reveal');
         const observer = new IntersectionObserver((entries) => {
             entries.forEach((entry, i) => {
@@ -732,16 +1023,19 @@
                     setTimeout(() => {
                         entry.target.classList.add('visible');
                     }, i * 100);
-                    observer.unobserve(entry.target);
+                } else {
+                    entry.target.classList.remove('visible');
                 }
             });
         }, { threshold: 0.15 });
 
         reveals.forEach(el => observer.observe(el));
 
-        // Good-eye icon: play once, reset on scroll away & back
+        // Good-eye watermark icon: observer is attached lazily so its cycle
+        // doesn't overlap with the intro sequence on first load.
         const goodEyeIcon = document.querySelector('.good-eye-icon');
-        if (goodEyeIcon) {
+        function attachGoodEyeObserver() {
+            if (!goodEyeIcon) return;
             const iconObserver = new IntersectionObserver((entries) => {
                 entries.forEach(entry => {
                     if (entry.isIntersecting) {
@@ -754,8 +1048,40 @@
             iconObserver.observe(goodEyeIcon);
         }
 
+        // Intro sequence orchestration
+        (function() {
+            const root = document.documentElement;
+            if (root.classList.contains('intro-active')) {
+                // Icons finish settling at ~6.3s, then the swoop-up reveal kicks in.
+                const INTRO_END = 6300;
+                setTimeout(() => {
+                    root.classList.remove('intro-active');
+                    root.classList.add('intro-ended');
+                    try { sessionStorage.setItem('introPlayed', '1'); } catch (e) {}
+                    // Delay the watermark cycle so it doesn't fight the hero swoop.
+                    setTimeout(attachGoodEyeObserver, 1100);
+                    // Remove the overlay from the DOM once it has fully faded out.
+                    setTimeout(() => {
+                        const overlay = document.querySelector('.intro-overlay');
+                        if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
+                    }, 1400);
+                }, INTRO_END);
+            } else {
+                attachGoodEyeObserver();
+            }
+        })();
+
         // Smooth scroll for nav links
         document.querySelectorAll('.nav-links a').forEach(link => {
             link.addEventListener('click', (e) => {
                 e.preventDefault();
-                const target = document.que
+                const target = document.querySelector(link.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            });
+        });
+    </script>
+
+</body>
+</html>
