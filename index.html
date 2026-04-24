@@ -1243,6 +1243,16 @@
             footerObserver.observe(footerIcon);
         }
 
+        // Press "r" to replay the intro (testing helper).
+        document.addEventListener('keydown', (e) => {
+            if (e.key !== 'r' && e.key !== 'R') return;
+            if (e.metaKey || e.ctrlKey || e.altKey) return;
+            const t = e.target;
+            if (t && (t.isContentEditable || /^(input|textarea|select)$/i.test(t.tagName))) return;
+            try { sessionStorage.removeItem('introPlayed'); } catch (err) {}
+            location.reload();
+        });
+
         // Smooth scroll for nav links
         document.querySelectorAll('.nav-links a').forEach(link => {
             link.addEventListener('click', (e) => {
