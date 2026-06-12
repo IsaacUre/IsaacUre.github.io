@@ -679,101 +679,90 @@
             justify-content: center;
         }
 
-        .intro-captions {
-            position: relative;
-            width: min(32rem, 92vw);
-            height: clamp(1.6rem, 2.8vw, 2rem);
-            margin-top: clamp(2.2rem, 4.6vw, 3.4rem);
-        }
-
-        .intro-caption {
-            position: absolute;
-            inset: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            opacity: 0;
-            pointer-events: none;
-        }
-
-        .intro-caption-text {
-            position: relative;
-            display: inline-block;
-            font-family: 'DM Sans', sans-serif;
-            font-weight: 300;
-            font-style: italic;
-            font-size: clamp(0.95rem, 1.55vw, 1.15rem);
-            letter-spacing: 0.015em;
-            color: var(--text-secondary);
-            white-space: nowrap;
-        }
-
-        .intro-caption-text::after {
-            content: "";
-            position: absolute;
-            top: -10%;
-            right: 0;
-            bottom: -10%;
-            width: 100%;
-            background: var(--bg);
-            border-left: 1.5px solid var(--text);
-            pointer-events: none;
-        }
-
-        /* Caption 1 — Camera */
-        html.intro-active .intro-caption-camera {
-            animation: introCaptionIn 0.3s ease 2.4s forwards,
-                       introCaptionOut 0.35s ease 3.9s forwards;
-        }
-        html.intro-active .intro-caption-camera .intro-caption-text::after {
-            animation: introType 0.85s steps(32, end) 2.4s forwards;
-        }
-
-        /* Caption 2 — Excel */
-        html.intro-active .intro-caption-excel {
-            animation: introCaptionIn 0.3s ease 4.2s forwards,
-                       introCaptionOut 0.35s ease 5.85s forwards;
-        }
-        html.intro-active .intro-caption-excel .intro-caption-text::after {
-            animation: introType 0.8s steps(30, end) 4.2s forwards;
-        }
-
-        /* Caption 3 — Eye (stays visible until overlay fades) */
-        html.intro-active .intro-caption-eye {
-            animation: introCaptionIn 0.3s ease 6.4s forwards;
-        }
-        html.intro-active .intro-caption-eye .intro-caption-text::after {
-            animation: introType 0.75s steps(20, end) 6.4s forwards,
-                       introCursorBlink 1s steps(2, end) 7.15s 2;
-        }
-
-        @keyframes introCaptionIn {
-            0% { opacity: 0; }
-            100% { opacity: 1; }
-        }
-
-        @keyframes introCaptionOut {
-            0% { opacity: 1; }
-            100% { opacity: 0; }
-        }
-
-        @keyframes introType {
-            0% { width: 100%; border-left-color: var(--text); }
-            99% { border-left-color: var(--text); }
-            100% { width: 0%; border-left-color: transparent; }
-        }
-
-        @keyframes introCursorBlink {
-            0%, 49% { border-left-color: var(--text); }
-            50%, 100% { border-left-color: transparent; }
-        }
-
         .intro-icon {
+            position: relative;
             width: clamp(4.5rem, 9vw, 7rem);
             height: clamp(4.5rem, 9vw, 7rem);
             flex-shrink: 0;
             opacity: 0;
             transform: translateY(28px) scale(0.94);
+        }
+
+        /* Hitmarker captions: pop at the icon, then fling outward and fade */
+        .intro-hit {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            font-family: 'DM Sans', sans-serif;
+            font-weight: 400;
+            font-style: italic;
+            font-size: clamp(0.9rem, 1.4vw, 1.1rem);
+            letter-spacing: 0.015em;
+            color: var(--text-secondary);
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            z-index: 4;
+            transform: translate(-50%, -50%) scale(0.4);
+            will-change: transform, opacity;
+        }
+
+        .intro-hit-camera {
+            --hit-pop-x: -10%;
+            --hit-pop-y: -130%;
+            --hit-fly-x: -160%;
+            --hit-fly-y: -360%;
+            --hit-rot-start: -6deg;
+            --hit-rot-end: -14deg;
+        }
+        .intro-hit-excel {
+            --hit-pop-x: 0%;
+            --hit-pop-y: -140%;
+            --hit-fly-x: 20%;
+            --hit-fly-y: -400%;
+            --hit-rot-start: 3deg;
+            --hit-rot-end: 6deg;
+        }
+        .intro-hit-eye {
+            --hit-pop-x: 10%;
+            --hit-pop-y: -130%;
+            --hit-fly-x: 170%;
+            --hit-fly-y: -360%;
+            --hit-rot-start: 6deg;
+            --hit-rot-end: 14deg;
+        }
+
+        html.intro-active .intro-hit-camera {
+            animation: hitmarkerFling 2s cubic-bezier(0.16, 0.84, 0.3, 1) 2.4s forwards;
+        }
+        html.intro-active .intro-hit-excel {
+            animation: hitmarkerFling 2s cubic-bezier(0.16, 0.84, 0.3, 1) 4.2s forwards;
+        }
+        html.intro-active .intro-hit-eye {
+            animation: hitmarkerFling 2s cubic-bezier(0.16, 0.84, 0.3, 1) 6.4s forwards;
+        }
+
+        @keyframes hitmarkerFling {
+            0% {
+                opacity: 0;
+                transform: translate(-50%, -50%) scale(0.4) rotate(var(--hit-rot-start, 0deg));
+            }
+            10% {
+                opacity: 1;
+                transform: translate(calc(-50% + var(--hit-pop-x)), calc(-50% + var(--hit-pop-y))) scale(1.18) rotate(var(--hit-rot-start, 0deg));
+            }
+            15% {
+                opacity: 1;
+                transform: translate(calc(-50% + var(--hit-pop-x)), calc(-50% + var(--hit-pop-y))) scale(1) rotate(var(--hit-rot-start, 0deg));
+            }
+            55% {
+                opacity: 1;
+                transform: translate(calc(-50% + var(--hit-pop-x)), calc(-50% + var(--hit-pop-y))) scale(1) rotate(var(--hit-rot-start, 0deg));
+            }
+            100% {
+                opacity: 0;
+                transform: translate(calc(-50% + var(--hit-fly-x)), calc(-50% + var(--hit-fly-y))) scale(0.82) rotate(var(--hit-rot-end, 0deg));
+            }
         }
 
         .intro-icon svg {
@@ -865,19 +854,40 @@
             100% { opacity: 0.22; }
         }
 
-        /* Intro phase 3 — eye blink */
-        .intro-slot-eye .eye-group {
-            transform-origin: 24px 24px;
+        /* Intro phase 3 — eye blink (eyelids slide in from top & bottom and meet at the midline) */
+        .intro-slot-eye svg {
+            overflow: hidden;
         }
-        html.intro-active .intro-slot-eye .eye-group {
-            animation: introBlink 0.5s ease 6.4s forwards;
+        .intro-slot-eye .eye-lid {
+            transform-box: fill-box;
+        }
+        .intro-slot-eye .eye-lid-fill {
+            fill: var(--bg);
+        }
+        .intro-slot-eye .eye-lid-top {
+            transform: translateY(-100%);
+        }
+        .intro-slot-eye .eye-lid-bottom {
+            transform: translateY(100%);
+        }
+        html.intro-active .intro-slot-eye .eye-lid-top {
+            animation: introLidTop 0.6s cubic-bezier(0.4, 0, 0.2, 1) 6.4s forwards;
+        }
+        html.intro-active .intro-slot-eye .eye-lid-bottom {
+            animation: introLidBottom 0.6s cubic-bezier(0.4, 0, 0.2, 1) 6.4s forwards;
         }
 
-        @keyframes introBlink {
-            0% { transform: scaleY(1); }
-            44% { transform: scaleY(0.06); }
-            60% { transform: scaleY(0.06); }
-            100% { transform: scaleY(1); }
+        @keyframes introLidTop {
+            0% { transform: translateY(-100%); }
+            42% { transform: translateY(0); }
+            58% { transform: translateY(0); }
+            100% { transform: translateY(-100%); }
+        }
+        @keyframes introLidBottom {
+            0% { transform: translateY(100%); }
+            42% { transform: translateY(0); }
+            58% { transform: translateY(0); }
+            100% { transform: translateY(100%); }
         }
 
         /* Hide main content while the intro is playing */
@@ -1009,6 +1019,7 @@
                         <rect class="camera-top" x="18" y="12" width="12" height="4" rx="1" fill="none" stroke="currentColor" stroke-width="2"/>
                         <circle class="camera-flash-ring" cx="24" cy="26" r="10" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0"/>
                     </svg>
+                    <div class="intro-hit intro-hit-camera">&ldquo;Getting the perfect composition&rdquo;</div>
                 </div>
                 <div class="intro-connector intro-connector-1"></div>
                 <div class="intro-icon intro-slot-excel">
@@ -1021,6 +1032,7 @@
                         <line x1="32" y1="10" x2="32" y2="38" stroke="currentColor" stroke-width="1.5"/>
                         <rect class="excel-cell-fill" x="21" y="19" width="10" height="6" fill="currentColor" opacity="0"/>
                     </svg>
+                    <div class="intro-hit intro-hit-excel">&ldquo;Zero mistakes, looking clean&rdquo;</div>
                 </div>
                 <div class="intro-connector intro-connector-2"></div>
                 <div class="intro-icon intro-slot-eye">
@@ -1030,13 +1042,17 @@
                             <path d="M16 14 Q11 24 16 34 Q21 24 16 14Z" fill="none" stroke="currentColor" stroke-width="1.8"/>
                             <path d="M16 17 Q13 24 16 31 Q19 24 16 17Z" fill="currentColor" opacity="0.3"/>
                         </g>
+                        <g class="eye-lid eye-lid-top">
+                            <rect class="eye-lid-fill" x="0" y="0" width="48" height="24"/>
+                            <line x1="0" y1="24" x2="48" y2="24" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                        </g>
+                        <g class="eye-lid eye-lid-bottom">
+                            <rect class="eye-lid-fill" x="0" y="24" width="48" height="24"/>
+                            <line x1="0" y1="24" x2="48" y2="24" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                        </g>
                     </svg>
+                    <div class="intro-hit intro-hit-eye">Attention to detail.</div>
                 </div>
-            </div>
-            <div class="intro-captions">
-                <div class="intro-caption intro-caption-camera"><span class="intro-caption-text">&ldquo;Getting the perfect composition&rdquo;</span></div>
-                <div class="intro-caption intro-caption-excel"><span class="intro-caption-text">&ldquo;Zero mistakes, looking clean&rdquo;</span></div>
-                <div class="intro-caption intro-caption-eye"><span class="intro-caption-text">Attention to detail.</span></div>
             </div>
         </div>
     </div>
@@ -1209,7 +1225,7 @@
         (function() {
             const root = document.documentElement;
             if (root.classList.contains('intro-active')) {
-                // Headline fades in at 1s; eye caption finishes typing at ~7.15s, cursor blinks briefly before swoop.
+                // Headline fades in at 1s; eye hit pops at 6.4s, holds through ~7.5s, then flings as the overlay fades.
                 const INTRO_END = 7700;
                 setTimeout(() => {
                     root.classList.remove('intro-active');
