@@ -459,9 +459,9 @@
     /* ---- camera pull-back: scale the whole scene out during a swap, back in after ---- */
     var sceneEl = document.querySelector('.stage');
     var camScale = 1;
-    var CAM_OUT = 0.9;        // peak pull-back (subtle); tune here
-    var CAM_OUT_MS = 240;     // pull-back duration
-    var CAM_IN_MS = 300;      // pull-in duration
+    var CAM_OUT = 0.85;       // peak pull-back (subtle); tune here
+    var CAM_OUT_MS = 340;     // pull-back duration
+    var CAM_IN_MS = 380;      // pull-in duration
     var CAM_LEAD = 80;        // ms the zoom leads the flight
     function setSceneOrigin() {
         if (!sceneEl) return;
@@ -475,13 +475,13 @@
         setSceneOrigin();
         camScale = CAM_OUT;
         sceneEl.style.willChange = 'transform';
-        sceneEl.style.transition = 'transform ' + CAM_OUT_MS + 'ms cubic-bezier(.33,0,.2,1)';
+        sceneEl.style.transition = 'transform ' + CAM_OUT_MS + 'ms cubic-bezier(.4,0,.2,1)';
         sceneEl.style.transform = 'scale(' + CAM_OUT + ')';
     }
     function cameraIn() {
         if (reduce || !sceneEl || camScale === 1) return;
         camScale = 1;
-        sceneEl.style.transition = 'transform ' + CAM_IN_MS + 'ms cubic-bezier(.3,0,.25,1)';
+        sceneEl.style.transition = 'transform ' + CAM_IN_MS + 'ms cubic-bezier(.4,0,.25,1)';
         sceneEl.style.transform = 'scale(1)';
         setTimeout(function () { if (camScale === 1) sceneEl.style.willChange = ''; }, CAM_IN_MS + 60);
     }
