@@ -23,6 +23,11 @@
             <div class="cart-rack rack-left" id="rackLeft" aria-label="Cartridges, left shelf"></div>
             <div class="ureboy" id="ureboy">
 
+            <div class="cart-slot" aria-hidden="true">
+                <div class="cart-dock" id="cartDock"></div>
+                <div class="slot-mouth"></div>
+            </div>
+
             <div class="brandbar">
                 <div class="wordmark">URE<span class="wordmark-boy">BOY</span><span class="wordmark-tm">™</span></div>
                 <div class="power">
@@ -42,8 +47,10 @@
                 <div class="screen" id="screen">
                     <div class="screen-glow"></div>
                     <div class="scanlines" aria-hidden="true"></div>
+                    <div class="screen-flash" aria-hidden="true"></div>
 
                     <div class="screen-content" id="screenContent">
+                        <div class="cart-load" id="cartLoad" hidden aria-hidden="true"></div>
 
                         <!-- BOOT -->
                         <section class="state state-boot" id="boot" data-state="boot" aria-label="Booting">

@@ -359,20 +359,24 @@
 
     /* ---------------- engine / state machine ---------------- */
     var state = 'boot', sel = 0, curCart = null, bootTimer = null, typer = null;
+    var inserting = false, dockedIdx = null;
 
     function showState(name) {
         ['boot', 'menu', 'game'].forEach(function (s) { var e = byId(s); if (e) e.hidden = (s !== name); });
         state = name;
     }
     function cartLabelName(c) { return c.name.split('.')[0]; }
-    function cartButtonHTML(c, i) {
-        return '<button class="gbcart" data-i="' + i + '" style="--cart:' + c.color + '" aria-label="' + c.name + ' — ' + c.tag + '">' +
-            CART_SVG +
+    function cartInnerHTML(c) {
+        return CART_SVG +
             '<span class="gbcart-label">' +
             '<span class="gbcart-ico" aria-hidden="true">' + c.ico + '</span>' +
             '<span class="gbcart-name">' + cartLabelName(c) + '</span>' +
             '<span class="gbcart-pub">URE BOY</span>' +
-            '</span></button>';
+            '</span>';
+    }
+    function cartButtonHTML(c, i) {
+        return '<button class="gbcart" data-i="' + i + '" style="--cart:' + c.color + '" aria-label="' + c.name + ' — ' + c.tag + '">' +
+            cartInnerHTML(c) + '</button>';
     }
     var SPLIT = 2; // first SPLIT cartridges on the left shelf, the rest on the right
     function buildDeck() {
@@ -381,20 +385,12 @@
         if (right) right.innerHTML = CARTS.slice(SPLIT).map(function (c, i) { return cartButtonHTML(c, i + SPLIT); }).join('');
         Array.prototype.forEach.call(document.querySelectorAll('.gbcart'), function (b) {
             var i = parseInt(b.getAttribute('data-i'), 10);
-            b.addEventListener('mouseenter', function () { sel = i; paintSel(false); });
-            b.addEventListener('focus', function () { sel = i; paintSel(false); });
-            b.addEventListener('click', function () { sel = i; launch(); });
+            b.addEventListener('mouseenter', function () { if (inserting) return; sel = i; paintSel(false); });
+            b.addEventListener('focus', function () { if (inserting) return; sel = i; paintSel(false); });
+            b.addEventListener('click', function () { if (inserting) return; sel = i; paintSel(false); insertCart(i); });
         });
         var ec = byId('eggCount'); if (ec) ec.textContent = eggLabel();
         paintSel(false);
-    }
-    function markInserted(idx) {
-        Array.prototype.forEach.call(document.querySelectorAll('.gbcart'), function (b) {
-            var i = parseInt(b.getAttribute('data-i'), 10);
-            var on = (i === idx);
-            b.classList.toggle('inserted', on);
-            if (on) { b.classList.remove('inserting'); void b.offsetWidth; b.classList.add('inserting'); }
-        });
     }
     function paintSel(doFocus) {
         var btns = document.querySelectorAll('.gbcart');
@@ -417,24 +413,197 @@
         hp.innerHTML = '▸ <b>' + c.name + '</b><span class="hp-tag">' + c.tag + ' · press A</span>';
     }
     function moveSel(d) { sel = (sel + d + CARTS.length) % CARTS.length; paintSel(true); beep(520, 0.025); }
-    function openMenu() {
+    function reallyOpenMenu() {
+        dockedIdx = null;
         showState('menu');
-        Array.prototype.forEach.call(document.querySelectorAll('.gbcart'), function (b) { b.classList.remove('inserted'); });
         paintSel(true);
     }
-    function launch() {
-        curCart = CARTS[sel];
+    function openMenu() {
+        if (inserting) return;
+        if (dockedIdx === null) { reallyOpenMenu(); return; }
+        if (reduce) { var di = dockedIdx; clearDock(); setVacant(di, false); reallyOpenMenu(); return; }
+        inserting = true; setBusy(true);
+        showState('menu');                 // reveal home behind the ejecting cart
+        ejectDock(function () {
+            inserting = false; setBusy(false);
+            paintSel(true);
+        });
+    }
+
+    function renderGame(idx) {
+        sel = idx;
+        curCart = CARTS[idx];
         var gt = byId('gameTitle'); if (gt) gt.textContent = curCart.ico + ' ' + curCart.name;
         var body = byId('gameBody');
         body.innerHTML = curCart.render();
         body.scrollTop = 0;
-        markInserted(sel);
         showState('game');
         if (curCart.onShow) curCart.onShow();
-        body.focus();
+        try { body.focus({ preventScroll: true }); } catch (e) { body.focus(); }
         beep(660, 0.05);
     }
-    function launchSel() { launch(); }
+
+    /* ---------------- cartridge insert / eject micro-interaction ---------------- */
+    function setBusy(on) { document.body.classList.toggle('cart-busy', on); }
+    function getCartBtn(idx) { return document.querySelector('.gbcart[data-i="' + idx + '"]'); }
+    function setVacant(idx, on) { var b = getCartBtn(idx); if (b) b.classList.toggle('vacant', on); }
+
+    // Animate a fixed-position clone of a cartridge between two screen rects,
+    // arcing through the air (transform-only) with a seat overshoot at the end.
+    function flyBetween(fromR, toR, opts, done) {
+        var fly = document.createElement('div');
+        fly.className = 'cart-fly';
+        fly.style.left = fromR.left + 'px';
+        fly.style.top = fromR.top + 'px';
+        fly.style.width = fromR.width + 'px';
+        fly.style.height = fromR.height + 'px';
+        fly.style.setProperty('--cart', opts.cart.color);
+        fly.innerHTML = cartInnerHTML(opts.cart);
+        document.body.appendChild(fly);
+
+        var dx = (toR.left + toR.width / 2) - (fromR.left + fromR.width / 2);
+        var dy = (toR.top + toR.height / 2) - (fromR.top + fromR.height / 2);
+        var sc = fromR.width ? (toR.width / fromR.width) : 1;
+        var midS = (1 + sc) / 2;
+        var peakY = Math.min(0, dy) - opts.lift;          // arc up above both ends
+        var frames;
+        if (opts.insert) {
+            frames = [
+                { offset: 0,   transform: 'translate(0px,0px) rotate(0deg) scale(1)', easing: 'cubic-bezier(.4,0,.5,1)' },
+                { offset: .5,  transform: 'translate(' + (dx * 0.55) + 'px,' + peakY + 'px) rotate(-13deg) scale(' + midS + ')', easing: 'cubic-bezier(.45,0,.55,1)' },
+                { offset: .82, transform: 'translate(' + dx + 'px,' + (dy - 12) + 'px) rotate(3deg) scale(' + sc + ')', easing: 'cubic-bezier(.3,0,.2,1)' },
+                { offset: .92, transform: 'translate(' + dx + 'px,' + (dy + 5) + 'px) rotate(0deg) scale(' + sc + ')', easing: 'ease-out' },
+                { offset: 1,   transform: 'translate(' + dx + 'px,' + dy + 'px) rotate(0deg) scale(' + sc + ')' }
+            ];
+        } else {                                          // eject: pop up, then arc back to the shelf
+            frames = [
+                { offset: 0,   transform: 'translate(0px,0px) rotate(0deg) scale(1)', easing: 'ease-in' },
+                { offset: .25, transform: 'translate(0px,' + (-opts.lift * 0.55) + 'px) rotate(0deg) scale(1)', easing: 'cubic-bezier(.4,0,.4,1)' },
+                { offset: 1,   transform: 'translate(' + dx + 'px,' + dy + 'px) rotate(0deg) scale(' + sc + ')' }
+            ];
+        }
+        var anim = fly.animate(frames, { duration: opts.dur, fill: 'forwards' });
+        anim.onfinish = function () { done(fly); };
+        return fly;
+    }
+
+    function prepDock(idx) {
+        var dock = byId('cartDock'); if (!dock) return null;
+        dock.innerHTML = '<div class="dock-cart hidden" style="--cart:' + CARTS[idx].color + '">' + cartInnerHTML(CARTS[idx]) + '</div>';
+        dock.classList.add('docked');
+        dockedIdx = idx;
+        setVacant(idx, true);
+        return dock.querySelector('.dock-cart');
+    }
+    function revealDock() {
+        var dc = byId('cartDock') && byId('cartDock').querySelector('.dock-cart');
+        if (!dc) return;
+        dc.classList.remove('hidden');
+        dc.classList.add('seating');
+        setTimeout(function () { if (dc) dc.classList.remove('seating'); }, 440);
+    }
+    function clearDock() {
+        var dock = byId('cartDock'); if (dock) { dock.innerHTML = ''; dock.classList.remove('docked'); }
+        dockedIdx = null;
+    }
+    function dockInstant(idx) {
+        var dock = byId('cartDock'); if (!dock) return;
+        dock.innerHTML = '<div class="dock-cart" style="--cart:' + CARTS[idx].color + '">' + cartInnerHTML(CARTS[idx]) + '</div>';
+        dock.classList.add('docked');
+        dockedIdx = idx; setVacant(idx, true);
+    }
+
+    function flashScreen() {
+        if (reduce) return;
+        var s = byId('screen'); if (!s) return;
+        s.classList.remove('surge'); void s.offsetWidth; s.classList.add('surge');
+        setTimeout(function () { s.classList.remove('surge'); }, 360);
+    }
+    function seatReact() {
+        if (reduce) return;
+        var u = byId('ureboy');
+        if (u) { u.classList.remove('shake'); void u.offsetWidth; u.classList.add('shake'); setTimeout(function () { u.classList.remove('shake'); }, 280); }
+        flashScreen();
+        beep(150, 0.05, 'square'); setTimeout(function () { beep(90, 0.12, 'square'); }, 70);
+    }
+    function cartBoot(idx, done) {
+        if (reduce) { done(); return; }
+        var c = CARTS[idx], load = byId('cartLoad');
+        if (load) {
+            load.innerHTML =
+                '<div class="cl-eye" aria-hidden="true"><svg viewBox="0 0 48 48">' +
+                '<path d="M9 10 C13 13 31 17 39 24 C31 31 13 35 9 38" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>' +
+                '<path d="M16 14 Q11 24 16 34 Q21 24 16 14Z" fill="none" stroke="currentColor" stroke-width="1.8"/>' +
+                '<circle cx="16" cy="24" r="3.1" fill="currentColor"/></svg></div>' +
+                '<div class="cl-word">URE<b>BOY</b></div>' +
+                '<div class="cl-load">&#9656; LOADING ' + c.name + '<span class="cl-cur">_</span></div>';
+            load.hidden = false;
+            requestAnimationFrame(function () { load.classList.add('show'); });
+        }
+        setTimeout(function () {
+            if (load) {
+                load.classList.remove('show');
+                setTimeout(function () { load.hidden = true; }, 160);
+            }
+            done();
+        }, 300);
+    }
+
+    function insertCart(idx) {
+        if (inserting) return;
+        if (state === 'boot') { clearTimeout(bootTimer); clearInterval(typer); }   // clicking a cart skips the intro boot
+        if (idx === dockedIdx && state === 'game') return;                          // already playing it
+        inserting = true; setBusy(true);
+
+        var go = function () {
+            if (reduce) {
+                dockInstant(idx);
+                renderGame(idx);
+                inserting = false; setBusy(false);
+                return;
+            }
+            var dc = prepDock(idx);
+            var toR = dc.getBoundingClientRect();
+            var srcBtn = getCartBtn(idx);
+            var fromR = srcBtn.getBoundingClientRect();
+            flyBetween(fromR, toR, { cart: CARTS[idx], lift: 100, dur: 600, insert: true }, function (fly) {
+                revealDock();
+                if (fly.parentNode) fly.parentNode.removeChild(fly);
+                seatReact();
+                cartBoot(idx, function () {
+                    renderGame(idx);
+                    inserting = false; setBusy(false);
+                });
+            });
+        };
+
+        if (dockedIdx !== null && dockedIdx !== idx) {
+            ejectDock(function () { go(); });   // swap: eject the seated cart first
+        } else {
+            go();
+        }
+    }
+
+    function ejectDock(done) {
+        var idx = dockedIdx;
+        if (idx === null) { if (done) done(); return; }
+        if (reduce) { clearDock(); setVacant(idx, false); if (done) done(); return; }
+        var dock = byId('cartDock');
+        var dc = dock && dock.querySelector('.dock-cart');
+        var srcBtn = getCartBtn(idx);
+        if (!dc || !srcBtn) { clearDock(); setVacant(idx, false); if (done) done(); return; }
+        var fromR = dc.getBoundingClientRect();
+        var toR = srcBtn.getBoundingClientRect();
+        dc.style.visibility = 'hidden';
+        flashScreen();
+        beep(120, 0.06, 'square');
+        flyBetween(fromR, toR, { cart: CARTS[idx], lift: 84, dur: 420, insert: false }, function (fly) {
+            if (fly.parentNode) fly.parentNode.removeChild(fly);
+            clearDock();
+            setVacant(idx, false);
+            if (done) done();
+        });
+    }
 
     function runBoot() {
         showState('boot');
@@ -458,11 +627,12 @@
 
     /* ---------------- input ---------------- */
     function press(a) {
+        if (inserting) return;
         if (state === 'boot') { if (a === 'a' || a === 'start' || a === 'up' || a === 'down') endBoot(); return; }
         if (state === 'menu') {
             if (a === 'up' || a === 'left') moveSel(-1);
             else if (a === 'down' || a === 'right') moveSel(1);
-            else if (a === 'a') launchSel();
+            else if (a === 'a') insertCart(sel);
             else if (a === 'select') toggleList();
             return;
         }

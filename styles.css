@@ -99,7 +99,7 @@ img { image-rendering: pixelated; }
     display: block;
 }
 .cart-svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-.cart-body { fill: var(--cart, #5a6acf); }
+.cart-body { fill: var(--cart, #5a6acf); transition: fill .2s ease; }
 .cart-edge { transition: stroke .15s ease, stroke-width .15s ease; }
 
 .rack-left .gbcart:nth-child(odd)  { --rot: -4deg; }
@@ -118,22 +118,56 @@ img { image-rendering: pixelated; }
 .gbcart-name { font-family: var(--font-ui); font-weight: 700; font-size: .74rem; letter-spacing: .4px; color: #1a1a18; text-transform: uppercase; }
 .gbcart-pub { font-family: var(--font-pixel); font-size: .28rem; color: #8a887c; margin-top: 1px; }
 
-.gbcart.inserted { filter: drop-shadow(0 7px 9px rgba(0,0,0,.42)) brightness(1.04); }
-.gbcart.inserted::after {
-    content: 'IN'; position: absolute; top: 6%; left: 50%; transform: translateX(-50%);
-    font-family: var(--font-pixel); font-size: .3rem; color: #fff;
-    background: var(--red); padding: 2px 4px; border-radius: 3px; z-index: 3;
-}
-.rack-left  .gbcart.inserted { transform: translateX(10px) rotate(0deg); }
-.rack-right .gbcart.inserted { transform: translateX(-10px) rotate(0deg); }
-
 .gbcart:hover { transform: translateY(-7px) rotate(0deg); filter: drop-shadow(0 14px 17px rgba(0,0,0,.5)); }
 .gbcart:hover .cart-edge { stroke: rgba(0,0,0,.3); }
 .gbcart.sel, .gbcart:focus-visible { outline: none; transform: translateY(-7px) rotate(0deg); z-index: 2; filter: drop-shadow(0 13px 15px rgba(0,0,0,.5)); }
 .gbcart.sel .cart-edge, .gbcart:focus-visible .cart-edge { stroke: var(--paper); stroke-width: 5; }
 .gbcart.sel, .gbcart:focus-visible { filter: drop-shadow(0 13px 15px rgba(0,0,0,.5)) drop-shadow(0 0 5px rgba(255,255,255,.35)); }
-.gbcart.inserting { animation: cartBlip .26s ease; }
-@keyframes cartBlip { 50% { filter: drop-shadow(0 7px 9px rgba(0,0,0,.42)) brightness(1.4); } }
+
+/* empty shelf slot while its cartridge is docked in the console */
+.gbcart.vacant { pointer-events: none; }
+.gbcart.vacant, .gbcart.vacant.sel { transform: rotate(var(--rot, 0deg)); filter: none; }
+.gbcart.vacant .cart-body { fill: rgba(255,255,255,.05); }
+.gbcart.vacant .cart-edge, .gbcart.vacant.sel .cart-edge { stroke: rgba(255,255,255,.22); stroke-width: 2; stroke-dasharray: 5 4; }
+.gbcart.vacant .gbcart-label { opacity: 0; }
+.gbcart.vacant::after {
+    content: 'EMPTY'; position: absolute; top: 44%; left: 50%; transform: translate(-50%,-50%);
+    font-family: var(--font-pixel); font-size: .32rem; letter-spacing: .5px; color: rgba(255,255,255,.32);
+}
+
+/* the cartridge in flight (fixed clone, transform-only) */
+.cart-fly { position: fixed; z-index: 400; pointer-events: none; will-change: transform; filter: drop-shadow(0 16px 20px rgba(0,0,0,.55)); }
+
+/* cartridge port on top of the console + the seated cartridge */
+.cart-slot { position: absolute; top: 0; left: 0; right: 0; height: 0; z-index: 2; pointer-events: none; }
+.cart-dock { position: absolute; top: 0; left: 0; right: 0; height: 0; z-index: 2; }
+.dock-cart { position: absolute; left: 50%; top: 0; transform: translate(-50%,-86%); width: 96px; aspect-ratio: 100 / 112; filter: drop-shadow(0 8px 10px rgba(0,0,0,.5)); }
+.dock-cart.hidden { visibility: hidden; }
+.dock-cart.seating { animation: cartSeat .42s cubic-bezier(.3,1.3,.5,1); }
+@keyframes cartSeat {
+    0%   { transform: translate(-50%,-86%) scaleY(1); }
+    28%  { transform: translate(-50%,-84%) scaleY(.93); }
+    60%  { transform: translate(-50%,-87.5%) scaleY(1.04); }
+    100% { transform: translate(-50%,-86%) scaleY(1); }
+}
+.slot-mouth {
+    position: absolute; top: -2px; left: 50%; transform: translateX(-50%);
+    width: 48%; height: 15px; z-index: 4; border-radius: 3px;
+    background: linear-gradient(#0a0a08, #1c1c16);
+    box-shadow: inset 0 3px 5px rgba(0,0,0,.85), 0 1px 0 rgba(255,255,255,.05);
+}
+.ureboy.shake { animation: consoleShake .26s ease; }
+@keyframes consoleShake {
+    0%,100% { transform: translate(0,0); }
+    20% { transform: translate(-1.5px,1px); }
+    40% { transform: translate(2px,-1px); }
+    60% { transform: translate(-2px,1px); }
+    80% { transform: translate(1px,0); }
+}
+
+/* block shelf + controls during a swap */
+body.cart-busy .gbcart { pointer-events: none; }
+body.cart-busy .dpad, body.cart-busy .ab, body.cart-busy .startbar { pointer-events: none; }
 
 /* ───────────── device shell ───────────── */
 .ureboy {
@@ -213,6 +247,33 @@ img { image-rendering: pixelated; }
     display: flex; flex-direction: column;
 }
 .state[hidden] { display: none; }
+
+/* ── power-surge flash + cartridge LOADING splash ── */
+.screen-flash { position: absolute; inset: 0; z-index: 7; pointer-events: none; opacity: 0; background: #fff; }
+.screen.surge .screen-flash { animation: screenSurge .34s ease; }
+@keyframes screenSurge {
+    0%   { opacity: 0;   background: #fff; }
+    14%  { opacity: .85; background: #fff; }
+    40%  { opacity: .9;  background: #06060a; }
+    72%  { opacity: .45; background: #06060a; }
+    100% { opacity: 0;   background: #06060a; }
+}
+.cart-load {
+    position: absolute; inset: 0; z-index: 8;
+    background: var(--screen-bg); color: var(--screen-ink);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .5rem;
+    opacity: 0; transition: opacity .14s ease;
+}
+.cart-load.show { opacity: 1; }
+.cart-load[hidden] { display: none; }
+.cl-eye { width: 38px; height: 38px; color: var(--screen-ink); }
+.cl-eye svg { width: 100%; height: 100%; }
+.js .cl-eye svg { animation: bootBlink 1s ease both; }
+.cl-word { font-family: var(--font-pixel); font-size: .8rem; color: var(--screen-ink); }
+.cl-word b { color: var(--screen-accent); }
+.cl-load { font-family: var(--font-ui); font-size: .86rem; color: var(--screen-dim); letter-spacing: .03em; }
+.cl-cur { animation: blinkCur .5s steps(1) infinite; }
+@keyframes blinkCur { 50% { opacity: 0; } }
 
 /* ── BOOT ── */
 .state-boot { align-items: center; justify-content: center; gap: .5rem; text-align: center; }
@@ -445,6 +506,7 @@ body.list-mode .listview { display: block; }
     .rbtn { width: 50px; height: 50px; }
     .stage { padding-top: 1.2rem; }
     .gbcart { width: 82px; }
+    .dock-cart { width: 82px; }
 }
 
 /* ───────────── reduced motion ───────────── */
