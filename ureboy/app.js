@@ -589,10 +589,8 @@
         var c = CARTS[idx], load = byId('cartLoad');
         if (load) {
             load.innerHTML =
-                '<div class="cl-eye" aria-hidden="true"><svg viewBox="0 0 48 48">' +
-                '<path d="M9 10 C13 13 31 17 39 24 C31 31 13 35 9 38" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>' +
-                '<path d="M16 14 Q11 24 16 34 Q21 24 16 14Z" fill="none" stroke="currentColor" stroke-width="1.8"/>' +
-                '<circle cx="16" cy="24" r="3.1" fill="currentColor"/></svg></div>' +
+                '<div class="cl-eye" aria-hidden="true"><svg viewBox="0 0 48 48" shape-rendering="crispEdges">' +
+                '<g fill="currentColor"><rect x="24" y="6" width="6" height="3"/><rect x="12" y="9" width="12" height="3"/><rect x="30" y="9" width="6" height="3"/><rect x="9" y="12" width="3" height="3"/><rect x="21" y="12" width="3" height="3"/><rect x="36" y="12" width="3" height="3"/><rect x="6" y="15" width="3" height="3"/><rect x="24" y="15" width="3" height="3"/><rect x="39" y="15" width="3" height="3"/><rect x="6" y="18" width="3" height="3"/><rect x="24" y="18" width="3" height="3"/><rect x="36" y="18" width="3" height="3"/><rect x="6" y="21" width="3" height="3"/><rect x="24" y="21" width="3" height="3"/><rect x="30" y="21" width="6" height="3"/><rect x="9" y="24" width="3" height="3"/><rect x="21" y="24" width="9" height="3"/><rect x="12" y="27" width="9" height="3"/><rect x="12" y="15" width="6" height="6"/></g></svg></div>' +
                 '<div class="cl-word">URE<b>BOY</b></div>' +
                 '<div class="cl-load">&#9656; LOADING ' + c.name + '<span class="cl-cur">_</span></div>';
             load.hidden = false;
