@@ -129,14 +129,14 @@
     // grip ridges flanking a top oval recess, and the bottom insertion triangle.
     var CART_SVG =
         '<svg class="cart-svg" viewBox="0 0 100 112" aria-hidden="true">' +
-        '<path class="cart-body" d="M14 6 H72 V13 H90 Q96 13 96 19 V104 Q96 110 90 110 H14 Q8 110 8 104 V12 Q8 6 14 6 Z"/>' +
+        '<path class="cart-body" d="M14 6 H85 V13 H90 Q96 13 96 19 V104 Q96 110 90 110 H14 Q8 110 8 104 V12 Q8 6 14 6 Z"/>' +
         '<g stroke="rgba(0,0,0,.16)" stroke-width="2" stroke-linecap="round">' +
         '<line x1="16" y1="18" x2="16" y2="38"/><line x1="20" y1="18" x2="20" y2="38"/><line x1="24" y1="18" x2="24" y2="38"/><line x1="28" y1="18" x2="28" y2="38"/>' +
         '<line x1="74" y1="22" x2="74" y2="41"/><line x1="78" y1="22" x2="78" y2="41"/><line x1="82" y1="22" x2="82" y2="41"/><line x1="86" y1="22" x2="86" y2="41"/>' +
         '</g>' +
         '<rect x="33" y="18" width="34" height="22" rx="9" fill="rgba(0,0,0,.05)" stroke="rgba(0,0,0,.12)" stroke-width="1"/>' +
         '<path d="M45 99 H55 L50 106 Z" fill="rgba(0,0,0,.22)"/>' +
-        '<path class="cart-edge" d="M14 6 H72 V13 H90 Q96 13 96 19 V104 Q96 110 90 110 H14 Q8 110 8 104 V12 Q8 6 14 6 Z" fill="none" stroke="rgba(0,0,0,.22)" stroke-width="1.5"/>' +
+        '<path class="cart-edge" d="M14 6 H85 V13 H90 Q96 13 96 19 V104 Q96 110 90 110 H14 Q8 110 8 104 V12 Q8 6 14 6 Z" fill="none" stroke="rgba(0,0,0,.22)" stroke-width="1.5"/>' +
         '</svg>';
 
     /* ---------------- cartridges ---------------- */
