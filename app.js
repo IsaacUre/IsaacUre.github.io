@@ -463,23 +463,26 @@
 
         var dx = (toR.left + toR.width / 2) - (fromR.left + fromR.width / 2);
         var dy = (toR.top + toR.height / 2) - (fromR.top + fromR.height / 2);
-        var sc = fromR.width ? (toR.width / fromR.width) : 1;
-        var midS = (1 + sc) / 2;
-        var peakY = Math.min(0, dy) - opts.lift;          // arc up above both ends
+        var sc = fromR.width ? (toR.width / fromR.width) : 1;   // shelf-size -> inserted-size (or reverse)
+        var peakY = Math.min(0, dy) - opts.lift;                // arc up above both ends
+        function S(w) { return (1 + (sc - 1) * w).toFixed(4); } // scale at travel-weight w (0..1)
         var frames;
         if (opts.insert) {
+            // grow weighted toward the second half (w ~ p^2): starts shelf-size, peaks at the slot
             frames = [
-                { offset: 0,   transform: 'translate(0px,0px) rotate(0deg) scale(1)', easing: 'cubic-bezier(.4,0,.5,1)' },
-                { offset: .5,  transform: 'translate(' + (dx * 0.55) + 'px,' + peakY + 'px) rotate(-13deg) scale(' + midS + ')', easing: 'cubic-bezier(.45,0,.55,1)' },
-                { offset: .82, transform: 'translate(' + dx + 'px,' + (dy - 12) + 'px) rotate(3deg) scale(' + sc + ')', easing: 'cubic-bezier(.3,0,.2,1)' },
-                { offset: .92, transform: 'translate(' + dx + 'px,' + (dy + 5) + 'px) rotate(0deg) scale(' + sc + ')', easing: 'ease-out' },
-                { offset: 1,   transform: 'translate(' + dx + 'px,' + dy + 'px) rotate(0deg) scale(' + sc + ')' }
+                { offset: 0,   transform: 'translate(0px,0px) rotate(0deg) scale(' + S(0) + ')', easing: 'cubic-bezier(.4,0,.5,1)' },
+                { offset: .5,  transform: 'translate(' + (dx * 0.55) + 'px,' + peakY + 'px) rotate(-12deg) scale(' + S(0.25) + ')', easing: 'cubic-bezier(.4,0,.55,1)' },
+                { offset: .82, transform: 'translate(' + dx + 'px,' + (dy - 14) + 'px) rotate(3deg) scale(' + S(0.80) + ')', easing: 'cubic-bezier(.3,0,.2,1)' },
+                { offset: .93, transform: 'translate(' + dx + 'px,' + (dy + 7) + 'px) rotate(0deg) scale(' + S(0.97) + ')', easing: 'ease-out' },
+                { offset: 1,   transform: 'translate(' + dx + 'px,' + dy + 'px) rotate(0deg) scale(' + S(1) + ')' }
             ];
-        } else {                                          // eject: pop up, then arc back to the shelf
+        } else {
+            // eject: pop up out of the slot, then arc back to the shelf, shrinking weighted toward the first half
             frames = [
-                { offset: 0,   transform: 'translate(0px,0px) rotate(0deg) scale(1)', easing: 'ease-in' },
-                { offset: .25, transform: 'translate(0px,' + (-opts.lift * 0.55) + 'px) rotate(0deg) scale(1)', easing: 'cubic-bezier(.4,0,.4,1)' },
-                { offset: 1,   transform: 'translate(' + dx + 'px,' + dy + 'px) rotate(0deg) scale(' + sc + ')' }
+                { offset: 0,   transform: 'translate(0px,0px) rotate(0deg) scale(' + S(0) + ')', easing: 'cubic-bezier(.4,0,.4,1)' },
+                { offset: .22, transform: 'translate(0px,' + (-opts.lift * 0.5) + 'px) rotate(0deg) scale(' + S(0.44) + ')', easing: 'cubic-bezier(.4,0,.5,1)' },
+                { offset: .6,  transform: 'translate(' + (dx * 0.5) + 'px,' + peakY + 'px) rotate(-6deg) scale(' + S(0.84) + ')', easing: 'cubic-bezier(.45,0,.55,1)' },
+                { offset: 1,   transform: 'translate(' + dx + 'px,' + dy + 'px) rotate(0deg) scale(' + S(1) + ')' }
             ];
         }
         var anim = fly.animate(frames, { duration: opts.dur, fill: 'forwards' });
@@ -500,7 +503,13 @@
         if (!dc) return;
         dc.classList.remove('hidden');
         dc.classList.add('seating');
-        setTimeout(function () { if (dc) dc.classList.remove('seating'); }, 440);
+        setTimeout(function () { if (dc) dc.classList.remove('seating'); }, 480);
+    }
+    // at rest the cart is fully buried (translateY 0%); fully-out is one full height higher (translateY -100%)
+    var HIDE_FRAC = 1.0;
+    // the "fully out" box (cart 100% above the slot) given the resting dock rect
+    function fullyOutRect(restR) {
+        return { left: restR.left, top: restR.top - HIDE_FRAC * restR.height, width: restR.width, height: restR.height };
     }
     function clearDock() {
         var dock = byId('cartDock'); if (dock) { dock.innerHTML = ''; dock.classList.remove('docked'); }
@@ -563,10 +572,10 @@
                 return;
             }
             var dc = prepDock(idx);
-            var toR = dc.getBoundingClientRect();
+            var toR = fullyOutRect(dc.getBoundingClientRect());   // land fully out; the dock seats down from here
             var srcBtn = getCartBtn(idx);
             var fromR = srcBtn.getBoundingClientRect();
-            flyBetween(fromR, toR, { cart: CARTS[idx], lift: 100, dur: 600, insert: true }, function (fly) {
+            flyBetween(fromR, toR, { cart: CARTS[idx], lift: 120, dur: 640, insert: true }, function (fly) {
                 revealDock();
                 if (fly.parentNode) fly.parentNode.removeChild(fly);
                 seatReact();
@@ -592,17 +601,21 @@
         var dc = dock && dock.querySelector('.dock-cart');
         var srcBtn = getCartBtn(idx);
         if (!dc || !srcBtn) { clearDock(); setVacant(idx, false); if (done) done(); return; }
-        var fromR = dc.getBoundingClientRect();
+        var fromR = fullyOutRect(dc.getBoundingClientRect());   // cart starts fully out (after the pop)
         var toR = srcBtn.getBoundingClientRect();
-        dc.style.visibility = 'hidden';
+        dc.classList.remove('seating');
+        dc.classList.add('unseating');                          // pop the cart up out of the slot
         flashScreen();
         beep(120, 0.06, 'square');
-        flyBetween(fromR, toR, { cart: CARTS[idx], lift: 84, dur: 420, insert: false }, function (fly) {
-            if (fly.parentNode) fly.parentNode.removeChild(fly);
-            clearDock();
-            setVacant(idx, false);
-            if (done) done();
-        });
+        setTimeout(function () {
+            dc.style.visibility = 'hidden';
+            flyBetween(fromR, toR, { cart: CARTS[idx], lift: 96, dur: 440, insert: false }, function (fly) {
+                if (fly.parentNode) fly.parentNode.removeChild(fly);
+                clearDock();
+                setVacant(idx, false);
+                if (done) done();
+            });
+        }, 190);
     }
 
     function runBoot() {

@@ -136,25 +136,40 @@ img { image-rendering: pixelated; }
 }
 
 /* the cartridge in flight (fixed clone, transform-only) */
-.cart-fly { position: fixed; z-index: 400; pointer-events: none; will-change: transform; filter: drop-shadow(0 16px 20px rgba(0,0,0,.55)); }
+.cart-fly { position: fixed; z-index: 400; pointer-events: none; will-change: transform; transform-origin: 50% 50%; filter: drop-shadow(0 16px 22px rgba(0,0,0,.55)); }
 
 /* cartridge port on top of the console + the seated cartridge */
 .cart-slot { position: absolute; top: 0; left: 0; right: 0; height: 0; z-index: 2; pointer-events: none; }
-.cart-dock { position: absolute; top: 0; left: 0; right: 0; height: 0; z-index: 2; }
-.dock-cart { position: absolute; left: 50%; top: 0; transform: translate(-50%,-86%); width: 96px; aspect-ratio: 100 / 112; filter: drop-shadow(0 8px 10px rgba(0,0,0,.5)); }
+.cart-dock { position: absolute; top: 0; left: 0; right: 0; height: 0; z-index: 2; pointer-events: none; }
+/* seated cart: ~82% of the console wide; at rest it is fully swallowed by the slot
+   (clipped away entirely) so nothing protrudes above the console. */
+.dock-cart {
+    position: absolute; left: 50%; top: 0;
+    width: 82%; aspect-ratio: 100 / 112;
+    transform: translate(-50%, 0%);
+    clip-path: inset(0 0 100% 0);
+    filter: drop-shadow(0 12px 16px rgba(0,0,0,.5));
+    pointer-events: none;
+}
 .dock-cart.hidden { visibility: hidden; }
-.dock-cart.seating { animation: cartSeat .42s cubic-bezier(.3,1.3,.5,1); }
+.dock-cart.seating { animation: cartSeat .46s cubic-bezier(.3,0,.32,1); }
+.dock-cart.unseating { animation: cartUnseat .2s cubic-bezier(.5,0,.7,.4) forwards; }
+/* slide down from fully-out (-100%, unclipped) until fully consumed by the slot (0%, fully clipped);
+   the visible bottom edge stays pinned at the slot line the whole way down. */
 @keyframes cartSeat {
-    0%   { transform: translate(-50%,-86%) scaleY(1); }
-    28%  { transform: translate(-50%,-84%) scaleY(.93); }
-    60%  { transform: translate(-50%,-87.5%) scaleY(1.04); }
-    100% { transform: translate(-50%,-86%) scaleY(1); }
+    0%   { transform: translate(-50%,-100%); clip-path: inset(0 0 0 0); }
+    85%  { transform: translate(-50%,-5%);   clip-path: inset(0 0 95% 0); }
+    100% { transform: translate(-50%,0%);    clip-path: inset(0 0 100% 0); }
+}
+@keyframes cartUnseat {
+    0%   { transform: translate(-50%,0%);    clip-path: inset(0 0 100% 0); }
+    100% { transform: translate(-50%,-100%); clip-path: inset(0 0 0 0); }
 }
 .slot-mouth {
-    position: absolute; top: -2px; left: 50%; transform: translateX(-50%);
-    width: 48%; height: 15px; z-index: 4; border-radius: 3px;
-    background: linear-gradient(#0a0a08, #1c1c16);
-    box-shadow: inset 0 3px 5px rgba(0,0,0,.85), 0 1px 0 rgba(255,255,255,.05);
+    position: absolute; top: -5px; left: 50%; transform: translateX(-50%);
+    width: 86%; height: 22px; z-index: 4; border-radius: 4px;
+    background: linear-gradient(#080806, #20201a);
+    box-shadow: inset 0 4px 6px rgba(0,0,0,.85), 0 1px 0 rgba(255,255,255,.06);
 }
 .ureboy.shake { animation: consoleShake .26s ease; }
 @keyframes consoleShake {
@@ -506,7 +521,6 @@ body.list-mode .listview { display: block; }
     .rbtn { width: 50px; height: 50px; }
     .stage { padding-top: 1.2rem; }
     .gbcart { width: 82px; }
-    .dock-cart { width: 82px; }
 }
 
 /* ───────────── reduced motion ───────────── */
