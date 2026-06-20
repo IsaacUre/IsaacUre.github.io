@@ -76,6 +76,7 @@ img { image-rendering: pixelated; }
     align-items: center; justify-content: center;
     padding: 2.2rem 1rem 3rem;
     gap: 1rem;
+    position: relative;            /* anchors the in-flight cartridge clone + the camera pull-back */
 }
 
 /* ───────────── cartridge deck ───────────── */
@@ -135,8 +136,8 @@ img { image-rendering: pixelated; }
     font-family: var(--font-pixel); font-size: .32rem; letter-spacing: .5px; color: rgba(255,255,255,.32);
 }
 
-/* the cartridge in flight (fixed clone, transform-only) */
-.cart-fly { position: fixed; z-index: 400; pointer-events: none; will-change: transform; transform-origin: 50% 50%; filter: drop-shadow(0 16px 22px rgba(0,0,0,.55)); }
+/* the cartridge in flight (clone parented to .stage so it scales with the camera) */
+.cart-fly { position: absolute; z-index: 400; pointer-events: none; will-change: transform; transform-origin: 50% 50%; filter: drop-shadow(0 16px 22px rgba(0,0,0,.55)); }
 
 /* cartridge port on top of the console + the seated cartridge */
 .cart-slot { position: absolute; top: 0; left: 0; right: 0; height: 0; z-index: 2; pointer-events: none; }

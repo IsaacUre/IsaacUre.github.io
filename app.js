@@ -423,11 +423,19 @@
         if (dockedIdx === null) { reallyOpenMenu(); return; }
         if (reduce) { var di = dockedIdx; clearDock(); setVacant(di, false); reallyOpenMenu(); return; }
         inserting = true; setBusy(true);
+        var idx = dockedIdx;
+        var oldDc = byId('cartDock').querySelector('.dock-cart');
+        // capture at the settled scale before the camera moves
+        var data = { idx: idx, from: fullyOutRect(localRect(oldDc)), to: localRect(getCartBtn(idx)) };
         showState('menu');                 // reveal home behind the ejecting cart
-        ejectDock(function () {
-            inserting = false; setBusy(false);
-            paintSel(true);
-        });
+        cameraOut();
+        setTimeout(function () {
+            ejectDock(data, function () {
+                cameraIn();
+                inserting = false; setBusy(false);
+                paintSel(true);
+            });
+        }, CAM_LEAD);
     }
 
     function renderGame(idx) {
@@ -448,8 +456,49 @@
     function getCartBtn(idx) { return document.querySelector('.gbcart[data-i="' + idx + '"]'); }
     function setVacant(idx, on) { var b = getCartBtn(idx); if (b) b.classList.toggle('vacant', on); }
 
-    // Animate a fixed-position clone of a cartridge between two screen rects,
-    // arcing through the air (transform-only) with a seat overshoot at the end.
+    /* ---- camera pull-back: scale the whole scene out during a swap, back in after ---- */
+    var sceneEl = document.querySelector('.stage');
+    var camScale = 1;
+    var CAM_OUT = 0.9;        // peak pull-back (subtle); tune here
+    var CAM_OUT_MS = 240;     // pull-back duration
+    var CAM_IN_MS = 300;      // pull-in duration
+    var CAM_LEAD = 80;        // ms the zoom leads the flight
+    function setSceneOrigin() {
+        if (!sceneEl) return;
+        var ub = byId('ureboy'); if (!ub) return;
+        var s = sceneEl.getBoundingClientRect(), u = ub.getBoundingClientRect();
+        // origin centered on the console so the pull-back is symmetric about it
+        sceneEl.style.transformOrigin = (u.left + u.width / 2 - s.left) + 'px ' + (u.top + u.height / 2 - s.top) + 'px';
+    }
+    function cameraOut() {
+        if (reduce || !sceneEl || camScale === CAM_OUT) return;
+        setSceneOrigin();
+        camScale = CAM_OUT;
+        sceneEl.style.willChange = 'transform';
+        sceneEl.style.transition = 'transform ' + CAM_OUT_MS + 'ms cubic-bezier(.33,0,.2,1)';
+        sceneEl.style.transform = 'scale(' + CAM_OUT + ')';
+    }
+    function cameraIn() {
+        if (reduce || !sceneEl || camScale === 1) return;
+        camScale = 1;
+        sceneEl.style.transition = 'transform ' + CAM_IN_MS + 'ms cubic-bezier(.3,0,.25,1)';
+        sceneEl.style.transform = 'scale(1)';
+        setTimeout(function () { if (camScale === 1) sceneEl.style.willChange = ''; }, CAM_IN_MS + 60);
+    }
+    // an element's rect normalised to scene-LOCAL (scale-1) coords. S is read from the live rendered
+    // scale (bounding width / layout width), so this is correct at any zoom — even mid-transition.
+    // The flying clone lives inside .stage, so local coords keep it aligned with the (also-scaled) shelf/dock.
+    function localRect(el) {
+        var er = el.getBoundingClientRect();
+        if (!sceneEl) return { left: er.left, top: er.top, width: er.width, height: er.height };
+        var sr = sceneEl.getBoundingClientRect();
+        var S = sceneEl.offsetWidth ? (sr.width / sceneEl.offsetWidth) : 1;
+        return { left: (er.left - sr.left) / S, top: (er.top - sr.top) / S, width: er.width / S, height: er.height / S };
+    }
+
+    // Animate a clone of a cartridge between two scene-local rects, arcing through the
+    // air (transform-only) and scaling shelf-size <-> inserted-size along the way.
+    // The clone is parented to .stage so the camera zoom scales it with everything else.
     function flyBetween(fromR, toR, opts, done) {
         var fly = document.createElement('div');
         fly.className = 'cart-fly';
@@ -459,7 +508,7 @@
         fly.style.height = fromR.height + 'px';
         fly.style.setProperty('--cart', opts.cart.color);
         fly.innerHTML = cartInnerHTML(opts.cart);
-        document.body.appendChild(fly);
+        (sceneEl || document.body).appendChild(fly);
 
         var dx = (toR.left + toR.width / 2) - (fromR.left + fromR.width / 2);
         var dy = (toR.top + toR.height / 2) - (fromR.top + fromR.height / 2);
@@ -485,7 +534,7 @@
                 { offset: 1,   transform: 'translate(' + dx + 'px,' + dy + 'px) rotate(0deg) scale(' + S(1) + ')' }
             ];
         }
-        var anim = fly.animate(frames, { duration: opts.dur, fill: 'forwards' });
+        var anim = fly.animate(frames, { duration: opts.dur, delay: opts.delay || 0, fill: 'both' });
         anim.onfinish = function () { done(fly); };
         return fly;
     }
@@ -564,52 +613,58 @@
         if (idx === dockedIdx && state === 'game') return;                          // already playing it
         inserting = true; setBusy(true);
 
-        var go = function () {
-            if (reduce) {
-                dockInstant(idx);
-                renderGame(idx);
-                inserting = false; setBusy(false);
-                return;
-            }
-            var dc = prepDock(idx);
-            var toR = fullyOutRect(dc.getBoundingClientRect());   // land fully out; the dock seats down from here
-            var srcBtn = getCartBtn(idx);
-            var fromR = srcBtn.getBoundingClientRect();
-            flyBetween(fromR, toR, { cart: CARTS[idx], lift: 120, dur: 640, insert: true }, function (fly) {
+        if (reduce) {
+            if (dockedIdx !== null && dockedIdx !== idx) { var di = dockedIdx; clearDock(); setVacant(di, false); }
+            dockInstant(idx);
+            renderGame(idx);
+            inserting = false; setBusy(false);
+            return;
+        }
+
+        // capture all coordinates at the settled (scale-1) zoom, BEFORE pulling the camera back
+        var swap = (dockedIdx !== null && dockedIdx !== idx);
+        var insertFrom = localRect(getCartBtn(idx));
+        var insertTarget, ejectData = null;
+        if (swap) {
+            var oldDc = byId('cartDock').querySelector('.dock-cart');
+            insertTarget = fullyOutRect(localRect(oldDc));        // the slot position is the same for any cart
+            ejectData = { idx: dockedIdx, from: fullyOutRect(localRect(oldDc)), to: localRect(getCartBtn(dockedIdx)) };
+        } else {
+            insertTarget = fullyOutRect(localRect(prepDock(idx))); // create + measure the dock at scale 1
+        }
+
+        var finish = function () { renderGame(idx); cameraIn(); inserting = false; setBusy(false); };
+        var flyIn = function (lead) {
+            flyBetween(insertFrom, insertTarget, { cart: CARTS[idx], lift: 120, dur: 640, insert: true, delay: lead }, function (fly) {
                 revealDock();
                 if (fly.parentNode) fly.parentNode.removeChild(fly);
                 seatReact();
-                cartBoot(idx, function () {
-                    renderGame(idx);
-                    inserting = false; setBusy(false);
-                });
+                cartBoot(idx, finish);
             });
         };
 
-        if (dockedIdx !== null && dockedIdx !== idx) {
-            ejectDock(function () { go(); });   // swap: eject the seated cart first
+        cameraOut();   // one continuous pull-back covering the whole sequence
+        if (swap) {
+            // eject the old cart, then insert the new one — camera stays out across both
+            setTimeout(function () { ejectDock(ejectData, function () { prepDock(idx); flyIn(0); }); }, CAM_LEAD);
         } else {
-            go();
+            flyIn(CAM_LEAD);   // the flight's own delay lets the zoom lead it
         }
     }
 
-    function ejectDock(done) {
-        var idx = dockedIdx;
-        if (idx === null) { if (done) done(); return; }
-        if (reduce) { clearDock(); setVacant(idx, false); if (done) done(); return; }
+    // eject the docked cart using pre-captured scene-local rects; pops it out of the slot, then arcs it home
+    function ejectDock(data, done) {
+        var idx = data.idx;
         var dock = byId('cartDock');
         var dc = dock && dock.querySelector('.dock-cart');
-        var srcBtn = getCartBtn(idx);
-        if (!dc || !srcBtn) { clearDock(); setVacant(idx, false); if (done) done(); return; }
-        var fromR = fullyOutRect(dc.getBoundingClientRect());   // cart starts fully out (after the pop)
-        var toR = srcBtn.getBoundingClientRect();
+        if (!dc) { clearDock(); setVacant(idx, false); if (done) done(); return; }
         dc.classList.remove('seating');
         dc.classList.add('unseating');                          // pop the cart up out of the slot
         flashScreen();
         beep(120, 0.06, 'square');
         setTimeout(function () {
             dc.style.visibility = 'hidden';
-            flyBetween(fromR, toR, { cart: CARTS[idx], lift: 96, dur: 440, insert: false }, function (fly) {
+            flyBetween(data.from, data.to, { cart: CARTS[idx], lift: 96, dur: 440, insert: false }, function (fly) {
                 if (fly.parentNode) fly.parentNode.removeChild(fly);
                 clearDock();
                 setVacant(idx, false);
