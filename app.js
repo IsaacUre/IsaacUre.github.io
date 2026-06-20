@@ -51,11 +51,11 @@
         "URE BOY  v1.0",
         "(c) 2026 ISAAC URE",
         "",
-        "CPU ........ 6502-ish    ok",
-        "EYE ........ a good one   ok",
-        "PHOTOS.SYS . mounting     ok",
-        "/GARAGE .... MK8 GTI      ok",
-        "DICE ....... loaded      ok",
+        "CPU  SHARP LR35902 . ok",
+        "EYE  a good one .... ok",
+        "PHOTOS ............. ok",
+        "GARAGE  MK8 GTI .... ok",
+        "DICE  loaded ....... ok",
         "READY."
     ];
 
@@ -125,10 +125,24 @@
         '<text x="103" y="56" font-family="Press Start 2P, monospace" font-size="6" fill="#fff">GTI</text>' +
         '</svg>';
 
+    // A real Game Boy cartridge silhouette: rounded body, stepped-down top-right shelf,
+    // grip ridges flanking a top oval recess, and the bottom insertion triangle.
+    var CART_SVG =
+        '<svg class="cart-svg" viewBox="0 0 100 112" aria-hidden="true">' +
+        '<path class="cart-body" d="M14 6 H72 V13 H90 Q96 13 96 19 V104 Q96 110 90 110 H14 Q8 110 8 104 V12 Q8 6 14 6 Z"/>' +
+        '<g stroke="rgba(0,0,0,.16)" stroke-width="2" stroke-linecap="round">' +
+        '<line x1="16" y1="18" x2="16" y2="38"/><line x1="20" y1="18" x2="20" y2="38"/><line x1="24" y1="18" x2="24" y2="38"/><line x1="28" y1="18" x2="28" y2="38"/>' +
+        '<line x1="74" y1="22" x2="74" y2="41"/><line x1="78" y1="22" x2="78" y2="41"/><line x1="82" y1="22" x2="82" y2="41"/><line x1="86" y1="22" x2="86" y2="41"/>' +
+        '</g>' +
+        '<rect x="33" y="18" width="34" height="22" rx="9" fill="rgba(0,0,0,.05)" stroke="rgba(0,0,0,.12)" stroke-width="1"/>' +
+        '<path d="M45 99 H55 L50 106 Z" fill="rgba(0,0,0,.22)"/>' +
+        '<path class="cart-edge" d="M14 6 H72 V13 H90 Q96 13 96 19 V104 Q96 110 90 110 H14 Q8 110 8 104 V12 Q8 6 14 6 Z" fill="none" stroke="rgba(0,0,0,.22)" stroke-width="1.5"/>' +
+        '</svg>';
+
     /* ---------------- cartridges ---------------- */
     var CARTS = [
         {
-            id: 'about', ico: '👤', name: 'ABOUT.TXT', tag: 'who is this guy',
+            id: 'about', ico: '👤', name: 'ABOUT', tag: 'who is this guy', color: '#5a6acf',
             render: function () {
                 var d = DATA.about;
                 return '<p class="gb-lead">' + d.lead + '</p>' +
@@ -138,12 +152,12 @@
             }
         },
         {
-            id: 'photos', ico: '📷', name: 'PHOTOS', tag: 'a good eye, allegedly',
+            id: 'photos', ico: '📷', name: 'PHOTOS', tag: 'a good eye, allegedly', color: '#1f9e98',
             render: function () { return '<p class="gb-lead dim">Real frames go here — Thresher &amp; Rice Raw. Tap one.</p>' + photoGridHTML(); },
             onShow: wirePhotoGrid
         },
         {
-            id: 'garage', ico: '🚗', name: 'GARAGE.EXE', tag: 'the money pit',
+            id: 'garage', ico: '🚗', name: 'GARAGE', tag: 'the money pit', color: '#d8472b',
             render: function () {
                 var g = DATA.garage;
                 return '<div class="garage-stage"><span class="cel" id="cel">⚠ P0420</span>' + CAR_SVG + '<span class="exhaust" id="exhaust"></span></div>' +
@@ -157,7 +171,7 @@
             onShow: wireGarage
         },
         {
-            id: 'quest', ico: '🎲', name: 'QUEST', tag: 'roll for loot',
+            id: 'quest', ico: '🎲', name: 'QUEST', tag: 'roll for loot', color: '#7b53c9',
             render: function () {
                 return '<div class="quest-felt"><div class="die" id="die" role="button" tabindex="0" aria-label="Roll a d20">20</div>' +
                     '<div class="quest-msg" id="questMsg">tap the die.</div></div>' +
@@ -168,7 +182,7 @@
             onShow: wireQuest
         },
         {
-            id: 'work', ico: '💼', name: 'WORK', tag: 'the professional cartridge',
+            id: 'work', ico: '💼', name: 'WORK', tag: 'the professional cartridge', color: '#c7972f',
             render: function () {
                 var rows = DATA.work.map(function (w) {
                     return '<li class="xp-item"><div class="xp-date">' + w.date + '</div><div class="xp-role">' + w.role + '</div><div class="xp-org">' + w.org + '</div></li>';
@@ -350,43 +364,71 @@
         ['boot', 'menu', 'game'].forEach(function (s) { var e = byId(s); if (e) e.hidden = (s !== name); });
         state = name;
     }
-    function buildMenu() {
-        var list = byId('cartList'); if (!list) return;
-        list.innerHTML = CARTS.map(function (c, i) {
-            return '<li><button class="cart" data-i="' + i + '">' +
-                '<span class="cart-ico" aria-hidden="true">' + c.ico + '</span>' +
-                '<span><span class="cart-name">' + c.name + '</span>' +
-                '<span class="cart-tag">' + c.tag + '</span></span></button></li>';
-        }).join('');
-        Array.prototype.forEach.call(list.querySelectorAll('.cart'), function (b) {
+    function cartLabelName(c) { return c.name.split('.')[0]; }
+    function cartButtonHTML(c, i) {
+        return '<button class="gbcart" data-i="' + i + '" style="--cart:' + c.color + '" aria-label="' + c.name + ' — ' + c.tag + '">' +
+            CART_SVG +
+            '<span class="gbcart-label">' +
+            '<span class="gbcart-ico" aria-hidden="true">' + c.ico + '</span>' +
+            '<span class="gbcart-name">' + cartLabelName(c) + '</span>' +
+            '<span class="gbcart-pub">URE BOY</span>' +
+            '</span></button>';
+    }
+    var SPLIT = 2; // first SPLIT cartridges on the left shelf, the rest on the right
+    function buildDeck() {
+        var left = byId('rackLeft'), right = byId('rackRight');
+        if (left) left.innerHTML = CARTS.slice(0, SPLIT).map(function (c, i) { return cartButtonHTML(c, i); }).join('');
+        if (right) right.innerHTML = CARTS.slice(SPLIT).map(function (c, i) { return cartButtonHTML(c, i + SPLIT); }).join('');
+        Array.prototype.forEach.call(document.querySelectorAll('.gbcart'), function (b) {
             var i = parseInt(b.getAttribute('data-i'), 10);
             b.addEventListener('mouseenter', function () { sel = i; paintSel(false); });
+            b.addEventListener('focus', function () { sel = i; paintSel(false); });
             b.addEventListener('click', function () { sel = i; launch(); });
         });
         var ec = byId('eggCount'); if (ec) ec.textContent = eggLabel();
         paintSel(false);
     }
+    function markInserted(idx) {
+        Array.prototype.forEach.call(document.querySelectorAll('.gbcart'), function (b) {
+            var i = parseInt(b.getAttribute('data-i'), 10);
+            var on = (i === idx);
+            b.classList.toggle('inserted', on);
+            if (on) { b.classList.remove('inserting'); void b.offsetWidth; b.classList.add('inserting'); }
+        });
+    }
     function paintSel(doFocus) {
-        var btns = document.querySelectorAll('#cartList .cart');
-        Array.prototype.forEach.call(btns, function (b, i) {
+        var btns = document.querySelectorAll('.gbcart');
+        Array.prototype.forEach.call(btns, function (b) {
+            var i = parseInt(b.getAttribute('data-i'), 10);
             var on = (i === sel);
             b.classList.toggle('sel', on);
             b.setAttribute('aria-selected', on ? 'true' : 'false');
             b.tabIndex = on ? 0 : -1;
             if (on) {
-                b.scrollIntoView({ block: 'nearest' });
+                b.scrollIntoView({ block: 'nearest', inline: 'nearest' });
                 if (doFocus) b.focus();
             }
         });
+        updatePreview();
+    }
+    function updatePreview() {
+        var hp = byId('homePreview'); if (!hp) return;
+        var c = CARTS[sel]; if (!c) { hp.textContent = ''; return; }
+        hp.innerHTML = '▸ <b>' + c.name + '</b><span class="hp-tag">' + c.tag + ' · press A</span>';
     }
     function moveSel(d) { sel = (sel + d + CARTS.length) % CARTS.length; paintSel(true); beep(520, 0.025); }
-    function openMenu() { showState('menu'); paintSel(true); }
+    function openMenu() {
+        showState('menu');
+        Array.prototype.forEach.call(document.querySelectorAll('.gbcart'), function (b) { b.classList.remove('inserted'); });
+        paintSel(true);
+    }
     function launch() {
         curCart = CARTS[sel];
         var gt = byId('gameTitle'); if (gt) gt.textContent = curCart.ico + ' ' + curCart.name;
         var body = byId('gameBody');
         body.innerHTML = curCart.render();
         body.scrollTop = 0;
+        markInserted(sel);
         showState('game');
         if (curCart.onShow) curCart.onShow();
         body.focus();
@@ -418,8 +460,8 @@
     function press(a) {
         if (state === 'boot') { if (a === 'a' || a === 'start' || a === 'up' || a === 'down') endBoot(); return; }
         if (state === 'menu') {
-            if (a === 'up') moveSel(-1);
-            else if (a === 'down') moveSel(1);
+            if (a === 'up' || a === 'left') moveSel(-1);
+            else if (a === 'down' || a === 'right') moveSel(1);
             else if (a === 'a') launchSel();
             else if (a === 'select') toggleList();
             return;
@@ -470,6 +512,7 @@
         var tag = document.activeElement && document.activeElement.tagName;
         if ((k === 'Enter' || k === ' ') && (tag === 'BUTTON' || tag === 'A')) return;
         if ((a === 'up' || a === 'down') && (state === 'menu' || state === 'boot')) e.preventDefault();
+        if ((a === 'left' || a === 'right') && state === 'menu') e.preventDefault();
         if (k === 'Backspace') e.preventDefault();
         press(a);
     });
@@ -559,6 +602,6 @@
     if (skip) skip.addEventListener('click', function (e) { e.preventDefault(); toggleList(true); });
 
     /* ---------------- go ---------------- */
-    buildMenu();
+    buildDeck();
     runBoot();
 })();

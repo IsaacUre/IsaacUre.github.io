@@ -19,7 +19,9 @@
 
     <!-- ───────────────── THE CONSOLE (JS-enhanced) ───────────────── -->
     <main class="stage" aria-label="URE BOY — interactive console">
-        <div class="ureboy" id="ureboy">
+        <div class="deck">
+            <div class="cart-rack rack-left" id="rackLeft" aria-label="Cartridges, left shelf"></div>
+            <div class="ureboy" id="ureboy">
 
             <div class="brandbar">
                 <div class="wordmark">URE<span class="wordmark-boy">BOY</span><span class="wordmark-tm">™</span></div>
@@ -57,14 +59,21 @@
                             <div class="boot-hint">▸ press <b>A</b> / tap to skip</div>
                         </section>
 
-                        <!-- MENU -->
-                        <section class="state state-menu" id="menu" data-state="menu" hidden aria-label="Cartridge select">
-                            <div class="menu-head">
-                                <span class="menu-title">SELECT A CARTRIDGE</span>
-                                <span class="menu-eggs" id="eggCount" title="Easter eggs found">◉ 0/5</span>
+                        <!-- HOME -->
+                        <section class="state state-menu" id="menu" data-state="menu" hidden aria-label="Home — insert a cartridge">
+                            <div class="home">
+                                <div class="home-eye" aria-hidden="true">
+                                    <svg viewBox="0 0 48 48">
+                                        <path d="M9 10 C13 13 31 17 39 24 C31 31 13 35 9 38" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+                                        <path d="M16 14 Q11 24 16 34 Q21 24 16 14Z" fill="none" stroke="currentColor" stroke-width="1.8"/>
+                                        <circle cx="16" cy="24" r="3.1" fill="currentColor"/>
+                                    </svg>
+                                </div>
+                                <div class="home-word">URE<b>BOY</b></div>
+                                <div class="home-prompt">◂ insert a cartridge ▸</div>
+                                <div class="home-preview" id="homePreview"></div>
+                                <div class="home-eggs"><span id="eggCount" title="Easter eggs found">◉ 0/5</span></div>
                             </div>
-                            <ul class="cart-list" id="cartList" aria-label="Cartridges"></ul>
-                            <div class="menu-foot"><span>▲▼ move</span><span><b>A</b> insert</span></div>
                         </section>
 
                         <!-- GAME -->
@@ -107,9 +116,11 @@
                 <button class="tool" id="themeBtn" aria-pressed="false" aria-label="Switch theme">🎨 THEME</button>
                 <button class="tool" id="listBtn"  aria-pressed="false" aria-label="Show plain list view">☰ LIST</button>
             </div>
+            </div>
+            <div class="cart-rack rack-right" id="rackRight" aria-label="Cartridges, right shelf"></div>
         </div>
 
-        <p class="cabinet-tip" aria-hidden="true">arrow keys + <b>A</b>/<b>B</b> · or just click around · there are things hidden in here</p>
+        <p class="cabinet-tip" aria-hidden="true">the cartridges are real — click one to play it. arrow keys + <b>A</b>/<b>B</b> work too · there's stuff hidden in here</p>
     </main>
 
     <!-- ───────────────── PLAIN FALLBACK (no-JS / SEO / "skip") ───────────────── -->
