@@ -228,12 +228,14 @@ body.cart-busy .dpad, body.cart-busy .ab, body.cart-busy .startbar { pointer-eve
 .lid-skin { fill: var(--eye-skin, #e6e4d2); }
 .lid-edge { fill: currentColor; }
 .eye-lid { transition: transform .28s ease; }
-.eye-lid-top { transform: translateY(-18px); }      /* open: lifted clear above the eye */
-.eye-lid-bottom { transform: translateY(18px); }    /* open: dropped clear below the eye */
+/* the upper lid does the work: it sweeps the full eye, while the lower lid barely
+   lifts — they meet low, so a shut eye is a gentle lower-lid-like curve a touch raised */
+.eye-lid-top { transform: translateY(-22px); }      /* open: swept clear above the eye */
+.eye-lid-bottom { transform: translateY(8px); }     /* open: dropped just below the lower lid */
 .blink .eye-lid-top { animation: lidTop .4s ease; }
 .blink .eye-lid-bottom { animation: lidBottom .4s ease; }
-@keyframes lidTop    { 0%,100% { transform: translateY(-18px); } 45%,55% { transform: translateY(0); } }
-@keyframes lidBottom { 0%,100% { transform: translateY(18px); }  45%,55% { transform: translateY(0); } }
+@keyframes lidTop    { 0%,100% { transform: translateY(-22px); } 45%,55% { transform: translateY(0); } }
+@keyframes lidBottom { 0%,100% { transform: translateY(8px); }   45%,55% { transform: translateY(0); } }
 /* dozed off: hold the lids shut */
 .power-led.asleep .eye-lid-top,
 .power-led.asleep .eye-lid-bottom { transform: translateY(0); }
