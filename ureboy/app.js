@@ -360,10 +360,26 @@
     /* ---------------- engine / state machine ---------------- */
     var state = 'boot', sel = 0, curCart = null, bootTimer = null, typer = null;
     var inserting = false, dockedIdx = null;
+    var ejectBar = null, ejectBtn = null, ejectNear = false, ejectHint = false, ejectHinted = false;
 
     function showState(name) {
         ['boot', 'menu', 'game'].forEach(function (s) { var e = byId(s); if (e) e.hidden = (s !== name); });
         state = name;
+        updateEject();
+    }
+    /* the eject pull-down is "armed" (active) only while a cartridge is actually loaded */
+    function updateEject() {
+        if (!ejectBar) return;
+        var armed = (state === 'game' && !inserting);
+        ejectBar.classList.toggle('armed', armed);
+        if (ejectBtn) ejectBtn.disabled = !armed;
+        if (!armed) {
+            ejectHint = false;
+        } else if (!ejectHinted && !reduce && window.matchMedia && window.matchMedia('(pointer:fine)').matches) {
+            ejectHinted = true; ejectHint = true;      // first cartridge on a mouse: flash the tab so it's discoverable
+            setTimeout(function () { ejectHint = false; updateEject(); }, 1700);
+        }
+        ejectBar.classList.toggle('show', armed && (ejectNear || ejectHint));
     }
     function cartLabelName(c) { return c.name.split('.')[0]; }
     function cartInnerHTML(c) {
@@ -452,7 +468,7 @@
     }
 
     /* ---------------- cartridge insert / eject micro-interaction ---------------- */
-    function setBusy(on) { document.body.classList.toggle('cart-busy', on); }
+    function setBusy(on) { document.body.classList.toggle('cart-busy', on); updateEject(); }
     function getCartBtn(idx) { return document.querySelector('.gbcart[data-i="' + idx + '"]'); }
     function setVacant(idx, on) { var b = getCartBtn(idx); if (b) b.classList.toggle('vacant', on); }
 
@@ -860,6 +876,22 @@
     var listBtn = byId('listBtn'); if (listBtn) listBtn.addEventListener('click', function () { toggleList(); });
     var skip = document.querySelector('.skip-link');
     if (skip) skip.addEventListener('click', function (e) { e.preventDefault(); toggleList(true); });
+
+    /* ---------------- eject pull-down: reveal when the pointer nears the top ---------------- */
+    ejectBar = byId('ejectBar'); ejectBtn = byId('ejectBtn');
+    if (ejectBtn) {
+        ejectBtn.addEventListener('click', function () {
+            if (state !== 'game' || inserting) return;
+            ejectNear = false; ejectHint = false;
+            ejectBtn.blur();
+            openMenu();                                 // pop the cart out and return to the menu
+        });
+    }
+    window.addEventListener('pointermove', function (e) {
+        if (e.clientY <= 62) { if (!ejectNear) { ejectNear = true; updateEject(); } }
+        else if (e.clientY > 104) { if (ejectNear) { ejectNear = false; updateEject(); } }
+    }, { passive: true });
+    updateEject();
 
     /* ---------------- go ---------------- */
     buildDeck();
