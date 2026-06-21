@@ -48,6 +48,17 @@
 
     <!-- ───────────────── THE CONSOLE (JS-enhanced) ───────────────── -->
     <main class="stage" aria-label="URE BOY — interactive console">
+
+        <!-- top-edge pull-down: eject the loaded cartridge. Hidden until the pointer nears the
+             top of the window (or the button is focused); only active while a cartridge is in. -->
+        <div class="eject-bar" id="ejectBar">
+            <button class="eject-btn" id="ejectBtn" type="button" disabled
+                    title="Return to the cartridge menu (also: press B)">
+                <span class="eject-ico" aria-hidden="true">⏏</span>
+                <span class="eject-txt">Eject current cartridge</span>
+            </button>
+        </div>
+
         <div class="deck">
             <div class="cart-rack rack-left" id="rackLeft" aria-label="Cartridges, left shelf"></div>
             <div class="ureboy" id="ureboy">

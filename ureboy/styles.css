@@ -494,6 +494,41 @@ body.theme-gameboy .quest-felt { background: var(--screen-dim); color: var(--scr
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 .toast b { color: var(--red); }
 
+/* ───────────── eject pull-down (top edge) ───────────── */
+.eject-bar {
+    position: fixed; top: 0; left: 50%;
+    transform: translate(-50%, -115%);          /* tucked fully out of sight above the viewport */
+    transition: transform .26s cubic-bezier(.4, 0, .2, 1);
+    z-index: 160;
+}
+/* revealed by JS (pointer near the top / first-load hint), by hovering the tab, or by focus */
+.eject-bar.show,
+.eject-bar.armed:hover,
+.eject-bar:focus-within { transform: translate(-50%, 0); }
+.eject-btn {
+    font-family: var(--font-ui); font-weight: 600; font-size: .82rem; letter-spacing: .02em;
+    color: #d7d6cd;
+    display: inline-flex; align-items: center; gap: .5rem;
+    background: linear-gradient(180deg, #312f29, #1f1f1b);
+    border: 1px solid var(--shell-edge); border-top: none;
+    border-radius: 0 0 11px 11px;
+    padding: .5rem 1.05rem .58rem;
+    box-shadow: 0 6px 16px rgba(0,0,0,.45);
+    cursor: pointer;
+    transition: color .14s, border-color .14s, background .14s;
+}
+.eject-btn:hover, .eject-btn:focus-visible {
+    color: #fff; border-color: var(--red-dim);
+    background: linear-gradient(180deg, #3a3830, #232320);
+}
+.eject-ico { color: var(--red); font-size: 1.05em; line-height: 1; transition: transform .14s; }
+.eject-btn:hover .eject-ico, .eject-btn:focus-visible .eject-ico { transform: translateY(-1px); }
+.eject-btn:disabled { opacity: 0; pointer-events: none; }   /* inert when no cartridge is loaded */
+@media (prefers-reduced-motion: reduce) {
+    .eject-bar { transition: none; }
+    .eject-ico { transition: none; }
+}
+
 /* ───────────── touch ───────────── */
 .dbtn, .rbtn, .pill, .qbtn, .rev-btn, .gbcart, .photo, .tool, .die, .cbtn { touch-action: manipulation; }
 .rev-btn { touch-action: none; }
