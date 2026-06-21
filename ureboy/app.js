@@ -590,7 +590,7 @@
         if (load) {
             load.innerHTML =
                 '<div class="cl-eye" aria-hidden="true"><svg viewBox="0 0 48 48" shape-rendering="crispEdges">' +
-                '<g fill="currentColor"><rect x="24" y="6" width="6" height="3"/><rect x="12" y="9" width="12" height="3"/><rect x="30" y="9" width="6" height="3"/><rect x="9" y="12" width="3" height="3"/><rect x="21" y="12" width="3" height="3"/><rect x="36" y="12" width="3" height="3"/><rect x="6" y="15" width="3" height="3"/><rect x="24" y="15" width="3" height="3"/><rect x="39" y="15" width="3" height="3"/><rect x="6" y="18" width="3" height="3"/><rect x="24" y="18" width="3" height="3"/><rect x="36" y="18" width="3" height="3"/><rect x="6" y="21" width="3" height="3"/><rect x="24" y="21" width="3" height="3"/><rect x="30" y="21" width="6" height="3"/><rect x="9" y="24" width="3" height="3"/><rect x="21" y="24" width="9" height="3"/><rect x="12" y="27" width="9" height="3"/><rect x="12" y="15" width="6" height="6"/></g></svg></div>' +
+                '<g fill="currentColor"><rect x="12" y="6" width="24" height="3"/><rect x="6" y="9" width="36" height="3"/><rect x="3" y="12" width="3" height="3"/><rect x="42" y="12" width="3" height="3"/><rect x="3" y="15" width="3" height="3"/><rect x="42" y="15" width="3" height="3"/><rect x="3" y="18" width="3" height="3"/><rect x="42" y="18" width="3" height="3"/><rect x="6" y="21" width="3" height="3"/><rect x="39" y="21" width="3" height="3"/><rect x="9" y="24" width="30" height="3"/><rect x="15" y="27" width="18" height="3"/><rect x="18" y="15" width="12" height="6"/></g></svg></div>' +
                 '<div class="cl-word">URE<b>BOY</b></div>' +
                 '<div class="cl-load">&#9656; LOADING ' + c.name + '<span class="cl-cur">_</span></div>';
             load.hidden = false;
@@ -779,6 +779,29 @@
         }
         ['pointermove', 'keydown', 'pointerdown'].forEach(function (ev) { window.addEventListener(ev, wake, { passive: true }); });
         wake();
+        // blink on its own every few seconds (skip while dozing or reduced-motion)
+        if (!reduce) (function blinkLoop() {
+            setTimeout(function () {
+                if (!eye.classList.contains('asleep')) {
+                    eye.classList.add('blink');
+                    setTimeout(function () { eye.classList.remove('blink'); }, 440);
+                }
+                blinkLoop();
+            }, 3500 + Math.random() * 4500);
+        })();
+    })();
+
+    /* the big home-screen eye blinks on its own too */
+    (function () {
+        if (reduce) return;
+        var he = document.querySelector('.home-eye'); if (!he) return;
+        (function blinkLoop() {
+            setTimeout(function () {
+                he.classList.add('blink');
+                setTimeout(function () { he.classList.remove('blink'); }, 440);
+                blinkLoop();
+            }, 4200 + Math.random() * 5000);
+        })();
     })();
 
     /* ---------------- toolbar: sound / theme / list ---------------- */
