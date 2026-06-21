@@ -210,6 +210,7 @@ body.cart-busy .dpad, body.cart-busy .ab, body.cart-busy .startbar { pointer-eve
     width: 26px; height: 26px; display: grid; place-items: center;
     color: var(--ink);
     --eye-hi: #f4f2ea;
+    --eye-skin: url(#ureLedGrad);
     background: radial-gradient(circle at 50% 45%, #fff 0%, #e9e7dc 60%, #b9b7ac 100%);
     border-radius: 50%;
     box-shadow: 0 0 0 2px #11110d, inset 0 -2px 4px rgba(0,0,0,.3), 0 0 10px 1px rgba(216,30,5,.0);
@@ -220,15 +221,19 @@ body.cart-busy .dpad, body.cart-busy .ab, body.cart-busy .startbar { pointer-eve
 .eye-pupil { transition: transform .12s ease-out; }
 /* catch-light: a notch of sclera-bright light in the iris (themed) */
 .eye-glint { fill: var(--eye-hi, #fff); }
-.cl-eye, .boot-eye, .home-eye { --eye-hi: var(--screen-hi); }
-/* blink lids: parked off-screen (open), slide to the midline (closed) */
-.eye-lid { transform-box: fill-box; transition: transform .28s ease; }
-.eye-lid-top { transform: translateY(-100%); }
-.eye-lid-bottom { transform: translateY(100%); }
+.cl-eye, .boot-eye, .home-eye { --eye-hi: var(--screen-hi); --eye-skin: var(--screen-bg); }
+/* blink: each lid is skin-coloured (so the covered eye blends into the face) and carries a
+   dark lash-line; the two slide together and meet on a gentle upward arc at the midline, so a
+   shut eye reads as a curved line — not a filled almond. translateY is in user units. */
+.lid-skin { fill: var(--eye-skin, #e6e4d2); }
+.lid-edge { fill: currentColor; }
+.eye-lid { transition: transform .28s ease; }
+.eye-lid-top { transform: translateY(-18px); }      /* open: lifted clear above the eye */
+.eye-lid-bottom { transform: translateY(18px); }    /* open: dropped clear below the eye */
 .blink .eye-lid-top { animation: lidTop .4s ease; }
 .blink .eye-lid-bottom { animation: lidBottom .4s ease; }
-@keyframes lidTop    { 0%,100% { transform: translateY(-100%); } 42%,58% { transform: translateY(0); } }
-@keyframes lidBottom { 0%,100% { transform: translateY(100%); }  42%,58% { transform: translateY(0); } }
+@keyframes lidTop    { 0%,100% { transform: translateY(-18px); } 45%,55% { transform: translateY(0); } }
+@keyframes lidBottom { 0%,100% { transform: translateY(18px); }  45%,55% { transform: translateY(0); } }
 /* dozed off: hold the lids shut */
 .power-led.asleep .eye-lid-top,
 .power-led.asleep .eye-lid-bottom { transform: translateY(0); }
