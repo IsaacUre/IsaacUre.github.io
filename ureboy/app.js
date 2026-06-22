@@ -5,17 +5,7 @@
     'use strict';
 
     var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    var FINE = !!(window.matchMedia && window.matchMedia('(pointer:fine)').matches);
     var byId = function (id) { return document.getElementById(id); };
-    /* "lite" = touch / narrow screens. We keep the full cartridge flight + seat here
-       (it's the fun part), but skip the camera pull-back: scaling the whole .stage —
-       a big subtree of blurred shadows, filters, gradients and a blend-mode overlay —
-       is the single most expensive thing to composite on a phone. The cart still flies
-       in and sinks behind the top edge; it just does it without zooming the scene. */
-    function lite() {
-        return !reduce && !!window.matchMedia &&
-            (window.matchMedia('(pointer: coarse)').matches || window.matchMedia('(max-width: 780px)').matches);
-    }
 
     /* ---------------- CONTENT (single source for console + list view) -------------- */
     var DATA = {
@@ -521,7 +511,7 @@
         sceneEl.style.transformOrigin = (u.left + u.width / 2 - s.left) + 'px ' + (u.top + u.height / 2 - s.top) + 'px';
     }
     function cameraOut() {
-        if (reduce || lite() || !sceneEl || camScale === CAM_OUT) return;   // skip the costly scene scale on touch
+        if (reduce || !sceneEl || camScale === CAM_OUT) return;
         setSceneOrigin();
         camScale = CAM_OUT;
         sceneEl.style.willChange = 'transform';
@@ -923,7 +913,6 @@
         });
     }
     window.addEventListener('pointermove', function (e) {
-        if (!FINE) return;                    // the cursor-pull eject is a mouse-only affordance
         ejX = e.clientX; ejY = e.clientY;
         if (!ejectArmed()) { if (ejectNear) { ejectNear = false; updateEject(); } return; }
         if (e.clientY <= EJ_IN) {
