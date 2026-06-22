@@ -595,10 +595,10 @@ body.list-mode .listview { display: block; }
     .gbcart.sel, .gbcart:focus-visible {
         filter: drop-shadow(0 6px 8px rgba(0,0,0,.45));
     }
-    .gbcart.sel, .gbcart:focus-visible { transform: rotate(0deg); }
     .cart-fly { filter: drop-shadow(0 8px 12px rgba(0,0,0,.5)); }
     .scanlines { opacity: .25; }
-    /* no real hover on touch — keep a tapped cart from "sticking" lifted */
+    /* no real hover on touch — keep a tapped cart from "sticking" lifted (the
+       d-pad selection still lifts via .gbcart.sel) */
     .gbcart:hover { transform: rotate(0deg); }
 }
 @media (max-width: 470px) {

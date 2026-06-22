@@ -7,12 +7,11 @@
     var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     var FINE = !!(window.matchMedia && window.matchMedia('(pointer:fine)').matches);
     var byId = function (id) { return document.getElementById(id); };
-    /* "lite" = touch / narrow screens: the racks stack BELOW the console (see the
-       780px layout break), so the airborne cart-clone would fly straight up across
-       the console's face — reading as "through" the device, not into it. It's also
-       where the full-scene camera scale is most expensive to composite. In lite mode
-       we drop the clone flight + camera pull-back and let the cart seat straight into
-       the top slot (it clips in behind the shell), which is cheap and reads correctly. */
+    /* "lite" = touch / narrow screens. We keep the full cartridge flight + seat here
+       (it's the fun part), but skip the camera pull-back: scaling the whole .stage —
+       a big subtree of blurred shadows, filters, gradients and a blend-mode overlay —
+       is the single most expensive thing to composite on a phone. The cart still flies
+       in and sinks behind the top edge; it just does it without zooming the scene. */
     function lite() {
         return !reduce && !!window.matchMedia &&
             (window.matchMedia('(pointer: coarse)').matches || window.matchMedia('(max-width: 780px)').matches);
@@ -473,7 +472,6 @@
         if (inserting) return;
         if (dockedIdx === null) { reallyOpenMenu(); return; }
         if (reduce) { var di = dockedIdx; clearDock(); setVacant(di, false); reallyOpenMenu(); return; }
-        if (lite()) { unseatToMenu(); return; }
         inserting = true; setBusy(true);
         var idx = dockedIdx;
         var oldDc = byId('cartDock').querySelector('.dock-cart');
@@ -523,7 +521,7 @@
         sceneEl.style.transformOrigin = (u.left + u.width / 2 - s.left) + 'px ' + (u.top + u.height / 2 - s.top) + 'px';
     }
     function cameraOut() {
-        if (reduce || !sceneEl || camScale === CAM_OUT) return;
+        if (reduce || lite() || !sceneEl || camScale === CAM_OUT) return;   // skip the costly scene scale on touch
         setSceneOrigin();
         camScale = CAM_OUT;
         sceneEl.style.willChange = 'transform';
@@ -672,9 +670,6 @@
             return;
         }
 
-        // touch / narrow: seat straight into the slot, no airborne clone or camera move
-        if (lite()) { seatCart(idx); return; }
-
         // capture all coordinates at the settled (scale-1) zoom, BEFORE pulling the camera back
         var swap = (dockedIdx !== null && dockedIdx !== idx);
         var insertFrom = localRect(getCartBtn(idx));
@@ -704,43 +699,6 @@
         } else {
             flyIn(CAM_LEAD);   // the flight's own delay lets the zoom lead it
         }
-    }
-
-    // lite-mode insert: no airborne clone, no camera pull-back. The cart just seats into
-    // the top slot (sliding down + clipping behind the shell). If something's already docked,
-    // pop it out first, then seat the new one. Transform/clip-path only — cheap on phones.
-    function seatCart(idx) {
-        var finish = function () { renderGame(idx); inserting = false; setBusy(false); };
-        var seatNew = function () { prepDock(idx); revealDock(); seatReact(); cartBoot(idx, finish); };
-        var dock = byId('cartDock');
-        var dc = dock && dock.querySelector('.dock-cart');
-        if (dockedIdx !== null && dockedIdx !== idx && dc) {
-            var di = dockedIdx;
-            dc.classList.remove('seating');
-            dc.classList.add('unseating');
-            flashScreen();
-            beep(120, 0.06, 'square');
-            setTimeout(function () { clearDock(); setVacant(di, false); seatNew(); }, 200);
-        } else {
-            seatNew();
-        }
-    }
-
-    // lite-mode eject back to the menu: pop the cart out of the slot, no camera move
-    function unseatToMenu() {
-        inserting = true; setBusy(true);
-        var idx = dockedIdx;
-        showState('menu');
-        var dock = byId('cartDock');
-        var dc = dock && dock.querySelector('.dock-cart');
-        var done = function () { clearDock(); setVacant(idx, false); inserting = false; setBusy(false); paintSel(true); };
-        if (dc) {
-            dc.classList.remove('seating');
-            dc.classList.add('unseating');
-            flashScreen();
-            beep(120, 0.06, 'square');
-            setTimeout(done, 220);
-        } else { done(); }
     }
 
     // eject the docked cart using pre-captured scene-local rects; pops it out of the slot, then arcs it home
