@@ -360,26 +360,50 @@
     /* ---------------- engine / state machine ---------------- */
     var state = 'boot', sel = 0, curCart = null, bootTimer = null, typer = null;
     var inserting = false, dockedIdx = null;
-    var ejectBar = null, ejectBtn = null, ejectNear = false, ejectHint = false, ejectHinted = false;
+    var ejectHud = null, ejectChute = null, ejectBeam = null, ejectLine = null, ejectHit = null;
+    var ejectNear = false, ejectHinted = false, ejX = 0, ejY = 0, ejRaf = 0;
 
     function showState(name) {
         ['boot', 'menu', 'game'].forEach(function (s) { var e = byId(s); if (e) e.hidden = (s !== name); });
         state = name;
         updateEject();
     }
-    /* the eject pull-down is "armed" (active) only while a cartridge is actually loaded */
+    /* the eject pull is live only while a cartridge is actually loaded */
+    function ejectArmed() { return state === 'game' && !inserting; }
+    function finePointer() { return window.matchMedia && window.matchMedia('(pointer:fine)').matches; }
+    // size + place the top highlight onto the docked cartridge; returns its centre-x
+    function placeEjectChute() {
+        var dc = document.querySelector('#cartDock .dock-cart');
+        var r = dc && dc.getBoundingClientRect();
+        var cx, w;
+        if (r && r.width > 4) { cx = r.left + r.width / 2; w = r.width; }
+        else { cx = window.innerWidth / 2; w = 96; }
+        ejectChute.style.left = (cx - w / 2) + 'px';
+        ejectChute.style.width = w + 'px';
+        if (ejectBeam) ejectBeam.setAttribute('viewBox', '0 0 ' + window.innerWidth + ' ' + window.innerHeight);
+        return cx;
+    }
+    function moveEjectHud() {
+        if (!ejectHud || !ejectNear || !ejectArmed()) return;
+        var ax = parseFloat(ejectChute.style.left || 0) + parseFloat(ejectChute.style.width || 0) / 2;
+        ejectLine.setAttribute('x1', ax); ejectLine.setAttribute('y1', 6);
+        ejectLine.setAttribute('x2', ejX); ejectLine.setAttribute('y2', ejY);
+        ejectHit.style.transform = 'translate(' + ejX + 'px,' + ejY + 'px)';
+        byId('ejectFollow').style.transform = 'translate(' + ejX + 'px,' + (ejY + 17) + 'px) translate(-50%, 0)';
+    }
     function updateEject() {
-        if (!ejectBar) return;
-        var armed = (state === 'game' && !inserting);
-        ejectBar.classList.toggle('armed', armed);
-        if (ejectBtn) ejectBtn.disabled = !armed;
-        if (!armed) {
-            ejectHint = false;
-        } else if (!ejectHinted && !reduce && window.matchMedia && window.matchMedia('(pointer:fine)').matches) {
-            ejectHinted = true; ejectHint = true;      // first cartridge on a mouse: flash the tab so it's discoverable
-            setTimeout(function () { ejectHint = false; updateEject(); }, 1700);
+        if (!ejectHud) return;
+        var armed = ejectArmed();
+        if (curCart) ejectHud.style.setProperty('--eject-accent', curCart.color);
+        if (!armed) { ejectNear = false; ejectHud.classList.remove('active', 'hint'); return; }
+        if (!ejectHinted && !reduce && finePointer()) {        // first cartridge on a mouse: pulse the chute to advertise it
+            ejectHinted = true;
+            placeEjectChute();
+            ejectHud.classList.add('hint');
+            setTimeout(function () { ejectHud.classList.remove('hint'); }, 1300);
         }
-        ejectBar.classList.toggle('show', armed && (ejectNear || ejectHint));
+        ejectHud.classList.toggle('active', ejectNear);
+        if (ejectNear) moveEjectHud();
     }
     function cartLabelName(c) { return c.name.split('.')[0]; }
     function cartInnerHTML(c) {
@@ -877,20 +901,28 @@
     var skip = document.querySelector('.skip-link');
     if (skip) skip.addEventListener('click', function (e) { e.preventDefault(); toggleList(true); });
 
-    /* ---------------- eject pull-down: reveal when the pointer nears the top ---------------- */
-    ejectBar = byId('ejectBar'); ejectBtn = byId('ejectBtn');
-    if (ejectBtn) {
-        ejectBtn.addEventListener('click', function () {
-            if (state !== 'game' || inserting) return;
-            ejectNear = false; ejectHint = false;
-            ejectBtn.blur();
+    /* ---------------- eject pull: top highlight + tether to cursor + click to eject ---------------- */
+    ejectHud = byId('ejectHud'); ejectChute = byId('ejectChute');
+    ejectBeam = byId('ejectBeam'); ejectLine = byId('ejectLine'); ejectHit = byId('ejectHit');
+    var EJ_IN = 160, EJ_OUT = 210;   // pointer enters the pull zone below 160px, leaves past 210px
+    if (ejectHit) {
+        ejectHit.addEventListener('click', function () {
+            if (!ejectArmed()) return;
+            ejectNear = false; ejectHud.classList.remove('active');
             openMenu();                                 // pop the cart out and return to the menu
         });
     }
     window.addEventListener('pointermove', function (e) {
-        if (e.clientY <= 62) { if (!ejectNear) { ejectNear = true; updateEject(); } }
-        else if (e.clientY > 104) { if (ejectNear) { ejectNear = false; updateEject(); } }
+        ejX = e.clientX; ejY = e.clientY;
+        if (!ejectArmed()) { if (ejectNear) { ejectNear = false; updateEject(); } return; }
+        if (e.clientY <= EJ_IN) {
+            if (!ejectNear) { ejectNear = true; placeEjectChute(); updateEject(); }
+        } else if (e.clientY > EJ_OUT) {
+            if (ejectNear) { ejectNear = false; updateEject(); }
+        }
+        if (ejectNear && !ejRaf) ejRaf = requestAnimationFrame(function () { ejRaf = 0; moveEjectHud(); });
     }, { passive: true });
+    window.addEventListener('resize', function () { if (ejectNear) placeEjectChute(); });
     updateEject();
 
     /* ---------------- go ---------------- */

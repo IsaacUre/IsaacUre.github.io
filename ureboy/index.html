@@ -49,14 +49,15 @@
     <!-- ───────────────── THE CONSOLE (JS-enhanced) ───────────────── -->
     <main class="stage" aria-label="URE BOY — interactive console">
 
-        <!-- top-edge pull-down: eject the loaded cartridge. Hidden until the pointer nears the
-             top of the window (or the button is focused); only active while a cartridge is in. -->
-        <div class="eject-bar" id="ejectBar">
-            <button class="eject-btn" id="ejectBtn" type="button" disabled
-                    title="Return to the cartridge menu (also: press B)">
-                <span class="eject-ico" aria-hidden="true">⏏</span>
-                <span class="eject-txt">Eject current cartridge</span>
-            </button>
+        <!-- eject pull: while a cartridge is loaded, nearing the top lights up a highlight the
+             width of the cartridge, tethers a line from it to the cursor, and rides an eject
+             button on the cursor — click near the top to pop the cart out. (Pointer-only; the
+             B button stays the keyboard/touch path.) -->
+        <div class="eject-hud" id="ejectHud" aria-hidden="true">
+            <div class="eject-chute" id="ejectChute"></div>
+            <svg class="eject-beam" id="ejectBeam" preserveAspectRatio="none" aria-hidden="true"><line id="ejectLine" x1="0" y1="0" x2="0" y2="0"></line></svg>
+            <div class="eject-hit" id="ejectHit" title="Eject cartridge"></div>
+            <button class="eject-follow" id="ejectFollow" type="button" tabindex="-1" aria-hidden="true"><span class="eject-ico" aria-hidden="true">⏏</span><span class="eject-txt">Eject</span></button>
         </div>
 
         <div class="deck">
