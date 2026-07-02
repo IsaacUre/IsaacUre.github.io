@@ -76,10 +76,15 @@
 
     /* sound (WebAudio, off by default, zero asset files) */
     var soundOn = false, actx = null;
+    function getActx() {
+        try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {}
+        return actx;
+    }
     function beep(freq, dur, type) {
         if (!soundOn) return;
         try {
-            actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+            actx = getActx();
+            if (!actx) return;
             var o = actx.createOscillator(), g = actx.createGain();
             o.type = type || 'square'; o.frequency.value = freq;
             o.connect(g); g.connect(actx.destination);
@@ -91,7 +96,7 @@
     }
 
     /* ---------------- easter-egg tracking ---------------- */
-    var EGGS = ['nat20', 'gameboy', 'p0420', 'sleep', 'character'];
+    var EGGS = ['nat20', 'gameboy', 'p0420', 'sleep', 'character', 'gtirun'];
     var found = new Set();
     try { (JSON.parse(localStorage.getItem('ub_eggs') || '[]') || []).forEach(function (e) { found.add(e); }); } catch (e) {}
     function eggLabel() { return '◉ ' + found.size + '/' + EGGS.length; }
@@ -169,6 +174,21 @@
                     }).join('') + '</ul>';
             },
             onShow: wireGarage
+        },
+        {
+            id: 'gtirun', ico: '🏁', name: 'GTI RUN', tag: 'pedal to the pixels', color: '#2f9e44',
+            fullbleed: true,
+            render: function () {
+                return '<div class="gtirun-host" id="gtirunHost"></div>';
+            },
+            onShow: function () {
+                if (window.GTIRUN) window.GTIRUN.mount(byId('gtirunHost'), gtirunAPI());
+            },
+            onHide: function () {
+                if (window.GTIRUN) window.GTIRUN.unmount();
+            },
+            /* the game owns the controls; only SELECT (list view) passes through */
+            onPress: function (a) { return window.GTIRUN ? window.GTIRUN.press(a) : false; }
         },
         {
             id: 'quest', ico: '🎲', name: 'QUEST', tag: 'roll for loot', color: '#7b53c9',
@@ -352,6 +372,19 @@
         }
     }
 
+    /* bridge handed to game cartridges (GTI RUN) — audio, theme, eggs, quit */
+    function gtirunAPI() {
+        return {
+            reduce: reduce,
+            isSound: function () { return soundOn; },
+            audioCtx: function () { return soundOn ? getActx() : null; },
+            isDMG: function () { return document.body.classList.contains('theme-gameboy'); },
+            markEgg: markEgg,
+            toast: toast,
+            quit: function () { openMenu(); }
+        };
+    }
+
     function resumeAction() {
         if (DATA.resumeUrl) { window.open(DATA.resumeUrl, '_blank', 'noopener'); return; }
         toast("Résumé's still being polished — hit <b>✉ Email</b> and it's yours.");
@@ -418,7 +451,7 @@
         return '<button class="gbcart" data-i="' + i + '" style="--cart:' + c.color + '" aria-label="' + c.name + ' — ' + c.tag + '">' +
             cartInnerHTML(c) + '</button>';
     }
-    var SPLIT = 2; // first SPLIT cartridges on the left shelf, the rest on the right
+    var SPLIT = 3; // first SPLIT cartridges on the left shelf, the rest on the right
     function buildDeck() {
         var left = byId('rackLeft'), right = byId('rackRight');
         if (left) left.innerHTML = CARTS.slice(0, SPLIT).map(function (c, i) { return cartButtonHTML(c, i); }).join('');
@@ -460,6 +493,7 @@
     }
     function openMenu() {
         if (inserting) return;
+        if (curCart && curCart.onHide) { try { curCart.onHide(); } catch (e) {} }
         if (dockedIdx === null) { reallyOpenMenu(); return; }
         if (reduce) { var di = dockedIdx; clearDock(); setVacant(di, false); reallyOpenMenu(); return; }
         inserting = true; setBusy(true);
@@ -479,9 +513,11 @@
     }
 
     function renderGame(idx) {
+        if (curCart && curCart.onHide) { try { curCart.onHide(); } catch (e) {} }
         sel = idx;
         curCart = CARTS[idx];
         var gt = byId('gameTitle'); if (gt) gt.textContent = curCart.ico + ' ' + curCart.name;
+        var gm = byId('game'); if (gm) gm.classList.toggle('fullbleed', !!curCart.fullbleed);
         var body = byId('gameBody');
         body.innerHTML = curCart.render();
         body.scrollTop = 0;
@@ -650,6 +686,7 @@
         if (inserting) return;
         if (state === 'boot') { clearTimeout(bootTimer); clearInterval(typer); }   // clicking a cart skips the intro boot
         if (idx === dockedIdx && state === 'game') return;                          // already playing it
+        if (state === 'game' && curCart && curCart.onHide) { try { curCart.onHide(); } catch (e) {} }
         inserting = true; setBusy(true);
 
         if (reduce) {
@@ -744,6 +781,7 @@
             return;
         }
         if (state === 'game') {
+            if (curCart && curCart.onPress && curCart.onPress(a)) return;   // a game cart owns the controls
             if (a === 'b' || a === 'start') openMenu();
             else if (a === 'select') toggleList();
         }
@@ -879,6 +917,7 @@
             '<h2>Currently</h2><ul>' + d.about.now.map(function (x) { return '<li>' + x + '</li>'; }).join('') + '</ul>' +
             '<h2>Garage — MK8 GTI</h2><ul>' + d.garage.mods.map(function (m) { return '<li><b>' + m.part + '</b> (' + m.spec + ') — ' + m.note + '</li>'; }).join('') + '</ul>' +
             '<h2>Work</h2><ul>' + d.work.map(function (w) { return '<li><b>' + w.role + '</b> — ' + w.org + ' <em>(' + w.date + ')</em></li>'; }).join('') + '</ul>' +
+            '<h2>GTI Run</h2><p>There\'s also a little racing game cartridge — a pseudo-3D arcade racer starring the GTI. It needs the console view (and JavaScript).</p>' +
             '<h2>Contact</h2><p><a href="mailto:' + d.contact.email + '">' + d.contact.email + '</a> · <a href="' + d.contact.linkedin + '" rel="me">LinkedIn</a></p>' +
             '<p style="color:#8a8a82;font-size:.85rem">Previous version of this site is archived at <a href="/behind-the-lens/">/behind-the-lens/</a>.</p>';
         byId('listBack').addEventListener('click', function () { toggleList(false); });
