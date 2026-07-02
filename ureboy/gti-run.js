@@ -495,7 +495,7 @@
     /* ---------------- module state ---------------- */
     var host = null, api = null, mounted = false;
     var bb = null, bctx = null, disp = null, dctx = null;
-    var rafId = 0, lastTs = 0, resizeObs = null;
+    var rafId = 0, lastTs = 0, resizeObs = null, recTimer = 0;
     var boundWin = [], boundBtn = [];     // listener bookkeeping for teardown
 
     /* ---------------- audio (WebAudio synth, gated by console SOUND) ---------------- */
@@ -1366,7 +1366,7 @@
                     G.boosting = false;
                     var sc = Math.floor(G.score);
                     var hs = loadHS();
-                    if (sc > hs) { G.newRecord = true; saveHS(sc); setTimeout(function () { SFX.record(); }, 900); }
+                    if (sc > hs) { G.newRecord = true; saveHS(sc); recTimer = setTimeout(function () { if (mounted) SFX.record(); }, 900); }
                     else SFX.over();
                 }
             }
@@ -1451,13 +1451,17 @@
     }
     function onKeyDown(e) {
         if (!mounted || document.body.classList.contains('list-mode')) return;
+        if (e.ctrlKey || e.metaKey || e.altKey) return;    // never hijack browser shortcuts
         var a = keyToAction(e.key);
         if (!a) return;
-        e.preventDefault();
-        if (!e.repeat) {
-            if (!held[a]) actionTap(a);
-            held[a] = true;
+        /* a focused console control keeps its native Enter/Space activation */
+        if (e.key === 'Enter' || e.key === ' ') {
+            var tag = document.activeElement && document.activeElement.tagName;
+            if (tag === 'BUTTON' || tag === 'A') return;
         }
+        e.preventDefault();
+        if (!e.repeat && !held[a]) actionTap(a);
+        held[a] = true;      // outside the repeat guard so auto-repeat re-latches after clearInputs()
         refreshHeld();
     }
     function onKeyUp(e) {
@@ -1502,8 +1506,23 @@
         touchBoost = ids.length >= 2;
         refreshHeld();
     }
-    function onBlur() { if (G.state === 'run' || G.state === 'count') { G.pausedFrom = G.state; G.state = 'pause'; G.pauseSel = 0; } }
-    function onVis() { if (document.hidden) onBlur(); }
+    /* drop all held input — a keyup delivered to another window would otherwise stay latched
+       and the car would steer/boost by itself after resume */
+    function clearInputs() {
+        held = {}; pointers = {}; touchSteer = 0; touchBoost = false;
+        refreshHeld();
+    }
+    /* the frame loop normally gates audio; when it stops (hidden tab) or early-returns
+       (console hidden behind the list view), silence the continuous sounds directly */
+    function silenceAudio() {
+        musicStop();
+        if (AU.engGain) { try { AU.engGain.gain.value = 0; } catch (e) {} }
+    }
+    function onBlur() {
+        clearInputs();
+        if (G.state === 'run' || G.state === 'count') { G.pausedFrom = G.state; G.state = 'pause'; G.pauseSel = 0; }
+    }
+    function onVis() { if (document.hidden) { onBlur(); silenceAudio(); } }
 
     /* ---------------- loop / lifecycle ---------------- */
     function frameLoop(ts) {
@@ -1516,7 +1535,7 @@
         var m = api.isDMG() ? 'dmg' : 'color';
         if (m !== mode) { mode = m; buildAtlas(); ditherPat = bctx.createPattern(atlas.ditherPattern, 'repeat'); }
         /* auto-pause when the console is hidden (list view etc.) */
-        if (host.offsetParent === null) { onBlur(); return; }
+        if (host.offsetParent === null) { onBlur(); silenceAudio(); return; }
         /* music gating */
         if (G.state === 'title' && api.isSound()) musicStart(); else if (G.state !== 'title') musicStop();
         var dt = dtReal;
@@ -1569,7 +1588,7 @@
         if (window.ResizeObserver) { resizeObs = new ResizeObserver(resize); resizeObs.observe(host); }
         /* input */
         held = {}; pointers = {}; touchSteer = 0; touchBoost = false;
-        var wl = [['keydown', onKeyDown], ['keyup', onKeyUp], ['blur', onBlur]];
+        var wl = [['keydown', onKeyDown], ['keyup', onKeyUp], ['blur', onBlur], ['resize', resize]];
         for (var i = 0; i < wl.length; i++) { window.addEventListener(wl[i][0], wl[i][1]); boundWin.push(wl[i]); }
         document.addEventListener('visibilitychange', onVis);
         boundWin.push(['__vis', onVis]);
@@ -1577,6 +1596,8 @@
         disp.addEventListener('pointermove', onCanvasMove);
         disp.addEventListener('pointerup', onCanvasUp);
         disp.addEventListener('pointercancel', onCanvasUp);
+        boundBtn.push([disp, 'pointerdown', onCanvasDown], [disp, 'pointermove', onCanvasMove],
+                      [disp, 'pointerup', onCanvasUp], [disp, 'pointercancel', onCanvasUp]);
         bindHoldButton('dLeft', 'left'); bindHoldButton('dRight', 'right');
         bindHoldButton('dUp', 'up'); bindHoldButton('dDown', 'down');
         bindHoldButton('btnA', 'a'); bindHoldButton('btnB', 'b');
@@ -1590,6 +1611,7 @@
         if (!mounted) return;
         mounted = false;
         cancelAnimationFrame(rafId);
+        clearTimeout(recTimer);
         engineStop(); musicStop();
         for (var i = 0; i < boundWin.length; i++) {
             if (boundWin[i][0] === '__vis') document.removeEventListener('visibilitychange', boundWin[i][1]);
