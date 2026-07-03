@@ -357,7 +357,7 @@
         { id: 'invoice', t: 'SURPRISE INVOICE', icon: 'mail',
           txt: 'The steel order from October was never actually paid. Oops.',
           a: { l: 'PAY IT ($130)', cost: 130, fx: { cash: -130 }, r: 'The supplier keeps taking your calls. Worth it.' },
-          b: { l: 'NEGOTIATE', fx: { cash: -65, rep: -2 }, r: 'Half now, half "later". They remember this.' } },
+          b: { l: 'NEGOTIATE ($65)', cost: 65, fx: { cash: -65, rep: -2 }, r: 'Half now, half "later". They remember this.' } },
         { id: 'photoday', t: 'GOLDEN HOUR', icon: 'star',
           txt: 'The light outside the shop is perfect. Someone has a real camera.',
           a: { l: 'TEAM PHOTOSHOOT', fx: { rep: 4, morale: 4, ap: -1 }, r: 'The frame has never looked so heroic. Sponsors notice.' },
@@ -525,9 +525,9 @@
         if (fx.morale) S.morale += fx.morale;
         if (fx.rep) S.rep += fx.rep;
         if (fx.members) {
-            S.members += fx.members;
-            if (fx.members > 0) for (var i = 0; i < fx.members; i++) addRosterName();
-            else S.roster.pop();
+            var want = Math.max(1, Math.min(16, S.members + fx.members));
+            while (S.members < want) { S.members++; addRosterName(); }
+            while (S.members > want) { S.members--; S.roster.pop(); }
         }
         if (fx.ap) S.ap = Math.max(0, S.ap + fx.ap);
         if (fx.rel) S.rel += fx.rel;
@@ -557,6 +557,7 @@
         }
         clampStats();
         var ms = MILESTONES[S.week];
+        if (ms) payRetainers();
         if (ms && ms.id === 'comp') {
             S.pendingMilestone = 'comp';
             saveGame();
@@ -761,8 +762,7 @@
     }
 
     /* ---------------- milestones ---------------- */
-    function finishMilestone() {
-        S.pendingMilestone = undefined;
+    function payRetainers() {
         /* recurring sponsor perks pay out at each milestone */
         var paid = 0;
         for (var i = 0; i < SPONSORS.length; i++) {
@@ -770,10 +770,16 @@
             if (sp.perk === 'recur' && S.sponsors[sp.id] && S.sponsors[sp.id].signed) paid += 250;
         }
         if (paid) { ledger('SPONSOR RETAINERS', paid); gtoast('RETAINERS: +' + fmt$(paid)); }
+    }
+    function finishMilestone() {
+        S.pendingMilestone = undefined;
         saveGame();
     }
     function runMilestone(id) {
         var steps = [];
+        /* placed right after each milestone's effect step: once the stat changes have been
+           applied, mark the milestone resolved so quitting mid-epilogue can't re-apply them */
+        var msDone = { do: function () { S.pendingMilestone = undefined; saveGame(); } };
         if (id === 'fair') {
             var gain = 2 + Math.round(S.rep / 30 + S.morale / 45);
             steps = [
@@ -782,8 +788,16 @@
                     { t: 'THE BARE FRAME ITSELF', fx: { rep: 4 }, r: 'Hauling a race car frame across the quad turns every head on campus.' },
                     { t: 'A SIGN: "FREE PIZZA LATER"', fx: { members: 1, morale: 3 }, r: 'It is technically true. Eventually. The line forms fast.' }
                 ] },
-                { do: function () { S.members += gain; for (var i = 0; i < gain; i++) addRosterName(); clampStats(); } },
-                { say: gain + ' freshmen sign the roster on the spot. The team is real now. Roster: ' + Math.min(16, S.members + 0) + ' members.' }
+                { do: function () {
+                    var actual = Math.max(0, Math.min(gain, 16 - S.members));
+                    S.members += actual;
+                    for (var i = 0; i < actual; i++) addRosterName();
+                    clampStats();
+                    S.pendingMilestone = undefined; saveGame();
+                    script.steps.splice(script.i + 1, 0, { say: actual > 0
+                        ? actual + ' freshmen sign the roster on the spot. The team is real now. Roster: ' + S.members + ' members.'
+                        : 'The table draws a crowd, but the roster is already full. Sixteen is the legal limit of chaos.', art: 'black' });
+                } }
             ];
         } else if (id === 'alumni') {
             steps = [
@@ -799,7 +813,8 @@
                         if (carQuality() > 0.2) { S.rep += 12; clampStats(); return 'You describe the build in detail. An alum who raced in \'88 tears up. Rep soars.'; }
                         S.rep += 2; clampStats(); return 'You describe... a frame. On stands. "It has potential," someone offers, kindly.';
                     } }
-                ] }
+                ] },
+                msDone
             ];
         } else if (id === 'design') {
             var dq = carQuality();
@@ -807,6 +822,7 @@
             steps = [
                 { say: 'DESIGN REVIEW - Two professors and a guest engineer from an F1 supplier want to see everything.', art: 'banner', t: 'DESIGN REVIEW' },
                 { do: function () { S.flags.designDone = true; S.rep += repGain; S.morale += dq > 0.3 ? 5 : (dq < 0.15 ? -5 : 0); clampStats(); } },
+                msDone,
                 { say: dq > 0.45 ? 'They are impressed. "Year one? Really?" Rep +' + repGain + '. The Engineering Fund is now open to you.'
                      : dq > 0.2 ? 'Fair questions, fair answers. "Keep going." Rep +' + repGain + '. The Engineering Fund is now open to you.'
                      : 'It is a long hour. "Ambitious," they write, which is professor for "oh no." Rep +' + repGain + '. Still - the Engineering Fund opens.' }
@@ -816,6 +832,7 @@
                 steps = [
                     { say: 'ENTRY FEE DUE - FSAE registration closes tonight. ' + fmt$(ENTRY_FEE) + ', non-refundable, no exceptions.', art: 'banner', t: 'ENTRY FEE' },
                     { do: function () { ledger('FSAE ENTRY FEE', -ENTRY_FEE); S.flags.entryPaid = true; S.morale += 6; clampStats(); } },
+                    msDone,
                     { say: 'Payment confirmed. Rice Racing is officially on the entry list for May. It is in writing. It is happening.' }
                 ];
             } else {
@@ -823,6 +840,7 @@
                     { say: 'ENTRY FEE DUE - ' + fmt$(ENTRY_FEE) + ' by midnight. The account holds ' + fmt$(S.cash) + '. This is the nightmare scenario.', art: 'banner', t: 'ENTRY FEE' },
                     { say: 'You knock on the department chair\'s door at 9 PM with a budget printout and zero shame.' },
                     { do: function () { S.flags.entryPaid = true; S.flags.loan = 2000; S.rep = Math.max(0, S.rep - 8); } },
+                    msDone,
                     { say: 'The department floats the fee - as a LOAN. $2,000 due back by travel week. Rep takes a bruise. The team does not need to know tonight.' }
                 ];
             }
@@ -837,6 +855,7 @@
                         else { S.driver += 6; S.rel += 10; S.morale += 10; S.rep += 5; }
                         S.flags.shakeDone = true; clampStats();
                     } },
+                    msDone,
                     { say: broke ? 'Three glorious laps, then a bang and a coast to a stop. Data was gathered. Lessons were learned. Something in the powertrain was sacrificed.'
                                  : 'She runs. SHE RUNS. The whole team chases the car down the lot screaming. Reliability +10, and everyone believes now.' }
                 ];
@@ -844,6 +863,7 @@
                 steps = [
                     { say: 'SHAKEDOWN DAY - The lot is booked. The helmet is borrowed. The car... is still on stands.', art: 'banner', t: 'SHAKEDOWN' },
                     { do: function () { S.morale -= 8; S.rep = Math.max(0, S.rep - 3); clampStats(); } },
+                    msDone,
                     { say: 'The team eats cold pizza around a car that does not run yet. Nobody says much. May is coming either way.' }
                 ];
             }
@@ -857,12 +877,14 @@
                         if (S.flags.loan) { ledger('LOAN REPAID', -S.flags.loan); S.flags.loan = 0; }
                         S.flags.travelPaid = true; S.morale += 8; clampStats();
                     } },
+                    msDone,
                     { say: 'Booked. Paid. Real. In four weeks a Rice-built race car rolls into competition. Finish the build.' }
                 ];
             } else {
                 steps = [
                     { say: 'TRAVEL LOCK-IN - You need ' + fmt$(owed) + '. You have ' + fmt$(S.cash) + '. You run the numbers four times. They do not change.', art: 'banner', t: 'TRAVEL WEEK' },
                     { do: function () { S.flags.noTravel = true; S.morale -= 15; clampStats(); } },
+                    msDone,
                     { say: 'There is no version of this where the trailer gets rented. The team will watch competition on a livestream. The car deserved better. So did you.' }
                 ];
             }
@@ -1146,6 +1168,7 @@
     }
     var listItems = [];    // rebuilt every frame by the active screen
     function listActivate() {
+        if (modal || script) return;      // a modal or cutscene owns input
         var it = listItems[cur[scr] || 0];
         if (it && it.go) { it.go(); }
     }
@@ -1355,6 +1378,9 @@
 
     /* ---------------- modals ---------------- */
     function drawModal(dt) {
+        /* modals own the pointer: swallow any tap that misses their own controls,
+           so nothing falls through to the screen hits registered underneath */
+        addHit(0, 0, W, H, function () {});
         ditherFill(0, 0, W, H);
         var m = modal;
         if (m.kind === 'note') {
@@ -1488,27 +1514,37 @@
                 modal = { kind: 'note', title: 'HOW TO PLAY', icon: 'flag',
                     text: 'Spend 2 AP a week on money, car, and crew. Hit every deadline. Bring a finished car to May. <> tabs, A select, B back.' };
             } },
-            { t: 'QUIT TO TITLE', info: 'SAVES', cb: function () { saveGame(); modal = null; scr = 'title'; cur = {}; musicStart(); } }
+            { t: 'QUIT TO TITLE', info: 'SAVES', cb: function () { saveGame(); cur = {}; enterTitle(); } }
         ] };
     }
 
     /* ================================================================
        TITLE, INTRO, CUTSCENE DRAWING, COMPETITION ANIMS, LIFECYCLE
        ================================================================ */
-    var titleSel = 0, report = null;
+    var titleSel = 0, report = null, titleCache = null;
 
     function bestPlace() { try { return parseInt(localStorage.getItem('ub_pitlane_best') || '0', 10) || 0; } catch (e) { return 0; } }
     function setBestPlace(p) { try { var b = bestPlace(); if (!b || p < b) localStorage.setItem('ub_pitlane_best', String(p)); } catch (e) {} }
 
+    /* single entry point to the title screen: caches the localStorage reads so the
+       per-frame drawTitle doesn't JSON.parse the whole save 60 times a second */
+    function enterTitle() {
+        scr = 'title';
+        titleSel = 0;
+        modal = null;
+        titleCache = { save: loadGame(), vet: hasVeteran(), best: bestPlace() };
+        musicStart();
+    }
     function titleItems() {
+        var tc = titleCache || (titleCache = { save: loadGame(), vet: hasVeteran(), best: bestPlace() });
         var items = [];
-        if (loadGame()) items.push({ t: 'CONTINUE', go: function () { S = loadGame(); resumeSeason(); } });
+        if (tc.save) items.push({ t: 'CONTINUE', go: function () { S = tc.save; resumeSeason(); } });
         items.push({ t: 'NEW SEASON', go: function () {
-            if (loadGame()) modal = { kind: 'confirm', text: 'Overwrite the saved season?', sel: 1, yes: startNewSeason };
+            if (tc.save) modal = { kind: 'confirm', text: 'Overwrite the saved season?', sel: 1, yes: startNewSeason };
             else startNewSeason();
         } });
-        if (hasVeteran()) items.push({ t: 'NEW SEASON+ (REP 15)', go: function () {
-            if (loadGame()) modal = { kind: 'confirm', text: 'Overwrite the saved season?', sel: 1, yes: function () { startNewSeason(true); } };
+        if (tc.vet) items.push({ t: 'NEW SEASON+ (REP 15)', go: function () {
+            if (tc.save) modal = { kind: 'confirm', text: 'Overwrite the saved season?', sel: 1, yes: function () { startNewSeason(true); } };
             else startNewSeason(true);
         } });
         items.push({ t: 'EJECT CARTRIDGE', go: function () { if (api && api.quit) api.quit(); } });
@@ -1517,7 +1553,7 @@
     function startNewSeason(vet) {
         modal = null;
         S = newSeason(vet);
-        saveGame();
+        /* no save until the intro finishes — quitting mid-intro restarts it cleanly */
         musicStop();
         playScript(introScript(), function () { scr = 'home'; saveGame(); });
         scr = 'cutscene';
@@ -1548,7 +1584,7 @@
         txtCO('PIT', 28, RED, 4);
         txtCO('LANE', 51, WHT, 2);
         txtC('A FORMULA SAE STORY', 68, AMB, 1);
-        var b = bestPlace();
+        var b = titleCache ? titleCache.best : 0;
         if (b) txtC('BEST FINISH: P' + b, 78, DIM, 1);
         var items = titleItems();
         for (var i = 0; i < items.length; i++) {
@@ -1847,7 +1883,10 @@
             ]);
             return;
         }
-        var R = buildComp();
+        /* roll the whole competition once and persist it, so quitting mid-cutscene
+           resumes into the SAME outcome instead of re-rolling a witnessed result */
+        var R = S.compResult;
+        if (!R) { R = buildComp(); S.compResult = R; saveGame(); }
         var steps = [
             { say: 'MAY. COMPETITION WEEK. The trailer rolls out of Houston at 5 AM, PENNY strapped down under a tarp like a secret.', art: 'banner', t: 'FSAE COMPETITION' },
             { say: 'TECH INSPECTION - ' + (R.techPass ? 'Stickers on the nose. First try. The scrutineer actually says "nice loom."'
@@ -1922,7 +1961,7 @@
         }
         txtC(report.noTravel ? 'NEXT YEAR. FOR REAL.' : 'VETERAN START UNLOCKED', 120, AMB, 1);
         if (frame % 40 < 26) txtC('A - TITLE', 132, WHT, 1);
-        addHit(0, 0, W, H, function () { report = null; scr = 'title'; titleSel = 0; musicStart(); SFX.blip(); });
+        addHit(0, 0, W, H, function () { report = null; enterTitle(); SFX.blip(); });
     }
 
     /* ---------------- input ---------------- */
@@ -1959,7 +1998,7 @@
             else if (a === 'a' || a === 'start') { items[Math.min(titleSel, items.length - 1)].go(); }
             return;
         }
-        if (scr === 'report') { if (a === 'a' || a === 'start') { report = null; scr = 'title'; titleSel = 0; musicStart(); } return; }
+        if (scr === 'report') { if (a === 'a' || a === 'start') { report = null; enterTitle(); } return; }
         /* season screens */
         if (a === 'left' || a === 'right') {
             var i = tabIdx();
@@ -2037,7 +2076,6 @@
             if (bx >= h2.x && bx < h2.x + h2.w && by >= h2.y && by < h2.y + h2.h) { h2.cb(); return; }
         }
     }
-    function onBlur() { /* menu game: nothing to pause, but drop any queued audio */ silenceAudio(); }
     function onVis() { if (document.hidden) silenceAudio(); }
 
     /* ---------------- frame loop / lifecycle ---------------- */
@@ -2045,7 +2083,7 @@
         HITS.length = 0;
         bctx.fillStyle = C(['#14141a', 0]);
         bctx.fillRect(0, 0, W, H);
-        if (scr === 'title') drawTitle(dt);
+        if (scr === 'title') { drawTitle(dt); if (modal) drawModal(dt); }
         else if (scr === 'report') drawReport();
         else if (script) drawScript(dt);
         else {
@@ -2119,7 +2157,7 @@
         buildDither();
         resize();
         if (window.ResizeObserver) { resizeObs = new ResizeObserver(resize); resizeObs.observe(host); }
-        var wl = [['keydown', onKeyDown], ['blur', onBlur], ['resize', resize]];
+        var wl = [['keydown', onKeyDown], ['resize', resize]];
         for (var i = 0; i < wl.length; i++) { window.addEventListener(wl[i][0], wl[i][1]); boundWin.push(wl[i]); }
         document.addEventListener('visibilitychange', onVis);
         boundWin.push(['__vis', onVis]);
@@ -2129,10 +2167,9 @@
         bindTapButton('dUp', 'up'); bindTapButton('dDown', 'down');
         bindTapButton('btnA', 'a'); bindTapButton('btnB', 'b');
         bindTapButton('btnStart', 'start');
-        scr = 'title'; titleSel = 0; cur = {}; modal = null; script = null; report = null;
-        S = loadGame();
+        cur = {}; script = null; report = null; S = null;
         toastQ.length = 0;
-        musicStart();
+        enterTitle();
         lastTs = 0;
         rafId = requestAnimationFrame(frameLoop);
     }
@@ -2140,6 +2177,10 @@
         if (!mounted) return;
         mounted = false;
         cancelAnimationFrame(rafId);
+        /* an unresolved pitch would silently eat its AP — refund it */
+        if (S && modal && modal.kind === 'pitch' && modal.phase !== 'won' && modal.phase !== 'lost') {
+            S.ap = Math.min(AP_PER_WEEK, S.ap + 1);
+        }
         if (S && scr !== 'title' && scr !== 'report' && !script) saveGame();
         musicStop();
         for (var i = 0; i < boundWin.length; i++) {
