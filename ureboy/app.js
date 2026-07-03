@@ -34,9 +34,23 @@
             return 'u:' + currentUser + ':' + k;
         }
         Storage.prototype.getItem = function (k) { return G.call(this, map(this, k)); };
-        Storage.prototype.setItem = function (k, v) { return S.call(this, map(this, k), v); };
-        Storage.prototype.removeItem = function (k) { return R.call(this, map(this, k)); };
+        Storage.prototype.setItem = function (k, v) {
+            var mk = map(this, k), r = S.call(this, mk, v);
+            if (this === window.localStorage && mk !== String(k)) cloudNote(String(k), v);   // remapped = a per-user game key
+            return r;
+        };
+        Storage.prototype.removeItem = function (k) {
+            var mk = map(this, k), r = R.call(this, mk);
+            if (this === window.localStorage && mk !== String(k)) cloudNote(String(k), null);
+            return r;
+        };
     })();
+    /* cloud is optional (ureboy/cloud.js). These wrappers no-op when it's absent
+       or unconfigured, so the console is unchanged in local-only mode. */
+    function cloudReady() { return !!(window.UreCloud && window.UreCloud.ready()); }
+    function cloudNote(logicalKey, value) {
+        if (currentUser && cloudReady()) { try { window.UreCloud.noteWrite(currentUser, logicalKey, value); } catch (e) {} }
+    }
     function loadUsers() { try { return JSON.parse(rawStore.get(USERS_KEY) || '{}') || {}; } catch (e) { return {}; } }
     function saveUsers(u) { try { rawStore.set(USERS_KEY, JSON.stringify(u)); return true; } catch (e) { return false; } }
     /* own-property lookups only — names like "constructor" must not hit Object.prototype */
@@ -921,8 +935,8 @@
         var gen = term.gen;
         var eye = byId('ledEye'); if (eye) eye.classList.add('lit');
         var sess = sessGet(), users = loadUsers();
-        if (sess && getUser(users, sess)) {
-            /* same-tab reload: warm boot, no password */
+        if (sess && (getUser(users, sess) || cloudReady())) {
+            /* remembered login: warm boot, no passcode (cloud pull reconciles) */
             term.pause(450)
                 .then(function () { return term.type('> warm boot .............. ok', 'tl-dim', 140); })
                 .then(function () { if (gen !== term.gen) return; showHero(); return term.pause(550); })
@@ -958,14 +972,20 @@
             })
             .then(function (v) {
                 if (gen !== term.gen) return;
+                var raw = String(v || '').trim().toLowerCase();
+                if (raw === 'sync') return syncSetup();          // configure cross-device cloud
                 var name = nameClean(v);
                 if (!name || name === 'guest') return loginGuest();
-                var users = loadUsers();
-                if (getUser(users, name)) return askPass(name, 0);
-                createProfile(name);
+                var checking = cloudReady() ? term.line('> checking cloud...', 'tl-dim') : null;
+                resolveUser(name).then(function (r) {
+                    if (gen !== term.gen) return;
+                    if (checking && checking.parentNode) checking.parentNode.removeChild(checking);
+                    if (r.rec) return askPass(name, 0, r.rec, r.source);
+                    createProfile(name);
+                });
             });
     }
-    function askPass(name, tries) {
+    function askPass(name, tries, rec, source) {
         var gen = term.gen;
         term.type(tries === 0 ? 'welcome back, ' + name + '. passcode?' : 'nope. ' + (3 - tries) + ' more, then I lock up:', tries === 0 ? '' : 'tl-warn', 45)
             .then(function () { return term.ask({ mask: true }); })
@@ -973,10 +993,9 @@
                 if (gen !== term.gen) return;
                 return hashPass(name, pass).then(function (h) {
                     if (gen !== term.gen) return;
-                    var rec = getUser(loadUsers(), name);
-                    if (rec && rec.h === h) return finishLogin(name, false);
+                    if (rec && rec.h === h) return finishLogin(name, false, source === 'cloud' ? rec : null);
                     if (tries >= 2) return lockedOut(name);
-                    askPass(name, tries + 1);
+                    askPass(name, tries + 1, rec, source);
                 });
             });
     }
@@ -1026,17 +1045,46 @@
                         if (p1 !== p2) { term.line('> mismatch. from the top.', 'tl-warn'); return createProfile(name); }
                         hashPass(name, p1).then(function (h) {
                             if (gen !== term.gen) return;
-                            var users = loadUsers();
-                            var firstEver = true;
-                            for (var k in users) { if (users.hasOwnProperty(k)) { firstEver = false; break; } }
-                            setUser(users, name, { h: h, c: Date.now(), l: Date.now() });
-                            if (!saveUsers(users)) {
-                                term.line('> storage full. profile could not be saved.', 'tl-warn');
-                                return loginGuest();
+                            var rec = { h: h, c: Date.now(), l: Date.now() };
+                            /* commit locally + import legacy ONLY once we own the name
+                               (created in cloud, or cloud not writable/off). */
+                            function commitLocal() {
+                                var users = loadUsers();
+                                var firstEver = true;
+                                for (var k in users) { if (users.hasOwnProperty(k)) { firstEver = false; break; } }
+                                setUser(users, name, rec);
+                                if (!saveUsers(users)) {
+                                    term.line('> storage full. profile could not be saved.', 'tl-warn');
+                                    return loginGuest();
+                                }
+                                var imported = firstEver && importLegacy(name);
+                                term.line('> profile created.' + (imported ? ' old save data on this browser: imported.' : ''), '');
+                                finishLogin(name, false);
                             }
-                            var imported = firstEver && importLegacy(name);
-                            term.line('> profile created.' + (imported ? ' old save data on this browser: imported.' : ''), '');
-                            finishLogin(name, false);
+                            if (cloudReady() && window.UreCloud.canWrite()) {
+                                term.line('> claiming cloud account...', 'tl-dim');
+                                window.UreCloud.createUser(name, rec).then(function (r) {
+                                    if (gen !== term.gen) return;
+                                    if (r && r.taken) {
+                                        /* someone already owns this name in the cloud — don't create a
+                                           conflicting local record; ask for the existing account's passcode */
+                                        term.line('> "' + name + '" already exists in the cloud.', 'tl-warn');
+                                        term.line('  enter its passcode to log in:', 'tl-dim');
+                                        window.UreCloud.getUser(name).then(function (cr) {
+                                            if (gen === term.gen) askPass(name, 0, cr, 'cloud');
+                                        });
+                                        return;
+                                    }
+                                    commitLocal();
+                                }).catch(function (e) {
+                                    if (gen !== term.gen) return;
+                                    term.line('> cloud unavailable (' + (e && e.message || 'offline') + '). saved on this device.', 'tl-warn');
+                                    commitLocal();
+                                });
+                            } else {
+                                if (cloudReady()) term.line('> (local only - this device can\'t write to the cloud)', 'tl-dim');
+                                commitLocal();
+                            }
                         });
                     });
             });
@@ -1053,18 +1101,123 @@
             })
             .then(function () { if (gen === term.gen) openMenu(); });
     }
-    function finishLogin(name, fromSession) {
+    function finishLogin(name, fromSession, cloudRec) {
         var gen = term.gen;
         currentUser = name;
         sessSet(name);
-        var users = loadUsers(), rec = getUser(users, name);
-        if (rec) { rec.l = Date.now(); saveUsers(users); }
-        loadEggs(); applyPrefs(); updateUserBtn();
+        var users = loadUsers(), existing = getUser(users, name);
+        if (existing) { existing.l = Date.now(); saveUsers(users); }
+        else if (cloudRec) { setUser(users, name, cloudRec); saveUsers(users); }   // cache a cloud-only account for offline warm boot
+        updateUserBtn();
         term.type(fromSession ? '> session restored: ' + name : '> access granted. hello, ' + name + '.', '', 50)
-            .then(function () { return term.pause(550); })
+            .then(function () {
+                if (gen !== term.gen) return;
+                if (!cloudReady()) return;
+                var line = term.line('> syncing across devices...', 'tl-dim');
+                return cloudSync(name).then(function (info) {
+                    if (line && line.parentNode) {
+                        line.textContent = info && info.ok
+                            ? '> synced' + (info.applied ? ' (' + info.applied + ' pulled)' : '') + (window.UreCloud.canWrite() ? '' : ' [read-only]')
+                            : '> offline - playing from this device';
+                    }
+                });
+            })
+            .then(function () {
+                if (gen !== term.gen) return;
+                loadEggs(); applyPrefs(); updateUserBtn();   // reflect anything the pull merged in
+                return term.pause(550);
+            })
             .then(function () { if (gen === term.gen) openMenu(); });
     }
+    /* resolve an account for a typed name: cloud first, else local. NEVER writes the
+       local credential store here — a public-gist record for this name (possibly a
+       stranger's) must not overwrite your local account before you've proven the
+       passcode. The cloud record is cached locally only on a successful login. */
+    function resolveUser(name) {
+        var localRec = getUser(loadUsers(), name);
+        if (!cloudReady()) return Promise.resolve({ rec: localRec, source: localRec ? 'local' : null });
+        return window.UreCloud.getUser(name).then(function (rec) {
+            if (rec) return { rec: rec, source: 'cloud' };
+            return { rec: localRec, source: localRec ? 'local' : null };
+        }, function () {
+            return { rec: localRec, source: localRec ? 'local' : null };   // offline -> local fallback
+        });
+    }
+    /* two-way sync (pull then push) with a hard timeout so offline can't hang the boot */
+    function cloudSync(name) {
+        if (!cloudReady()) return Promise.resolve({ ok: false });
+        return new Promise(function (res) {
+            var done = false;
+            var to = setTimeout(function () { if (!done) { done = true; res({ ok: false }); } }, 4500);
+            window.UreCloud.pull(name).then(function (pr) {
+                return (window.UreCloud.canWrite() ? window.UreCloud.push(name) : Promise.resolve())
+                    .then(function () { return pr; });
+            }).then(function (pr) {
+                if (done) return; done = true; clearTimeout(to);
+                res({ ok: true, applied: pr && pr.applied || 0 });
+            }, function () {
+                if (done) return; done = true; clearTimeout(to);
+                res({ ok: false });
+            });
+        });
+    }
     function skipBoot() { term.skip = true; }
+
+    /* ---------------- cloud (cross-device) setup ---------------- */
+    function syncSetup() {
+        var gen = term.gen;
+        if (!window.UreCloud) {   // cloud.js failed to load (404/blocked) — don't dereference it
+            term.type('cloud module unavailable.', 'tl-warn', 45)
+                .then(function () { return term.pause(700); })
+                .then(function () { if (gen === term.gen) askWho(); });
+            return;
+        }
+        var st = cloudReady() ? (window.UreCloud.canWrite() ? 'ON (this device can read + write)'
+                                                           : 'ON (read-only - no token on this device)')
+                              : 'OFF';
+        term.type('cloud sync: ' + st, '', 45)
+            .then(function () {
+                term.line('cross-device login via a public GitHub gist.', 'tl-dim');
+                term.line('accounts + saves are PUBLIC - still no real passwords.', 'tl-warn');
+                if (cloudReady()) term.line('gist: ' + window.UreCloud.gistId(), 'tl-dim');
+                term.line('paste a gist token to enable this device,', 'tl-dim');
+                term.line('type OFF to unlink, or enter to go back.', 'tl-dim');
+                return term.ask({ mask: true });
+            })
+            .then(function (tok) {
+                if (gen !== term.gen) return;
+                tok = String(tok || '').trim();
+                if (!tok) return askWho();
+                if (tok.toLowerCase() === 'off') {
+                    window.UreCloud.forget();
+                    term.line('> cloud unlinked from this device.', 'tl-dim');
+                    updateUserBtn();
+                    return setTimeout(function () { if (gen === term.gen) askWho(); }, 500);
+                }
+                term.type('gist id? (enter = create a new cloud gist)', '', 45)
+                    .then(function () { return term.ask(); })
+                    .then(function (gid) {
+                        if (gen !== term.gen) return;
+                        term.line('> contacting github...', 'tl-dim');
+                        window.UreCloud.setup(tok, gid).then(function (info) {
+                            if (gen !== term.gen) return;
+                            term.line('> cloud linked. gist: ' + info.gistId, '');
+                            if (info.created) {
+                                term.line('> new cloud created. on your OTHER device, type', 'tl-dim');
+                                term.line('  sync, paste a token, then enter THIS gist id:', 'tl-dim');
+                                term.line('  ' + info.gistId, '');
+                            }
+                            updateUserBtn();
+                            setTimeout(function () { if (gen === term.gen) askWho(); }, 900);
+                        }).catch(function (e) {
+                            if (gen !== term.gen) return;
+                            term.line('> setup failed: ' + (e && e.message || 'unknown') + '.', 'tl-warn');
+                            term.line('  check the token has the "gist" scope.', 'tl-dim');
+                            setTimeout(function () { if (gen === term.gen) askWho(); }, 900);
+                        });
+                    });
+            });
+    }
 
     /* ---------------- input ---------------- */
     function press(a) {
@@ -1225,7 +1378,9 @@
     }
     var userBtn = byId('userBtn'), userArm = 0;
     function updateUserBtn() {
-        if (userBtn) userBtn.textContent = '👤 ' + (currentUser ? currentUser.toUpperCase() : 'GUEST');
+        if (!userBtn) return;
+        var cloud = (currentUser && cloudReady()) ? (window.UreCloud.canWrite() ? ' ☁' : ' ☁·') : '';
+        userBtn.textContent = '👤 ' + (currentUser ? currentUser.toUpperCase() : 'GUEST') + cloud;
     }
     if (userBtn) userBtn.addEventListener('click', function () {
         if (state === 'boot' || inserting) return;
