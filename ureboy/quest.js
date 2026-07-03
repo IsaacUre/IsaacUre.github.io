@@ -2980,11 +2980,11 @@ function drawDarkness(cx, cy) {
 function ScCamp() {
     var t = 0, healed = false;
     var quips = [
-        'You dream of spreadsheets. They balance.',
-        'Somewhere, the Steed sleeps under a cover. It dreams of boost.',
-        'You dream of golden hour. Every frame is sharp.',
-        'The stars look like a scatter plot with no correlation. Beautiful.',
-        'You dream you walked the Sallyport in your gown. Soon.'
+        'You dream in spreadsheets. They balance.',
+        'The Steed sleeps. It dreams of boost.',
+        'You dream of golden hour. All sharp.',
+        'You dream in scatter plots. No trend.',
+        'Graduation. The Sallyport. Soon.'
     ];
     var quip = pick(quips);
     return { opaque: true,
@@ -3014,7 +3014,7 @@ function ScCamp() {
             if (healed) {
                 txtC('HP & FOCUS RESTORED', W / 2, 30, P.hp);
                 var ql = wrap(quip, 18);
-                for (var i = 0; i < ql.length; i++) txtC(ql[i], W / 2, 106 + i * 10, P.dim);
+                for (var i = 0; i < ql.length && i < 2; i++) txtC(ql[i], W / 2, 108 + i * 10, P.dim);
                 if (t > 2.2) { txtC('A: WAKE', W / 2, 134, P.w); }
             }
         },
@@ -3179,16 +3179,16 @@ function ScMenu() {
         u: function () {},
         d: function () {
             if (!sub) {
-                var mh = items.length * 11 + 12;
-                box(W - 62, 4, 58, mh, { bg: '#14141f' });
+                var mh = items.length * 11 + 12, bw = 74;
+                box(W - bw - 2, 4, bw, mh, { bg: '#14141f' });
                 for (var i = 0; i < items.length; i++) {
                     var dis = items[i] === 'CAMP' && !MAPS[G.map].outdoors;
-                    if (i === sel) cursor(W - 56, 11 + i * 11 + 1);
-                    txt(items[i], W - 48, 10 + i * 11, dis ? '#4a4a55' : i === sel ? P.w : P.dim);
+                    if (i === sel) cursor(W - bw + 4, 11 + i * 11 + 1);
+                    txt(items[i], W - bw + 12, 10 + i * 11, dis ? '#4a4a55' : i === sel ? P.w : P.dim);
                 }
-                box(W - 62, mh + 6, 58, 22, { bg: '#101018' });
-                t35('G ' + G.gold, W - 56, mh + 11, P.gold);
-                t35('LV ' + G.lvl + ' XP ' + G.xp, W - 56, mh + 19, P.w);
+                box(W - bw - 2, mh + 6, bw, 22, { bg: '#101018' });
+                t35('G ' + G.gold, W - bw + 6, mh + 11, P.gold);
+                t35('LV ' + G.lvl + ' XP ' + G.xp, W - bw + 6, mh + 19, P.w);
             } else if (sub === 'items') {
                 var us = usable();
                 box(4, 4, W - 8, 100, { bg: '#14141f' });
@@ -3226,22 +3226,26 @@ function ScMenu() {
             } else if (sub === 'hero') {
                 box(4, 4, W - 8, 136, { bg: '#14141f' });
                 var cls = CLASSES[G.cls];
-                drawSpr('pd0', 10, 10, { tint: cls.tint });
-                txt(G.name, 30, 10, P.w);
-                txt(cls.n.slice(0, 15), 30, 19, cls.tint);
-                txt('LV ' + G.lvl + '  XP ' + G.xp + (G.lvl < MAXLVL ? '/' + XPT[G.lvl] : ''), 10, 32, P.dim);
-                txt('HP ' + G.hp + '/' + G.hpm + '  FOC ' + G.foc + '/' + G.focm, 10, 41, P.w);
-                txt('AC ' + playerAC() + '  PROF +' + prof() + '  G ' + G.gold, 10, 50, P.dim);
+                drawSpr('pd0', 8, 8, { tint: cls.tint });
+                txt(G.name.slice(0, 8), 28, 8, P.w);
+                txt('G ' + G.gold, 112, 8, P.gold);
+                txt(cls.n.slice(0, 15), 28, 17, cls.tint);
+                txt('LV ' + G.lvl, 8, 30, P.w);
+                txt('XP ' + (G.lvl < MAXLVL ? G.xp + '/' + XPT[G.lvl] : G.xp + ' MAX'), 54, 30, P.dim);
+                txt('HP ' + G.hp + '/' + G.hpm, 8, 41, P.w);
+                txt('FOC ' + G.foc + '/' + G.focm, 78, 41, P.foc);
+                txt('AC ' + playerAC(), 8, 52, P.w);
+                txt('PROF +' + prof(), 78, 52, P.dim);
                 for (var s4 = 0; s4 < 6; s4++) {
                     var stn = STATS[s4];
-                    txt(STAT_N[stn] + ' ' + G.st[stn] + '(' + fmtMod(mod(G.st[stn])) + ')', 10 + (s4 % 2) * 74, 62 + Math.floor(s4 / 2) * 9, stn === cls.key ? cls.tint : P.w);
+                    txt(STAT_N[stn] + ' ' + G.st[stn] + ' ' + fmtMod(mod(G.st[stn])), 8 + (s4 % 2) * 74, 64 + Math.floor(s4 / 2) * 9, stn === cls.key ? cls.tint : P.w);
                 }
-                txt('WPN ' + weap().n.slice(0, 14), 10, 92, P.w);
-                txt('ARM ' + armr().n.slice(0, 14), 10, 101, P.w);
-                txt('TRK ' + (trin() ? trin().n.slice(0, 14) : '—'), 10, 110, P.w);
+                txt('WPN ' + weap().n.slice(0, 13), 8, 94, P.w);
+                txt('ARM ' + armr().n.slice(0, 13), 8, 103, P.w);
+                txt('TRK ' + (trin() ? trin().n.slice(0, 13) : '-'), 8, 112, P.w);
                 var spl = G.spells.map(function (s5) { return SPELLS[s5].n.split(' ')[0]; }).join(' ');
-                txt('SPL ' + spl.slice(0, 15), 10, 119, P.foc);
-                txt('day ' + G.day + ' · steps ' + G.steps + ' · foes ' + G.kills, 10, 130, '#4a4a58');
+                txt('SPL ' + spl.slice(0, 13), 8, 121, P.foc);
+                t35('DAY ' + G.day + '  STEPS ' + G.steps + '  KO ' + G.kills + '  N20 ' + G.nat20s, 8, 132, '#7a7a82');
             }
         },
         i: function (a) {
@@ -3367,10 +3371,10 @@ function ScOracle() {
                 addItem('bless', 1);
                 if (relicCount() >= 3) setQuest('main', 2);
                 burstP(80, 60, [P.gold, P.w, P.purp], 26, 60);
-                return 'A NATURAL TWENTY. The oracle bows. THE BLESSING IS YOURS.';
+                return 'NAT 20! The oracle bows. THE BLESSING IS YOURS.';
             }
             burstP(80, 60, [P.gold, P.w], 20, 50);
-            return 'NATURAL TWENTY! +15g. The oracle smiles knowingly.';
+            return 'NAT 20! +15 gold. The oracle smiles.';
         }
         if (mine === 1) return 'Natural one. The DM smiles. Somewhere.';
         if (mine > hers) return 'You win the throw! +10 gold.';
@@ -3396,19 +3400,19 @@ function ScOracle() {
             }
         },
         d: function () {
-            box(10, 30, W - 20, 84, { bg: '#181322', edge: P.purp });
-            txtC('THE FELT OF FATE', W / 2, 36, P.purp);
-            txt('YOU', 34, 50, P.w);
-            txt('ORACLE', 92, 50, P.w);
+            box(10, 26, W - 20, 92, { bg: '#181322', edge: P.purp });
+            txtC('THE FELT OF FATE', W / 2, 31, P.purp);
+            t35('G ' + G.gold, 16, 31, P.gold);
+            txt('YOU', 34, 46, P.w);
+            txt('ORACLE', 92, 46, P.w);
             var showM = phase === 'rolling' ? ri(1, 20) : mine || '-';
             var showH = phase === 'rolling' ? ri(1, 20) : hers || '-';
-            drawSpr('d20', 26, 60);
-            drawSpr('d20', 96, 60);
-            txtBig('' + showM, 44, 64, phase === 'done' && mine === 20 ? P.gold : P.w);
-            txtBig('' + showH, 116, 64, P.w);
-            var ml = wrap(msg, 16);
-            for (var i = 0; i < ml.length && i < 2; i++) txtC(ml[i], W / 2, 86 + i * 9, phase === 'done' && mine === 20 ? P.gold : P.dim);
-            txt('G ' + G.gold, 14, 104, P.gold);
+            drawSpr('d20', 26, 56);
+            drawSpr('d20', 96, 56);
+            txtBig('' + showM, 44, 60, phase === 'done' && mine === 20 ? P.gold : P.w);
+            txtBig('' + showH, 116, 60, P.w);
+            var ml = wrap(msg, 18);
+            for (var i = 0; i < ml.length && i < 3; i++) txtC(ml[i], W / 2, 84 + i * 9, phase === 'done' && mine === 20 ? P.gold : P.dim);
             drawParts(0, 0);
         },
         i: function (a) {
@@ -4023,14 +4027,14 @@ function ScBattle(ids, opts) {
                 if (idx >= list.length) break;
                 var sp = SPELLS[list[idx]];
                 if (idx === bt.subSel) cursor(72, 108 + s2 * 9 + 1);
-                txt(sp.n.slice(0, 9), 79, 107 + s2 * 9, idx === bt.subSel ? (G.foc >= sp.cost ? P.w : P.red) : P.dim);
+                txt(sp.n.slice(0, 8), 79, 107 + s2 * 9, idx === bt.subSel ? (G.foc >= sp.cost ? P.w : P.red) : P.dim);
                 t35('F' + sp.cost, 148, 108 + s2 * 9, P.foc);
             }
         } else if (bt.sub === 'item') {
             var its = battleItems();
             for (var it2 = 0; it2 < its.length && it2 < 4; it2++) {
                 if (it2 === bt.subSel) cursor(72, 108 + it2 * 9 + 1);
-                txt(ITEMS[its[it2].id].n.slice(0, 9), 79, 107 + it2 * 9, it2 === bt.subSel ? P.w : P.dim);
+                txt(ITEMS[its[it2].id].n.slice(0, 8), 79, 107 + it2 * 9, it2 === bt.subSel ? P.w : P.dim);
                 t35('X' + its[it2].n, 148, 108 + it2 * 9, P.dim);
             }
         }
@@ -4097,11 +4101,14 @@ function ScBattle(ids, opts) {
             drawBG();
             drawFoes();
             drawPlayer();
-            /* message strip (two lines) */
-            ctx.fillStyle = 'rgba(12,12,20,0.82)'; ctx.fillRect(0, 82, W, 18);
+            /* message strip — grows to fit up to 3 wrapped lines, riding above the panel */
             var ml = bt.msg ? wrap(bt.msg, 19) : [];
-            if (ml.length) txt(ml[0], 4, 84, P.w);
-            if (ml.length > 1) txt(ml[1], 4, 92, P.w);
+            var mln = Math.min(3, ml.length);
+            if (mln) {
+                var sh = 2 + mln * 8;
+                ctx.fillStyle = 'rgba(12,12,20,0.85)'; ctx.fillRect(0, 100 - sh, W, sh);
+                for (var mli = 0; mli < mln; mli++) txt(ml[mli], 4, 100 - sh + 2 + mli * 8, P.w);
+            }
             drawPanel();
             drawDice();
             drawParts(0, 0);
@@ -4271,13 +4278,13 @@ function ScCredits() {
         ['The Steed idles like', 'a sleeping animal.', 'Clean. Quiet. Legal', 'in most counties.'],
         ['The basin is calm.', 'The dice are warm.', 'The kolaches are', 'safe. For now.'],
         ['URE QUEST', 'The Check-Engine', 'Prophecy'],
-        ['STARRING', G.name + ' the ' + CLASSES[G.cls].n.split(' ')[1]],
+        ['STARRING', G.name.slice(0, 12), 'the ' + CLASSES[G.cls].n.split(' ')[1]],
         ['FEATURING', 'The Torque Priest', 'The Dice Oracle', 'The Hedge Wizard', 'A Statue (himself)'],
         ['ANTAGONIST', 'P-0420, who was', 'just doing its job'],
         ['SPECIAL THANKS', 'coffee', 'fast glass', 'the OBD-II scanner'],
         ['NO SQUIRRELS', 'WERE HARMED.', 'Several were', 'inconvenienced.'],
-        ['days: ' + G.day + ' · steps: ' + G.steps, 'foes: ' + G.kills + ' · nat20s: ' + G.nat20s, 'camps: ' + G.camps + ' · deaths: ' + G.deaths],
-        ['...', '', 'somewhere, faintly...', '', 'the light flickers.', '', '(you won\'t leave', 'it stock. we know.)'],
+        ['THE RECORD', 'days ' + G.day + ' · foes ' + G.kills, 'nat20s ' + G.nat20s + ' · RIP ' + G.deaths, 'steps ' + G.steps],
+        ['...', '', 'somewhere,', 'faintly...', '', 'the light flickers.', '', '(you won\'t leave', 'it stock. we know.)'],
         ['THE END', '', 'thanks for playing', '· URE BOY ·']
     ];
     return { opaque: true,
@@ -4322,7 +4329,7 @@ function ScGameOver() {
         d: function () {
             ctx.fillStyle = '#0a0708'; ctx.fillRect(0, 0, W, H);
             if (t > 0.5) txtBigC('T P K', W / 2, 40, P.red);
-            if (t > 1.2) txtC('(it\'s a party of one)', W / 2, 64, P.dim);
+            if (t > 1.2) txtC('(a party of one)', W / 2, 64, P.dim);
             if (t > 1.9) txtC('the DM smiles.', W / 2, 80, P.w);
             if (t > 2.6) {
                 txtC('A: RISE FROM THE', W / 2, 104, P.hp);
