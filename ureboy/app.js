@@ -77,10 +77,15 @@
 
     /* sound (WebAudio, off by default, zero asset files) */
     var soundOn = false, actx = null;
+    function getActx() {
+        try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {}
+        return actx;
+    }
     function beep(freq, dur, type) {
         if (!soundOn) return;
         try {
-            actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+            actx = getActx();
+            if (!actx) return;
             var o = actx.createOscillator(), g = actx.createGain();
             o.type = type || 'square'; o.frequency.value = freq;
             o.connect(g); g.connect(actx.destination);
@@ -92,7 +97,7 @@
     }
 
     /* ---------------- easter-egg tracking ---------------- */
-    var EGGS = ['nat20', 'gameboy', 'p0420', 'sleep', 'character'];
+    var EGGS = ['nat20', 'gameboy', 'p0420', 'sleep', 'character', 'gtirun', 'pitlane'];
     var found = new Set();
     try { (JSON.parse(localStorage.getItem('ub_eggs') || '[]') || []).forEach(function (e) { found.add(e); }); } catch (e) {}
     function eggLabel() { return '◉ ' + found.size + '/' + EGGS.length; }
@@ -170,6 +175,35 @@
                     }).join('') + '</ul>';
             },
             onShow: wireGarage
+        },
+        {
+            id: 'gtirun', ico: '🏁', name: 'GTI RUN', tag: 'pedal to the pixels', color: '#2f9e44',
+            fs: true,
+            render: function () {
+                return '<div class="gtirun-host" id="gtirunHost"></div>';
+            },
+            onShow: function () {
+                if (window.GTIRUN) window.GTIRUN.mount(byId('gtirunHost'), gameCartAPI());
+            },
+            onHide: function () {
+                if (window.GTIRUN) window.GTIRUN.unmount();
+            },
+            /* the game owns the controls; only SELECT (list view) passes through */
+            input: function (a) { return window.GTIRUN ? window.GTIRUN.press(a) : false; }
+        },
+        {
+            id: 'pitlane', ico: '🏎️', name: 'PIT LANE', tag: 'race the budget', color: '#1e6fb8',
+            fs: true,
+            render: function () {
+                return '<div class="gtirun-host pitlane-host" id="pitlaneHost"></div>';
+            },
+            onShow: function () {
+                if (window.PITLANE) window.PITLANE.mount(byId('pitlaneHost'), gameCartAPI());
+            },
+            onHide: function () {
+                if (window.PITLANE) window.PITLANE.unmount();
+            },
+            input: function (a) { return window.PITLANE ? window.PITLANE.press(a) : false; }
         },
         {
             id: 'quest', ico: '🎲', name: 'QUEST', tag: 'a whole pocket CRPG', color: '#7b53c9',
@@ -294,6 +328,19 @@
         eject: function () { openMenu(); }
     };
 
+    /* bridge handed to game cartridges (GTI RUN, PIT LANE) — audio, theme, eggs, quit */
+    function gameCartAPI() {
+        return {
+            reduce: reduce,
+            isSound: function () { return soundOn; },
+            audioCtx: function () { return soundOn ? getActx() : null; },
+            isDMG: function () { return document.body.classList.contains('theme-gameboy'); },
+            markEgg: markEgg,
+            toast: toast,
+            quit: function () { openMenu(); }
+        };
+    }
+
     function resumeAction() {
         if (DATA.resumeUrl) { window.open(DATA.resumeUrl, '_blank', 'noopener'); return; }
         toast("Résumé's still being polished — hit <b>✉ Email</b> and it's yours.");
@@ -360,7 +407,7 @@
         return '<button class="gbcart" data-i="' + i + '" style="--cart:' + c.color + '" aria-label="' + c.name + ' — ' + c.tag + '">' +
             cartInnerHTML(c) + '</button>';
     }
-    var SPLIT = 2; // first SPLIT cartridges on the left shelf, the rest on the right
+    var SPLIT = 3; // first SPLIT cartridges on the left shelf, the rest on the right
     function buildDeck() {
         var left = byId('rackLeft'), right = byId('rackRight');
         if (left) left.innerHTML = CARTS.slice(0, SPLIT).map(function (c, i) { return cartButtonHTML(c, i); }).join('');
@@ -402,7 +449,7 @@
     }
     function openMenu() {
         if (inserting) return;
-        if (state === 'game' && curCart && curCart.onHide) curCart.onHide();
+        if (state === 'game' && curCart && curCart.onHide) { try { curCart.onHide(); } catch (e) {} }
         if (dockedIdx === null) { reallyOpenMenu(); return; }
         if (reduce) { var di = dockedIdx; clearDock(); setVacant(di, false); reallyOpenMenu(); return; }
         inserting = true; setBusy(true);
@@ -422,7 +469,7 @@
     }
 
     function renderGame(idx) {
-        if (curCart && curCart.onHide && curCart !== CARTS[idx]) curCart.onHide();
+        if (curCart && curCart.onHide && curCart !== CARTS[idx]) { try { curCart.onHide(); } catch (e) {} }
         sel = idx;
         curCart = CARTS[idx];
         var gt = byId('gameTitle'); if (gt) gt.textContent = curCart.ico + ' ' + curCart.name;
@@ -595,6 +642,7 @@
         if (inserting) return;
         if (state === 'boot') { clearTimeout(bootTimer); clearInterval(typer); }   // clicking a cart skips the intro boot
         if (idx === dockedIdx && state === 'game') return;                          // already playing it
+        if (state === 'game' && curCart && curCart.onHide) { try { curCart.onHide(); } catch (e) {} }
         inserting = true; setBusy(true);
 
         if (reduce) {
@@ -843,7 +891,7 @@
             '<h2>Currently</h2><ul>' + d.about.now.map(function (x) { return '<li>' + x + '</li>'; }).join('') + '</ul>' +
             '<h2>Garage — MK8 GTI</h2><ul>' + d.garage.mods.map(function (m) { return '<li><b>' + m.part + '</b> (' + m.spec + ') — ' + m.note + '</li>'; }).join('') + '</ul>' +
             '<h2>Work</h2><ul>' + d.work.map(function (w) { return '<li><b>' + w.role + '</b> — ' + w.org + ' <em>(' + w.date + ')</em></li>'; }).join('') + '</ul>' +
-            '<h2>Quest</h2><p>The QUEST cartridge holds <b>URE QUEST: The Check-Engine Prophecy</b> — a tiny D&amp;D-flavored RPG about lifting a check-engine curse. It needs the console view (and is better with SOUND on).</p>' +
+            '<h2>Games</h2><p>There are three game cartridges — <b>GTI Run</b>, a pseudo-3D arcade racer starring the GTI; <b>Pit Lane</b>, a Formula SAE season manager where you run a rookie team\'s budget; and <b>URE QUEST: The Check-Engine Prophecy</b>, a tiny D&amp;D-flavored RPG about lifting a check-engine curse. They need the console view (and are better with SOUND on).</p>' +
             '<h2>Contact</h2><p><a href="mailto:' + d.contact.email + '">' + d.contact.email + '</a> · <a href="' + d.contact.linkedin + '" rel="me">LinkedIn</a></p>' +
             '<p style="color:#8a8a82;font-size:.85rem">Previous version of this site is archived at <a href="/behind-the-lens/">/behind-the-lens/</a>.</p>';
         byId('listBack').addEventListener('click', function () { toggleList(false); });
