@@ -411,27 +411,23 @@ body.cart-busy .dpad, body.cart-busy .ab, body.cart-busy .startbar { pointer-eve
 .mod-note { font-family: var(--font-body); font-size: .76rem; color: var(--screen-dim); max-height: 0; overflow: hidden; transition: max-height .2s ease; }
 .mod.open .mod-note { max-height: 4em; margin-top: .2rem; }
 
-/* ── QUEST ── */
-.quest-felt { background: radial-gradient(circle at 50% 40%, #2f5d3a, #1d3d26); border-radius: 6px; padding: .7rem; text-align: center; margin-bottom: .55rem; color: #e9f0e0; position: relative; overflow: hidden; }
-body.theme-gameboy .quest-felt { background: var(--screen-dim); color: var(--screen-hi); }
-.die {
-    font-family: var(--font-pixel); font-size: 1.6rem; color: #1d3d26; background: #f3f1e2;
-    width: 64px; height: 64px; margin: .2rem auto; display: grid; place-items: center;
-    border-radius: 8px; box-shadow: 0 4px 0 rgba(0,0,0,.3); cursor: pointer;
-    clip-path: polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%);
+/* ── QUEST (URE QUEST — full-LCD canvas CRPG) ── */
+/* the cartridge flags itself fs: the game bar disappears and the ROM owns the glass */
+.state-game.fs { padding: 0; }
+.state-game.fs .game-bar { display: none; }
+.state-game.fs .game-body { overflow: hidden; padding: 0; }
+.uq-holder { position: relative; width: 100%; height: 100%; background: #0a0b10; overflow: hidden; }
+.uq-holder canvas {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    image-rendering: pixelated; image-rendering: crisp-edges;
 }
-.die.rolling { animation: tumble .6s ease; }
-@keyframes tumble { 0% { transform: rotate(0) scale(1);} 50% { transform: rotate(200deg) scale(1.15);} 100% { transform: rotate(360deg) scale(1);} }
-.die.crit { color: var(--red); box-shadow: 0 0 18px var(--red); }
-.die.fail { color: #777; }
-.quest-msg { font-family: var(--font-ui); font-size: .92rem; min-height: 1.3em; margin-top: .3rem; font-weight: 600; }
-.quest-actions { display: flex; gap: .4rem; justify-content: center; flex-wrap: wrap; margin-bottom: .5rem; }
+.uq-boot {
+    position: absolute; inset: 0; display: grid; place-items: center; text-align: center;
+    font-family: var(--font-term); font-size: 1.1rem; line-height: 1.5; color: #9aa08f;
+}
+/* photo-viewer button reuse (kept for the PHOTOS cartridge) */
 .qbtn { font-family: var(--font-ui); font-size: .82rem; font-weight: 600; color: var(--screen-ink); background: var(--screen-hi); border: 2px solid var(--screen-ink); border-radius: 4px; padding: .35rem .6rem; cursor: pointer; }
 .qbtn:hover { background: rgba(0,0,0,.06); }
-.roll-log { list-style: none; font-family: var(--font-term); font-size: 1rem; color: var(--screen-dim); max-height: 5.5em; overflow-y: auto; border-top: 2px dashed var(--screen-dim); padding-top: .3rem; }
-.loot { border: 2px solid var(--red); background: var(--screen-hi); border-radius: 5px; padding: .5rem; margin-top: .4rem; text-align: center; }
-.loot-title { font-family: var(--font-pixel); font-size: .5rem; color: var(--red); }
-.confetti-pc { position: absolute; width: 5px; height: 5px; top: -6px; opacity: 0; }
 
 /* ── WORK ── */
 .xp { list-style: none; display: flex; flex-direction: column; }
