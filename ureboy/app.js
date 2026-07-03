@@ -37,7 +37,12 @@
         Storage.prototype.removeItem = function (k) { return R.call(this, map(this, k)); };
     })();
     function loadUsers() { try { return JSON.parse(rawStore.get(USERS_KEY) || '{}') || {}; } catch (e) { return {}; } }
-    function saveUsers(u) { try { rawStore.set(USERS_KEY, JSON.stringify(u)); } catch (e) {} }
+    function saveUsers(u) { try { rawStore.set(USERS_KEY, JSON.stringify(u)); return true; } catch (e) { return false; } }
+    /* own-property lookups only — names like "constructor" must not hit Object.prototype */
+    function getUser(users, name) { return Object.prototype.hasOwnProperty.call(users, name) ? users[name] : null; }
+    function setUser(users, name, rec) {
+        Object.defineProperty(users, name, { value: rec, enumerable: true, writable: true, configurable: true });
+    }
     function djb2(s) {
         var h = 5381;
         for (var i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
@@ -62,11 +67,14 @@
                 var k = ls.key(i);
                 if (k && SAVE_RE.test(k) && k !== USERS_KEY) keys.push(k);
             }
+            var copied = 0;
             for (i = 0; i < keys.length; i++) {
-                var v = rawStore.get(keys[i]);
-                if (v !== null) rawStore.set('u:' + name + ':' + keys[i], v);
+                try {
+                    var v = rawStore.get(keys[i]);
+                    if (v !== null) { rawStore.set('u:' + name + ':' + keys[i], v); copied++; }
+                } catch (e2) {}      // one oversized key must not sink the rest
             }
-            return keys.length > 0;
+            return copied > 0;
         } catch (e) { return false; }
     }
     function wipeProfile(name) {
@@ -163,7 +171,12 @@
     /* sound (WebAudio, off by default, zero asset files) */
     var soundOn = false, actx = null;
     function getActx() {
-        try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {}
+        try {
+            actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+            /* a context created without a user gesture starts suspended; keep nudging —
+               the first gesture-driven beep will succeed */
+            if (actx && actx.state === 'suspended') actx.resume().catch(function () {});
+        } catch (e) {}
         return actx;
     }
     function beep(freq, dur, type) {
@@ -856,7 +869,7 @@
                 function onKey(e) {
                     e.stopPropagation();                // the terminal owns the keyboard
                     if (gen !== self.gen) { self.input.removeEventListener('keydown', onKey); return; }
-                    if (e.key !== 'Enter') return;
+                    if (e.key !== 'Enter' || e.repeat) return;   // held Enter must not cascade through prompts
                     e.preventDefault();
                     var v = self.input.value;
                     self.input.removeEventListener('keydown', onKey);
@@ -891,7 +904,7 @@
         var gen = term.gen;
         var eye = byId('ledEye'); if (eye) eye.classList.add('lit');
         var sess = sessGet(), users = loadUsers();
-        if (sess && users[sess]) {
+        if (sess && getUser(users, sess)) {
             /* same-tab reload: warm boot, no password */
             term.pause(450)
                 .then(function () { return term.type('> warm boot .............. ok', 'tl-dim', 140); })
@@ -931,7 +944,7 @@
                 var name = nameClean(v);
                 if (!name || name === 'guest') return loginGuest();
                 var users = loadUsers();
-                if (users[name]) return askPass(name, 0);
+                if (getUser(users, name)) return askPass(name, 0);
                 createProfile(name);
             });
     }
@@ -943,8 +956,8 @@
                 if (gen !== term.gen) return;
                 return hashPass(name, pass).then(function (h) {
                     if (gen !== term.gen) return;
-                    var users = loadUsers();
-                    if (users[name] && users[name].h === h) return finishLogin(name, false);
+                    var rec = getUser(loadUsers(), name);
+                    if (rec && rec.h === h) return finishLogin(name, false);
                     if (tries >= 2) return lockedOut(name);
                     askPass(name, tries + 1);
                 });
@@ -999,8 +1012,11 @@
                             var users = loadUsers();
                             var firstEver = true;
                             for (var k in users) { if (users.hasOwnProperty(k)) { firstEver = false; break; } }
-                            users[name] = { h: h, c: Date.now(), l: Date.now() };
-                            saveUsers(users);
+                            setUser(users, name, { h: h, c: Date.now(), l: Date.now() });
+                            if (!saveUsers(users)) {
+                                term.line('> storage full. profile could not be saved.', 'tl-warn');
+                                return loginGuest();
+                            }
                             var imported = firstEver && importLegacy(name);
                             term.line('> profile created.' + (imported ? ' old save data on this browser: imported.' : ''), '');
                             finishLogin(name, false);
@@ -1024,8 +1040,8 @@
         var gen = term.gen;
         currentUser = name;
         sessSet(name);
-        var users = loadUsers();
-        if (users[name]) { users[name].l = Date.now(); saveUsers(users); }
+        var users = loadUsers(), rec = getUser(users, name);
+        if (rec) { rec.l = Date.now(); saveUsers(users); }
         loadEggs(); applyPrefs(); updateUserBtn();
         term.type(fromSession ? '> session restored: ' + name : '> access granted. hello, ' + name + '.', '', 50)
             .then(function () { return term.pause(550); })
@@ -1175,12 +1191,13 @@
 
     /* ---------------- toolbar: user / sound / theme / list ---------------- */
     function savePrefs() {
+        if (state === 'boot') return;    // pre-login toggles are session-only; don't clobber a profile's prefs
         try { localStorage.setItem('ub_prefs', JSON.stringify({ theme: themes[themeIdx] || '', sound: soundOn })); } catch (e) {}
     }
-    function applyPrefs() {   // per-profile via the storage patch — restore at login
+    function applyPrefs() {   // per-profile via the storage patch — restore at login/logout
         var p = null;
         try { p = JSON.parse(localStorage.getItem('ub_prefs') || 'null'); } catch (e) {}
-        if (!p) { setTheme(''); return; }
+        if (!p) p = { theme: '', sound: false };     // no saved prefs: full defaults, don't leak the last profile's
         setTheme(p.theme === 'theme-gameboy' ? 'theme-gameboy' : '');
         soundOn = !!p.sound;
         var sb = byId('soundBtn');
@@ -1194,12 +1211,14 @@
         if (userBtn) userBtn.textContent = '👤 ' + (currentUser ? currentUser.toUpperCase() : 'GUEST');
     }
     if (userBtn) userBtn.addEventListener('click', function () {
-        if (state === 'boot') return;
+        if (state === 'boot' || inserting) return;
         if (state === 'game') { toast('eject to the shelf first, then switch profiles.'); return; }
         if (Date.now() < userArm) {
             userArm = 0;
             currentUser = null;
             sessSet(null);
+            loadEggs();          // drop the old profile's eggs from memory
+            applyPrefs();        // and its theme/sound
             toast('logged out.');
             updateUserBtn();
             runBoot();
