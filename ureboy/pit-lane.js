@@ -416,6 +416,7 @@
             sponsors: {},              // id -> {signed:week} or {cooldown:week}
             grants: {},                // id -> {step, done}
             ledger: [{ w: 1, t: 'CLUB DUES', v: 250 }],
+            raisedTotal: 250, spentTotal: 0,
             flags: { entryPaid: false, travelPaid: false, designDone: false, shakeDone: false,
                      veteran: !!veteran, pitchesWon: 0, fundraisers: 0, tested: 0, eggDone: false },
             eventBag: [],              // shuffled indices into EVENTS
@@ -424,8 +425,10 @@
     }
     function ledger(label, v) {
         S.cash += v;
+        if (v > 0) S.raisedTotal = (S.raisedTotal || 0) + v;
+        else S.spentTotal = (S.spentTotal || 0) - v;
         S.ledger.push({ w: S.week, t: label, v: v });
-        if (S.ledger.length > 60) S.ledger.shift();
+        if (S.ledger.length > 60) S.ledger.shift();     // display cap; totals keep running
         if (v > 0) SFX.cash(); else if (v < 0) SFX.spend();
     }
     function clampStats() {
@@ -880,8 +883,8 @@
     }
     function buildComp() {
         var q = compQuality();
-        var spent = 0;
-        for (var i = 0; i < S.ledger.length; i++) if (S.ledger[i].v < 0) spent -= S.ledger[i].v;
+        var spent = S.spentTotal || 0;
+        var i;
         var design = Math.round((q.avg * 0.75 + q.balance * 0.25) * 150);
         var cost = Math.round(100 * Math.max(0.05, Math.min(1, 0.4 + q.avg * 0.55 - spent / 22000)));
         var biz = Math.round(75 * Math.max(0.08, Math.min(1, S.rep / 100 * 0.8 + S.flags.pitchesWon * 0.035)));
@@ -1315,11 +1318,9 @@
 
     function drawLedger() {
         txtC('LEDGER', 30, AMB, 1);
-        var raised = 0, spent = 0;
-        for (var i = 0; i < S.ledger.length; i++) {
-            if (S.ledger[i].v > 0) raised += S.ledger[i].v; else spent -= S.ledger[i].v;
-        }
+        var raised = S.raisedTotal || 0, spent = S.spentTotal || 0;
         var rows = S.ledger.slice(-9).reverse();
+        var i;
         for (i = 0; i < rows.length; i++) {
             var r = rows[i], y = 40 + i * 8;
             txt('W' + r.w, 4, y, DIMD, 1);
@@ -1885,13 +1886,10 @@
     function finishSeason(R) {
         report = {
             place: R.place, total: R.total, noTravel: !!R.noTravel,
-            raised: 0, spent: 0, sponsors: 0, members: S.members,
+            raised: S.raisedTotal || 0, spent: S.spentTotal || 0, sponsors: 0, members: S.members,
             tests: S.flags.tested, pitches: S.flags.pitchesWon, weeks: S.week
         };
-        for (var i = 0; i < S.ledger.length; i++) {
-            if (S.ledger[i].v > 0) report.raised += S.ledger[i].v; else report.spent -= S.ledger[i].v;
-        }
-        for (i = 0; i < SPONSORS.length; i++) if (S.sponsors[SPONSORS[i].id] && S.sponsors[SPONSORS[i].id].signed) report.sponsors++;
+        for (var i = 0; i < SPONSORS.length; i++) if (S.sponsors[SPONSORS[i].id] && S.sponsors[SPONSORS[i].id].signed) report.sponsors++;
         if (!R.noTravel) {
             setBestPlace(R.place);
             setVeteran();
