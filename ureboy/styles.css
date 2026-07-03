@@ -581,6 +581,15 @@ body.cart-busy .dpad, body.cart-busy .ab, body.cart-busy .startbar { pointer-eve
 /* ───────────── touch ───────────── */
 .dbtn, .rbtn, .pill, .qbtn, .rev-btn, .gbcart, .photo, .tool, .die, .cbtn { touch-action: manipulation; }
 .rev-btn { touch-action: none; }
+/* holding a button (d-pad auto-repeat!) must not flash the tap highlight,
+   pop the long-press text-selection magnifier, or offer a copy callout */
+.stage, .stage button {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+}
+.term-input { -webkit-user-select: text; user-select: text; }   /* the login input still needs a caret */
 
 /* ───────────── focus ───────────── */
 :focus-visible { outline: 3px solid var(--red); outline-offset: 2px; border-radius: 3px; }
