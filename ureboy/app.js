@@ -96,7 +96,7 @@
     }
 
     /* ---------------- easter-egg tracking ---------------- */
-    var EGGS = ['nat20', 'gameboy', 'p0420', 'sleep', 'character', 'gtirun'];
+    var EGGS = ['nat20', 'gameboy', 'p0420', 'sleep', 'character', 'gtirun', 'pitlane'];
     var found = new Set();
     try { (JSON.parse(localStorage.getItem('ub_eggs') || '[]') || []).forEach(function (e) { found.add(e); }); } catch (e) {}
     function eggLabel() { return '◉ ' + found.size + '/' + EGGS.length; }
@@ -182,13 +182,27 @@
                 return '<div class="gtirun-host" id="gtirunHost"></div>';
             },
             onShow: function () {
-                if (window.GTIRUN) window.GTIRUN.mount(byId('gtirunHost'), gtirunAPI());
+                if (window.GTIRUN) window.GTIRUN.mount(byId('gtirunHost'), gameCartAPI());
             },
             onHide: function () {
                 if (window.GTIRUN) window.GTIRUN.unmount();
             },
             /* the game owns the controls; only SELECT (list view) passes through */
             onPress: function (a) { return window.GTIRUN ? window.GTIRUN.press(a) : false; }
+        },
+        {
+            id: 'pitlane', ico: '🏎️', name: 'PIT LANE', tag: 'race the budget', color: '#1e6fb8',
+            fullbleed: true,
+            render: function () {
+                return '<div class="gtirun-host pitlane-host" id="pitlaneHost"></div>';
+            },
+            onShow: function () {
+                if (window.PITLANE) window.PITLANE.mount(byId('pitlaneHost'), gameCartAPI());
+            },
+            onHide: function () {
+                if (window.PITLANE) window.PITLANE.unmount();
+            },
+            onPress: function (a) { return window.PITLANE ? window.PITLANE.press(a) : false; }
         },
         {
             id: 'quest', ico: '🎲', name: 'QUEST', tag: 'roll for loot', color: '#7b53c9',
@@ -372,8 +386,8 @@
         }
     }
 
-    /* bridge handed to game cartridges (GTI RUN) — audio, theme, eggs, quit */
-    function gtirunAPI() {
+    /* bridge handed to game cartridges (GTI RUN, PIT LANE) — audio, theme, eggs, quit */
+    function gameCartAPI() {
         return {
             reduce: reduce,
             isSound: function () { return soundOn; },
@@ -917,7 +931,7 @@
             '<h2>Currently</h2><ul>' + d.about.now.map(function (x) { return '<li>' + x + '</li>'; }).join('') + '</ul>' +
             '<h2>Garage — MK8 GTI</h2><ul>' + d.garage.mods.map(function (m) { return '<li><b>' + m.part + '</b> (' + m.spec + ') — ' + m.note + '</li>'; }).join('') + '</ul>' +
             '<h2>Work</h2><ul>' + d.work.map(function (w) { return '<li><b>' + w.role + '</b> — ' + w.org + ' <em>(' + w.date + ')</em></li>'; }).join('') + '</ul>' +
-            '<h2>GTI Run</h2><p>There\'s also a little racing game cartridge — a pseudo-3D arcade racer starring the GTI. It needs the console view (and JavaScript).</p>' +
+            '<h2>Games</h2><p>There are also two game cartridges — <b>GTI Run</b>, a pseudo-3D arcade racer starring the GTI, and <b>Pit Lane</b>, a Formula SAE season manager where you run a rookie team\'s budget. Both need the console view (and JavaScript).</p>' +
             '<h2>Contact</h2><p><a href="mailto:' + d.contact.email + '">' + d.contact.email + '</a> · <a href="' + d.contact.linkedin + '" rel="me">LinkedIn</a></p>' +
             '<p style="color:#8a8a82;font-size:.85rem">Previous version of this site is archived at <a href="/behind-the-lens/">/behind-the-lens/</a>.</p>';
         byId('listBack').addEventListener('click', function () { toggleList(false); });
