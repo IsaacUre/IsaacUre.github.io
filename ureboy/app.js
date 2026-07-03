@@ -17,6 +17,7 @@
        ================================================================ */
     var currentUser = null;
     var USERS_KEY = 'ub_users';
+    var SESS_KEY = 'ub_sess';        // remembered login — persists until an explicit log-out
     var SAVE_RE = /^(ub_|uq_)/;
     /* raw, un-remapped accessors — captured before the patch below */
     var rawStore = {
@@ -29,7 +30,7 @@
         function map(store, k) {
             if (store !== window.localStorage || !currentUser) return k;
             k = String(k);
-            if (k === USERS_KEY || !SAVE_RE.test(k)) return k;
+            if (k === USERS_KEY || k === SESS_KEY || !SAVE_RE.test(k)) return k;
             return 'u:' + currentUser + ':' + k;
         }
         Storage.prototype.getItem = function (k) { return G.call(this, map(this, k)); };
@@ -65,7 +66,7 @@
             var ls = window.localStorage, keys = [];
             for (var i = 0; i < ls.length; i++) {
                 var k = ls.key(i);
-                if (k && SAVE_RE.test(k) && k !== USERS_KEY) keys.push(k);
+                if (k && SAVE_RE.test(k) && k !== USERS_KEY && k !== SESS_KEY) keys.push(k);
             }
             var copied = 0;
             for (i = 0; i < keys.length; i++) {
@@ -89,9 +90,25 @@
         var users = loadUsers();
         delete users[name];
         saveUsers(users);
+        if (sessGet() === name) sessSet(null);   // a wiped profile can't stay remembered
     }
-    function sessGet() { try { return sessionStorage.getItem('ub_sess'); } catch (e) { return null; } }
-    function sessSet(v) { try { if (v) sessionStorage.setItem('ub_sess', v); else sessionStorage.removeItem('ub_sess'); } catch (e) {} }
+    /* remembered login: lives in localStorage (via rawStore, exempt from the
+       namespacing patch) so a returning visitor boots straight into their
+       profile — the passcode is only asked on a fresh login or after log-out */
+    function sessGet() {
+        try {
+            var v = rawStore.get(SESS_KEY);
+            if (v) return v;
+            return sessionStorage.getItem(SESS_KEY);   // pre-remembered-login sessions still count
+        } catch (e) { return null; }
+    }
+    function sessSet(v) {
+        try {
+            if (v) rawStore.set(SESS_KEY, v);
+            else rawStore.rm(SESS_KEY);
+            sessionStorage.removeItem(SESS_KEY);
+        } catch (e) {}
+    }
 
     /* ---------------- CONTENT (single source for console + list view) -------------- */
     var DATA = {
