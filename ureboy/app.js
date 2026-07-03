@@ -7,6 +7,92 @@
     var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     var byId = function (id) { return document.getElementById(id); };
 
+    /* ================================================================
+       PROFILES — the login terminal owns this. Storage.prototype is
+       patched ONCE so every ub_ / uq_ localStorage key the cartridges
+       already use is transparently namespaced to the logged-in user
+       ("u:<name>:<key>"). Guests fall through to the legacy keys, so
+       nothing breaks for a casual visitor. The registry itself
+       (ub_users) is exempt from remapping.
+       ================================================================ */
+    var currentUser = null;
+    var USERS_KEY = 'ub_users';
+    var SAVE_RE = /^(ub_|uq_)/;
+    /* raw, un-remapped accessors — captured before the patch below */
+    var rawStore = {
+        get: Storage.prototype.getItem.bind(window.localStorage),
+        set: Storage.prototype.setItem.bind(window.localStorage),
+        rm: Storage.prototype.removeItem.bind(window.localStorage)
+    };
+    (function () {
+        var G = Storage.prototype.getItem, S = Storage.prototype.setItem, R = Storage.prototype.removeItem;
+        function map(store, k) {
+            if (store !== window.localStorage || !currentUser) return k;
+            k = String(k);
+            if (k === USERS_KEY || !SAVE_RE.test(k)) return k;
+            return 'u:' + currentUser + ':' + k;
+        }
+        Storage.prototype.getItem = function (k) { return G.call(this, map(this, k)); };
+        Storage.prototype.setItem = function (k, v) { return S.call(this, map(this, k), v); };
+        Storage.prototype.removeItem = function (k) { return R.call(this, map(this, k)); };
+    })();
+    function loadUsers() { try { return JSON.parse(rawStore.get(USERS_KEY) || '{}') || {}; } catch (e) { return {}; } }
+    function saveUsers(u) { try { rawStore.set(USERS_KEY, JSON.stringify(u)); return true; } catch (e) { return false; } }
+    /* own-property lookups only — names like "constructor" must not hit Object.prototype */
+    function getUser(users, name) { return Object.prototype.hasOwnProperty.call(users, name) ? users[name] : null; }
+    function setUser(users, name, rec) {
+        Object.defineProperty(users, name, { value: rec, enumerable: true, writable: true, configurable: true });
+    }
+    function djb2(s) {
+        var h = 5381;
+        for (var i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
+        return 'x' + h.toString(16);
+    }
+    function hashPass(name, pass) {
+        var text = 'ub|' + name + '|' + pass;
+        if (window.crypto && crypto.subtle && window.TextEncoder) {
+            return crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)).then(function (buf) {
+                var b = new Uint8Array(buf), s = '';
+                for (var i = 0; i < b.length; i++) s += ('0' + b[i].toString(16)).slice(-2);
+                return s;
+            }).catch(function () { return djb2(text); });
+        }
+        return Promise.resolve(djb2(text));
+    }
+    /* the first profile ever created adopts whatever loose save data this browser has */
+    function importLegacy(name) {
+        try {
+            var ls = window.localStorage, keys = [];
+            for (var i = 0; i < ls.length; i++) {
+                var k = ls.key(i);
+                if (k && SAVE_RE.test(k) && k !== USERS_KEY) keys.push(k);
+            }
+            var copied = 0;
+            for (i = 0; i < keys.length; i++) {
+                try {
+                    var v = rawStore.get(keys[i]);
+                    if (v !== null) { rawStore.set('u:' + name + ':' + keys[i], v); copied++; }
+                } catch (e2) {}      // one oversized key must not sink the rest
+            }
+            return copied > 0;
+        } catch (e) { return false; }
+    }
+    function wipeProfile(name) {
+        try {
+            var ls = window.localStorage, keys = [], pre = 'u:' + name + ':';
+            for (var i = 0; i < ls.length; i++) {
+                var k = ls.key(i);
+                if (k && k.indexOf(pre) === 0) keys.push(k);
+            }
+            for (i = 0; i < keys.length; i++) rawStore.rm(keys[i]);
+        } catch (e) {}
+        var users = loadUsers();
+        delete users[name];
+        saveUsers(users);
+    }
+    function sessGet() { try { return sessionStorage.getItem('ub_sess'); } catch (e) { return null; } }
+    function sessSet(v) { try { if (v) sessionStorage.setItem('ub_sess', v); else sessionStorage.removeItem('ub_sess'); } catch (e) {} }
+
     /* ---------------- CONTENT (single source for console + list view) -------------- */
     var DATA = {
         about: {
@@ -47,17 +133,24 @@
         resumeUrl: "" /* drop a real /Isaac-Ure-Resume.pdf here and the loot/button will serve it */
     };
 
-    var BOOT_LINES = [
-        "URE BOY  v1.0",
-        "(c) 2026 ISAAC URE",
-        "",
-        "CPU  SHARP LR35902 . ok",
-        "EYE  a good one .... ok",
-        "PHOTOS ............. ok",
-        "GARAGE  MK8 GTI .... ok",
-        "DICE  loaded ....... ok",
-        "QUEST ROM  8 MEG ... ok",
-        "READY."
+    var ASCII_LOGO = [
+        ' _   _ ____  _____ ____   _____   __',
+        '| | | |  _ \\| ____| __ ) / _ \\ \\ / /',
+        '| | | | |_) |  _| |  _ \\| | | \\ V / ',
+        '| |_| |  _ <| |___| |_) | |_| || |  ',
+        ' \\___/|_| \\_\\_____|____/ \\___/ |_|  '
+    ].join('\n');
+    var SPEW = [
+        ['slam', 'BOOT SEQ 0x03 .............. FAIL'],
+        ['slam', 'BOOT SEQ 0x02 .............. FAIL'],
+        ['slam', 'BOOT SEQ 0x01 .............. FAIL'],
+        ['type', '> fallback shell @ /dev/eye0'],
+        ['type', '> bypassing lockout .......... ok'],
+        ['type', '> ICE_BREAK v2.6 (4d20 entropy)'],
+        ['slam', '  0xC0FFEE 0xDEC0DE 0xD1CE20'],
+        ['type', '> memcheck 8K ................ ok'],
+        ['type', '> mounting /carts ........ 7 found'],
+        ['type', '> eye subsystem ........... waking']
     ];
 
     /* ---------------- tiny helpers ---------------- */
@@ -78,7 +171,12 @@
     /* sound (WebAudio, off by default, zero asset files) */
     var soundOn = false, actx = null;
     function getActx() {
-        try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {}
+        try {
+            actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+            /* a context created without a user gesture starts suspended; keep nudging —
+               the first gesture-driven beep will succeed */
+            if (actx && actx.state === 'suspended') actx.resume().catch(function () {});
+        } catch (e) {}
         return actx;
     }
     function beep(freq, dur, type) {
@@ -99,7 +197,12 @@
     /* ---------------- easter-egg tracking ---------------- */
     var EGGS = ['nat20', 'gameboy', 'p0420', 'sleep', 'character', 'gtirun', 'pitlane'];
     var found = new Set();
-    try { (JSON.parse(localStorage.getItem('ub_eggs') || '[]') || []).forEach(function (e) { found.add(e); }); } catch (e) {}
+    function loadEggs() {   // re-read after every login/logout — the key is per-profile
+        found = new Set();
+        try { (JSON.parse(localStorage.getItem('ub_eggs') || '[]') || []).forEach(function (e) { found.add(e); }); } catch (e) {}
+        var ec = byId('eggCount'); if (ec) ec.textContent = eggLabel();
+    }
+    loadEggs();
     function eggLabel() { return '◉ ' + found.size + '/' + EGGS.length; }
     function markEgg(id, msg) {
         if (found.has(id)) return;
@@ -347,7 +450,7 @@
     }
 
     /* ---------------- engine / state machine ---------------- */
-    var state = 'boot', sel = 0, curCart = null, bootTimer = null, typer = null;
+    var state = 'boot', sel = 0, curCart = null;
     var inserting = false, dockedIdx = null;
     var ejectHud = null, ejectChute = null, ejectBeam = null, ejectLine = null, ejectHit = null;
     var ejectNear = false, ejectHinted = false, ejX = 0, ejY = 0, ejRaf = 0;
@@ -640,7 +743,7 @@
 
     function insertCart(idx) {
         if (inserting) return;
-        if (state === 'boot') { clearTimeout(bootTimer); clearInterval(typer); }   // clicking a cart skips the intro boot
+        if (state === 'boot') { skipBoot(); toast('log in first — the console is booting.'); return; }
         if (idx === dockedIdx && state === 'game') return;                          // already playing it
         if (state === 'game' && curCart && curCart.onHide) { try { curCart.onHide(); } catch (e) {} }
         inserting = true; setBusy(true);
@@ -705,30 +808,255 @@
         }, 190);
     }
 
+    /* ---------------- the boot terminal ---------------- */
+    var term = {
+        skip: false, active: false, gen: 0,
+        log: null, row: null, input: null,
+        init: function () {
+            this.log = byId('termLog'); this.row = byId('termRow'); this.input = byId('termInput');
+        },
+        clear: function () {
+            if (this.log) this.log.innerHTML = '';
+            if (this.row) this.row.hidden = true;
+            this.skip = false; this.active = false;
+            this.gen++;                              // invalidates any in-flight sequence
+        },
+        scroll: function () { if (this.log) this.log.scrollTop = 1e9; },
+        line: function (text, cls) {
+            var d = document.createElement('div');
+            d.className = 'tl' + (cls ? ' ' + cls : '');
+            d.textContent = text;
+            this.log.appendChild(d);
+            this.scroll();
+            return d;
+        },
+        type: function (text, cls, cps) {
+            var self = this, gen = self.gen;
+            return new Promise(function (res) {
+                var d = self.line('', cls);
+                if (self.skip || reduce) { d.textContent = text; return res(); }
+                var i = 0, step = Math.max(8, 1000 / (cps || 60));
+                var iv = setInterval(function () {
+                    if (gen !== self.gen) { clearInterval(iv); return; }   // boot restarted
+                    if (self.skip) { d.textContent = text; self.scroll(); clearInterval(iv); return res(); }
+                    d.textContent = text.slice(0, ++i);
+                    if (i % 4 === 0) beep(900 + Math.random() * 600, 0.012);
+                    if (i >= text.length) { self.scroll(); clearInterval(iv); res(); }
+                }, step);
+            });
+        },
+        pause: function (ms) {
+            var self = this, gen = self.gen;
+            if (self.skip || reduce) return Promise.resolve();
+            return new Promise(function (res) {
+                var t0 = Date.now();
+                var iv = setInterval(function () {
+                    if (gen !== self.gen) { clearInterval(iv); return; }
+                    if (self.skip || Date.now() - t0 >= ms) { clearInterval(iv); res(); }
+                }, 30);
+            });
+        },
+        ask: function (opts) {                          // -> Promise<string>
+            var self = this, gen = self.gen;
+            opts = opts || {};
+            return new Promise(function (res) {
+                self.row.hidden = false;
+                self.input.value = '';
+                self.input.type = opts.mask ? 'password' : 'text';
+                self.active = true;
+                self.scroll();
+                try { self.input.focus(); } catch (e) {}
+                function onKey(e) {
+                    e.stopPropagation();                // the terminal owns the keyboard
+                    if (gen !== self.gen) { self.input.removeEventListener('keydown', onKey); return; }
+                    if (e.key !== 'Enter' || e.repeat) return;   // held Enter must not cascade through prompts
+                    e.preventDefault();
+                    var v = self.input.value;
+                    self.input.removeEventListener('keydown', onKey);
+                    self.row.hidden = true;
+                    self.active = false;
+                    self.line('> ' + (opts.mask ? new Array(v.length + 1).join('*') : v), 'tl-echo');
+                    beep(700, 0.04);
+                    res(v);
+                }
+                self.input.addEventListener('keydown', onKey);
+            });
+        }
+    };
+    function showHero() {
+        var tpl = byId('termHeroTpl');
+        if (!tpl || !term.log) return;
+        var hero = tpl.content.firstElementChild.cloneNode(true);
+        var art = hero.querySelector('.term-ascii');
+        if (art) art.textContent = ASCII_LOGO;
+        term.log.appendChild(hero);
+        term.scroll();
+        setTimeout(function () { hero.classList.add('awake'); }, 30);   // not rAF — must fire in hidden tabs too
+        beep(520, 0.06); setTimeout(function () { beep(784, 0.09); }, 140);
+    }
+
+    /* ---------------- login flow ---------------- */
+    function nameClean(v) { return String(v || '').toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 12); }
     function runBoot() {
         showState('boot');
-        var eye = byId('ledEye');
-        if (eye) { eye.classList.add('lit'); eye.classList.add('blink'); setTimeout(function () { eye.classList.remove('blink'); }, 500); }
-        var log = byId('bootLog'); if (log) log.textContent = '';
-        if (reduce) { if (log) log.textContent = BOOT_LINES.join('\n'); bootTimer = setTimeout(openMenu, 500); return; }
-        var i = 0;
-        typer = setInterval(function () {
-            if (i >= BOOT_LINES.length) { clearInterval(typer); bootTimer = setTimeout(openMenu, 650); return; }
-            log.textContent += BOOT_LINES[i] + '\n';
-            beep(360 + i * 28, 0.025);
-            i++;
-        }, 230);
+        term.init();
+        term.clear();
+        var gen = term.gen;
+        var eye = byId('ledEye'); if (eye) eye.classList.add('lit');
+        var sess = sessGet(), users = loadUsers();
+        if (sess && getUser(users, sess)) {
+            /* same-tab reload: warm boot, no password */
+            term.pause(450)
+                .then(function () { return term.type('> warm boot .............. ok', 'tl-dim', 140); })
+                .then(function () { if (gen !== term.gen) return; showHero(); return term.pause(550); })
+                .then(function () { if (gen === term.gen) finishLogin(sess, true); });
+            return;
+        }
+        var idle = term.line('', 'tl-idle');
+        idle.innerHTML = '<span class="term-block"></span>';        // the lone blinking cursor
+        var chain = term.pause(1300).then(function () {
+            if (idle.parentNode) idle.parentNode.removeChild(idle);
+        });
+        SPEW.forEach(function (ln) {
+            chain = chain.then(function () {
+                if (gen !== term.gen) return;
+                if (ln[0] === 'slam') {
+                    term.line(ln[1], 'tl-dim');
+                    beep(180, 0.03);
+                    return term.pause(230);
+                }
+                return term.type(ln[1], '', 95).then(function () { return term.pause(50 + Math.random() * 110); });
+            });
+        });
+        chain.then(function () { if (gen !== term.gen) return; return term.pause(200); })
+            .then(function () { if (gen !== term.gen) return; showHero(); return term.pause(750); })
+            .then(function () { if (gen === term.gen) askWho(); });
     }
-    function endBoot() {
-        if (state !== 'boot') return;
-        clearTimeout(bootTimer); clearInterval(typer);
-        openMenu();
+    function askWho() {
+        var gen = term.gen;
+        term.type('who are you?', '', 45)
+            .then(function () {
+                term.line('(a name - or just enter to play as a guest)', 'tl-dim');
+                return term.ask();
+            })
+            .then(function (v) {
+                if (gen !== term.gen) return;
+                var name = nameClean(v);
+                if (!name || name === 'guest') return loginGuest();
+                var users = loadUsers();
+                if (getUser(users, name)) return askPass(name, 0);
+                createProfile(name);
+            });
     }
+    function askPass(name, tries) {
+        var gen = term.gen;
+        term.type(tries === 0 ? 'welcome back, ' + name + '. passcode?' : 'nope. ' + (3 - tries) + ' more, then I lock up:', tries === 0 ? '' : 'tl-warn', 45)
+            .then(function () { return term.ask({ mask: true }); })
+            .then(function (pass) {
+                if (gen !== term.gen) return;
+                return hashPass(name, pass).then(function (h) {
+                    if (gen !== term.gen) return;
+                    var rec = getUser(loadUsers(), name);
+                    if (rec && rec.h === h) return finishLogin(name, false);
+                    if (tries >= 2) return lockedOut(name);
+                    askPass(name, tries + 1);
+                });
+            });
+    }
+    function lockedOut(name) {
+        var gen = term.gen;
+        term.type('three strikes.', 'tl-warn', 45)
+            .then(function () {
+                term.line('type RESET to wipe "' + name + '" and start over,', 'tl-dim');
+                term.line('or just enter to play as a guest.', 'tl-dim');
+                return term.ask();
+            })
+            .then(function (v) {
+                if (gen !== term.gen) return;
+                if (String(v).trim().toLowerCase() === 'reset') return confirmWipe(name);
+                loginGuest();
+            });
+    }
+    function confirmWipe(name) {
+        var gen = term.gen;
+        term.type('this deletes ALL progress for "' + name + '". type YES:', 'tl-warn', 45)
+            .then(function () { return term.ask(); })
+            .then(function (v) {
+                if (gen !== term.gen) return;
+                if (String(v).trim().toLowerCase() === 'yes') {
+                    wipeProfile(name);
+                    term.line('> profile wiped. the eye forgets.', 'tl-dim');
+                    setTimeout(function () { if (gen === term.gen) askWho(); }, 450);
+                } else askWho();
+            });
+    }
+    function createProfile(name) {
+        var gen = term.gen;
+        term.type('new face. hello, ' + name + '.', '', 45)
+            .then(function () { return term.type('create a passcode:', '', 45); })
+            .then(function () {
+                term.line('do NOT use a real password.', 'tl-warn');
+                term.line('data is NOT very secure.', 'tl-warn');
+                return term.ask({ mask: true });
+            })
+            .then(function (p1) {
+                if (gen !== term.gen) return;
+                if (!p1) { term.line('> empty passcode. bold. try again.', 'tl-dim'); return createProfile(name); }
+                term.type('once more to confirm:', '', 45)
+                    .then(function () { return term.ask({ mask: true }); })
+                    .then(function (p2) {
+                        if (gen !== term.gen) return;
+                        if (p1 !== p2) { term.line('> mismatch. from the top.', 'tl-warn'); return createProfile(name); }
+                        hashPass(name, p1).then(function (h) {
+                            if (gen !== term.gen) return;
+                            var users = loadUsers();
+                            var firstEver = true;
+                            for (var k in users) { if (users.hasOwnProperty(k)) { firstEver = false; break; } }
+                            setUser(users, name, { h: h, c: Date.now(), l: Date.now() });
+                            if (!saveUsers(users)) {
+                                term.line('> storage full. profile could not be saved.', 'tl-warn');
+                                return loginGuest();
+                            }
+                            var imported = firstEver && importLegacy(name);
+                            term.line('> profile created.' + (imported ? ' old save data on this browser: imported.' : ''), '');
+                            finishLogin(name, false);
+                        });
+                    });
+            });
+    }
+    function loginGuest() {
+        var gen = term.gen;
+        currentUser = null;
+        sessSet(null);
+        loadEggs(); applyPrefs(); updateUserBtn();
+        term.type('no name, no trace. guest mode.', '', 50)
+            .then(function () {
+                term.line('(progress shares this browser\'s open slot)', 'tl-dim');
+                return term.pause(650);
+            })
+            .then(function () { if (gen === term.gen) openMenu(); });
+    }
+    function finishLogin(name, fromSession) {
+        var gen = term.gen;
+        currentUser = name;
+        sessSet(name);
+        var users = loadUsers(), rec = getUser(users, name);
+        if (rec) { rec.l = Date.now(); saveUsers(users); }
+        loadEggs(); applyPrefs(); updateUserBtn();
+        term.type(fromSession ? '> session restored: ' + name : '> access granted. hello, ' + name + '.', '', 50)
+            .then(function () { return term.pause(550); })
+            .then(function () { if (gen === term.gen) openMenu(); });
+    }
+    function skipBoot() { term.skip = true; }
 
     /* ---------------- input ---------------- */
     function press(a) {
         if (inserting) return;
-        if (state === 'boot') { if (a === 'a' || a === 'start' || a === 'up' || a === 'down') endBoot(); return; }
+        if (state === 'boot') {
+            if (a === 'select') { toggleList(); return; }        // the plain page never needs a login
+            if (!term.active && (a === 'a' || a === 'start')) skipBoot();
+            return;
+        }
         if (state === 'menu') {
             if (a === 'up' || a === 'left') moveSel(-1);
             else if (a === 'down' || a === 'right') moveSel(1);
@@ -806,9 +1134,13 @@
         press(a);
     });
 
-    // click the screen during boot to skip
+    // click the screen during boot: skip the cinematic, or refocus the login input
     var screen = byId('screen');
-    if (screen) screen.addEventListener('click', function () { if (state === 'boot') endBoot(); });
+    if (screen) screen.addEventListener('click', function () {
+        if (state !== 'boot') return;
+        if (term.active && term.input) { try { term.input.focus(); } catch (e) {} }
+        else skipBoot();
+    });
 
     /* ---------------- the eye: track + blink + sleep ---------------- */
     (function () {
@@ -857,13 +1189,52 @@
         })();
     })();
 
-    /* ---------------- toolbar: sound / theme / list ---------------- */
+    /* ---------------- toolbar: user / sound / theme / list ---------------- */
+    function savePrefs() {
+        if (state === 'boot') return;    // pre-login toggles are session-only; don't clobber a profile's prefs
+        try { localStorage.setItem('ub_prefs', JSON.stringify({ theme: themes[themeIdx] || '', sound: soundOn })); } catch (e) {}
+    }
+    function applyPrefs() {   // per-profile via the storage patch — restore at login/logout
+        var p = null;
+        try { p = JSON.parse(localStorage.getItem('ub_prefs') || 'null'); } catch (e) {}
+        if (!p) p = { theme: '', sound: false };     // no saved prefs: full defaults, don't leak the last profile's
+        setTheme(p.theme === 'theme-gameboy' ? 'theme-gameboy' : '');
+        soundOn = !!p.sound;
+        var sb = byId('soundBtn');
+        if (sb) {
+            sb.setAttribute('aria-pressed', soundOn ? 'true' : 'false');
+            sb.textContent = (soundOn ? '🔊' : '🔇') + ' SOUND';
+        }
+    }
+    var userBtn = byId('userBtn'), userArm = 0;
+    function updateUserBtn() {
+        if (userBtn) userBtn.textContent = '👤 ' + (currentUser ? currentUser.toUpperCase() : 'GUEST');
+    }
+    if (userBtn) userBtn.addEventListener('click', function () {
+        if (state === 'boot' || inserting) return;
+        if (state === 'game') { toast('eject to the shelf first, then switch profiles.'); return; }
+        if (Date.now() < userArm) {
+            userArm = 0;
+            currentUser = null;
+            sessSet(null);
+            loadEggs();          // drop the old profile's eggs from memory
+            applyPrefs();        // and its theme/sound
+            toast('logged out.');
+            updateUserBtn();
+            runBoot();
+        } else {
+            userArm = Date.now() + 2600;
+            toast((currentUser ? 'log out of <b>' + currentUser + '</b>?' : 'switch profile?') + ' tap again.');
+        }
+    });
+
     var soundBtn = byId('soundBtn');
     if (soundBtn) soundBtn.addEventListener('click', function () {
         soundOn = !soundOn;
         soundBtn.setAttribute('aria-pressed', soundOn ? 'true' : 'false');
         soundBtn.textContent = (soundOn ? '🔊' : '🔇') + ' SOUND';
         if (soundOn) beep(720, 0.08);
+        savePrefs();
     });
 
     var themes = ['', 'theme-gameboy'], themeIdx = 0;
@@ -878,7 +1249,9 @@
         themeIdx = (themeIdx + 1) % themes.length;
         setTheme(themes[themeIdx]);
         if (themes[themeIdx] === 'theme-gameboy') markEgg('gameboy', 'game boy mode');
+        savePrefs();
     });
+    updateUserBtn();
 
     /* ---------------- list view (accessible / "skip") ---------------- */
     var listBuilt = false;

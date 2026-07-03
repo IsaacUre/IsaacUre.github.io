@@ -91,17 +91,28 @@
                     <div class="screen-content" id="screenContent">
                         <div class="cart-load" id="cartLoad" hidden aria-hidden="true"></div>
 
-                        <!-- BOOT -->
-                        <section class="state state-boot" id="boot" data-state="boot" aria-label="Booting">
-                            <div class="boot-eye" aria-hidden="true">
-                                <svg viewBox="0 0 48 48" shape-rendering="crispEdges">
-                                    <g class="eye-ink" fill="currentColor"><rect x="22" y="12" width="14" height="2"/><rect x="16" y="14" width="24" height="2"/><rect x="14" y="16" width="28" height="2"/><rect x="8" y="18" width="24" height="2"/><rect x="38" y="18" width="6" height="2"/><rect x="42" y="20" width="4" height="2"/><rect x="44" y="22" width="2" height="2"/><rect x="4" y="24" width="4" height="2"/><rect x="46" y="24" width="2" height="2"/><rect x="2" y="26" width="2" height="2"/><rect x="0" y="28" width="2" height="2"/><rect x="38" y="28" width="10" height="2"/><rect x="6" y="30" width="12" height="2"/><rect x="32" y="30" width="8" height="2"/><rect x="14" y="32" width="22" height="2"/><rect x="20" y="34" width="10" height="2"/></g>
-                                    <g class="eye-pupil" fill="currentColor"><rect x="8" y="20" width="8" height="2"/><rect x="18" y="20" width="14" height="2"/><rect x="6" y="22" width="8" height="2"/><rect x="18" y="22" width="8" height="2"/><rect x="30" y="22" width="6" height="2"/><rect x="18" y="24" width="14" height="2"/><rect x="20" y="26" width="12" height="2"/><rect x="20" y="28" width="10" height="2"/><g class="eye-glint"><rect x="16" y="20" width="2" height="2"/><rect x="14" y="22" width="4" height="2"/></g></g>
-                                </svg>
+                        <!-- BOOT: cracked terminal + login -->
+                        <section class="state state-boot" id="boot" data-state="boot" aria-label="Booting — log in or continue as guest">
+                            <div class="term" id="term">
+                                <div class="term-scroll" id="termLog" aria-live="polite"></div>
+                                <div class="term-row" id="termRow" hidden>
+                                    <span class="term-ps" aria-hidden="true">&gt;</span>
+                                    <input class="term-input" id="termInput" type="text" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="24" aria-label="terminal input">
+                                </div>
                             </div>
-                            <div class="boot-word">URE<b>BOY</b></div>
-                            <pre class="boot-log" id="bootLog"></pre>
-                            <div class="boot-hint">▸ press <b>A</b> / tap to skip</div>
+                            <template id="termHeroTpl">
+                                <div class="term-hero">
+                                    <span class="term-eye" aria-hidden="true">
+                                        <svg viewBox="0 0 48 48" shape-rendering="crispEdges">
+                                            <g class="eye-ink" fill="currentColor"><rect x="22" y="12" width="14" height="2"/><rect x="16" y="14" width="24" height="2"/><rect x="14" y="16" width="28" height="2"/><rect x="8" y="18" width="24" height="2"/><rect x="38" y="18" width="6" height="2"/><rect x="42" y="20" width="4" height="2"/><rect x="44" y="22" width="2" height="2"/><rect x="4" y="24" width="4" height="2"/><rect x="46" y="24" width="2" height="2"/><rect x="2" y="26" width="2" height="2"/><rect x="0" y="28" width="2" height="2"/><rect x="38" y="28" width="10" height="2"/><rect x="6" y="30" width="12" height="2"/><rect x="32" y="30" width="8" height="2"/><rect x="14" y="32" width="22" height="2"/><rect x="20" y="34" width="10" height="2"/></g>
+                                            <g class="eye-pupil" fill="currentColor"><rect x="8" y="20" width="8" height="2"/><rect x="18" y="20" width="14" height="2"/><rect x="6" y="22" width="8" height="2"/><rect x="18" y="22" width="8" height="2"/><rect x="30" y="22" width="6" height="2"/><rect x="18" y="24" width="14" height="2"/><rect x="20" y="26" width="12" height="2"/><rect x="20" y="28" width="10" height="2"/><g class="eye-glint"><rect x="16" y="20" width="2" height="2"/><rect x="14" y="22" width="4" height="2"/></g></g>
+                                            <g class="eye-lids" clip-path="url(#ureEyeClip)"><g class="eye-lid eye-lid-top"><g class="lid-skin"><rect x="-4" y="-20" width="8" height="46"/><rect x="4" y="-18" width="8" height="46"/><rect x="12" y="-16" width="24" height="46"/><rect x="36" y="-18" width="8" height="46"/><rect x="44" y="-20" width="8" height="46"/></g><g class="lid-edge"><rect x="-4" y="24" width="8" height="2"/><rect x="4" y="26" width="8" height="2"/><rect x="12" y="28" width="24" height="2"/><rect x="36" y="26" width="8" height="2"/><rect x="44" y="24" width="8" height="2"/></g></g><g class="eye-lid eye-lid-bottom"><g class="lid-skin"><rect x="-4" y="26" width="8" height="46"/><rect x="4" y="28" width="8" height="46"/><rect x="12" y="30" width="24" height="46"/><rect x="36" y="28" width="8" height="46"/><rect x="44" y="26" width="8" height="46"/></g><g class="lid-edge"><rect x="-4" y="26" width="8" height="2"/><rect x="4" y="28" width="8" height="2"/><rect x="12" y="30" width="24" height="2"/><rect x="36" y="28" width="8" height="2"/><rect x="44" y="26" width="8" height="2"/></g></g></g>
+                                        </svg>
+                                    </span>
+                                    <pre class="term-ascii" aria-hidden="true"></pre>
+                                    <div class="term-tag">A GOOD EYE OS <b>v1.0</b></div>
+                                </div>
+                            </template>
                         </section>
 
                         <!-- HOME -->
@@ -157,6 +168,7 @@
             </div>
 
             <div class="toolbar">
+                <button class="tool" id="userBtn" aria-label="Profile — tap twice to log out">👤 GUEST</button>
                 <button class="tool" id="soundBtn" aria-pressed="false" aria-label="Toggle sound">🔇 SOUND</button>
                 <button class="tool" id="themeBtn" aria-pressed="false" aria-label="Switch theme">🎨 THEME</button>
                 <button class="tool" id="listBtn"  aria-pressed="false" aria-label="Show plain list view">☰ LIST</button>
