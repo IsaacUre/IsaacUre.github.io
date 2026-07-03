@@ -56,6 +56,7 @@
         "PHOTOS ............. ok",
         "GARAGE  MK8 GTI .... ok",
         "DICE  loaded ....... ok",
+        "QUEST ROM  8 MEG ... ok",
         "READY."
     ];
 
@@ -177,7 +178,7 @@
         },
         {
             id: 'gtirun', ico: '🏁', name: 'GTI RUN', tag: 'pedal to the pixels', color: '#2f9e44',
-            fullbleed: true,
+            fs: true,
             render: function () {
                 return '<div class="gtirun-host" id="gtirunHost"></div>';
             },
@@ -188,11 +189,11 @@
                 if (window.GTIRUN) window.GTIRUN.unmount();
             },
             /* the game owns the controls; only SELECT (list view) passes through */
-            onPress: function (a) { return window.GTIRUN ? window.GTIRUN.press(a) : false; }
+            input: function (a) { return window.GTIRUN ? window.GTIRUN.press(a) : false; }
         },
         {
             id: 'pitlane', ico: '🏎️', name: 'PIT LANE', tag: 'race the budget', color: '#1e6fb8',
-            fullbleed: true,
+            fs: true,
             render: function () {
                 return '<div class="gtirun-host pitlane-host" id="pitlaneHost"></div>';
             },
@@ -202,18 +203,26 @@
             onHide: function () {
                 if (window.PITLANE) window.PITLANE.unmount();
             },
-            onPress: function (a) { return window.PITLANE ? window.PITLANE.press(a) : false; }
+            input: function (a) { return window.PITLANE ? window.PITLANE.press(a) : false; }
         },
         {
-            id: 'quest', ico: '🎲', name: 'QUEST', tag: 'roll for loot', color: '#7b53c9',
+            id: 'quest', ico: '🎲', name: 'QUEST', tag: 'a whole pocket CRPG', color: '#7b53c9',
+            fs: true,   // takes over the entire LCD — no game bar
             render: function () {
-                return '<div class="quest-felt"><div class="die" id="die" role="button" tabindex="0" aria-label="Roll a d20">20</div>' +
-                    '<div class="quest-msg" id="questMsg">tap the die.</div></div>' +
-                    '<div class="quest-actions"><button class="qbtn" id="rollBtn">Roll d20</button>' +
-                    '<button class="qbtn" id="charBtn">Roll a character</button></div>' +
-                    '<ul class="roll-log" id="rollLog"></ul><div id="lootSlot"></div>';
+                return '<div class="uq-holder" id="uqHolder"><div class="uq-boot">READING QUEST ROM<span class="cl-cur">_</span></div></div>';
             },
-            onShow: wireQuest
+            onShow: function () {
+                var holder = byId('uqHolder');
+                var boot = function () { if (window.UreQuest && holder) window.UreQuest.mount(holder, QUEST_API); };
+                if (window.UreQuest) { boot(); return; }
+                var s = document.createElement('script');
+                s.src = '/ureboy/quest.js';
+                s.onload = boot;
+                s.onerror = function () { if (holder) holder.innerHTML = '<div class="uq-boot">ROM READ ERROR.<br>blow into the cartridge<br>and re-insert it.</div>'; };
+                document.head.appendChild(s);
+            },
+            onHide: function () { if (window.UreQuest) window.UreQuest.unmount(); },
+            input: function (a) { return window.UreQuest ? window.UreQuest.input(a) : false; }
         },
         {
             id: 'work', ico: '💼', name: 'WORK', tag: 'the professional cartridge', color: '#c7972f',
@@ -308,83 +317,16 @@
         });
     }
 
-    /* ---------------- quest ---------------- */
-    function wireQuest() {
-        var die = byId('die'), msg = byId('questMsg'), log = byId('rollLog');
-        var charClasses = ['Finance Bard', 'Spreadsheet Paladin', 'Tornado-Red Rogue', 'Shutter Druid', 'Caffeinated Sorcerer'];
-
-        function logLine(s) {
-            if (!log) return;
-            var li = document.createElement('li'); li.textContent = s;
-            log.insertBefore(li, log.firstChild);
-        }
-        function roll() {
-            var n;
-            if (!sessionStorage.getItem('ub_rolled')) { n = 20; try { sessionStorage.setItem('ub_rolled', '1'); } catch (e) {} }
-            else { n = 1 + Math.floor(Math.random() * 20); }
-            if (die) {
-                die.classList.remove('crit', 'fail', 'rolling'); void die.offsetWidth;
-                die.classList.add('rolling'); die.textContent = n;
-            }
-            beep(300, 0.05); setTimeout(function () { beep(420, 0.05); }, 80);
-            if (n === 20) {
-                if (die) die.classList.add('crit');
-                if (msg) msg.innerHTML = '★ CRITICAL HIT ★';
-                logLine('d20 → 20  (natural!)');
-                burst(document.querySelector('.quest-felt'));
-                showLoot();
-                markEgg('nat20', 'critical hit');
-            } else if (n === 1) {
-                if (die) die.classList.add('fail');
-                if (msg) msg.textContent = 'natural 1. the DM smiles.';
-                logLine('d20 → 1  (oof)');
-                toast('the DM smiles. 🎲');
-            } else {
-                if (msg) msg.textContent = n >= 15 ? 'solid roll.' : n >= 8 ? 'it\'ll do.' : 'we don\'t talk about that one.';
-                logLine('d20 → ' + n);
-            }
-        }
-        function rollChar() {
-            var cls = charClasses[Math.floor(Math.random() * charClasses.length)];
-            var line = cls + ' · CR 1/2 · INT ' + (13 + Math.floor(Math.random() * 5)) + ' · CHA ' + (11 + Math.floor(Math.random() * 6)) + ' · CON (caffeinated)';
-            if (msg) msg.textContent = cls + '!';
-            logLine(line);
-            beep(660, 0.06);
-            markEgg('character', 'rolled a character');
-        }
-        function showLoot() {
-            var slot = byId('lootSlot'); if (!slot) return;
-            slot.innerHTML = '<div class="loot"><div class="loot-title">★ LEGENDARY LOOT ★</div>' +
-                '<p style="font-family:var(--font-body);font-size:.84rem;margin:.35rem 0">You found <b>Isaac\'s résumé</b>. It\'s surprisingly well-formatted.</p>' +
-                '<button class="cbtn" id="lootBtn">Claim résumé</button></div>';
-            byId('lootBtn').addEventListener('click', resumeAction);
-        }
-        if (die) {
-            die.addEventListener('click', roll);
-            die.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); roll(); } });
-        }
-        var rb = byId('rollBtn'); if (rb) rb.addEventListener('click', roll);
-        var cb = byId('charBtn'); if (cb) cb.addEventListener('click', rollChar);
-    }
-
-    function burst(host) {
-        if (reduce || !host || !host.animate) return;
-        var colors = ['#D81E05', '#1A1A18', '#2f5d3a', '#f3f1e2'];
-        for (var i = 0; i < 18; i++) {
-            var p = document.createElement('span');
-            p.className = 'confetti-pc';
-            p.style.left = (8 + Math.random() * 84) + '%';
-            p.style.background = colors[i % colors.length];
-            host.appendChild(p);
-            (function (node) {
-                node.animate(
-                    [{ transform: 'translateY(0) rotate(0)', opacity: 1 },
-                     { transform: 'translateY(130px) rotate(' + (360 + Math.random() * 360) + 'deg)', opacity: 0 }],
-                    { duration: 900 + Math.random() * 500, easing: 'cubic-bezier(.2,.6,.4,1)' }
-                ).onfinish = function () { if (node.parentNode) node.parentNode.removeChild(node); };
-            })(p);
-        }
-    }
+    /* ---------------- quest (URE QUEST — the CRPG lives in /ureboy/quest.js) ----------------
+       The cartridge lazy-loads the ROM and hands it this little API so the game can
+       ring the console's bell without reaching into our closure. */
+    var QUEST_API = {
+        toast: toast,
+        markEgg: markEgg,
+        soundOn: function () { return soundOn; },
+        reduced: reduce,
+        eject: function () { openMenu(); }
+    };
 
     /* bridge handed to game cartridges (GTI RUN, PIT LANE) — audio, theme, eggs, quit */
     function gameCartAPI() {
@@ -507,7 +449,7 @@
     }
     function openMenu() {
         if (inserting) return;
-        if (curCart && curCart.onHide) { try { curCart.onHide(); } catch (e) {} }
+        if (state === 'game' && curCart && curCart.onHide) { try { curCart.onHide(); } catch (e) {} }
         if (dockedIdx === null) { reallyOpenMenu(); return; }
         if (reduce) { var di = dockedIdx; clearDock(); setVacant(di, false); reallyOpenMenu(); return; }
         inserting = true; setBusy(true);
@@ -527,11 +469,11 @@
     }
 
     function renderGame(idx) {
-        if (curCart && curCart.onHide) { try { curCart.onHide(); } catch (e) {} }
+        if (curCart && curCart.onHide && curCart !== CARTS[idx]) { try { curCart.onHide(); } catch (e) {} }
         sel = idx;
         curCart = CARTS[idx];
         var gt = byId('gameTitle'); if (gt) gt.textContent = curCart.ico + ' ' + curCart.name;
-        var gm = byId('game'); if (gm) gm.classList.toggle('fullbleed', !!curCart.fullbleed);
+        var gameSec = byId('game'); if (gameSec) gameSec.classList.toggle('fs', !!curCart.fs);
         var body = byId('gameBody');
         body.innerHTML = curCart.render();
         body.scrollTop = 0;
@@ -795,7 +737,7 @@
             return;
         }
         if (state === 'game') {
-            if (curCart && curCart.onPress && curCart.onPress(a)) return;   // a game cart owns the controls
+            if (curCart && curCart.input && curCart.input(a)) return;   // the cartridge ate it
             if (a === 'b' || a === 'start') openMenu();
             else if (a === 'select') toggleList();
         }
@@ -805,8 +747,24 @@
         var b = byId(id);
         if (b) b.addEventListener('click', function () { press(action); });
     }
-    bindButton('dUp', 'up'); bindButton('dDown', 'down');
-    bindButton('dLeft', 'left'); bindButton('dRight', 'right');
+    // d-pad buttons auto-repeat while held (walking across a map one tap at a time is cruel)
+    function bindHold(id, action) {
+        var b = byId(id); if (!b) return;
+        var t = null, iv = null, fromPointer = false;
+        function stop() { clearTimeout(t); clearInterval(iv); t = iv = null; }
+        b.addEventListener('pointerdown', function () {
+            fromPointer = true; press(action);
+            stop();
+            t = setTimeout(function () { iv = setInterval(function () { press(action); }, 110); }, 300);
+        });
+        ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (ev) { b.addEventListener(ev, stop); });
+        b.addEventListener('click', function () {         // keyboard activation still works;
+            if (fromPointer) { fromPointer = false; return; } // pointer taps already fired on pointerdown
+            press(action);
+        });
+    }
+    bindHold('dUp', 'up'); bindHold('dDown', 'down');
+    bindHold('dLeft', 'left'); bindHold('dRight', 'right');
     bindButton('btnA', 'a'); bindButton('btnB', 'b');
     bindButton('btnStart', 'start'); bindButton('btnSelect', 'select');
 
@@ -842,6 +800,8 @@
         if ((k === 'Enter' || k === ' ') && (tag === 'BUTTON' || tag === 'A')) return;
         if ((a === 'up' || a === 'down') && (state === 'menu' || state === 'boot')) e.preventDefault();
         if ((a === 'left' || a === 'right') && state === 'menu') e.preventDefault();
+        // a fullscreen cartridge (the QUEST ROM) owns the arrows — don't scroll the page under it
+        if (state === 'game' && curCart && curCart.fs && (a === 'up' || a === 'down' || a === 'left' || a === 'right' || k === ' ')) e.preventDefault();
         if (k === 'Backspace') e.preventDefault();
         press(a);
     });
@@ -931,7 +891,7 @@
             '<h2>Currently</h2><ul>' + d.about.now.map(function (x) { return '<li>' + x + '</li>'; }).join('') + '</ul>' +
             '<h2>Garage — MK8 GTI</h2><ul>' + d.garage.mods.map(function (m) { return '<li><b>' + m.part + '</b> (' + m.spec + ') — ' + m.note + '</li>'; }).join('') + '</ul>' +
             '<h2>Work</h2><ul>' + d.work.map(function (w) { return '<li><b>' + w.role + '</b> — ' + w.org + ' <em>(' + w.date + ')</em></li>'; }).join('') + '</ul>' +
-            '<h2>Games</h2><p>There are also two game cartridges — <b>GTI Run</b>, a pseudo-3D arcade racer starring the GTI, and <b>Pit Lane</b>, a Formula SAE season manager where you run a rookie team\'s budget. Both need the console view (and JavaScript).</p>' +
+            '<h2>Games</h2><p>There are three game cartridges — <b>GTI Run</b>, a pseudo-3D arcade racer starring the GTI; <b>Pit Lane</b>, a Formula SAE season manager where you run a rookie team\'s budget; and <b>URE QUEST: The Check-Engine Prophecy</b>, a tiny D&amp;D-flavored RPG about lifting a check-engine curse. They need the console view (and are better with SOUND on).</p>' +
             '<h2>Contact</h2><p><a href="mailto:' + d.contact.email + '">' + d.contact.email + '</a> · <a href="' + d.contact.linkedin + '" rel="me">LinkedIn</a></p>' +
             '<p style="color:#8a8a82;font-size:.85rem">Previous version of this site is archived at <a href="/behind-the-lens/">/behind-the-lens/</a>.</p>';
         byId('listBack').addEventListener('click', function () { toggleList(false); });
