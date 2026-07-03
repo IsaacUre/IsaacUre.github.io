@@ -317,21 +317,47 @@ body.cart-busy .dpad, body.cart-busy .ab, body.cart-busy .startbar { pointer-eve
 .cl-cur { animation: blinkCur .5s steps(1) infinite; }
 @keyframes blinkCur { 50% { opacity: 0; } }
 
-/* ── BOOT ── */
-.state-boot { align-items: center; justify-content: center; gap: .5rem; text-align: center; }
-.boot-eye { width: 46px; height: 46px; color: var(--screen-ink); }
-.boot-eye svg { width: 100%; height: 100%; }
-.js .boot-eye svg { animation: bootBlink 1.1s ease .15s both; }
+/* ── BOOT (cracked terminal + login) ── */
 @keyframes bootBlink { 0% { transform: scaleY(.05); opacity: 0;} 30% { opacity: 1;} 60% { transform: scaleY(.05);} 100% { transform: scaleY(1); opacity: 1;} }
-.boot-word { font-family: var(--font-pixel); font-size: .9rem; color: var(--screen-ink); }
-.boot-word b { color: var(--screen-accent); }
-.boot-log {
-    font-family: var(--font-term); font-size: 1.05rem; line-height: 1.05;
-    color: var(--screen-dim); text-align: left; min-height: 5.2em; white-space: pre-wrap;
-    width: 100%;
+.state-boot { align-items: stretch; justify-content: flex-start; text-align: left; padding: .7rem .75rem; }
+.term { display: flex; flex-direction: column; height: 100%; overflow: hidden; font-family: var(--font-term); }
+.term-scroll { flex: 0 1 auto; overflow: hidden; }
+.tl { font-size: .98rem; line-height: 1.12; color: var(--screen-ink); white-space: pre-wrap; word-break: break-word; }
+.tl-dim { color: var(--screen-dim); }
+.tl-warn { color: var(--screen-accent); }
+.tl-echo { color: var(--screen-dim); }
+.term-block {
+    display: inline-block; width: .55em; height: .95em; margin-top: .1em;
+    background: var(--screen-ink); vertical-align: text-bottom;
+    animation: termBlink 1.06s steps(1) infinite;
 }
-.boot-hint { font-family: var(--font-ui); font-size: .72rem; color: var(--screen-dim); }
-.boot-hint b { color: var(--screen-accent); }
+@keyframes termBlink { 50% { opacity: 0; } }
+.term-row { display: flex; align-items: baseline; gap: .3rem; flex: none; }
+.term-row[hidden] { display: none; }
+.term-ps { font-size: .98rem; color: var(--screen-accent); }
+.term-input {
+    flex: 1; min-width: 0; background: transparent; border: none; outline: none; padding: 0;
+    font-family: var(--font-term); font-size: 16px; color: var(--screen-ink); /* 16px+: iOS won't zoom on focus */
+    caret-color: var(--screen-accent);
+}
+.term-hero { display: flex; flex-direction: column; align-items: center; gap: .25rem; margin: .4rem 0 .5rem; }
+.term-eye { width: 32px; height: 32px; color: var(--screen-ink); --eye-hi: var(--screen-hi); --eye-skin: var(--screen-bg); }
+.term-eye svg { width: 100%; height: 100%; overflow: visible; }
+/* the eye boots shut; .awake lifts the lids */
+.term-eye .eye-lid-top, .term-eye .eye-lid-bottom { transform: translateY(0); transition: transform .55s ease .12s; }
+.term-eye .eye-pupil { opacity: 0; transition: opacity .3s ease .4s; }
+.term-hero.awake .term-eye .eye-lid-top { transform: translateY(-22px); }
+.term-hero.awake .term-eye .eye-lid-bottom { transform: translateY(8px); }
+.term-hero.awake .term-eye .eye-pupil { opacity: 1; }
+.term-ascii {
+    font-family: var(--font-term); font-size: clamp(8px, 3.6vw, 14px); line-height: 1.02;
+    color: var(--screen-ink); margin: 0;
+}
+.term-tag { font-family: var(--font-pixel); font-size: .4rem; letter-spacing: 1px; color: var(--screen-dim); }
+.term-tag b { color: var(--screen-accent); }
+@media (prefers-reduced-motion: reduce) {
+    .term-eye .eye-lid-top, .term-eye .eye-lid-bottom, .term-eye .eye-pupil { transition: none; }
+}
 
 /* ── HOME (in-screen) ── */
 .home { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .5rem; text-align: center; }
