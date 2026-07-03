@@ -993,7 +993,7 @@
                 if (gen !== term.gen) return;
                 return hashPass(name, pass).then(function (h) {
                     if (gen !== term.gen) return;
-                    if (rec && rec.h === h) return finishLogin(name, false);
+                    if (rec && rec.h === h) return finishLogin(name, false, source === 'cloud' ? rec : null);
                     if (tries >= 2) return lockedOut(name);
                     askPass(name, tries + 1, rec, source);
                 });
@@ -1046,29 +1046,44 @@
                         hashPass(name, p1).then(function (h) {
                             if (gen !== term.gen) return;
                             var rec = { h: h, c: Date.now(), l: Date.now() };
-                            var users = loadUsers();
-                            var firstEver = true;
-                            for (var k in users) { if (users.hasOwnProperty(k)) { firstEver = false; break; } }
-                            setUser(users, name, rec);
-                            if (!saveUsers(users)) {
-                                term.line('> storage full. profile could not be saved.', 'tl-warn');
-                                return loginGuest();
+                            /* commit locally + import legacy ONLY once we own the name
+                               (created in cloud, or cloud not writable/off). */
+                            function commitLocal() {
+                                var users = loadUsers();
+                                var firstEver = true;
+                                for (var k in users) { if (users.hasOwnProperty(k)) { firstEver = false; break; } }
+                                setUser(users, name, rec);
+                                if (!saveUsers(users)) {
+                                    term.line('> storage full. profile could not be saved.', 'tl-warn');
+                                    return loginGuest();
+                                }
+                                var imported = firstEver && importLegacy(name);
+                                term.line('> profile created.' + (imported ? ' old save data on this browser: imported.' : ''), '');
+                                finishLogin(name, false);
                             }
-                            var imported = firstEver && importLegacy(name);
-                            term.line('> profile created.' + (imported ? ' old save data on this browser: imported.' : ''), '');
-                            /* register the account in the cloud too, when this device can write */
                             if (cloudReady() && window.UreCloud.canWrite()) {
                                 term.line('> claiming cloud account...', 'tl-dim');
-                                window.UreCloud.createUser(name, rec).then(function () {
-                                    if (gen === term.gen) finishLogin(name, false);
+                                window.UreCloud.createUser(name, rec).then(function (r) {
+                                    if (gen !== term.gen) return;
+                                    if (r && r.taken) {
+                                        /* someone already owns this name in the cloud — don't create a
+                                           conflicting local record; ask for the existing account's passcode */
+                                        term.line('> "' + name + '" already exists in the cloud.', 'tl-warn');
+                                        term.line('  enter its passcode to log in:', 'tl-dim');
+                                        window.UreCloud.getUser(name).then(function (cr) {
+                                            if (gen === term.gen) askPass(name, 0, cr, 'cloud');
+                                        });
+                                        return;
+                                    }
+                                    commitLocal();
                                 }).catch(function (e) {
                                     if (gen !== term.gen) return;
                                     term.line('> cloud unavailable (' + (e && e.message || 'offline') + '). saved on this device.', 'tl-warn');
-                                    finishLogin(name, false);
+                                    commitLocal();
                                 });
                             } else {
                                 if (cloudReady()) term.line('> (local only - this device can\'t write to the cloud)', 'tl-dim');
-                                finishLogin(name, false);
+                                commitLocal();
                             }
                         });
                     });
@@ -1086,12 +1101,13 @@
             })
             .then(function () { if (gen === term.gen) openMenu(); });
     }
-    function finishLogin(name, fromSession) {
+    function finishLogin(name, fromSession, cloudRec) {
         var gen = term.gen;
         currentUser = name;
         sessSet(name);
-        var users = loadUsers(), rec = getUser(users, name);
-        if (rec) { rec.l = Date.now(); saveUsers(users); }
+        var users = loadUsers(), existing = getUser(users, name);
+        if (existing) { existing.l = Date.now(); saveUsers(users); }
+        else if (cloudRec) { setUser(users, name, cloudRec); saveUsers(users); }   // cache a cloud-only account for offline warm boot
         updateUserBtn();
         term.type(fromSession ? '> session restored: ' + name : '> access granted. hello, ' + name + '.', '', 50)
             .then(function () {
@@ -1113,15 +1129,15 @@
             })
             .then(function () { if (gen === term.gen) openMenu(); });
     }
-    /* resolve an account: cloud first (cached locally), else local. Never rejects. */
+    /* resolve an account for a typed name: cloud first, else local. NEVER writes the
+       local credential store here — a public-gist record for this name (possibly a
+       stranger's) must not overwrite your local account before you've proven the
+       passcode. The cloud record is cached locally only on a successful login. */
     function resolveUser(name) {
         var localRec = getUser(loadUsers(), name);
         if (!cloudReady()) return Promise.resolve({ rec: localRec, source: localRec ? 'local' : null });
         return window.UreCloud.getUser(name).then(function (rec) {
-            if (rec) {
-                var users = loadUsers(); setUser(users, name, rec); saveUsers(users);   // cache the cloud record
-                return { rec: rec, source: 'cloud' };
-            }
+            if (rec) return { rec: rec, source: 'cloud' };
             return { rec: localRec, source: localRec ? 'local' : null };
         }, function () {
             return { rec: localRec, source: localRec ? 'local' : null };   // offline -> local fallback
@@ -1150,6 +1166,12 @@
     /* ---------------- cloud (cross-device) setup ---------------- */
     function syncSetup() {
         var gen = term.gen;
+        if (!window.UreCloud) {   // cloud.js failed to load (404/blocked) — don't dereference it
+            term.type('cloud module unavailable.', 'tl-warn', 45)
+                .then(function () { return term.pause(700); })
+                .then(function () { if (gen === term.gen) askWho(); });
+            return;
+        }
         var st = cloudReady() ? (window.UreCloud.canWrite() ? 'ON (this device can read + write)'
                                                            : 'ON (read-only - no token on this device)')
                               : 'OFF';

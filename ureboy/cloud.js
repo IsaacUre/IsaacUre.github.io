@@ -113,31 +113,38 @@
         });
     }
 
-    /* Optimistic read-modify-write with a small retry: fetch fresh, apply
-       mutate(blob) (which may return false to abort), PATCH; on a rev race
-       (someone else wrote between our read and write) re-fetch and retry. */
-    function writeBlob(mutate, tries) {
+    /* Read-modify-write against a gist, which has no compare-and-swap. Two guards:
+       (1) a same-device single-flight mutex (writeLock) so this device never has two
+       PATCHes racing each other; (2) a genuine post-write verification — a gist PATCH
+       echoes back exactly what we sent, so trusting the response can't detect a
+       concurrent writer. We re-GET after the PATCH and, if the true stored content
+       isn't ours, another device wrote in the window: re-fetch, re-merge, retry. */
+    var writeLock = Promise.resolve();
+    function writeBlob(mutate, opts) {
+        var run = function () { return doWrite(mutate, opts || {}, 4); };
+        var p = writeLock.then(run, run);
+        writeLock = p.then(function () {}, function () {});   // keep the chain alive past errors
+        return p;
+    }
+    function doWrite(mutate, opts, tries) {
         if (!ready()) return Promise.reject(new Error('cloud off'));
         if (!canWrite()) return Promise.reject(new Error('read-only (no token on this device)'));
-        tries = tries == null ? 3 : tries;
         return fetchBlob(true).then(function (blob) {
-            var baseRev = blob.rev || 0;
             var next = JSON.parse(JSON.stringify(blob));
             if (mutate(next) === false) return blob;      // nothing to write
-            next.rev = baseRev + 1;
+            next.rev = (blob.rev || 0) + 1;
+            var nextStr = JSON.stringify(next);
             var files = {};
-            files[CFG.file] = { content: JSON.stringify(next) };
-            return ghFetch('/gists/' + gistId(), { method: 'PATCH', auth: true, body: { files: files } })
+            files[CFG.file] = { content: nextStr };
+            return ghFetch('/gists/' + gistId(), { method: 'PATCH', auth: true, body: { files: files }, keepalive: opts.keepalive })
                 .then(function (gist) {
                     var written = parseGist(gist);
-                    /* trust our write, but guard against a lost update: if the
-                       returned rev isn't ours and we have retries left, redo */
-                    if (written.rev !== next.rev && tries > 0) {
-                        cache.blob = written; cache.at = Date.now();
-                        return writeBlob(mutate, tries - 1);
-                    }
                     cache.blob = written; cache.at = Date.now();
-                    return written;
+                    if (tries <= 0 || opts.keepalive) return written;   // beacon path: no verify round-trip
+                    return fetchBlob(true).then(function (fresh) {
+                        if (JSON.stringify(fresh) === nextStr) return fresh;   // our write survived
+                        return doWrite(mutate, opts, tries - 1);               // clobbered -> re-merge & retry
+                    }, function () { return written; });                        // verify GET failed: trust the write
                 });
         });
     }
@@ -151,12 +158,13 @@
         });
     }
     function createUser(name, rec) {
+        var taken = false;
         return writeBlob(function (blob) {
-            if (Object.prototype.hasOwnProperty.call(blob.users, name)) return false;   // taken
+            if (Object.prototype.hasOwnProperty.call(blob.users, name)) { taken = true; return false; }
             blob.users[name] = rec;
             if (!blob.saves[name]) blob.saves[name] = {};
             return true;
-        }).then(function () { return { ok: true }; });
+        }).then(function () { return { ok: !taken, taken: taken }; });
     }
     function touchUser(name) {
         return writeBlob(function (blob) {
@@ -219,7 +227,10 @@
                 if (!Object.prototype.hasOwnProperty.call(cloudSaves, key)) continue;
                 var cv = cloudSaves[key];               // { v: string|null, t: int }
                 var localT = meta.keys[key] || 0;
-                if (cv.t > localT) {                    // cloud is newer -> apply
+                var lv = localByLogical[key] ? localByLogical[key].value : null;
+                /* symmetric with push: cloud wins if newer, or same-ms tie with a
+                   lexicographically-greater value (same deterministic winner) */
+                if (cv.t > localT || (cv.t === localT && String(cv.v) > String(lv))) {
                     var real = userPrefix(name) + key;
                     if (cv.v === null || cv.v === undefined) { lsRm(real); }
                     else { lsSet(real, cv.v); }
@@ -236,7 +247,7 @@
     /* ---------------- push: local -> cloud ---------------- */
     var pending = {};   // name -> true (has un-pushed local changes)
     var timer = null;
-    function push(name) {
+    function push(name, opts) {
         if (!ready() || !canWrite() || !name) return Promise.resolve(null);
         var meta = loadMeta(name);
         var locals = enumLocal(name);
@@ -253,7 +264,9 @@
                 var e = locals[i];
                 var t = meta.keys[e.logical] || Date.now();
                 var existing = cloudSaves[e.logical];
-                if (!existing || t > existing.t) {
+                /* newer wins; on an exact-ms tie the lexicographically-greater value
+                   wins deterministically so both devices converge (no ping-pong) */
+                if (!existing || t > existing.t || (t === existing.t && String(e.value) > String(existing.v))) {
                     cloudSaves[e.logical] = { v: e.value, t: t };
                     changed = true;
                 }
@@ -271,7 +284,7 @@
                 }
             }
             return changed;
-        }).then(function (written) {
+        }, opts).then(function (written) {
             if (written) { meta.rev = written.rev; saveMeta(name, meta); }
             return written;
         });
@@ -299,13 +312,15 @@
         pending[name] = true;
         schedule();
     }
-    /* best-effort flush when the tab is closing/hidden */
+    /* best-effort flush when the tab is closing/hidden. keepalive:true lets the PATCH
+       survive teardown (and skips the verify round-trip that wouldn't finish); if it
+       still doesn't land, the change is safe locally and re-pushes at the next login. */
     function flushBeacon() {
         if (!canWrite()) return;
         var names = Object.keys(pending);
         if (!names.length) return;
-        /* fire-and-forget; keepalive lets it survive unload */
-        names.forEach(function (n) { push(n).catch(function () {}); });
+        pending = {};
+        names.forEach(function (n) { push(n, { keepalive: true }).catch(function () {}); });
     }
 
     /* ---------------- setup / teardown ---------------- */
