@@ -593,6 +593,9 @@ body.cart-busy .dpad, body.cart-busy .ab, body.cart-busy .startbar { pointer-eve
 
 /* ───────────── focus ───────────── */
 :focus-visible { outline: 3px solid var(--red); outline-offset: 2px; border-radius: 3px; }
+/* the login input shows focus via its blinking caret; the offset red outline
+   around a flex text field renders janky, so suppress it there */
+.term-input:focus, .term-input:focus-visible { outline: none; }
 
 /* ───────────── fallback / list view ───────────── */
 .fallback {
