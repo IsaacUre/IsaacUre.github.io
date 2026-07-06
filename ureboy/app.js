@@ -180,7 +180,7 @@
         ['type', '> ICE_BREAK v2.6 (4d20 entropy)'],
         ['slam', '  0xC0FFEE 0xDEC0DE 0xD1CE20'],
         ['type', '> memcheck 8K ................ ok'],
-        ['type', '> mounting /carts ........ 7 found'],
+        ['type', '> mounting /carts ........ 6 found'],
         ['type', '> eye subsystem ........... waking']
     ];
 
@@ -281,16 +281,6 @@
 
     /* ---------------- cartridges ---------------- */
     var CARTS = [
-        {
-            id: 'about', ico: '👤', name: 'ABOUT', tag: 'who is this guy', color: '#5a6acf',
-            render: function () {
-                var d = DATA.about;
-                return '<p class="gb-lead">' + d.lead + '</p>' +
-                    '<p class="gb-lead dim">' + d.lead2 + '</p>' +
-                    '<div class="gb-h">// currently</div>' +
-                    '<ul class="now-list">' + d.now.map(function (x) { return '<li>' + x + '</li>'; }).join('') + '</ul>';
-            }
-        },
         {
             id: 'photos', ico: '📷', name: 'PHOTOS', tag: 'a good eye, allegedly', color: '#1f9e98',
             render: function () { return '<p class="gb-lead dim">Real frames go here — Thresher &amp; Rice Raw. Tap one.</p>' + photoGridHTML(); },
@@ -1000,7 +990,7 @@
        `px` shifts the pupil for a look-around flourish. Rendering successive
        apertures as stacked blocks + an eased scroll makes the eye blink while old
        frames scroll up the screen — the terminal-flipbook aesthetic. */
-    var EYE_W = 34, EYE_H = 15, EYE_CX = 17, EYE_CY = 7, EYE_B = 16, EYE_A = 6;
+    var EYE_W = 34, EYE_H = 13, EYE_CX = 17, EYE_CY = 6, EYE_B = 16, EYE_A = 3;
     function bigEye(a, px) {
         px = px || 0;
         var g = [], r, c;
@@ -1032,7 +1022,7 @@
             }
             // iris / pupil (filled disc) with a catch-light, only when open enough
             if (a >= 2) {
-                var pr = Math.min(a - 1, 3), pcx = cx + px;
+                var pr = Math.min(a - 2, 2), pcx = cx + px;
                 for (var yy = -pr; yy <= pr; yy++)
                     for (var xx = -(pr + 1); xx <= pr + 1; xx++)
                         if ((xx * xx) / ((pr + 1.5) * (pr + 1.5)) + (yy * yy) / (pr * pr + 0.01) <= 1) put(pcx + xx, cy + yy, '#');
@@ -1073,7 +1063,7 @@
             seq = seq.then(function () { if (gen === term.gen) return term.pause(100); });
         }
         // 4. blink(s) — apertures printed as frames, scrolling up as they go
-        var frames = [5, 3, 1, 0, 0, 1, 3, 5, EYE_A];
+        var frames = [2, 1, 0, 0, 1, 2, EYE_A];
         var blinks = quick ? 1 : 2;
         for (var k = 0; k < blinks; k++) {
             frames.forEach(function (a) {
