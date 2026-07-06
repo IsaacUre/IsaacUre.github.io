@@ -1335,10 +1335,10 @@
                               : 'OFF';
         term.type('cloud sync: ' + st, '', 45)
             .then(function () {
-                term.line('cross-device login via a public GitHub gist.', 'tl-dim');
-                term.line('accounts + saves are PUBLIC - still no real passwords.', 'tl-warn');
-                if (cloudReady()) term.line('gist: ' + window.UreCloud.gistId(), 'tl-dim');
-                term.line('paste a gist token to enable this device,', 'tl-dim');
+                term.line('one login, every device - backed by a GitHub gist.', 'tl-dim');
+                term.line('accounts + saves are low-security. no real passwords.', 'tl-warn');
+                term.line('logging in already works on any device (no setup).', 'tl-dim');
+                term.line('paste a "gist"-scoped token to let THIS device save,', 'tl-dim');
                 term.line('type OFF to unlink, or enter to go back.', 'tl-dim');
                 return term.ask({ mask: true });
             })
@@ -1352,26 +1352,30 @@
                     updateUserBtn();
                     return setTimeout(function () { if (gen === term.gen) askWho(); }, 500);
                 }
+                term.line('> contacting github...', 'tl-dim');
+                var done = function (msg, cls) {
+                    if (gen !== term.gen) return;
+                    term.line(msg, cls || '');
+                    updateUserBtn();
+                    setTimeout(function () { if (gen === term.gen) askWho(); }, 900);
+                };
+                if (cloudReady()) {
+                    // gist id ships in cloud.js — this device just needs a write token
+                    return window.UreCloud.addToken(tok).then(function () {
+                        done('> linked. this device can now save to the cloud.');
+                    }).catch(function (e) {
+                        done('> failed: ' + (e && e.message || 'unknown') + '.', 'tl-warn');
+                    });
+                }
+                // fallback: no gist configured (id was stripped) — create or join one
                 term.type('gist id? (enter = create a new cloud gist)', '', 45)
                     .then(function () { return term.ask(); })
                     .then(function (gid) {
                         if (gen !== term.gen) return;
-                        term.line('> contacting github...', 'tl-dim');
                         window.UreCloud.setup(tok, gid).then(function (info) {
-                            if (gen !== term.gen) return;
-                            term.line('> cloud linked. gist: ' + info.gistId, '');
-                            if (info.created) {
-                                term.line('> new cloud created. on your OTHER device, type', 'tl-dim');
-                                term.line('  sync, paste a token, then enter THIS gist id:', 'tl-dim');
-                                term.line('  ' + info.gistId, '');
-                            }
-                            updateUserBtn();
-                            setTimeout(function () { if (gen === term.gen) askWho(); }, 900);
+                            done('> cloud linked. gist: ' + info.gistId);
                         }).catch(function (e) {
-                            if (gen !== term.gen) return;
-                            term.line('> setup failed: ' + (e && e.message || 'unknown') + '.', 'tl-warn');
-                            term.line('  check the token has the "gist" scope.', 'tl-dim');
-                            setTimeout(function () { if (gen === term.gen) askWho(); }, 900);
+                            done('> setup failed: ' + (e && e.message || 'unknown') + '. token needs "gist" scope.', 'tl-warn');
                         });
                     });
             });
