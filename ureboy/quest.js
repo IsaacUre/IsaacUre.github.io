@@ -2394,9 +2394,12 @@ function drawToasts(dt) {
         gToast.t -= dt;
         if (gToast.t <= 0) gToast = null;
         else {
-            var w2 = gToast.txt.length * 8 + 10;
-            box(Math.round((W - w2) / 2), 2, w2, 13, { bg: '#101018', edge: P.gold });
-            txtC(gToast.txt, W / 2, 5, P.gold);
+            var tl = wrap(gToast.txt, 18);           // fit within the 160px screen
+            var lw = 0; for (var ti = 0; ti < tl.length; ti++) lw = Math.max(lw, tl[ti].length);
+            var w2 = Math.min(W - 4, lw * 8 + 10);
+            var h2 = tl.length * 9 + 5;
+            box(Math.round((W - w2) / 2), 2, w2, h2, { bg: '#101018', edge: P.gold });
+            for (var tj = 0; tj < tl.length; tj++) txtC(tl[tj], W / 2, 5 + tj * 9, P.gold);
         }
     }
     if (questToast) {
