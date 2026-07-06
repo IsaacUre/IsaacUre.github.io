@@ -853,6 +853,32 @@
             this.gen++;                              // invalidates any in-flight sequence
         },
         scroll: function () { if (this.log) this.log.scrollTop = 1e9; },
+        /* append a block WITHOUT snapping to the bottom, so scrollAnim can slide to it */
+        block: function (text, cls) {
+            var d = document.createElement('div');
+            d.className = 'tl' + (cls ? ' ' + cls : '');
+            d.textContent = text;
+            this.log.appendChild(d);
+            return d;
+        },
+        /* ease the scroll to the new bottom over ms — this is what makes appended eye
+           frames slide upward like an old terminal printing frame after frame */
+        scrollAnim: function (ms) {
+            var el = this.log, self = this, gen = this.gen;
+            if (!el) return Promise.resolve();
+            var start = el.scrollTop, end = el.scrollHeight;
+            if (self.skip || reduce || ms <= 0 || end <= start) { el.scrollTop = 1e9; return Promise.resolve(); }
+            return new Promise(function (res) {
+                var t0 = Date.now();
+                var iv = setInterval(function () {
+                    if (gen !== self.gen) { clearInterval(iv); return; }
+                    var t = Math.min(1, (Date.now() - t0) / ms);
+                    el.scrollTop = start + (end - start) * (1 - Math.pow(1 - t, 2));   // ease-out
+                    if (self.skip) { el.scrollTop = 1e9; clearInterval(iv); return res(); }
+                    if (t >= 1) { clearInterval(iv); res(); }
+                }, 16);
+            });
+        },
         line: function (text, cls) {
             var d = document.createElement('div');
             d.className = 'tl' + (cls ? ' ' + cls : '');
@@ -914,16 +940,94 @@
             });
         }
     };
-    function showHero() {
-        var tpl = byId('termHeroTpl');
-        if (!tpl || !term.log) return;
-        var hero = tpl.content.firstElementChild.cloneNode(true);
-        var art = hero.querySelector('.term-ascii');
-        if (art) art.textContent = ASCII_LOGO;
-        term.log.appendChild(hero);
-        term.scroll();
-        setTimeout(function () { hero.classList.add('awake'); }, 30);   // not rAF — must fire in hidden tabs too
-        beep(520, 0.06); setTimeout(function () { beep(784, 0.09); }, 140);
+    /* ---------------- the big ASCII eye ----------------
+       Parametric almond, drawn on a fixed 36x13 canvas so every blink frame lines
+       up. `a` is the vertical aperture (0 = shut → a lash line; 6 = wide open);
+       `px` shifts the pupil for a look-around flourish. Rendering successive
+       apertures as stacked blocks + an eased scroll makes the eye blink while old
+       frames scroll up the screen — the terminal-flipbook aesthetic. */
+    var EYE_W = 34, EYE_H = 15, EYE_CX = 17, EYE_CY = 7, EYE_B = 16, EYE_A = 6;
+    function bigEye(a, px) {
+        px = px || 0;
+        var g = [], r, c;
+        for (r = 0; r < EYE_H; r++) { var row = []; for (c = 0; c < EYE_W; c++) row.push(' '); g.push(row); }
+        function put(x, y, ch) { if (y >= 0 && y < EYE_H && x >= 0 && x < EYE_W) g[y][x] = ch; }
+        var cx = EYE_CX, cy = EYE_CY, b = EYE_B;
+        if (a < 1) {
+            // shut: a lash line with a couple of lashes underneath
+            for (var x0 = cx - b + 1; x0 <= cx + b - 1; x0++) put(x0, cy, '_');
+            put(cx - b, cy, '<'); put(cx + b, cy, '>');
+            put(cx - 7, cy + 1, '\\'); put(cx, cy + 1, '|'); put(cx + 7, cy + 1, '/');
+        } else {
+            /* two eyelid arcs: at each column the lid half-height follows an ellipse,
+               so it's a wide almond that shuts smoothly as `a` shrinks to a line.
+               Where the arc steps between rows we fill the gap with a diagonal so
+               the lid reads as one continuous line instead of scattered dots. */
+            var pTop = cy, pBot = cy, yy2;
+            for (var x = cx - b; x <= cx + b; x++) {
+                var dx = (x - cx) / b;
+                var vh = a * Math.sqrt(Math.max(0, 1 - dx * dx));
+                var top = Math.round(cy - vh), bot = Math.round(cy + vh);
+                if (x === cx - b) { put(x, cy, '<'); pTop = top; pBot = bot; continue; }
+                if (x === cx + b) { put(x, cy, '>'); continue; }
+                if (top === pTop) put(x, top, '_');
+                else for (yy2 = Math.min(top, pTop); yy2 <= Math.max(top, pTop); yy2++) put(x, yy2, top < pTop ? '/' : '\\');
+                if (bot === pBot) put(x, bot, '_');
+                else for (yy2 = Math.min(bot, pBot); yy2 <= Math.max(bot, pBot); yy2++) put(x, yy2, bot < pBot ? '/' : '\\');
+                pTop = top; pBot = bot;
+            }
+            // iris / pupil (filled disc) with a catch-light, only when open enough
+            if (a >= 2) {
+                var pr = Math.min(a - 1, 3), pcx = cx + px;
+                for (var yy = -pr; yy <= pr; yy++)
+                    for (var xx = -(pr + 1); xx <= pr + 1; xx++)
+                        if ((xx * xx) / ((pr + 1.5) * (pr + 1.5)) + (yy * yy) / (pr * pr + 0.01) <= 1) put(pcx + xx, cy + yy, '#');
+                put(pcx - 1, cy - 1, ' ');   // catch-light
+            }
+        }
+        return g.map(function (rr) { return rr.join(''); }).join('\n');
+    }
+
+    /* the boot's eye reveal + blink. quick = the fast warm-boot variant. */
+    function revealEye(gen, quick) {
+        if (reduce) {   // reduced motion: one static frame, no animation
+            term.line(ASCII_LOGO, 'tl-art'); term.line(bigEye(EYE_A), 'tl-art'); term.scroll();
+            return Promise.resolve();
+        }
+        var seq = Promise.resolve();
+        function stamp(fn, hold, slide) {
+            seq = seq.then(function () {
+                if (gen !== term.gen) return;
+                fn();
+                return term.scrollAnim(slide == null ? 120 : slide).then(function () {
+                    return term.pause(quick ? Math.round(hold * 0.6) : hold);
+                });
+            });
+        }
+        // 1. the wordmark, front and center
+        stamp(function () {
+            term.line(ASCII_LOGO, 'tl-art');
+            term.line('        A GOOD EYE OS  v1.0', 'tl-dim');
+            beep(360, 0.05);
+        }, quick ? 260 : 480, 0);
+        // 2. the eye powers on (logo scrolls up as it slides in)
+        stamp(function () { term.block(bigEye(EYE_A), 'tl-art'); beep(240, 0.05); setTimeout(function () { beep(660, 0.1); }, 100); },
+            quick ? 220 : 380, quick ? 160 : 240);
+        // 3. a quick look-around (full boot only)
+        if (!quick) {
+            [-4, 4, 0].forEach(function (px) { stamp(function () { term.block(bigEye(EYE_A, px), 'tl-art'); }, 90, 60); });
+            seq = seq.then(function () { if (gen === term.gen) return term.pause(100); });
+        }
+        // 4. blink(s) — apertures printed as frames, scrolling up as they go
+        var frames = [5, 3, 1, 0, 0, 1, 3, 5, EYE_A];
+        var blinks = quick ? 1 : 2;
+        for (var k = 0; k < blinks; k++) {
+            frames.forEach(function (a) {
+                stamp(function () { term.block(bigEye(a), 'tl-art'); if (a === 0) beep(200, 0.05); }, a === 0 ? 55 : 14, 42);
+            });
+            stamp(function () { term.block(bigEye(EYE_A), 'tl-art'); }, quick ? 170 : 260, 60);
+        }
+        return seq;
     }
 
     /* ---------------- login flow ---------------- */
@@ -939,13 +1043,13 @@
             /* remembered login: warm boot, no passcode (cloud pull reconciles) */
             term.pause(450)
                 .then(function () { return term.type('> warm boot .............. ok', 'tl-dim', 140); })
-                .then(function () { if (gen !== term.gen) return; showHero(); return term.pause(550); })
+                .then(function () { if (gen !== term.gen) return; return revealEye(gen, true); })
                 .then(function () { if (gen === term.gen) finishLogin(sess, true); });
             return;
         }
         var idle = term.line('', 'tl-idle');
         idle.innerHTML = '<span class="term-block"></span>';        // the lone blinking cursor
-        var chain = term.pause(1300).then(function () {
+        var chain = term.pause(850).then(function () {
             if (idle.parentNode) idle.parentNode.removeChild(idle);
         });
         SPEW.forEach(function (ln) {
@@ -954,13 +1058,13 @@
                 if (ln[0] === 'slam') {
                     term.line(ln[1], 'tl-dim');
                     beep(180, 0.03);
-                    return term.pause(230);
+                    return term.pause(150);
                 }
-                return term.type(ln[1], '', 95).then(function () { return term.pause(50 + Math.random() * 110); });
+                return term.type(ln[1], '', 140).then(function () { return term.pause(30 + Math.random() * 70); });
             });
         });
         chain.then(function () { if (gen !== term.gen) return; return term.pause(200); })
-            .then(function () { if (gen !== term.gen) return; showHero(); return term.pause(750); })
+            .then(function () { if (gen !== term.gen) return; return revealEye(gen, false); })
             .then(function () { if (gen === term.gen) askWho(); });
     }
     function askWho() {
