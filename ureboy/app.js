@@ -180,7 +180,7 @@
         ['type', '> ICE_BREAK v2.6 (4d20 entropy)'],
         ['slam', '  0xC0FFEE 0xDEC0DE 0xD1CE20'],
         ['type', '> memcheck 8K ................ ok'],
-        ['type', '> mounting /carts ........ 6 found'],
+        ['type', '> mounting /carts ........ 7 found'],
         ['type', '> eye subsystem ........... waking']
     ];
 
@@ -281,6 +281,16 @@
 
     /* ---------------- cartridges ---------------- */
     var CARTS = [
+        {
+            id: 'about', ico: '👤', name: 'ABOUT', tag: 'who is this guy', color: '#5a6acf',
+            render: function () {
+                var d = DATA.about;
+                return '<p class="gb-lead">' + d.lead + '</p>' +
+                    '<p class="gb-lead dim">' + d.lead2 + '</p>' +
+                    '<div class="gb-h">// currently</div>' +
+                    '<ul class="now-list">' + d.now.map(function (x) { return '<li>' + x + '</li>'; }).join('') + '</ul>';
+            }
+        },
         {
             id: 'photos', ico: '📷', name: 'PHOTOS', tag: 'a good eye, allegedly', color: '#1f9e98',
             render: function () { return '<p class="gb-lead dim">Real frames go here — Thresher &amp; Rice Raw. Tap one.</p>' + photoGridHTML(); },
