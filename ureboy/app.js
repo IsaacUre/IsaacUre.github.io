@@ -1266,6 +1266,15 @@
         var users = loadUsers(), existing = getUser(users, name);
         if (existing) { existing.l = Date.now(); saveUsers(users); }
         else if (cloudRec) { setUser(users, name, cloudRec); saveUsers(users); }   // cache a cloud-only account for offline warm boot
+        /* A writable device that logged in via a LOCAL/new account (no cloudRec)
+           claims its credential in the cloud, so other devices recognize the name
+           on login and saves never land under an unclaimed name. createUser no-ops
+           (returns {taken}) if the name is already claimed, so this never clobbers
+           an existing cloud credential. */
+        if (!cloudRec && cloudReady() && window.UreCloud.canWrite()) {
+            var claimRec = getUser(users, name);
+            if (claimRec) { try { window.UreCloud.createUser(name, claimRec); } catch (e) {} }
+        }
         updateUserBtn();
         term.type(fromSession ? '> session restored: ' + name : '> access granted. hello, ' + name + '.', '', 50)
             .then(function () {

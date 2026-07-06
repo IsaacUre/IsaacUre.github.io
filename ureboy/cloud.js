@@ -362,8 +362,8 @@
         return writeBlob(function () { return true; })
             .then(function () { return { ok: true }; })
             .catch(function (e) {
-                if (prev) lsSet(K_TOKEN, prev); else lsRm(K_TOKEN);   // roll back a bad token
-                throw new Error('token cannot write (needs the "gist" scope)');
+                if (prev) lsSet(K_TOKEN, prev); else lsRm(K_TOKEN);   // roll back — don't keep a token we couldn't write with
+                throw new Error('could not enable writes — check the token has the "gist" scope (or retry if GitHub is busy)');
             });
     }
     function useGist(gid) { gid = (gid || '').trim(); if (gid) { lsSet(K_GIST, gid); cache.blob = null; } }
