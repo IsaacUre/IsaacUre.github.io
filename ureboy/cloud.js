@@ -26,8 +26,11 @@
     var CFG = {
         /* Bake a gist id here to ship cloud "on" for every visitor. Empty means
            cloud is off until a device configures it at runtime via setup(). The
-           id is safe to publish — it is just an identifier and reads are public. */
-        gistId: '',
+           id is safe to publish — it is just an identifier and reads are public.
+           This secret gist holds accounts + saves so one login works across
+           devices (read needs no token; writing needs a per-device `gist` token
+           added via the `sync` prompt). */
+        gistId: '8eff04f6465ebec97ccc6448279b7e39',
         file: 'ureboy-cloud.json',
         schema: 1,
         debounceMs: 2500,      // coalesce rapid game saves into one push
@@ -352,8 +355,16 @@
     function addToken(tok) {   // enable writes on a device that already knows the gist id
         tok = (tok || '').trim();
         if (!tok) return Promise.reject(new Error('empty token'));
+        var prev = token();
         lsSet(K_TOKEN, tok);
-        return fetchBlob(true).then(function () { return { ok: true }; });
+        /* verify the token can actually WRITE (a read passes even for a bad/scopeless
+           token since the gist is public-read) by rewriting the blob unchanged */
+        return writeBlob(function () { return true; })
+            .then(function () { return { ok: true }; })
+            .catch(function (e) {
+                if (prev) lsSet(K_TOKEN, prev); else lsRm(K_TOKEN);   // roll back — don't keep a token we couldn't write with
+                throw new Error('could not enable writes — check the token has the "gist" scope (or retry if GitHub is busy)');
+            });
     }
     function useGist(gid) { gid = (gid || '').trim(); if (gid) { lsSet(K_GIST, gid); cache.blob = null; } }
     function forget() { lsRm(K_TOKEN); lsRm(K_GIST); cache.blob = null; pending = {}; }
