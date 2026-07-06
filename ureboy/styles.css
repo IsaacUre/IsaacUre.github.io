@@ -360,8 +360,11 @@ body.screen-max .screen-frame {
 /* ASCII art (the UREBOY wordmark + the big blinking eye): no wrap, tight rows so
    the shape holds together and fills the screen */
 .tl-art { white-space: pre; word-break: normal; line-height: 1; letter-spacing: 0; }
-/* on a very narrow phone, shrink the art a touch so the 34-col eye never clips */
-@media (max-width: 360px) { .tl-art { font-size: .82rem; } }
+/* The ASCII art doesn't wrap (white-space: pre) and the screen clips overflow, so
+   the 36-col UREBOY wordmark / 34-col eye must be sized to fit the width or they
+   clip on the right. Scale fluidly across all phone widths (was ≤360px only, which
+   left the wordmark clipping on 375/390px phones). */
+@media (max-width: 430px) { .tl-art { font-size: clamp(.6rem, 3.5vw, .98rem); } }
 .tl-dim { color: var(--screen-dim); }
 .tl-warn { color: var(--screen-accent); }
 .tl-echo { color: var(--screen-dim); }
@@ -656,6 +659,41 @@ body.list-mode .listview { display: block; }
     .rbtn { width: 50px; height: 50px; }
     .stage { padding-top: 1.2rem; }
     .gbcart { width: 82px; }
+}
+
+/* ───────────── mobile polish ─────────────
+   Reclaim the nested stage/console/frame/state padding so the LCD — and its
+   fixed 10/9 height — stays as large as possible on phones (less clipping, more
+   room for cartridge content), then scale the type/hero down on the smallest. */
+@media (max-width: 500px) {
+    .stage { padding-left: .55rem; padding-right: .55rem; }
+    .ureboy { padding: .9rem .8rem 1.1rem; }
+    .screen-frame { padding: .8rem .8rem 1.05rem; }
+    .state { padding: .6rem .68rem; }
+    .screen-label { font-size: .5rem; letter-spacing: .3px; white-space: nowrap; }
+    /* trim the largest cartridge type a touch so more fits the short screen */
+    .gb-lead { font-size: .84rem; }
+    .now-list li, .mod-part, .xp-role { font-size: .84rem; }
+    .spent { font-size: 1.05rem; }
+    .pv-exif, .xp-date { font-size: .92rem; }
+}
+@media (max-width: 380px) {
+    /* the home hero fits ~390px+ but crowds the smallest phones — scale it down */
+    .home-eye { width: 60px; height: 60px; }
+    .home-word { font-size: 1.25rem; }
+    .home { gap: .35rem; }
+    .home-preview { min-height: 2.3em; font-size: .9rem; }
+    .home-prompt { font-size: .82rem; }
+}
+@media (max-width: 336px) {
+    .home-eye { width: 50px; height: 50px; }
+    .home-word { font-size: 1.05rem; }
+    .home-prompt { font-size: .78rem; }
+    .state { padding: .5rem .55rem; }
+}
+@media (max-width: 380px) {
+    /* PHOTOS placeholder captions get tight in the small tiles — trim so they don't clip */
+    .ph-empty { font-size: .8rem; }
 }
 
 /* ───────────── reduced motion ───────────── */
