@@ -489,8 +489,62 @@
     function showState(name) {
         ['boot', 'menu', 'game'].forEach(function (s) { var e = byId(s); if (e) e.hidden = (s !== name); });
         state = name;
+        document.body.classList.toggle('in-game', name === 'game');
+        if (name !== 'game' && screenMaxed) setScreenMax(false, true);   // leaving a game exits big-screen
         updateEject();
     }
+
+    /* ---------------- big-screen (fullscreen-ish) mode ---------------- */
+    var screenMaxed = false, screenFrame = null, screenBackdrop = null;
+    function initScreenMax() {
+        screenFrame = document.querySelector('.screen-frame');
+        if (!screenFrame) return;
+        screenBackdrop = document.createElement('div');
+        screenBackdrop.className = 'screen-backdrop';
+        document.body.appendChild(screenBackdrop);
+        screenBackdrop.addEventListener('click', function () { setScreenMax(false); });
+        var btn = byId('screenMaxBtn');
+        if (btn) btn.addEventListener('click', function (e) { e.stopPropagation(); setScreenMax(!screenMaxed); });
+    }
+    function setScreenMax(on, instant) {
+        if (!screenFrame || on === screenMaxed) return;
+        if (on && state !== 'game') return;
+        var first = screenFrame.getBoundingClientRect();
+        screenMaxed = on;
+        if (screenBackdrop) {
+            /* on exit the frame drops back below the backdrop's stacking context, so
+               vanish the dim instantly instead of letting it fade over the shrinking LCD */
+            if (on) { screenBackdrop.style.transition = ''; screenBackdrop.style.opacity = ''; }
+            else { screenBackdrop.style.transition = 'none'; screenBackdrop.style.opacity = '0'; }
+        }
+        document.body.classList.toggle('screen-max', on);
+        var btn = byId('screenMaxBtn'); if (btn) { btn.textContent = on ? '✕' : '⛶'; btn.title = on ? 'Exit big screen (Esc)' : 'Big screen (F)'; }
+        if (!instant && !reduce && screenFrame.animate) {
+            var last = screenFrame.getBoundingClientRect();
+            if (first.width && last.width) {
+                var dx = first.left - last.left, dy = first.top - last.top;
+                var sx = first.width / last.width, sy = first.height / last.height;
+                screenFrame.animate(
+                    [{ transform: 'translate(' + dx + 'px,' + dy + 'px) scale(' + sx + ',' + sy + ')', transformOrigin: 'top left' },
+                     { transform: 'none', transformOrigin: 'top left' }],
+                    { duration: on ? 540 : 440, easing: on ? 'cubic-bezier(.22,.9,.24,1.02)' : 'cubic-bezier(.4,0,.25,1)' }
+                );
+            }
+        }
+        beep(on ? 520 : 340, 0.05);
+        /* the LCD changed size — let a fullscreen cartridge re-measure its canvas */
+        window.dispatchEvent(new Event('resize'));
+    }
+    /* capture phase so F / Esc are handled before a cartridge's own key listeners */
+    window.addEventListener('keydown', function (e) {
+        if (document.body.classList.contains('list-mode')) return;
+        var k = e.key;
+        if ((k === 'f' || k === 'F') && state === 'game' && !(e.ctrlKey || e.metaKey || e.altKey)) {
+            e.preventDefault(); e.stopPropagation(); setScreenMax(!screenMaxed);
+        } else if (k === 'Escape' && screenMaxed) {
+            e.preventDefault(); e.stopPropagation(); setScreenMax(false);
+        }
+    }, true);
     /* the eject pull is live only while a cartridge is actually loaded */
     function ejectArmed() { return state === 'game' && !inserting; }
     function finePointer() { return window.matchMedia && window.matchMedia('(pointer:fine)').matches; }
@@ -1549,6 +1603,7 @@
         var on = (typeof force === 'boolean') ? force : !document.body.classList.contains('list-mode');
         var lb = byId('listBtn');
         if (on) {
+            if (screenMaxed) setScreenMax(false, true);   // don't strand the big-screen backdrop over the list
             buildList();
             var lv = byId('list'); lv.hidden = false; lv.setAttribute('tabindex', '-1');
             document.body.classList.add('list-mode'); window.scrollTo(0, 0);
@@ -1588,6 +1643,7 @@
     updateEject();
 
     /* ---------------- go ---------------- */
+    initScreenMax();
     buildDeck();
     runBoot();
 })();
