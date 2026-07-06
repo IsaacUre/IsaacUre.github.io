@@ -511,6 +511,12 @@
         if (on && state !== 'game') return;
         var first = screenFrame.getBoundingClientRect();
         screenMaxed = on;
+        if (screenBackdrop) {
+            /* on exit the frame drops back below the backdrop's stacking context, so
+               vanish the dim instantly instead of letting it fade over the shrinking LCD */
+            if (on) { screenBackdrop.style.transition = ''; screenBackdrop.style.opacity = ''; }
+            else { screenBackdrop.style.transition = 'none'; screenBackdrop.style.opacity = '0'; }
+        }
         document.body.classList.toggle('screen-max', on);
         var btn = byId('screenMaxBtn'); if (btn) { btn.textContent = on ? '✕' : '⛶'; btn.title = on ? 'Exit big screen (Esc)' : 'Big screen (F)'; }
         if (!instant && !reduce && screenFrame.animate) {
@@ -1597,6 +1603,7 @@
         var on = (typeof force === 'boolean') ? force : !document.body.classList.contains('list-mode');
         var lb = byId('listBtn');
         if (on) {
+            if (screenMaxed) setScreenMax(false, true);   // don't strand the big-screen backdrop over the list
             buildList();
             var lv = byId('list'); lv.hidden = false; lv.setAttribute('tabindex', '-1');
             document.body.classList.add('list-mode'); window.scrollTo(0, 0);

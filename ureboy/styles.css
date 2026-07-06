@@ -284,8 +284,10 @@ body.screen-max .screen-max-btn { display: grid; opacity: .6; }
 body.screen-max .screen-backdrop { opacity: 1; pointer-events: auto; }
 @media (prefers-reduced-motion: reduce) { .screen-backdrop { transition: none; } }
 
-/* neutralize the camera's resting transform so the fixed frame is viewport-relative */
-body.screen-max .stage { transform: none !important; }
+/* neutralize the camera's resting transform AND its lingering will-change (which
+   would otherwise still trap the fixed frame in the ~440ms after a game loads) so
+   the fixed frame is always viewport-relative */
+body.screen-max .stage { transform: none !important; will-change: auto !important; }
 body.screen-max .screen-frame {
     position: fixed; inset: 0; margin: auto; z-index: 8001;
     width: min(92vw, calc(88vh * 10 / 9));
