@@ -479,111 +479,565 @@ function drawSpr(id, x, y, o) {
 function sprW(id) { return SPRD[id] ? SPRD[id].w : 16; }
 function sprH(id) { return SPRD[id] ? SPRD[id].h : 16; }
 
+/* ───────────────── paper-doll hero compositor ─────────────────
+   The hero is layered: a bald skin+outfit base, then a hair overlay,
+   a hat, glasses and facial hair. Every region is recoloured from the
+   player's `look` via a palette map, so the same art paints any character.
+   Layer art lives in HEROART (see the sprite-art part). Composited 16x16
+   frames are cached by a hash of look+dir+frame. */
+var HEROART = {};            // populated in the art part
+var HEROCACHE = {};
+function heroPalette(lk) {
+    return {
+        o: '#111016',
+        '1': lk.skin, '2': lk.skin2, '3': shade(lk.skin, 24),
+        e: lk.eyes, w: '#2c2118',
+        '5': lk.outfit, '6': shade(lk.outfit, -38), '7': lk.accent, '8': '#221f28',
+        h: lk.hair, j: shade(lk.hair, -34), k: shade(lk.hair, 32),
+        m: lk.hatCol, n: shade(lk.hatCol, -34), p: lk.hatAcc,
+        g: lk.lens, q: '#181820', b: shade(lk.hair, -8)
+    };
+}
+function paintRows(g, rows, pal) {
+    if (!rows) return;
+    for (var y = 0; y < rows.length; y++) {
+        var row = rows[y];
+        for (var x = 0; x < row.length; x++) {
+            var ch = row[x];
+            if (ch === '.' || ch === ' ') continue;
+            var col = pal[ch];
+            if (!col) continue;
+            g.fillStyle = col; g.fillRect(x, y, 1, 1);
+        }
+    }
+}
+function heroKey(lk, dir, fr) {
+    return [lk.skin, lk.skin2, lk.eyes, lk.outfit, lk.accent, lk.hair, lk.hairStyle,
+        lk.hat, lk.hatCol, lk.hatAcc, lk.glasses, lk.lens, lk.facial, dir, fr].join('|');
+}
+function composeHero(lk, dir, fr) {
+    var key = heroKey(lk, dir, fr);
+    if (HEROCACHE[key]) return HEROCACHE[key];
+    var c = document.createElement('canvas'); c.width = 16; c.height = 16;
+    var g = c.getContext('2d');
+    var pal = heroPalette(lk);
+    var dd = dir === 'u' ? 'u' : dir === 'l' || dir === 'r' ? 'l' : 'd';   // r is l mirrored at draw
+    paintRows(g, HEROART['base_' + dd + fr], pal);
+    if (lk.hairStyle && lk.hairStyle !== 'bald') paintRows(g, HEROART['hair_' + lk.hairStyle + '_' + dd], pal);
+    if (lk.hat && lk.hat !== 'none') paintRows(g, HEROART['hat_' + lk.hat + '_' + dd], pal);
+    if (dd === 'd') {
+        if (lk.facial && lk.facial !== 'none') paintRows(g, HEROART['facial_' + lk.facial], pal);
+        if (lk.glasses && lk.glasses !== 'none') paintRows(g, HEROART['glasses_' + lk.glasses], pal);
+    }
+    if (HEROCACHE.__n > 500) { HEROCACHE = { __n: 0 }; }   // bound the cache (creation churns looks)
+    HEROCACHE[key] = c; HEROCACHE.__n = (HEROCACHE.__n || 0) + 1;
+    return c;
+}
+var FALLBACK_LOOK = { skin: '#eec39a', skin2: '#c68d5c', eyes: '#4a3626', outfit: '#7b53c9', accent: '#e8c04a', hair: '#4a3626', hairStyle: 'short', hat: 'none', hatCol: '#8a4c34', hatAcc: '#e8c04a', glasses: 'none', lens: '#8fc0e8', facial: 'none' };
+function drawHero(x, y, o) {
+    o = o || {};
+    var lk = o.look || (typeof G !== 'undefined' && G && G.look) || FALLBACK_LOOK;
+    var dir = o.dir || 'd', fr = o.frame || 0, sc = o.scale || 1;
+    var c = composeHero(lk, dir, fr);
+    ctx.save();
+    if (o.alpha != null) ctx.globalAlpha = o.alpha;
+    ctx.imageSmoothingEnabled = false;
+    if (dir === 'r') { ctx.translate(Math.round(x) + 16 * sc, Math.round(y)); ctx.scale(-sc, sc); ctx.drawImage(c, 0, 0, 16, 16); }
+    else ctx.drawImage(c, Math.round(x), Math.round(y), 16 * sc, 16 * sc);
+    ctx.restore();
+}
+
 /* ─────────────────────── sprite art ───────────────────────── */
-/* The hero — 16x16, four directions, two frames. 'C'/'c' tint to
-   the chosen class color. */
-defSpr('pd0', [
+/* The hero is a paper-doll: a bald skin+outfit base, painted per the
+   player's `look`, plus swappable hair / hat / glasses / facial layers.
+   Keys: o outline · 1/2/3 skin/shadow/hi · e eyes · 5/6/7 outfit/shadow/trim
+   · 8 boots · h/j/k hair/shadow/hi · m/n/p hat/shadow/trim · g glasses ·
+   b facial hair. See composeHero() in the sprite-decoder part. */
+HEROART.base_d0 = [
 '................',
 '.....oooooo.....',
-'....oHHHHHHo....',
-'...oHHHHHHHHo...',
-'...oHSSSSSSHo...',
-'...oSKSSSSKSo...',
-'...oSSSSssSSo...',
-'....oSSssSSo....',
-'....ooCCCCoo....',
-'...oCCCCCCCCo...',
-'..oCcCCCCCCcCo..',
-'..oSoCCCCCCoSo..',
-'...ooCcCCcCoo...',
-'....oCCCCCCo....',
-'....oBBooBBo....',
-'.....oo..oo.....']);
-defSpr('pd1', [
+'....o111111o....',
+'...o11111111o...',
+'...o11111111o...',
+'...o1e1111e1o...',
+'...o11112211o...',
+'....o112211o....',
+'....oo7777oo....',
+'...o55555555o...',
+'..o5655555565o..',
+'..o1o555555o1o..',
+'...oo565565oo...',
+'....o555555o....',
+'....o88oo88o....',
+'.....oo..oo.....'];
+HEROART.base_d1 = [
 '................',
 '.....oooooo.....',
-'....oHHHHHHo....',
-'...oHHHHHHHHo...',
-'...oHSSSSSSHo...',
-'...oSKSSSSKSo...',
-'...oSSSSssSSo...',
-'....oSSssSSo....',
-'....ooCCCCoo....',
-'...oCCCCCCCCo...',
-'..oCcCCCCCCcCo..',
-'..oSoCCCCCCoSo..',
-'...ooCcCCcCoo...',
-'....oCCCCCCo....',
-'....oBBoBBo.....',
-'....oo..oo......']);
-defSpr('pu0', [
+'....o111111o....',
+'...o11111111o...',
+'...o11111111o...',
+'...o1e1111e1o...',
+'...o11112211o...',
+'....o112211o....',
+'....oo7777oo....',
+'...o55555555o...',
+'..o5655555565o..',
+'..o1o555555o1o..',
+'...oo565565oo...',
+'....o555555o....',
+'....o88o88o.....',
+'....oo..oo......'];
+HEROART.base_u0 = [
 '................',
 '.....oooooo.....',
-'....oHHHHHHo....',
-'...oHHHHHHHHo...',
-'...oHHHHHHHHo...',
-'...oHHHHHHHHo...',
-'...oHHHHHHHHo...',
-'....oHHHHHHo....',
-'....ooCCCCoo....',
-'...oCCCCCCCCo...',
-'..oCcCCCCCCcCo..',
-'..oSoCCCCCCoSo..',
-'...ooCcCCcCoo...',
-'....oCCCCCCo....',
-'....oBBooBBo....',
-'.....oo..oo.....']);
-defSpr('pu1', [
+'....o111111o....',
+'...o11111111o...',
+'...o11111111o...',
+'...o11111111o...',
+'...o11111111o...',
+'....o111111o....',
+'....oo7777oo....',
+'...o55555555o...',
+'..o5655555565o..',
+'..o1o555555o1o..',
+'...oo565565oo...',
+'....o555555o....',
+'....o88oo88o....',
+'.....oo..oo.....'];
+HEROART.base_u1 = [
 '................',
 '.....oooooo.....',
-'....oHHHHHHo....',
-'...oHHHHHHHHo...',
-'...oHHHHHHHHo...',
-'...oHHHHHHHHo...',
-'...oHHHHHHHHo...',
-'....oHHHHHHo....',
-'....ooCCCCoo....',
-'...oCCCCCCCCo...',
-'..oCcCCCCCCcCo..',
-'..oSoCCCCCCoSo..',
-'...ooCcCCcCoo...',
-'....oCCCCCCo....',
-'.....oBBoBBo....',
-'......oo..oo....']);
-defSpr('pl0', [
+'....o111111o....',
+'...o11111111o...',
+'...o11111111o...',
+'...o11111111o...',
+'...o11111111o...',
+'....o111111o....',
+'....oo7777oo....',
+'...o55555555o...',
+'..o5655555565o..',
+'..o1o555555o1o..',
+'...oo565565oo...',
+'....o555555o....',
+'.....o88o88o....',
+'......oo..oo....'];
+HEROART.base_l0 = [
 '................',
 '.....oooooo.....',
-'....oHHHHHHo....',
-'...oHHHHHHHHo...',
-'...oSSSSHHHHo...',
-'...oKSSsHHHHo...',
-'...oSSSsHHHHo...',
-'....oSSsHHHo....',
-'....ooCCCCoo....',
-'...oCCCCCCCCo...',
-'...oCCCCCCCCo...',
-'...oSoCCCCCCo...',
-'....oCcCCcCo....',
-'....oCCCCCCo....',
-'....oBBoBBo.....',
-'.....oo.oo......']);
-defSpr('pl1', [
+'....o111111o....',
+'...o11111111o...',
+'...o11111111o...',
+'...oee111111o...',
+'...o11111111o...',
+'....o111121o....',
+'....oo7777oo....',
+'...o55555555o...',
+'...o55555555o...',
+'...o1o555555o...',
+'....o565565o....',
+'....o555555o....',
+'....o88o88o.....',
+'.....oo.oo......'];
+HEROART.base_l1 = [
 '................',
 '.....oooooo.....',
-'....oHHHHHHo....',
-'...oHHHHHHHHo...',
-'...oSSSSHHHHo...',
-'...oKSSsHHHHo...',
-'...oSSSsHHHHo...',
-'....oSSsHHHo....',
-'....ooCCCCoo....',
-'...oCCCCCCCCo...',
-'...oCCCCCCCCo...',
-'...oSoCCCCCCo...',
-'....oCcCCcCo....',
-'....oCCCCCCo....',
-'...oBBo..BBo....',
-'....oo...oo.....']);
+'....o111111o....',
+'...o11111111o...',
+'...o11111111o...',
+'...oee111111o...',
+'...o11111111o...',
+'....o111121o....',
+'....oo7777oo....',
+'...o55555555o...',
+'...o55555555o...',
+'...o1o555555o...',
+'....o565565o....',
+'....o555555o....',
+'...o88o..88o....',
+'....oo...oo.....'];
+
+/* ── hair styles (down / up / left overlays; rows align to base head) ── */
+HEROART.hair_buzz_d = [
+'................',
+'.....jjjjjj.....',
+'....hhhhhhhh....',
+'....hhhhhhhh....',
+'....hh....hh....'];
+HEROART.hair_buzz_u = [
+'................',
+'.....jjjjjj.....',
+'....hhhhhhhh....',
+'...hhhhhhhhhh...',
+'...hhhhhhhhhh...',
+'...hhhhhhhhhh...',
+'...hhhhhhhhhh...',
+'....hhhhhhhh....'];
+HEROART.hair_buzz_l = [
+'................',
+'.....jjjjjj.....',
+'....hhhhhhhh....',
+'....hhhhhhhh....',
+'.....hhhhhhh....',
+'......hhhhhh....'];
+HEROART.hair_short_d = [
+'................',
+'.....hhhhhh.....',
+'....hhhhhhhh....',
+'...hhhhhhhhhh...',
+'....hh....hh....'];
+HEROART.hair_short_u = [
+'................',
+'.....hhhhhh.....',
+'....hhhhhhhh....',
+'...hhhhhhhhhh...',
+'...hhhhhhhhhh...',
+'...hhhhhhhhhh...',
+'...hhhhhhhhhh...',
+'....hhhhhhhh....'];
+HEROART.hair_short_l = [
+'................',
+'.....hhhhhh.....',
+'....hhhhhhhh....',
+'...hhhhhhhhhh...',
+'.....hhhhhhh....',
+'......hhhhhh....',
+'.......hhhhh....'];
+HEROART.hair_messy_d = [
+'....h..hh..h....',
+'...hhhhhhhhhh...',
+'...hhhhhhhhhh...',
+'...hhhhhhhhhh...',
+'....hh....hh....'];
+HEROART.hair_messy_u = [
+'....h..hh..h....',
+'...hhhhhhhhhh...',
+'..hhhhhhhhhhhh..',
+'...hhhhhhhhhh...',
+'...hhhhhhhhhh...',
+'...hhhhhhhhhh...',
+'...hhhhhhhhhh...',
+'....hhhhhhhh....'];
+HEROART.hair_messy_l = [
+'....h..hh..h....',
+'...hhhhhhhhhh...',
+'...hhhhhhhhhh...',
+'...hhhhhhhhhh...',
+'.....hhhhhhh....',
+'......hhhhhh....'];
+HEROART.hair_swept_d = [
+'................',
+'...hhhhhhhh.....',
+'..hhhhhhhhhh....',
+'..hhhhhhhhhhh...',
+'..hhhh...hh.....'];
+HEROART.hair_swept_u = [
+'................',
+'...hhhhhhhh.....',
+'..hhhhhhhhhh....',
+'..hhhhhhhhhhh...',
+'...hhhhhhhhhh...',
+'...hhhhhhhhhh...',
+'...hhhhhhhhhh...',
+'....hhhhhhhh....'];
+HEROART.hair_swept_l = [
+'................',
+'..hhhhhhhh......',
+'..hhhhhhhhh.....',
+'...hhhhhhhhh....',
+'.....hhhhhhh....',
+'......hhhhhh....'];
+HEROART.hair_long_d = [
+'................',
+'.....hhhhhh.....',
+'....hhhhhhhh....',
+'...hhhhhhhhhh...',
+'..hhhh....hhhh..',
+'..hh........hh..',
+'..hh........hh..',
+'..hh........hh..',
+'..hj........jh..',
+'...h........h...'];
+HEROART.hair_long_u = [
+'................',
+'.....hhhhhh.....',
+'....hhhhhhhh....',
+'..hhhhhhhhhhhh..',
+'..hhhhhhhhhhhh..',
+'..hhhhhhhhhhhh..',
+'..hhhhhhhhhhhh..',
+'..hhhhhhhhhhhh..',
+'..hhhhhhhhhhhh..',
+'..hjhhhhhhhhjh..',
+'...hhhhhhhhhh...'];
+HEROART.hair_long_l = [
+'................',
+'.....hhhhhh.....',
+'....hhhhhhhh....',
+'...hhhhhhhhhh...',
+'......hhhhhhh...',
+'........hhhhh...',
+'........hhhhh...',
+'........hhhhh...',
+'........hhjhh...',
+'.........hhh....'];
+HEROART.hair_pony_d = [
+'................',
+'.....hhhhhh.....',
+'....hhhhhhhh....',
+'...hhhhhhhhhh...',
+'....hh....hh....'];
+HEROART.hair_pony_u = [
+'................',
+'.....hhhhhh.....',
+'....hhhhhhhh....',
+'...hhhhhhhhhh...',
+'...hhhhhhhhhh...',
+'...hhhhhhhhhh...',
+'....hhhhhhhh....',
+'.....hhhhhh.....',
+'......hjjh......',
+'......hjjh......',
+'......hjjh......',
+'.......hh.......'];
+HEROART.hair_pony_l = [
+'................',
+'.....hhhhhh.....',
+'....hhhhhhhhh...',
+'...hhhhhhhhhhh..',
+'......hhhhhjjh..',
+'.......hhhhjjh..',
+'........hhhjjh..',
+'.........hhh....'];
+HEROART.hair_spiky_d = [
+'...h.h.hh.h.h...',
+'...hhhhhhhhhh...',
+'...hhhhhhhhhh...',
+'...hhhhhhhhhh...',
+'....hh....hh....'];
+HEROART.hair_spiky_u = [
+'...h.h.hh.h.h...',
+'...hhhhhhhhhh...',
+'..hhhhhhhhhhhh..',
+'...hhhhhhhhhh...',
+'...hhhhhhhhhh...',
+'...hhhhhhhhhh...',
+'...hhhhhhhhhh...',
+'....hhhhhhhh....'];
+HEROART.hair_spiky_l = [
+'..h.h.hh.h......',
+'...hhhhhhhhh....',
+'...hhhhhhhhhh...',
+'...hhhhhhhhhh...',
+'.....hhhhhhh....',
+'......hhhhhh....'];
+HEROART.hair_afro_d = [
+'...hhhhhhhhhh...',
+'..hhhhhhhhhhhh..',
+'.hhhhhhhhhhhhhh.',
+'.hhhhhhhhhhhhhh.',
+'.hhh......hhhhh.',
+'..hh......hh....'];
+HEROART.hair_afro_u = [
+'...hhhhhhhhhh...',
+'..hhhhhhhhhhhh..',
+'.hhhhhhhhhhhhhh.',
+'.hhhhhhhhhhhhhh.',
+'.hhhhhhhhhhhhhh.',
+'..hhhhhhhhhhhh..',
+'..hhhhhhhhhhhh..',
+'...hhhhhhhhhh...'];
+HEROART.hair_afro_l = [
+'...hhhhhhhhhh...',
+'..hhhhhhhhhhhh..',
+'.hhhhhhhhhhhhhh.',
+'.hhhhhhhhhhhhhh.',
+'...hhhhhhhhhhh..',
+'....hhhhhhhhh...',
+'.....hhhhhhh....'];
+HEROART.hair_bun_d = [
+'.......jj.......',
+'......hhhh......',
+'.....hhhhhh.....',
+'....hhhhhhhh....',
+'...hhhhhhhhhh...',
+'....hh....hh....'];
+HEROART.hair_bun_u = [
+'.......jj.......',
+'......hhhh......',
+'.....hhhhhh.....',
+'....hhhhhhhh....',
+'...hhhhhhhhhh...',
+'...hhhhhhhhhh...',
+'...hhhhhhhhhh...',
+'...hhhhhhhhhh...',
+'....hhhhhhhh....'];
+HEROART.hair_bun_l = [
+'......jj........',
+'.....hhhh.......',
+'.....hhhhhh.....',
+'....hhhhhhhh....',
+'...hhhhhhhhhh...',
+'.....hhhhhhh....',
+'......hhhhhh....'];
+
+/* ── hats (m main · n shadow · p brim/band accent) ── */
+HEROART.hat_cap_d = [
+'................',
+'....mmmmmmmm....',
+'...mmmmmmmmmm...',
+'..mmmmmmmmmmmm..',
+'..pppppppppppp..'];
+HEROART.hat_cap_u = [
+'................',
+'....mmmmmmmm....',
+'...mmmmmmmmmm...',
+'...mmmmmmmmmm...',
+'...mmmmmmmmmm...'];
+HEROART.hat_cap_l = [
+'................',
+'.....mmmmmmm....',
+'..pppmmmmmmm....',
+'..pppmmmmmmm....'];
+HEROART.hat_beanie_d = [
+'................',
+'....mmmmmmmm....',
+'...mmmmmmmmmm...',
+'...mmmmmmmmmm...',
+'...pppppppppp...'];
+HEROART.hat_beanie_u = [
+'................',
+'....mmmmmmmm....',
+'...mmmmmmmmmm...',
+'...mmmmmmmmmm...',
+'...mmmmmmmmmm...',
+'...pppppppppp...'];
+HEROART.hat_beanie_l = [
+'................',
+'....mmmmmmmm....',
+'...mmmmmmmmmm...',
+'...mmmmmmmmmm...',
+'...pppppppppp...'];
+HEROART.hat_wizard_d = [
+'.......nn.......',
+'......nmmn......',
+'.....nmmmmn.....',
+'....nmmmmmmn....',
+'...nmmmmmmmmn...',
+'..nppppppppppn..',
+'..mmmmmmmmmmmm..'];
+HEROART.hat_wizard_u = [
+'.......nn.......',
+'......nmmn......',
+'.....nmmmmn.....',
+'....nmmmmmmn....',
+'...nmmmmmmmmn...',
+'..mmmmmmmmmmmm..',
+'...mmmmmmmmmm...'];
+HEROART.hat_wizard_l = [
+'.....nn.........',
+'....nmmn........',
+'...nmmmmn.......',
+'..nmmmmmmn......',
+'.nmmmmmmmmn.....',
+'.pppppppmmmm....',
+'..mmmmmmmmmm....'];
+HEROART.hat_crown_d = [
+'................',
+'..m.m.mm.m.m....',
+'..mmmmmmmmmm....',
+'..mpmpmpmpmm....',
+'..mmmmmmmmmm....'];
+HEROART.hat_crown_u = [
+'................',
+'...m.m.mm.m.m...',
+'...mmmmmmmmmm...',
+'...mmmmmmmmmm...'];
+HEROART.hat_crown_l = [
+'................',
+'...m.m.mm.m.....',
+'...mmmmmmmm.....',
+'...mpmpmpmm.....'];
+HEROART.hat_band_d = [
+'................',
+'................',
+'...ppppppppp....',
+'...mmmmmmmmm....'];
+HEROART.hat_band_u = [
+'................',
+'................',
+'...ppppppppp....',
+'...mmmmmmmmm....'];
+HEROART.hat_band_l = [
+'................',
+'................',
+'...ppppppp......',
+'...mmmmmmm......'];
+
+/* ── glasses (front only; q frame · g tinted lens) ── */
+HEROART.glasses_round = [
+'................',
+'................',
+'................',
+'................',
+'....qqq..qqq....',
+'....qgq..qgq....'];
+HEROART.glasses_shades = [
+'................',
+'................',
+'................',
+'................',
+'....qqqqqqqq....',
+'....gggggggg....'];
+HEROART.glasses_square = [
+'................',
+'................',
+'................',
+'................',
+'....qqq..qqq....',
+'....qgq..qgq....',
+'....qqq..qqq....'];
+HEROART.glasses_monocle = [
+'................',
+'................',
+'................',
+'................',
+'.........qqq....',
+'.........qgq....',
+'.........qqq....',
+'..........q.....'];
+
+/* ── facial hair (front only; b = hair-shade) ── */
+HEROART.facial_stubble = [
+'................',
+'................',
+'................',
+'................',
+'................',
+'....b.b.b.b.....',
+'.....b.b.b......'];
+HEROART.facial_mustache = [
+'................',
+'................',
+'................',
+'................',
+'................',
+'.....bbbbbb.....'];
+HEROART.facial_goatee = [
+'................',
+'................',
+'................',
+'................',
+'................',
+'.....bbbbbb.....',
+'......bbbb......'];
+HEROART.facial_beard = [
+'................',
+'................',
+'................',
+'................',
+'...b......b.....',
+'...b......b.....',
+'....bbbbbb......'];
 
 /* ── NPCs ── */
 defSpr('willy', [                       /* the statue. he is always watching. */
@@ -1950,23 +2404,151 @@ var QDEF = {
 };
 var QORDER = ['main', 'photo', 'wheel', 'liquid', 'lich', 'kolache'];
 
+/* ─────────────────── character customization catalog ─────────────────── */
+/* colour options — {n: label, v: hex}; skin also carries s: shadow */
+var SKINS = [
+    { n: 'PORCELAIN', v: '#f4d4b8', s: '#d7a67e' }, { n: 'FAIR', v: '#eec39a', s: '#c68d5c' },
+    { n: 'SUN-KISS', v: '#e2a878', s: '#bd7f4e' }, { n: 'OLIVE', v: '#cf9a5e', s: '#a5713a' },
+    { n: 'TAN', v: '#b97f4c', s: '#8f5c2f' }, { n: 'BRONZE', v: '#9c6438', s: '#6f4322' },
+    { n: 'UMBER', v: '#7a4d2c', s: '#543219' }, { n: 'ESPRESSO', v: '#563723', s: '#3a2314' },
+    { n: 'ASHEN', v: '#a9b2b8', s: '#7f8a91' }, { n: 'VERDANT', v: '#8fae72', s: '#62804a' },
+    { n: 'TIDAL', v: '#7fa6c4', s: '#567f9e' }, { n: 'EMBER', v: '#c8846a', s: '#9c5c44' }
+];
+var HAIRCOLS = [
+    { n: 'BLACK', v: '#1c1a20' }, { n: 'SOOT', v: '#2c2932' }, { n: 'DARK BROWN', v: '#3a2a1c' },
+    { n: 'BROWN', v: '#5a3d24' }, { n: 'CHESTNUT', v: '#6e4a2a' }, { n: 'AUBURN', v: '#7a3a22' },
+    { n: 'GINGER', v: '#b5561f' }, { n: 'SANDY', v: '#a9793f' }, { n: 'BLONDE', v: '#d8b25a' },
+    { n: 'PLATINUM', v: '#e8dcbf' }, { n: 'ASH', v: '#9a9088' }, { n: 'SILVER', v: '#c8c6c0' },
+    { n: 'SNOW', v: '#efece0' }, { n: 'CRIMSON', v: '#b02a2a' }, { n: 'OCEAN', v: '#2f6fb0' },
+    { n: 'VIOLET', v: '#7b53c9' }, { n: 'MINT', v: '#4fae8a' }, { n: 'ROSE', v: '#d86aa0' }
+];
+var EYECOLS = [
+    { n: 'BROWN', v: '#4a3626' }, { n: 'HAZEL', v: '#7a5a2e' }, { n: 'AMBER', v: '#b5791f' },
+    { n: 'GREEN', v: '#3f7a4a' }, { n: 'BLUE', v: '#3a6bb0' }, { n: 'GREY', v: '#6f7078' },
+    { n: 'VIOLET', v: '#7b53c9' }, { n: 'RED', v: '#b02a2a' }
+];
+var OUTFITS = [
+    { n: 'CRIMSON', v: '#d81e05' }, { n: 'RUST', v: '#a83a1e' }, { n: 'AMBER', v: '#f2a30f' },
+    { n: 'GOLD', v: '#e8c04a' }, { n: 'OLIVE', v: '#6f8f3a' }, { n: 'FOREST', v: '#3f7a4a' },
+    { n: 'TEAL', v: '#1f9e98' }, { n: 'OCEAN', v: '#3a6bb0' }, { n: 'ROYAL', v: '#4a6bd8' },
+    { n: 'VIOLET', v: '#7b53c9' }, { n: 'PLUM', v: '#7a3a8a' }, { n: 'ROSE', v: '#d86aa0' },
+    { n: 'SLATE', v: '#55606e' }, { n: 'IRON', v: '#3a3a44' }, { n: 'BONE', v: '#d8cdb0' },
+    { n: 'SNOW', v: '#e6ddc8' }, { n: 'INK', v: '#26242c' }
+];
+var TRIMS = [
+    { n: 'GOLD', v: '#e8c04a' }, { n: 'SILVER', v: '#c8c6c0' }, { n: 'BRONZE', v: '#b5792f' },
+    { n: 'CRIMSON', v: '#d81e05' }, { n: 'WHITE', v: '#f0ead6' }, { n: 'BLACK', v: '#1a1a20' },
+    { n: 'TEAL', v: '#1f9e98' }, { n: 'VIOLET', v: '#7b53c9' }, { n: 'ROSE', v: '#d86aa0' },
+    { n: 'LEAF', v: '#6f8f3a' }, { n: 'SKY', v: '#5e93cf' }
+];
+var LENSES = [
+    { n: 'SMOKE', v: '#1a1a20' }, { n: 'AZURE', v: '#8fc0e8' }, { n: 'JADE', v: '#7fbf7f' },
+    { n: 'AMBER', v: '#e8c04a' }, { n: 'ROSE', v: '#d86aa0' }
+];
+/* style option ids (art keys) + labels */
+var HAIRSTYLES = [['bald', 'BALD'], ['buzz', 'BUZZ'], ['short', 'SHORT'], ['messy', 'MESSY'], ['swept', 'SWEPT'], ['long', 'LONG'], ['pony', 'PONYTAIL'], ['spiky', 'SPIKY'], ['afro', 'AFRO'], ['bun', 'TOP-KNOT']];
+var HATS = [['none', 'NONE'], ['cap', 'CAP'], ['beanie', 'BEANIE'], ['band', 'HEADBAND'], ['wizard', 'WIZARD'], ['crown', 'CROWN']];
+var GLASSESO = [['none', 'NONE'], ['round', 'ROUND'], ['square', 'SQUARE'], ['shades', 'SHADES'], ['monocle', 'MONOCLE']];
+var FACIALS = [['none', 'CLEAN'], ['stubble', 'STUBBLE'], ['mustache', 'MUSTACHE'], ['goatee', 'GOATEE'], ['beard', 'BEARD']];
+
+/* origins (backgrounds) — a stat bump, a kit item, some gold, and a bio */
+var ORIGINS = [
+    { id: 'sae', n: 'RICE RACING RECRUIT', bump: { str: 1, con: 1 }, gold: 10, item: 'taco',
+      bio: 'Director of Financing for the Formula SAE team. You torque to spec, then reconcile the invoice.' },
+    { id: 'thresher', n: 'THRESHER SHOOTER', bump: { dex: 2 }, gold: 5, trinket: 'lens',
+      bio: 'Staff photographer. You catch the decisive moment a half-second before anyone else sees it.' },
+    { id: 'wealth', n: 'WEALTH MGMT ANALYST', bump: { int: 2 }, gold: 40,
+      bio: 'Undergraduate wealth club analyst. Your portfolio is diversified; your sleep schedule is not.' },
+    { id: 'permian', n: 'PERMIAN INTERN', bump: { con: 2 }, gold: 15, item: 'coldbrew',
+      bio: 'A summer moving water across the Midland Basin taught you patience and the value of a full canteen.' },
+    { id: 'cooper', n: 'D&D CLUB FOUNDER', bump: { cha: 1, wis: 1 }, gold: 5, bless: true,
+      bio: 'You founded the table back at Cooper. The dice remember their maker.' },
+    { id: 'chaus', n: 'CHAUS REGULAR', bump: { wis: 1, dex: 1 }, gold: 5, item: 'espresso', focus: 1,
+      bio: 'The barista knows your order, your deadlines, and at least one of your secrets.' },
+    { id: 'woodlands', n: 'WOODLANDS NATIVE', bump: { dex: 2 }, gold: 10, trinket: 'stripe',
+      bio: 'Raised on cul-de-sacs and speed bumps. You learned throttle control before cursive.' },
+    { id: 'wanderer', n: 'WANDERER', bump: { con: 1, cha: 1 }, gold: 20,
+      bio: 'No transcript. No LinkedIn. Only vibes and an unreasonable amount of trail mix.' }
+];
+/* traits (starting perks) — mechanical hooks read elsewhere via hasTrait() */
+var TRAITS = [
+    { id: 'caffeinated', n: 'CAFFEINATED', desc: '+1 max FOCUS. The hands only shake a little.' },
+    { id: 'gearhead', n: 'GEARHEAD', desc: '+2 initiative. First off the line, always.' },
+    { id: 'goldeneye', n: 'GOLDEN EYE', desc: 'Weapons crit on 19-20. You see it early.' },
+    { id: 'diversified', n: 'DIVERSIFIED', desc: '-1 to all damage taken. Uncorrelated defense.' },
+    { id: 'overachiever', n: 'OVERACHIEVER', desc: '+25% XP. Extra credit is a lifestyle.' },
+    { id: 'thickskin', n: 'THICK SKIN', desc: '+3 max HP. Critique bounces off.' },
+    { id: 'lucky', n: 'LUCKY', desc: 'Reroll one natural 1 per battle.' },
+    { id: 'bigbrain', n: 'BIG BRAIN', desc: 'Start knowing an extra spell.' }
+];
+var ALIGNS = [
+    { id: 'lg', n: 'LAWFUL GOOD', q: 'the paladin\'s posture.' }, { id: 'ng', n: 'NEUTRAL GOOD', q: 'quietly decent.' }, { id: 'cg', n: 'CHAOTIC GOOD', q: 'a good heart, no calendar.' },
+    { id: 'ln', n: 'LAWFUL NEUTRAL', q: 'the rules are the rules.' }, { id: 'nn', n: 'TRUE NEUTRAL', q: 'the druid shrugs.' }, { id: 'cn', n: 'CHAOTIC NEUTRAL', q: 'the DM sighs, fondly.' },
+    { id: 'le', n: 'LAWFUL EVIL', q: 'terms and conditions apply.' }, { id: 'ne', n: 'NEUTRAL EVIL', q: 'purely transactional.' }, { id: 'ce', n: 'CHAOTIC EVIL', q: 'please roll a new character.' }
+];
+var PRONOUNS = [['they', 'THEY / THEM'], ['she', 'SHE / HER'], ['he', 'HE / HIM'], ['it', 'IT / ITS']];
+var SIGNS = ['THE NAT-20', 'THE FUMBLE', 'THE DUMP STAT', 'THE CRIT', 'THE INITIATIVE', 'THE LONG REST', 'THE SAVING THROW', 'THE ADVANTAGE', 'THE DISADVANTAGE', 'THE LOADED DIE', 'THE MODIFIER', 'THE MULLIGAN'];
+
+/* build a `look` from a bag of catalog indices */
+function buildLook(ix) {
+    var sk = SKINS[ix.skin], hc = HAIRCOLS[ix.hairCol], of = OUTFITS[ix.outfit], tr = TRIMS[ix.trim];
+    return {
+        skin: sk.v, skin2: sk.s, eyes: EYECOLS[ix.eyes].v,
+        outfit: of.v, accent: tr.v,
+        hair: hc.v, hairStyle: HAIRSTYLES[ix.hairStyle][0],
+        hat: HATS[ix.hat][0], hatCol: OUTFITS[ix.hatCol].v, hatAcc: TRIMS[ix.hatAcc].v,
+        glasses: GLASSESO[ix.glasses][0], lens: LENSES[ix.lens].v,
+        facial: FACIALS[ix.facial][0]
+    };
+}
+/* class-themed default index bag, lightly varied by a seed */
+function defaultLookIx(cls, seed) {
+    seed = seed || 0;
+    var outfitByClass = { pal: 3, bard: 9, rogue: 0, druid: 6, sorc: 8 };   // gold, violet, crimson, teal, royal
+    return {
+        skin: 1, hairCol: 3, eyes: 0, outfit: outfitByClass[cls] != null ? outfitByClass[cls] : 9,
+        trim: 0, hairStyle: 2, hat: 0, hatCol: 13, hatAcc: 0, glasses: 0, lens: 1, facial: 0
+    };
+}
+var DEFAULT_LOOK = buildLook(defaultLookIx('sorc', 0));
+
 /* ─────────────────── player state helpers ─────────────────── */
-function newGame(cls, name, st) {
-    var c = CLASSES[cls];
+/* newGame takes a full build: {cls, name, st, look, origin, trait, align, pronoun, sign} */
+function newGame(build) {
+    var cls = build.cls, c = CLASSES[cls];
+    var st = build.st;
+    var origin = null, i;
+    for (i = 0; i < ORIGINS.length; i++) if (ORIGINS[i].id === build.origin) origin = ORIGINS[i];
+    /* apply origin stat bumps */
+    if (origin && origin.bump) for (var k in origin.bump) st[k] = (st[k] || 10) + origin.bump[k];
+    var trait = build.trait || null;
+    var hpm = c.die + mod(st.con) + 2;
+    if (trait === 'thickskin') hpm += 3;
+    var focm = 2 + Math.max(0, mod(st[c.key]));
+    if (trait === 'caffeinated') focm += 1;
+    if (origin && origin.focus) focm += origin.focus;
+    var spells = [c.spells[1]];
+    if (trait === 'bigbrain' && c.spells[2]) spells.push(c.spells[2]);
+    var inv = [{ id: 'coldbrew', n: 2 }, { id: 'taco', n: 1 }];
+    if (origin && origin.item) { var found = false; for (i = 0; i < inv.length; i++) if (inv[i].id === origin.item) { inv[i].n++; found = true; } if (!found) inv.push({ id: origin.item, n: 1 }); }
+    var trinket = origin && origin.trinket ? origin.trinket : null;
     G = {
-        v: 2, name: name, cls: cls, st: st, lvl: 1, xp: 0,
-        hpm: c.die + mod(st.con) + 2, hp: 0,
-        focm: 2 + Math.max(0, mod(st[c.key])), foc: 0,
-        gold: 15,
-        inv: [{ id: 'coldbrew', n: 2 }, { id: 'taco', n: 1 }],
-        eq: { w: c.w, a: 'a0', t: null },
-        spells: [c.spells[1]],
+        v: 3, name: build.name, cls: cls, st: st, lvl: 1, xp: 0,
+        look: build.look, origin: build.origin, trait: trait,
+        align: build.align, pronoun: build.pronoun || 'they', sign: build.sign || 0,
+        hpm: hpm, hp: 0, focm: focm, foc: 0,
+        gold: 15 + (origin ? origin.gold : 0),
+        inv: inv,
+        eq: { w: c.w, a: 'a0', t: trinket },
+        spells: spells,
         quests: {}, flags: {}, chests: {},
         map: 'garage', x: 6, y: 7, dir: 'u',
         steps: 0, kills: 0, camps: 0, deaths: 0, nat20s: 0, day: 1
     };
+    if (origin && origin.bless) G.nat20s = 1;   // the club founder starts blessed by the dice
     G.hp = G.hpm; G.foc = G.focm;
 }
+function hasTrait(id) { return G && G.trait === id; }
 function prof() { return G.lvl >= 4 ? 3 : 2; }
 function weap() { return WEAPONS[G.eq.w]; }
 function armr() { return ARMORS[G.eq.a]; }
@@ -1975,6 +2557,7 @@ function playerAC() {
     var t = trin();
     return 10 + mod(G.st.dex) + armr().ac + (t && t.ac ? t.ac : 0);
 }
+function dmgResist() { return (trin() && trin().resist ? trin().resist : 0) + (hasTrait('diversified') ? 1 : 0); }
 function atkStat() { return CLASSES[G.cls].key; }
 function atkMod() { return mod(G.st[atkStat()]) + prof() + (weap().plus || 0) + (G.flags.probation ? -1 : 0); }
 function dmgMod() { return mod(G.st[atkStat()]) + (weap().plus || 0); }
@@ -1982,6 +2565,7 @@ function critLo() {
     var lo = weap().critLo || 20;
     var t = trin();
     if (t && t.critLo) lo = Math.min(lo, t.critLo);
+    if (hasTrait('goldeneye')) lo = Math.min(lo, 19);
     return lo;
 }
 function addItem(id, n) {
@@ -2002,7 +2586,7 @@ function delItem(id, n) {
         return;
     }
 }
-function giveXP(n) { G.xp += n; }
+function giveXP(n) { if (hasTrait('overachiever')) n = Math.round(n * 1.25); G.xp += n; }
 function xpToNext() { return G.lvl >= MAXLVL ? 0 : XPT[G.lvl] - G.xp; }
 function canLevel() { return G.lvl < MAXLVL && G.xp >= XPT[G.lvl]; }
 function setQuest(q, stage) {
@@ -2487,102 +3071,285 @@ var REROLL_QUIPS = [
     'the DM is writing something down.', 'the DM has stopped writing. worse.',
     'fine. roll until you are happy. no one ever is.'
 ];
+var PB_COST = { 8: 0, 9: 1, 10: 2, 11: 3, 12: 4, 13: 5, 14: 7, 15: 9 };
 function ScCreate() {
-    var phase = 'cls', ci = 0, t = 0;
-    var stats = null, rollAnim = 0, rerolls = 0;
-    var nm = 'ISAAC', gridSel = 0;
-    var LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    function doRollStats() {
-        stats = {}; STATS.forEach(function (s) { stats[s] = roll4d6dl(); });
-        rollAnim = 0.9; SFX.dice();
+    var STEPS = ['CLASS', 'ORIGIN', 'ABILITY', 'TRAIT', 'LOOKS', 'NAME', 'CREED', 'REVIEW'];
+    var step = 0, t = 0;
+    var ci = 0, oi = 0, ti = 0;
+    var lookIx = defaultLookIx(CLS_ORDER[ci]);
+    var lookField = 0, lookScroll = 0;
+    /* abilities */
+    var method = 1;   // 0 roll, 1 point-buy, 2 array
+    var METHODS = ['ROLL 4d6', 'POINT-BUY', 'STD ARRAY'];
+    var sv = { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 };
+    var abRow = 0, rollAnim = 0, rerolls = 0;
+    /* identity */
+    var nm = 'ISAAC', gridSel = 0, LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    var creedRow = 0, pronoun = 0, align = 4, sign = 0;
+
+    function initMethod() {
+        if (method === 0) { rollAnim = 0.7; SFX.dice(); var vals = []; for (var i = 0; i < 6; i++) vals.push(roll4d6dl()); vals.sort(function (a, b) { return b - a; }); STATS.forEach(function (s, i) { sv[s] = vals[i]; }); }
+        else if (method === 1) { STATS.forEach(function (s) { sv[s] = 8; }); }
+        else { var arr = [15, 14, 13, 12, 10, 8]; STATS.forEach(function (s, i) { sv[s] = arr[i]; }); }
     }
+    initMethod();
+    function pbLeft() { var used = 0; STATS.forEach(function (s) { used += PB_COST[sv[s]] || 0; }); return 27 - used; }
+
+    function curLook() { return buildLook(lookIx); }
+    function looksFields() {
+        var f = [{ l: 'SKIN', a: SKINS, k: 'skin' }, { l: 'HAIR', a: HAIRSTYLES, k: 'hairStyle', st: 1 },
+            { l: 'COLOR', a: HAIRCOLS, k: 'hairCol' }, { l: 'EYES', a: EYECOLS, k: 'eyes' },
+            { l: 'OUTFIT', a: OUTFITS, k: 'outfit' }, { l: 'TRIM', a: TRIMS, k: 'trim' },
+            { l: 'HAT', a: HATS, k: 'hat', st: 1 }];
+        if (HATS[lookIx.hat][0] !== 'none') f.push({ l: 'HATCOL', a: OUTFITS, k: 'hatCol' });
+        f.push({ l: 'SPECS', a: GLASSESO, k: 'glasses', st: 1 });
+        if (GLASSESO[lookIx.glasses][0] !== 'none') f.push({ l: 'LENS', a: LENSES, k: 'lens' });
+        f.push({ l: 'FACIAL', a: FACIALS, k: 'facial', st: 1 });
+        f.push({ l: 'SHUFFLE', shuffle: 1 });
+        return f;
+    }
+    function bob() { return Math.floor(animT * 2.4) % 2; }
+    function portrait(x, y, sc) { drawHero(x, y, { dir: 'd', frame: bob(), scale: sc, look: curLook() }); }
+
+    function header() {
+        ctx.fillStyle = '#101018'; ctx.fillRect(0, 0, W, 13);
+        t35('STEP ' + (step + 1) + '/' + STEPS.length, 4, 4, P.dim);
+        txtC(STEPS[step], W / 2, 3, P.gold);
+    }
+    function navHint(s) { ctx.fillStyle = '#0e0e16'; ctx.fillRect(0, H - 11, W, 11); txtC(s, W / 2, H - 9, '#6a6a78'); }
+
     return { opaque: true,
         enter: function () { music('title'); },
-        u: function (dt) { t += dt; if (rollAnim > 0) { rollAnim -= dt; if (Math.random() < 0.4) SFX.dice(); } },
+        u: function (dt) { t += dt; if (rollAnim > 0) { rollAnim -= dt; if (Math.random() < 0.35) SFX.dice(); } },
         d: function () {
             ctx.fillStyle = '#181826'; ctx.fillRect(0, 0, W, H);
-            ctx.fillStyle = '#101018'; ctx.fillRect(0, 0, W, 14);
-            if (phase === 'cls') {
+            var s = STEPS[step];
+            header();
+            if (s === 'CLASS') {
                 var cls = CLASSES[CLS_ORDER[ci]];
-                txtC('CHOOSE YOUR CLASS', W / 2, 3, P.gold);
-                /* portrait left, name + tag right */
-                var bob = Math.floor(animT * 2) % 2;
-                drawSpr(bob ? 'pd1' : 'pd0', 14, 20, { tint: cls.tint, scale: 3 });
-                txtC('<' + (ci + 1) + '/5>', 38, 70, P.dim);
-                txt(cls.n.split(' ')[0].slice(0, 11), 68, 22, cls.tint);
-                txt(cls.n.split(' ').slice(1).join(' ').slice(0, 11), 68, 31, cls.tint);
+                portrait(12, 20, 3);
+                txtC('< ' + (ci + 1) + '/5 >', 30, 70, P.dim);
+                txt(cls.n.split(' ')[0].slice(0, 11), 68, 20, cls.tint);
+                txt(cls.n.split(' ').slice(1).join(' ').slice(0, 11), 68, 29, cls.tint);
                 var tg = wrap(cls.tag, 11);
-                for (var i0 = 0; i0 < tg.length && i0 < 3; i0++) txt(tg[i0], 68, 44 + i0 * 9, P.dim);
-                /* full-width blurb */
+                for (var i0 = 0; i0 < tg.length && i0 < 2; i0++) txt(tg[i0], 68, 42 + i0 * 9, P.dim);
                 var bl = wrap(cls.blurb, 19);
-                for (var i = 0; i < bl.length && i < 3; i++) txt(bl[i], 4, 78 + i * 9, P.w);
-                box(4, 105, W - 8, 29, { bg: '#101018' });
-                txt('HD d' + cls.die + ' · KEY ' + STAT_N[cls.key], 8, 109, P.dim);
-                txt('WPN ' + WEAPONS[cls.w].n.slice(0, 15), 8, 118, P.w);
-                txtC('A: PICK  </> BROWSE', W / 2, 136, P.dim);
-            } else if (phase === 'stats') {
-                var cls2 = CLASSES[CLS_ORDER[ci]];
-                txtC('ROLL YOUR FATE', W / 2, 3, P.gold);
-                txtC('4d6, drop lowest', W / 2, 17, P.dim);
-                for (var j = 0; j < 6; j++) {
-                    var st = STATS[j], v = stats[st];
-                    var show = rollAnim > 0 ? ri(3, 18) : v;
-                    var key = st === cls2.key;
-                    txt(STAT_N[st], 26, 30 + j * 11, key ? cls2.tint : P.w);
-                    txt(String(show).length < 2 ? ' ' + show : '' + show, 62, 30 + j * 11, rollAnim > 0 ? P.dim : P.w);
-                    if (rollAnim <= 0) txt('(' + fmtMod(mod(v)) + ')', 86, 30 + j * 11, mod(v) >= 2 ? P.hp : mod(v) < 0 ? P.red : P.dim);
-                    if (key && rollAnim <= 0) txt('*', 116, 30 + j * 11, cls2.tint);
+                for (var i = 0; i < bl.length && i < 3; i++) txt(bl[i], 4, 80 + i * 9, P.w);
+                box(4, 108, W - 8, 20, { bg: '#101018' });
+                txt('HD d' + cls.die + '  KEY ' + STAT_N[cls.key], 8, 112, P.dim);
+                txt('WPN ' + WEAPONS[cls.w].n.slice(0, 13), 8, 120, P.w);
+                navHint('</> BROWSE   A NEXT');
+            } else if (s === 'ORIGIN') {
+                box(W - 24, 15, 20, 20, { bg: '#101018', edge: '#2a2a3a' });
+                portrait(W - 23, 17, 1);
+                t35((oi + 1) + '/' + ORIGINS.length, W - 22, 37, P.dim);
+                var o = ORIGINS[oi];
+                txt(o.n.slice(0, 15), 6, 17, P.amber);
+                var bb = wrap(o.bio, 19);
+                for (var j = 0; j < bb.length && j < 4; j++) txt(bb[j], 6, 30 + j * 9, P.w);
+                box(4, 74, W - 8, 46, { bg: '#101018' });
+                txt('BONUS', 8, 78, P.gold);
+                var bl2 = [];
+                for (var bk in (o.bump || {})) bl2.push(STAT_N[bk] + ' +' + o.bump[bk]);
+                txt(bl2.join('  '), 8, 89, P.hp);
+                var extra = [];
+                if (o.gold) extra.push('+' + o.gold + 'g');
+                if (o.item) extra.push(ITEMS[o.item].n.split(' ')[0]);
+                if (o.trinket) extra.push(TRINKETS[o.trinket].n.split(' ')[0]);
+                if (o.focus) extra.push('+' + o.focus + ' FOC');
+                if (o.bless) extra.push('a nat-20');
+                txt(extra.join('  ').slice(0, 19), 8, 100, P.dim);
+                if (o.bless || o.trinket) txt((o.trinket ? TRINKETS[o.trinket].n : 'blessed by the dice').slice(0, 19), 8, 110, '#6a6a78');
+                navHint('^v PICK   A NEXT');
+            } else if (s === 'ABILITY') {
+                txtC(METHODS[method], W / 2, 16, abRow === 0 ? P.w : P.gold);
+                var rows = ['METHOD'].concat(STATS);
+                for (var r = 0; r < rows.length; r++) {
+                    var yy = 28 + r * 13;
+                    var selr = r === abRow;
+                    if (r === 0) {
+                        if (selr) cursor(20, yy + 1);
+                        txt('METHOD', 28, yy, selr ? P.w : P.dim);
+                        txt(method === 1 ? 'PTS ' + pbLeft() : (method === 0 ? 'A=ROLL' : ''), 100, yy, method === 1 ? (pbLeft() < 0 ? P.red : P.hp) : P.dim);
+                    } else {
+                        var st = STATS[r - 1], v = rollAnim > 0 ? ri(4, 17) : sv[st], key = CLASSES[CLS_ORDER[ci]].key === st;
+                        if (selr) cursor(20, yy + 1);
+                        txt(STAT_N[st], 28, yy, key ? CLASSES[CLS_ORDER[ci]].tint : selr ? P.w : P.dim);
+                        txt('◂', 62, yy, selr && rollAnim <= 0 ? P.gold : '#3a3a48');
+                        txt(('' + v), 74, yy, P.w);
+                        txt('▸', 92, yy, selr && rollAnim <= 0 ? P.gold : '#3a3a48');
+                        if (rollAnim <= 0) txt('(' + fmtMod(mod(v)) + ')', 108, yy, mod(v) >= 2 ? P.hp : mod(v) < 0 ? P.red : P.dim);
+                    }
                 }
-                if (rollAnim <= 0) {
-                    box(4, 100, W - 8, 24, { bg: '#101018' });
-                    txtC('A: KEEP    B: REROLL', W / 2, 105, P.dim);
-                    txtC(rerolls === 0 ? 'the dice await.' : REROLL_QUIPS[Math.min(rerolls - 1, REROLL_QUIPS.length - 1)], W / 2, 114, rerolls > 3 ? P.amber : P.dim);
+                navHint(abRow === 0 ? '</> METHOD  A NEXT' : '</> SET  A NEXT');
+            } else if (s === 'TRAIT') {
+                box(W - 24, 15, 20, 20, { bg: '#101018', edge: '#2a2a3a' });
+                portrait(W - 23, 17, 1);
+                var tr = TRAITS[ti];
+                txt(tr.n.slice(0, 14), 6, 17, P.foc);
+                var dl = wrap(tr.desc, 19);
+                for (var di = 0; di < dl.length && di < 4; di++) txt(dl[di], 6, 34 + di * 9, P.w);
+                /* quick pick list of the other traits */
+                box(4, 80, W - 8, 44, { bg: '#101018' });
+                for (var tj = 0; tj < TRAITS.length; tj++) {
+                    var col = tj % 2, trow = Math.floor(tj / 2);
+                    txt((tj === ti ? '>' : ' ') + TRAITS[tj].n.split(' ')[0].slice(0, 8), 8 + col * 74, 84 + trow * 9, tj === ti ? P.foc : P.dim);
                 }
-            } else {
-                txtC('NAME THY HERO', W / 2, 3, P.gold);
-                box(30, 18, 100, 18, { bg: '#101018' });
+                navHint('^v/<> PICK  A NEXT');
+            } else if (s === 'LOOKS') {
+                var F = looksFields();
+                if (lookField < lookScroll) lookScroll = lookField;
+                if (lookField > lookScroll + 6) lookScroll = lookField - 6;
+                box(W - 36, 15, 34, 34, { bg: '#101018', edge: '#2a2a3a' });
+                portrait(W - 34, 18, 2);
+                for (var fr = 0; fr < 9; fr++) {
+                    var fi = lookScroll + fr; if (fi >= F.length) break;
+                    var fd = F[fi], fy = 18 + fr * 12, on = fi === lookField;
+                    if (on) cursor(4, fy + 1);
+                    if (fd.shuffle) { txt('* SHUFFLE', 10, fy, on ? P.gold : P.dim); continue; }
+                    txt(fd.l, 10, fy, on ? P.w : P.dim);
+                    if (!fd.st) { ctx.fillStyle = fd.a[lookIx[fd.k]].v; ctx.fillRect(60, fy, 6, 6); }
+                    var val = fd.st ? fd.a[lookIx[fd.k]][1] : fd.a[lookIx[fd.k]].n;
+                    txt(val.slice(0, 6), 70, fy, on ? P.gold : '#8a8a96');
+                }
+                if (lookScroll > 0) txt('^', W - 8, 15, P.dim);
+                if (lookScroll + 9 < F.length) txt('v', W - 8, 128, P.dim);
+                navHint('</> CHANGE  A NEXT');
+            } else if (s === 'NAME') {
+                portrait(W - 22, 16, 1);
+                box(20, 18, 90, 16, { bg: '#101018' });
                 var shown = nm + (Math.floor(animT * 2) % 2 ? '_' : ' ');
-                txt(shown, Math.round(W / 2 - (nm.length + 1) * 4), 23, P.w);
+                txt(shown, Math.round(65 - (nm.length + 1) * 4), 22, P.w);
                 for (var k = 0; k < 36; k++) {
-                    var gx = 17 + (k % 9) * 14, gy = 44 + Math.floor(k / 9) * 13;
-                    if (k === gridSel) { ctx.fillStyle = '#2c2c40'; ctx.fillRect(gx - 3, gy - 2, 13, 12); }
+                    var gx = 14 + (k % 9) * 15, gy = 44 + Math.floor(k / 9) * 13;
+                    if (k === gridSel) { ctx.fillStyle = '#2c2c40'; ctx.fillRect(gx - 3, gy - 2, 14, 12); }
                     txt(LETTERS[k], gx, gy, k === gridSel ? P.gold : P.w);
                 }
                 var endSel = gridSel === 36;
                 if (endSel) { ctx.fillStyle = '#2c2c40'; ctx.fillRect(56, 98, 48, 12); }
-                txtC('END', W / 2, 100, endSel ? P.gold : P.hp);
-                txtC('A: PICK  B: DELETE', W / 2, 118, P.dim);
-                txtC('a name came with it', W / 2, 128, '#4a4a58');
+                txtC('DONE', W / 2, 100, endSel ? P.gold : P.hp);
+                navHint('A TYPE   B DELETE');
+            } else if (s === 'CREED') {
+                portrait(W - 24, 16, 1);
+                var crows = [['PRONOUN', PRONOUNS[pronoun][1]], ['ALIGNMENT', ALIGNS[align].n], ['DICE SIGN', SIGNS[sign]]];
+                for (var cr = 0; cr < crows.length; cr++) {
+                    var cy = 30 + cr * 16, con = cr === creedRow;
+                    if (con) cursor(6, cy + 1);
+                    txt(crows[cr][0], 14, cy, con ? P.w : P.dim);
+                    txt('◂', 14, cy + 8, con ? P.gold : '#3a3a48');
+                    txt(crows[cr][1].slice(0, 13), 26, cy + 8, con ? P.gold : '#8a8a96');
+                }
+                box(4, 92, W - 8, 30, { bg: '#101018' });
+                var aq = wrap('"' + ALIGNS[align].q + '"', 19);
+                for (var aqi = 0; aqi < aq.length && aqi < 2; aqi++) txt(aq[aqi], 8, 97 + aqi * 9, '#8a8a96');
+                navHint('</> CHANGE  A NEXT');
+            } else if (s === 'REVIEW') {
+                portrait(6, 16, 3);
+                txt(nm.slice(0, 8), 58, 16, P.w);
+                txt(CLASSES[CLS_ORDER[ci]].n.split(' ')[1].slice(0, 12), 58, 25, CLASSES[CLS_ORDER[ci]].tint);
+                txt(ORIGINS[oi].n.slice(0, 12), 58, 34, P.amber);
+                txt(TRAITS[ti].n.slice(0, 12), 58, 43, P.foc);
+                txt(ALIGNS[align].n.slice(0, 12), 58, 52, P.dim);
+                for (var sr = 0; sr < 6; sr++) {
+                    var stt = STATS[sr];
+                    txt(STAT_N[stt] + ' ' + effStat(stt) + ' ' + fmtMod(mod(effStat(stt))), 8 + (sr % 2) * 76, 68 + Math.floor(sr / 2) * 9, CLASSES[CLS_ORDER[ci]].key === stt ? CLASSES[CLS_ORDER[ci]].tint : P.w);
+                }
+                box(4, 96, W - 8, 30, { bg: '#101018' });
+                var hp0 = CLASSES[CLS_ORDER[ci]].die + mod(effStat('con')) + 2 + (TRAITS[ti].id === 'thickskin' ? 3 : 0);
+                txt('HP ' + hp0 + '  GOLD ' + (15 + ORIGINS[oi].gold), 8, 100, P.hp);
+                txt('SIGN ' + SIGNS[sign].slice(0, 14), 8, 109, '#8a8a96');
+                txt('the tale begins...', 8, 118, '#6a6a78');
+                navHint('B BACK    A BEGIN!');
             }
         },
         i: function (a) {
-            if (phase === 'cls') {
-                if (a === 'left') { ci = (ci + 4) % 5; SFX.move(); }
-                else if (a === 'right') { ci = (ci + 1) % 5; SFX.move(); }
-                else if (a === 'a') { phase = 'stats'; doRollStats(); SFX.ok(); }
-                else if (a === 'b') { transTo(function () { swapTop(ScTitle()); }); }
-            } else if (phase === 'stats') {
+            var s = STEPS[step];
+            function next() { if (step < STEPS.length - 1) { step++; SFX.ok(); if (STEPS[step] === 'ABILITY') abRow = 0; } }
+            function back() { if (step > 0) { step--; SFX.no(); } else transTo(function () { swapTop(ScTitle()); }); }
+            if (s === 'CLASS') {
+                if (a === 'left') { ci = (ci + 4) % 5; lookIx.outfit = defaultLookIx(CLS_ORDER[ci]).outfit; SFX.move(); }
+                else if (a === 'right') { ci = (ci + 1) % 5; lookIx.outfit = defaultLookIx(CLS_ORDER[ci]).outfit; SFX.move(); }
+                else if (a === 'a') next();
+                else if (a === 'b') back();
+            } else if (s === 'ORIGIN') {
+                if (a === 'up') { oi = (oi + ORIGINS.length - 1) % ORIGINS.length; SFX.move(); }
+                else if (a === 'down') { oi = (oi + 1) % ORIGINS.length; SFX.move(); }
+                else if (a === 'a') next();
+                else if (a === 'b') back();
+            } else if (s === 'ABILITY') {
                 if (rollAnim > 0) return;
-                if (a === 'a') { phase = 'name'; SFX.ok(); }
-                else if (a === 'b') { rerolls++; doRollStats(); }
-            } else {
+                var rows = STATS.length + 1;
+                if (a === 'up') { abRow = (abRow + rows - 1) % rows; SFX.move(); }
+                else if (a === 'down') { abRow = (abRow + 1) % rows; SFX.move(); }
+                else if (a === 'left' || a === 'right') {
+                    var dir = a === 'right' ? 1 : -1;
+                    if (abRow === 0) { method = (method + dir + 3) % 3; initMethod(); SFX.dice(); }
+                    else {
+                        var st = STATS[abRow - 1];
+                        if (method === 1) { var nv = sv[st] + dir; if (nv >= 8 && nv <= 15) { var cost = (PB_COST[nv] || 0) - (PB_COST[sv[st]] || 0); if (pbLeft() - cost >= 0) { sv[st] = nv; SFX.move(); } else SFX.no(); } else SFX.no(); }
+                        else { var oth = STATS[(abRow - 1 + dir + 6) % 6]; var tmp = sv[st]; sv[st] = sv[oth]; sv[oth] = tmp; SFX.move(); }
+                    }
+                }
+                else if (a === 'a') { if (abRow === 0 && method === 0) { initMethod(); rerolls++; } else next(); }
+                else if (a === 'b') back();
+            } else if (s === 'TRAIT') {
+                if (a === 'up') { ti = (ti + TRAITS.length - 1) % TRAITS.length; SFX.move(); }
+                else if (a === 'down') { ti = (ti + 1) % TRAITS.length; SFX.move(); }
+                else if (a === 'left') { ti = (ti + TRAITS.length - 2) % TRAITS.length; SFX.move(); }
+                else if (a === 'right') { ti = (ti + 2) % TRAITS.length; SFX.move(); }
+                else if (a === 'a') next();
+                else if (a === 'b') back();
+            } else if (s === 'LOOKS') {
+                var F = looksFields();
+                if (a === 'up') { lookField = (lookField + F.length - 1) % F.length; SFX.move(); }
+                else if (a === 'down') { lookField = (lookField + 1) % F.length; SFX.move(); }
+                else if (a === 'left' || a === 'right') {
+                    var fd = F[Math.min(lookField, F.length - 1)];
+                    if (fd.shuffle) { shuffleLook(lookIx, CLS_ORDER[ci]); SFX.dice(); }
+                    else { var dir2 = a === 'right' ? 1 : -1; lookIx[fd.k] = (lookIx[fd.k] + dir2 + fd.a.length) % fd.a.length; SFX.move(); }
+                }
+                else if (a === 'a') next();
+                else if (a === 'b') back();
+            } else if (s === 'NAME') {
                 if (a === 'left') { gridSel = gridSel === 36 ? 35 : (gridSel + 35) % 36; SFX.move(); }
                 else if (a === 'right') { gridSel = gridSel === 36 ? 0 : (gridSel === 35 ? 36 : gridSel + 1); SFX.move(); }
                 else if (a === 'up') { gridSel = gridSel === 36 ? 31 : (gridSel < 9 ? 36 : gridSel - 9); SFX.move(); }
                 else if (a === 'down') { gridSel = gridSel === 36 ? 4 : (gridSel > 26 ? 36 : gridSel + 9); SFX.move(); }
-                else if (a === 'b') { if (nm.length) { nm = nm.slice(0, -1); SFX.no(); } }
-                else if (a === 'a') {
-                    if (gridSel === 36) {
-                        if (!nm.length) nm = 'PILGRIM';
-                        SFX.fanfare();
-                        if (api) api.markEgg('character', 'rolled a character');
-                        newGame(CLS_ORDER[ci], nm, stats);
-                        transTo(function () { swapTop(ScIntro()); }, 0.5);
-                    } else if (nm.length < 8) { nm += LETTERS[gridSel]; SFX.move(); }
-                    else SFX.no();
+                else if (a === 'b') { if (nm.length) { nm = nm.slice(0, -1); SFX.no(); } else back(); }
+                else if (a === 'a') { if (gridSel === 36) { if (!nm.length) nm = 'PILGRIM'; next(); } else if (nm.length < 8) { nm += LETTERS[gridSel]; SFX.move(); } else SFX.no(); }
+            } else if (s === 'CREED') {
+                if (a === 'up') { creedRow = (creedRow + 2) % 3; SFX.move(); }
+                else if (a === 'down') { creedRow = (creedRow + 1) % 3; SFX.move(); }
+                else if (a === 'left' || a === 'right') {
+                    var d3 = a === 'right' ? 1 : -1;
+                    if (creedRow === 0) pronoun = (pronoun + d3 + PRONOUNS.length) % PRONOUNS.length;
+                    else if (creedRow === 1) align = (align + d3 + ALIGNS.length) % ALIGNS.length;
+                    else sign = (sign + d3 + SIGNS.length) % SIGNS.length;
+                    SFX.move();
                 }
+                else if (a === 'a') next();
+                else if (a === 'b') back();
+            } else if (s === 'REVIEW') {
+                if (a === 'a') {
+                    SFX.fanfare();
+                    if (api) api.markEgg('character', 'rolled a character');
+                    var st = {}; STATS.forEach(function (k) { st[k] = sv[k]; });
+                    newGame({ cls: CLS_ORDER[ci], name: nm, st: st, look: curLook(), origin: ORIGINS[oi].id, trait: TRAITS[ti].id, align: ALIGNS[align].id, pronoun: PRONOUNS[pronoun][0], sign: sign });
+                    transTo(function () { swapTop(ScIntro()); }, 0.5);
+                }
+                else if (a === 'b') back();
             }
         } };
+    /* effective stat with origin bump, for the review sheet */
+    function effStat(k) { var v = sv[k]; var o = ORIGINS[oi]; if (o.bump && o.bump[k]) v += o.bump[k]; return v; }
+}
+function shuffleLook(ix, cls) {
+    ix.skin = ri(0, SKINS.length - 1); ix.hairCol = ri(0, HAIRCOLS.length - 1); ix.eyes = ri(0, EYECOLS.length - 1);
+    ix.outfit = ri(0, OUTFITS.length - 1); ix.trim = ri(0, TRIMS.length - 1);
+    ix.hairStyle = ri(0, HAIRSTYLES.length - 1); ix.hat = ri(0, HATS.length - 1);
+    ix.hatCol = ri(0, OUTFITS.length - 1); ix.hatAcc = ri(0, TRIMS.length - 1);
+    ix.glasses = ch(0.4) ? ri(1, GLASSESO.length - 1) : 0; ix.lens = ri(0, LENSES.length - 1);
+    ix.facial = ch(0.4) ? ri(1, FACIALS.length - 1) : 0;
 }
 
 /* ───────────────────── intro cutscene ─────────────────────── */
@@ -2843,11 +3610,9 @@ function ScWorld() {
             });
             /* the hero */
             draws.push({ y: PL.py + 0.5, f: function () {
-                var cls = CLASSES[G.cls];
                 var fr = PL.mvT > 0 ? (PL.step ? 1 : 0) : 0;
-                var id = PL.dir === 'u' ? 'pu' + fr : PL.dir === 'd' ? 'pd' + fr : 'pl' + fr;
                 shadowAt(Math.round(PL.px) - cx, Math.round(PL.py) - cy);
-                drawSpr(id, Math.round(PL.px) - cx, Math.round(PL.py) - cy - 2, { tint: cls.tint, flip: PL.dir === 'r' });
+                drawHero(Math.round(PL.px) - cx, Math.round(PL.py) - cy - 2, { dir: PL.dir, frame: fr });
             } });
             draws.sort(function (a2, b) { return a2.y - b.y; });
             draws.forEach(function (dd) { dd.f(); });
@@ -3010,8 +3775,7 @@ function ScCamp() {
             });
             ctx.fillStyle = '#141824'; ctx.fillRect(0, 96, W, 48);
             drawSpr(Math.floor(t * 4) % 2 ? 'fire1' : 'fire0', 68, 78);
-            var cls = CLASSES[G.cls];
-            drawSpr('pl0', 92, 80, { tint: cls.tint });
+            drawHero(92, 80, { dir: 'l' });
             drawParts(0, 0);
             txtC('LONG REST', W / 2, 16, P.gold);
             if (healed) {
@@ -3229,7 +3993,7 @@ function ScMenu() {
             } else if (sub === 'hero') {
                 box(4, 4, W - 8, 136, { bg: '#14141f' });
                 var cls = CLASSES[G.cls];
-                drawSpr('pd0', 8, 8, { tint: cls.tint });
+                drawHero(8, 8, { dir: 'd' });
                 txt(G.name.slice(0, 8), 28, 8, P.w);
                 txt('G ' + G.gold, 112, 8, P.gold);
                 txt(cls.n.slice(0, 15), 28, 17, cls.tint);
@@ -3248,7 +4012,8 @@ function ScMenu() {
                 txt('TRK ' + (trin() ? trin().n.slice(0, 13) : '-'), 8, 112, P.w);
                 var spl = G.spells.map(function (s5) { return SPELLS[s5].n.split(' ')[0]; }).join(' ');
                 txt('SPL ' + spl.slice(0, 13), 8, 121, P.foc);
-                t35('DAY ' + G.day + '  STEPS ' + G.steps + '  KO ' + G.kills + '  N20 ' + G.nat20s, 8, 132, '#7a7a82');
+                var trN = ''; for (var qt = 0; qt < TRAITS.length; qt++) if (TRAITS[qt].id === G.trait) trN = TRAITS[qt].n;
+                t35((G.origin || '').toUpperCase() + ' ' + trN.split(' ')[0] + ' N20 ' + G.nat20s + ' KO ' + G.kills, 8, 132, '#7a7a82');
             }
         },
         i: function (a) {
@@ -3483,6 +4248,7 @@ function ScBattle(ids, opts) {
             var n = d(20);
             if (opt2.adv) n = Math.max(n, d(20));
             if (opt2.dis) n = Math.min(n, d(20));
+            if (n === 1 && opt2.mine && hasTrait('lucky') && !bt.luckyUsed) { bt.luckyUsed = true; n = d(20); bt.dice.lucky = true; }   // LUCKY: reroll one nat-1 per battle
             var total = n + m2;
             bt.dice.n = n; bt.dice.rollT = 0;
             var crit = opt2.critLo ? n >= opt2.critLo : n === 20;
@@ -3539,8 +4305,8 @@ function ScBattle(ids, opts) {
         if (bt.guard && !pierce) dmg = Math.ceil(dmg / 2);
         var hi = pcond('hedge');
         if (hi) { dmg = Math.ceil(dmg / 2); rmPcond('hedge'); }
-        var t2 = trin();
-        if (t2 && t2.resist) dmg = Math.max(1, dmg - t2.resist);
+        var rz = dmgResist();
+        if (rz) dmg = Math.max(1, dmg - rz);
         G.hp = Math.max(0, G.hp - dmg);
         ftext(30, 70, '-' + dmg, P.red);
         flashFx('#d81e05', 0.12);
@@ -3993,8 +4759,7 @@ function ScBattle(ids, opts) {
         });
     }
     function drawPlayer() {
-        var cls = CLASSES[G.cls];
-        drawSpr('pu0', 16, 62, { tint: cls.tint, scale: 2 });
+        drawHero(16, 62, { dir: 'u', scale: 2 });
         if (bt.guard) { ctx.fillStyle = P.foc; ctx.fillRect(44, 70, 3, 12); }
         var ci = 0;
         bt.pconds.forEach(function (c) {
@@ -4078,7 +4843,7 @@ function ScBattle(ids, opts) {
     msgStep(opts.intro || (first.boss ? first.n + ' blocks your path!' : 'a wild ' + first.n + ' draws near!'), 1.5);
     thenFn(function () {
         var t2 = trin();
-        var pi = d(20) + mod(G.st.dex) + (t2 && t2.init ? t2.init : 0);
+        var pi = d(20) + mod(G.st.dex) + (t2 && t2.init ? t2.init : 0) + (hasTrait('gearhead') ? 2 : 0);
         var ei = d(20) + first.init;
         bt.msg = 'INIT ' + pi + ' vs ' + ei + (pi >= ei ? ' — GO!' : ' — THEY GO!');
         bt.pWon = pi >= ei;
