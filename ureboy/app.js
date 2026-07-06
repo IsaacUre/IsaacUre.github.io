@@ -997,11 +997,10 @@
         var gen = term.gen;
         var head = tries === 0
             ? 'welcome back, ' + name + '. passcode?'
-            : 'nope. you ONLY have ' + commaNum(INT32_MAX - tries + 1) + ' guesses left.';
+            : 'Incorrect. Only ' + commaNum(INT32_MAX - tries + 1) + ' attempts remaining.';
         term.type(head, tries === 0 ? '' : 'tl-warn', 45)
             .then(function () {
-                if (tries === 1) term.line('(that\'s the signed 32-bit integer max. generous, we know.)', 'tl-dim');
-                else if (tries === 6) term.line('(stuck? type RESET here to wipe this profile, or refresh to bail.)', 'tl-dim');
+                if (tries === 6) term.line('stuck? type RESET here to wipe this profile, or refresh to bail.', 'tl-dim');
                 return term.ask({ mask: true });
             })
             .then(function (pass) {
