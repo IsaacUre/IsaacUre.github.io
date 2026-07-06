@@ -326,6 +326,8 @@ body.cart-busy .dpad, body.cart-busy .ab, body.cart-busy .startbar { pointer-eve
 /* ASCII art (the UREBOY wordmark + the big blinking eye): no wrap, tight rows so
    the shape holds together and fills the screen */
 .tl-art { white-space: pre; word-break: normal; line-height: 1; letter-spacing: 0; }
+/* on a very narrow phone, shrink the art a touch so the 34-col eye never clips */
+@media (max-width: 360px) { .tl-art { font-size: .82rem; } }
 .tl-dim { color: var(--screen-dim); }
 .tl-warn { color: var(--screen-accent); }
 .tl-echo { color: var(--screen-dim); }
