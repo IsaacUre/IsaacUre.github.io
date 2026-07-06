@@ -390,7 +390,7 @@ body.screen-max .screen-frame {
 .home-preview { font-family: var(--font-ui); font-weight: 600; font-size: .96rem; color: var(--screen-ink); min-height: 2.7em; line-height: 1.2; padding: 0 .4rem; }
 .home-preview b { color: var(--screen-accent); }
 .home-preview .hp-tag { display: block; font-weight: 400; font-size: .78rem; color: var(--screen-dim); }
-.home-eggs { font-family: var(--font-ui); font-size: .8rem; color: var(--screen-dim); }
+.egg-tally { font-family: var(--font-ui); font-size: .62rem; color: #8a8a82; white-space: nowrap; }
 
 /* ── GAME ── */
 .game-bar {
