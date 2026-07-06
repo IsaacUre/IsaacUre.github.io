@@ -985,32 +985,33 @@
                 });
             });
     }
+    var INT32_MAX = 2147483647;   // the generous number of passcode attempts you get
+    function commaNum(n) {
+        var s = String(n), out = '', c = 0;
+        for (var i = s.length - 1; i >= 0; i--) { out = s[i] + out; if (++c % 3 === 0 && i > 0) out = ',' + out; }
+        return out;
+    }
+    /* no real lockout — it's a toy. wrong guesses just taunt you with how many
+       of your 2,147,483,647 (signed 32-bit max) attempts remain. */
     function askPass(name, tries, rec, source) {
         var gen = term.gen;
-        term.type(tries === 0 ? 'welcome back, ' + name + '. passcode?' : 'nope. ' + (3 - tries) + ' more, then I lock up:', tries === 0 ? '' : 'tl-warn', 45)
-            .then(function () { return term.ask({ mask: true }); })
+        var head = tries === 0
+            ? 'welcome back, ' + name + '. passcode?'
+            : 'nope. you ONLY have ' + commaNum(INT32_MAX - tries + 1) + ' guesses left.';
+        term.type(head, tries === 0 ? '' : 'tl-warn', 45)
+            .then(function () {
+                if (tries === 1) term.line('(that\'s the signed 32-bit integer max. generous, we know.)', 'tl-dim');
+                else if (tries === 6) term.line('(stuck? type RESET here to wipe this profile, or refresh to bail.)', 'tl-dim');
+                return term.ask({ mask: true });
+            })
             .then(function (pass) {
                 if (gen !== term.gen) return;
+                if (String(pass).trim().toLowerCase() === 'reset') return confirmWipe(name);
                 return hashPass(name, pass).then(function (h) {
                     if (gen !== term.gen) return;
                     if (rec && rec.h === h) return finishLogin(name, false, source === 'cloud' ? rec : null);
-                    if (tries >= 2) return lockedOut(name);
                     askPass(name, tries + 1, rec, source);
                 });
-            });
-    }
-    function lockedOut(name) {
-        var gen = term.gen;
-        term.type('three strikes.', 'tl-warn', 45)
-            .then(function () {
-                term.line('type RESET to wipe "' + name + '" and start over,', 'tl-dim');
-                term.line('or just enter to play as a guest.', 'tl-dim');
-                return term.ask();
-            })
-            .then(function (v) {
-                if (gen !== term.gen) return;
-                if (String(v).trim().toLowerCase() === 'reset') return confirmWipe(name);
-                loginGuest();
             });
     }
     function confirmWipe(name) {
@@ -1236,7 +1237,7 @@
         }
         if (state === 'game') {
             if (curCart && curCart.input && curCart.input(a)) return;   // the cartridge ate it
-            if (a === 'b' || a === 'start') openMenu();
+            if (a === 'start') openMenu();     // B no longer ejects — use the eject pull (or START)
             else if (a === 'select') toggleList();
         }
     }
