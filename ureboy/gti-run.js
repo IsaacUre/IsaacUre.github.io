@@ -387,23 +387,26 @@
         }
         return out;
     }
-    /* the player raster: silver remap + owned-part visuals */
-    function rasterPlayer(art) {
+    /* the player raster: silver remap + owned-part visuals. dir/amt is the lean
+       shear, so the overlays ride the sheared body instead of floating. */
+    function rasterPlayer(art, dir, amt) {
         var c = rasterArt(art, SILVER);
         var g = c.getContext('2d');
+        var h = art.length;
+        function sh(y) { return dir ? -Math.round(dir * amt * (1 - y / h)) : 0; }
         if (OWN.duck) {   // ducktail: a lip riding the roofline
             g.fillStyle = C(['#0e0e12', 0]);
-            g.fillRect(5, 0, 34, 1);
+            g.fillRect(5 + sh(0), 0, 34, 1);
             g.fillStyle = C(SILVER.r);
-            g.fillRect(7, 1, 30, 1);
+            g.fillRect(7 + sh(1), 1, 30, 1);
         }
         if (OWN.cat) {    // catback: brighter, fatter tips
             g.fillStyle = C(['#eef1f6', 3]);
-            g.fillRect(6, 22, 4, 2); g.fillRect(34, 22, 4, 2);
+            g.fillRect(6 + sh(22), 22, 4, 2); g.fillRect(34 + sh(22), 22, 4, 2);
         }
         if (OWN.swap) {   // the swap: red badge on the hatch
             g.fillStyle = C(['#d81e05', 2]);
-            g.fillRect(21, 12, 2, 2);
+            g.fillRect(21 + sh(12), 12, 2, 2);
         }
         return c;
     }
@@ -653,11 +656,11 @@
 
     function buildAtlas() {
         atlas = {};
-        atlas.player = rasterPlayer(PLAYER_ART);
-        atlas.playerL1 = rasterPlayer(shearArt(PLAYER_ART, -1, 2));
-        atlas.playerL2 = rasterPlayer(shearArt(PLAYER_ART, -1, 4));
-        atlas.playerR1 = rasterPlayer(shearArt(PLAYER_ART, 1, 2));
-        atlas.playerR2 = rasterPlayer(shearArt(PLAYER_ART, 1, 4));
+        atlas.player = rasterPlayer(PLAYER_ART, 0, 0);
+        atlas.playerL1 = rasterPlayer(shearArt(PLAYER_ART, -1, 2), -1, 2);
+        atlas.playerL2 = rasterPlayer(shearArt(PLAYER_ART, -1, 4), -1, 4);
+        atlas.playerR1 = rasterPlayer(shearArt(PLAYER_ART, 1, 2), 1, 2);
+        atlas.playerR2 = rasterPlayer(shearArt(PLAYER_ART, 1, 4), 1, 4);
         atlas.npc = [];
         for (var t = 0; t < NPC_TYPES.length; t++) {
             var frames = [];
@@ -931,7 +934,8 @@
     function loadGP() {
         var d = null;
         try { d = JSON.parse(localStorage.getItem('ub_gti_gp') || 'null'); } catch (e) {}
-        if (!d || d.v !== 1 || !d.evt || d.evt.length !== EVENTS.length) {
+        if (!d || d.v !== 1 || !Array.isArray(d.evt) || d.evt.length !== EVENTS.length ||
+            !Array.isArray(d.own) || typeof d.cash !== 'number' || !(d.cash >= 0)) {
             var old = d || {};
             d = { v: 1, cash: (typeof old.cash === 'number' && old.cash >= 0) ? old.cash : 0,
                   own: Array.isArray(old.own) ? old.own : [], evt: [], champ: old.champ ? 1 : 0 };
@@ -1037,6 +1041,8 @@
                 var closing = G.speed - r.sp;
                 if (closing > 55 && rel > 0) {
                     G.spinT = 0.9; G.spinA = 0;
+                    G.drifting = false; G.driftT = 0;      // a crash voids the drift...
+                    G.drafting = false; G.draftT = 0;      // ...and the tow
                     G.shake = 0.5; G.flash = 0.12;
                     if (!reduceFX()) G.slowmo = 0.42;
                     G.speed = Math.min(G.speed, STAT.top * 0.22);
@@ -1046,7 +1052,7 @@
                     burstParts(W / 2, 112, 14, 'spark');
                 } else {
                     G.speed = Math.max(40, r.sp * 0.86);
-                    G.playerX += (G.playerX < r.x ? -1 : 1) * 0.22;
+                    G.vx = (G.playerX < r.x ? -1 : 1) * 0.9;   // same glancing shove as traffic: velocity, not a teleport
                     G.shake = Math.max(G.shake, 0.22);
                     SFX.bump();
                     burstParts(W / 2 + (G.playerX < r.x ? 18 : -18), 108, 7, 'spark');
@@ -1256,6 +1262,8 @@
                 if (closing > 55 && rel > 0) {
                     // full crash: spin out
                     G.spinT = 0.9; G.spinA = 0;
+                    G.drifting = false; G.driftT = 0;      // a crash voids the drift...
+                    G.drafting = false; G.draftT = 0;      // ...and the tow
                     G.combo = 0;
                     G.shake = 0.5; G.flash = 0.12;
                     if (!reduceFX()) G.slowmo = 0.42;
@@ -1348,8 +1356,9 @@
                 spawnPart(W / 2 - 12 + Math.random() * 24, 116, (Math.random() - 0.5) * 20, -22 - Math.random() * 18, 0.8, ['#8a8d96', 2], 2, -14);
             }
         } else {
-            /* drift check: brake + full lock at speed */
-            var wantDrift = G.heldBrake && Math.abs(G.steer) > 0.5 && sp > 0.6;
+            /* drift check: brake + full lock at speed. Hysteresis: needs pace to
+               start, but once sideways it lives down to the 0.55 speed floor. */
+            var wantDrift = G.heldBrake && Math.abs(G.steer) > 0.5 && sp > (G.drifting ? 0.5 : 0.62);
             if (wantDrift && !G.drifting) { G.drifting = true; G.driftT = 0; }
             if (!wantDrift && G.drifting) {
                 /* held it long enough: refund some turbo */
@@ -1402,8 +1411,10 @@
                 if (!wasDraft) SFX.draft();
                 G.draftT += dt;
             } else if (wasDraft) {
-                if (G.draftT > 0.9) {
-                    /* slingshot out of the tow */
+                /* slingshot out of the tow — only a real pull-out counts: still on
+                   pace, not braking or spinning, and not farmed back-to-back */
+                if (G.draftT > 0.9 && sp > 0.68 && !G.heldBrake && G.spinT <= 0 && nowSec > (G.slingAt || 0)) {
+                    G.slingAt = nowSec + 2.2;
                     G.boost = Math.min(STAT.boostCap, G.boost + 0.35 * STAT.boostGain);
                     G.speed = Math.min(STAT.top * STAT.boostPow, G.speed + 26);
                     popup('SLINGSHOT!', ['#f2f2ee', 3]);
@@ -2145,10 +2156,12 @@
             G.overT += dt;
             G.speed = Math.max(0, G.speed - 120 * dt);
             G.camZ += G.speed * dt;
+            updateTraffic(dt);           // the world keeps moving while we coast
         } else if (G.state === 'results') {
             G.speed = Math.max(48, G.speed - 60 * dt);
             G.camZ += G.speed * dt;
             for (var ri = 0; ri < rivals.length; ri++) rivals[ri].z += rivals[ri].sp * dt;
+            updateTraffic(dt);
             G.bgX = (G.bgX || 0) - curveAt(G.camZ + PZ) * G.speed * dt * 0.5;
         }
         updateParts(dt);
