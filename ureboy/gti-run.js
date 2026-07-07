@@ -1485,13 +1485,15 @@
     function onCanvasDown(e) {
         e.preventDefault();
         if (G.state !== 'run' && G.state !== 'count') { actionTap('a'); return; }
-        pointers[e.pointerId] = (e.clientX < disp.getBoundingClientRect().left + disp.clientWidth / 2) ? -1 : 1;
+        var rc = disp.getBoundingClientRect();   // width is scale-aware; clientWidth is not (big-screen mode transforms the console)
+        pointers[e.pointerId] = (e.clientX < rc.left + rc.width / 2) ? -1 : 1;
         recalcTouch();
         try { disp.setPointerCapture(e.pointerId); } catch (er) {}
     }
     function onCanvasMove(e) {
         if (pointers[e.pointerId] === undefined) return;
-        pointers[e.pointerId] = (e.clientX < disp.getBoundingClientRect().left + disp.clientWidth / 2) ? -1 : 1;
+        var rc = disp.getBoundingClientRect();   // width is scale-aware; clientWidth is not (big-screen mode transforms the console)
+        pointers[e.pointerId] = (e.clientX < rc.left + rc.width / 2) ? -1 : 1;
         recalcTouch();
     }
     function onCanvasUp(e) {

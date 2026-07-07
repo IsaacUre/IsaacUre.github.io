@@ -284,16 +284,14 @@ body.screen-max .screen-max-btn { display: grid; opacity: .6; }
 body.screen-max .screen-backdrop { opacity: 1; pointer-events: auto; }
 @media (prefers-reduced-motion: reduce) { .screen-backdrop { transition: none; } }
 
-/* neutralize the camera's resting transform AND its lingering will-change (which
-   would otherwise still trap the fixed frame in the ~440ms after a game loads) so
-   the fixed frame is always viewport-relative */
+/* Neutralize the camera's resting transform + lingering will-change so .stage no
+   longer forms a stacking context — that lets the console (z-index below) sit ABOVE
+   the body-level backdrop. The console itself is scaled up via an inline transform
+   (JS), so the whole handheld — logo, screen and controls — pulls up together. */
 body.screen-max .stage { transform: none !important; will-change: auto !important; }
-body.screen-max .screen-frame {
-    position: fixed; inset: 0; margin: auto; z-index: 8001;
-    width: min(92vw, calc(88vh * 10 / 9));
-    height: min(88vh, calc(92vw * 9 / 10));
-    max-width: none;
-    box-shadow: 0 24px 90px rgba(0,0,0,.6), inset 0 2px 8px rgba(0,0,0,.7);
+body.screen-max .ureboy {
+    z-index: 8001;                 /* .ureboy is already position: relative */
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.07), inset 0 -10px 24px rgba(0,0,0,.45), 0 30px 80px rgba(0,0,0,.6);
 }
 .screen {
     position: relative;
