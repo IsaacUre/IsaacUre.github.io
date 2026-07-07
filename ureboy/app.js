@@ -311,7 +311,7 @@
             onShow: wireGarage
         },
         {
-            id: 'gtirun', ico: '🏁', name: 'GTI RUN', tag: 'pedal to the pixels', color: '#2f9e44',
+            id: 'gtirun', ico: '🏁', name: 'GTI RUN', tag: 'argent edition', color: '#9aa2ae',
             fs: true,
             render: function () {
                 return '<div class="gtirun-host" id="gtirunHost"></div>';
