@@ -258,6 +258,31 @@ function drawTrans() {
     }
 }
 
+/* ───────────────────────── hotspots ───────────────────────── */
+/* Scenes register clickable regions while drawing; a click hits the
+   topmost region, else falls through to the scene's own click(). */
+var HS = {
+    list: [],
+    clear: function () { this.list.length = 0; },
+    add: function (x, y, w, h, cb) { this.list.push({ x: x, y: y, w: w, h: h, cb: cb }); },
+    hit: function (mx, my) {
+        for (var i = this.list.length - 1; i >= 0; i--) {
+            var r = this.list[i];
+            if (mx >= r.x && mx < r.x + r.w && my >= r.y && my < r.y + r.h) return r;
+        }
+        return null;
+    }
+};
+function clickAt(mx, my) {
+    if (!mounted || TRANS.on) return;
+    ac();
+    var h = HS.hit(mx, my);
+    if (h) { h.cb(mx, my); return; }
+    var s = top();
+    if (s && s.click) s.click(mx, my);
+    else if (s && s.i) s.i('a');
+}
+
 /* ─────────────────────── scene stack ──────────────────────── */
 var stack = [];
 function top() { return stack[stack.length - 1]; }
@@ -285,6 +310,7 @@ function frame(ts) {
     if (FX.flashT > 0) FX.flashT -= dt;
     updTrans(dt);
     /* draw: find deepest opaque scene, draw up from there */
+    HS.clear();
     var from = 0;
     for (var i = stack.length - 1; i >= 0; i--) { if (stack[i].opaque) { from = i; break; } }
     ctx.fillStyle = P.k; ctx.fillRect(0, 0, W, H);
@@ -1450,31 +1476,117 @@ defSpr('squirking', [                   /* the Squirrel King. heavy is the crown
 '.oNNNNNNNNNNo...',
 '..oNNoooNNo.....',
 '...oo...oo......']);
-defSpr('p0420', [                       /* P-0420, HERALD OF EMISSIONS. its face is the light. */
+defSpr('heatsoak', [                    /* HEAT SOAK, TYRANT OF SUMMER. every degree she ever suffered. */
+'....Y..Y....Y....Y..Y...........',
+'....YY.Y.YY.Y.YY.Y.YY...........',
 '................................',
-'..........oooo....oooo..........',
-'........ooXXXXo..oXXXXoo........',
-'.......oXXXXXXXooXXXXXXXo.......',
-'.....ooXXBBXXXXXXXXXBBXXoo......',
-'....oXXBBBBBXXXXXXXBBBBBXXo.....',
-'...oXXBBBBBBBXXXXXBBBBBBBXXo....',
-'...oXBBBBBBBBBBBBBBBBBBBBBXo....',
-'..oXXBBBBBBBBBBBBBBBBBBBBBXXo...',
-'..oXBBBBBAAAAAAAAAAAABBBBBBXo...',
-'..oXBBBAAAAAAAAAAAAAAAABBBBXo...',
-'.oXXBBAAKAAAAAAAAAAKAAAABBXXXo..',
-'.oXBBBAAAAAAAAAAAAAAAAAABBBXXo..',
-'.oXBBBAAAAKKKKKKKKAAAAAABBBXXo..',
-'.oXBBBBAAAAAAAAAAAAAAAABBBBXXo..',
-'..oXBBBBAAAAAAAAAAAAAABBBBXXo...',
-'..oXXBBBBAAAAAAAAAAAABBBBXXo....',
-'...oXXBBBBBBBBBBBBBBBBBBXXo.....',
-'....oXXBBBBBBBBBBBBBBBBXXo......',
-'...oXXBBBBXXXXXXXXXXBBBBXXo.....',
-'..oXXBBXXXXo..oo..oXXXXBBXXo....',
-'..oXBXXXo..........oXXXBBXo.....',
-'..oXXXo..............oXXXo......',
-'...oo..................oo.......']);
+'.......A..oooo..A...............',
+'.....ooAooRRRRooAoo.............',
+'....oRRRRRRRRRRRRRRo............',
+'...oRRAARRRRRRRRAARRo...........',
+'..oRRAAAARRRRRRAAAARRo..........',
+'..oRAAKAARRRRRRAAKAARo..........',
+'.oRRAAAAARRRRRRAAAAARRo.........',
+'.oRRRAARRRAAAARRRAARRRRo........',
+'.oRRRRRRRAAAAAARRRRRRRRo........',
+'oRRRRRRRAAKKKKAARRRRRRRRo.......',
+'oRRARRRRAAAAAAAARRRRARRRo.......',
+'oRRAARRRRAAAAAARRRRAARRRo.......',
+'oRRAAARRRRRRRRRRRRAAARRRo.......',
+'.oRAAAARRRRRRRRRRAAAARRo........',
+'.oRRAARRRRRRRRRRRRAARRRo........',
+'..oRRRRRRARRRRARRRRRRRo.........',
+'..oRRARRAARRRRAARRARRRo.........',
+'...oRAARAARoRRAARAARRo..........',
+'....oRAoRRo..oRRoARo............',
+'.....oo..oo..oo..oo.............',
+'................................']);
+/* ── companions ── */
+defSpr('csophie', [                     /* Sophie. the matching silver ring glints. */
+'................',
+'....oooooooo....',
+'...oHHHHHHHHo...',
+'..oHHHHHHHHHHo..',
+'..oHH111111HHo..',
+'..oH1e1111e1Ho..',
+'..oH11122111Ho..',
+'..oHH112211HHo..',
+'..oHooMMMMooHo..',
+'..oH.MMMMMM.Ho..',
+'..oHoMmMMmMoHo..',
+'...o1oMMMMo1o...',
+'...W.oMmmMo.....',
+'....oMMMMMMo....',
+'....o88oo88o....',
+'.....oo..oo.....'], { '1': '#eec39a', '2': '#c68d5c', e: '#3f6a45', M: '#d86aa0', m: '#a84e80', W: '#e8ecf2' });
+defSpr('cmalachi', [                    /* Malachi. western goth. dark Americana. */
+'.....oooooo.....',
+'..oooKKKKKKooo..',
+'..oKKKKKKKKKKo..',
+'...ooKKKKKKoo...',
+'....o111111o....',
+'....o1e11e1o....',
+'....o111211o....',
+'.....o1221o.....',
+'....ooKKKKoo....',
+'...oKKKKKKKKo...',
+'..oKkKKKKKKkKo..',
+'..o1oKKWWKKo1o..',
+'...ooKkKKkKoo...',
+'....oKKKKKKo....',
+'....o88oo88o....',
+'.....oo..oo.....'], { '1': '#d8b898', '2': '#b08a62', e: '#4a3626', K: '#1c1a22', k: '#34303c', W: '#c9ccd4' });
+defSpr('cboulder', [                    /* THE BOULDER. one must imagine it happy. */
+'................',
+'.....oooooo.....',
+'...ooGGGGGGoo...',
+'..oGGGGgGGGGGo..',
+'.oGGgGGGGGGGGGo.',
+'.oGGGGGGGgGGGGo.',
+'oGGGGGGGGGGGGGGo',
+'oGGKGGGGGGKGGGGo',
+'oGGGGGGGGGGGGGGo',
+'oGGGKGGGGKGGGGGo',
+'oGGGGKKKKGGGgGGo',
+'.oGGGGGGGGGGGGo.',
+'.oGgGGGGGGGGGGo.',
+'..oGGGGGGGGGGo..',
+'...ooGGGGGGoo...',
+'.....oooooo.....']);
+defSpr('cwalk', [                       /* THE WALK HOME FROM LATE NIGHT. streetlight warm. */
+'.......yy.......',
+'......yYYy......',
+'......yYYy......',
+'.......yy.......',
+'....y.yYYy.y....',
+'...yYYYYYYYYy...',
+'..yYYKYYYYKYYy..',
+'..yYYYYYYYYYYy..',
+'..yYYYY22YYYYy..',
+'...yYYYYYYYYy...',
+'...yYYYYYYYYy...',
+'....yYYYYYYy....',
+'....yYYyyYYy....',
+'.....yy..yy.....',
+'....y......y....',
+'.....y....y.....'], { Y: '#f4dd7c', y: '#c7a94a', K: '#57402c', '2': '#c68d5c' });
+defSpr('ccow', [                        /* the COW. you always knew. */
+'..oo........oo..',
+'.oKKo......oKKo.',
+'..oWWooooooWWo..',
+'..oWWWWWWWWWWo..',
+'.oWKKWWWWWWKKWo.',
+'.oWWWWWKKWWWWWo.',
+'.oW11WWWWWW11Wo.',
+'.o1e1WWKKWW1e1o.',
+'.oWWWWWWWWWWWWo.',
+'..oWWKKWWWWWWo..',
+'..oWWWWWWKKWWo..',
+'..o11oWWWWo11o..',
+'..o12o.WW.o12o..',
+'...oo.oWWo.oo...',
+'......o88o......',
+'.......oo.......'], { W: '#f0ead6', K: '#26242c', '1': '#e8b8c8', '2': '#c68d9a', e: '#3a2a1c', '8': '#57402c' });
 
 /* ── props ── */
 defSpr('arch', [                        /* the Sallyport. you know the rule. */
@@ -1494,7 +1606,7 @@ defSpr('arch', [                        /* the Sallyport. you know the rule. */
 'IIi....................iIIIIIIII',
 'IIi....................iIIiIIiII',
 'IIi....................iIIIIIIII']);
-defSpr('car', [                         /* the CRIMSON STEED (MK8, obviously) */
+defSpr('car', [                         /* ARGENT: the SILVER MK8 (palette override below) */
 '................................................',
 '...............ooooooooooooooo.................',
 '............ooRRRRRRRRRRRRRRRRoo...............',
@@ -1510,7 +1622,7 @@ defSpr('car', [                         /* the CRIMSON STEED (MK8, obviously) */
 '......oKGWGKo..............oKGWGKo.............',
 '......oKKGKKo..............oKKGKKo.............',
 '.......oKKKo................oKKKo..............',
-'........ooo..................ooo...............']);
+'........ooo..................ooo...............'], { R: '#c9ccd4', r: '#82868f' });
 defSpr('pump0', [                       /* nodding donkey, frame A */
 '.....oo.........',
 '....oGGoooooo...',
@@ -1673,6 +1785,23 @@ defSpr('lens', [                        /* fast glass */
 '................',
 '................',
 '................']);
+defSpr('idletree', [                    /* the Idle Diamond Tree. it grows while you sleep. */
+'................',
+'......oooo......',
+'....ooLLLLoo....',
+'...oLLlLLLLLo...',
+'...oLLLLlLLLo...',
+'..oLlLLLLLLLLo..',
+'..oLLLLLlLLLLo..',
+'...oLLlLLLLLo...',
+'....ooLLLLoo....',
+'......oNNo......',
+'......oNNo......',
+'.....oNNNNo.....',
+'....YoNNNNoY....',
+'...oYoNNNNoYo...',
+'..ooooooooooo...',
+'................'], { L: '#5ec8d8', l: '#b8f0f8', N: '#8a6c46', Y: '#e8c04a' });
 defSpr('shelfbook', [
 'oooooooooooooooo',
 'oNNNNNNNNNNNNNNo',
@@ -1978,24 +2107,28 @@ var MAPS = {
             { x: 0, y: 10, to: 'hedges', tx: 26, ty: 10, dir: 'l' },
             { x: 25, y: 10, to: 'wastes', tx: 1, ty: 10, dir: 'r' }
         ],
-        triggers: [{ x: 11, y: 1, x2: 12, y2: 2, id: 'sallyport' }],
+        triggers: [{ x: 11, y: 1, x2: 12, y2: 2, id: 'sallyport' }, { x: 21, y: 9, id: 'branch' }],
         props: [
             { spr: 'arch', x: 10, y: 2, scale: 2, solid: false, deco: true },
             { spr: 'sign', x: 13, y: 3, solid: true, sw: 1, sh: 1, use: 'sign_sally' },
             { spr: 'sign', x: 1, y: 9, solid: true, use: 'sign_west' },
-            { spr: 'sign', x: 24, y: 9, solid: true, use: 'sign_east' }
+            { spr: 'sign', x: 24, y: 9, solid: true, use: 'sign_east' },
+            { spr: 'idletree', x: 15, y: 16, solid: true, use: 'idle_tree' }
         ],
         npcs: [
             { id: 'willy', spr: 'willy', x: 16, y: 12, dlg: 'willy' },
-            { id: 'sammy', spr: 'sammy', x: 9, y: 11, dlg: 'sammy', bob: true },
+            { id: 'sammy', spr: 'sammy', x: 9, y: 11, dlg: 'sammy', bob: true,
+              gone: function () { return G && G.party && G.party.indexOf('sammy') >= 0; } },
             { id: 'editor', spr: 'editor', x: 7, y: 14, dlg: 'editor' },
             { id: 'crew', spr: 'crew', x: 7, y: 8, dlg: 'crew' },
+            { id: 'walkhome', spr: 'cwalk', x: 6, y: 17, dlg: 'walkhome', bob: true,
+              gone: function () { return !G || (G.camps || 0) < 1 || (G.party && G.party.indexOf('walkhome') >= 0); } },
             { id: 'stu1', spr: 'stu1', x: 17, y: 11, dlg: 'stu1', wander: true },
             { id: 'stu2', spr: 'stu2', x: 21, y: 13, dlg: 'stu2', wander: true }
         ]
     },
     garage: {
-        name: 'THE CRIMSON GARAGE', w: 13, h: 10, music: 'chaus', pad: ',',
+        name: 'THE SILVER GARAGE', w: 13, h: 10, music: 'chaus', pad: ',',
         leg: { 'W': 'wall', 'w': 'window', ',': 'sfloor', 'D': 'door', 'B': 'barrel', 'c': 'counter' },
         rows: [
             'WWWWWWWWWWWWW',
@@ -2037,6 +2170,8 @@ var MAPS = {
         props: [],
         npcs: [
             { id: 'barista', spr: 'barista', x: 3, y: 2, dlg: 'barista' },
+            { id: 'sophie', spr: 'csophie', x: 8, y: 7, dlg: 'sophie',
+              gone: function () { return G && G.party && G.party.indexOf('sophie') >= 0; } },
             { id: 'bard', spr: 'bard', x: 10, y: 5, dlg: 'bard', bob: true },
             { id: 'oracle', spr: 'oracle', x: 2, y: 8, dlg: 'oracle' },
             { id: 'stu3', spr: 'stu2', x: 6, y: 8, dlg: 'stu3' }
@@ -2099,7 +2234,9 @@ var MAPS = {
             { spr: 'chest0', x: 2, y: 14, solid: true, use: 'chest_road', id: 'chest_road' }
         ],
         npcs: [
-            { id: 'hedgewiz', spr: 'hedgewiz', x: 7, y: 2, dlg: 'hedgewiz' }
+            { id: 'hedgewiz', spr: 'hedgewiz', x: 7, y: 2, dlg: 'hedgewiz' },
+            { id: 'cow', spr: 'ccow', x: 25, y: 2, dlg: 'cow',
+              gone: function () { return G && G.party && G.party.indexOf('cow') >= 0; } }
         ],
         roamers: [
             { enemy: 'squirrel', x: 10, y: 7, zone: [6, 6, 14, 10] },
@@ -2147,7 +2284,9 @@ var MAPS = {
             { spr: 'chest0', x: 5, y: 15, solid: true, use: 'pedestal_o2', id: 'ped_o2' }
         ],
         npcs: [
-            { id: 'baron', spr: 'baron', x: 22, y: 6, dlg: 'baron' }
+            { id: 'baron', spr: 'baron', x: 22, y: 6, dlg: 'baron' },
+            { id: 'malachi', spr: 'cmalachi', x: 5, y: 8, dlg: 'malachi',
+              gone: function () { return G && G.party && G.party.indexOf('malachi') >= 0; } }
         ],
         roamers: [
             { enemy: 'gasel', x: 12, y: 5, zone: [8, 3, 16, 8] },
@@ -2191,7 +2330,10 @@ var MAPS = {
             { spr: 'chest0', x: 20, y: 9, solid: true, use: 'pedestal_cat', id: 'ped_cat' },
             { spr: 'sign', x: 13, y: 14, solid: true, use: 'sign_bossdoor' }
         ],
-        npcs: [],
+        npcs: [
+            { id: 'boulder', spr: 'cboulder', x: 17, y: 18, dlg: 'boulder',
+              gone: function () { return G && G.party && G.party.indexOf('boulder') >= 0; } }
+        ],
         roamers: [
             { enemy: 'creep', x: 6, y: 7, zone: [3, 6, 12, 8], chase: true },
             { enemy: 'creep', x: 17, y: 12, zone: [14, 11, 20, 13], chase: true },
@@ -2207,19 +2349,22 @@ var CLASSES = {
              tag: 'lawful. formatted.', blurb: 'Smites with formatting. The books WILL balance.',
              spells: { 1: 'audit', 2: 'reconcile', 4: 'pivot' } },
     bard:  { n: 'FINANCE BARD', tint: '#7b53c9', die: 8, key: 'cha', w: 'bard1',
-             tag: 'charisma is liquidity.', blurb: 'Markets and lute, in that order. Damage compounds.',
+             tag: 'karaoke is liquidity.', blurb: 'Markets, lute, karaoke. The anthem hits. So does he.',
              spells: { 1: 'interest', 2: 'inspire', 4: 'margin' } },
-    rogue: { n: 'TORNADO-RED ROGUE', tint: '#d81e05', die: 8, key: 'dex', w: 'rogue1',
-             tag: 'stage 2. no regrets.', blurb: 'First off the line. Crits like a speed bump at 40.',
+    rogue: { n: 'ARGENT ROGUE', tint: '#c9ccd4', die: 8, key: 'dex', w: 'rogue1',
+             tag: 'stage 1+. flex fuel.', blurb: 'Silver, tuned, and already gone. Crits on corn fuel.',
              spells: { 1: 'launch', 2: 'smoke', 4: 'apex' } },
     druid: { n: 'SHUTTER DRUID', tint: '#1f9e98', die: 8, key: 'wis', w: 'druid1',
              tag: 'golden hour cleric.', blurb: 'Talks to light. Heals in post. No flash. Ever.',
              spells: { 1: 'golden', 2: 'flash', 4: 'burst' } },
-    sorc:  { n: 'CAFFEINATED SORCERER', tint: '#4a6bd8', die: 6, key: 'int', w: 'sorc1',
-             tag: 'innate. unstable. brewed.', blurb: 'Old portafilter magic. Brilliant. Vibrating slightly.',
+    monk:  { n: 'CHAMOMILE MONK', tint: '#d8cdb0', die: 8, key: 'con', w: 'monk1',
+             tag: 'zero caffeine. all calm.', blurb: 'Steeped, never stirred. Hits harder hydrated.',
+             spells: { 1: 'still', 2: 'palm', 4: 'steeps' } },
+    sorc:  { n: 'THE ABSURDIST', tint: '#5e93cf', die: 6, key: 'int', w: 'sorc1',
+             tag: 'one must imagine.', blurb: 'The universe stays silent. He attacks it anyway.',
              spells: { 1: 'bolt', 2: 'triple', 4: 'overclock' } }
 };
-var CLS_ORDER = ['pal', 'bard', 'rogue', 'druid', 'sorc'];
+var CLS_ORDER = ['pal', 'bard', 'rogue', 'druid', 'monk', 'sorc'];
 var STATS = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
 var STAT_N = { str: 'STR', dex: 'DEX', con: 'CON', int: 'INT', wis: 'WIS', cha: 'CHA' };
 var XPT = [0, 30, 70, 130, 220];               // xp needed to REACH level i+1
@@ -2238,9 +2383,12 @@ var SPELLS = {
     golden:    { n: 'GOLDEN HOUR', cost: 1, type: 'heal', desc: 'heal 1d8, then 1d4/turn for 3 turns.' },
     flash:     { n: 'FLASH', cost: 1, type: 'debuff', desc: '1d6 radiant + blind 2 turns. sorry, bard.' },
     burst:     { n: 'BURST MODE', cost: 2, type: 'atk', desc: 'three shots, 1d4+mod each. spray & pray.' },
-    bolt:      { n: 'ESPRESSO BOLT', cost: 1, type: 'atk', desc: '2d8+INT force. double shot, no room.' },
-    triple:    { n: 'TRIPLE SHOT', cost: 1, type: 'atk', desc: '3x(1d4+1), always hits. magic. missile.' },
-    overclock: { n: 'OVERCLOCK', cost: 2, type: 'util', desc: 'two actions now. crash (skip) next turn.' },
+    bolt:      { n: 'REVOLT', cost: 1, type: 'atk', desc: '2d8+INT. rebellion against a silent universe.' },
+    triple:    { n: 'SISYPHEAN LOOP', cost: 1, type: 'atk', desc: '3x(1d4+1), always hits. again. again. again.' },
+    overclock: { n: 'ABSURD LEAP', cost: 2, type: 'util', desc: 'two actions now. the meaninglessness hits next turn.' },
+    still:     { n: 'STILL WATER', cost: 1, type: 'heal', desc: 'heal 2d6+CON. elite hydration.' },
+    palm:      { n: 'OPEN PALM', cost: 1, type: 'debuff', desc: 'an open hand, an open mind: 1d6 + blind.' },
+    steeps:    { n: 'HUNDRED STEEPS', cost: 2, type: 'atk', desc: 'three strikes, 1d4+CON each. patience, then heat.' },
     hedge:     { n: 'HEDGE', cost: 1, type: 'buff', desc: 'halve the next damage you take. classic hedge.' }
 };
 
@@ -2253,8 +2401,10 @@ var WEAPONS = {
     rogue2: { n: 'SHIFT-KNOB SHIV +1', die: 6, plus: 1, critLo: 19, price: 50, desc: 'golf-ball dimples. crits 19-20.' },
     druid1: { n: 'KIT LENS STAFF', die: 6, plus: 0, desc: 'f/5.6. does its best.' },
     druid2: { n: '50MM PRIME +1', die: 8, plus: 1, price: 55, desc: 'fast glass. nifty. fifty.' },
-    sorc1:  { n: 'STIR STICK', die: 6, plus: 0, desc: 'wooden. faintly damp with power.' },
-    sorc2:  { n: 'PORTAFILTER WAND +1', die: 8, plus: 1, price: 55, desc: '58mm of raw arcana, tamped level.' }
+    monk1:  { n: 'TEA WHISK', die: 6, plus: 0, desc: 'bamboo. surprisingly mean.' },
+    monk2:  { n: 'IRON KETTLE +1', die: 8, plus: 1, price: 55, desc: 'boils enemies and water alike.' },
+    sorc1:  { n: 'DOG-EARED CAMUS', die: 6, plus: 0, desc: 'first edition. heavily annotated.' },
+    sorc2:  { n: 'THE MYTH +1', die: 8, plus: 1, price: 55, desc: 'the boulder, abridged. still heavy.' }
 };
 var ARMORS = {
     a0: { n: 'GYM SHORTS', ac: 0, desc: 'freedom of movement. nothing else.' },
@@ -2267,15 +2417,19 @@ var TRINKETS = {
     cloak:  { n: 'DIVERSIFIED CLOAK', ac: 1, resist: 1, desc: '+1 AC, -1 to all damage taken. uncorrelated fabric.' }
 };
 var ITEMS = {
-    coldbrew:   { n: 'COLD BREW', kind: 'heal', price: 8, desc: 'heal 2d4+2, +1 FOCUS. iced, obviously.' },
+    coldbrew:   { n: 'CHAMOMILE TEA', kind: 'heal', price: 8, desc: 'heal 2d4+2, +1 FOCUS. zero caffeine, zero fear.' },
+    water:      { n: 'PLAIN WATER', kind: 'heal', price: 2, desc: 'heal 1d4+2. elite hydration. genuinely loved.' },
+    cookies:    { n: 'WARM COOKIES', kind: 'heal', price: 9, desc: 'heal 2d4+2, +1 FOCUS. sugar is comfort.' },
     taco:       { n: 'BREAKFAST TACO', kind: 'heal', price: 10, desc: 'heal 1d8+3. bacon egg & cheese.' },
+    haul:       { n: 'DRIVE-THRU HAUL', kind: 'heal', price: 14, desc: 'heal 2d8+2. the bag is enormous. no regrets.' },
     kolache:    { n: 'KOLACHE', kind: 'heal', price: 25, desc: 'full HP. the sausage kind. do not debate this.' },
-    espresso:   { n: 'ESPRESSO', kind: 'focus', price: 12, desc: 'restore all FOCUS. hands may shake.' },
-    bottomless: { n: 'BOTTOMLESS BREW', kind: 'heal', perm: true, desc: 'heal 2d4. the cup never empties. thanks, king.' },
+    espresso:   { n: 'EMERGENCY COKE', kind: 'focus', price: 6, desc: 'all FOCUS now, JITTERS later. desperation only.' },
+    bottomless: { n: 'ENDLESS CHAMOMILE', kind: 'heal', perm: true, desc: 'heal 2d4. the cup never empties. thanks, king.' },
     extracredit:{ n: 'EXTRA CREDIT', kind: 'revive', desc: 'when you drop, rise at 1 HP instead. once.' },
     flask:      { n: 'LIQUID ASSET', kind: 'quest', desc: 'water. extremely literal water.' },
-    o2:         { n: 'O2 SENSOR OF TRUTH', kind: 'quest', desc: 'it measures what is actually burning.' },
-    cat:        { n: 'CATALYTIC HEART', kind: 'quest', desc: 'warm to the touch. converts sin to steam.' },
+    icbox:      { n: 'IE INTERCOOLER', kind: 'quest', desc: 'still in the box. it judges you from the shelf.' },
+    specs:      { n: 'TORQUE SPEC TABLET', kind: 'quest', desc: 'ancient figures: 20 Nm, then a quarter turn.' },
+    coupler:    { n: 'CHARGE-PIPE COUPLER', kind: 'quest', desc: 'the deep part. it is always the deep part.' },
     bless:      { n: 'NAT-20 BLESSING', kind: 'quest', desc: 'the dice remember you.' },
     lug:        { n: 'LUG NUTS x4', kind: 'quest', desc: 'recovered. slightly chewed.' },
     film:       { n: 'EXPOSED FILM', kind: 'quest', desc: 'three frames. no flash was used.' }
@@ -2365,24 +2519,24 @@ var ENEMIES = {
             { n: 'ROYAL DECREE', steal: [2, 6], line: 'he taxes you!' },
             { n: 'SUMMON VASSAL', summon: true, line: 'a vassal answers the call!' }
         ] },
-    p0420: { n: 'P-0420, HERALD OF EMISSIONS', spr: 'p0420', cr: '5', hp: 64, ac: 15, init: 1, xp: 100, gold: [50, 80], boss: true, final: true,
-        quote: 'CATALYST EFFICIENCY BELOW THRESHOLD (BANK 1).',
+    heatsoak: { n: 'HEAT SOAK, TYRANT OF SUMMER', spr: 'heatsoak', cr: '5', hp: 64, ac: 15, init: 1, xp: 100, gold: [50, 80], boss: true, final: true,
+        quote: 'Intake air temperature: yes. All of it.',
         acts: [
-            { n: 'BACKFIRE', dice: [2, 6, 0] },
-            { n: 'EMISSIONS CLOUD', dice: [1, 6, 0], dot: { n: 'FUMES', dmg: 2, turns: 3 } },
+            { n: 'HEAT HAZE', dice: [2, 6, 0] },
+            { n: 'IAT SPIKE', dice: [1, 6, 0], dot: { n: 'SWELTER', dmg: 2, turns: 3 } },
             { n: 'LIMP MODE', slow: 2, line: 'your limbs feel heavy. 3,000 RPM, maximum.' },
-            { n: 'REDLINE', dice: [3, 8, 0], tele: 'the needle sweeps toward the red...' }
+            { n: 'REDLINE', dice: [3, 8, 0], tele: 'the shimmer thickens. the needle climbs...' }
         ] }
 };
 
 /* ───────────────────────── journal ────────────────────────── */
 var QDEF = {
-    main:    { n: 'THE CHECK-ENGINE PROPHECY', stages: [
+    main:    { n: 'THE INTERCOOLER', stages: [
         'Speak with the Torque Priest in the Garage.',
-        'Gather the three relics: the O2 SENSOR (Wastes ruin), the CATALYTIC HEART (Basin Depths), the NAT-20 BLESSING (Dice Oracle).',
-        'Return to the Torque Priest with all three relics.',
-        'Face P-0420 beyond the sealed door in the Basin Depths.',
-        'The light is off. For now. (Complete!)' ] },
+        'The install demands three relics: the TORQUE SPEC TABLET (Wastes ruin), a CHARGE-PIPE COUPLER (Basin Depths), a NAT-20 BLESSING (Dice Oracle).',
+        'Return to the Garage. The intercooler has waited in its box long enough.',
+        'HEAT SOAK has woken. Destroy it beyond the sealed door in the Depths.',
+        'Intake temps have never been lower. (Complete!)' ] },
     photo:   { n: 'FRONT ROW, NO FLASH', stages: [
         'Shoot 3 clean frames of the bard at the Chaus. NO flash.',
         'Bring the film back to the Editor.',
@@ -2459,14 +2613,16 @@ var ORIGINS = [
       bio: 'Staff photographer. You catch the decisive moment a half-second before anyone else sees it.' },
     { id: 'wealth', n: 'WEALTH MGMT ANALYST', bump: { int: 2 }, gold: 40,
       bio: 'Undergraduate wealth club analyst. Your portfolio is diversified; your sleep schedule is not.' },
-    { id: 'permian', n: 'PERMIAN INTERN', bump: { con: 2 }, gold: 15, item: 'coldbrew',
-      bio: 'A summer moving water across the Midland Basin taught you patience and the value of a full canteen.' },
+    { id: 'permian', n: 'DEEP BLUE INTERN', bump: { con: 2 }, gold: 15, item: 'water',
+      bio: 'A summer moving produced water across the Midland Basin. You write the WATER INDUSTRY UPDATE. People read it.' },
     { id: 'cooper', n: 'D&D CLUB FOUNDER', bump: { cha: 1, wis: 1 }, gold: 5, bless: true,
-      bio: 'You founded the table back at Cooper. The dice remember their maker.' },
-    { id: 'chaus', n: 'CHAUS REGULAR', bump: { wis: 1, dex: 1 }, gold: 5, item: 'espresso', focus: 1,
-      bio: 'The barista knows your order, your deadlines, and at least one of your secrets.' },
+      bio: 'You founded the table back at Cooper and grew it from zero. The dice remember their maker.' },
+    { id: 'chaus', n: 'CHAUS REGULAR', bump: { wis: 1, dex: 1 }, gold: 5, item: 'coldbrew', focus: 1,
+      bio: 'The barista starts your chamomile when you walk in. Zero caffeine. Total clarity.' },
     { id: 'woodlands', n: 'WOODLANDS NATIVE', bump: { dex: 2 }, gold: 10, trinket: 'stripe',
       bio: 'Raised on cul-de-sacs and speed bumps. You learned throttle control before cursive.' },
+    { id: 'roblox', n: 'IDLE ARCHITECT', bump: { int: 2 }, gold: 15,
+      bio: 'You shipped two idle games. Your diamond tree grew while you slept. So did you.' },
     { id: 'wanderer', n: 'WANDERER', bump: { con: 1, cha: 1 }, gold: 20,
       bio: 'No transcript. No LinkedIn. Only vibes and an unreasonable amount of trail mix.' }
 ];
@@ -2504,13 +2660,92 @@ function buildLook(ix) {
 /* class-themed default index bag, lightly varied by a seed */
 function defaultLookIx(cls, seed) {
     seed = seed || 0;
-    var outfitByClass = { pal: 3, bard: 9, rogue: 0, druid: 6, sorc: 8 };   // gold, violet, crimson, teal, royal
+    var outfitByClass = { pal: 3, bard: 9, rogue: 12, druid: 6, monk: 14, sorc: 8 };   // gold, violet, slate, teal, bone, royal
     return {
         skin: 1, hairCol: 3, eyes: 0, outfit: outfitByClass[cls] != null ? outfitByClass[cls] : 9,
         trim: 0, hairStyle: 2, hat: 0, hatCol: 13, hatAcc: 0, glasses: 0, lens: 1, facial: 0
     };
 }
 var DEFAULT_LOOK = buildLook(defaultLookIx('sorc', 0));
+
+/* ───────────────────── the party (companions) ─────────────────────
+   BG3 energy at 160x144: companions can be people, an owl, a boulder,
+   or a feeling. Each has its own battle moves with per-battle uses.
+   kinds: dmg (attack roll) · heal (lowest ally) · healparty · blind ·
+   weak (enemy -atk) · stun (skip next act) · extra (hero acts again) ·
+   guardall (party halves next hits) · sharpen (party +atk 2 turns) */
+var COMPANIONS = {
+    sophie: { n: 'SOPHIE', spr: 'csophie', hpm: 14,
+        bio: 'Matching silver rings. Unmatched side-eye.',
+        camp: ['"The boulder is my favorite. Don\'t tell the owl."', '"Your car\'s name is longer than my schedule."'],
+        basic: { n: 'SWING', dice: [1, 6, 2] },
+        moves: [
+            { id: 'ring', n: 'MATCHING RING', uses: 2, kind: 'heal', dice: [2, 6, 2], desc: 'silver harmony: heal 2d6+2, steadies fear.' },
+            { id: 'sideeye', n: 'SIDE-EYE', uses: 2, kind: 'weak', val: 2, turns: 2, desc: 'the look. enemy -2 attack, 2 turns.' },
+            { id: 'tag', n: 'TAG TEAM', uses: 1, kind: 'extra', desc: 'you act again. immediately. she believes in you.' }
+        ] },
+    sammy: { n: 'SAMMY THE OWL', spr: 'sammy', hpm: 12,
+        bio: 'Academic owl. Sees everything, grades nothing.',
+        camp: ['"HOO. the fire is adequate."', '"I have seen midterms end better parties than this."'],
+        basic: { n: 'SWOOP', dice: [1, 6, 3] },
+        moves: [
+            { id: 'hoot', n: 'HOOT OF INSIGHT', uses: 2, kind: 'sharpen', val: 2, turns: 2, desc: 'party sees clearly: +2 attack, 2 turns.' },
+            { id: 'talon', n: 'TALON RAKE', uses: 2, kind: 'dmg', dice: [2, 6, 0], desc: 'a professorial correction. 2d6.' },
+            { id: 'warn', n: 'MIDTERM WARNING', uses: 1, kind: 'stun', desc: 'the enemy freezes like an unread syllabus.' }
+        ] },
+    malachi: { n: 'MALACHI', spr: 'cmalachi', hpm: 16,
+        bio: 'Brother. Western goth. Plays chords that outlive towns.',
+        camp: ['"The desert\'s honest. It tells you it wants you dead."', '"Nice owl. He\'d look good on an album cover."'],
+        basic: { n: 'IRON CHORD', dice: [1, 8, 0] },
+        moves: [
+            { id: 'hand', n: 'DEAD MAN\'S HAND', uses: 2, kind: 'dmg', dice: [2, 8, 0], desc: 'aces and eights. 2d8.' },
+            { id: 'lariat', n: 'BLACK LARIAT', uses: 1, kind: 'stun', desc: 'a rope from somewhere darker. enemy skips a turn.' },
+            { id: 'dirge', n: 'DUST DIRGE', uses: 2, kind: 'weak', val: 2, turns: 2, desc: 'a minor key. enemy -2 attack, 2 turns.' }
+        ] },
+    boulder: { n: 'THE BOULDER', spr: 'cboulder', hpm: 22,
+        bio: 'One must imagine it happy. It is. It joined you.',
+        camp: ['(the boulder is happy.)', '(the boulder rolls a little closer to the fire.)'],
+        basic: { n: 'LEAN', dice: [1, 6, 4] },
+        moves: [
+            { id: 'roll', n: 'ROLL', uses: 2, kind: 'dmg', dice: [2, 10, 0], desc: 'downhill, for once. 2d10.' },
+            { id: 'imagine', n: 'IMAGINE HAPPY', uses: 2, kind: 'healparty', dice: [1, 8, 0], desc: 'the struggle itself fills the heart. party heals 1d8.' },
+            { id: 'abide', n: 'ABIDE', uses: 1, kind: 'guardall', desc: 'the party stands behind the rock. next hits halved.' }
+        ] },
+    walkhome: { n: 'THE WALK HOME', spr: 'cwalk', hpm: 10,
+        bio: 'From late night. Streetlight-warm. Quesadilla in hand.',
+        camp: ['(it hums a song you almost remember.)', '(the streetlights feel closer out here.)'],
+        basic: { n: 'DRIFT', dice: [1, 4, 2] },
+        moves: [
+            { id: 'ques', n: '2ND QUESADILLA', uses: 2, kind: 'healparty', dice: [2, 4, 0], desc: 'there was a second one the whole time. party heals 2d4.' },
+            { id: 'almost', n: 'ALMOST HOME', uses: 1, kind: 'guardall', desc: 'you can see the door from here. next hits halved.' },
+            { id: 'lamp', n: 'STREETLIGHT', uses: 2, kind: 'blind', desc: 'a warm glare. enemy blinded 2 turns.' }
+        ] },
+    cow: { n: 'THE COW', spr: 'ccow', hpm: 18,
+        bio: 'You said you would be a cow one day. Close enough.',
+        camp: ['"moo." (it means well.)', '(the cow watches the fire, entirely at peace.)'],
+        basic: { n: 'HOOF', dice: [1, 8, 2] },
+        moves: [
+            { id: 'moo', n: 'MOO OF DESTINY', uses: 1, kind: 'dmg', dice: [3, 8, 0], desc: 'a childhood dream, weaponized. 3d8.' },
+            { id: 'cud', n: 'CHEW CUD', uses: 2, kind: 'healparty', dice: [1, 6, 0], desc: 'profound calm radiates. party heals 1d6.' },
+            { id: 'bethec', n: 'BE THE COW', uses: 1, kind: 'sharpen', val: 3, turns: 2, desc: 'everyone briefly understands. +3 attack, 2 turns.' }
+        ] },
+};
+var COMP_ORDER = ['sophie', 'sammy', 'malachi', 'boulder', 'walkhome', 'cow'];
+function hasComp(id) { return G && G.party && G.party.indexOf(id) >= 0; }
+function addComp(id) {
+    if (!G.party) G.party = [];
+    if (!G.active) G.active = [];
+    if (G.party.indexOf(id) >= 0) return;
+    G.party.push(id);
+    if (G.active.length < 2) G.active.push(id);
+    toastG(COMPANIONS[id].n + ' JOINS THE PARTY');
+    SFX.fanfare();
+    save();
+}
+function activeComps() {
+    if (!G || !G.active) return [];
+    return G.active.filter(function (id) { return COMPANIONS[id]; });
+}
 
 /* ─────────────────── player state helpers ─────────────────── */
 /* newGame takes a full build: {cls, name, st, look, origin, trait, align, pronoun, sign} */
@@ -2533,7 +2768,7 @@ function newGame(build) {
     if (origin && origin.item) { var found = false; for (i = 0; i < inv.length; i++) if (inv[i].id === origin.item) { inv[i].n++; found = true; } if (!found) inv.push({ id: origin.item, n: 1 }); }
     var trinket = origin && origin.trinket ? origin.trinket : null;
     G = {
-        v: 3, name: build.name, cls: cls, st: st, lvl: 1, xp: 0,
+        v: 4, name: build.name, cls: cls, st: st, lvl: 1, xp: 0,
         look: build.look, origin: build.origin, trait: trait,
         align: build.align, pronoun: build.pronoun || 'they', sign: build.sign || 0,
         hpm: hpm, hp: 0, focm: focm, foc: 0,
@@ -2541,6 +2776,7 @@ function newGame(build) {
         inv: inv,
         eq: { w: c.w, a: 'a0', t: trinket },
         spells: spells,
+        party: [], active: [],
         quests: {}, flags: {}, chests: {},
         map: 'garage', x: 6, y: 7, dir: 'u',
         steps: 0, kills: 0, camps: 0, deaths: 0, nat20s: 0, day: 1
@@ -2600,7 +2836,23 @@ function setQuest(q, stage) {
 }
 var questToast = null;
 function mq() { return G.quests.main == null ? -1 : G.quests.main; }
-function relicCount() { return (countItem('o2') ? 1 : 0) + (countItem('cat') ? 1 : 0) + (countItem('bless') ? 1 : 0); }
+function relicCount() { return (countItem('specs') ? 1 : 0) + (countItem('coupler') ? 1 : 0) + (countItem('bless') ? 1 : 0); }
+/* migrate pre-party saves so old progress keeps working */
+function migrateG() {
+    if (!G) return;
+    G.party = G.party || [];
+    G.active = G.active || [];
+    G.inv = (G.inv || []).map(function (it) {
+        if (it.id === 'o2') return { id: 'specs', n: it.n };
+        if (it.id === 'cat') return { id: 'coupler', n: it.n };
+        return it;
+    });
+    if (G.flags) {
+        if (G.flags.gotO2) G.flags.gotSpecs = 1;
+        if (G.flags.gotCat) G.flags.gotCoupler = 1;
+    }
+    G.v = 4;
+}
 function healPlayer(n) { G.hp = clamp(G.hp + n, 0, G.hpm); }
 
 /* ──────────────────────── dialogue ────────────────────────── */
@@ -2618,46 +2870,46 @@ DLG.priest = function () {
     else if (stage === 3) start = 'goface';
     else start = 'after';
     return { name: 'TORQUE PRIEST', start: start, nodes: {
-        intro: { t: 'You feel it too, then. The amber light. The Steed idles rough, pilgrim. The curse is called P-0420.', next: 'intro2' },
-        intro2: { t: 'Catalyst efficiency below threshold. Words of power. Words of a $1,400 estimate.', next: 'intro3' },
-        intro3: { t: 'Three relics can lift it. The O2 SENSOR OF TRUTH, in the ruin of the Permian Wastes.', next: 'intro4' },
-        intro4: { t: 'The CATALYTIC HEART, deep in the Basin Depths. And a NAT-20 BLESSING. The Dice Oracle at the Chaus deals in those.', next: 'intro5' },
-        intro5: { t: 'Bring me all three. And take gold to the barista first. You look... level one.',
-            do: function () { setQuest('main', 1); },
+        intro: { t: 'You feel it too. The Texas heat, pilgrim. ARGENT, your silver Steed, runs strong: stage one plus, flex fuel, a fine intake.', next: 'intro2' },
+        intro2: { t: 'But summer is coming for her intake temps. And on that shelf, in that box... sits an IE INTERCOOLER. Unopened. For months.', next: 'intro3' },
+        intro3: { t: 'The prophecy says: the longer a part waits in its box, the more powerful the ritual to install it. We are at MAXIMUM power.', next: 'intro4' },
+        intro4: { t: 'The install demands three relics. The TORQUE SPEC TABLET, in the ruin of the Permian Wastes. A CHARGE-PIPE COUPLER, deep in the Basin Depths.', next: 'intro5' },
+        intro5: { t: 'And a NAT-20 BLESSING, for the bolts you cannot see. The Dice Oracle at the Chaus deals in those. Take the box. Feel its judgment.',
+            do: function () { setQuest('main', 1); if (!countItem('icbox')) addItem('icbox', 1); },
             o: [
-                { l: 'For the Steed.', next: 'bye' },
-                { l: 'Clear the code?', next: 'clear' },
+                { l: 'For Argent. For Tina.', next: 'bye' },
+                { l: 'Why not install now?', next: 'clear' },
                 { l: '[SHOP] The forge', do: function () { openShop('forge'); }, end: true }
             ] },
-        clear: { t: 'CLEAR the CODE? You can silence a prophecy, pilgrim. It comes back. At inspection time. It ALWAYS comes back.', next: 'bye' },
-        collecting: { t: function () { return 'Relics found: ' + relicCount() + ' of 3. The Steed waits. The light... blinks.'; },
+        clear: { t: 'WITHOUT the specs? WITHOUT the coupler? You would strip a thread, pilgrim, and the shame follows a garage for generations.', next: 'bye' },
+        collecting: { t: function () { return 'Relics found: ' + relicCount() + ' of 3. The box waits. Argent idles, silver and patient.'; },
             o: [
-                { l: 'Remind me where', next: 'intro3' },
+                { l: 'Remind me where', next: 'intro4' },
                 { l: '[SHOP] The forge', do: function () { openShop('forge'); }, end: true },
                 { l: 'On it.', next: 'bye2' }
             ] },
-        ready: { t: 'All three... you actually found all three. Then it is time. Stand back from the Steed.', next: 'ritual1',
+        ready: { t: 'Specs. Coupler. Blessing. And the box... the box is OPEN, pilgrim. Then it is time. Front-end service position.', next: 'ritual1',
             do: function () { setQuest('main', 2); } },
-        ritual1: { t: 'O2 SENSOR, thread by hand, then torque to spec. CATALYTIC HEART, seated in the downpipe. BLESSING... taped to the ECU. That\'s legal.', next: 'ritual2' },
-        ritual2: { t: 'The amber light flickers... shudders... and MOVES. It flees down, pilgrim. Into the earth. Into the BASIN.', next: 'ritual3',
+        ritual1: { t: 'Bumper off. Crash bar off. The old core slides free, warm as a sad handshake. Twenty newton-metres. A quarter turn. BELIEVE.', next: 'ritual2' },
+        ritual2: { t: 'And then... the HEAT leaves the old core. All of it. Every summer she ever soaked up. It pours down, into the earth. Into the BASIN.', next: 'ritual3',
             do: function () { shake(3, 0.6); flashFx('#f2a30f', 0.5); SFX.roar(); } },
-        ritual3: { t: 'The sealed door in the Depths stands open. What waits behind it wears your check-engine light as a face. End this.',
+        ritual3: { t: 'The sealed door in the Depths stands open. What waits behind it is every degree Argent ever suffered, wearing a crown. End it. Take the box\'s empty blessing with you.',
             do: function () { G.flags.doorOpen = 1; setQuest('main', 3); save(); }, next: 'bye3' },
-        goface: { t: 'The door is open. The Herald waits. Take cold brew. Take courage. Mind the front lip on the way down.',
+        goface: { t: 'The door is open. HEAT SOAK waits. Take water. Take friends. Mind the front lip on the way down.',
             o: [
                 { l: '[SHOP] Last call', do: function () { openShop('forge'); }, end: true },
                 { l: 'I ride.', next: 'bye3' }
             ] },
-        after: { t: 'The Steed purrs like a contented dire beast. You did that, pilgrim. Ride it loud and change the oil early.',
+        after: { t: 'Intake temps: flat. Pulls: repeatable. Argent purrs like a contented dire beast. You did that, pilgrim.',
             o: [
-                { l: 'That flicker...?', next: 'flicker' },
+                { l: 'What\'s next for her?', next: 'flicker' },
                 { l: '[SHOP] The forge', do: function () { openShop('forge'); }, end: true },
                 { l: 'Farewell.', next: 'bye' }
             ] },
-        flicker: { t: '...I saw nothing. YOU saw nothing. Should\'ve left it stock. (You won\'t.)', end: true },
+        flicker: { t: 'Next? There is always a next, pilgrim. I hear you already have a tab open. (You won\'t leave her stock. We know.)', end: true },
         bye: { t: 'Torque in three stages, pilgrim. Hand-tight, snug, and *believe*.', end: true },
         bye2: { t: 'The Wastes lie east. The Hedges west. The Chaus pours south. Go.', end: true },
-        bye3: { t: 'May your rolls be high and your RPM higher.', end: true }
+        bye3: { t: 'May your rolls be high and your intake temps low.', end: true }
     } };
 };
 
@@ -2677,11 +2929,14 @@ DLG.sammy = function () {
         a: { t: 'HOO. HOO ARE YOU? Sorry. Owl humor. Ask, wanderer.', o: [
             { l: 'Any wisdom?', next: pick(['w1', 'w2', 'w3', 'w4']) },
             { l: 'Any rumors?', next: pick(['r1', 'r2', 'r3']) },
+            { l: '[PARTY] Fly with us', if: function () { return mq() >= 1 && !hasComp('sammy'); }, next: 'join' },
             { l: 'Admiring the owl', next: 'bye' }
         ] },
+        join: { t: 'Join the... HOO. An adventuring party. Office hours are cancelled. VERY well. I shall attend. Bring snacks.',
+            do: function () { addComp('sammy'); }, end: true },
         w1: { t: 'Wisdom: never walk back through the Sallyport before you graduate. The curse is real. The registrar is realer.', end: true },
         w2: { t: 'Wisdom: GUARD before a telegraphed blow. The golem winds up. The bull paws the ground. Watch. Then brace.', end: true },
-        w3: { t: 'Wisdom: coffee restores FOCUS. This is true in every world, in every genre, forever.', end: true },
+        w3: { t: 'Wisdom: sugar and chamomile restore FOCUS. Caffeine is a loan shark. HOO knew.', end: true },
         w4: { t: 'Wisdom: the squirrels are organized now. There is a king. It was inevitable.', end: true },
         r1: { t: 'Rumor: the Dice Oracle\'s first roll for any stranger always lands twenty. Beginner\'s luck is a spell she cast in 1987.', end: true },
         r2: { t: 'Rumor: a shelf in Fondren Stacks slides aside. Behind it, they say, the builders left an eye.', end: true },
@@ -2762,7 +3017,7 @@ DLG.stu3 = function () {
         a: { t: pick([
             'The bard only knows four songs but WOW.',
             'The oracle beat me eleven rolls straight. Statistically actionable.',
-            'Cold brew here hits different. It hits like 2d4+2.',
+            'The chamomile here hits different. It hits like 2d4+2.',
             'I ordered a latte three days ago. Still "on the way". The barista fought a kolache thief mid-pour.'
         ]), end: true }
     } };
@@ -2802,12 +3057,116 @@ DLG.bard = function () {
             '*a riff about compound interest, in E minor*',
             'Requests? I know four songs and one of them is legally a chant.',
             'The crowd wants "Wonderwall of Text". The crowd always wants "Wonderwall of Text".'
-        ]), end: true },
+        ]), o: [
+            { l: '[DUET] Karaoke!', if: function () { return hasComp('sophie') && !G.flags.karaokeDone; }, next: 'duet' },
+            { l: 'Play on.', next: 'chatend' }
+        ] },
+        chatend: { t: '*the set continues, tragically in tune*', end: true },
+        duet: { t: 'A DUET? Get up here! What are we singing?', o: [
+            { l: 'DRIVER\'S PERMIT', next: 'sing' },
+            { l: 'BEAUTIFUL FINGS', next: 'sing' },
+            { l: 'SAD GIRL AUTUMN', next: 'sing' }
+        ] },
+        sing: { t: 'You and Sophie absolutely DEMOLISH the bridge. The crowd is misty-eyed. Someone lights a phone flashlight. The party feels INVINCIBLE.',
+            do: function () {
+                G.flags.karaokeDone = 1;
+                healPlayer(G.hpm);
+                G.foc = G.focm;
+                burstP(80, 60, ['#e8c04a', '#d86aa0', '#f8f4e3'], 24, 55);
+                toastG('FULLY RESTORED. ENCORE!');
+                save();
+            }, end: true },
         show: { t: 'You\'re the shooter? Front row is yours. Catch me at the TOP of the pose — you\'ll feel the beat. Ready?', o: [
             { l: '[SHOOT THE SET]', do: function () { startPhoto(); }, end: true },
             { l: 'Coffee first.', next: 'later' }
         ] },
         later: { t: 'The set runs all night. The lighting, tragically, is "moody".', end: true }
+    } };
+};
+DLG.sophie = function () {
+    var inParty = hasComp('sophie');
+    return { name: 'SOPHIE', start: inParty ? 'party' : 'meet', nodes: {
+        meet: { t: 'There you are. I saved you a seat and they still brought me two teas. Nice ring, by the way. Wonder who has the other one.', o: [
+            { l: '[PARTY] Adventure?', next: 'join' },
+            { l: 'How\'s the tea?', next: 'tea' },
+            { l: 'Just saying hi.', next: 'hi' }
+        ] },
+        tea: { t: 'Chamomile. Obviously. I know who I\'m sitting with.', next: 'meet' },
+        hi: { t: 'Hi yourself. Go save your car. Text me. All five messages of it.', end: true },
+        join: { t: 'You want ME to fight a heat demon with you. ...obviously yes. But I\'m taking the good snacks and I am NOT carrying the boulder.',
+            do: function () { addComp('sophie'); }, end: true },
+        party: { t: pick([
+            'The rings are matching today. Good sign. Roll something big.',
+            'If the owl lectures me one more time about citations, I\'m benching him.',
+            'You\'re doing great. The car misses you though.'
+        ]), end: true }
+    } };
+};
+DLG.malachi = function () {
+    var inParty = hasComp('malachi');
+    return { name: 'MALACHI', start: inParty ? 'party' : 'meet', nodes: {
+        meet: { t: 'Brother. Fine dust out here. I\'ve been writing a song about a train that never comes. The desert listens better than most.', o: [
+            { l: '[PARTY] Ride with me', next: 'join' },
+            { l: 'Why the Wastes?', next: 'why' },
+            { l: 'Later, Mal.', next: 'bye' }
+        ] },
+        why: { t: 'The aesthetic, obviously. Black denim, dead highways, pump jacks keeping time. Somebody in this family has to be the dark one.', next: 'meet' },
+        join: { t: 'Hunting a heat demon with my sibling and, apparently, a sentient rock. ...that\'s the most dark Americana thing I\'ve ever heard. I\'m in.',
+            do: function () { addComp('malachi'); }, end: true },
+        party: { t: pick([
+            'The lariat came from a pawn shop that wasn\'t there the next day. Standard.',
+            'When this is over I\'m writing an album about that owl.',
+            'Family that fights heat demons together, stays together.'
+        ]), end: true },
+        bye: { t: 'Watch the horizon. It watches back.', end: true }
+    } };
+};
+DLG.walkhome = function () {
+    var inParty = hasComp('walkhome');
+    return { name: 'THE WALK HOME', start: inParty ? 'party' : 'meet', nodes: {
+        meet: { t: 'A warm shape stands in the lamplight. It smells like a quesadilla at 1 AM and feels like almost being in bed. It hums.', o: [
+            { l: '[PARTY] Walk with me', next: 'join' },
+            { l: 'What... are you?', next: 'what' },
+            { l: 'Goodnight.', next: 'bye' }
+        ] },
+        what: { t: 'It shrugs, warmly. It is the walk home from late night. The streetlights. The full hands. The almost-there. You have known it for years.', next: 'meet' },
+        join: { t: 'It nods. The whole street seems to nod with it. There was a second quesadilla in the bag the entire time. There always was.',
+            do: function () { addComp('walkhome'); }, end: true },
+        party: { t: '(it walks beside you, unhurried. everything is going to be fine.)', end: true },
+        bye: { t: '(it waves. the light stays warm a moment longer than it should.)', end: true }
+    } };
+};
+DLG.cow = function () {
+    var n = G.flags.cowMet || 0;
+    if (hasComp('cow')) return { name: 'THE COW', start: 'party', nodes: { party: { t: 'moo. (it walks with you now. destiny, fulfilled.)', end: true } } };
+    return { name: 'A COW?', start: 'm' + Math.min(n, 2), nodes: {
+        m0: { t: 'There is a cow behind the hedges. There is no explanation. It looks at you like it has been waiting a very long time.',
+            do: function () { G.flags.cowMet = 1; }, end: true },
+        m1: { t: 'The cow is still here. Something about it feels... familiar. Like a plan you made when you were four.',
+            do: function () { G.flags.cowMet = 2; }, end: true },
+        m2: { t: 'You remember now. "When I grow up," you said, "I want to be a cow." The cow nods slowly. It has always known. It steps toward you.',
+            do: function () { addComp('cow'); }, end: true }
+    } };
+};
+DLG.boulder = function () {
+    var n = G.flags.boulderPush || 0;
+    if (hasComp('boulder')) return { name: 'THE BOULDER', start: 'party', nodes: { party: { t: '(the boulder is here, and it is happy.)', end: true } } };
+    return { name: 'A BOULDER', start: 'b' + Math.min(n, 2), nodes: {
+        b0: { t: 'A large boulder rests at the bottom of a slope. Scuff marks suggest it has been pushed up, and rolled back, many, many times.', o: [
+            { l: 'Push it uphill.', do: function () { G.flags.boulderPush = 1; SFX.hit(); shake(1, 0.2); }, next: 'p1' },
+            { l: 'Leave it.', end: true }
+        ] },
+        p1: { t: 'You push. It moves an inch. Somewhere, faintly, you feel... approval?', end: true },
+        b1: { t: 'The boulder waits. The slope waits. The whole arrangement feels deeply familiar.', o: [
+            { l: 'Push it again.', do: function () { G.flags.boulderPush = 2; SFX.hit(); shake(1, 0.2); }, next: 'p2' },
+            { l: 'Not today.', end: true }
+        ] },
+        p2: { t: 'You push. It moves a foot. You could swear the rock is enjoying this.', end: true },
+        b2: { t: 'One more push and something shifts: not the boulder. The task. It stops being punishment and becomes company.', o: [
+            { l: 'Push, together.', do: function () { addComp('boulder'); }, next: 'joined' },
+            { l: 'Rest first.', end: true }
+        ] },
+        joined: { t: 'The boulder rolls up the slope ON ITS OWN and settles beside you. One must imagine it happy. You don\'t have to imagine. It is.', end: true }
     } };
 };
 DLG.oracle = function () {
@@ -2898,12 +3257,12 @@ DLG.lich = function () {
         ] },
         q2w: { t: 'WRONG. Nothing is free. Not even office hours. ESPECIALLY not office hours. Question two:', next: 'q2b' },
         q2: { t: 'CORRECT. There is hope for this cohort. Question two:', next: 'q2b' },
-        q2b: { t: 'The rune P0420 appears upon a crimson steed. What does it foretell?', o: [
-            { l: 'Cat. efficiency', do: function () { G.flags.examScore = (G.flags.examScore || 0) + 1; SFX.ok(); }, next: 'q3' },
-            { l: 'Demons.', do: function () { SFX.no(); }, next: 'q3w' },
-            { l: 'Both, honestly.', do: function () { SFX.no(); }, next: 'q3half' }
+        q2b: { t: 'A tuned steed grows sluggish as summer pulls stack. What thief steals her power?', o: [
+            { l: 'Heat soak.', do: function () { G.flags.examScore = (G.flags.examScore || 0) + 1; SFX.ok(); }, next: 'q3' },
+            { l: 'Gremlins.', do: function () { SFX.no(); }, next: 'q3w' },
+            { l: 'Skill issue.', do: function () { SFX.no(); }, next: 'q3half' }
         ] },
-        q3w: { t: 'WRONG, though the mechanic will invoice you as if you were right. Final question:', next: 'q3b' },
+        q3w: { t: 'WRONG. Heat soak, pupil. Hot intake air, pulled timing, sadness. An intercooler is the cure. Final question:', next: 'q3b' },
         q3half: { t: 'HALF CREDIT for spirit. NONE for scholarship. Final question:', next: 'q3b' },
         q3: { t: 'CORRECT. You have suffered. It shows. Final question:', next: 'q3b' },
         q3b: { t: 'Supply shifts left. Demand shifts right. What happens to price?', o: [
@@ -2927,17 +3286,30 @@ DLG.lich = function () {
 var USES = {
     sign_sally: { name: 'WORN PLAQUE', t: 'THE SALLYPORT. Enter through it once, as a new student. Do NOT walk back through until you graduate. The curse is administered automatically.' },
     sign_west: { name: 'SIGNPOST', t: 'WEST: THE WEST HEDGES. Topiary, squirrels, one (1) wizard. Road maintained never.' },
-    sign_east: { name: 'SIGNPOST', t: 'EAST: THE PERMIAN WASTES. Water rights enforced. Pumpjacks do not stop for pedestrians.' },
+    sign_east: { name: 'SIGNPOST', t: 'EAST: THE PERMIAN WASTES. Produced water hauled daily. Pumpjacks do not stop for pedestrians.' },
     sign_ruin: { name: 'SCORCHED SIGN', t: 'RUIN OF THE FIRST SENSOR. Air quality: measurable. That was the whole miracle.' },
     sign_bossdoor: { name: 'SEALED DOOR', t: function () { return G.flags.doorOpen ? 'The seal is broken. Heat breathes from below, and something idles... rough.' : 'A great door sealed by amber light. Three relic-slots gape empty. It hums at 780 RPM, badly.'; } },
-    use_car: { name: 'THE CRIMSON STEED', t: function () {
-        if (mq() >= 4) return 'The Steed idles like silk. The amber light is off. (It flickered. Once. You both agreed not to mention it.)';
-        return 'The CRIMSON STEED. MK8 of its line, stage two of its power. Above the cluster, an amber rune burns: P-0420. It seems... embarrassed.';
+    use_car: { name: 'ARGENT, SILVER STEED', t: function () {
+        if (mq() >= 4) return 'Argentina Artemis Ure. Silver, stage one plus, and now intercooled. Intake temps flat as still water. She has never been happier.';
+        return 'ARGENTINA ARTEMIS URE. Argent to her friends, Tina when she misbehaves. Silver MK8: stage 1+, flex fuel, a fine intake... and a boxed intercooler judging you both from the shelf.';
     }, o: [
-        { l: 'Rev it. Once.', do: function () { SFX.rev(); shake(2, 0.3); toastG('the neighbors take notes'); }, end: true },
-        { l: 'Pat it gently.', do: function () { toastG('the Steed appreciates you'); SFX.ok(); }, end: true },
-        { l: 'Leave it be.', end: true }
+        { l: 'Rev her. Once.', do: function () { SFX.rev(); shake(2, 0.3); toastG('the neighbors take notes'); }, end: true },
+        { l: 'Pat her gently.', do: function () { toastG('Argent appreciates you'); SFX.ok(); }, end: true },
+        { l: 'Face the box.', do: function () { toastG('the box says nothing. loudly.'); SFX.no(); }, end: true },
+        { l: 'Leave her be.', end: true }
     ] },
+    idle_tree: { name: 'IDLE DIAMOND TREE', t: function () {
+        var now = Date.now();
+        var last = G.flags.idleTreeTs || 0;
+        if (!last) { G.flags.idleTreeTs = now; return 'A crystalline tree hums with incremental energy. Someone clearly planted it and then... walked away. It respects that. Come back later.'; }
+        var mins = Math.floor((now - last) / 60000);
+        var gain = Math.min(12, Math.floor(mins / 5));
+        if (gain <= 0) return 'The tree shimmers. Nothing to harvest yet. Idle games reward the patient, and punish the checkers.';
+        G.flags.idleTreeTs = now;
+        G.gold += gain;
+        SFX.coin();
+        return 'The branches drip ' + gain + ' gold in accumulated idle gains. You did nothing. That was the whole point. (+' + gain + 'g)';
+    } },
     secret_shelf: { name: 'ODD SHELF', t: function () {
         return G.flags.secretShelf ? 'The alcove behind the shelf. The painted eye watches, patient as ever. URE BOY, it says, in letters older than the library.'
             : 'This shelf is... lighter than the others. It slides. Behind it: a tiny alcove, a painted EYE, and the words URE BOY. Someone left 10 gold and, inexplicably, great confidence.';
@@ -2949,22 +3321,22 @@ var USES = {
     chest_depths: { name: 'FORGOTTEN COOLER', chest: 1, t: 'An ancient cooler, still faintly cold. The ice packs died heroes. Inside: a pristine KOLACHE and 30 gold.',
         loot: function () { addItem('kolache', 1); G.gold += 30; toastG('KOLACHE · +30 GOLD'); } },
     pedestal_o2: { name: 'RUIN PEDESTAL', t: function () {
-        return countItem('o2') || G.flags.gotO2 ? 'The empty pedestal. The air smells accurately measured.'
-            : 'A pedestal of scorched stone. Upon it: the O2 SENSOR OF TRUTH, humming softly. The fumes around it begin to swirl...';
+        return countItem('specs') || G.flags.gotSpecs ? 'The empty pedestal. Twenty newton-metres of silence.'
+            : 'A pedestal of scorched stone. Upon it: the TORQUE SPEC TABLET, figures glowing faintly. The fumes around it begin to swirl...';
     }, guard: function () {
-        if (countItem('o2') || G.flags.gotO2) return;
+        if (countItem('specs') || G.flags.gotSpecs) return;
         startBattle(['gasel'], { intro: 'THE FUMES COALESCE TO DEFEND THE RELIC!', onWin: function () {
-            G.flags.gotO2 = 1; addItem('o2', 1); toastG('O2 SENSOR OF TRUTH');
+            G.flags.gotSpecs = 1; addItem('specs', 1); toastG('TORQUE SPEC TABLET');
             if (relicCount() >= 3) setQuest('main', 2);
         } });
     } },
     pedestal_cat: { name: 'DEEP PEDESTAL', t: function () {
-        return countItem('cat') || G.flags.gotCat ? 'The pedestal sits cold and empty.'
-            : 'On a pedestal slick with condensation: the CATALYTIC HEART, glowing faintly honeycomb. The floor begins to shake...';
+        return countItem('coupler') || G.flags.gotCoupler ? 'The pedestal sits cold and empty.'
+            : 'On a pedestal slick with condensation: a CHARGE-PIPE COUPLER, factory-fresh. The deep part. The floor begins to shake...';
     }, guard: function () {
-        if (countItem('cat') || G.flags.gotCat) return;
+        if (countItem('coupler') || G.flags.gotCoupler) return;
         startBattle(['golem'], { intro: 'THE VAULT\'S KEEPER WAKES!', onWin: function () {
-            G.flags.gotCat = 1; addItem('cat', 1); toastG('CATALYTIC HEART');
+            G.flags.gotCoupler = 1; addItem('coupler', 1); toastG('CHARGE-PIPE COUPLER');
             if (relicCount() >= 3) setQuest('main', 2);
         } });
     } }
@@ -3020,19 +3392,20 @@ function ScTitle() {
             drawSpr(Math.floor(t * 1.4) % 2 ? 'pump1' : 'pump0', 132, 76);
             ctx.fillStyle = '#0e0f16'; ctx.fillRect(0, 92, W, 8);
             /* the Steed, tiny, cursed */
-            ctx.fillStyle = '#5a0d02'; ctx.fillRect(64, 84, 30, 7); ctx.fillRect(70, 80, 16, 5);
+            ctx.fillStyle = '#9a9da6'; ctx.fillRect(64, 84, 30, 7); ctx.fillRect(70, 80, 16, 5);
             ctx.fillStyle = '#0c0c12'; ctx.fillRect(67, 89, 5, 4); ctx.fillRect(85, 89, 5, 4);
             if (Math.floor(t * 2) % 2) drawSpr('celrune', 71, 66);
             /* logo */
             var ly = Math.min(14, -22 + t * 60);
             txtBigC('URE QUEST', W / 2 + 1, ly + 1, '#0c0c12');
             txtBigC('URE QUEST', W / 2, ly, P.gold);
-            if (t > 0.9) { txtC('THE CHECK-ENGINE', W / 2, ly + 20, P.amber); txtC('PROPHECY', W / 2, ly + 29, P.amber); }
+            if (t > 0.9) { txtC('THE INTERCOOLER', W / 2, ly + 20, P.amber); txtC('PROPHECY', W / 2, ly + 29, P.amber); }
             /* menu */
             box(40, 102, 80, 12 + opts.length * 11, { bg: '#101018' });
             for (var i = 0; i < opts.length; i++) {
                 if (i === sel) cursor(46, 109 + i * 11 + 1);
                 txt(opts[i], 54, 108 + i * 11, i === sel ? P.w : P.dim);
+                (function (ii) { HS.add(40, 106 + ii * 11, 80, 11, function () { sel = ii; input('a'); }); })(i);
             }
             if (confirmNew) {
                 box(20, 56, 120, 34, { bg: '#101018', edge: P.red });
@@ -3052,7 +3425,7 @@ function ScTitle() {
             else if (a === 'a') {
                 if (opts[sel] === 'CONTINUE') {
                     var s = loadSave();
-                    if (s) { G = s; delete G.flags.bossLock; SFX.ok(); transTo(function () { swapTop(ScWorld()); enterMap(G.map, G.x, G.y, G.dir, true); }); }
+                    if (s) { G = s; migrateG(); delete G.flags.bossLock; SFX.ok(); transTo(function () { swapTop(ScWorld()); enterMap(G.map, G.x, G.y, G.dir, true); }); }
                 } else {
                     if (hasSave) { confirmNew = true; SFX.dice(); }
                     else { SFX.ok(); transTo(function () { swapTop(ScCreate()); }); }
@@ -3116,7 +3489,11 @@ function ScCreate() {
         t35('STEP ' + (step + 1) + '/' + STEPS.length, 4, 4, P.dim);
         txtC(STEPS[step], W / 2, 3, P.gold);
     }
-    function navHint(s) { ctx.fillStyle = '#0e0e16'; ctx.fillRect(0, H - 11, W, 11); txtC(s, W / 2, H - 9, '#6a6a78'); }
+    function navHint(s) {
+        ctx.fillStyle = '#0e0e16'; ctx.fillRect(0, H - 11, W, 11); txtC(s, W / 2, H - 9, '#6a6a78');
+        HS.add(0, H - 11, W / 2, 11, function () { input('b'); });
+        HS.add(W / 2, H - 11, W / 2, 11, function () { input('a'); });
+    }
 
     return { opaque: true,
         enter: function () { music('title'); },
@@ -3128,7 +3505,7 @@ function ScCreate() {
             if (s === 'CLASS') {
                 var cls = CLASSES[CLS_ORDER[ci]];
                 portrait(12, 20, 3);
-                txtC('< ' + (ci + 1) + '/5 >', 30, 70, P.dim);
+                txtC('<' + (ci + 1) + '/' + CLS_ORDER.length + '>', 30, 70, P.dim);
                 txt(cls.n.split(' ')[0].slice(0, 11), 68, 20, cls.tint);
                 txt(cls.n.split(' ').slice(1).join(' ').slice(0, 11), 68, 29, cls.tint);
                 var tg = wrap(cls.tag, 11);
@@ -3138,6 +3515,8 @@ function ScCreate() {
                 box(4, 108, W - 8, 20, { bg: '#101018' });
                 txt('HD d' + cls.die + '  KEY ' + STAT_N[cls.key], 8, 112, P.dim);
                 txt('WPN ' + WEAPONS[cls.w].n.slice(0, 13), 8, 120, P.w);
+                HS.add(0, 13, 20, H - 24, function () { input('left'); });
+                HS.add(W - 20, 13, 20, H - 24, function () { input('right'); });
                 navHint('</> BROWSE   A NEXT');
             } else if (s === 'ORIGIN') {
                 box(W - 24, 15, 20, 20, { bg: '#101018', edge: '#2a2a3a' });
@@ -3160,6 +3539,8 @@ function ScCreate() {
                 if (o.bless) extra.push('a nat-20');
                 txt(extra.join('  ').slice(0, 19), 8, 100, P.dim);
                 if (o.bless || o.trinket) txt((o.trinket ? TRINKETS[o.trinket].n : 'blessed by the dice').slice(0, 19), 8, 110, '#6a6a78');
+                HS.add(0, 13, 20, H - 24, function () { input('up'); });
+                HS.add(W - 20, 13, 20, H - 24, function () { input('down'); });
                 navHint('^v PICK   A NEXT');
             } else if (s === 'ABILITY') {
                 txtC(METHODS[method], W / 2, 16, abRow === 0 ? P.w : P.gold);
@@ -3168,11 +3549,18 @@ function ScCreate() {
                     var yy = 28 + r * 13;
                     var selr = r === abRow;
                     if (r === 0) {
+                        HS.add(24, yy - 1, 60, 11, function () { abRow = 0; });
+                        HS.add(84, yy - 1, 40, 11, function () { abRow = 0; input('right'); });
                         if (selr) cursor(20, yy + 1);
                         txt('METHOD', 28, yy, selr ? P.w : P.dim);
                         txt(method === 1 ? 'PTS ' + pbLeft() : (method === 0 ? 'A=ROLL' : ''), 100, yy, method === 1 ? (pbLeft() < 0 ? P.red : P.hp) : P.dim);
                     } else {
                         var st = STATS[r - 1], v = rollAnim > 0 ? ri(4, 17) : sv[st], key = CLASSES[CLS_ORDER[ci]].key === st;
+                        (function (rr) {
+                            HS.add(24, yy - 1, 36, 11, function () { abRow = rr; });
+                            HS.add(56, yy - 1, 16, 11, function () { abRow = rr; input('left'); });
+                            HS.add(84, yy - 1, 16, 11, function () { abRow = rr; input('right'); });
+                        })(r);
                         if (selr) cursor(20, yy + 1);
                         txt(STAT_N[st], 28, yy, key ? CLASSES[CLS_ORDER[ci]].tint : selr ? P.w : P.dim);
                         txt('◂', 62, yy, selr && rollAnim <= 0 ? P.gold : '#3a3a48');
@@ -3194,6 +3582,7 @@ function ScCreate() {
                 for (var tj = 0; tj < TRAITS.length; tj++) {
                     var col = tj % 2, trow = Math.floor(tj / 2);
                     txt((tj === ti ? '>' : ' ') + TRAITS[tj].n.split(' ')[0].slice(0, 8), 8 + col * 74, 84 + trow * 9, tj === ti ? P.foc : P.dim);
+                    (function (tt, cc, rr) { HS.add(6 + cc * 74, 83 + rr * 9, 72, 9, function () { ti = tt; SFX.move(); }); })(tj, col, trow);
                 }
                 navHint('^v/<> PICK  A NEXT');
             } else if (s === 'LOOKS') {
@@ -3205,6 +3594,12 @@ function ScCreate() {
                 for (var fr = 0; fr < 9; fr++) {
                     var fi = lookScroll + fr; if (fi >= F.length) break;
                     var fd = F[fi], fy = 18 + fr * 12, on = fi === lookField;
+                    (function (ff) {
+                        HS.add(4, fy - 1, W - 42, 11, function (cxk) {
+                            if (lookField === ff) input(cxk > 56 ? 'right' : 'left');
+                            else lookField = ff;
+                        });
+                    })(fi);
                     if (on) cursor(4, fy + 1);
                     if (fd.shuffle) { txt('* SHUFFLE', 10, fy, on ? P.gold : P.dim); continue; }
                     txt(fd.l, 10, fy, on ? P.w : P.dim);
@@ -3224,16 +3619,24 @@ function ScCreate() {
                     var gx = 14 + (k % 9) * 15, gy = 44 + Math.floor(k / 9) * 13;
                     if (k === gridSel) { ctx.fillStyle = '#2c2c40'; ctx.fillRect(gx - 3, gy - 2, 14, 12); }
                     txt(LETTERS[k], gx, gy, k === gridSel ? P.gold : P.w);
+                    (function (kk, gxx, gyy) { HS.add(gxx - 3, gyy - 2, 15, 13, function () { gridSel = kk; input('a'); }); })(k, gx, gy);
                 }
                 var endSel = gridSel === 36;
                 if (endSel) { ctx.fillStyle = '#2c2c40'; ctx.fillRect(56, 98, 48, 12); }
                 txtC('DONE', W / 2, 100, endSel ? P.gold : P.hp);
+                HS.add(56, 98, 48, 12, function () { gridSel = 36; input('a'); });
                 navHint('A TYPE   B DELETE');
             } else if (s === 'CREED') {
                 portrait(W - 24, 16, 1);
                 var crows = [['PRONOUN', PRONOUNS[pronoun][1]], ['ALIGNMENT', ALIGNS[align].n], ['DICE SIGN', SIGNS[sign]]];
                 for (var cr = 0; cr < crows.length; cr++) {
                     var cy = 30 + cr * 16, con = cr === creedRow;
+                    (function (rr, cyy) {
+                        HS.add(4, cyy - 1, W - 34, 16, function (cxk) {
+                            if (creedRow === rr) input(cxk > 70 ? 'right' : 'left');
+                            else creedRow = rr;
+                        });
+                    })(cr, cy);
                     if (con) cursor(6, cy + 1);
                     txt(crows[cr][0], 14, cy, con ? P.w : P.dim);
                     txt('◂', 14, cy + 8, con ? P.gold : '#3a3a48');
@@ -3267,8 +3670,8 @@ function ScCreate() {
             function next() { if (step < STEPS.length - 1) { step++; SFX.ok(); if (STEPS[step] === 'ABILITY') abRow = 0; } }
             function back() { if (step > 0) { step--; SFX.no(); } else transTo(function () { swapTop(ScTitle()); }); }
             if (s === 'CLASS') {
-                if (a === 'left') { ci = (ci + 4) % 5; lookIx.outfit = defaultLookIx(CLS_ORDER[ci]).outfit; SFX.move(); }
-                else if (a === 'right') { ci = (ci + 1) % 5; lookIx.outfit = defaultLookIx(CLS_ORDER[ci]).outfit; SFX.move(); }
+                if (a === 'left') { ci = (ci + CLS_ORDER.length - 1) % CLS_ORDER.length; lookIx.outfit = defaultLookIx(CLS_ORDER[ci]).outfit; SFX.move(); }
+                else if (a === 'right') { ci = (ci + 1) % CLS_ORDER.length; lookIx.outfit = defaultLookIx(CLS_ORDER[ci]).outfit; SFX.move(); }
                 else if (a === 'a') next();
                 else if (a === 'b') back();
             } else if (s === 'ORIGIN') {
@@ -3356,9 +3759,9 @@ function shuffleLook(ix, cls) {
 function ScIntro() {
     var page = 0, t = 0;
     var pages = [
-        ['RICEWOOD.', 'Year two of the', 'Long Semester.'],
-        ['Your beloved', 'CRIMSON STEED has', 'borne an amber', 'curse-mark since', 'the autumn.'],
-        ['The wise call it', 'P-0420.', '', 'The mechanics', 'call it money.'],
+        ['RICEWOOD.', 'Summer of the', 'Long Semester.'],
+        ['Your silver Steed,', 'ARGENTINA ARTEMIS', 'URE, runs strong.', 'But the HEAT', 'is coming.'],
+        ['In the garage, an', 'intercooler waits', 'in its box.', '', 'Still. Unopened.', 'Judging.'],
         ['Tonight, ' + (G ? G.name : 'PILGRIM') + ',', 'you do something', 'about it.']
     ];
     return { opaque: true,
@@ -3389,13 +3792,14 @@ function ScIntro() {
 }
 
 /* ─────────────────────── the overworld ────────────────────── */
-var PL = { px: 0, py: 0, tx: 0, ty: 0, mvT: 0, mvFrom: null, dir: 'd', buf: null, step: 0 };
+var PL = { px: 0, py: 0, tx: 0, ty: 0, mvT: 0, mvFrom: null, dir: 'd', buf: null, step: 0, trail: [], path: null };
 var weather = { rain: false, drops: [], amb: [] };
 
 function enterMap(id, x, y, dir, silent) {
     buildMap(id);
     G.map = id; G.x = x; G.y = y; G.dir = dir || 'd';
     PL.tx = x; PL.ty = y; PL.px = x * TS; PL.py = y * TS; PL.mvT = 0; PL.buf = null; PL.dir = G.dir;
+    PL.trail = []; PL.path = null;
     var def = MAPS[id];
     music(def.music);
     weather.rain = !!(def.rain && Math.random() < def.rain);
@@ -3413,7 +3817,9 @@ function ScWorld() {
         var dx = dir === 'l' ? -1 : dir === 'r' ? 1 : 0;
         var dy = dir === 'u' ? -1 : dir === 'd' ? 1 : 0;
         var nx = PL.tx + dx, ny = PL.ty + dy;
-        if (solidAt(nx, ny)) { return; }
+        if (solidAt(nx, ny)) { PL.path = null; return; }
+        PL.trail.unshift({ x: PL.tx, y: PL.ty, dir: dir });   // where the hero just was — followers file in behind
+        if (PL.trail.length > 8) PL.trail.pop();
         PL.mvFrom = { x: PL.tx, y: PL.ty };
         PL.tx = nx; PL.ty = ny; PL.mvT = 0.13;
         G.steps++; PL.step ^= 1;
@@ -3442,6 +3848,15 @@ function ScWorld() {
             var r = RT.roamers[j];
             if (!r.dead && r.x === PL.tx && r.y === PL.ty) { encounter(r); return; }
         }
+        /* click-to-interact: the path has ended next to the thing we clicked */
+        if (PL.pathThen && (!PL.path || PL.path.length === 0)) {
+            var pt = PL.pathThen; PL.pathThen = null; PL.path = null;
+            if (Math.abs(pt.x - PL.tx) + Math.abs(pt.y - PL.ty) === 1) {
+                PL.dir = pt.x > PL.tx ? 'r' : pt.x < PL.tx ? 'l' : pt.y > PL.ty ? 'd' : 'u';
+                G.dir = PL.dir;
+                interact();
+            }
+        }
     }
     function fireTrigger(id) {
         if (id === 'sallyport') {
@@ -3461,12 +3876,19 @@ function ScWorld() {
         } else if (id === 'bossroom') {
             if (mq() === 3 && !G.flags.bossDead && !G.flags.bossLock) {
                 G.flags.bossLock = 1;
-                startBattle(['p0420'], {
+                startBattle(['heatsoak'], {
                     boss: true, noFlee: true, musicId: 'boss',
-                    intro: 'THE HERALD OF EMISSIONS IDLES BEFORE YOU.',
+                    intro: 'HEAT SOAK, TYRANT OF SUMMER, SHIMMERS BEFORE YOU.',
                     onWin: function () { G.flags.bossDead = 1; setQuest('main', 4); startCredits(); },
                     onEnd: function () { G.flags.bossLock = 0; }
                 });
+            }
+        } else if (id === 'branch') {
+            if (!G.flags.branchBonk) {
+                G.flags.branchBonk = 1;
+                G.hp = Math.max(1, G.hp - 1);
+                shake(2, 0.25); SFX.hurt();
+                toastG('you walked into a branch. again.');
             }
         }
     }
@@ -3526,8 +3948,11 @@ function ScWorld() {
                 if (PL.mvT <= 0) {
                     PL.px = PL.tx * TS; PL.py = PL.ty * TS;
                     arrived();
-                    if (PL.buf) { var b = PL.buf; PL.buf = null; tryMove(b); }
+                    if (PL.buf) { var b = PL.buf; PL.buf = null; PL.path = null; tryMove(b); }
+                    else if (PL.path && PL.path.length && !TRANS.on) tryMove(PL.path.shift());
                 }
+            } else if (PL.path && PL.path.length && !TRANS.on) {
+                tryMove(PL.path.shift());
             }
             /* npc wander */
             RT.npcs.forEach(function (n) {
@@ -3608,6 +4033,16 @@ function ScWorld() {
                     drawSpr(ENEMIES[rr.enemy].spr, rr.x * TS - cx, rr.y * TS - cy - 2 + hh);
                 }; })(r, hop) });
             });
+            /* the party, filing along behind */
+            activeComps().forEach(function (cid, ci2) {
+                var tr2 = PL.trail[ci2];
+                if (!tr2) return;
+                draws.push({ y: tr2.y * TS + 0.4 + ci2 * 0.01, f: (function (cc, tt, ii) { return function () {
+                    var bob2 = Math.floor(animT * 2.5 + ii) % 2 ? -1 : 0;
+                    shadowAt(tt.x * TS - cx, tt.y * TS - cy);
+                    drawSpr(COMPANIONS[cc].spr, tt.x * TS - cx, tt.y * TS - cy - 2 + bob2, { alpha: cc === 'walkhome' ? 0.85 : 1 });
+                }; })(cid, tr2, ci2) });
+            });
             /* the hero */
             draws.push({ y: PL.py + 0.5, f: function () {
                 var fr = PL.mvT > 0 ? (PL.step ? 1 : 0) : 0;
@@ -3639,13 +4074,79 @@ function ScWorld() {
         },
         i: function (a) {
             if (TRANS.on) return;
-            if (a === 'up') tryMove('u');
-            else if (a === 'down') tryMove('d');
-            else if (a === 'left') tryMove('l');
-            else if (a === 'right') tryMove('r');
+            if (a === 'up') { PL.path = null; tryMove('u'); }
+            else if (a === 'down') { PL.path = null; tryMove('d'); }
+            else if (a === 'left') { PL.path = null; tryMove('l'); }
+            else if (a === 'right') { PL.path = null; tryMove('r'); }
             else if (a === 'a') { if (PL.mvT <= 0) interact(); }
             else if (a === 'b') push(ScMenu());
+        },
+        click: function (mx, my) {
+            if (TRANS.on) return;
+            /* screen -> world tile (recompute the camera the same way draw does) */
+            var mw = RT.w * TS, mh = RT.h * TS;
+            var cx = clamp(Math.round(PL.px + 8 - W / 2), 0, Math.max(0, mw - W));
+            var cy = clamp(Math.round(PL.py + 8 - H / 2), 0, Math.max(0, mh - H));
+            if (mw < W) cx = Math.round((mw - W) / 2);
+            if (mh < H) cy = Math.round((mh - H) / 2);
+            var tx = Math.floor((mx + cx) / TS), ty = Math.floor((my + cy) / TS);
+            if (tx === PL.tx && ty === PL.ty) { interact(); return; }
+            /* adjacent interactable: face it and talk/use */
+            var adj = Math.abs(tx - PL.tx) + Math.abs(ty - PL.ty) === 1;
+            var thing = npcAt(tx, ty) || (propAt(tx, ty) && propAt(tx, ty).use ? propAt(tx, ty) : null);
+            if (adj && (thing || tileAt(tx, ty) === 'water')) {
+                PL.dir = tx > PL.tx ? 'r' : tx < PL.tx ? 'l' : ty > PL.ty ? 'd' : 'u';
+                G.dir = PL.dir;
+                interact();
+                return;
+            }
+            /* otherwise: path to it (or to the nearest open neighbor of a solid target) */
+            var goal = [tx, ty];
+            if (solidAt(tx, ty)) {
+                var best = null, bd = 1e9;
+                [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(function (dd) {
+                    var ax = tx + dd[0], ay = ty + dd[1];
+                    if (solidAt(ax, ay)) return;
+                    var dist = Math.abs(ax - PL.tx) + Math.abs(ay - PL.ty);
+                    if (dist < bd) { bd = dist; best = [ax, ay]; }
+                });
+                if (!best) { SFX.no(); return; }
+                goal = best;
+            }
+            var path = findPath(PL.tx, PL.ty, goal[0], goal[1]);
+            if (!path) { SFX.no(); return; }
+            PL.path = path;
+            /* if the click was on an interactable, tack on a final "face and use" */
+            if (thing) PL.pathThen = { x: tx, y: ty };
+            else PL.pathThen = null;
+            SFX.move();
         } };
+}
+/* BFS pathfinder over walkable tiles; returns a list of dirs or null */
+function findPath(sx, sy, gx, gy) {
+    if (sx === gx && sy === gy) return [];
+    var KEY = function (x, y) { return x + ',' + y; };
+    var prev = {}, q = [[sx, sy]], seen = {};
+    seen[KEY(sx, sy)] = 1;
+    var steps = 0;
+    while (q.length && steps < 900) {
+        var cur = q.shift(); steps++;
+        var DIRS = [['u', 0, -1], ['d', 0, 1], ['l', -1, 0], ['r', 1, 0]];
+        for (var i = 0; i < 4; i++) {
+            var nx = cur[0] + DIRS[i][1], ny = cur[1] + DIRS[i][2];
+            var k = KEY(nx, ny);
+            if (seen[k] || solidAt(nx, ny)) continue;
+            seen[k] = 1;
+            prev[k] = { from: KEY(cur[0], cur[1]), dir: DIRS[i][0] };
+            if (nx === gx && ny === gy) {
+                var out = [], at = k;
+                while (prev[at]) { out.unshift(prev[at].dir); at = prev[at].from; }
+                return out;
+            }
+            q.push([nx, ny]);
+        }
+    }
+    return null;
 }
 function shadowAt(sx, sy) {
     ctx.fillStyle = 'rgba(10,12,18,0.28)';
@@ -3763,6 +4264,7 @@ function ScCamp() {
                 healed = true;
                 G.hp = G.hpm; G.foc = G.focm;
                 delete G.flags.probation;
+                delete G.flags.karaokeDone;   // the stage resets between nights
                 G.camps++; G.day++;
                 SFX.heal(); save();
             }
@@ -3776,11 +4278,20 @@ function ScCamp() {
             ctx.fillStyle = '#141824'; ctx.fillRect(0, 96, W, 48);
             drawSpr(Math.floor(t * 4) % 2 ? 'fire1' : 'fire0', 68, 78);
             drawHero(92, 80, { dir: 'l' });
+            /* the party gathers around the fire */
+            var camps = activeComps();
+            if (camps[0]) drawSpr(COMPANIONS[camps[0]].spr, 42, 80, { alpha: camps[0] === 'walkhome' ? 0.85 : 1 });
+            if (camps[1]) drawSpr(COMPANIONS[camps[1]].spr, 112, 82, { alpha: camps[1] === 'walkhome' ? 0.85 : 1 });
             drawParts(0, 0);
             txtC('LONG REST', W / 2, 16, P.gold);
             if (healed) {
                 txtC('HP & FOCUS RESTORED', W / 2, 30, P.hp);
-                var ql = wrap(quip, 18);
+                var line = quip, seg = Math.floor(t / 3.2);
+                if (camps.length && seg % 2 === 1) {
+                    var cq = COMPANIONS[camps[Math.floor(seg / 2) % camps.length]].camp;
+                    line = cq[Math.floor(seg / 2) % cq.length];
+                }
+                var ql = wrap(line, 18);
                 for (var i = 0; i < ql.length && i < 2; i++) txtC(ql[i], W / 2, 108 + i * 10, P.dim);
                 if (t > 2.2) { txtC('A: WAKE', W / 2, 134, P.w); }
             }
@@ -3919,6 +4430,7 @@ function ScDialog(tree, onClose) {
                     var lbl = opts[j].l;
                     if (lbl.length * 8 > ow - 18) lbl = lbl.slice(0, Math.floor((ow - 18) / 8));
                     txt(lbl, W - ow + 10, oy, j === optSel ? P.w : P.dim);
+                    (function (jj, oyy) { HS.add(W - ow - 4, oyy - 1, ow + 4, 10, function () { optSel = jj; input('a'); }); })(j, oy);
                 }
             }
         },
@@ -3937,7 +4449,7 @@ function ScDialog(tree, onClose) {
 
 /* ─────────────────────── pause menu ───────────────────────── */
 function ScMenu() {
-    var items = ['ITEMS', 'JOURNAL', 'HERO', 'CAMP', 'SAVE', 'EJECT'];
+    var items = ['ITEMS', 'PARTY', 'JOURNAL', 'HERO', 'CAMP', 'SAVE', 'EJECT'];
     var sel = 0, sub = null, subSel = 0, subMsg = '';
     function usable() { return G.inv.filter(function (it) { return ITEMS[it.id].kind === 'heal' || ITEMS[it.id].kind === 'focus'; }); }
     function questsStarted() { return QORDER.filter(function (q) { return G.quests[q] != null; }); }
@@ -3952,6 +4464,7 @@ function ScMenu() {
                     var dis = items[i] === 'CAMP' && !MAPS[G.map].outdoors;
                     if (i === sel) cursor(W - bw + 4, 11 + i * 11 + 1);
                     txt(items[i], W - bw + 12, 10 + i * 11, dis ? '#4a4a55' : i === sel ? P.w : P.dim);
+                    (function (ii) { HS.add(W - bw - 2, 9 + ii * 11, bw + 2, 11, function () { sel = ii; input('a'); }); })(i);
                 }
                 box(W - bw - 2, mh + 6, bw, 22, { bg: '#101018' });
                 t35('G ' + G.gold, W - bw + 6, mh + 11, P.gold);
@@ -3965,6 +4478,7 @@ function ScMenu() {
                     if (j === subSel) cursor(10, 22 + j * 11 + 1);
                     txt(ITEMS[us[j].id].n.slice(0, 13), 18, 21 + j * 11, j === subSel ? P.w : P.dim);
                     txt('x' + us[j].n, 128, 21 + j * 11, P.dim);
+                    (function (jj) { HS.add(6, 20 + jj * 11, W - 12, 11, function () { if (subSel === jj) input('a'); else { subSel = jj; SFX.move(); } }); })(j);
                 }
                 box(4, 106, W - 8, 34, { bg: '#101018' });
                 var cur = us[subSel];
@@ -3973,6 +4487,33 @@ function ScMenu() {
                     for (var k2 = 0; k2 < dl.length && k2 < 2; k2++) txt(dl[k2], 10, 111 + k2 * 9, P.dim);
                 }
                 if (subMsg) txt(subMsg, 10, 129, P.hp);
+            } else if (sub === 'party') {
+                box(4, 4, W - 8, 136, { bg: '#14141f' });
+                txtC('THE PARTY', W / 2, 8, P.gold);
+                var pl2 = G.party || [];
+                if (!pl2.length) {
+                    txtC('no companions yet.', W / 2, 40, P.dim);
+                    txtC('they are out there:', W / 2, 56, '#4a4a58');
+                    txtC('a cafe. a desert.', W / 2, 66, '#4a4a58');
+                    txtC('a slope. a street.', W / 2, 76, '#4a4a58');
+                } else {
+                    for (var pj = 0; pj < pl2.length && pj < 6; pj++) {
+                        var cdf = COMPANIONS[pl2[pj]];
+                        var isAct = (G.active || []).indexOf(pl2[pj]) >= 0;
+                        if (pj === subSel) cursor(8, 21 + pj * 12 + 2);
+                        drawSpr(cdf.spr, 15, 15 + pj * 12);
+                        txt(cdf.n.slice(0, 11), 34, 19 + pj * 12, pj === subSel ? P.w : P.dim);
+                        if (isAct) txt('*IN', 128, 19 + pj * 12, P.hp);
+                        (function (jj) { HS.add(6, 15 + jj * 12, W - 12, 12, function () { if (subSel === jj) input('a'); else { subSel = jj; SFX.move(); } }); })(pj);
+                    }
+                    var selC = COMPANIONS[pl2[Math.min(subSel, pl2.length - 1)]];
+                    box(4, 92, W - 8, 48, { bg: '#101018' });
+                    var bl2 = wrap(selC.bio, 18);
+                    for (var bj = 0; bj < bl2.length && bj < 2; bj++) txt(bl2[bj], 8, 96 + bj * 9, P.dim);
+                    var mv2 = selC.moves.map(function (m3) { return m3.n.split(' ')[0]; }).join(' ');
+                    txt(mv2.slice(0, 18), 8, 116, P.foc);
+                    txt('A: swap. max 2', 8, 127, '#4a4a58');
+                }
             } else if (sub === 'journal') {
                 var qs = questsStarted();
                 box(4, 4, W - 8, 136, { bg: '#14141f' });
@@ -4029,7 +4570,10 @@ function ScMenu() {
                         if (def.kind === 'focus' && G.foc >= G.focm) { subMsg = 'FOCUS already full.'; SFX.no(); return; }
                         var healed = 0;
                         if (it.id === 'coldbrew') { healed = d(4) + d(4) + 2; G.foc = clamp(G.foc + 1, 0, G.focm); }
+                        else if (it.id === 'water') healed = d(4) + 2;
+                        else if (it.id === 'cookies') { healed = d(4) + d(4) + 2; G.foc = clamp(G.foc + 1, 0, G.focm); }
                         else if (it.id === 'taco') healed = d(8) + 3;
+                        else if (it.id === 'haul') healed = d(8) + d(8) + 2;
                         else if (it.id === 'kolache') healed = G.hpm;
                         else if (it.id === 'bottomless') healed = d(4) + d(4);
                         else if (it.id === 'espresso') { G.foc = G.focm; }
@@ -4042,6 +4586,19 @@ function ScMenu() {
                 } else if (sub === 'journal') {
                     var qs = questsStarted();
                     if (a === 'up' || a === 'down') { subSel = (subSel + (a === 'down' ? 1 : qs.length - 1)) % Math.max(1, qs.length); SFX.move(); }
+                } else if (sub === 'party') {
+                    var pl3 = G.party || [];
+                    if (!pl3.length) return;
+                    if (a === 'up') { subSel = (subSel + pl3.length - 1) % pl3.length; SFX.move(); }
+                    else if (a === 'down') { subSel = (subSel + 1) % pl3.length; SFX.move(); }
+                    else if (a === 'a') {
+                        var cid3 = pl3[subSel];
+                        var ax = (G.active || []).indexOf(cid3);
+                        if (ax >= 0) { G.active.splice(ax, 1); SFX.no(); subMsg = ''; }
+                        else if (G.active.length < 2) { G.active.push(cid3); SFX.ok(); }
+                        else { toastG('party is full (2 + you)'); SFX.no(); }
+                        save();
+                    }
                 }
                 return;
             }
@@ -4051,6 +4608,7 @@ function ScMenu() {
             else if (a === 'a') {
                 var pickd = items[sel];
                 if (pickd === 'ITEMS') { sub = 'items'; subSel = 0; SFX.ok(); }
+                else if (pickd === 'PARTY') { sub = 'party'; subSel = 0; SFX.ok(); }
                 else if (pickd === 'JOURNAL') { sub = 'journal'; subSel = 0; SFX.ok(); }
                 else if (pickd === 'HERO') { sub = 'hero'; SFX.ok(); }
                 else if (pickd === 'CAMP') {
@@ -4070,10 +4628,12 @@ function ScShop(kind) {
     function stock() {
         if (kind === 'chaus') {
             return [
+                { id: 'water', item: 1, price: ITEMS.water.price },
                 { id: 'coldbrew', item: 1, price: ITEMS.coldbrew.price },
-                { id: 'taco', item: 1, price: ITEMS.taco.price },
-                { id: 'kolache', item: 1, price: ITEMS.kolache.price, dis: G.quests.kolache != null && G.quests.kolache < 1 },
-                { id: 'espresso', item: 1, price: ITEMS.espresso.price }
+                { id: 'cookies', item: 1, price: ITEMS.cookies.price },
+                { id: 'haul', item: 1, price: ITEMS.haul.price },
+                { id: 'espresso', item: 1, price: ITEMS.espresso.price },
+                { id: 'kolache', item: 1, price: ITEMS.kolache.price, dis: G.quests.kolache != null && G.quests.kolache < 1 }
             ].filter(function (s) { return !s.dis; });
         }
         var out = [];
@@ -4081,7 +4641,8 @@ function ScShop(kind) {
         if (G.eq.w !== w2) out.push({ id: w2, weap: 1, price: WEAPONS[w2].price });
         if (G.eq.a === 'a0') out.push({ id: 'a1', arm: 1, price: ARMORS.a1.price });
         if (G.eq.a !== 'a2') out.push({ id: 'a2', arm: 1, price: ARMORS.a2.price });
-        out.push({ id: 'coldbrew', item: 1, price: ITEMS.coldbrew.price });
+        out.push({ id: 'taco', item: 1, price: ITEMS.taco.price });
+        out.push({ id: 'water', item: 1, price: ITEMS.water.price });
         return out;
     }
     function nameOf(s) { return s.weap ? WEAPONS[s.id].n : s.arm ? ARMORS[s.id].n : ITEMS[s.id].n; }
@@ -4099,7 +4660,9 @@ function ScShop(kind) {
                 var afford = G.gold >= st[i].price;
                 txt(nameOf(st[i]).slice(0, 13), 18, 23 + i * 12, i === sel ? (afford ? P.w : P.red) : P.dim);
                 txt(st[i].price + 'g', 126, 23 + i * 12, afford ? P.gold : P.red);
+                (function (ii) { HS.add(6, 22 + ii * 12, W - 12, 12, function () { if (sel === ii) input('a'); else { sel = ii; SFX.move(); } }); })(i);
             }
+            HS.add(4, 124, W - 8, 18, function () { input('b'); });
             box(4, 106, W - 8, 34, { bg: '#101018' });
             var cur = st[sel];
             if (cur) {
@@ -4220,8 +4783,17 @@ function ScBattle(ids, opts) {
         foes: [], phase: 'q', q: [], menuSel: 0, sub: null, subSel: 0, target: 0,
         round: 0, guard: false, pconds: [], launchUsed: false, crashNext: false,
         extraAct: 0, smogBroken: false, look: null, biome: 'grass', t: 0,
-        msg: '', dice: null, win: null, fled: false
+        msg: '', dice: null, win: null, fled: false,
+        allies: [], curAlly: -1, cSel: 0
     };
+    /* the party fights too: build battle-state for each active companion */
+    activeComps().forEach(function (cid) {
+        var cd = COMPANIONS[cid];
+        var uses = {};
+        cd.moves.forEach(function (m2) { uses[m2.id] = m2.uses; });
+        bt.allies.push({ id: cid, def: cd, hp: cd.hpm, hpm: cd.hpm, uses: uses, down: false, guard: false, blink: 0 });
+    });
+    function livingAllies() { return bt.allies.filter(function (al) { return !al.down; }); }
     function addFoe(id, hpOver) {
         var def = ENEMIES[id];
         bt.foes.push({ id: id, def: def, hp: hpOver || def.hp, hpShow: hpOver || def.hp, maxhp: def.hp, conds: [], tele: null, acD: 0, dead: false, blink: 0, split2: false, rounds: 0, seen: false });
@@ -4276,7 +4848,7 @@ function ScBattle(ids, opts) {
     function hurtFoe(f, dmg, tag) {
         if (f.def.final && !bt.smogBroken && dmg > 1) {
             dmg = 1;
-            msgStep('the SMOG VEIL absorbs it! (try the O2 SENSOR...)', 1.3);
+            msgStep('the HEAT SHIMMER swallows it! (the intercooler. INSTALL IT.)', 1.3);
         }
         f.hp = Math.max(0, f.hp - dmg);
         f.blink = 0.4;
@@ -4329,7 +4901,14 @@ function ScBattle(ids, opts) {
     function fcond(f, id) { for (var i2 = 0; i2 < f.conds.length; i2++) if (f.conds[i2].id === id) return f.conds[i2]; return null; }
 
     /* ── player actions ── */
-    function pAtkMod() { var m2 = atkMod(); var fe = pcond('fear'); if (fe) m2 -= 2; var ins = pcond('inspire'); if (ins) m2 += 4; return m2; }
+    function pAtkMod() {
+        var m2 = atkMod();
+        var fe = pcond('fear'); if (fe) m2 -= 2;
+        var ins = pcond('inspire'); if (ins) m2 += 4;
+        var sh = pcond('sharp'); if (sh) m2 += sh.val;
+        var jt = pcond('jit'); if (jt) m2 -= 1;
+        return m2;
+    }
     function endInspire() { rmPcond('inspire'); }
     function playerAttack(spec) {
         spec = spec || {};
@@ -4457,34 +5036,63 @@ function ScBattle(ids, opts) {
                 addPcond('hedge', 9, 0);
                 msgStep('HEDGED. the next blow is halved. so wise.', 1.0);
                 break;
+            case 'still':
+                var sw = d(6) + d(6) + Math.max(0, mod(G.st.con));
+                healPlayer(sw); SFX.heal();
+                ftext(30, 66, '+' + sw, P.hp);
+                msgStep('STILL WATER. you drink. you are the reservoir. +' + sw + ' HP.', 1.1);
+                break;
+            case 'palm':
+                if (f) {
+                    var pd = d(6);
+                    f.conds.push({ id: 'blind', turns: 2 });
+                    thenFn(function () { hurtFoe(f, pd, ''); });
+                    msgStep('OPEN PALM. open mind. ' + pd + ' dmg and it cannot see.', 1.1);
+                }
+                break;
+            case 'steeps':
+                msgStep('HUNDRED STEEPS. patience, then heat.', 0.8);
+                for (var hs2 = 0; hs2 < 3; hs2++) {
+                    thenFn(function () {
+                        var f4 = alive()[0]; if (!f4) return;
+                        var hit4 = d(20) + pAtkMod() >= f4.def.ac + f4.acD;
+                        if (hit4) { hurtFoe(f4, d(4) + Math.max(1, mod(G.st.con)), ''); SFX.hit(); }
+                        else SFX.whiff();
+                    });
+                    step(0.45, null, null);
+                }
+                break;
         }
         endPlayerAction();
     }
     function useItem(id) {
         bt.sub = null; bt.phase = 'q';
-        if (id === 'o2') {
+        if (id === 'icbox') {
             bt.smogBroken = true;
             flashFx('#8fc0e8', 0.4); shake(3, 0.4); SFX.roar();
-            msgStep('you raise the O2 SENSOR OF TRUTH!', 1.1);
-            msgStep('the SMOG VEIL reads its own numbers... and DISSIPATES. the Herald SCREAMS.', 1.7);
+            msgStep('you INSTALL THE INTERCOOLER. here. now. mid-fight.', 1.3);
+            msgStep('cold air floods the core. HEAT SOAK\'s shimmering veil COLLAPSES. it screams in fahrenheit.', 1.8);
             endPlayerAction();
             return;
         }
         var healed = 0;
         if (id === 'coldbrew') { healed = d(4) + d(4) + 2; G.foc = clamp(G.foc + 1, 0, G.focm); }
+        else if (id === 'water') healed = d(4) + 2;
+        else if (id === 'cookies') { healed = d(4) + d(4) + 2; G.foc = clamp(G.foc + 1, 0, G.focm); }
         else if (id === 'taco') healed = d(8) + 3;
+        else if (id === 'haul') healed = d(8) + d(8) + 2;
         else if (id === 'kolache') healed = G.hpm;
         else if (id === 'bottomless') { if (bt.bottomUsed) { bt.msg = 'the cup must rest between battles.'; bt.phase = 'menu'; SFX.no(); return; } bt.bottomUsed = true; healed = d(4) + d(4); }
-        else if (id === 'espresso') { G.foc = G.focm; }
+        else if (id === 'espresso') { G.foc = G.focm; addPcond('jit', 2, 1); }
         if (healed) { healPlayer(healed); ftext(30, 66, '+' + Math.min(healed, G.hpm), P.hp); }
         delItem(id, 1);
         SFX.heal();
-        msgStep(healed ? '+' + healed + ' HP. onward.' : 'FOCUS restored. the hands steady.', 1.0);
+        msgStep(id === 'espresso' ? 'FOCUS floods back. so do the JITTERS (-1, 2 turns).' : healed ? '+' + healed + ' HP. onward.' : 'FOCUS restored.', 1.2);
         endPlayerAction();
     }
     function tryFlee() {
         bt.phase = 'q';
-        if (opts.noFlee) { msgStep('there is no fleeing this.', 1.1); thenFn(function () { enemyTurns(); }); return; }
+        if (opts.noFlee) { msgStep('there is no fleeing this.', 1.1); endPlayerAction(); return; }
         var t2 = trin();
         var fm = mod(G.st.dex) + (t2 && t2.flee ? t2.flee : 0) - (pcond('slow') ? 2 : 0) + (G.flags.probation ? -1 : 0);
         var dc = 10 + Math.max.apply(null, alive().map(function (f) { return f.def.init; }));
@@ -4494,7 +5102,7 @@ function ScBattle(ids, opts) {
                 thenFn(function () { doEnd(true); });
             } else {
                 msgStep('cut off! no escape this round.', 1.0);
-                thenFn(function () { enemyTurns(); });
+                endPlayerAction();
             }
         }, {});
     }
@@ -4502,8 +5110,126 @@ function ScBattle(ids, opts) {
         thenFn(function () {
             if (checkWin()) return;
             if (bt.extraAct > 0) { bt.extraAct--; bt.phase = 'menu'; bt.menuSel = 0; bt.msg = 'again! (extra action)'; return; }
-            enemyTurns();
+            var resume = bt.pendingAlly || 0;
+            bt.pendingAlly = 0;
+            nextAllyTurn(resume);
         });
+    }
+    /* ── companion turns (player-controlled, BG3 style) ── */
+    function nextAllyTurn(fromIdx) {
+        for (var i2 = fromIdx; i2 < bt.allies.length; i2++) {
+            if (!bt.allies[i2].down) {
+                bt.curAlly = i2; bt.cSel = 0; bt.phase = 'cmenu';
+                bt.msg = bt.allies[i2].def.n + '\'s move.';
+                return;
+            }
+        }
+        bt.curAlly = -1;
+        enemyTurns();
+    }
+    function allyOptions(al) {
+        var opts = [{ kind: 'basic', n: al.def.basic.n }];
+        al.def.moves.forEach(function (m2) { opts.push({ kind: 'move', m: m2, n: m2.n, left: al.uses[m2.id] }); });
+        opts.push({ kind: 'pass', n: 'PASS' });
+        return opts;
+    }
+    function lowestAlly() {
+        var best = { kind: 'hero', frac: G.hp / G.hpm };
+        livingAllies().forEach(function (al) { if (al.hp / al.hpm < best.frac) best = { kind: 'ally', al: al, frac: al.hp / al.hpm }; });
+        return best;
+    }
+    function healTarget(tgt, amt) {
+        if (tgt.kind === 'hero') { healPlayer(amt); ftext(30, 66, '+' + amt, P.hp); }
+        else { tgt.al.hp = Math.min(tgt.al.hpm, tgt.al.hp + amt); ftext(52, 80, '+' + amt, P.hp); }
+    }
+    function allyAct(choice) {
+        var al = bt.allies[bt.curAlly];
+        var idx = bt.curAlly;
+        bt.phase = 'q';
+        var f = alive()[0];
+        if (choice.kind === 'pass') {
+            msgStep(al.def.n + ' holds position.', 0.8);
+            thenFn(function () { nextAllyTurn(idx + 1); });
+            return;
+        }
+        if (choice.kind === 'basic') {
+            if (!f) { thenFn(function () { nextAllyTurn(idx + 1); }); return; }
+            diceStep(al.def.n + ': ' + al.def.basic.n, 5, f.def.ac + f.acD, function (r) {
+                if (r.hit) {
+                    var dmg = 0, dc2 = al.def.basic.dice;
+                    for (var k2 = 0; k2 < dc2[0]; k2++) dmg += d(dc2[1]);
+                    dmg += dc2[2] || 0;
+                    if (r.crit) dmg += d(dc2[1]);
+                    hurtFoe(f, Math.max(1, dmg), r.crit ? 'crit' : '');
+                } else msgStep(al.def.n + ' misses!', 0.8);
+                thenFn(function () { if (!checkWin()) nextAllyTurn(idx + 1); });
+            }, {});
+            return;
+        }
+        var m2 = choice.m;
+        if (al.uses[m2.id] <= 0) { bt.phase = 'cmenu'; bt.msg = 'no uses left.'; SFX.no(); return; }
+        al.uses[m2.id]--;
+        SFX.magic();
+        switch (m2.kind) {
+            case 'dmg':
+                if (f) {
+                    diceStep(al.def.n + ': ' + m2.n, 6, f.def.ac + f.acD, function (r) {
+                        if (r.hit) {
+                            var dmg2 = 0;
+                            for (var k3 = 0; k3 < m2.dice[0]; k3++) dmg2 += d(m2.dice[1]);
+                            dmg2 += m2.dice[2] || 0;
+                            if (r.crit) dmg2 += d(m2.dice[1]);
+                            hurtFoe(f, Math.max(1, dmg2), r.crit ? 'crit' : '');
+                        } else msgStep('it goes wide!', 0.8);
+                        thenFn(function () { if (!checkWin()) nextAllyTurn(idx + 1); });
+                    }, {});
+                    return;
+                }
+                break;
+            case 'heal': {
+                var hv2 = 0;
+                for (var h2 = 0; h2 < m2.dice[0]; h2++) hv2 += d(m2.dice[1]);
+                hv2 += m2.dice[2] || 0;
+                var tgt = lowestAlly();
+                healTarget(tgt, hv2);
+                rmPcond('fear');
+                SFX.heal();
+                msgStep(al.def.n + ': ' + m2.n + '! +' + hv2 + ' HP.', 1.1);
+                break;
+            }
+            case 'healparty': {
+                var hv3 = 0;
+                for (var h3 = 0; h3 < m2.dice[0]; h3++) hv3 += d(m2.dice[1]);
+                healPlayer(hv3); ftext(30, 66, '+' + hv3, P.hp);
+                livingAllies().forEach(function (a3) { a3.hp = Math.min(a3.hpm, a3.hp + hv3); });
+                SFX.heal();
+                msgStep(al.def.n + ': ' + m2.n + '! everyone +' + hv3 + '.', 1.2);
+                break;
+            }
+            case 'blind':
+                if (f) { f.conds.push({ id: 'blind', turns: 2 }); msgStep(al.def.n + ': ' + m2.n + '! ' + f.def.n + ' is blinded.', 1.2); }
+                break;
+            case 'weak':
+                if (f) { f.conds.push({ id: 'weak', turns: m2.turns || 2, val: m2.val || 2 }); msgStep(al.def.n + ': ' + m2.n + '! its attacks weaken.', 1.2); }
+                break;
+            case 'stun':
+                if (f) { f.conds.push({ id: 'stun', turns: 1 }); msgStep(al.def.n + ': ' + m2.n + '! ' + f.def.n + ' is stopped cold.', 1.2); }
+                break;
+            case 'extra':
+                msgStep(al.def.n + ': ' + m2.n + '! a surge of confidence: act again!', 1.1);
+                thenFn(function () { bt.phase = 'menu'; bt.menuSel = 0; bt.pendingAlly = idx + 1; });
+                return;
+            case 'guardall':
+                bt.guard = true;
+                bt.allies.forEach(function (a4) { a4.guard = true; });
+                msgStep(al.def.n + ': ' + m2.n + '! the party braces.', 1.1);
+                break;
+            case 'sharpen':
+                addPcond('sharp', m2.turns || 2, m2.val || 2);
+                msgStep(al.def.n + ': ' + m2.n + '! the party sharpens (+' + (m2.val || 2) + ' atk).', 1.2);
+                break;
+        }
+        thenFn(function () { if (!checkWin()) nextAllyTurn(idx + 1); });
     }
 
     /* ── enemy turns ── */
@@ -4569,12 +5295,15 @@ function ScBattle(ids, opts) {
             SFX.coin();
             return;
         }
-        /* an attack roll against you */
+        /* an attack roll against the party: mostly you, sometimes a companion */
         var blind = fcond(f, 'blind');
-        var m2 = (f.def.atk != null ? f.def.atk : 4);
-        var ac2 = playerAC() + (pcond('pivot') ? 2 : 0);
+        var weak = fcond(f, 'weak');
+        var m2 = (f.def.atk != null ? f.def.atk : 4) - (weak ? weak.val : 0);
+        var la = livingAllies();
+        var tgtAlly = (la.length && ch(0.4)) ? pick(la) : null;
+        var ac2 = tgtAlly ? 12 : playerAC() + (pcond('pivot') ? 2 : 0);
         diceStep(nm + ': ' + act.n, m2, ac2, function (r) {
-            if (!r.hit) { msgStep(r.n === 1 ? nm + ' fumbles! embarrassing.' : 'you evade!', 0.9); return; }
+            if (!r.hit) { msgStep(r.n === 1 ? nm + ' fumbles! embarrassing.' : (tgtAlly ? tgtAlly.def.n + ' evades!' : 'you evade!'), 0.9); return; }
             var dmg = 0;
             var dice = act.multi ? [act.multi[0], act.multi[1], act.multi[2]] : act.dice;
             var nD = dice[0];
@@ -4583,13 +5312,26 @@ function ScBattle(ids, opts) {
             if (f.def.ramp) dmg += Math.max(0, f.rounds - 1);
             if (act.ramp) dmg += Math.max(0, bt.round - 1);
             if (r.crit) dmg += d(dice[1]);
-            dmgPlayer(dmg);
-            if (act.dot) addPcond('dot', act.dot.turns, act.dot.dmg);
-            if (act.slow) addPcond('slow', act.slow, 0);
+            if (tgtAlly) dmgAlly(tgtAlly, dmg);
+            else {
+                dmgPlayer(dmg);
+                if (act.dot) addPcond('dot', act.dot.turns, act.dot.dmg);
+                if (act.slow) addPcond('slow', act.slow, 0);
+            }
         }, { dis: !!blind });
     }
+    function dmgAlly(al, dmg) {
+        if (al.guard) dmg = Math.ceil(dmg / 2);
+        al.hp = Math.max(0, al.hp - dmg);
+        al.blink = 0.4;
+        ftext(52, 78, '-' + dmg, P.red);
+        SFX.hurt(); shake(1, 0.15);
+        if (al.hp <= 0) {
+            al.down = true;
+            msgStep(al.def.n + ' is down! (they\'ll recover after the fight.)', 1.3);
+        }
+    }
     function enemyTurns() {
-        bt.guard = false;
         var al = alive();
         al.forEach(function (f) {
             thenFn(function () {
@@ -4604,12 +5346,19 @@ function ScBattle(ids, opts) {
                     bt.msg = 'COMPOUND INTEREST: ' + iv + ' dmg.';
                     if (ic.turns <= 0) f.conds = f.conds.filter(function (c) { return c.id !== 'interest'; });
                 }
-                f.conds.forEach(function (c) { if (c.id === 'blind') c.turns--; });
-                f.conds = f.conds.filter(function (c) { return c.id !== 'blind' || c.turns > 0; });
+                f.conds.forEach(function (c) { if (c.id === 'blind' || c.id === 'weak') c.turns--; });
+                f.conds = f.conds.filter(function (c) { return (c.id !== 'blind' && c.id !== 'weak') || c.turns > 0; });
             });
             step(0.35, null, null);
             thenFn(function () {
                 if (f.dead || G.hp <= 0) { return; }
+                var st2 = fcond(f, 'stun');
+                if (st2) {
+                    f.conds = f.conds.filter(function (c) { return c.id !== 'stun'; });
+                    f.tele = null;
+                    bt.msg = f.def.n + ' is stunned and loses its turn!';
+                    return;
+                }
                 enemyAct(f, f.tele || pickAct(f));
             });
         });
@@ -4621,6 +5370,10 @@ function ScBattle(ids, opts) {
     }
     function playerTurnStart() {
         bt.round++;
+        bt.guard = false;                                        // guards last through the enemy round
+        bt.allies.forEach(function (a5) { a5.guard = false; });
+        var sh2 = pcond('sharp'); if (sh2) { sh2.turns--; if (sh2.turns <= 0) rmPcond('sharp'); }
+        var jt = pcond('jit'); if (jt) { jt.turns--; if (jt.turns <= 0) rmPcond('jit'); }
         /* your dots + regen */
         var dot = pcond('dot');
         if (dot) { dmgPlayer(dot.val, true); bt.msg = 'the ITCH: -' + dot.val; dot.turns--; if (dot.turns <= 0) rmPcond('dot'); }
@@ -4632,7 +5385,7 @@ function ScBattle(ids, opts) {
         if (bt.crashNext) {
             bt.crashNext = false;
             msgStep('you CRASH. hard. the room spins politely.', 1.4);
-            thenFn(function () { enemyTurns(); });
+            endPlayerAction();
             return;
         }
         bt.phase = 'menu'; bt.menuSel = 0; bt.msg = 'RD ' + bt.round + ' — your move.';
@@ -4690,7 +5443,7 @@ function ScBattle(ids, opts) {
     var MENU = ['FIGHT', 'CAST', 'ITEM', 'GUARD', 'LOOK', 'RUN'];
     function battleItems() {
         var out = G.inv.filter(function (it) { return ITEMS[it.id].kind === 'heal' || ITEMS[it.id].kind === 'focus'; });
-        if (bt.foes.some(function (f) { return f.def.final; }) && !bt.smogBroken && countItem('o2')) out.unshift({ id: 'o2', n: 1 });
+        if (bt.foes.some(function (f) { return f.def.final; }) && !bt.smogBroken && countItem('icbox')) out.unshift({ id: 'icbox', n: 1 });
         return out;
     }
     function menuAct() {
@@ -4706,7 +5459,7 @@ function ScBattle(ids, opts) {
             G.foc = clamp(G.foc + 1, 0, G.focm);
             bt.phase = 'q';
             msgStep('you brace behind the ' + armr().n + '. (+1 FOCUS)', 1.0);
-            thenFn(function () { enemyTurns(); });
+            endPlayerAction();
             SFX.ok();
         }
         else if (m2 === 'LOOK') { var f = alive()[0]; if (f) { f.seen = true; bt.look = f; SFX.ok(); } }
@@ -4756,10 +5509,22 @@ function ScBattle(ids, opts) {
             if (fcond(f, 'blind')) t35('X', Math.round(foePos(i2) + 18), Math.round(y2 - 6), P.dim);
             if (fcond(f, 'interest')) t35('%', Math.round(foePos(i2) - 22), Math.round(y2 - 6), P.gold);
             if (bt.phase === 'target' && alive()[bt.target] === f && Math.floor(bt.t * 4) % 2) cursor(Math.round(foePos(i2) - 2), Math.round(y2 - 14));
+            if (bt.phase === 'target') {
+                (function (ff2) { HS.add(Math.round(x2), Math.round(y2), w2, h2, function () { var ai2 = alive().indexOf(ff2); if (ai2 >= 0) { bt.target = ai2; input('a'); } }); })(f);
+            }
         });
     }
     function drawPlayer() {
         drawHero(16, 62, { dir: 'u', scale: 2 });
+        /* companions flank the hero */
+        bt.allies.forEach(function (al, ai) {
+            if (al.blink > 0 && Math.floor(bt.t * 30) % 2) return;
+            var axp = ai === 0 ? 50 : 2, ayp = ai === 0 ? 70 : 74;
+            drawSpr(al.def.spr, axp, ayp, { alpha: al.down ? 0.3 : (al.id === 'walkhome' ? 0.85 : 1) });
+            if (!al.down) bar(axp, ayp + 17, 16, 3, al.hp / al.hpm, al.hp / al.hpm > 0.35 ? P.hp : P.red);
+            if (al.guard) { ctx.fillStyle = P.foc; ctx.fillRect(axp + 17, ayp + 4, 2, 8); }
+            if (bt.phase === 'cmenu' && bt.curAlly === ai && Math.floor(bt.t * 4) % 2) cursor(axp + 5, ayp - 8);
+        });
         if (bt.guard) { ctx.fillStyle = P.foc; ctx.fillRect(44, 70, 3, 12); }
         var ci = 0;
         bt.pconds.forEach(function (c) {
@@ -4785,6 +5550,7 @@ function ScBattle(ids, opts) {
                 var mx = 76 + (m2 % 3) * 28, my = 108 + Math.floor(m2 / 3) * 16;
                 if (m2 === bt.menuSel) { cursor(mx - 6, my + 1); }
                 txt(MENU[m2].slice(0, 3), mx, my, m2 === bt.menuSel ? P.w : P.dim);
+                (function (mm, mxx, myy) { HS.add(mxx - 7, myy - 3, 28, 15, function () { if (bt.menuSel === mm) input('a'); else { bt.menuSel = mm; SFX.move(); } }); })(m2, mx, my);
             }
             txt(MENU[bt.menuSel], 76, 134, P.gold);
         } else if (bt.sub === 'cast') {
@@ -4797,6 +5563,7 @@ function ScBattle(ids, opts) {
                 if (idx === bt.subSel) cursor(72, 108 + s2 * 9 + 1);
                 txt(sp.n.slice(0, 8), 79, 107 + s2 * 9, idx === bt.subSel ? (G.foc >= sp.cost ? P.w : P.red) : P.dim);
                 t35('F' + sp.cost, 148, 108 + s2 * 9, P.foc);
+                (function (xi, yy) { HS.add(70, yy, 90, 9, function () { if (bt.subSel === xi) input('a'); else { bt.subSel = xi; SFX.move(); } }); })(idx, 106 + s2 * 9);
             }
         } else if (bt.sub === 'item') {
             var its = battleItems();
@@ -4804,6 +5571,22 @@ function ScBattle(ids, opts) {
                 if (it2 === bt.subSel) cursor(72, 108 + it2 * 9 + 1);
                 txt(ITEMS[its[it2].id].n.slice(0, 8), 79, 107 + it2 * 9, it2 === bt.subSel ? P.w : P.dim);
                 t35('X' + its[it2].n, 148, 108 + it2 * 9, P.dim);
+                (function (xi, yy) { HS.add(70, yy, 90, 9, function () { if (bt.subSel === xi) input('a'); else { bt.subSel = xi; SFX.move(); } }); })(it2, 106 + it2 * 9);
+            }
+        } else if (bt.phase === 'cmenu' && bt.curAlly >= 0) {
+            var al6 = bt.allies[bt.curAlly];
+            var opts6 = allyOptions(al6);
+            t35(al6.def.n.slice(0, 10), 76, 102, P.gold);
+            for (var o6 = 0; o6 < opts6.length && o6 < 4; o6++) {
+                var off6 = Math.max(0, bt.cSel - 3);
+                var oi6 = o6 + off6;
+                if (oi6 >= opts6.length) break;
+                var op6 = opts6[oi6];
+                var usable6 = op6.kind !== 'move' || al6.uses[op6.m.id] > 0;
+                if (oi6 === bt.cSel) cursor(72, 109 + o6 * 9 + 1);
+                txt(op6.n.slice(0, 8), 79, 108 + o6 * 9, oi6 === bt.cSel ? (usable6 ? P.w : P.red) : P.dim);
+                if (op6.kind === 'move') t35('X' + al6.uses[op6.m.id], 148, 109 + o6 * 9, P.dim);
+                (function (xi, yy) { HS.add(70, yy, 90, 10, function () { if (bt.cSel === xi) input('a'); else { bt.cSel = xi; SFX.move(); } }); })(oi6, 107 + o6 * 9);
             }
         }
     }
@@ -4909,6 +5692,21 @@ function ScBattle(ids, opts) {
                 else if (a === 'right') { bt.target = (bt.target + 1) % al.length; SFX.move(); }
                 else if (a === 'a') { SFX.ok(); playerAttack(); }
                 else if (a === 'b') { bt.phase = 'menu'; SFX.no(); }
+                return;
+            }
+            if (bt.phase === 'cmenu') {
+                var al7 = bt.allies[bt.curAlly];
+                if (!al7) return;
+                var opts7 = allyOptions(al7);
+                if (a === 'up') { bt.cSel = (bt.cSel + opts7.length - 1) % opts7.length; SFX.move(); }
+                else if (a === 'down') { bt.cSel = (bt.cSel + 1) % opts7.length; SFX.move(); }
+                else if (a === 'a') {
+                    var ch7 = opts7[bt.cSel];
+                    if (ch7.kind === 'move' && al7.uses[ch7.m.id] <= 0) { SFX.no(); bt.msg = 'no uses left this battle.'; return; }
+                    SFX.ok();
+                    allyAct(ch7);
+                }
+                else if (a === 'b') { bt.cSel = opts7.length - 1; SFX.move(); }   // B jumps to PASS
                 return;
             }
             if (bt.phase !== 'menu') return;
@@ -5042,17 +5840,17 @@ function startCredits() { push(ScCredits()); }
 function ScCredits() {
     var t = 0, phase = 0;
     var lines = [
-        ['THE LIGHT GOES OUT.', ''],
-        ['The Steed idles like', 'a sleeping animal.', 'Clean. Quiet. Legal', 'in most counties.'],
+        ['THE HEAT BREAKS.', ''],
+        ['Argent idles like a', 'sleeping animal.', 'Silver. Cool.', 'Repeatable pulls.'],
         ['The basin is calm.', 'The dice are warm.', 'The kolaches are', 'safe. For now.'],
-        ['URE QUEST', 'The Check-Engine', 'Prophecy'],
+        ['URE QUEST', 'The Intercooler', 'Prophecy'],
         ['STARRING', G.name.slice(0, 12), 'the ' + CLASSES[G.cls].n.split(' ')[1]],
-        ['FEATURING', 'The Torque Priest', 'The Dice Oracle', 'The Hedge Wizard', 'A Statue (himself)'],
-        ['ANTAGONIST', 'P-0420, who was', 'just doing its job'],
-        ['SPECIAL THANKS', 'coffee', 'fast glass', 'the OBD-II scanner'],
+        ['FEATURING', 'The Torque Priest', 'The Dice Oracle', 'A Boulder (happy)', 'A Cow (as himself)'],
+        ['ANTAGONIST', 'HEAT SOAK, who was', 'only thermodynamics'],
+        ['SPECIAL THANKS', 'chamomile', 'fast glass', 'the 10mm socket', '(wherever it is)'],
         ['NO SQUIRRELS', 'WERE HARMED.', 'Several were', 'inconvenienced.'],
         ['THE RECORD', 'days ' + G.day + ' · foes ' + G.kills, 'nat20s ' + G.nat20s + ' · RIP ' + G.deaths, 'steps ' + G.steps],
-        ['...', '', 'somewhere,', 'faintly...', '', 'the light flickers.', '', '(you won\'t leave', 'it stock. we know.)'],
+        ['...', '', 'somewhere,', 'faintly...', '', 'a browser tab', 'opens. downpipes.', '', '(you won\'t leave', 'her stock. we know.)'],
         ['THE END', '', 'thanks for playing', '· URE BOY ·']
     ];
     return { opaque: true,
@@ -5111,6 +5909,7 @@ function ScGameOver() {
                 var s = loadSave();
                 if (s) {
                     G = s;
+                    migrateG();
                     delete G.flags.bossLock;
                     G.hp = Math.max(1, Math.floor(G.hpm / 2));
                     transTo(function () { repl(ScWorld()); enterMap(G.map, G.x, G.y, G.dir, true); });
@@ -5139,7 +5938,13 @@ function bootFont(cb) {
 }
 var fontReady = false;
 
-/* touch: tap = A, swipe/hold-drag = walk */
+/* pointer: tap/click = positional click (hotspots, click-to-move);
+   swipe/hold-drag still walks. */
+function bufCoords(cv, e) {
+    var r = cv.getBoundingClientRect();
+    if (!r.width || !r.height) return null;
+    return { x: (e.clientX - r.left) * (W / r.width), y: (e.clientY - r.top) * (H / r.height) };
+}
 function bindTouch(cv) {
     var st = null, moveTimer = 0;
     function dirFrom(dx, dy) {
@@ -5166,7 +5971,10 @@ function bindTouch(cv) {
         if (!st) return;
         var dx = e.clientX - st.x, dy = e.clientY - st.y;
         var quick = performance.now() - st.t < 400;
-        if (!st.moved && quick) input('a');
+        if (!st.moved && quick) {
+            var bc = bufCoords(cv, e);
+            if (bc) clickAt(bc.x, bc.y);
+        }
         else if (st.moved && Math.abs(dx) + Math.abs(dy) > 22) input(dirFrom(dx, dy));
         st = null;
     });
@@ -5221,5 +6029,5 @@ function input(a) {
     return true;
 }
 
-return { mount: mount, unmount: unmount, input: input };
+return { mount: mount, unmount: unmount, input: input, click: clickAt };
 })();
