@@ -26,8 +26,14 @@ var dctxDark = darkCv.getContext('2d');
 var disp = null, dctx = null, holder = null;       // display canvas (letterboxed blit)
 var presentS = 1, presentOX = 0, presentOY = 0;
 var rafId = 0, lastTs = 0, T = 0, FR = 0;          // clock: seconds + 0.45s two-frame counter
-var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-function finePointer() { return window.matchMedia && window.matchMedia('(pointer: fine)').matches; }
+var REDUCE_MQ = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+var reduce = !!(REDUCE_MQ && REDUCE_MQ.matches);
+if (REDUCE_MQ) {
+    var onReduceChange = function (e) { reduce = e.matches; needsDraw = true; };
+    if (REDUCE_MQ.addEventListener) REDUCE_MQ.addEventListener('change', onReduceChange);
+    else if (REDUCE_MQ.addListener) REDUCE_MQ.addListener(onReduceChange);
+}
+var needsDraw = true;                              // reduced-motion loop throttle flag
 
 /* ─────────────────────── tiny helpers ─────────────────────── */
 function byId(id) { return document.getElementById(id); }
@@ -484,9 +490,7 @@ function drawCoffeeTable(g) {
     R(g, x + 1, y + 1, w - 2, h - 2, P.wd1);
     R(g, x + 1, y + 1, w - 2, 2, shade(P.wd1, 20));
     box1(g, x, y, w, h, P.wd3);
-    /* two d20s */
-    drawDie(g, x + 8, y + 8, P.red, 0);
-    drawDie(g, x + 18, y + 13, P.purp, 0);
+    /* (the two d20s live in the dynamic pass so a roll can move them) */
     /* remote */
     R(g, x + 30, y + 7, 6, 12, '#26262b'); box1(g, x + 30, y + 7, 6, 12, P.k);
     R(g, x + 31, y + 9, 2, 2, P.red); R(g, x + 34, y + 12, 1, 1, P.dim); R(g, x + 32, y + 15, 1, 1, P.dim);
@@ -898,7 +902,7 @@ var OBJ = [
 
     { id: 'closet',  r: [12, 168, 64, 18],   base: drawCloset,     label: function () { return ST.closet ? 'the closet (open) · the fits live here' : 'the closet · slide it open'; },
       poke: function () { ST.closet = !ST.closet; SFX.creak(); rebuildBase(); } },
-    { id: 'bins',    r: [16, 196, 42, 34],   base: drawClosetFloor, label: function () { return 'storage · labeled, ignored'; },
+    { id: 'bins',    r: [16, 196, 68, 35],   base: drawClosetFloor, label: function () { return 'storage · labeled, ignored'; },
       poke: function () { SFX.blip(); } },
     { id: 'washer',  r: [84, 170, 34, 60],   base: drawWasher,     label: function () { return 'the wash · it thunders at 2 am'; },
       poke: function () { SFX.tumble(); animOn('tumble', 3.2); } },
@@ -971,6 +975,9 @@ var OBJ = [
               if (ST.diceVal === 20) { toast('🎲 <b>nat 20</b> · called it'); SFX.fanfare(); spawnConfetti(226, 96, 18); }
               else if (ST.diceVal === 1) { toast('🎲 <b>nat 1</b> · the dice giveth'); }
               refreshTip();
+              syncA11yBtn(objById('table'));
+              announce('rolled a ' + ST.diceVal);
+              needsDraw = true;
           }, 900);
       } },
     { id: 'deskchair', r: [206, 52, 24, 22], base: drawDeskChair,  label: function () { return 'the chair · ergonomic-ish'; },
@@ -1022,7 +1029,7 @@ function rebuildBase() {
 var PARTS = [];
 function addP(p) { if (PARTS.length < 220) PARTS.push(p); }
 function spawnSteam(x, y) { addP({ k: 'steam', x: x + (thash(T * 60 | 0, x) - 0.5) * 3, y: y, vy: -7 - thash(x, T * 31 | 0) * 5, t: 0, life: 1.1 }); }
-function spawnZzz(x, y) { for (var i = 0; i < 3; i++) addP({ k: 'zzz', x: x + i * 4, y: y - i * 2, vy: -6, t: -i * 0.28, life: 1.5 }); }
+function spawnZzz(x, y) { if (reduce) return; for (var i = 0; i < 3; i++) addP({ k: 'zzz', x: x + i * 4, y: y - i * 2, vy: -6, t: -i * 0.28, life: 1.5 }); }
 function spawnNote(x, y) { addP({ k: 'note', x: x, y: y, vy: -9, vx: (thash(T * 47 | 0, y) - 0.5) * 8, t: 0, life: 1.6 }); }
 function spawnConfetti(x, y, n) {
     if (reduce) return;
@@ -1110,7 +1117,7 @@ function drawDynamics(g, dt) {
 
     /* URE BOY power LED + glow — the beacon */
     var bx = 206, by = 32;
-    g.fillStyle = (FR % 2) ? P.red : '#ff6a4a';
+    g.fillStyle = reduce ? P.red : ((FR % 2) ? P.red : '#ff6a4a');
     g.fillRect(bx + 1, by + 5, 1, 2);
     if (!reduce) {
         var pulse = (Math.sin(T * 2.2) + 1) / 2;
@@ -1129,27 +1136,31 @@ function drawDynamics(g, dt) {
         g.globalAlpha = 1;
     }
 
-    /* dice mid-roll jiggle */
-    if (T < ST.diceUntil) {
-        plateRedraw(g, 204, 88, 44, 26);
+    /* the d20s: parked on the table, or mid-roll jiggle */
+    if (T < ST.diceUntil && !reduce) {
         drawDie(g, 208 + Math.floor(thash(FR * 3, 1) * 8), 94 + Math.floor(thash(FR, 7) * 6), P.red, 1);
         drawDie(g, 220 + Math.floor(thash(FR * 5, 3) * 8), 98 + Math.floor(thash(FR, 13) * 6), P.purp, 1);
-    } else if (ST.diceVal && T < ST.diceUntil + 1.6) {
+    } else {
+        drawDie(g, 212, 96, P.red, 0);
+        drawDie(g, 222, 101, P.purp, 0);
+    }
+    if (ST.diceVal && T >= ST.diceUntil && T < ST.diceUntil + 1.6) {
         /* result floats above the table */
         var s = '' + ST.diceVal;
         R(g, 220 - s.length * 2 - 2, 76, s.length * 4 + 4, 8, 'rgba(21,21,26,0.8)');
         t35(g, s, 220 - s.length * 2, 77, ST.diceVal === 20 ? P.gold : P.w);
     }
 
-    /* washer tumble (top drum) */
+    /* washer tumble (top drum) — one static suds frame under reduced motion */
     if (animT('tumble')) {
+        var wf = reduce ? 0 : FR;
         var wx = 95, wy = 180;
-        g.fillStyle = ['#3d4650', '#2a3a4a', '#4a5a6a'][FR % 3];
+        g.fillStyle = ['#3d4650', '#2a3a4a', '#4a5a6a'][wf % 3];
         g.fillRect(wx + 1, wy + 1, 10, 10);
         g.fillStyle = P.blank;
-        g.fillRect(wx + 2 + (FR % 3) * 2, wy + 2 + ((FR + 1) % 3) * 2, 4, 3);
+        g.fillRect(wx + 2 + (wf % 3) * 2, wy + 2 + ((wf + 1) % 3) * 2, 4, 3);
         g.fillStyle = P.w;
-        g.fillRect(wx + 6 - (FR % 3), wy + 5 + (FR % 2), 3, 2);
+        g.fillRect(wx + 6 - (wf % 3), wy + 5 + (wf % 2), 3, 2);
     }
 
     /* poster wink */
@@ -1158,8 +1169,8 @@ function drawDynamics(g, dt) {
         g.fillStyle = P.k; g.fillRect(139, 19, 6, 1);
     }
 
-    /* camera flash */
-    if (animT('flash')) {
+    /* camera flash — skipped under reduced motion (the shutter poke still lands) */
+    if (animT('flash') && !reduce) {
         g.globalAlpha = animT('flash') / 0.28 * 0.75;
         g.fillStyle = '#ffffff';
         g.fillRect(0, 0, W, H);
@@ -1189,7 +1200,7 @@ function drawDynamics(g, dt) {
 
     /* microwave hum glow */
     if (animT('micro')) {
-        g.globalAlpha = 0.35 + 0.2 * (FR % 2);
+        g.globalAlpha = reduce ? 0.45 : 0.35 + 0.2 * (FR % 2);
         g.fillStyle = P.yell;
         g.fillRect(255, 390, 13, 9);
         g.globalAlpha = 1;
@@ -1233,8 +1244,8 @@ function drawDynamics(g, dt) {
         }
     }
 
-    /* bed poke dim */
-    if (animT('bedDim')) {
+    /* bed poke dim (skipped under reduced motion; the zzz already are) */
+    if (animT('bedDim') && !reduce) {
         g.globalAlpha = 0.25 * (animT('bedDim') / 1.6);
         g.fillStyle = '#0a0c18';
         g.fillRect(0, 0, W, H);
@@ -1243,31 +1254,40 @@ function drawDynamics(g, dt) {
 }
 
 /* ─────────────── light + time-of-day overlay ──────────────── */
+/* the hole cutter is a var-assigned expression: a function declaration in a
+   block is a SyntaxError in true ES5 strict mode */
+var holePunch = function (x, y, r, a) {
+    var gr = dctxDark.createRadialGradient(x, y, 2, x, y, r);
+    gr.addColorStop(0, 'rgba(0,0,0,' + (a || 0.9) + ')');
+    gr.addColorStop(0.6, 'rgba(0,0,0,' + ((a || 0.9) * 0.55) + ')');
+    gr.addColorStop(1, 'rgba(0,0,0,0)');
+    dctxDark.fillStyle = gr;
+    dctxDark.fillRect(x - r, y - r, r * 2, r * 2);
+};
+var darkKey = '';                                  // memo: overlay recomposes only when inputs change
 function drawLight(g) {
     var ph = curPhase;
     var darkA = ph === 'night' ? 0.52 : ph === 'evening' ? 0.22 : ph === 'morning' ? 0.05 : 0;
     if (darkA > 0.01) {
-        dctxDark.clearRect(0, 0, W, H);
-        dctxDark.fillStyle = 'rgba(9,11,26,' + darkA + ')';
-        dctxDark.fillRect(0, 0, W, H);
-        dctxDark.globalCompositeOperation = 'destination-out';
-        function hole(x, y, r, a) {
-            var gr = dctxDark.createRadialGradient(x, y, 2, x, y, r);
-            gr.addColorStop(0, 'rgba(0,0,0,' + (a || 0.9) + ')');
-            gr.addColorStop(0.6, 'rgba(0,0,0,' + ((a || 0.9) * 0.55) + ')');
-            gr.addColorStop(1, 'rgba(0,0,0,0)');
-            dctxDark.fillStyle = gr;
-            dctxDark.fillRect(x - r, y - r, r * 2, r * 2);
+        var flick = (!reduce && ST.tv) ? (FR % 2) : 0;
+        var key = ph + '|' + (ST.lamp ? 1 : 0) + (ST.nlamp ? 1 : 0) + (ST.tv ? 1 : 0) +
+                  (ST.fridge ? 1 : 0) + (animT('micro') ? 1 : 0) + '|' + flick;
+        if (key !== darkKey) {
+            darkKey = key;
+            dctxDark.clearRect(0, 0, W, H);
+            dctxDark.fillStyle = 'rgba(9,11,26,' + darkA + ')';
+            dctxDark.fillRect(0, 0, W, H);
+            dctxDark.globalCompositeOperation = 'destination-out';
+            if (ST.lamp) holePunch(301, 42, 44);
+            if (ST.nlamp) holePunch(103, 39, 32);
+            if (ST.tv) holePunch(214, 46, 40, 0.7 + 0.2 * flick);
+            if (ST.fridge) holePunch(272, 267, 24, 0.7);
+            if (animT('micro')) holePunch(261, 394, 14, 0.8);
+            holePunch(216, 40, 12, 0.55);                     // the URE BOY LED never sleeps
+            holePunch(WIN_BED.x + WIN_BED.w / 2, 22, 30, 0.35);   // window glow
+            holePunch(WIN_LIV.x + WIN_LIV.w / 2, 22, 30, 0.35);
+            dctxDark.globalCompositeOperation = 'source-over';
         }
-        if (ST.lamp) hole(301, 42, 44);
-        if (ST.nlamp) hole(103, 39, 32);
-        if (ST.tv) hole(214, 46, 40, 0.7 + (reduce ? 0 : 0.2 * (FR % 2)));
-        if (ST.fridge) hole(272, 267, 24, 0.7);
-        if (animT('micro')) hole(261, 394, 14, 0.8);
-        hole(216, 40, 12, 0.55);                              // the URE BOY LED never sleeps
-        hole(WIN_BED.x + WIN_BED.w / 2, 22, 30, 0.35);        // window glow
-        hole(WIN_LIV.x + WIN_LIV.w / 2, 22, 30, 0.35);
-        dctxDark.globalCompositeOperation = 'source-over';
         g.drawImage(darkCv, 0, 0);
     }
     /* color washes */
@@ -1275,9 +1295,6 @@ function drawLight(g) {
     else if (ph === 'evening') { g.fillStyle = 'rgba(255,150,80,0.12)'; g.fillRect(0, 0, W, H); }
     else if (ph === 'night') { g.fillStyle = 'rgba(60,80,160,0.10)'; g.fillRect(0, 0, W, H); }
 }
-
-/* re-blit a chunk of base (used to clear a spot before animating over it) */
-function plateRedraw(g, x, y, w, h) { g.drawImage(baseCv, x, y, w, h, x, y, w, h); }
 
 /* ───────────────── hover / focus outline ──────────────────── */
 function drawHighlight(g) {
@@ -1314,14 +1331,14 @@ function drawTrans(g, dt) {
     }
     if (f >= 1 && TRANS.cb) { var cb = TRANS.cb; TRANS.cb = null; cb(); }
 }
-var navDone = false;
+var navDone = false, navTimer = null;
 function goConsole() { if (navDone) return; navDone = true; window.location.href = '/ureboy/'; }
 function enterConsole() {
     markPoked('ureboy');
     SFX.boot();
     transTo(goConsole);
     /* rAF can stall (hidden tab) — never strand the user mid-dither */
-    setTimeout(goConsole, 1100);
+    navTimer = setTimeout(goConsole, 1100);
 }
 
 /* ──────────────────────── present ─────────────────────────── */
@@ -1341,16 +1358,21 @@ function resize() {
     if (!disp || !holder) return;
     var dpr = Math.min(2, window.devicePixelRatio || 1);
     var hw = Math.max(32, holder.clientWidth), hh = Math.max(32, holder.clientHeight);
-    /* fit the diorama box inside the holder, keep aspect, cap CSS size */
+    /* fit the diorama box inside the holder, keep aspect */
     var s = Math.min(hw / W, hh / H);
-    var cssW = Math.max(160, Math.floor(W * s)), cssH = Math.floor(cssW * H / W);
+    var cssW = Math.max(32, Math.floor(W * s)), cssH = Math.floor(cssW * H / W);
+    var pw = Math.round(cssW * dpr), ph = Math.round(cssH * dpr);
+    if (disp.width === pw && disp.height === ph) return;      // size unchanged: skip the buffer wipe
     disp.style.width = cssW + 'px';
     disp.style.height = cssH + 'px';
-    disp.width = Math.round(cssW * dpr);
-    disp.height = Math.round(cssH * dpr);
+    disp.width = pw;
+    disp.height = ph;
+    needsDraw = true;
+    present();                                                // never leave a cleared canvas waiting for rAF
 }
 
 /* ─────────────────────── frame loop ───────────────────────── */
+var lastFR = -1;
 function frame(ts) {
     rafId = requestAnimationFrame(frame);
     var dt = Math.min(0.05, (ts - lastTs) / 1000 || 0.016);
@@ -1360,7 +1382,13 @@ function frame(ts) {
 
     /* phase can flip while the page sits open */
     var ph = phaseNow();
-    if (ph !== curPhase) { curPhase = ph; rebuildBase(); }
+    if (ph !== curPhase) { curPhase = ph; rebuildBase(); needsDraw = true; }
+
+    /* reduced motion: the scene is near-static, so only redraw on the two-frame
+       clock tick or when an interaction marks the canvas dirty */
+    if (reduce && !TRANS.on && !needsDraw && FR === lastFR) return;
+    lastFR = FR;
+    needsDraw = false;
 
     updParts(dt);
 
@@ -1374,46 +1402,57 @@ function frame(ts) {
 }
 
 /* ─────────────────────── HTML bits ────────────────────────── */
+/* one persistent toast element: updates announce reliably and never stack */
+var toastTimer = null, toastClearTimer = null;
 function toast(html, ms) {
-    var t = document.createElement('div');
-    t.className = 'toast';
-    t.setAttribute('role', 'status');
-    t.setAttribute('aria-live', 'polite');
+    var t = byId('toast'); if (!t) return;
+    clearTimeout(toastTimer); clearTimeout(toastClearTimer);
+    t.classList.remove('show');
     t.innerHTML = html;
-    document.body.appendChild(t);
     requestAnimationFrame(function () { t.classList.add('show'); });
-    setTimeout(function () {
+    toastTimer = setTimeout(function () {
         t.classList.remove('show');
-        setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 300);
+        toastClearTimer = setTimeout(function () { t.innerHTML = ''; }, 300);
     }, ms || 2600);
 }
-var tipEl = null;
+function announce(text) { var el = byId('srLive'); if (el) el.textContent = text; }
+var tipEl = null, lastTipId = null, tipW = 0, tipH = 0;
 function refreshTip() {
     if (!tipEl || tipEl.hidden) return;
     var id = ST.hover || ST.focus;
     var o = id && objById(id);
-    if (o) tipEl.innerHTML = o.label();
+    if (o) {
+        tipEl.innerHTML = o.label();
+        tipW = tipEl.offsetWidth; tipH = tipEl.offsetHeight;
+        lastTipId = id;
+    }
 }
-function showTip(o, cx, cy) {
+function showTip(o, cx, cy, above) {
     if (!tipEl) return;
     tipEl.hidden = false;
-    tipEl.innerHTML = o.label();
+    if (o.id !== lastTipId) {
+        /* only rewrite + re-measure when the label actually changes — pointermove
+           otherwise thrashes layout with a write-read cycle per event */
+        lastTipId = o.id;
+        tipEl.innerHTML = o.label();
+        tipW = tipEl.offsetWidth; tipH = tipEl.offsetHeight;
+    }
     var hr = holder.getBoundingClientRect();
-    var x = cx - hr.left + 14, y = cy - hr.top + 18;
-    tipEl.style.left = '0px'; tipEl.style.top = '0px';
-    var tw = tipEl.offsetWidth, th = tipEl.offsetHeight;
-    x = clamp(x, 4, hr.width - tw - 4);
-    y = clamp(y, 4, hr.height - th - 4);
+    var x = cx - hr.left + 14;
+    var y = above ? (cy - hr.top - tipH - 16) : (cy - hr.top + 18);
+    x = clamp(x, 4, hr.width - tipW - 4);
+    y = clamp(y, 4, hr.height - tipH - 4);
     tipEl.style.left = x + 'px';
     tipEl.style.top = y + 'px';
 }
-function hideTip() { if (tipEl) tipEl.hidden = true; }
+function hideTip() { if (tipEl) { tipEl.hidden = true; lastTipId = null; } }
 
 /* poked tally */
 function pokeableCount() { return OBJ.length; }
 function updateTally() {
     var el = byId('pokeTally'); if (!el) return;
     el.textContent = '◉ ' + POKED.length + '/' + pokeableCount();
+    el.setAttribute('aria-label', 'things poked: ' + POKED.length + ' of ' + pokeableCount());
     if (POKED.length >= pokeableCount()) el.classList.add('done');
 }
 function markPoked(id) {
@@ -1453,12 +1492,15 @@ function hitAt(bx, by) {
     return null;
 }
 function onMove(e) {
-    if (!finePointer()) return;
+    /* branch on the event's own pointerType — matchMedia('pointer: fine')
+       describes the PRIMARY pointer and lies for touches on hybrid laptops */
+    if (e.pointerType !== 'mouse') return;
     var c = bufCoords(e);
     var o = hitAt(c.x, c.y);
     var id = o ? o.id : null;
     if (id !== ST.hover) {
         ST.hover = id;
+        needsDraw = true;
         disp.classList.toggle('pointing', !!id);
         if (o) showTip(o, e.clientX, e.clientY); else hideTip();
     } else if (o) {
@@ -1467,37 +1509,56 @@ function onMove(e) {
 }
 var tipTimer = null;
 function onDown(e) {
+    if (e.button !== 0 || e.isPrimary === false) return;   // no right/middle-click pokes, one finger only
     e.preventDefault();
     var c = bufCoords(e);
     var o = hitAt(c.x, c.y);
     if (!o) { hideTip(); return; }
     markPoked(o.id);
     o.poke();
+    syncA11yBtn(o);
     refreshTip();
-    if (!finePointer()) {
-        /* touch: surface the label briefly at the tap point */
-        showTip(o, e.clientX, e.clientY);
+    needsDraw = true;
+    if (e.pointerType !== 'mouse') {
+        /* touch: surface the label briefly ABOVE the tap so the finger doesn't cover it */
+        showTip(o, e.clientX, e.clientY, true);
         clearTimeout(tipTimer);
         tipTimer = setTimeout(hideTip, 1500);
     }
 }
 
 /* ─────────────────── keyboard / SR access ─────────────────── */
+var A11YBTNS = {};
+var TOGGLES = {
+    tv: function () { return ST.tv; }, lamp: function () { return ST.lamp; },
+    nstand: function () { return ST.nlamp; }, closet: function () { return ST.closet; },
+    fridge: function () { return ST.fridge; }, record: function () { return ST.record; }
+};
+function stripTags(s) { return s.replace(/<[^>]*>/g, ''); }
+function syncA11yBtn(o) {
+    if (!o) return;
+    var b = A11YBTNS[o.id]; if (!b) return;
+    b.textContent = stripTags(o.label());
+    if (TOGGLES[o.id]) b.setAttribute('aria-pressed', TOGGLES[o.id]() ? 'true' : 'false');
+}
 function buildA11y() {
     var nav = byId('a11yNav'); if (!nav) return;
     for (var i = 0; i < OBJ.length; i++) {
         (function (o) {
             var b = document.createElement('button');
             b.type = 'button';
-            b.textContent = o.label().replace(/<[^>]*>/g, '');
-            b.addEventListener('focus', function () { ST.focus = o.id; });
-            b.addEventListener('blur', function () { if (ST.focus === o.id) ST.focus = null; });
+            A11YBTNS[o.id] = b;
+            b.addEventListener('focus', function () { ST.focus = o.id; needsDraw = true; });
+            b.addEventListener('blur', function () { if (ST.focus === o.id) ST.focus = null; needsDraw = true; });
             b.addEventListener('click', function () {
                 markPoked(o.id);
                 o.poke();
-                b.textContent = o.label().replace(/<[^>]*>/g, '');
+                syncA11yBtn(o);
+                announce(stripTags(o.label()));
+                needsDraw = true;
             });
             nav.appendChild(b);
+            syncA11yBtn(o);
         })(OBJ[i]);
     }
 }
@@ -1533,9 +1594,40 @@ function boot() {
     buildA11y();
     rebuildBase();
 
-    disp.addEventListener('pointermove', onMove, { passive: true });
-    disp.addEventListener('pointerdown', onDown);
-    disp.addEventListener('pointerleave', function () { ST.hover = null; disp.classList.remove('pointing'); hideTip(); });
+    if (window.PointerEvent) {
+        disp.addEventListener('pointermove', onMove, { passive: true });
+        disp.addEventListener('pointerdown', onDown);
+        disp.addEventListener('pointerleave', function (e) {
+            /* touch pointers "leave" the instant the finger lifts — the tap tip's
+               own timer handles hiding in that case */
+            if (e.pointerType && e.pointerType !== 'mouse') return;
+            ST.hover = null; disp.classList.remove('pointing'); hideTip(); needsDraw = true;
+        });
+        /* iOS grants user activation on pointerup, not pointerdown: nudge the
+           AudioContext awake here so the tap's SFX actually sound */
+        disp.addEventListener('pointerup', function () { if (AU.soundOn) AU.get(); });
+    } else {
+        /* pre-PointerEvent engines (iOS 12, old WebViews): same handlers, older events */
+        disp.addEventListener('mousemove', function (e) { e.pointerType = 'mouse'; onMove(e); });
+        disp.addEventListener('mousedown', function (e) { if (e.button !== 0) return; e.isPrimary = true; e.pointerType = 'mouse'; onDown(e); });
+        disp.addEventListener('mouseleave', function () { ST.hover = null; disp.classList.remove('pointing'); hideTip(); needsDraw = true; });
+        disp.addEventListener('touchstart', function (e) {
+            if (!e.touches || e.touches.length !== 1) return;
+            var t = e.touches[0];
+            onDown({ button: 0, isPrimary: true, pointerType: 'touch', clientX: t.clientX, clientY: t.clientY, preventDefault: function () { e.preventDefault(); } });
+        });
+        disp.addEventListener('touchend', function () { if (AU.soundOn) AU.get(); });
+    }
+
+    /* bfcache restore (back-swipe from /ureboy/) resumes the JS heap as-is:
+       un-black the dither and re-arm navigation or the room comes back dead */
+    window.addEventListener('pageshow', function (e) {
+        if (e.persisted) {
+            navDone = false; TRANS.on = false; TRANS.t = 0; TRANS.cb = null;
+            clearTimeout(navTimer);
+            needsDraw = true;
+        }
+    });
 
     if (window.ResizeObserver) { new ResizeObserver(resize).observe(holder); }
     window.addEventListener('resize', resize);

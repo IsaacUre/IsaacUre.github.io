@@ -14,11 +14,11 @@
     <link rel="stylesheet" href="/room/room.css">
 </head>
 <body>
-    <a class="skip-link" href="/ureboy/">Skip the room — boot the URE BOY console</a>
+    <a class="skip-link" href="/ureboy/">Skip the room · boot the URE BOY console</a>
 
-    <h1 class="sr-only">Isaac Ure — the room. A pixel version of my apartment. Poke around; the URE BOY console on the desk opens the main site.</h1>
+    <h1 class="sr-only">Isaac Ure · the room. A pixel version of my apartment. Poke around; the URE BOY console on the desk opens the main site.</h1>
 
-    <main class="room-stage" aria-label="the room — interactive pixel apartment">
+    <main class="room-stage" aria-label="the room · interactive pixel apartment">
 
         <header class="room-bar">
             <div class="room-wordmark">URE<span class="room-wordmark-room">ROOM</span><span class="room-wordmark-tm">™</span></div>
@@ -29,7 +29,7 @@
         </header>
 
         <div class="room-holder" id="roomHolder">
-            <canvas id="roomView" aria-label="Top-down pixel apartment. Living room with couch, cow chair and a desk under the TV; kitchen with island; bedroom; bathroom. The URE BOY console glows on the desk."></canvas>
+            <canvas id="roomView" role="img" aria-label="Top-down pixel apartment. Living room with couch, cow chair and a desk under the TV; kitchen with island; bedroom; bathroom. The URE BOY console glows on the desk."></canvas>
             <div class="room-tip-cursor" id="tip" role="status" aria-live="polite" hidden></div>
         </div>
 
@@ -43,8 +43,11 @@
         </footer>
     </main>
 
+    <!-- persistent live regions: toasts update in place so screen readers announce them -->
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <span class="sr-only" id="srLive" aria-live="polite"></span>
+
     <noscript>
-        <style>.js-only { display: none; }</style>
         <section class="fallback">
             <h2>the room</h2>
             <p>This is an interactive pixel version of Isaac's apartment; it needs JavaScript.

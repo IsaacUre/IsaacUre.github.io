@@ -49,6 +49,8 @@ body {
 
 :focus-visible { outline: 3px solid var(--red); outline-offset: 2px; border-radius: 3px; }
 
+a, button { -webkit-tap-highlight-color: transparent; }
+
 /* ── stage: header / canvas / footer as one column ── */
 .room-stage {
     height: 100vh;
@@ -142,10 +144,15 @@ body {
     white-space: nowrap;
     max-width: 90vw;
 }
-.room-tip-cursor b { color: var(--red); font-weight: normal; }
+.room-tip-cursor b { color: #ff5436; font-weight: normal; }  /* lighter red: AA on dark chips */
 
-/* ── a11y object list: visually hidden until keyboard focus dives in ── */
+/* ── a11y object list: buttons visually hidden until keyboard focus dives in.
+     the hiding lives on the BUTTONS, not the container — a clipped ancestor
+     would clip the position:fixed focus chip too. ── */
 .room-a11y {
+    position: static;
+}
+.room-a11y button {
     position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
     overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
@@ -173,7 +180,7 @@ body {
 .cabinet-tip {
     font-family: var(--font-ui);
     font-size: .8rem;
-    color: #6a6a72;
+    color: #8f8f96;          /* AA on the dark shell */
     text-align: center;
     max-width: 380px;
 }
@@ -209,7 +216,7 @@ body {
     text-align: center;
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
-.toast b { color: var(--red); }
+.toast b { color: #ff5436; }
 
 /* ── no-JS fallback ── */
 .fallback {
