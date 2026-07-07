@@ -495,10 +495,10 @@
     }
 
     /* ---------------- big-screen (fullscreen-ish) mode ---------------- */
-    var screenMaxed = false, screenFrame = null, screenBackdrop = null;
+    var screenMaxed = false, consoleEl = null, screenBackdrop = null;
     function initScreenMax() {
-        screenFrame = document.querySelector('.screen-frame');
-        if (!screenFrame) return;
+        consoleEl = document.querySelector('.ureboy');
+        if (!consoleEl) return;
         screenBackdrop = document.createElement('div');
         screenBackdrop.className = 'screen-backdrop';
         document.body.appendChild(screenBackdrop);
@@ -507,33 +507,41 @@
         if (btn) btn.addEventListener('click', function (e) { e.stopPropagation(); setScreenMax(!screenMaxed); });
     }
     function setScreenMax(on, instant) {
-        if (!screenFrame || on === screenMaxed) return;
+        if (!consoleEl || on === screenMaxed) return;
         if (on && state !== 'game') return;
-        var first = screenFrame.getBoundingClientRect();
         screenMaxed = on;
         if (screenBackdrop) {
-            /* on exit the frame drops back below the backdrop's stacking context, so
-               vanish the dim instantly instead of letting it fade over the shrinking LCD */
+            /* on exit the console drops back below the backdrop's stacking context, so
+               vanish the dim instantly rather than fade it over the shrinking device */
             if (on) { screenBackdrop.style.transition = ''; screenBackdrop.style.opacity = ''; }
             else { screenBackdrop.style.transition = 'none'; screenBackdrop.style.opacity = '0'; }
         }
         document.body.classList.toggle('screen-max', on);
         var btn = byId('screenMaxBtn'); if (btn) { btn.textContent = on ? '✕' : '⛶'; btn.title = on ? 'Exit big screen (Esc)' : 'Big screen (F)'; }
-        if (!instant && !reduce && screenFrame.animate) {
-            var last = screenFrame.getBoundingClientRect();
-            if (first.width && last.width) {
-                var dx = first.left - last.left, dy = first.top - last.top;
-                var sx = first.width / last.width, sy = first.height / last.height;
-                screenFrame.animate(
-                    [{ transform: 'translate(' + dx + 'px,' + dy + 'px) scale(' + sx + ',' + sy + ')', transformOrigin: 'top left' },
-                     { transform: 'none', transformOrigin: 'top left' }],
-                    { duration: on ? 540 : 440, easing: on ? 'cubic-bezier(.22,.9,.24,1.02)' : 'cubic-bezier(.4,0,.25,1)' }
-                );
-            }
+        /* pull the WHOLE console up as one unit (logo + screen + controls), so the
+           handheld reads like it's held up close and the wordmark stays in view */
+        if (on) {
+            var cr = consoleEl.getBoundingClientRect();                 // whole console (transform-origin = its centre)
+            var lcd = (consoleEl.querySelector('.screen') || consoleEl).getBoundingClientRect();   // the LCD we actually zoom on
+            /* Size the pull off the LCD, not the whole console: on a laptop the console
+               already ~fills the height, so fitting the whole device gives no zoom. Make
+               the LCD ~82% of the viewport; the bigger console then overflows, leaving the
+               wordmark peeking above and the controls below. */
+            var k = Math.min((window.innerHeight * 0.82) / lcd.height, (window.innerWidth * 0.94) / lcd.width);
+            if (k < 1.1) k = 1.1;
+            var ccx = cr.left + cr.width / 2, ccy = cr.top + cr.height / 2;      // console centre (scale origin)
+            var lcx = lcd.left + lcd.width / 2, lcy = lcd.top + lcd.height / 2;  // LCD centre → put THIS at the viewport centre
+            var tx = window.innerWidth / 2 - (ccx + k * (lcx - ccx));
+            var ty = window.innerHeight / 2 - (ccy + k * (lcy - ccy));
+            document.documentElement.style.overflow = 'hidden';        // don't let the page scroll the device out from under the zoom
+            consoleEl.style.transition = (instant || reduce) ? 'none' : 'transform 540ms cubic-bezier(.22,.9,.24,1.02)';
+            consoleEl.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + k + ')';
+        } else {
+            document.documentElement.style.overflow = '';
+            consoleEl.style.transition = (instant || reduce) ? 'none' : 'transform 440ms cubic-bezier(.35,0,.22,1)';
+            consoleEl.style.transform = '';
         }
         beep(on ? 520 : 340, 0.05);
-        /* the LCD changed size — let a fullscreen cartridge re-measure its canvas */
-        window.dispatchEvent(new Event('resize'));
     }
     /* capture phase so F / Esc are handled before a cartridge's own key listeners */
     window.addEventListener('keydown', function (e) {
