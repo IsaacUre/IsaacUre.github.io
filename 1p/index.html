@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en" class="no-js">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="description" content="Isaac Ure's apartment in first person. Walk around. The little glowing console still goes somewhere.">
+    <title>Isaac Ure · the room, first person</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <script>document.documentElement.className = 'js';</script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Pixelify+Sans:wght@400;500;600;700&family=VT323&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/1p/1p.css">
+</head>
+<body>
+    <a class="skip-link" href="/ureboy/">Skip the room · boot the URE BOY console</a>
+
+    <h1 class="sr-only">Isaac Ure · the room in first person. Walk around a pixel version of my apartment; the URE BOY console on the desk opens the main site.</h1>
+
+    <main class="room-stage" aria-label="the room · first person pixel apartment">
+
+        <header class="room-bar">
+            <div class="room-wordmark">URE<span class="room-wordmark-room">ROOM</span><span class="room-wordmark-1p">1P</span></div>
+            <nav class="room-tools" aria-label="other versions">
+                <a class="tool" href="/room/">flat</a>
+                <a class="tool" href="/room3d/">3d</a>
+            </nav>
+        </header>
+
+        <div class="room-holder" id="roomHolder">
+            <canvas id="roomView" role="img" aria-label="First person view inside a pixel apartment: wood floors, cream walls, the furniture from the floor plan. The URE BOY console glows red on the desk by the TV."></canvas>
+            <button class="boot-prompt" id="bootPrompt" type="button" hidden>
+                <span class="boot-key" aria-hidden="true">E</span> boot the <b>URE BOY</b>
+            </button>
+        </div>
+
+        <footer class="room-foot">
+            <p class="cabinet-tip">
+                <span class="fine-only"><b>wasd</b> walks · <b>arrows</b> or drag looks · </span><span class="coarse-only"><b>left thumb</b> walks · <b>right thumb</b> looks · </span>find the <b>glowing thing</b>
+            </p>
+            <a class="room-exit" href="/ureboy/">skip the walk ▸ boot the <b>URE BOY</b></a>
+        </footer>
+    </main>
+
+    <noscript>
+        <section class="fallback">
+            <h2>the room, first person</h2>
+            <p>This is a walkable pixel version of Isaac's apartment; it needs JavaScript.
+            The flat version is at <a href="/room/">/room/</a>, the spinning one at <a href="/room3d/">/room3d/</a>,
+            and the main site is at <a href="/ureboy/">/ureboy/</a>.</p>
+        </section>
+    </noscript>
+
+    <script src="/1p/1p.js" defer></script>
+</body>
+</html>
