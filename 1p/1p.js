@@ -465,7 +465,8 @@ function tryMove(nx, nz) {
     /* axis-separated slide against wall cells */
     if (!hitsWall(nx, PL.z)) PL.x = nx;
     if (!hitsWall(PL.x, nz)) PL.z = nz;
-    /* furniture pushes back */
+    /* furniture pushes back — but never into a wall (a raw teleport wedges
+       the player in wall overlap and kills whole movement axes) */
     for (var i = 0; i < SPRITES.length; i++) {
         var s = SPRITES[i];
         if (!s.r) continue;
@@ -473,16 +474,22 @@ function tryMove(nx, nz) {
         var d2 = dx * dx + dz * dz, min = s.r + 0.9;
         if (d2 > 0.0001 && d2 < min * min) {
             var d = Math.sqrt(d2);
-            PL.x = s.x + dx / d * min;
-            PL.z = s.z + dz / d * min;
+            var px = s.x + dx / d * min, pz = s.z + dz / d * min;
+            if (!hitsWall(px, PL.z)) PL.x = px;
+            if (!hitsWall(PL.x, pz)) PL.z = pz;
         }
     }
 }
 function hitsWall(x, z) {
+    /* corners + edge midpoints: a 2.5-cell span can straddle three columns */
     return solidCell(Math.floor(x - PR), Math.floor(z - PR)) ||
            solidCell(Math.floor(x + PR), Math.floor(z - PR)) ||
            solidCell(Math.floor(x - PR), Math.floor(z + PR)) ||
-           solidCell(Math.floor(x + PR), Math.floor(z + PR));
+           solidCell(Math.floor(x + PR), Math.floor(z + PR)) ||
+           solidCell(Math.floor(x), Math.floor(z - PR)) ||
+           solidCell(Math.floor(x), Math.floor(z + PR)) ||
+           solidCell(Math.floor(x - PR), Math.floor(z)) ||
+           solidCell(Math.floor(x + PR), Math.floor(z));
 }
 
 /* ============================================================
@@ -664,6 +671,7 @@ function resize() {
     disp.style.width = cssW + 'px';
     disp.style.height = cssH + 'px';
     disp.width = pw; disp.height = ph;
+    LOOKW = cssW;
     needsDraw = true;
     present();
 }
@@ -673,8 +681,9 @@ var KEYS = {};
 var look = { id: -1, lx: 0, ly: 0 };
 var stick = { id: -1, x0: 0, y0: 0, dx: 0, dy: 0 };
 function onKey(e, down) {
-    if (e.ctrlKey || e.metaKey || e.altKey) return;
-    var k = e.key.toLowerCase();
+    /* modifiers only block keyDOWN: a swallowed keyup leaves keys stuck */
+    if (down && (e.ctrlKey || e.metaKey || e.altKey)) return;
+    var k = (e.key || '').toLowerCase();
     var used = true;
     if (k === 'w' || k === 'arrowup') KEYS.f = down;
     else if (k === 's' || k === 'arrowdown') KEYS.b = down;
@@ -682,16 +691,30 @@ function onKey(e, down) {
     else if (k === 'd') KEYS.sr = down;
     else if (k === 'arrowleft') KEYS.tl = down;
     else if (k === 'arrowright') KEYS.tr = down;
-    else if ((k === 'e' || k === 'enter') && down && promptOn) { enterConsole(); }
+    else if ((k === 'e' || k === 'enter') && down && promptOn) {
+        /* Enter keeps native behavior on focused links/buttons */
+        var t = e.target;
+        if (k === 'enter' && t && t !== promptEl && (t.tagName === 'A' || t.tagName === 'BUTTON')) return;
+        enterConsole();
+    }
     else used = false;
-    if (used) e.preventDefault();
+    if (used && down) e.preventDefault();
     needsDraw = true;
+}
+var LOOKW = 320;                                   // displayed canvas width, cached in resize()
+function deadZone(v, dead, throwPx) {
+    var a = Math.abs(v);
+    if (a < dead) return 0;
+    return (v < 0 ? -1 : 1) * clamp((a - dead) / throwPx, 0, 1);
 }
 function onDown(e) {
     if (e.button !== 0) return;
+    /* let the boot prompt and links be themselves */
+    var t = e.target;
+    if (t && t !== disp && t !== holder && (t.tagName === 'A' || t.tagName === 'BUTTON' || (t.closest && t.closest('button, a')))) return;
     e.preventDefault();
-    try { disp.setPointerCapture(e.pointerId); } catch (er) {}
-    var r = disp.getBoundingClientRect();
+    try { holder.setPointerCapture(e.pointerId); } catch (er) {}
+    var r = holder.getBoundingClientRect();
     var half = r.left + r.width / 2;
     if (e.pointerType !== 'mouse' && e.clientX < half && stick.id === -1) {
         stick.id = e.pointerId;
@@ -704,12 +727,13 @@ function onDown(e) {
 }
 function onMove(e) {
     if (e.pointerId === stick.id) {
-        stick.dx = clamp((e.clientX - stick.x0) / 46, -1, 1);
-        stick.dy = clamp((e.clientY - stick.y0) / 46, -1, 1);
+        /* dead zone: a planted thumb is zero, not a slow creep */
+        stick.dx = deadZone(e.clientX - stick.x0, 9, 42);
+        stick.dy = deadZone(e.clientY - stick.y0, 9, 42);
     } else if (e.pointerId === look.id) {
         var dx = e.clientX - look.lx, dy = e.clientY - look.ly;
         look.lx = e.clientX; look.ly = e.clientY;
-        rotate(dx * 0.0042);
+        rotate(dx / LOOKW * 2.6);                  // full-canvas swipe ≈ 150° on any device
         PL.pitch = clamp(PL.pitch - dy * 0.3, -80, 80);
         needsDraw = true;
     }
@@ -791,10 +815,12 @@ function boot() {
             var kv = q[qi].split('=');
             var qv = parseFloat(kv[1]);
             if (!isFinite(qv)) continue;
-            if (kv[0] === 'x') PL.x = clamp(qv, 1.5, MW - 1.5);
-            if (kv[0] === 'z') PL.z = clamp(qv, 1.5, MH - 1.5);
+            if (kv[0] === 'x') PL.x = clamp(qv, PR + 1, MW - PR - 1);
+            if (kv[0] === 'z') PL.z = clamp(qv, PR + 1, MH - PR - 1);
             if (kv[0] === 'a') a0 = qv;
         }
+        /* a spawn inside a wall would hard-lock movement: fall back home */
+        if (hitsWall(PL.x, PL.z) || solidCell(Math.floor(PL.x), Math.floor(PL.z))) { PL.x = 18.5; PL.z = 47.0; }
         if (a0 !== null) { PL.dirX = Math.cos(a0); PL.dirZ = Math.sin(a0); PL.planeX = -PL.dirZ * PLANE; PL.planeZ = PL.dirX * PLANE; }
         if (window.location.search.indexOf('dev') >= 0) {
             window.__room1p = {
@@ -809,15 +835,17 @@ function boot() {
         }
     } catch (e) {}
 
+    /* input lives on the holder: on portrait phones the canvas is a short
+       strip and thumbs land in the dark margins around it */
     if (window.PointerEvent) {
-        disp.addEventListener('pointerdown', onDown);
-        disp.addEventListener('pointermove', onMove);
-        disp.addEventListener('pointerup', onUp);
-        disp.addEventListener('pointercancel', onUp);
+        holder.addEventListener('pointerdown', onDown);
+        holder.addEventListener('pointermove', onMove);
+        holder.addEventListener('pointerup', onUp);
+        holder.addEventListener('pointercancel', onUp);
     } else {
-        disp.addEventListener('mousedown', function (e) { e.pointerId = 1; e.pointerType = 'mouse'; onDown(e); });
-        disp.addEventListener('mousemove', function (e) { e.pointerId = 1; onMove(e); });
-        disp.addEventListener('mouseup', function (e) { e.pointerId = 1; onUp(e); });
+        holder.addEventListener('mousedown', function (e) { e.pointerId = 1; e.pointerType = 'mouse'; onDown(e); });
+        holder.addEventListener('mousemove', function (e) { e.pointerId = 1; onMove(e); });
+        holder.addEventListener('mouseup', function (e) { e.pointerId = 1; onUp(e); });
     }
     window.addEventListener('keydown', function (e) { onKey(e, true); });
     window.addEventListener('keyup', function (e) { onKey(e, false); });

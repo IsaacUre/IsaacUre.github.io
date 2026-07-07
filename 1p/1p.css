@@ -103,6 +103,7 @@ a, button { -webkit-tap-highlight-color: transparent; }
     display: flex;
     align-items: center;
     justify-content: center;
+    touch-action: none;                 /* thumbs land in the margins on portrait phones */
 }
 
 #roomView {
