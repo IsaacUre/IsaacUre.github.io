@@ -151,6 +151,12 @@ a, button { -webkit-tap-highlight-color: transparent; }
     max-width: 380px;
 }
 .cabinet-tip b { color: #b6b6ad; }
+/* say the zoom gesture the device actually has */
+.coarse-only { display: none; }
+@media (pointer: coarse) {
+    .fine-only { display: none; }
+    .coarse-only { display: inline; }
+}
 
 .room-exit {
     font-family: var(--font-ui);

@@ -104,7 +104,9 @@ var LIGHT = (function () {
    c body color · t top color (defaults to body) · glow: skip sun dimming */
 var BOXES = [];
 function box(x, z, w, d, y0, h, c, t, glow) {
-    BOXES.push({ x: x, z: z, w: w, d: d, y0: y0, h: h, c: c, t: t || c, glow: glow || false });
+    var o = { x: x, z: z, w: w, d: d, y0: y0, h: h, c: c, t: t || c, glow: glow || false, hull: '' };
+    BOXES.push(o);
+    return o;
 }
 /* flat decor quads on the floor plane, drawn before boxes (rugs, seams, AO) */
 var FLATS = [];
@@ -132,13 +134,16 @@ function buildScene() {
     flat(134, 252, 28, 92, P.red2);
     flat(132, 388, 32, 14, '#8a6c46');
 
-    /* ── walls (dollhouse height, low enough to see inside) ── */
+    /* ── walls (dollhouse height, low enough to see inside) ──
+       perimeter walls carry a hull tag: their outward faces draw in a
+       post-pass, because centroid painter-sorting lets tall interior
+       boxes bleed through them at back angles */
     var WH = 30, IH = 26, TH = 6;
-    box(4, 4, 312, TH, 0, WH, P.wall, P.wallTop);                      // north
-    box(4, 406, 128, TH, 0, WH, P.wall, P.wallTop);                    // south (left of door)
-    box(164, 406, 152, TH, 0, WH, P.wall, P.wallTop);                  // south (right of door)
-    box(4, 10, TH, 396, 0, WH, P.wall, P.wallTop);                     // west
-    box(310, 10, TH, 396, 0, WH, P.wall, P.wallTop);                   // east
+    box(4, 4, 312, TH, 0, WH, P.wall, P.wallTop).hull = 'n';           // north
+    box(4, 406, 128, TH, 0, WH, P.wall, P.wallTop).hull = 's';         // south (left of door)
+    box(164, 406, 152, TH, 0, WH, P.wall, P.wallTop).hull = 's';       // south (right of door)
+    box(4, 10, TH, 396, 0, WH, P.wall, P.wallTop).hull = 'w';          // west
+    box(310, 10, TH, 396, 0, WH, P.wall, P.wallTop).hull = 'e';        // east
     /* interior spine V1 with door gaps */
     box(124, 10, 4, 122, 0, IH, P.wall, P.wallTop);
     box(124, 164, 4, 32, 0, IH, P.wall, P.wallTop);
@@ -235,9 +240,9 @@ function buildScene() {
     box(206, 34, 11, 14, 13, 3.2, P.shell, P.shell);
     box(208, 36.5, 7, 6, 16.2, 0.8, P.dmg, P.dmg, true);
     box(208.5, 31.5, 6, 3, 13.6, 2.6, P.red, P.red, true);
-    /* TV on the north wall */
-    box(186, 9.5, 56, 2.5, 14, 24, P.tv, P.tv);
-    box(188, 11.2, 52, 1.4, 16, 20, '#39434d', '#39434d', true);       // the panel
+    /* TV on the north wall (kept below the wall top) */
+    box(186, 9.5, 56, 2.5, 13, 15, P.tv, P.tv);
+    box(188, 11.2, 52, 1.4, 15, 11, '#39434d', '#39434d', true);       // the panel
     ao(296, 36, 12, 14);
     box(300, 40, 3, 3, 0, 22, '#2a2a30');                              // floor lamp pole
     box(294, 36, 12, 11, 22, 7, P.yell, P.yell, true);                 // shade
@@ -316,8 +321,10 @@ function render() {
              proj(f.x + f.w, 0, f.z + f.d), proj(f.x, 0, f.z + f.d), f.c, f.a);
     }
 
-    /* collect visible box faces, painter-sort, draw */
-    var faces = [];
+    /* collect visible box faces, painter-sort, draw. outward faces of the
+       perimeter hull go to a post-pass: when visible, the camera is outside
+       the apartment, so they are strictly the nearest surface */
+    var faces = [], post = [];
     for (var b = 0; b < BOXES.length; b++) {
         var o = BOXES[b];
         var x0 = o.x, x1 = o.x + o.w, z0 = o.z, z1 = o.z + o.d;
@@ -325,18 +332,23 @@ function render() {
         var lit = o.glow ? 1 : 0;
         /* top */
         pushFace(faces, [x0, yt, z0, x1, yt, z0, x1, yt, z1, x0, yt, z1],
-            shade(o.t, lit ? 1 : LIGHT.top), (yt));
+            shade(o.t, lit ? 1 : LIGHT.top));
         /* sides: a face is visible when its outward normal points at the camera,
            i.e. dot(normal, (SIN_Y, COS_Y)) > 0 */
-        if (SIN_Y > 0) pushFace(faces, [x1, yb, z0, x1, yb, z1, x1, yt, z1, x1, yt, z0], shade(o.c, lit ? 0.96 : LIGHT.xp), null);
-        else if (SIN_Y < 0) pushFace(faces, [x0, yb, z0, x0, yb, z1, x0, yt, z1, x0, yt, z0], shade(o.c, lit ? 0.96 : LIGHT.xn), null);
-        if (COS_Y > 0) pushFace(faces, [x0, yb, z1, x1, yb, z1, x1, yt, z1, x0, yt, z1], shade(o.c, lit ? 0.96 : LIGHT.zp), null);
-        else if (COS_Y < 0) pushFace(faces, [x0, yb, z0, x1, yb, z0, x1, yt, z0, x0, yt, z0], shade(o.c, lit ? 0.96 : LIGHT.zn), null);
+        if (SIN_Y > 0) pushFace(o.hull === 'e' ? post : faces, [x1, yb, z0, x1, yb, z1, x1, yt, z1, x1, yt, z0], shade(o.c, lit ? 0.96 : LIGHT.xp));
+        else if (SIN_Y < 0) pushFace(o.hull === 'w' ? post : faces, [x0, yb, z0, x0, yb, z1, x0, yt, z1, x0, yt, z0], shade(o.c, lit ? 0.96 : LIGHT.xn));
+        if (COS_Y > 0) pushFace(o.hull === 's' ? post : faces, [x0, yb, z1, x1, yb, z1, x1, yt, z1, x0, yt, z1], shade(o.c, lit ? 0.96 : LIGHT.zp));
+        else if (COS_Y < 0) pushFace(o.hull === 'n' ? post : faces, [x0, yb, z0, x1, yb, z0, x1, yt, z0, x0, yt, z0], shade(o.c, lit ? 0.96 : LIGHT.zn));
     }
     faces.sort(function (a, b2) { return a.d - b2.d; });
+    post.sort(function (a, b3) { return a.d - b3.d; });
     for (var q = 0; q < faces.length; q++) {
         var fc = faces[q];
         quad(fc.p[0], fc.p[1], fc.p[2], fc.p[3], fc.c);
+    }
+    for (var q2 = 0; q2 < post.length; q2++) {
+        var fp = post[q2];
+        quad(fp.p[0], fp.p[1], fp.p[2], fp.p[3], fp.c);
     }
 
     /* the URE BOY's red glow, pulsing over everything */
@@ -355,7 +367,7 @@ function render() {
     drawTrans();
 }
 
-function pushFace(faces, v, col, isTop) {
+function pushFace(faces, v, col) {
     var p1 = proj(v[0], v[1], v[2]), p2 = proj(v[3], v[4], v[5]),
         p3 = proj(v[6], v[7], v[8]), p4 = proj(v[9], v[10], v[11]);
     faces.push({ p: [p1, p2, p3, p4], c: col, d: (p1.d + p2.d + p3.d + p4.d) / 4 });
@@ -367,8 +379,10 @@ var TRANS = { on: false, t: 0, dur: 0.55 };
 var navDone = false, navTimer = null;
 function goConsole() { if (navDone) return; navDone = true; window.location.href = '/ureboy/'; }
 function enterConsole() {
+    if (navDone || TRANS.on) return;               // no double-boot, no stacked timers
     if (reduce) { goConsole(); return; }
     TRANS.on = true; TRANS.t = 0;
+    clearTimeout(navTimer);
     navTimer = setTimeout(goConsole, 1100);        // rAF can stall in hidden tabs
 }
 function drawTrans() {
@@ -418,28 +432,55 @@ function bufCoords(e) {
 }
 
 /* ─────────────────────── input ────────────────────────────── */
-var drag = { on: false, id: -1, lx: 0, ly: 0, moved: 0, t0: 0 };
+var drag = { on: false, id: -1, x0: 0, y0: 0, lx: 0, ly: 0, moved: 0, t0: 0, type: 'mouse' };
+var PTRS = {};                                     // active pointers: id -> {x, y}
+var pinch = { on: false, d0: 0, z0: 1 };
 var vyaw = 0, idleT = 4;                           // spins gently from first paint
-function overUreboy(bx, by) {
+function ptrCount() { var n = 0, k; for (k in PTRS) if (PTRS.hasOwnProperty(k)) n++; return n; }
+function pinchDist() {
+    var ids = [], k;
+    for (k in PTRS) if (PTRS.hasOwnProperty(k)) ids.push(k);
+    if (ids.length < 2) return 0;
+    var a = PTRS[ids[0]], b = PTRS[ids[1]];
+    return Math.sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y));
+}
+function overUreboy(bx, by, coarse) {
+    var r = coarse ? 22 : 15;
     var dx = bx - ureScreen.x, dy = by - ureScreen.y;
-    return dx * dx + dy * dy < 15 * 15;
+    return dx * dx + dy * dy < r * r;
 }
 function onDown(e) {
-    if (e.button !== 0 || e.isPrimary === false) return;
+    if (e.button !== 0) return;
     e.preventDefault();
-    drag.on = true; drag.id = e.pointerId;
-    drag.lx = e.clientX; drag.ly = e.clientY;
-    drag.moved = 0; drag.t0 = T;
-    vyaw = 0; idleT = 0;
-    disp.classList.add('dragging');
+    PTRS[e.pointerId] = { x: e.clientX, y: e.clientY };
     try { disp.setPointerCapture(e.pointerId); } catch (er) {}
+    idleT = 0;
+    if (ptrCount() >= 2) {
+        /* second finger: stop the drag dead, start a pinch */
+        drag.on = false; vyaw = 0;
+        pinch.on = true; pinch.d0 = pinchDist() || 1; pinch.z0 = cam.zoom;
+        disp.classList.remove('dragging');
+        return;
+    }
+    drag.on = true; drag.id = e.pointerId; drag.type = e.pointerType || 'mouse';
+    drag.x0 = drag.lx = e.clientX; drag.y0 = drag.ly = e.clientY;
+    drag.moved = 0; drag.t0 = T;
+    vyaw = 0;
+    disp.classList.add('dragging');
 }
 function onMove(e) {
     idleT = 0;
+    if (PTRS[e.pointerId]) { PTRS[e.pointerId].x = e.clientX; PTRS[e.pointerId].y = e.clientY; }
+    if (pinch.on) {
+        var pd = pinchDist();
+        if (pd > 0) { cam.zoom = clamp(pinch.z0 * pd / pinch.d0, 0.7, 1.8); needsDraw = true; }
+        return;
+    }
     if (drag.on && e.pointerId === drag.id) {
         var dx = e.clientX - drag.lx, dy = e.clientY - drag.ly;
         drag.lx = e.clientX; drag.ly = e.clientY;
-        drag.moved += Math.abs(dx) + Math.abs(dy);
+        /* net displacement from the press point, not accumulated jitter */
+        drag.moved = Math.max(drag.moved, Math.max(Math.abs(e.clientX - drag.x0), Math.abs(e.clientY - drag.y0)));
         cam.yaw += dx * 0.008;
         cam.pitch = clamp(cam.pitch + dy * 0.005, 0.55, 1.25);
         vyaw = dx * 0.008 * 60;
@@ -449,18 +490,35 @@ function onMove(e) {
     /* hover: only the URE BOY is hot in the 3d version */
     if (e.pointerType === 'mouse') {
         var c = bufCoords(e);
-        var hot = overUreboy(c.x, c.y);
+        var hot = overUreboy(c.x, c.y, false);
         disp.classList.toggle('pointing', hot);
         if (hot) showTip(e.clientX, e.clientY); else hideTip();
     }
 }
 function onUp(e) {
+    delete PTRS[e.pointerId];
+    if (pinch.on) {
+        if (ptrCount() < 2) {
+            pinch.on = false;
+            /* one finger stays down: let it rotate again */
+            var k, rest = null;
+            for (k in PTRS) if (PTRS.hasOwnProperty(k)) rest = k;
+            if (rest !== null) {
+                drag.on = true; drag.id = parseInt(rest, 10) || rest;
+                drag.x0 = drag.lx = PTRS[rest].x; drag.y0 = drag.ly = PTRS[rest].y;
+                drag.moved = 99;                   // a pinch leftover is never a tap
+                disp.classList.add('dragging');
+            }
+        }
+        return;
+    }
     if (!drag.on || e.pointerId !== drag.id) return;
     drag.on = false;
     disp.classList.remove('dragging');
-    if (drag.moved < 6 && T - drag.t0 < 0.5) {
+    var slop = drag.type === 'mouse' ? 6 : 11;
+    if (drag.moved < slop && T - drag.t0 < 0.5) {
         var c = bufCoords(e);
-        if (overUreboy(c.x, c.y)) {
+        if (overUreboy(c.x, c.y, drag.type !== 'mouse')) {
             if (e.pointerType !== 'mouse') { showTip(e.clientX, e.clientY, true); clearTimeout(tipTimer); tipTimer = setTimeout(hideTip, 1200); }
             enterConsole();
         }
@@ -474,9 +532,8 @@ function onWheel(e) {
 var tipTimer = null;
 function showTip(cx, cy, above) {
     if (!tipEl) return;
-    tipEl.hidden = false;
-    tipEl.innerHTML = '<b>URE BOY</b>™ · still the way in';
-    var hr = holder.getBoundingClientRect();
+    tipEl.hidden = false;                          // content is static, set once at boot:
+    var hr = holder.getBoundingClientRect();       // re-writing it would spam the live region
     var tw = tipEl.offsetWidth, th = tipEl.offsetHeight;
     var x = clamp(cx - hr.left + 14, 4, hr.width - tw - 4);
     var y = clamp(above ? (cy - hr.top - th - 16) : (cy - hr.top + 18), 4, hr.height - th - 4);
@@ -494,8 +551,8 @@ function frame(ts) {
     T += dt;
     FR = Math.floor(T / 0.45);
 
-    /* inertia + idle spin */
-    if (!drag.on && Math.abs(vyaw) > 0.001) {
+    /* inertia + idle spin (both are self-propelled motion: reduce turns them off) */
+    if (!reduce && !drag.on && Math.abs(vyaw) > 0.001) {
         cam.yaw += vyaw * dt;
         vyaw *= Math.pow(0.06, dt);                // heavy-ish flywheel
         needsDraw = true;
@@ -524,6 +581,7 @@ function boot() {
     tipEl = byId('tip');
     if (!holder || !disp) return;
     dctx = disp.getContext('2d');
+    if (tipEl) tipEl.innerHTML = '<b>URE BOY</b>™ · still the way in';
 
     buildScene();
 
@@ -532,9 +590,11 @@ function boot() {
         var q = window.location.search.replace('?', '').split('&');
         for (var qi = 0; qi < q.length; qi++) {
             var kv = q[qi].split('=');
-            if (kv[0] === 'yaw') cam.yaw = parseFloat(kv[1]) || cam.yaw;
-            if (kv[0] === 'pitch') cam.pitch = clamp(parseFloat(kv[1]) || cam.pitch, 0.55, 1.25);
-            if (kv[0] === 'zoom') cam.zoom = clamp(parseFloat(kv[1]) || 1, 0.7, 1.8);
+            var qv = parseFloat(kv[1]);
+            if (!isFinite(qv)) continue;                       // Infinity would NaN the whole projection
+            if (kv[0] === 'yaw') cam.yaw = qv;
+            if (kv[0] === 'pitch') cam.pitch = clamp(qv, 0.55, 1.25);
+            if (kv[0] === 'zoom') cam.zoom = clamp(qv, 0.7, 1.8);
         }
         /* dev-only handle for headless look checks: /room3d/?dev */
         if (window.location.search.indexOf('dev') >= 0) {
@@ -553,7 +613,12 @@ function boot() {
         disp.addEventListener('pointerdown', onDown);
         disp.addEventListener('pointermove', onMove);
         disp.addEventListener('pointerup', onUp);
-        disp.addEventListener('pointercancel', function () { drag.on = false; disp.classList.remove('dragging'); });
+        disp.addEventListener('pointercancel', function (e) {
+            delete PTRS[e.pointerId];
+            if (ptrCount() < 2) pinch.on = false;
+            drag.on = false; vyaw = 0;
+            disp.classList.remove('dragging');
+        });
         disp.addEventListener('pointerleave', function (e) { if (e.pointerType === 'mouse') { disp.classList.remove('pointing'); hideTip(); } });
     } else {
         disp.addEventListener('mousedown', function (e) { e.isPrimary = true; onDown(e); });
