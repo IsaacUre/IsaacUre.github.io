@@ -463,15 +463,17 @@ function tryMove(nx, nz) {
     }
 }
 function hitsWall(x, z) {
-    /* corners + edge midpoints: a 2.5-cell span can straddle three columns */
-    return solidCell(Math.floor(x - PR), Math.floor(z - PR)) ||
-           solidCell(Math.floor(x + PR), Math.floor(z - PR)) ||
-           solidCell(Math.floor(x - PR), Math.floor(z + PR)) ||
-           solidCell(Math.floor(x + PR), Math.floor(z + PR)) ||
-           solidCell(Math.floor(x), Math.floor(z - PR)) ||
-           solidCell(Math.floor(x), Math.floor(z + PR)) ||
-           solidCell(Math.floor(x - PR), Math.floor(z)) ||
-           solidCell(Math.floor(x + PR), Math.floor(z));
+    /* every cell the 2.5-wide body AABB touches — point sampling misses a
+       column when the span straddles four cells, and the teleport exits
+       (inside-rect eject, dev spawn) can land in that blind gap */
+    var c0 = Math.floor(x - PR), c1 = Math.floor(x + PR);
+    var r0 = Math.floor(z - PR), r1 = Math.floor(z + PR);
+    for (var r = r0; r <= r1; r++) {
+        for (var c = c0; c <= c1; c++) {
+            if (solidCell(c, r)) return true;
+        }
+    }
+    return false;
 }
 
 /* ============================================================
@@ -523,14 +525,18 @@ function quadPoly(corners, horizon) {
     if (maxX < 0 || minX >= W) return null;
     return pts;
 }
-/* rasterize a convex screen polygon in 1px columns vs the wall zbuffer */
-function drawPoly(pts, col, horizon) {
+/* rasterize a convex screen polygon per pixel against the shared depth
+   buffer (seeded from the walls), so furniture occludes furniture — not
+   just walls. iz (inverse depth) is affine in screen space for a plane,
+   so it interpolates linearly down each column. */
+function drawPoly(pts, col) {
     var n = pts.length, minX = 1e9, maxX = -1e9, i;
     for (i = 0; i < n; i++) { if (pts[i].x < minX) minX = pts[i].x; if (pts[i].x > maxX) maxX = pts[i].x; }
     var x0 = Math.max(0, Math.ceil(minX - 0.5)), x1 = Math.min(W - 1, Math.floor(maxX - 0.5));
+    if (x1 < x0) return;
     ctx.fillStyle = col;
     for (var x = x0; x <= x1; x++) {
-        var xc = x + 0.5, yA = 1e9, yB = -1e9, izm = 0;
+        var xc = x + 0.5, yT = 1e9, yB = -1e9, izT = 0, izB = 0, found = 0;
         for (i = 0; i < n; i++) {
             var p = pts[i], q = pts[(i + 1) % n];
             if ((p.x <= xc && q.x >= xc) || (q.x <= xc && p.x >= xc)) {
@@ -538,16 +544,26 @@ function drawPoly(pts, col, horizon) {
                 var t = span === 0 ? 0 : (xc - p.x) / span;
                 var y = p.y + (q.y - p.y) * t;
                 var iz = p.iz + (q.iz - p.iz) * t;
-                if (y < yA) yA = y;
-                if (y > yB) yB = y;
-                if (iz > izm) izm = iz;
+                if (y < yT) { yT = y; izT = iz; }
+                if (y > yB) { yB = y; izB = iz; }
+                found++;
             }
         }
-        if (yB <= yA || izm <= 0) continue;
-        if (1 / izm >= ZBUF[x]) continue;          // a wall is in front
-        if (yA < 0) yA = 0;
-        if (yB > H) yB = H;
-        if (yB > yA) ctx.fillRect(x, yA, 1, yB - yA);
+        if (found < 2 || yB <= yT) continue;
+        var ry0 = Math.max(0, Math.ceil(yT - 0.5)), ry1 = Math.min(H - 1, Math.floor(yB - 0.5));
+        var inv = 1 / (yB - yT), run = -1;
+        for (var y2 = ry0; y2 <= ry1; y2++) {
+            var izp = izT + (izB - izT) * ((y2 + 0.5 - yT) * inv);
+            var idx = y2 * W + x;
+            if (izp > DEPTH[idx]) {
+                DEPTH[idx] = izp;
+                if (run < 0) run = y2;
+            } else if (run >= 0) {
+                ctx.fillRect(x, run, 1, y2 - run);
+                run = -1;
+            }
+        }
+        if (run >= 0) ctx.fillRect(x, run, 1, ry1 + 1 - run);
     }
 }
 function fogAt(o) {
@@ -558,11 +574,18 @@ function fogAt(o) {
 function collectFaces(o, faces, horizon) {
     var cx = (o.x0 + o.x1) / 2 - PL.x, cz = (o.z0 + o.z1) / 2 - PL.z;
     var d2 = cx * cx + cz * cz;
-    if (d2 > 1764) return;                         // beyond the fog (42 cells)
-    if (cx * PL.dirX + cz * PL.dirZ < -4) return;  // fully behind
+    if (d2 > 3136) return;                         // 56 cells: past the longest sightline
+    var hw = (o.x1 - o.x0) / 2, hd = (o.z1 - o.z0) / 2;
+    var rad = Math.sqrt(hw * hw + hd * hd);
+    if (cx * PL.dirX + cz * PL.dirZ < -(rad + 2)) return;   // fully behind, even the long counters
     var fog = clamp(Math.sqrt(d2) / 46, 0, 1) * 0.62;
     var lit = o.glow;
-    var d = Math.sqrt(d2);
+    /* painter key: FARTHEST footprint corner. sorting by centroid lets a
+       support slab (desk, table, island) draw after the thing sitting on it
+       and erase it — the farthest corner puts the support first, always */
+    var fx = Math.max(Math.abs(PL.x - o.x0), Math.abs(PL.x - o.x1));
+    var fz = Math.max(Math.abs(PL.z - o.z0), Math.abs(PL.z - o.z1));
+    var d = Math.sqrt(fx * fx + fz * fz);
     function put(corners, light) {
         var p = quadPoly(corners, horizon);
         if (p) faces.push({ p: p, c: mix(shade(o.c, lit ? 1 : light), lit ? fog * 0.4 : fog), d: d });
@@ -578,7 +601,8 @@ function collectFaces(o, faces, horizon) {
 /* ============================================================
    RENDER
    ============================================================ */
-var ZBUF = new Float32Array(W);
+var ZBUF = new Float32Array(W);                    // per-column wall depth
+var DEPTH = new Float32Array(W * H);               // per-pixel inverse depth (bigger = nearer)
 function render() {
     var horizon = H / 2 + PL.pitch + (reduce ? 0 : Math.sin(PL.bobT) * 1.6);
 
@@ -614,6 +638,10 @@ function render() {
         var dist = side === 0 ? sdx - ddx : sdz - ddz;
         if (dist < 0.05) dist = 0.05;
         ZBUF[x] = dist;
+        /* seed the whole column at the wall depth: furniture nearer than the
+           wall draws over it, farther is hidden behind it — all per pixel */
+        var wiz = 1 / dist;
+        for (var sy = x; sy < W * H; sy += W) DEPTH[sy] = wiz;
 
         var wallX = side === 0 ? PL.z + dist * rdz : PL.x + dist * rdx;
         wallX -= Math.floor(wallX);
@@ -642,15 +670,16 @@ function render() {
             [rg.x0, 0.03, rg.z0], [rg.x1, 0.03, rg.z0],
             [rg.x1, 0.03, rg.z1], [rg.x0, 0.03, rg.z1]
         ], horizon);
-        if (rp) drawPoly(rp, mix(rg.c, fogAt(rg)), horizon);
+        if (rp) drawPoly(rp, mix(rg.c, fogAt(rg)));
     }
 
-    /* furniture: visible faces of every box, painter-sorted far to near,
-       strip-rasterized against the wall zbuffer */
+    /* furniture: visible faces of every box. the depth buffer settles who
+       occludes whom, so the sort is only a near-to-far hint that trims
+       overdraw (nearest writes depth first, farther pixels fail fast) */
     var faces = [];
     for (i = 0; i < FURN.length; i++) collectFaces(FURN[i], faces, horizon);
-    faces.sort(function (a, b) { return b.d - a.d; });
-    for (i = 0; i < faces.length; i++) drawPoly(faces[i].p, faces[i].c, horizon);
+    faces.sort(function (a, b) { return a.d - b.d; });
+    for (i = 0; i < faces.length; i++) drawPoly(faces[i].p, faces[i].c);
 
     /* the URE BOY glow, pulsing over its corner of the desk */
     var gdx = GLOWP.x - PL.x, gdz = GLOWP.z - PL.z;
@@ -660,7 +689,11 @@ function render() {
         var gsx = W / 2 + glat / gdep * FOCAL;
         var gsy = horizon + (EYE - GLOWP.y) / gdep * FOCAL;
         var gcol = clamp(Math.round(gsx), 0, W - 1);
-        if (ZBUF[gcol] > gdep) {
+        var grow = clamp(Math.round(gsy), 0, H - 1);
+        /* the nearest surface at the glow's pixel — walls AND furniture, so a
+           chair between you and the desk hides the halo too */
+        var gnear = 1 / DEPTH[grow * W + gcol];
+        if (gnear >= gdep - 0.6) {
             var pulse = reduce ? 0.5 : (Math.sin(T * 2.4) + 1) / 2;
             var gr = (14 + pulse * 6) * FOCAL / (gdep * 42);
             gr = clamp(gr, 6, 70);
