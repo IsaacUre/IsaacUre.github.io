@@ -3,8 +3,9 @@
    The same floor plan, walked through. A hand-rolled grid
    raycaster (the Wolfenstein kind) for the walls, plus real 3d
    furniture: every piece is boxes, drawn as perspective quads
-   that depth-test against the wall zbuffer. Distance fog, a
-   real-clock sky in the windows. Zero dependencies, one file.
+   into a per-pixel depth buffer seeded from the walls, so
+   furniture occludes furniture (and walls) honestly. Distance
+   fog, a real-clock sky in the windows. Zero dependencies.
    The glowing thing on the desk still goes somewhere.
    ============================================================ */
 (function () {
@@ -602,6 +603,7 @@ function collectFaces(o, faces, horizon) {
    RENDER
    ============================================================ */
 var ZBUF = new Float32Array(W);                    // per-column wall depth
+var IZROW = new Float32Array(W);                   // one row of wall inverse-depth
 var DEPTH = new Float32Array(W * H);               // per-pixel inverse depth (bigger = nearer)
 function render() {
     var horizon = H / 2 + PL.pitch + (reduce ? 0 : Math.sin(PL.bobT) * 1.6);
@@ -638,10 +640,7 @@ function render() {
         var dist = side === 0 ? sdx - ddx : sdz - ddz;
         if (dist < 0.05) dist = 0.05;
         ZBUF[x] = dist;
-        /* seed the whole column at the wall depth: furniture nearer than the
-           wall draws over it, farther is hidden behind it — all per pixel */
-        var wiz = 1 / dist;
-        for (var sy = x; sy < W * H; sy += W) DEPTH[sy] = wiz;
+        IZROW[x] = 1 / dist;
 
         var wallX = side === 0 ? PL.z + dist * rdz : PL.x + dist * rdx;
         wallX -= Math.floor(wallX);
@@ -662,6 +661,11 @@ function render() {
             ctx.globalAlpha = 1;
         }
     }
+
+    /* seed the per-pixel depth buffer: every column starts at its wall depth,
+       so furniture nearer than the wall draws over it and farther hides behind
+       it. native row copies keep this cache-friendly (one memcpy per row). */
+    for (i = 0; i < H; i++) DEPTH.set(IZROW, i * W);
 
     /* rugs: flat quads on the floor, depth-tested like everything else */
     for (i = 0; i < RUGS.length; i++) {
@@ -930,7 +934,8 @@ function boot() {
                     if (isFinite(ang)) { PL.dirX = Math.cos(ang); PL.dirZ = Math.sin(ang); PL.planeX = -PL.dirZ * PLANE; PL.planeZ = PL.dirX * PLANE; }
                     if (isFinite(pit)) PL.pitch = clamp(pit, -80, 80);
                 },
-                shot: function () { render(); return buf.toDataURL('image/png'); }
+                shot: function () { render(); return buf.toDataURL('image/png'); },
+                renderMs: function (n) { var t = performance.now(); for (var i = 0; i < (n || 100); i++) render(); return (performance.now() - t) / (n || 100); }
             };
         }
     } catch (e) {}
