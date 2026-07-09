@@ -862,12 +862,6 @@ function toast(msg) {
    walks search → download until ChromeSetup.exe lands in the real
    Downloads folder. Then the machine lets go: the setup wizard is
    yours to click through. Replays on every Edge open (testing). ── */
-var BOOKMARKS = [
-    ['Steam', 'ic-steam', 'steam'], ['the room', 'ic-room', 'room'], ['URE BOY', 'ic-ureboy', 'ureboy'],
-    ['GTI RUN', 'ic-gti', 'gti'], ['About Isaac', 'ic-ure', 'about'], ['GitHub', 'ic-globe', 'ext:https://github.com/IsaacUre'],
-    ['Instagram', 'ic-photos', 'ext:https://www.instagram.com/isaacure_/']
-];
-function dayPart() { var h = new Date().getHours(); return h < 12 ? 'morning' : h < 18 ? 'afternoon' : 'evening'; }
 function dlStamp() { var n = new Date(); return (n.getMonth() + 1) + '/' + n.getDate() + '/' + n.getFullYear() + ' ' + fmtTime(n); }
 function chromeSetupItem() { return { n: uniqueName('Downloads', 'ChromeSetup.exe'), t: 'chrome', app: 'setup', size: '11.2 MB', date: dlStamp() }; }
 
@@ -882,7 +876,7 @@ function browserShell(brand, tabTitle, tabIcon, placeholder, bodyHtml) {
           '<span class="br-actions"><button class="br-act" tabindex="-1" aria-label="Back">‹</button><button class="br-act" tabindex="-1" aria-label="Forward">›</button><button class="br-act" tabindex="-1" aria-label="Reload">↻</button></span>' +
           '<label class="br-omni">' + ic('ic-search', 'br-omni-ic') +
             '<input class="br-url" spellcheck="false" autocomplete="off" aria-label="Address and search bar" value="" placeholder="' + esc(placeholder) + '">' +
-            '<span class="br-fade">' + (brand === 'chrome' ? '★' : '☆') + '</span></label>' +
+            '<span class="br-fade">☆</span></label>' +
           '<button class="br-act br-more" tabindex="-1" aria-label="Settings and more">⋯</button>' +
         '</div>' +
         '<div class="br-stage"><div class="br-view">' + bodyHtml + '</div>' +
@@ -1075,161 +1069,735 @@ function initEdge(el) {
     }
 }
 
-/* —— Chrome (the browser that actually works) ——
-   Real tab mechanics: a tab model with per-tab history, an omnibox
-   that navigates internal ure:// pages, and a controller (el._br)
-   the Alt keybinds drive — Alt+T/W, Alt+Shift+T, Alt+digits, Alt+L,
-   Alt+R, Alt+arrows. Clicking a bookmark opens its site page in the
-   tab; the page's button launches the real thing. */
-function chromeNTP() {
-    var tiles = BOOKMARKS.map(function (b) {
-        return '<button class="ntp-sc" data-target="' + b[2] + '">' + ic(b[1], 'ntp-scic') + '<span>' + esc(b[0]) + '</span></button>';
-    }).join('') + '<button class="ntp-sc ntp-add" data-target="__add" aria-label="Add shortcut"><span class="ntp-plus">+</span><span>Add</span></button>';
-    return '<div class="ntp">' +
-        '<div class="ntp-brand">' + ic('ic-chrome', 'ntp-logo') + '<h2 class="ntp-word">isaacure</h2></div>' +
-        '<label class="ntp-search">' + ic('ic-search') + '<input class="ntp-q" placeholder="Search isaacure.com or type a URL" spellcheck="false"></label>' +
-        '<div class="ntp-scs">' + tiles + '</div>' +
-        '<p class="ntp-foot">Good ' + dayPart() + ', Isaac — Chrome’s treating you right.</p></div>';
+/* ═══════════════ Chrome (the browser that actually works) ═══════════════
+   A real little browser: multiple tabs with per-tab history, a working
+   omnibox with suggestions, bookmarks (star + bar), the ⋯ menu, incognito
+   that genuinely doesn't record history, chrome:// pages (settings/
+   history/bookmarks/downloads/dino), and a small fake web for it all to
+   browse. Classic LIGHT Chrome, in hard pixels — Edge keeps the dark
+   shell; this is the one that feels like home. State: comp_chrome_*.
+   ───────────────────────────────────────────────────────────────────── */
+var CR = null;                                   // live window state (single-instance, like ST)
+function crj(k, d) { try { var v = JSON.parse(recall('chrome_' + k, 'null')); return v == null ? d : v; } catch (e) { return d; } }
+function crjSet(k, v) { store('chrome_' + k, JSON.stringify(v)); }
+function crBM() { return crj('bm', [['isaacure.com', 'isaacure.com'], ['GitHub', 'github.com/IsaacUre'], ['Golf GTI — Wikipedia', 'en.wikipedia.org/wiki/Volkswagen_Golf_GTI'], ['The Thresher', 'thresher.rice.edu'], ['Rice FSAE', 'fsae.rice.edu'], ['Steam', 'store.steampowered.com'], ['dino', 'chrome://dino']]); }
+function crHist() { return crj('hist', []); }
+function crSet() { return crj('set', { bmbar: 1, engine: 'google' }); }
+function crEngine() { return crSet().engine === 'ure' ? 'URE Search' : 'Google'; }
+
+/* ── tiny favicon chips ── */
+function crFav(f, cls) {
+    if (!f) f = { ch: '?', c: '#9aa0a6' };
+    if (f.ic) return ic(f.ic, 'cr-fav ' + (cls || ''));
+    return '<span class="cr-fav chip ' + (cls || '') + '" style="background:' + f.c + '">' + esc(f.ch) + '</span>';
 }
-function sitePage(icon, name, url, desc, launch) {
-    return function () {
-        return '<div class="cpage">' + ic(icon, 'cpage-ic') +
-            '<h2>' + esc(name) + '</h2><span class="cpage-url">' + esc(url) + '</span>' +
-            '<p>' + esc(desc) + '</p>' +
-            '<button class="cpage-go" data-launch="' + launch + '" type="button">Open ' + esc(name) + '</button></div>';
-    };
-}
-var CPAGES = {
-    ntp:    { title: 'New Tab', icon: 'ic-chrome', url: '', render: chromeNTP },
-    steam:  { title: 'Steam', icon: 'ic-steam', url: 'ure://steam', render: sitePage('ic-steam', 'Steam', 'ure://steam', 'Every game on this machine lives here. The backlog is a lifestyle.', 'steam') },
-    room:   { title: 'the room', icon: 'ic-room', url: 'ure://room', render: sitePage('ic-room', 'the room', 'ure://room', 'The apartment in first person. WASD in, find the glowing thing.', 'room') },
-    ureboy: { title: 'URE BOY', icon: 'ic-ureboy', url: 'ure://ureboy', render: sitePage('ic-ureboy', 'URE BOY', 'ure://ureboy', 'The little red console. It still goes somewhere.', 'ureboy') },
-    gti:    { title: 'GTI RUN', icon: 'ic-gti', url: 'ure://gti', render: sitePage('ic-gti', 'GTI RUN', 'ure://gti', 'Drive Argent. Chase the lap time. Mind the cones.', 'gti') },
-    about:  { title: 'About Isaac', icon: 'ic-ure', url: 'ure://about', render: sitePage('ic-ure', 'About Isaac', 'ure://about', 'The whole bio — specs, links, and the story of the silver GTI.', 'about') }
-};
-function pageFor(pid) {
-    if (CPAGES[pid]) return CPAGES[pid];
-    if (pid.indexOf('search:') === 0) {
-        var q = pid.slice(7);
-        return { title: q + ' — ure search', icon: 'ic-search', url: 'ure://search?q=' + q, render: function () { return searchPage(q); } };
+function crLink(url, label, cls) { return '<button class="cr-l ' + (cls || '') + '" data-href="' + esc(url) + '">' + label + '</button>'; }
+
+/* ═════════════════════ the fake web ═════════════════════ */
+var WEB = {};
+function webPage(host, def) { def.host = host; WEB[host] = def; return def; }
+
+/* — Google New Tab — */
+webPage('chrome://newtab', {
+    title: 'New Tab', fav: { ic: 'ic-chrome' }, nohist: true,
+    render: function () {
+        if (CR && CR.incog) {
+            return '<div class="cr-ntp incog"><span class="cr-spy">🕶</span><h2>You’ve gone Incognito</h2>' +
+                '<p>Chrome won’t save your history here. From whom, Isaac? This machine only visits your own website.</p>' +
+                '<div class="cr-incard"><b>What Incognito does:</b> nothing gets written to chrome://history.<br><b>What it can’t do:</b> hide the GTI RUN high score. That’s public.</div></div>';
+        }
+        var eng = crEngine();
+        var tiles = crBM().slice(0, 7).map(function (b) {
+            var s = WEB[crResolveKey(b[1])] || {};
+            return '<button class="cr-sc cr-l" data-href="' + esc(b[1]) + '">' + crFav(s.fav, 'big') + '<span>' + esc(b[0]) + '</span></button>';
+        }).join('') + '<button class="cr-sc cr-scadd"><span class="cr-plus">+</span><span>Add shortcut</span></button>';
+        return '<div class="cr-ntp">' +
+            '<h1 class="cr-goo" aria-label="' + eng + '">' + (eng === 'Google'
+                ? '<b style="color:#4285f4">G</b><b style="color:#ea4335">o</b><b style="color:#fbbc05">o</b><b style="color:#4285f4">g</b><b style="color:#34a853">l</b><b style="color:#ea4335">e</b>'
+                : '<b style="color:#d81e05">U</b><b style="color:#2a3038">R</b><b style="color:#d81e05">E</b> <b style="color:#2a3038">Search</b>') + '</h1>' +
+            '<label class="cr-ntpbox">' + ic('ic-search') + '<input class="cr-ntpq" placeholder="Search ' + eng + ' or type a URL" spellcheck="false" autocomplete="off"><span class="cr-mic" title="Voice search (it can only hear pixels)">🎤</span></label>' +
+            '<div class="cr-scs">' + tiles + '</div>' +
+            '<button class="cr-customize">✎ Customize Chrome</button></div>';
+    },
+    init: function (view) {
+        var q = view.querySelector('.cr-ntpq');
+        if (q) q.addEventListener('keydown', function (e) { if (e.key === 'Enter' && q.value.trim()) crNav(crParse(q.value)); });
+        var cu = view.querySelector('.cr-customize'); if (cu) cu.addEventListener('click', function () { toast('This Chrome is already customized. It’s pixels.'); });
+        var ad = view.querySelector('.cr-scadd'); if (ad) ad.addEventListener('click', function () { toast('Star a page to bookmark it — the shortcuts follow.'); });
     }
-    return CPAGES.ntp;
+});
+
+/* — Search results — */
+webPage('google.com/search', {
+    title: function (q) { return q + ' - ' + crEngine() + ' Search'; }, fav: { ch: 'G', c: '#4285f4' }, dynamic: true,
+    render: function (q) {
+        q = q || '';
+        var ql = q.toLowerCase();
+        var corpus = Object.keys(WEB).map(function (k) { return WEB[k]; }).filter(function (s) { return s.searchable; });
+        var hits = corpus.filter(function (s) { return (s.stitle + ' ' + s.sdesc + ' ' + (s.skey || '')).toLowerCase().indexOf(ql) >= 0; });
+        if (!hits.length) hits = corpus.filter(function (s) { return ql.split(/\s+/).some(function (w) { return w.length > 2 && (s.stitle + ' ' + (s.skey || '')).toLowerCase().indexOf(w) >= 0; }); });
+        var snippet = '';
+        if (/gti|argent|golf/.test(ql)) snippet = '<div class="cr-snip"><b>Volkswagen Golf GTI “Argent”</b><p>A silver MK8 GTI belonging to one (1) Isaac Ure. Known for: back roads, financing an FSAE team, being named like a knight.</p>' + crLink('en.wikipedia.org/wiki/Volkswagen_Golf_GTI', 'en.wikipedia.org › Volkswagen_Golf_GTI', 'cr-snipl') + '</div>';
+        if (/dino|dinosaur|t-?rex/.test(ql)) snippet = '<div class="cr-snip"><b>chrome://dino</b><p>You appear to be looking for the dinosaur. He is employed here.</p>' + crLink('chrome://dino', 'Play the dino game', 'cr-snipl') + '</div>';
+        var rows = hits.slice(0, 6).map(function (s) {
+            return '<div class="cr-res">' + crLink(s.host, '<span class="cr-resurl">' + crFav(s.fav) + ' https://' + esc(s.host) + '</span><span class="cr-restitle">' + esc(s.stitle) + '</span>', '') +
+                '<span class="cr-resdesc">' + esc(s.sdesc) + '</span></div>';
+        }).join('');
+        var funny = '<div class="cr-res dim"><span class="cr-resurl">https://reddit.com › r/rice › comments</span><span class="cr-restitle2">' + esc(q) + '? — asking for a friend</span><span class="cr-resdesc">14 comments · top reply: “just ask the guy who made the pixel desktop”</span></div>';
+        var rel = ['gti run high score', 'isaacure.com room', 'formula sae budget spreadsheet', 'is chamomile caffeine free', 'dino game'].map(function (r) { return crLink('google.com/search?q=' + encodeURIComponent(r), '🔍 ' + esc(r), 'cr-rel'); }).join('');
+        return '<div class="cr-serp">' +
+            '<div class="cr-serphead">' + (crEngine() === 'Google' ? '<span class="cr-serplogo"><b style="color:#4285f4">G</b><b style="color:#ea4335">o</b><b style="color:#fbbc05">o</b><b style="color:#4285f4">g</b><b style="color:#34a853">l</b><b style="color:#ea4335">e</b></span>' : '<span class="cr-serplogo"><b style="color:#d81e05">URE</b></span>') +
+              '<label class="cr-serpbox">' + ic('ic-search') + '<input class="cr-serpq" value="' + esc(q) + '" spellcheck="false" autocomplete="off"></label></div>' +
+            '<div class="cr-serptabs"><span class="on">All</span><span>Images</span><span>Videos</span><span>News</span><span>Maps</span></div>' +
+            '<p class="cr-serpstat">About ' + (12400 + q.length * 733).toLocaleString() + ' results (0.0' + (2 + q.length % 7) + ' seconds)</p>' +
+            snippet + rows + funny +
+            '<div class="cr-relwrap"><b>Related searches</b><div class="cr-rels">' + rel + '</div></div></div>';
+    },
+    init: function (view) {
+        var q = view.querySelector('.cr-serpq');
+        if (q) q.addEventListener('keydown', function (e) { if (e.key === 'Enter' && q.value.trim()) crNav('google.com/search?q=' + encodeURIComponent(q.value.trim())); });
+        view.querySelectorAll('.cr-serptabs span').forEach(function (t) {
+            t.addEventListener('click', function () { if (!t.classList.contains('on')) toast(t.textContent + ' results: also pixels, but sideways.'); });
+        });
+    }
+});
+
+/* — isaacure.com — */
+webPage('isaacure.com', {
+    title: 'Isaac Ure', fav: { ic: 'ic-ure' }, searchable: true,
+    stitle: 'Isaac Ure — isaacure.com', sdesc: 'Rising sophomore at Rice. A Game Boy, three rooms, and a pixel Windows 11 desktop. You are somewhere inside it right now.', skey: 'isaac ure boy room computer personal site',
+    render: function () {
+        return '<div class="cr-site cr-iu"><div class="cr-iuhero">' + ic('ic-ure', 'cr-iulogo') + '<h2>isaacure.com</h2><p>a website that keeps turning into operating systems</p></div>' +
+            '<div class="cr-iugrid">' +
+              crLink('isaacure.com/ureboy', crFav({ ic: 'ic-ureboy' }, 'big') + '<b>URE BOY</b><span>the console</span>', 'cr-iucard') +
+              crLink('isaacure.com/1p', crFav({ ic: 'ic-room' }, 'big') + '<b>the room</b><span>first person</span>', 'cr-iucard') +
+              crLink('isaacure.com/comp', crFav({ ic: 'ic-pc' }, 'big') + '<b>the computer</b><span>you are here</span>', 'cr-iucard') +
+            '</div><p class="cr-iufoot">© Isaac Ure · Houston · built by hand, no frameworks, some vibes</p></div>';
+    }
+});
+webPage('isaacure.com/ureboy', {
+    title: 'URE BOY', fav: { ic: 'ic-ureboy' },
+    render: function () { return '<div class="cr-site cr-center"><h2>This page is a whole console.</h2><p>The browser inside the computer can’t also hold the Game Boy. Physics.</p><button class="cr-btn" data-open="/ureboy/">Boot the real URE BOY ↗</button></div>'; },
+    init: function (view) { var b = view.querySelector('[data-open]'); if (b) b.addEventListener('click', function () { window.location.href = b.getAttribute('data-open'); }); }
+});
+webPage('isaacure.com/1p', {
+    title: 'the room', fav: { ic: 'ic-room' },
+    render: function () { return '<div class="cr-site cr-center"><h2>The room is out there.</h2><p>Leaving the desktop to walk to the desk you are sitting at raises questions.</p><button class="cr-btn" data-open="/1p/">Enter the room ↗</button></div>'; },
+    init: function (view) { var b = view.querySelector('[data-open]'); if (b) b.addEventListener('click', function () { window.location.href = b.getAttribute('data-open'); }); }
+});
+webPage('isaacure.com/comp', {
+    title: 'the computer (recursion)', fav: { ic: 'ic-pc' },
+    render: function () {
+        var frames = '';
+        for (var i = 0; i < 7; i++) frames = '<div class="cr-mirror" style="--d:' + i + '">' + frames + '</div>';
+        return '<div class="cr-site cr-center cr-comp"><h2>You are already here.</h2>' + frames +
+            '<p>This browser runs on the desktop this page would load. Going deeper voids the warranty.</p><button class="cr-btn" id="crDeeper">Go deeper anyway</button></div>';
+    },
+    init: function (view) {
+        var d = 0, b = view.querySelector('#crDeeper');
+        if (b) b.addEventListener('click', function () {
+            d++;
+            if (d < 3) { toast('Recursion level ' + d + '. The Bloom is watching.'); view.querySelector('.cr-mirror').style.transform = 'scale(' + (1 - d * 0.1) + ')'; }
+            else { toast('Stack overflow averted. Please enjoy the desktop you already have.'); b.disabled = true; b.textContent = 'No.'; }
+        });
+    }
+});
+
+/* — GitHub — */
+webPage('github.com/IsaacUre', {
+    title: 'IsaacUre — GitHub', fav: { ch: 'G', c: '#24292f' }, searchable: true,
+    stitle: 'IsaacUre (Isaac Ure) · GitHub', sdesc: 'Rice ’29. One repo that keeps growing rooms. Commit messages in “Area: what and why” or else.', skey: 'github repo code commits',
+    render: function () {
+        var cells = '';
+        for (var w = 0; w < 52; w++) for (var d = 0; d < 7; d++) {
+            var v = (w * 7 + d) % 13 === 0 ? 4 : ((w + d * 3) % 11 === 0 ? 3 : ((w * d) % 7 === 0 ? 2 : ((w + d) % 5 === 0 ? 1 : 0)));
+            if (w > 44) v = Math.min(4, v + 2);                       // the /comp/ sprint is visible from space
+            cells += '<i class="g' + v + '"></i>';
+        }
+        return '<div class="cr-site cr-gh"><div class="cr-ghhead"><span class="cr-ghav">' + ic('ic-ure') + '</span>' +
+            '<div><h2>IsaacUre</h2><p>Rice ’29 · Mathematical Economic Analysis · builds operating systems by accident</p></div>' +
+            '<a class="cr-ghreal" href="https://github.com/IsaacUre" target="_blank" rel="noopener">View on real GitHub ↗</a></div>' +
+            '<div class="cr-ghrepos"><b>Pinned</b>' +
+              '<div class="cr-ghrepo"><span class="cr-ghname">IsaacUre.github.io</span><span class="cr-ghdesc">isaacure.com — URE BOY, three rooms, a pixel Windows 11, and now a browser inside the browser.</span><span class="cr-ghmeta"><i class="cr-dot" style="background:#f1e05a"></i> JavaScript · ★ 59 · Updated today</span></div>' +
+              '<div class="cr-ghrepo dim"><span class="cr-ghname">fsae-financing</span><span class="cr-ghpriv">Private</span><span class="cr-ghdesc">Spreadsheets. So many spreadsheets.</span><span class="cr-ghmeta"><i class="cr-dot" style="background:#277d3a"></i> Excel-adjacent · Updated Friday</span></div>' +
+              '<div class="cr-ghrepo dim"><span class="cr-ghname">dm-notes</span><span class="cr-ghpriv">Private</span><span class="cr-ghdesc">If my players find this repo the campaign is over.</span><span class="cr-ghmeta"><i class="cr-dot" style="background:#7b53c9"></i> Markdown · Updated 2 days ago</span></div>' +
+            '</div>' +
+            '<div class="cr-ghgraph"><b>1,204 contributions in the last year</b><div class="cr-ghcells">' + cells + '</div><span class="cr-ghless">Less <i class="g0"></i><i class="g1"></i><i class="g2"></i><i class="g3"></i><i class="g4"></i> More</span></div></div>';
+    }
+});
+
+/* — Wikipedia: the GTI article — */
+webPage('en.wikipedia.org/wiki/Volkswagen_Golf_GTI', {
+    title: 'Volkswagen Golf GTI - Wikipedia', fav: { ch: 'W', c: '#202122' }, searchable: true,
+    stitle: 'Volkswagen Golf GTI - Wikipedia', sdesc: 'The Volkswagen Golf GTI is a hot hatch. One particular silver MK8, designated “Argent”, has achieved local notability.', skey: 'gti golf volkswagen argent car hot hatch',
+    render: function () {
+        return '<div class="cr-site cr-wiki"><div class="cr-wikihead"><span class="cr-wikiglobe">W</span><span><h2>Volkswagen Golf GTI</h2><i>From Wikipedia, the free encyclopedia</i></span></div>' +
+            '<div class="cr-wikibody"><div class="cr-wikitext">' +
+              '<p>The <b>Volkswagen Golf GTI</b> is a <a>hot hatchback</a> produced since 1976. It is widely credited with defining the segment: practical enough for errands, quick enough to make errands optional.</p>' +
+              '<div class="cr-wikitoc"><b>Contents</b><span>1 History</span><span>2 MK8 (2020–present)</span><span>3 Notable examples</span><span>4 See also</span></div>' +
+              '<h3>MK8 (2020–present)</h3><p>The eighth generation pairs a 2.0L turbocharged inline-four with opinions about touch controls. Enthusiasts report the chassis forgives what the infotainment does not.</p>' +
+              '<h3>Notable examples</h3><p>A silver MK8 operating in the greater Houston area under the designation <b>“Argent”</b><sup>[1]</sup> is maintained by an undergraduate economist. It has appeared in one (1) arcade game, one (1) management sim, and one (1) CRPG as a party member.<sup>[citation needed]</sup></p>' +
+              '<h3>See also</h3><p>' + crLink('isaacure.com', 'isaacure.com', 'cr-wikil') + ' · ' + crLink('google.com/search?q=gti%20run', 'GTI RUN (video game)', 'cr-wikil') + '</p>' +
+            '</div>' +
+            '<div class="cr-wikibox"><b>Volkswagen Golf GTI</b>' + ic('ic-gti', 'cr-wikicar') +
+              '<dl><dt>Production</dt><dd>1976–present</dd><dt>Class</dt><dd>Hot hatch</dd><dt>Engine</dt><dd>2.0L turbo I4</dd><dt>Best example</dt><dd>Argent (silver, MK8)</dd><dt>Top speed</dt><dd>redacted per mom</dd></dl></div>' +
+            '</div></div>';
+    }
+});
+
+/* — The Thresher — */
+webPage('thresher.rice.edu', {
+    title: 'The Rice Thresher', fav: { ch: 'T', c: '#00205b' }, searchable: true,
+    stitle: 'The Rice Thresher — student newspaper', sdesc: 'Rice University’s student newspaper since 1916. Photo desk currently overstaffed by one very keen sophomore.', skey: 'rice thresher newspaper news photo',
+    render: function () {
+        return '<div class="cr-site cr-thr"><div class="cr-thrmast"><h2>THE RICE THRESHER</h2><i>Est. 1916 · Houston, Texas · student-run since before your major existed</i></div>' +
+            '<div class="cr-thrgrid">' +
+              '<div class="cr-thrlead"><span class="cr-thrkick">CAMPUS</span><h3>Formula SAE team clears first funding milestone</h3><p>The university’s first-ever FSAE entry secured its initial budget this week. “We can afford exactly one wing,” said the team’s financing lead, who asked to be described as “fiscally undefeated.”</p><i>Photo: Isaac Ure / Thresher</i></div>' +
+              '<div class="cr-thrcol"><span class="cr-thrkick">A&amp;E</span><h3>Local website now contains entire computer</h3><p>Critics call it “recursive” and “a cry for help rendered at 60fps.”</p></div>' +
+              '<div class="cr-thrcol"><span class="cr-thrkick">SPORTS</span><h3>Pickleball club defeats tennis club in annexation dispute</h3><p>The line judge was chamomile tea.</p></div>' +
+            '</div></div>';
+    }
+});
+
+/* — Rice FSAE — */
+webPage('fsae.rice.edu', {
+    title: 'Rice Formula SAE', fav: { ch: 'F', c: '#d81e05' }, searchable: true,
+    stitle: 'Rice FSAE — Formula SAE at Rice University', sdesc: 'Rice’s first Formula SAE team. Design, build, race. Financing led by a sophomore with a spreadsheet and no fear.', skey: 'fsae formula racing rice team car budget',
+    render: function () {
+        return '<div class="cr-site cr-fsae"><div class="cr-fsaehero">' + ic('ic-gti', 'cr-fsaecar') + '<h2>RICE FORMULA SAE</h2><p>Design. Build. Race. Justify the invoices.</p></div>' +
+            '<div class="cr-fsaerow"><div class="cr-fsaecard"><b>The car</b><span>In design. Currently exists as consensus and CAD.</span></div>' +
+            '<div class="cr-fsaecard"><b>The budget</b><span>Balanced, audited, feared. Financing: I. Ure ’29.</span></div>' +
+            '<div class="cr-fsaecard"><b>Join</b><span>Engineers welcome. Economists tolerated (one is load-bearing).</span></div></div></div>';
+    }
+});
+
+/* — Steam (the website → the app) — */
+webPage('store.steampowered.com', {
+    title: 'Welcome to Steam', fav: { ic: 'ic-steam' }, searchable: true,
+    stitle: 'Steam — the game store', sdesc: 'Why browse the website? This machine has the client installed. It has your library, your points, and your friends.', skey: 'steam games store valve',
+    render: function () {
+        return '<div class="cr-site cr-center">' + ic('ic-steam', 'cr-bigic') + '<h2>You have Steam installed.</h2><p>The website is just the app with more cookies. Opening the real thing:</p><button class="cr-btn" id="crSteam">Open the Steam app</button></div>';
+    },
+    init: function (view) { var b = view.querySelector('#crSteam'); if (b) b.addEventListener('click', function () { openApp('steam'); }); }
+});
+
+/* — Gmail gag — */
+webPage('mail.google.com', {
+    title: 'Gmail', fav: { ch: 'M', c: '#ea4335' }, searchable: true,
+    stitle: 'Gmail — email by Google', sdesc: 'One (1) unread message. It is from fsae_treasury. It is an invoice.', skey: 'gmail email mail google',
+    render: function () {
+        return '<div class="cr-site cr-gmail"><div class="cr-gmhead"><b style="color:#ea4335">M</b> Gmail <span class="cr-gmcount">1 unread</span></div>' +
+            '<div class="cr-gmrow unread"><b>fsae_treasury</b><span>INVOICE #0042 — one (1) wing, as discussed</span><i>4:12 PM</i></div>' +
+            '<div class="cr-gmrow"><b>Rice Housing</b><span>Your fall assignment (do not reply) (we mean it)</span><i>Jul 7</i></div>' +
+            '<div class="cr-gmrow"><b>Deep Blue</b><span>RE: newsletter draft — “love the GTI metaphor, cut the other twelve”</span><i>Jul 3</i></div>' +
+            '<div class="cr-gmfoot">This is a museum inbox. The real one is safe, private, and also mostly invoices.</div></div>';
+    }
+});
+
+/* — chrome://dino — */
+webPage('chrome://dino', {
+    title: 'chrome://dino', fav: { ic: 'ic-chrome' },
+    render: function () {
+        return '<div class="cr-dino"><div class="cr-dinohud"><span>HI ' + String(+recall('chrome_dino_hi', 0)).padStart(5, '0') + '</span><span id="crDinoScore">00000</span></div>' +
+            '<canvas id="crDinoCv" width="600" height="160"></canvas>' +
+            '<p class="cr-dinotip" id="crDinoTip">Press SPACE, ↑, or click to jump. The desert is procedurally hostile.</p></div>';
+    },
+    init: function (view) { crDinoBoot(view); }
+});
+
+/* — error page — */
+webPage('__err', {
+    title: 'Site can’t be reached', fav: { ch: '!', c: '#9aa0a6' },
+    render: function (host) {
+        return '<div class="cr-err"><span class="cr-errdino">🦖</span><h2>This site can’t be reached</h2>' +
+            '<p><b>' + esc(host || 'that') + '</b> doesn’t exist on this machine’s tiny, curated internet.</p>' +
+            '<p class="cr-errcode">ERR_NAME_NOT_RESOLVED_ (it’s a museum)</p>' +
+            '<div class="cr-errbtns"><button class="cr-btn" id="crErrBack">Go back</button>' + crLink('chrome://dino', 'Play the dino instead', 'cr-btn ghost') + '</div></div>';
+    },
+    init: function (view) { var b = view.querySelector('#crErrBack'); if (b) b.addEventListener('click', crBack); }
+});
+
+/* — chrome://settings — */
+webPage('chrome://settings', {
+    title: 'Settings', fav: { ic: 'ic-settings' }, nohist: false,
+    render: function () {
+        var s = crSet();
+        return '<div class="cr-setts"><nav class="cr-setnav">' +
+            '<span class="on">' + ic('ic-user') + ' You and Google</span><span>' + ic('ic-search') + ' Search engine</span><span><i class="gl">✎</i> Appearance</span><span><i class="gl">⏻</i> On startup</span><span><i class="gl">ⓘ</i> About Chrome</span></nav>' +
+            '<div class="cr-setbody">' +
+              '<div class="cr-setcard"><div class="cr-setme">' + ic('ic-ure', 'cr-setav') + '<div><b>Isaac Ure</b><span>isaacoure@gmail.com · Sync is on (trust me)</span></div><button class="cr-chip" data-cract="sync">Turn off</button></div></div>' +
+              '<div class="cr-setcard"><h3>Appearance</h3>' +
+                '<label class="cr-setrow"><span>Show bookmarks bar</span><button class="tgl' + (s.bmbar ? ' on' : '') + '" data-cract="bmbar" role="switch"></button></label>' +
+                '<label class="cr-setrow"><span>Theme</span><span class="cr-setval">Pixel (system) — the only theme</span></label></div>' +
+              '<div class="cr-setcard"><h3>Search engine</h3>' +
+                '<label class="cr-setrow"><span>Search engine used in the address bar</span><select class="cr-sel" data-cract="engine"><option value="google"' + (s.engine !== 'ure' ? ' selected' : '') + '>Google</option><option value="ure"' + (s.engine === 'ure' ? ' selected' : '') + '>URE Search</option></select></label></div>' +
+              '<div class="cr-setcard"><h3>Default browser</h3><label class="cr-setrow"><span>Google Chrome is your default browser</span><span class="cr-setval good">✓ Finally</span></label>' +
+                '<label class="cr-setrow"><span>Microsoft Edge</span><button class="cr-chip" data-cract="edge">Console it</button></label></div>' +
+              '<div class="cr-setcard"><h3>About Chrome</h3><label class="cr-setrow"><span>Version 126.0.pixel.1 (Official Build) (64-bit) (UreOS)</span><span class="cr-setval good" id="crUpd">✓ Chrome is up to date</span></label>' +
+                '<label class="cr-setrow"><span>Check for updates</span><button class="cr-chip" data-cract="update">Check</button></label></div>' +
+            '</div></div>';
+    },
+    init: function (view) {
+        view.addEventListener('click', function (e) {
+            var b = e.target.closest('[data-cract]'); if (!b) return;
+            var a = b.getAttribute('data-cract'), s = crSet();
+            if (a === 'bmbar') { s.bmbar = s.bmbar ? 0 : 1; crjSet('set', s); b.classList.toggle('on', !!s.bmbar); crChrome(); }
+            else if (a === 'sync') toast('Sync stays on. The cloud is a gist and it loves you.');
+            else if (a === 'edge') toast('Edge has been consoled. It says it understands.');
+            else if (a === 'update') { var u = view.querySelector('#crUpd'); if (u) u.textContent = '↻ Checking…'; setTimeout(function () { if (u) u.textContent = '✓ Chrome is up to date'; toast('Nearly updated itself mid-sentence. Classic.'); }, reduce ? 100 : 900); }
+        });
+        var sel = view.querySelector('[data-cract="engine"]');
+        if (sel) sel.addEventListener('change', function () { var s = crSet(); s.engine = sel.value; crjSet('set', s); toast('Address-bar search: ' + crEngine() + '.'); });
+        view.querySelectorAll('.cr-setnav span:not(.on)').forEach(function (n) { n.addEventListener('click', function () { toast('It all lives on one page here. Museum floor plan.'); }); });
+    }
+});
+
+/* — chrome://history — */
+webPage('chrome://history', {
+    title: 'History', fav: { ic: 'ic-chrome' },
+    render: function () {
+        var h = crHist();
+        var rows = h.length ? h.map(function (it, i) {
+            var d = new Date(it.ts);
+            return '<div class="cr-hrow">' + crLink(it.u, crFav((WEB[crResolveKey(it.u)] || {}).fav) + '<b>' + esc(it.t) + '</b><span>' + esc(it.u) + '</span>', 'cr-hlink') +
+                '<i>' + fmtTime(d) + '</i><button class="cr-hx" data-hx="' + i + '" aria-label="Remove">×</button></div>';
+        }).join('') : '<p class="cr-empty">Your browsing history appears here. It is currently as clean as your conscience.</p>';
+        return '<div class="cr-hist"><div class="cr-histhead"><h2>History</h2><input class="cr-hq" placeholder="Search history" spellcheck="false">' +
+            '<button class="cr-chip" id="crClear">Clear browsing data</button></div><div class="cr-hgroup">Today</div><div id="crHRows">' + rows + '</div></div>';
+    },
+    init: function (view) {
+        view.addEventListener('click', function (e) {
+            var x = e.target.closest('.cr-hx');
+            if (x) { var h = crHist(); h.splice(+x.getAttribute('data-hx'), 1); crjSet('hist', h); crPage(); return; }
+            if (e.target.closest('#crClear')) {
+                crjSet('hist', []); crPage();
+                toast('Browsing data cleared. You were never here. (You were on your own website.)');
+            }
+        });
+        var q = view.querySelector('.cr-hq');
+        if (q) q.addEventListener('input', function () {
+            var f = q.value.toLowerCase();
+            view.querySelectorAll('.cr-hrow').forEach(function (r) { r.style.display = r.textContent.toLowerCase().indexOf(f) >= 0 ? '' : 'none'; });
+        });
+    }
+});
+
+/* — chrome://bookmarks — */
+webPage('chrome://bookmarks', {
+    title: 'Bookmarks', fav: { ic: 'ic-chrome' },
+    render: function () {
+        var rows = crBM().map(function (b, i) {
+            return '<div class="cr-hrow">' + crLink(b[1], crFav((WEB[crResolveKey(b[1])] || {}).fav) + '<b>' + esc(b[0]) + '</b><span>' + esc(b[1]) + '</span>', 'cr-hlink') +
+                '<button class="cr-hx" data-bx="' + i + '" aria-label="Remove">×</button></div>';
+        }).join('');
+        return '<div class="cr-hist"><div class="cr-histhead"><h2>Bookmarks</h2><span class="cr-setval">star a page to add it</span></div><div id="crBRows">' + (rows || '<p class="cr-empty">No bookmarks. The star button is right there.</p>') + '</div></div>';
+    },
+    init: function (view) {
+        view.addEventListener('click', function (e) {
+            var x = e.target.closest('.cr-hx'); if (!x) return;
+            var bm = crBM(); bm.splice(+x.getAttribute('data-bx'), 1); crjSet('bm', bm); crPage(); crChrome();
+        });
+    }
+});
+
+/* — chrome://downloads — */
+webPage('chrome://downloads', {
+    title: 'Downloads', fav: { ic: 'ic-chrome' },
+    render: function () {
+        var items = (fsLoad().add['Downloads'] || []);
+        var rows = items.length ? items.map(function (it) {
+            return '<div class="cr-hrow"><span class="cr-hlink static">' + ic(FS_ICON[it.t] || 'ic-notepad', 'cr-fav') + '<b>' + esc(it.n) + '</b><span>' + esc(it.size || '') + (it.date ? ' · ' + esc(it.date) : '') + '</span></span>' +
+                '<button class="cr-chip" data-show="1">Show in folder</button></div>';
+        }).join('') : '<p class="cr-empty">Nothing downloaded. The Edge gag usually leaves a ChromeSetup.exe here — that’s how you got me.</p>';
+        return '<div class="cr-hist"><div class="cr-histhead"><h2>Downloads</h2></div>' + rows + '</div>';
+    },
+    init: function (view) {
+        view.addEventListener('click', function (e) { if (e.target.closest('[data-show]')) openApp('explorer', 'Downloads'); });
+    }
+});
+
+/* ═════════════ URL parsing / navigation engine ═════════════ */
+var WEB_LC = null;                                        // lowercase key → real key, built lazily after all webPage() calls
+function crResolveKey(input) {
+    var u = String(input || '').trim();
+    u = u.replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/+$/, '');
+    if (/^chrome:\/\//i.test(input)) u = input.trim().toLowerCase().replace(/\/+$/, '');
+    if (!WEB_LC) { WEB_LC = {}; Object.keys(WEB).forEach(function (k) { WEB_LC[k.toLowerCase()] = k; }); }
+    var lc = u.toLowerCase();
+    if (WEB_LC[lc]) return WEB_LC[lc];
+    if (lc.indexOf('google.com/search') === 0) return 'google.com/search';
+    var host = lc.split('/')[0];
+    if (WEB_LC[host]) return WEB_LC[host];
+    return null;
 }
-function searchPage(q) {
-    var lq = q.toLowerCase();
-    var hits = Object.keys(CPAGES).filter(function (id) {
-        return id !== 'ntp' && (id.indexOf(lq) >= 0 || CPAGES[id].title.toLowerCase().indexOf(lq) >= 0);
-    });
-    var rows = hits.map(function (id) {
-        var p = CPAGES[id];
-        return '<button class="cs-hit" data-goto="' + id + '" type="button">' + ic(p.icon) +
-            '<span class="cs-txt"><b>' + esc(p.title) + '</b><i>' + esc(p.url) + '</i></span></button>';
-    }).join('');
-    return '<div class="cserp"><div class="cs-head">' + ic('ic-search') + '<span>ure search</span></div>' +
-        '<p class="cs-stat">' + (hits.length ? 'About ' + hits.length + ' results (0.001s) — it’s a small internet' :
-            'No results for “' + esc(q) + '” — it’s a very small internet. Try “steam” or “room”.') + '</p>' + rows + '</div>';
+function crParse(input) {
+    var u = String(input || '').trim();
+    if (!u) return null;
+    var key = crResolveKey(u);
+    if (key) return key === 'google.com/search' ? u.replace(/^https?:\/\//i, '').replace(/^www\./i, '') : key;
+    if (/^[a-z0-9.-]+\.[a-z]{2,}(\/\S*)?$/i.test(u) || /^chrome:\/\//i.test(u)) return u;   // URL-shaped → will 404
+    return 'google.com/search?q=' + encodeURIComponent(u);            // words → search
 }
+function crSite(url) {
+    var key = crResolveKey(url);
+    return key ? WEB[key] : WEB.__err;
+}
+function crQOf(url) {
+    var m = String(url).match(/[?&]q=([^&]*)/); if (!m) return '';
+    var raw = m[1].replace(/\+/g, ' ');
+    try { return decodeURIComponent(raw); } catch (e) { return raw; }   // a stray % must not brick the tab strip
+}
+function crTitleOf(url) {
+    var s = crSite(url);
+    if (s === WEB.__err) return String(url).split('/')[0];
+    return typeof s.title === 'function' ? s.title(crQOf(url)) : s.title;
+}
+function crTab() { return CR.tabs[CR.active]; }
+function crNav(url, opts) {
+    if (!CR || !url) return;
+    opts = opts || {};
+    var t = crTab();
+    if (!opts.nopush) { t.hist = t.hist.slice(0, t.hi + 1); t.hist.push(url); t.hi = t.hist.length - 1; }
+    t.url = url;
+    var s = crSite(url);
+    if (!CR.incog && s !== WEB.__err && !s.nohist && s.host !== 'chrome://history')          // incognito keeps its word
+        { var h = crHist(); h.unshift({ u: url, t: crTitleOf(url), ts: Date.now() }); if (h.length > 200) h.length = 200; crjSet('hist', h); }
+    crChrome(); crTabs(); crPage();
+}
+function crBack() { var t = crTab(); if (t.hi > 0) { t.hi--; t.url = t.hist[t.hi]; crChrome(); crTabs(); crPage(); } }
+function crFwd() { var t = crTab(); if (t.hi < t.hist.length - 1) { t.hi++; t.url = t.hist[t.hi]; crChrome(); crTabs(); crPage(); } }
+function crNewTab(url) {
+    CR.tabs.push({ url: url || 'chrome://newtab', hist: [url || 'chrome://newtab'], hi: 0, scroll: 0 });
+    CR.active = CR.tabs.length - 1;
+    crChrome(); crTabs(); crPage();
+}
+function crCloseTab(i) {
+    if (!CR.tabs[i]) return;
+    var wasActive = i === CR.active;
+    CR.closed.push(CR.tabs[i].url);                                   // Alt+Shift+T can bring it back
+    CR.tabs.splice(i, 1);
+    if (!CR.tabs.length) { closeWin('chrome'); return; }
+    if (CR.active >= CR.tabs.length) CR.active = CR.tabs.length - 1;
+    else if (i < CR.active) CR.active--;
+    crChrome(); crTabs();
+    if (wasActive) crPage();                                          // closing a background tab must not reset the page you're on
+}
+
+/* ═════════════ shell rendering ═════════════ */
 function renderChrome() {
-    return browserShell('chrome', 'New Tab', 'ic-chrome', 'Search isaacure.com or type a URL', chromeNTP());
+    return '<div class="cr" id="crRoot">' +
+        '<div class="cr-tabstrip"><div class="cr-tabs" id="crTabs"></div><button class="cr-plusbtn" id="crPlus" aria-label="New tab">+</button></div>' +
+        '<div class="cr-tool">' +
+          '<button class="cr-nav" id="crBack" aria-label="Back">‹</button>' +
+          '<button class="cr-nav" id="crFwd" aria-label="Forward">›</button>' +
+          '<button class="cr-nav" id="crReload" aria-label="Reload">↻</button>' +
+          '<label class="cr-omni" id="crOmni"><span class="cr-lock" id="crLock">🔒</span>' +
+            '<input class="cr-url" id="crUrl" spellcheck="false" autocomplete="off" aria-label="Address and search bar">' +
+            '<button class="cr-star" id="crStar" aria-label="Bookmark this page">☆</button></label>' +
+          '<button class="cr-nav" id="crExt" aria-label="Extensions" title="Extensions">🧩</button>' +
+          '<button class="cr-avatar" id="crAv" aria-label="Profile">' + ic('ic-user') + '</button>' +
+          '<button class="cr-nav" id="crMore" aria-label="Customize and control">⋮</button>' +
+        '</div>' +
+        '<div class="cr-bmbar" id="crBmbar"></div>' +
+        '<div class="cr-view" id="crView" tabindex="-1"></div>' +
+        '<div class="cr-suggest" id="crSuggest" hidden></div>' +
+        '<div class="cr-menu" id="crMenu" hidden></div>' +
+        '<div class="cr-bubble" id="crBubble" hidden></div>' +
+    '</div>';
 }
+function crTabs() {
+    var strip = CR.el.querySelector('#crTabs');
+    strip.innerHTML = CR.tabs.map(function (t, i) {
+        var s = crSite(t.url);
+        return '<div class="cr-tab' + (i === CR.active ? ' on' : '') + '" data-ti="' + i + '">' + crFav(s === WEB.__err ? WEB.__err.fav : s.fav) +
+            '<span class="cr-tabt">' + esc(crTitleOf(t.url)) + '</span><button class="cr-tabx" data-tx="' + i + '" aria-label="Close tab">×</button></div>';
+    }).join('');
+}
+function crChrome() {
+    var t = crTab(), s = crSite(t.url);
+    var url = CR.el.querySelector('#crUrl'), lock = CR.el.querySelector('#crLock'), star = CR.el.querySelector('#crStar');
+    if (document.activeElement !== url) url.value = t.url === 'chrome://newtab' ? '' : t.url;
+    lock.textContent = /^chrome:/.test(t.url) ? '⚙' : s === WEB.__err ? '⚠' : '🔒';
+    var isBM = crBM().some(function (b) { return b[1] === t.url; });
+    star.textContent = isBM ? '★' : '☆'; star.classList.toggle('on', isBM);
+    CR.el.querySelector('#crBack').disabled = t.hi <= 0;
+    CR.el.querySelector('#crFwd').disabled = t.hi >= t.hist.length - 1;
+    var bar = CR.el.querySelector('#crBmbar'), set = crSet();
+    bar.hidden = !set.bmbar;
+    if (set.bmbar) bar.innerHTML = crBM().map(function (b) {
+        return crLink(b[1], crFav((WEB[crResolveKey(b[1])] || {}).fav) + '<span>' + esc(b[0]) + '</span>', 'cr-bmchip');
+    }).join('');
+    CR.root.classList.toggle('incog', !!CR.incog);
+}
+function crPage() {
+    crDinoStop();                                          // leaving a dino tab always parks the game
+    var t = crTab(), s = crSite(t.url), view = CR.el.querySelector('#crView');
+    var fresh = view.cloneNode(false);                     // page inits bind listeners to the view: start each page with a clean node
+    view.replaceWith(fresh); view = fresh;
+    view.style.zoom = CR.zoom;
+    view.innerHTML = s === WEB.__err ? s.render(String(t.url).split('/')[0]) : s.render(crQOf(t.url));
+    if (s.init) s.init(view);
+    view.scrollTop = t.scroll || 0;
+    if (find.appId === 'chrome' && findOpenNow()) runFind();   // re-mark the fresh DOM for the Alt+F bar
+}
+
+/* ═════════════ omnibox suggestions ═════════════ */
+function crSuggest(q) {
+    var box = CR.el.querySelector('#crSuggest');
+    q = String(q || '').trim().toLowerCase();
+    if (!q) { box.hidden = true; return; }
+    var rows = [], seen = {};
+    function add(icon, label, url, note) {
+        if (rows.length >= 7 || seen[url]) return; seen[url] = 1;
+        rows.push({ icon: icon, label: label, url: url, note: note });
+    }
+    // row 0 is always the typed-text interpretation, so Enter and the highlight agree
+    if (/^[a-z0-9.-]+\.[a-z]{2,}/.test(q) || /^chrome:\/\//.test(q)) add('🌐', q, q, '');
+    else add('🔍', 'Search ' + crEngine() + ' for “' + q + '”', 'google.com/search?q=' + encodeURIComponent(q), '');
+    crBM().forEach(function (b) { if ((b[0] + ' ' + b[1]).toLowerCase().indexOf(q) >= 0) add('★', b[0], b[1], b[1]); });
+    crHist().forEach(function (h) { if ((h.t + ' ' + h.u).toLowerCase().indexOf(q) >= 0) add('🕓', h.t, h.u, h.u); });
+    Object.keys(WEB).forEach(function (k) {
+        var s = WEB[k]; if (!s.searchable) return;
+        if ((k + ' ' + s.stitle).toLowerCase().indexOf(q) >= 0) add('🌐', s.stitle, k, k);
+    });
+    add('🔍', 'Search ' + crEngine() + ' for “' + q + '”', 'google.com/search?q=' + encodeURIComponent(q), '');
+    CR.sugSel = 0;
+    box.innerHTML = rows.map(function (r, i) {
+        return '<div class="cr-sg' + (i === 0 ? ' sel' : '') + '" data-su="' + esc(r.url) + '"><span class="cr-sgic">' + r.icon + '</span><span class="cr-sgt">' + esc(r.label) + '</span>' + (r.note ? '<span class="cr-sgn">— ' + esc(r.note) + '</span>' : '') + '</div>';
+    }).join('');
+    box.hidden = false;
+}
+function crSuggestMove(d) {
+    var box = CR.el.querySelector('#crSuggest'); if (box.hidden) return null;
+    var all = box.querySelectorAll('.cr-sg'); if (!all.length) return null;
+    CR.sugSel = ((CR.sugSel || 0) + d + all.length) % all.length;
+    all.forEach(function (r, i) { r.classList.toggle('sel', i === CR.sugSel); });
+    return all[CR.sugSel].getAttribute('data-su');
+}
+function crSuggestPick() {
+    var box = CR.el.querySelector('#crSuggest'); if (box.hidden) return null;
+    var sel = box.querySelector('.cr-sg.sel');
+    return sel ? sel.getAttribute('data-su') : null;
+}
+
+/* ═════════════ dino ═════════════ */
+function crDinoStop() { if (CR && CR.dinoRaf) { cancelAnimationFrame(CR.dinoRaf); CR.dinoRaf = 0; } }
+function crDinoBoot(view) {
+    var cv = view.querySelector('#crDinoCv'); if (!cv) return;
+    var x = cv.getContext('2d'), W = cv.width, H = cv.height, G = H - 24;
+    var d = { y: G, vy: 0, duck: false, run: false, dead: false, t: 0, speed: 4.4, score: 0, obs: [], clouds: [{ x: 480, y: 30 }, { x: 200, y: 52 }], next: 60 };
+    CR.dino = d;
+    function jump() {
+        if (d.dead) { boot(); return; }
+        if (!d.run) d.run = true;
+        if (d.y >= G) d.vy = -10.4;
+    }
+    function boot() { d.obs = []; d.score = 0; d.speed = 4.4; d.dead = false; d.run = true; d.y = G; d.vy = 0; d.next = 60; var tip = view.querySelector('#crDinoTip'); if (tip) tip.textContent = 'Run, pixel lizard, run.'; }
+    CR.dinoJump = jump;
+    cv.addEventListener('pointerdown', jump);
+    function drawDino() {
+        x.fillStyle = '#535353';
+        var yy = Math.round(d.y);
+        x.fillRect(34, yy - 30, 14, 14);                              // head
+        x.fillRect(46, yy - 26, 4, 3);                                // snout
+        x.fillRect(40, yy - 25, 2, 2);                                // eye (blank when dead)
+        if (d.dead) { x.fillStyle = '#fff'; x.fillRect(40, yy - 25, 2, 2); x.fillStyle = '#535353'; }
+        x.fillRect(30, yy - 18, 14, 12);                              // body
+        x.fillRect(24, yy - 16, 6, 6);                                // tail
+        var step = d.run && !d.dead ? (Math.floor(d.t / 6) % 2) : 0;
+        x.fillRect(32, yy - 6, 3, 6 - step * 2);                      // legs
+        x.fillRect(39, yy - 6, 3, 4 + step * 2);
+    }
+    function tick() {                                                 // one frame of logic + paint (rAF-free, so tests can step it)
+        x.fillStyle = '#fff'; x.fillRect(0, 0, W, H);
+        x.fillStyle = '#535353';
+        for (var gx = 0; gx < W; gx += 11) x.fillRect(gx + (Math.floor(d.t) * 2) % 11 * -1, G + 8, 6, 1);   // scrolling ground
+        x.fillRect(0, G + 6, W, 1);
+        d.clouds.forEach(function (c) {
+            x.fillStyle = '#dadce0'; x.fillRect(c.x, c.y, 28, 6); x.fillRect(c.x + 6, c.y - 4, 14, 4);
+            if (d.run && !d.dead) c.x -= 0.4; if (c.x < -30) c.x = W + 20;
+        });
+        if (d.run && !d.dead) {
+            d.t++; d.score += 0.15; d.speed += 0.0007;
+            d.vy += 0.58; d.y = Math.min(G, d.y + d.vy);
+            if (--d.next <= 0) {
+                var big = Math.random() > 0.6;
+                d.obs.push({ x: W + 10, w: big ? 16 : 10, h: big ? 30 : 20 });
+                d.next = 46 + Math.random() * 60 - Math.min(30, d.speed * 2);
+            }
+            d.obs.forEach(function (o) { o.x -= d.speed; });
+            d.obs = d.obs.filter(function (o) { return o.x > -20; });
+            for (var i = 0; i < d.obs.length; i++) {
+                var o = d.obs[i];
+                if (o.x < 48 && o.x + o.w > 26 && d.y > G - o.h + 2) {
+                    d.dead = true; d.run = false;
+                    var hi = Math.max(+recall('chrome_dino_hi', 0), Math.floor(d.score));
+                    store('chrome_dino_hi', String(hi));
+                    var hud = view.querySelector('.cr-dinohud span'); if (hud) hud.textContent = 'HI ' + String(hi).padStart(5, '0');
+                    var tip = view.querySelector('#crDinoTip'); if (tip) tip.textContent = 'G A M E  O V E R — space to try again. The cactus sends its regards.';
+                }
+            }
+        }
+        x.fillStyle = '#2d8a43';
+        d.obs.forEach(function (o) { x.fillRect(o.x, G + 6 - o.h, o.w, o.h); x.fillRect(o.x - 4, G + 6 - o.h + 6, 4, 6); x.fillRect(o.x + o.w, G + 6 - o.h + 9, 4, 6); });
+        drawDino();
+        var sc = view.querySelector('#crDinoScore'); if (sc) sc.textContent = String(Math.floor(d.score)).padStart(5, '0');
+        if (d.dead) { x.fillStyle = '#535353'; x.font = '14px monospace'; x.textAlign = 'center'; x.fillText('G A M E   O V E R', W / 2, 56); }
+    }
+    function loop() { if (!CR.el.classList.contains('mini')) tick(); CR.dinoRaf = requestAnimationFrame(loop); }   // minimized = paused, run survives
+    if (location.search.indexOf('dev') >= 0) window.__crDino = { jump: jump, tick: tick, state: d };   // headless-test hook, room-pages convention
+    crDinoStop();
+    CR.dinoRaf = requestAnimationFrame(loop);
+}
+
+/* ═════════════ init / teardown ═════════════ */
 function initChrome(el) {
-    var tabsEl = el.querySelector('.br-tabs'), viewEl = el.querySelector('.br-view'), urlEl = el.querySelector('.br-url');
-    var tabs = [{ hist: ['ntp'], pos: 0 }], cur = 0, closedStack = [];
+    CR = { el: el, root: el.querySelector('#crRoot'), tabs: [{ url: 'chrome://newtab', hist: ['chrome://newtab'], hi: 0, scroll: 0 }], active: 0, zoom: 1, incog: false, sugSel: 0, dinoRaf: 0, closed: [] };
+    var root = CR.root, url = el.querySelector('#crUrl'), suggest = el.querySelector('#crSuggest'), menu = el.querySelector('#crMenu');
 
-    function curPid() { var t = tabs[cur]; return t.hist[t.pos]; }
-    function renderTabs() {
-        tabsEl.innerHTML = tabs.map(function (t, i) {
-            var p = pageFor(t.hist[t.pos]);
-            return '<div class="br-tab' + (i === cur ? ' active' : '') + '" data-i="' + i + '">' + ic(p.icon, 'br-fav') +
-                '<span>' + esc(p.title) + '</span><i class="br-tabx" data-x="' + i + '" aria-hidden="true">×</i></div>';
-        }).join('') + '<button class="br-newtab" tabindex="-1" aria-label="New tab">+</button>';
-    }
-    function show() {
-        var p = pageFor(curPid());
-        viewEl.innerHTML = p.render();
-        urlEl.value = p.url;
-    }
-    function sync() {
-        renderTabs(); show();
-        if (find.appId === 'chrome' && findOpenNow()) runFind();   // re-mark the fresh DOM, fix the count
-    }
-
-    function navigate(pid) {
-        var t = tabs[cur];
-        t.hist = t.hist.slice(0, t.pos + 1); t.hist.push(pid); t.pos++;
-        sync();
-    }
-    var ctl = el._br = {
-        newTab: function () { tabs.push({ hist: ['ntp'], pos: 0 }); cur = tabs.length - 1; sync(); ctl.focusOmni(); },
-        closeTab: function (i) {
-            closedStack.push(tabs[i].hist[tabs[i].pos]);
-            tabs.splice(i, 1);
-            if (!tabs.length) { closeWin('chrome'); return; }     // last tab closes the window, like Chrome
-            cur = i < cur ? cur - 1 : Math.min(cur, tabs.length - 1);
-            sync();
+    /* controller for the Alt keybind layer (Alt+T/W/Shift+T/digits/L/R/arrows) */
+    el._br = {
+        newTab: function () { crNewTab(); el._br.focusOmni(); },
+        closeTab: function (i) { crCloseTab(i); },
+        closeCur: function () { crCloseTab(CR.active); },
+        reopen: function () { if (CR.closed.length) crNewTab(CR.closed.pop()); },
+        goTab: function (n) {
+            var i = n === 9 ? CR.tabs.length - 1 : Math.min(n - 1, CR.tabs.length - 1);
+            if (i === CR.active) return;                              // same tab = no-op, like the real thing
+            crTab().scroll = el.querySelector('#crView').scrollTop;
+            CR.active = i; crChrome(); crTabs(); crPage();
         },
-        closeCur: function () { ctl.closeTab(cur); },
-        reopen: function () { if (closedStack.length) { tabs.push({ hist: [closedStack.pop()], pos: 0 }); cur = tabs.length - 1; sync(); } },
-        goTab: function (n) { cur = n === 9 ? tabs.length - 1 : Math.min(n - 1, tabs.length - 1); sync(); },
-        back: function () { var t = tabs[cur]; if (t.pos > 0) { t.pos--; sync(); } },
-        fwd: function () { var t = tabs[cur]; if (t.pos < t.hist.length - 1) { t.pos++; sync(); } },
-        reload: function () {
-            sync();
-            var fav = tabsEl.querySelector('.br-tab.active .br-fav');
-            if (fav && !reduce) { fav.classList.add('spin'); setTimeout(function () { fav.classList.remove('spin'); }, 500); }
-        },
-        focusOmni: function () { urlEl.focus(); urlEl.select(); }
+        back: crBack,
+        fwd: crFwd,
+        reload: function () { var r = el.querySelector('#crReload'); if (r) { r.classList.add('spin'); setTimeout(function () { r.classList.remove('spin'); }, reduce ? 50 : 420); } crPage(); },
+        focusOmni: function () { url.focus(); url.select(); }
     };
 
-    function resolve(raw) {
-        var q = raw.trim(); if (!q) return;
-        var lq = q.toLowerCase().replace(/^ure:\/\//, '').replace(/\/$/, '');
-        if (lq === 'newtab' || lq === 'home') { navigate('ntp'); return; }
-        for (var id in CPAGES) {
-            if (id === lq || CPAGES[id].title.toLowerCase() === lq) { navigate(id); return; }
-        }
-        for (var b = 0; b < BOOKMARKS.length; b++) {
-            var bk = BOOKMARKS[b];
-            if (bk[0].toLowerCase() === lq && bk[2].indexOf('ext:') === 0) { window.open(bk[2].slice(4), '_blank', 'noopener'); return; }
-        }
-        navigate('search:' + q);
-    }
-
-    tabsEl.addEventListener('click', function (e) {
-        var x = e.target.closest('.br-tabx');
-        if (x) { ctl.closeTab(+x.getAttribute('data-x')); return; }
-        if (e.target.closest('.br-newtab')) { ctl.newTab(); return; }
-        var t = e.target.closest('.br-tab');
-        if (t) { cur = +t.getAttribute('data-i'); sync(); }
+    /* one delegated click handler for the whole browser */
+    root.addEventListener('click', function (e) {
+        if (!e.target.closest('#crMenu') && !e.target.closest('#crMore')) menu.hidden = true;
+        if (!e.target.closest('#crOmni')) { suggest.hidden = true; }
+        var l = e.target.closest('.cr-l');
+        if (l) { var t = crTab(); t.scroll = 0; crNav(l.getAttribute('data-href')); return; }
+        var tx = e.target.closest('.cr-tabx');
+        if (tx) { e.stopPropagation(); crCloseTab(+tx.getAttribute('data-tx')); return; }
+        var tab = e.target.closest('.cr-tab');
+        if (tab) { crTab().scroll = el.querySelector('#crView').scrollTop; CR.active = +tab.getAttribute('data-ti'); crChrome(); crTabs(); crPage(); return; }
+        var mi = e.target.closest('[data-crm]');
+        if (mi) { crMenuAct(mi.getAttribute('data-crm')); return; }
+        var su = e.target.closest('.cr-sg');
+        if (su) { suggest.hidden = true; crNav(crParse(su.getAttribute('data-su'))); return; }
     });
-    tabsEl.addEventListener('auxclick', function (e) {          // middle-click closes, like Chrome
+    el.querySelector('#crPlus').addEventListener('click', function () { crNewTab(); });
+    el.querySelector('#crTabs').addEventListener('auxclick', function (e) {   // middle-click closes, like Chrome
         if (e.button !== 1) return;
-        var t = e.target.closest('.br-tab');
-        if (t) { e.preventDefault(); ctl.closeTab(+t.getAttribute('data-i')); }
+        var t = e.target.closest('.cr-tab');
+        if (t) { e.preventDefault(); crCloseTab(+t.getAttribute('data-ti')); }
     });
-    urlEl.addEventListener('keydown', function (e) { if (e.key === 'Enter') resolve(urlEl.value); });
-    el.querySelector('.br-actions').addEventListener('click', function (e) {
-        var b = e.target.closest('.br-act'); if (!b) return;
-        var lbl = b.getAttribute('aria-label');
-        if (lbl === 'Back') ctl.back(); else if (lbl === 'Forward') ctl.fwd(); else if (lbl === 'Reload') ctl.reload();
+    el.querySelector('#crBack').addEventListener('click', crBack);
+    el.querySelector('#crFwd').addEventListener('click', crFwd);
+    el.querySelector('#crReload').addEventListener('click', function () {
+        var r = el.querySelector('#crReload'); r.classList.add('spin');
+        setTimeout(function () { r.classList.remove('spin'); }, reduce ? 50 : 420);
+        crPage();
     });
-    viewEl.addEventListener('click', function (e) {
-        var sc = e.target.closest('.ntp-sc');
-        if (sc) {
-            var t = sc.getAttribute('data-target'); if (t === '__add') return;
-            if (t.indexOf('ext:') === 0) window.open(t.slice(4), '_blank', 'noopener');
-            else navigate(t);                                    // bookmark → its site page, in-tab
-            return;
+    el.querySelector('#crStar').addEventListener('click', function () {
+        var t = crTab(); if (t.url === 'chrome://newtab') { toast('The New Tab page is already everyone’s favorite.'); return; }
+        var bm = crBM(), i = -1;
+        bm.forEach(function (b, bi) { if (b[1] === t.url) i = bi; });
+        if (i >= 0) { bm.splice(i, 1); crBubble('Bookmark removed'); }
+        else { bm.push([crTitleOf(t.url), t.url]); crBubble('Bookmark added ★'); }
+        crjSet('bm', bm); crChrome();
+    });
+    el.querySelector('#crMore').addEventListener('click', function (e) { e.stopPropagation(); crMenuOpen(); });
+    el.querySelector('#crExt').addEventListener('click', function () { toast('URE Blocker: 0 ads blocked. This internet is pure.'); });
+    el.querySelector('#crAv').addEventListener('click', function () { toast('Synced as isaacoure@gmail.com — profile “Isaac (the only one)”.'); });
+
+    /* omnibox */
+    url.addEventListener('focus', function () { setTimeout(function () { url.select(); }, 0); });
+    url.addEventListener('input', function () { crSuggest(url.value); });
+    url.addEventListener('keydown', function (e) {
+        if (e.key === 'ArrowDown') { e.preventDefault(); var u = crSuggestMove(1); if (u) url.value = u; }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); var u2 = crSuggestMove(-1); if (u2) url.value = u2; }
+        else if (e.key === 'Escape') { suggest.hidden = true; url.blur(); crChrome(); }
+        else if (e.key === 'Enter') {
+            var pick = crSuggestPick();
+            suggest.hidden = true; url.blur();
+            crNav(crParse(pick && url.value === pick ? pick : url.value));
         }
-        var go = e.target.closest('.cs-hit');
-        if (go) { navigate(go.getAttribute('data-goto')); return; }
-        var launch = e.target.closest('[data-launch]');
-        if (launch) openApp(launch.getAttribute('data-launch'));
     });
-    viewEl.addEventListener('keydown', function (e) {           // NTP search box
-        if (e.key === 'Enter' && e.target.classList.contains('ntp-q')) resolve(e.target.value);
-    });
-    sync();
+
+    /* dino keys — scoped: only when a dino tab is front-most in THIS window */
+    CR.keyFn = function (e) {
+        if (!CR || CR.el.classList.contains('mini')) return;
+        if (activeApp !== 'chrome') return;                            // Chrome must be the focused window
+        if (crTab().url !== 'chrome://dino') return;
+        var a = document.activeElement;
+        if (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return;  // omnibox, find bar, any field
+        if (e.code === 'Space' || e.key === 'ArrowUp') { e.preventDefault(); if (CR.dinoJump) CR.dinoJump(); }
+    };
+    document.addEventListener('keydown', CR.keyFn);
+
+    crChrome(); crTabs(); crPage();
+}
+function closeChrome() {
+    if (CR) { crDinoStop(); if (CR.keyFn) document.removeEventListener('keydown', CR.keyFn); }
+    CR = null;
+}
+function crBubble(msg) {
+    var b = CR.el.querySelector('#crBubble');
+    b.textContent = msg; b.hidden = false;
+    clearTimeout(CR.bubbleT);
+    CR.bubbleT = setTimeout(function () { if (CR) b.hidden = true; }, 1600);
+}
+function crMenuOpen() {
+    var menu = CR.el.querySelector('#crMenu');
+    if (!menu.hidden) { menu.hidden = true; return; }
+    menu.innerHTML =
+        '<button class="cr-mi" data-crm="newtab">New tab</button>' +
+        '<button class="cr-mi" data-crm="incog">' + (CR.incog ? 'Leave Incognito' : 'New Incognito window') + '</button>' +
+        '<div class="cr-msep"></div>' +
+        '<button class="cr-mi" data-crm="history">History</button>' +
+        '<button class="cr-mi" data-crm="downloads">Downloads</button>' +
+        '<button class="cr-mi" data-crm="bookmarks">Bookmarks</button>' +
+        '<div class="cr-mzoom">Zoom <span class="cr-mzctl"><button data-crm="zout">−</button><b id="crZoomPct">' + Math.round(CR.zoom * 100) + '%</b><button data-crm="zin">+</button></span></div>' +
+        '<div class="cr-msep"></div>' +
+        '<button class="cr-mi" data-crm="print">Print…</button>' +
+        '<button class="cr-mi" data-crm="cast">Cast…</button>' +
+        '<div class="cr-msep"></div>' +
+        '<button class="cr-mi" data-crm="settings">Settings</button>' +
+        '<button class="cr-mi" data-crm="about">About Chrome</button>' +
+        '<div class="cr-msep"></div>' +
+        '<button class="cr-mi" data-crm="exit">Exit</button>';
+    menu.hidden = false;
+}
+function crMenuAct(a) {
+    var menu = CR.el.querySelector('#crMenu');
+    if (a === 'zin' || a === 'zout') {
+        CR.zoom = clamp(Math.round((CR.zoom + (a === 'zin' ? 0.1 : -0.1)) * 10) / 10, 0.5, 2);
+        CR.el.querySelector('#crView').style.zoom = CR.zoom;
+        var pct = menu.querySelector('#crZoomPct'); if (pct) pct.textContent = Math.round(CR.zoom * 100) + '%';
+        return;                                                        // zoom keeps the menu open, like the real one
+    }
+    menu.hidden = true;
+    if (a === 'newtab') crNewTab();
+    else if (a === 'incog') {
+        // swap whole sessions, like a separate window: regular tabs park and return untouched
+        var held = CR.held || null;
+        CR.held = { tabs: CR.tabs, active: CR.active, closed: CR.closed };
+        CR.incog = !CR.incog;
+        if (held) { CR.tabs = held.tabs; CR.active = Math.min(held.active, held.tabs.length - 1); CR.closed = held.closed; crChrome(); crTabs(); crPage(); }
+        else { CR.tabs = []; CR.closed = []; CR.active = 0; crNewTab(); }
+        toast(CR.incog ? 'Incognito: history is off. Your regular tabs are waiting where you left them.' : 'Back to regular browsing. The record resumes.');
+    }
+    else if (a === 'history') crNav('chrome://history');
+    else if (a === 'downloads') crNav('chrome://downloads');
+    else if (a === 'bookmarks') crNav('chrome://bookmarks');
+    else if (a === 'print') toast('Saved as bloom.pdf to a printer that isn’t real.');
+    else if (a === 'cast') toast('No devices found. The room’s TV is decorative.');
+    else if (a === 'settings') crNav('chrome://settings');
+    else if (a === 'about') crNav('chrome://settings');
+    else if (a === 'exit') closeWin('chrome');
 }
 
 /* —— Google Chrome Setup: a real wizard you click through yourself ——
@@ -3068,7 +3636,7 @@ var APPS = {
     photos:   { title: 'Photos', icon: 'ic-photos', w: 560, h: 440, render: renderPhotos, init: initPhotos, focusArg: function (el, arg) { if (arg != null) selectPhoto(el, arg | 0); } },
     calc:     { title: 'Calculator', icon: 'ic-calc', w: 300, h: 440, render: renderCalc, init: initCalc },
     edge:     { title: 'Microsoft Edge', icon: 'ic-edge', w: 760, h: 520, render: renderEdge, init: initEdge, onClose: function () { if (APPS.edge._gag) APPS.edge._gag.cancel(); }, onMinimize: function () { if (APPS.edge._gag) APPS.edge._gag.cancel(); } },
-    chrome:   { title: 'Google Chrome', icon: 'ic-chrome', w: 820, h: 560, render: renderChrome, init: initChrome },
+    chrome:   { title: 'Google Chrome', icon: 'ic-chrome', w: 980, h: 640, render: renderChrome, init: initChrome, onClose: closeChrome },
     setup:    { title: 'Google Chrome Setup', icon: 'ic-chrome', w: 584, h: 468, render: renderSetup, init: initSetup, onClose: stopSetup },
     bin:      { title: 'Recycle Bin', icon: 'ic-bin', w: 600, h: 400, render: renderBin, init: initBin },
     steam:    { title: 'Steam', icon: 'ic-steam', w: 1100, h: 700, render: renderSteam, init: initSteam, onClose: closeSteam, focusArg: steamFocus },
@@ -3512,6 +4080,8 @@ if (devSteam) openApp('steam', devSteam[1] ? { section: devSteam[1], view: devSt
 if (location.search.indexOf('fast') >= 0) window.__fastCursor = true;   // dev: instant cursor jumps so the chain runs headless
 if (location.search.indexOf('dev=edge') >= 0) openApp('edge');       // watch the possession play out
 if (location.search.indexOf('dev=chrome') >= 0) { installChrome({ shortcut: true }); openApp('chrome'); }
+var devCr = location.search.match(/dev=cr:([^&]+)/);   // ?dev=cr:<url> — open Chrome navigated somewhere (cr:dino → chrome://dino)
+if (devCr) { installChrome({}); openApp('chrome'); var crU; try { crU = decodeURIComponent(devCr[1]); } catch (e) { crU = devCr[1]; } if (CR) crNav(crParse(/^[a-z]+$/.test(crU) ? 'chrome://' + crU : crU)); }
 if (location.search.indexOf('dev=wiz') >= 0) { fsAddFile('Downloads', chromeSetupItem()); openApp('setup'); }   // + &wstep=license|options|progress|finish (&freeze)
 if (location.search.indexOf('dev=dl') >= 0) { fsAddFile('Downloads', chromeSetupItem()); openApp('explorer', 'Downloads'); }
 if (location.search.indexOf('dev=bin') >= 0) {
@@ -3533,11 +4103,7 @@ if (location.search.indexOf('dev=keys') >= 0) openCheat();
 if (location.search.indexOf('dev=tabs') >= 0) {
     installChrome({ shortcut: true }); openApp('chrome');
     var devBr = openWins.chrome.el._br;
-    devBr.newTab(); openWins.chrome.el.querySelector('.br-url').value = 'room';
-    (function () {
-        var urlEl = openWins.chrome.el.querySelector('.br-url');
-        urlEl.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-    })();
+    devBr.newTab(); crNav(crParse('isaacure.com/1p'));   // tab 2: the room's page
     devBr.newTab(); devBr.goTab(2);
 }
 
