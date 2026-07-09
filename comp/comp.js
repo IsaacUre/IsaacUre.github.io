@@ -393,8 +393,12 @@ function fsDelete(path, it) {
 }
 function fsRestore(i) {
     var st = fsLoad(), e = st.bin.splice(i, 1)[0]; if (!e) return;
-    if (e.base) { var k = st.gone.indexOf(e.from + '/' + e.it.n); if (k >= 0) st.gone.splice(k, 1); }
-    else { e.it.n = uniqueName(e.from, e.it.n); (st.add[e.from] = st.add[e.from] || []).push(e.it); }
+    if (e.base && !fsHas(e.from, e.it.n)) { var k = st.gone.indexOf(e.from + '/' + e.it.n); if (k >= 0) st.gone.splice(k, 1); }
+    else {  // dynamic file — or a base file whose name got taken while it sat in the bin.
+            // restore a fresh copy (never mutate a base FS object: its tombstone is name-keyed)
+        var copy = { n: uniqueName(e.from, e.it.n), t: e.it.t, app: e.it.app, arg: e.it.arg, go: e.it.go, size: e.it.size, date: e.it.date };
+        (st.add[e.from] = st.add[e.from] || []).push(copy);
+    }
     fsSave(); refreshFileViews();
 }
 function fsPurge(i) { var st = fsLoad(); st.bin.splice(i, 1); fsSave(); refreshFileViews(); }
@@ -411,7 +415,11 @@ function fsRename(path, it, name) {
     fsSave(); refreshFileViews();
 }
 function refreshFileViews() {
-    if (openWins.explorer && exState.explorer && exState.explorer.draw) exState.explorer.draw();
+    closeFctx();   // the menu's captured tile may be about to detach
+    if (openWins.explorer && exState.explorer && exState.explorer.draw) {
+        // never yank an in-progress rename out from under the user; the commit redraws anyway
+        if (!openWins.explorer.el.querySelector('.fitem-ren')) exState.explorer.draw();
+    }
     if (openWins.bin) drawBinList(openWins.bin.el);
 }
 function kindOf(it) {
@@ -560,9 +568,10 @@ function startRename(t) {
    buttons run their callback after closing. Stacked veils are fine. */
 var dlgs = [];
 function dlgOpen(title, bodyHtml, buttons) {
+    var opener = document.activeElement;   // give focus back when we're done
     var veil = document.createElement('div'); veil.className = 'dlg-veil';
     veil.style.zIndex = ++zTop;
-    veil.innerHTML = '<div class="dlg px-lg lift" role="alertdialog" aria-label="' + esc(title) + '">' +
+    veil.innerHTML = '<div class="dlg px-lg lift" role="alertdialog" aria-modal="true" aria-label="' + esc(title) + '">' +
         '<header class="dlg-bar"><span>' + esc(title) + '</span>' +
           '<button class="cap close dlg-x" type="button" aria-label="Close"><svg viewBox="0 0 10 10"><path d="M1 1 L9 9 M9 1 L1 9" stroke="currentColor" stroke-width="1.2"/></svg></button></header>' +
         '<div class="dlg-body">' + bodyHtml + '</div>' +
@@ -570,13 +579,25 @@ function dlgOpen(title, bodyHtml, buttons) {
             return '<button class="dlg-btn' + (b[1] ? ' ' + b[1] : '') + '" data-di="' + i + '" type="button">' + esc(b[0]) + '</button>';
         }).join('') + '</footer></div>';
     document.body.appendChild(veil);
-    function close() { var k = dlgs.indexOf(close); if (k >= 0) dlgs.splice(k, 1); veil.remove(); }
+    function close() {
+        var k = dlgs.indexOf(close); if (k >= 0) dlgs.splice(k, 1);
+        veil.remove();
+        if (opener && opener.focus && document.contains(opener)) opener.focus();
+    }
     veil.addEventListener('click', function (e) {
         e.stopPropagation();
         if (e.target.closest('.dlg-x')) { close(); return; }
         var b = e.target.closest('[data-di]'); if (!b) return;
         var def = buttons[+b.getAttribute('data-di')];
         close(); if (def && def[2]) def[2]();
+    });
+    veil.addEventListener('keydown', function (e) {   // keep Tab inside the dialog
+        if (e.key !== 'Tab') return;
+        e.preventDefault();
+        var f = Array.prototype.filter.call(veil.querySelectorAll('button, input'), function (x) { return !x.disabled; });
+        if (!f.length) return;
+        var i = f.indexOf(document.activeElement);
+        f[e.shiftKey ? (i <= 0 ? f.length - 1 : i - 1) : (i < 0 || i === f.length - 1 ? 0 : i + 1)].focus();
     });
     dlgs.push(close);
     var first = veil.querySelector('.dlg-btn.primary') || veil.querySelector('.dlg-btn');
@@ -903,7 +924,8 @@ function initEdge(el) {
         else if (e.target.closest('.dlp-btn')) startDownload();
     });
     shelf.addEventListener('click', function (e) {
-        if (e.target.closest('.dls-open')) runInstaller();
+        // unguarded: the button must work even after the gag is cancelled (runInstaller is the possess path)
+        if (e.target.closest('.dls-open')) { gag.cancel(); openApp('setup'); }
         else if (e.target.closest('.dls-show')) { gag.cancel(); openApp('explorer', 'Downloads'); }
     });
 
@@ -1180,6 +1202,7 @@ function initSetup(el, id, arg) {
         var pct = w.querySelector('.wiz-pct'), file = w.querySelector('.wiz-file'), li = -1;
         if (location.search.indexOf('freeze') >= 0) { bar.style.width = '58%'; pct.textContent = '58%'; status.textContent = WIZ_LINES[3]; file.textContent = 'omnibox.dat'; return; }   // dev: hold for a screenshot
         s.iv = setInterval(function () {
+            if (dlgs.length) return;   // the cancel-confirm is up — a polite installer waits
             s.prog = Math.min(100, s.prog + (reduce ? 34 : 2.2 + Math.random() * 3.6));
             bar.style.width = s.prog + '%'; pct.textContent = Math.round(s.prog) + '%';
             file.textContent = WIZ_FILES[(s.fi++) % WIZ_FILES.length];
@@ -1187,13 +1210,13 @@ function initSetup(el, id, arg) {
             if (want !== li) { li = want; status.textContent = WIZ_LINES[want]; }
             if (s.prog >= 100) {
                 clearInterval(s.iv); s.iv = 0;
+                installChrome({ shortcut: s.shortcut, pin: s.pin });   // installed at 100%, not at Finish — X can't undo reality
                 setTimeout(function () { if (openWins.setup) goStep('finish'); }, reduce ? 80 : 420);
             }
         }, reduce ? 50 : 130);
     }
     function finishInstall() {
         closeWin('setup');
-        installChrome({ shortcut: s.shortcut, pin: s.pin });
         if (s.tidy) fsTidyChromeSetup();
         if (openWins.edge) closeWin('edge');   // Edge's work here is done
         if (s.launch) { openApp('chrome'); toast('Google Chrome installed — welcome home.'); }
@@ -1202,7 +1225,11 @@ function initSetup(el, id, arg) {
 
     // dev: ?wstep=license|options|progress|finish jumps straight to a step
     var wstep = (location.search.match(/[?&]wstep=([a-z]+)/) || [])[1];
-    if (wstep && { welcome: 1, license: 1, options: 1, progress: 1, finish: 1 }[wstep]) { s.ok = true; goStep(wstep); }
+    if (wstep && { welcome: 1, license: 1, options: 1, progress: 1, finish: 1 }[wstep]) {
+        s.ok = true;
+        if (wstep === 'finish') installChrome({ shortcut: s.shortcut, pin: s.pin });   // finish implies the install already ran
+        goStep(wstep);
+    }
     else goStep('welcome');
 }
 function stopSetup(el) { if (el && el._wiz && el._wiz.iv) { clearInterval(el._wiz.iv); el._wiz.iv = 0; } }
@@ -1293,7 +1320,10 @@ function initBin(el) {
         if (act === 'restore') fsRestore(i);
         else if (act === 'purge') {
             var entry = fsLoad().bin[i]; if (!entry) return;
-            dlgConfirm('Permanently delete “' + entry.it.n + '”?', 'This skips every bin there is. Gone gone.', 'Delete', function () { fsPurge(i); });
+            dlgConfirm('Permanently delete “' + entry.it.n + '”?', 'This skips every bin there is. Gone gone.', 'Delete', function () {
+                var k = fsLoad().bin.indexOf(entry);   // re-resolve: the bin may have changed under the dialog
+                if (k >= 0) fsPurge(k);
+            });
         } else if (act === 'empty') {
             var n = fsLoad().bin.length; if (!n) return;
             dlgConfirm('Empty the Recycle Bin?', n + (n === 1 ? ' item' : ' items') + ' will be permanently deleted. UreOS will remember the tidiness fondly.', 'Empty it', fsEmptyBin);
@@ -2997,7 +3027,7 @@ function buildCal() {
 var ctx = byId('ctx');
 function closeCtx() { ctx.hidden = true; }
 desktop.addEventListener('contextmenu', function (e) {
-    e.preventDefault(); setStart(false); closeFlyouts();
+    e.preventDefault(); setStart(false); closeFlyouts(); closeFctx();
     ctx.hidden = false;
     ctx.style.left = clamp(e.clientX, 6, window.innerWidth - ctx.offsetWidth - 6) + 'px';
     ctx.style.top = clamp(e.clientY, 6, window.innerHeight - ctx.offsetHeight - 6) + 'px';
