@@ -3707,6 +3707,8 @@ applyAccent(recall('accent', ACCENTS[0].hex));
 if (recall('crt', 'on') !== 'on') document.body.classList.add('no-crt');
 renderWall();
 renderDesktop();
+// the Chrome desktop shortcut persists as a real file — if it exists, the install is real too
+if (itemsFor('Desktop').some(function (it) { return it.app === 'chrome' && it.t === 'chrome'; })) installChrome({ shortcut: false });
 tick(); setInterval(tick, 15000);
 
 // headless-screenshot hooks (like the room pages' ?dev): populate a state for a one-shot capture
