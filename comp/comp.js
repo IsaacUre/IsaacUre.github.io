@@ -132,7 +132,7 @@ function renderWall() {
     wctx.putImageData(img, 0, 0);
 }
 var rTimer = 0;
-window.addEventListener('resize', function () { clearTimeout(rTimer); rTimer = setTimeout(renderWall, 120); });
+window.addEventListener('resize', function () { clearTimeout(rTimer); rTimer = setTimeout(function () { renderWall(); closeFctx(); renderDesktop(); }, 120); });
 
 /* ─────────────────────────── clock ─────────────────────────── */
 var DOW = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
@@ -340,15 +340,24 @@ function renderAbout() {
    Recycle Bin, and the browser download shelf all speak to it. */
 var FS = {
     'Home': { items: [
-        { n: 'Desktop', t: 'folder', go: 'This PC' }, { n: 'Downloads', t: 'folder', go: 'Downloads' },
+        { n: 'Desktop', t: 'folder', go: 'Desktop' }, { n: 'Downloads', t: 'folder', go: 'Downloads' },
         { n: 'Documents', t: 'folder', go: 'Documents' }, { n: 'Pictures', t: 'folder', go: 'Pictures' },
         { n: 'Projects', t: 'folder', go: 'Projects' }, { n: 'URE BOY', t: 'ureboy', app: 'ureboy' }
     ] },
     'This PC': { items: [
-        { n: 'Local Disk (C:)', t: 'pc' }, { n: 'Downloads', t: 'folder', go: 'Downloads' },
-        { n: 'Documents', t: 'folder', go: 'Documents' },
+        { n: 'Local Disk (C:)', t: 'pc' }, { n: 'Desktop', t: 'folder', go: 'Desktop' },
+        { n: 'Downloads', t: 'folder', go: 'Downloads' }, { n: 'Documents', t: 'folder', go: 'Documents' },
         { n: 'Pictures', t: 'folder', go: 'Pictures' }, { n: 'Projects', t: 'folder', go: 'Projects' }
     ] },
+    // the Desktop is a real folder — its items ARE the desktop icons
+    'Desktop': { items: [
+        { n: 'This PC', t: 'pc', app: 'explorer', arg: 'This PC', sys: 1 },
+        { n: 'About Isaac', t: 'ure', app: 'about' },
+        { n: 'Steam', t: 'steam', app: 'steam' },
+        { n: 'URE BOY', t: 'ureboy', app: 'ureboy' },
+        { n: 'the room', t: 'room', app: 'room' },
+        { n: 'Recycle Bin', t: 'bin', app: 'bin', sys: 1 }
+    ], empty: 'A perfectly clean desktop. Suspicious.' },
     'Downloads': { items: [], empty: 'Nothing downloaded yet. Edge has one (1) idea.' },
     'Documents': { items: [
         { n: 'about-me.txt', t: 'notepad', app: 'about' }, { n: 'resume.pdf', t: 'notepad', app: 'about' },
@@ -363,8 +372,8 @@ var FS = {
         { n: 'GTI RUN', t: 'gti', app: 'gti' }, { n: 'isaacure.com', t: 'globe', app: 'chrome' }
     ] }
 };
-var FS_ICON = { folder: 'ic-folder', pc: 'ic-pc', notepad: 'ic-notepad', room: 'ic-room', gti: 'ic-gti', ureboy: 'ic-ureboy', photos: 'ic-photos', globe: 'ic-globe', chrome: 'ic-chrome' };
-var KIND = { folder: 'File folder', pc: 'Local disk', notepad: 'Text document', room: 'PNG image', gti: 'PNG image', photos: 'PNG image', ureboy: 'Shortcut', globe: 'Internet shortcut', chrome: 'Application' };
+var FS_ICON = { folder: 'ic-folder', pc: 'ic-pc', notepad: 'ic-notepad', room: 'ic-room', gti: 'ic-gti', ureboy: 'ic-ureboy', photos: 'ic-photos', globe: 'ic-globe', chrome: 'ic-chrome', ure: 'ic-ure', steam: 'ic-steam', bin: 'ic-bin' };
+var KIND = { folder: 'File folder', pc: 'Local disk', notepad: 'Text document', room: 'PNG image', gti: 'PNG image', photos: 'PNG image', ureboy: 'Shortcut', globe: 'Internet shortcut', chrome: 'Application', ure: 'Shortcut', steam: 'Shortcut', bin: 'Recycle Bin' };
 
 var fsSt = null;
 function fsLoad() {
@@ -389,7 +398,23 @@ function fsDelete(path, it) {
     var st = fsLoad(), dyn = (st.add[path] || []).indexOf(it);
     if (dyn >= 0) { st.add[path].splice(dyn, 1); st.bin.push({ it: it, from: path, base: false }); }
     else { st.gone.push(path + '/' + it.n); st.bin.push({ it: it, from: path, base: true }); }
+    if (path === 'Desktop') { delete deskLoad()[it.n]; deskSave(); }
     fsSave(); refreshFileViews();
+}
+function immovable(it) { return !!(it.sys || it.go || it.t === 'folder' || it.t === 'pc'); }
+function fsMove(fromPath, it, toPath, cell) {
+    if (fromPath === toPath || !FS[toPath]) return null;
+    if (itemsFor(fromPath).indexOf(it) < 0) return null;   // stale reference (view changed mid-drag)
+    var st = fsLoad();
+    var moved = { n: uniqueName(toPath, it.n), t: it.t, app: it.app, arg: it.arg, go: it.go, size: it.size, date: it.date };
+    var dyn = (st.add[fromPath] || []).indexOf(it);
+    if (dyn >= 0) st.add[fromPath].splice(dyn, 1);
+    else st.gone.push(fromPath + '/' + it.n);
+    (st.add[toPath] = st.add[toPath] || []).push(moved);
+    if (fromPath === 'Desktop') { delete deskLoad()[it.n]; deskSave(); }
+    fsSave(); refreshFileViews();
+    if (toPath === 'Desktop' && cell) deskDrop(moved.n, cell);
+    return moved;
 }
 function fsRestore(i) {
     var st = fsLoad(), e = st.bin.splice(i, 1)[0]; if (!e) return;
@@ -400,17 +425,29 @@ function fsRestore(i) {
         (st.add[e.from] = st.add[e.from] || []).push(copy);
     }
     fsSave(); refreshFileViews();
+    if (chromeOnDisk() && PINNED.indexOf('chrome') < 0) installChrome({ shortcut: false });   // a restored shortcut re-registers Chrome
+}
+function chromeOnDisk() {   // the install is real wherever the shortcut lives, not just on the Desktop
+    var found = false;
+    Object.keys(FS).forEach(function (p) {
+        itemsFor(p).forEach(function (it) { if (it.app === 'chrome' && it.t === 'chrome') found = true; });
+    });
+    return found;
 }
 function fsPurge(i) { var st = fsLoad(); st.bin.splice(i, 1); fsSave(); refreshFileViews(); }
 function fsEmptyBin() { fsLoad().bin = []; fsSave(); refreshFileViews(); }
 function fsRename(path, it, name) {
     name = String(name || '').trim(); if (!name || name === it.n) return;
     name = uniqueName(path, name);
-    var st = fsLoad(), dyn = (st.add[path] || []).indexOf(it);
+    var st = fsLoad(), dyn = (st.add[path] || []).indexOf(it), old = it.n;
     if (dyn >= 0) it.n = name;
     else {  // renaming a factory file: retire the original, add a copy under the new name
         st.gone.push(path + '/' + it.n);
         (st.add[path] = st.add[path] || []).push({ n: name, t: it.t, app: it.app, arg: it.arg, go: it.go, size: it.size, date: it.date });
+    }
+    if (path === 'Desktop') {   // the icon keeps its spot through a rename
+        var dp = deskLoad();
+        if (dp[old]) { dp[name] = dp[old]; delete dp[old]; deskSave(); }
     }
     fsSave(); refreshFileViews();
 }
@@ -421,15 +458,17 @@ function refreshFileViews() {
         if (!openWins.explorer.el.querySelector('.fitem-ren')) exState.explorer.draw();
     }
     if (openWins.bin) drawBinList(openWins.bin.el);
+    renderDesktop();
 }
 function kindOf(it) {
+    if (it.sys) return 'System';
     if (/\.exe$/i.test(it.n)) return 'Application';
     if (/\.pdf$/i.test(it.n)) return 'PDF document';
     return KIND[it.t] || (it.go ? 'File folder' : 'File');
 }
 function sizeOf(it) {
     if (it.size) return it.size;
-    if (it.t === 'folder' || it.t === 'pc' || it.go) return '';
+    if (it.t === 'folder' || it.t === 'pc' || it.go || it.sys) return '';
     var h = 0; for (var i = 0; i < it.n.length; i++) h = (h * 31 + it.n.charCodeAt(i)) % 997;
     return (h % 87 + 9) + ' KB';
 }
@@ -439,7 +478,7 @@ var exState = {};
 function renderExplorer(id, arg) {
     return '<div class="exp">' +
         '<div class="exp-nav">' +
-          navItem('Home', 'ic-explorer') + navItem('Downloads', 'ic-download') + navItem('Pictures', 'ic-photos') +
+          navItem('Home', 'ic-explorer') + navItem('Desktop', 'ic-folder') + navItem('Downloads', 'ic-download') + navItem('Pictures', 'ic-photos') +
           '<div class="nav-group">This PC</div>' +
           navItem('This PC', 'ic-pc') + navItem('Documents', 'ic-folder') + navItem('Projects', 'ic-folder') +
         '</div>' +
@@ -538,20 +577,28 @@ function openFctx(e, t) {
 }
 function deleteItem(t) {
     var it = t.it;
+    if (it.sys) {
+        dlgError('Can’t delete “' + it.n + '”', 'That one is part of the machine. The machine would notice.');
+        return;
+    }
     if (it.t === 'folder' || it.t === 'pc' || it.go) {
         dlgError('Can’t delete “' + it.n + '”', 'UreOS is quite attached to this folder. All of the folders, actually. Try a file.');
         return;
     }
+    if (itemsFor(t.path).indexOf(it) < 0) return;   // stale reference (view changed since capture)
     fsDelete(t.path, it);
 }
 function startRename(t) {
+    if (t.it.sys) { dlgError('Can’t rename “' + t.it.n + '”', 'The machine gets confused when its parts change names.'); return; }
     var lab = t.tile.querySelector('.fitem-n'); if (!lab) return;
     var old = t.it.n, done = false;
     lab.innerHTML = '<input class="fitem-ren" type="text" aria-label="New name">';
     var inp = lab.firstChild; inp.value = old;
     function commit(save) {
         if (done) return; done = true;
-        if (save) fsRename(t.path, t.it, inp.value);
+        var v = inp.value;
+        lab.textContent = old;   // drop the input first — redraws are suppressed while it exists
+        if (save) fsRename(t.path, t.it, v);
         t.redraw();
     }
     inp.addEventListener('keydown', function (e) {
@@ -623,6 +670,200 @@ function dlgProps(path, it) {
         '<dl class="specs">' + rows.map(function (r) { return '<dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1]) + '</dd>'; }).join('') + '</dl></div>' +
         '<label class="dlg-check"><input type="checkbox" disabled> Read-only</label><label class="dlg-check"><input type="checkbox" disabled> Hidden</label>',
         [['OK', 'primary']]);
+}
+
+/* ═══════════════ desktop: a folder you can see ═══════════════
+   Desktop icons render straight from the 'Desktop' FS folder onto a
+   snap grid (column-major, like Windows). Positions persist in
+   comp_desk keyed by name; anything without a spot auto-flows into
+   the first free cell. Rearranging is just drag & drop below. */
+var DESK_CW = 92, DESK_CH = 100, DESK_PAD = 8;
+var deskPos = null;
+function deskLoad() {
+    if (!deskPos) {
+        // null-prototype: positions are keyed by user-controlled names ("__proto__" is a fine filename)
+        deskPos = Object.create(null);
+        try {
+            var raw = JSON.parse(recall('desk', 'null')) || {};
+            Object.keys(raw).forEach(function (k) { deskPos[k] = raw[k]; });
+        } catch (e) {}
+    }
+    return deskPos;
+}
+function deskSave() { try { store('desk', JSON.stringify(deskPos)); } catch (e) {} }
+function deskDims() {
+    return {
+        cols: Math.max(1, Math.floor((window.innerWidth - DESK_PAD * 2) / DESK_CW)),
+        rows: Math.max(1, Math.floor((window.innerHeight - BAR - DESK_PAD * 2) / DESK_CH))
+    };
+}
+function deskLayout() {
+    var items = itemsFor('Desktop'), pos = deskLoad(), dims = deskDims(), used = {}, list = [];
+    items.forEach(function (it) {   // stored spots first (valid + unclaimed only)
+        var p = pos[it.n];
+        if (!(p && p[0] >= 0 && p[0] < dims.cols && p[1] >= 0 && p[1] < dims.rows && !used[p[0] + ',' + p[1]])) p = null;
+        if (p) used[p[0] + ',' + p[1]] = 1;
+        list.push({ it: it, cell: p });
+    });
+    list.forEach(function (o) {     // everyone else flows column-major
+        if (o.cell) return;
+        for (var c = 0; c < dims.cols; c++) for (var r = 0; r < dims.rows; r++) {
+            if (!used[c + ',' + r]) { used[c + ',' + r] = 1; o.cell = [c, r]; return; }
+        }
+        o.cell = [0, 0];
+    });
+    return { list: list, used: used, dims: dims };
+}
+function renderDesktop() {
+    var desk = byId('desktop'); if (!desk) return;
+    if (desk.querySelector('.fitem-ren')) return;   // don't yank a desktop rename mid-edit
+    // remember selection + focus across the rebuild (rebuilds happen on every FS change)
+    var selN = null, focN = null;
+    var oldSel = desk.querySelector('.dicon.sel'), oldFoc = document.activeElement;
+    if (oldSel) selN = (oldSel.querySelector('.fitem-n') || {}).textContent || null;
+    if (oldFoc && oldFoc.classList && oldFoc.classList.contains('dicon') && desk.contains(oldFoc))
+        focN = (oldFoc.querySelector('.fitem-n') || {}).textContent || null;
+    desk.innerHTML = deskLayout().list.map(function (o, i) {
+        return '<button class="dicon" data-i="' + i + '" type="button" style="left:' + (DESK_PAD + o.cell[0] * DESK_CW) + 'px;top:' + (DESK_PAD + o.cell[1] * DESK_CH) + 'px">' +
+            '<span class="dicon-img">' + ic(FS_ICON[o.it.t] || 'ic-folder') + '</span>' +
+            '<span class="dicon-label fitem-n">' + esc(o.it.n) + '</span></button>';
+    }).join('');
+    if (selN || focN) desk.querySelectorAll('.dicon').forEach(function (b) {
+        var n = (b.querySelector('.fitem-n') || {}).textContent;
+        if (n === selN) b.classList.add('sel');
+        if (n === focN) b.focus();
+    });
+}
+function deskCellAt(x, y) {
+    var dims = deskDims();
+    return [clamp(Math.floor((x - DESK_PAD) / DESK_CW), 0, dims.cols - 1), clamp(Math.floor((y - DESK_PAD) / DESK_CH), 0, dims.rows - 1)];
+}
+function deskDrop(name, cell) {   // claim a cell; if it's taken, walk column-major to the next free one
+    var lay = deskLayout();
+    lay.list.forEach(function (o) { if (o.it.n === name && o.cell) delete lay.used[o.cell[0] + ',' + o.cell[1]]; });
+    if (lay.used[cell[0] + ',' + cell[1]]) {
+        var found = null, c, r;
+        for (c = cell[0]; c < lay.dims.cols && !found; c++) {
+            for (r = (c === cell[0] ? cell[1] : 0); r < lay.dims.rows; r++) if (!lay.used[c + ',' + r]) { found = [c, r]; break; }
+        }
+        for (c = 0; c < lay.dims.cols && !found; c++) {
+            for (r = 0; r < lay.dims.rows; r++) if (!lay.used[c + ',' + r]) { found = [c, r]; break; }
+        }
+        cell = found || cell;
+    }
+    deskLoad()[name] = cell; deskSave(); renderDesktop();
+}
+
+/* ═════════════ drag & drop: files really move ═════════════
+   Pointer-driven (no HTML5 DnD): press an icon or Explorer file,
+   move past a threshold and a ghost lifts off. Drop targets are the
+   desktop grid, Explorer folders (tiles, sidebar, or the open grid),
+   and the Recycle Bin (icon or window) — which deletes. System
+   icons only reposition; folders stay put. Click/dblclick survive
+   because nothing happens until the pointer actually travels. */
+var dnd = { cand: null, on: false, ghost: null, hint: null, over: null, ox: 0, oy: 0 };
+function exPath() { return (openWins.explorer && exState.explorer) ? exState.explorer.path : null; }
+function dndClearHint() { if (dnd.hint) { dnd.hint.classList.remove('drop-hint', 'drop-del'); dnd.hint = null; } }
+document.addEventListener('pointerdown', function (e) {
+    if (e.button !== 0 || dnd.on || dnd.cand) return;   // one pointer owns a drag at a time
+    if (e.target.closest('.fitem-ren')) return;   // typing a name, not dragging
+    var tile = e.target.closest('#desktop .dicon, .exp-grid .fitem'); if (!tile) return;
+    var from = tile.classList.contains('dicon') ? 'Desktop' : exPath();
+    if (!from) return;
+    if (from !== 'Desktop' && e.pointerType === 'touch') return;   // keep touch scrolling inside Explorer
+    var it = itemsFor(from)[+tile.getAttribute('data-i')]; if (!it) return;
+    dnd.cand = { id: e.pointerId, x: e.clientX, y: e.clientY, tile: tile, it: it, from: from };
+});
+window.addEventListener('pointermove', function (e) {
+    if (!dnd.cand || e.pointerId !== dnd.cand.id) return;   // only the owning pointer drives the drag
+    if (dnd.on && e.pointerType === 'mouse' && e.buttons === 0) { dndAbort(); dnd.cand = null; return; }   // lost pointerup (alt-tab): self-heal
+    if (!dnd.on) {
+        if (Math.abs(e.clientX - dnd.cand.x) + Math.abs(e.clientY - dnd.cand.y) < 7) return;
+        dndBegin(e);
+    }
+    if (dnd.on) dndTrack(e);
+});
+window.addEventListener('pointerup', function (e) {
+    if (!dnd.cand || e.pointerId !== dnd.cand.id) return;
+    if (dnd.on) dndDrop(e);
+    dnd.cand = null;
+});
+window.addEventListener('pointercancel', function (e) {
+    if (!dnd.cand || e.pointerId !== dnd.cand.id) return;
+    dndAbort(); dnd.cand = null;
+});
+window.addEventListener('blur', function () { dndAbort(); dnd.cand = null; });   // never carry a drag across focus loss
+function dndBegin(e) {
+    var c = dnd.cand;
+    if (!c.tile.isConnected) { dnd.cand = null; return; }   // a re-render detached the tile mid-press
+    var r = c.tile.getBoundingClientRect();
+    dnd.on = true; dnd.ox = c.x - r.left; dnd.oy = c.y - r.top;
+    var g = c.tile.cloneNode(true);
+    g.classList.add('dnd-ghost'); g.removeAttribute('data-i');
+    g.style.cssText = 'left:' + r.left + 'px;top:' + r.top + 'px;width:' + r.width + 'px;';
+    document.body.appendChild(g);
+    dnd.ghost = g;
+    c.tile.classList.add('drag-src');
+    document.body.classList.add('dnd');
+    dndTrack(e);
+}
+function dndTrack(e) {
+    dnd.ghost.style.left = (e.clientX - dnd.ox) + 'px';
+    dnd.ghost.style.top = (e.clientY - dnd.oy) + 'px';
+    dndClearHint();
+    dnd.over = dndTarget(e.clientX, e.clientY);
+    if (dnd.over && dnd.over.el) {
+        dnd.over.el.classList.add('drop-hint');
+        if (dnd.over.kind === 'bin') dnd.over.el.classList.add('drop-del');
+        dnd.hint = dnd.over.el;
+    }
+}
+function dndTarget(x, y) {
+    var el = document.elementFromPoint(x, y); if (!el) return null;
+    var fit = el.closest('.exp-grid .fitem');   // a folder tile inside Explorer
+    if (fit) {
+        var fi = itemsFor(exPath())[+fit.getAttribute('data-i')];
+        if (fi && fi.go && FS[fi.go]) return { kind: 'folder', path: fi.go, el: fit };
+    }
+    var nav = el.closest('.exp-nav .nav-item');
+    if (nav) { var p = nav.getAttribute('data-folder'); if (FS[p]) return { kind: 'folder', path: p, el: nav }; }
+    var dic = el.closest('#desktop .dicon');
+    if (dic) {
+        var di = itemsFor('Desktop')[+dic.getAttribute('data-i')];
+        if (di && di.app === 'bin' && (!dnd.cand || di !== dnd.cand.it)) return { kind: 'bin', el: dic };   // the bin can't eat itself
+        return { kind: 'desk' };   // dropping on a non-bin icon = that spot on the desktop
+    }
+    if (el.closest('#binBody')) return { kind: 'bin', el: el.closest('#binBody') };
+    if (el.closest('.exp-grid')) { var p2 = exPath(); return p2 ? { kind: 'folder', path: p2, el: null } : null; }
+    if (el.closest('#desktop')) return { kind: 'desk' };
+    return null;
+}
+function dndDrop(e) {
+    var c = dnd.cand;
+    dndAbort();
+    if (!c) return;
+    var t = dndTarget(e.clientX, e.clientY);   // re-resolve at release: the view may have scrolled/navigated mid-drag
+    if (!t) return;
+    var it = c.it, from = c.from;
+    if (t.kind === 'desk') {
+        var cell = deskCellAt(e.clientX, e.clientY);
+        if (from === 'Desktop') { if (itemsFor('Desktop').indexOf(it) >= 0) deskDrop(it.n, cell); }
+        else if (immovable(it)) dlgError('Can’t move “' + it.n + '”', 'UreOS keeps its furniture where it can see it.');
+        else fsMove(from, it, 'Desktop', cell);
+    } else if (t.kind === 'folder') {
+        if (t.path === from) return;
+        if (immovable(it)) dlgError('Can’t move “' + it.n + '”', it.sys ? 'That one is bolted to the desktop.' : 'Folders live where UreOS put them.');
+        else fsMove(from, it, t.path);
+    } else if (t.kind === 'bin') {
+        deleteItem({ path: from, it: it });
+    }
+}
+function dndAbort() {
+    dndClearHint();
+    if (dnd.ghost) { dnd.ghost.remove(); dnd.ghost = null; }
+    if (dnd.cand && dnd.cand.tile) dnd.cand.tile.classList.remove('drag-src');
+    document.body.classList.remove('dnd');
+    dnd.on = false; dnd.over = null;
 }
 
 /* —— Notepad —— */
@@ -1980,16 +2221,9 @@ function installChrome(opts) {
         p.innerHTML = ic('ic-chrome') + '<span>Chrome</span>';
         pins.insertBefore(p, pins.firstChild);
     }
-    if (opts.shortcut) addDesktopIcon('chrome', 'Google Chrome', 'ic-chrome');
+    // the desktop shortcut is a real file in the Desktop folder now
+    if (opts.shortcut && !fsHas('Desktop', 'Google Chrome')) fsAddFile('Desktop', { n: 'Google Chrome', t: 'chrome', app: 'chrome', date: dlStamp() });
     syncTaskbar();
-}
-function addDesktopIcon(app, label, icon) {
-    var dc = document.querySelector('.dicons');
-    if (!dc || dc.querySelector('.dicon[data-app="' + app + '"]')) return;
-    var b = document.createElement('button');
-    b.className = 'dicon'; b.type = 'button'; b.setAttribute('data-app', app);
-    b.innerHTML = '<span class="dicon-img">' + ic(icon) + '</span><span class="dicon-label">' + esc(label) + '</span>';
-    dc.appendChild(b);
 }
 
 /* —— Photos —— */
@@ -3688,7 +3922,12 @@ desktop.addEventListener('click', function (e) {
     desktop.querySelectorAll('.dicon.sel').forEach(function (x) { x.classList.remove('sel'); });
     if (d) d.classList.add('sel');
 });
-desktop.addEventListener('dblclick', function (e) { var d = e.target.closest('.dicon'); if (d) openApp(d.getAttribute('data-app')); });
+desktop.addEventListener('dblclick', function (e) {
+    var d = e.target.closest('.dicon'); if (!d) return;
+    var it = itemsFor('Desktop')[+d.getAttribute('data-i')]; if (!it) return;
+    if (it.app) openApp(it.app, it.arg);
+    else if (it.go) openApp('explorer', it.go);
+});
 
 byId('searchBtn').addEventListener('click', function (e) { e.stopPropagation(); setStart(true); });
 
@@ -3749,6 +3988,15 @@ var ctx = byId('ctx');
 function closeCtx() { ctx.hidden = true; }
 desktop.addEventListener('contextmenu', function (e) {
     e.preventDefault(); setStart(false); closeFlyouts(); closeFctx();
+    var d = e.target.closest('.dicon');
+    if (d) {   // icons get the file menu; empty desktop gets the desktop menu
+        closeCtx();
+        desktop.querySelectorAll('.dicon.sel').forEach(function (x) { x.classList.remove('sel'); });
+        d.classList.add('sel');
+        var it = itemsFor('Desktop')[+d.getAttribute('data-i')]; if (!it) return;
+        openFctx(e, { path: 'Desktop', it: it, tile: d, open: function () { if (it.app) openApp(it.app, it.arg); else if (it.go) openApp('explorer', it.go); }, redraw: renderDesktop });
+        return;
+    }
     ctx.hidden = false;
     ctx.style.left = clamp(e.clientX, 6, window.innerWidth - ctx.offsetWidth - 6) + 'px';
     ctx.style.top = clamp(e.clientY, 6, window.innerHeight - ctx.offsetHeight - 6) + 'px';
@@ -4069,6 +4317,9 @@ document.addEventListener('keydown', function (e) {
 applyAccent(recall('accent', ACCENTS[0].hex));
 if (recall('crt', 'on') !== 'on') document.body.classList.add('no-crt');
 renderWall();
+renderDesktop();
+// the Chrome shortcut persists as a real file — if it exists anywhere, the install is real too
+if (chromeOnDisk()) installChrome({ shortcut: false });
 tick(); setInterval(tick, 15000);
 
 // headless-screenshot hooks (like the room pages' ?dev): populate a state for a one-shot capture
@@ -4087,6 +4338,33 @@ if (location.search.indexOf('dev=dl') >= 0) { fsAddFile('Downloads', chromeSetup
 if (location.search.indexOf('dev=bin') >= 0) {
     var __f = fsAddFile('Downloads', chromeSetupItem()); fsDelete('Downloads', __f);
     openApp('bin');
+}
+if (location.search.indexOf('dev=dnd') >= 0) {   // a file moved Downloads→Desktop + a repositioned icon, in Explorer's Desktop view
+    var __d = fsAddFile('Downloads', chromeSetupItem());
+    fsMove('Downloads', __d, 'Desktop', [2, 1]);
+    deskDrop('URE BOY', [4, 0]);
+    openApp('explorer', 'Desktop');
+}
+if (location.search.indexOf('dev=drag') >= 0) {   // drive the real dnd engine with synthetic pointer events
+    setTimeout(function () {
+        function fakeDrag(fromTile, tx, ty, then) {
+            var r = fromTile.getBoundingClientRect(), sx = r.left + 24, sy = r.top + 24;
+            function pe(type, x, y, tgt) { (tgt || window).dispatchEvent(new PointerEvent(type, { clientX: x, clientY: y, button: 0, buttons: type === 'pointerup' ? 0 : 1, bubbles: true, pointerId: 1, pointerType: 'mouse' })); }
+            pe('pointerdown', sx, sy, fromTile);
+            for (var i = 1; i <= 12; i++) pe('pointermove', sx + (tx - sx) * i / 12, sy + (ty - sy) * i / 12);
+            pe('pointerup', tx, ty);
+            if (then) setTimeout(then, 60);
+        }
+        var icons = desktop.querySelectorAll('.dicon');
+        fakeDrag(icons[3], 500, 640, function () {                 // URE BOY → an empty desktop cell
+            var binTile = null;
+            desktop.querySelectorAll('.dicon').forEach(function (d) { if (d.textContent.indexOf('Recycle Bin') >= 0) binTile = d; });
+            var roomTile = null;
+            desktop.querySelectorAll('.dicon').forEach(function (d) { if (d.textContent.indexOf('the room') >= 0) roomTile = d; });
+            var br = binTile.getBoundingClientRect();
+            fakeDrag(roomTile, br.left + 30, br.top + 30, function () { openApp('bin'); });   // the room → Recycle Bin
+        });
+    }, 150);
 }
 if (location.search.indexOf('dev=find') >= 0) {
     openApp('about'); openFind('about');

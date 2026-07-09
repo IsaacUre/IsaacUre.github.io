@@ -257,17 +257,8 @@
 
         <canvas class="wall" id="wall" aria-hidden="true"></canvas>
 
-        <!-- desktop icons live here; right-click for the menu -->
-        <div class="desktop" id="desktop">
-          <div class="dicons">
-            <button class="dicon" data-app="explorer" type="button"><span class="dicon-img"><svg class="ic"><use href="#ic-pc"/></svg></span><span class="dicon-label">This PC</span></button>
-            <button class="dicon" data-app="about" type="button"><span class="dicon-img"><svg class="ic"><use href="#ic-ure"/></svg></span><span class="dicon-label">About Isaac</span></button>
-            <button class="dicon" data-app="steam" type="button"><span class="dicon-img"><svg class="ic"><use href="#ic-steam"/></svg></span><span class="dicon-label">Steam</span></button>
-            <button class="dicon" data-app="ureboy" type="button"><span class="dicon-img"><svg class="ic"><use href="#ic-ureboy"/></svg></span><span class="dicon-label">URE BOY</span></button>
-            <button class="dicon" data-app="room" type="button"><span class="dicon-img"><svg class="ic"><use href="#ic-room"/></svg></span><span class="dicon-label">the room</span></button>
-            <button class="dicon" data-app="bin" type="button"><span class="dicon-img"><svg class="ic"><use href="#ic-bin"/></svg></span><span class="dicon-label">Recycle Bin</span></button>
-          </div>
-        </div>
+        <!-- desktop icons render from the Desktop folder (renderDesktop in comp.js); right-click for the menu -->
+        <div class="desktop" id="desktop" aria-label="Desktop"></div>
 
         <!-- windows get generated in here -->
         <div class="windows" id="windows"></div>
