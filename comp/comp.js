@@ -1726,6 +1726,17 @@ var STG = [
     rev: ['Very Positive', 90, 512], art: ['#2d1e3a', SC.gb, 'URE'], sc: 'dungeon', launch: '/ureboy/',
     ach: [11, 16], achx: [['First Blood', 'Win a battle', 1], ['Lorekeeper', 'Read every codex', 1], ['Pacifist', 'Clear a floor unhurt', 0], ['Nat 20', 'Land a crit', 1]] },
 
+  // the only game on this Steam that actually runs IN the desktop — window.COOKIE, comp/cookie.js
+  { id: 'cookie', t: 'Cookie Clicker', dev: 'Orteil', pub: 'DashNet', yr: 2013,
+    tags: ['Clicker', 'Idle', 'Free to Play', 'Casual', 'Singleplayer'],
+    s: "An idle game about baking cookies. Click the cookie. Employ grandmas. Question nothing.",
+    d: "The one that started it all, ported to UreOS as a real desktop app. The numbers are the real numbers: 1.15× price curves, ×7 Frenzies, kittens that scale with milk, and an ascension formula you will do actual math about. Your grandmas keep the ovens on while the window is open.",
+    price: 0, disc: 0, free: true, owned: false, inst: false, hrs: 0, hrs2w: 0,
+    rev: ['Overwhelmingly Positive', 97, 214883], art: ['#3a2210', '#d9973a', 'CC'], sc: 'cookie', trend: true, spec: true,
+    app: 'cookie', live: true,
+    ach: [0, 40], achx: [],
+    news: [['v1.0 — the UreOS port', "Cookie Clicker now runs in a real window on the pixel desktop. Achievements sync to this very Steam client. The grandmas came with the port; we did not ask them to.", 'Jul 9']] },
+
   { id: 'bg3', t: "Baldur's Gate 3", dev: 'Larian Studios', pub: 'Larian Studios', yr: 2023,
     tags: ['RPG', 'Dungeons & Dragons', 'Story Rich', 'Turn-Based', 'Co-op'],
     s: "Gather your party and venture forth. A cinematic take on the world's greatest role-playing game.",
@@ -2266,6 +2277,21 @@ function stPaint(cv) {
         x.beginPath(); x.moveTo(w * 0.3 - 10, h * 0.22 + 15); x.lineTo(w * 0.3, h * 0.22); x.lineTo(w * 0.3 + 10, h * 0.22 + 15); x.closePath(); x.fill();
         for (var fl = 0; fl < 40; fl++) box(rnd() * w, rnd() * h, 1, 1, 'rgba(255,255,255,.8)');
         box(w * 0.52, h * 0.52, 3, 4, b);                               // the climber
+    } else if (sc === 'cookie') {
+        vgrad(mixHex(a, '#000000', .25), a, 0, h);                      // warm bakery gloom
+        for (var cr2 = 0; cr2 < 26; cr2++) box(rnd() * w, rnd() * h, rnd() > .8 ? 2 : 1, rnd() > .8 ? 2 : 1, 'rgba(217,151,58,.35)');   // crumb rain
+        var ccx = w * 0.5, ccy = h * 0.52, ccr = h * 0.34;
+        x.fillStyle = 'rgba(0,0,0,.35)'; x.beginPath(); x.arc(ccx + 3, ccy + 4, ccr, 0, 7); x.fill();
+        x.fillStyle = '#c9853a'; x.beginPath(); x.arc(ccx, ccy, ccr, 0, 7); x.fill();
+        x.fillStyle = '#a3672a'; x.beginPath(); x.arc(ccx, ccy, ccr, 0.6, 2.8); x.lineTo(ccx, ccy); x.fill();   // shaded edge
+        x.fillStyle = b; x.globalAlpha = .25; x.beginPath(); x.arc(ccx - ccr * 0.25, ccy - ccr * 0.25, ccr * 0.7, 0, 7); x.fill(); x.globalAlpha = 1;
+        for (var chp = 0; chp < 9; chp++) {                             // chips
+            var ca = rnd() * 6.28, cdd = rnd() * (ccr - 5);
+            box(ccx + Math.cos(ca) * cdd - 2, ccy + Math.sin(ca) * cdd - 2, 4, 4, '#4a2a12');
+        }
+        var glc = x.createRadialGradient(ccx, ccy, 2, ccx, ccy, h * 0.7);
+        glc.addColorStop(0, 'rgba(240,200,120,.25)'); glc.addColorStop(1, 'rgba(0,0,0,0)');
+        x.fillStyle = glc; x.fillRect(0, 0, w, h);
     } else {
         for (var band = 0; band < 5; band++) { x.fillStyle = band % 2 ? b : a; x.save(); x.translate(w / 2, h / 2); x.rotate(0.5); x.fillRect(-w, -h + band * (h * 0.5), w * 3, h * 0.42); x.restore(); }
         x.fillStyle = 'rgba(255,255,255,.85)'; x.beginPath(); x.arc(w * (0.3 + (seed % 4) * 0.12), h * 0.5, h * 0.16, 0, 7); x.fill();
@@ -2696,6 +2722,7 @@ function stLibHome() {
     return h;
 }
 function stLibGame(g) {
+    stLive(g);
     var inst = isInst(g.id), dl = stInQueue(g.id);
     var playBtn;
     if (dl) playBtn = '<button class="st-play wide dis">' + gDl() + ' Installing… ' + dl.pct + '%</button>';
@@ -2784,7 +2811,14 @@ function stFriends() {
 }
 
 /* ═══════════════ ACHIEVEMENTS PAGE ═══════════════ */
+function stLive(g) {   // games that run on this desktop report their real achievements
+    if (g.live && window.COOKIE) {
+        var la = window.COOKIE.steamAch();
+        g.ach = [la.n, la.total]; g.achx = la.list;
+    }
+}
 function stAchPage(g) {
+    stLive(g);
     var ach = g.ach || [0, 0], pct = ach[1] ? Math.round(ach[0] / ach[1] * 100) : 0;
     var list = (g.achx || []).slice();
     var unl = list.filter(function (a) { return a[2]; }).length;      // count real unlocks so padding matches the header
@@ -3146,6 +3180,7 @@ function stSpark() {
 function stPlay(id) {
     var g = SG[id];
     if (!isInst(id)) { stInstall(id); return; }
+    if (g.app) { openApp(g.app); stToast('Launching ' + g.t + '…'); return; }   // runs right here on the desktop
     if (g.launch) { window.location.href = g.launch; return; }
     stOverlay('Preparing to launch ' + esc(g.t) + '…', true);
     setTimeout(function () {
@@ -3263,6 +3298,14 @@ var APPS = {
     setup:    { title: 'Google Chrome Setup', icon: 'ic-chrome', w: 584, h: 468, render: renderSetup, init: initSetup, onClose: stopSetup },
     bin:      { title: 'Recycle Bin', icon: 'ic-bin', w: 600, h: 400, render: renderBin, init: initBin },
     steam:    { title: 'Steam', icon: 'ic-steam', w: 1100, h: 700, render: renderSteam, init: initSteam, onClose: closeSteam, focusArg: steamFocus },
+    cookie:   { title: 'Cookie Clicker', icon: 'ic-cookie', w: 980, h: 620,
+        render: function () { return window.COOKIE ? window.COOKIE.render() : '<p style="padding:24px">The oven never preheated (cookie.js missing).</p>'; },
+        init: function (el) { if (window.COOKIE) window.COOKIE.init(el); },
+        onClose: function () {
+            if (!window.COOKIE) return;
+            var hrs = window.COOKIE.close() || 0;   // real playtime lands on the Steam library page
+            if (hrs > 0) { var h = sjGet('hrs', {}); h.cookie = Math.round(((h.cookie || 0) + hrs) * 10) / 10; sjSet('hrs', h); }
+        } },
     ureboy:   { launch: '/ureboy/' },
     room:     { launch: '/1p/' },
     gti:      { launch: '/ureboy/' }
@@ -3726,6 +3769,7 @@ if (location.search.indexOf('dev=bin') >= 0) {
     var __f = fsAddFile('Downloads', chromeSetupItem()); fsDelete('Downloads', __f);
     openApp('bin');
 }
+if (location.search.indexOf('dev=cookie') >= 0) openApp('cookie');   // + &ckdev seeds a mature bakery
 if (location.search.indexOf('dev=dnd') >= 0) {   // a file moved Downloads→Desktop + a repositioned icon, in Explorer's Desktop view
     var __d = fsAddFile('Downloads', chromeSetupItem());
     fsMove('Downloads', __d, 'Desktop', [2, 1]);

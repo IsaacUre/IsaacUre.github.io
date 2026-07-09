@@ -1527,3 +1527,98 @@ span.st-newsart .ic { width: 40px; height: 40px; }
     .st-spark { display: none; }
     .st-achr-g { flex-basis: 90px; }
 }
+
+/* ══════════════════════ Cookie Clicker ══════════════════════ */
+.ck { display: flex; background: #241a10; min-width: 0; position: relative; overflow: hidden; }
+
+/* left: the cookie itself */
+.ck-left { position: relative; flex: 0 0 300px; display: flex; flex-direction: column; align-items: center; background: linear-gradient(180deg, #2e2114, #1c1309); border-right: 2px solid #4a3319; overflow: hidden; }
+.ck-rain { position: absolute; inset: 0; pointer-events: none; opacity: .7; }
+.ck-name { margin-top: 14px; z-index: 1; cursor: pointer; padding: 4px 12px; border: 1px dashed transparent; }
+.ck-name:hover { border-color: rgba(255,255,255,.25); }
+.ck-name-t { font-family: var(--f-pixel); font-size: .62rem; color: #f0dfc0; text-shadow: 0 2px 0 rgba(0,0,0,.5); }
+.ck-name-in { background: #140d06; border: 1px solid #7a5a2c; color: #f0dfc0; font-family: var(--f-ui); font-size: .85rem; padding: 2px 6px; width: 190px; text-align: center; outline: 0; }
+.ck-count { z-index: 1; margin-top: 10px; font-size: 1rem; color: #fff; text-shadow: 0 2px 0 rgba(0,0,0,.6); }
+.ck-count b { font-family: var(--f-pixel); font-size: .8rem; color: #fff2d0; }
+.ck-cps { z-index: 1; font-size: .75rem; color: #cbb894; }
+.ck-big { z-index: 1; margin: 18px 0 6px; background: none; border: 0; cursor: pointer; filter: drop-shadow(0 8px 0 rgba(0,0,0,.35)); transition: transform .06s; }
+.ck-big:hover { transform: scale(1.03); }
+.ck-big.pop { animation: ckpop .12s ease-out; }
+@keyframes ckpop { 0% { transform: scale(.95); } 100% { transform: scale(1); } }
+.ck-bigcv { image-rendering: pixelated; display: block; }
+.ck-buffs { z-index: 1; min-height: 24px; display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; padding: 0 8px; }
+.ck-buff { font-size: .7rem; background: rgba(240,180,60,.2); border: 1px solid #b98a2e; color: #ffdf9e; padding: 2px 8px; border-radius: 4px; }
+.ck-milk { position: absolute; left: 0; right: 0; bottom: 0; height: 60px; pointer-events: none; }
+.ck-fl { position: absolute; z-index: 5; font-family: var(--f-pixel); font-size: .55rem; color: #fff; text-shadow: 0 1px 0 #000; pointer-events: none; animation: ckfl .9s ease-out forwards; }
+@keyframes ckfl { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-46px); } }
+.ck-gold { position: absolute; z-index: 6; background: none; border: 0; cursor: pointer; animation: ckgold 1.4s ease-in-out infinite; filter: drop-shadow(0 0 8px rgba(240,200,80,.8)); }
+.ck-gold canvas { width: 40px; height: 40px; image-rendering: pixelated; display: block; }
+@keyframes ckgold { 0%, 100% { transform: scale(.92); } 50% { transform: scale(1.1); } }
+
+/* middle: news, upgrades, tabs */
+.ck-mid { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; background: #1c1610; }
+.ck-news { flex: 0 0 auto; padding: 8px 14px; background: #140f0a; border-bottom: 1px solid #3a2a16; font-size: .78rem; color: #cbb894; font-style: italic; min-height: 36px; display: flex; align-items: center; overflow: hidden; }
+.ck-news-t.roll { animation: cknews .5s ease-out; }
+@keyframes cknews { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.ck-uphead, .ck-storehead { font-family: var(--f-pixel); font-size: .55rem; color: #b99a64; padding: 9px 14px 4px; letter-spacing: 1px; }
+.ck-ups { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 12px 10px; min-height: 58px; border-bottom: 1px solid #3a2a16; align-content: flex-start; }
+.ck-up { width: 44px; height: 44px; background: linear-gradient(180deg, #3a2a16, #241a0e); border: 2px solid #6b4c22; cursor: pointer; position: relative; }
+.ck-up span { position: absolute; inset: 9px; background: #c9853a; box-shadow: inset -3px -3px 0 rgba(0,0,0,.3), inset 3px 3px 0 rgba(255,255,255,.18); }
+.ck-up.k-mouse span { background: #cfd2da; }
+.ck-up.k-kitten span { background: #e0959c; border-radius: 50%; }
+.ck-up.k-cookie span { background: #7a4a1c; border-radius: 50%; }
+.ck-up.cant { opacity: .45; }
+.ck-up:hover { border-color: #e0b060; }
+.ck-noup { font-size: .75rem; color: #8a7a5c; align-self: center; font-style: italic; }
+.ck-tabs { display: flex; gap: 2px; padding: 8px 12px 0; border-bottom: 1px solid #3a2a16; }
+.ck-tab { padding: 6px 14px; font-size: .78rem; color: #cbb894; background: #241a0e; border: 1px solid #3a2a16; border-bottom: 0; }
+.ck-tab.sel { background: #332412; color: #ffe9c4; }
+.ck-tabbody { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 12px 14px; }
+.ck-stats { display: grid; grid-template-columns: auto 1fr; gap: 5px 16px; font-size: .8rem; }
+.ck-stats dt { color: #9a8563; }
+.ck-stats dd { color: #f0dfc0; }
+.ck-wipe { margin-top: 14px; font-size: .72rem; color: #d88a8a; background: none; border: 1px solid #7a3a3a; padding: 5px 10px; }
+.ck-wipe.armed { background: #5a1a1a; color: #ffb0b0; }
+.ck-achgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+.ck-achb { border: 1px solid #3a2a16; background: #241a0e; padding: 7px 9px; opacity: .5; }
+.ck-achb.got { opacity: 1; border-color: #b98a2e; background: #33240f; }
+.ck-achb b { display: block; font-size: .72rem; color: #ffe9c4; }
+.ck-achb i { font-style: normal; font-size: .66rem; color: #9a8563; }
+.ck-legacy p { font-size: .8rem; color: #d8c8a8; line-height: 1.5; margin-bottom: 10px; max-width: 440px; }
+.ck-ascend { background: linear-gradient(180deg, #6b4ac9, #4a2f9c); border: 1px solid #9a7ae0; color: #fff; padding: 9px 16px; font-size: .8rem; }
+.ck-ascend.armed { background: #8a2020; border-color: #d84a4a; }
+.ck-dim { color: #8a7a5c !important; }
+
+/* right: the store */
+.ck-store { flex: 0 0 250px; display: flex; flex-direction: column; background: #171209; border-left: 2px solid #4a3319; }
+.ck-buymode { display: flex; gap: 3px; padding: 6px 8px; border-bottom: 1px solid #3a2a16; }
+.ck-bm { flex: 1; font-size: .72rem; padding: 4px 0; color: #cbb894; background: #241a0e; border: 1px solid #3a2a16; }
+.ck-bm.sel { background: #4a3319; color: #ffe9c4; border-color: #6b4c22; }
+.ck-bm.ck-sell.sel { background: #5a2020; border-color: #8a3a3a; }
+.ck-brows { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.ck-brow { display: flex; align-items: center; gap: 9px; width: 100%; padding: 7px 10px; background: linear-gradient(180deg, #2a1f10, #221809); border: 0; border-bottom: 1px solid #120d06; cursor: pointer; text-align: left; }
+.ck-brow:hover { background: #3a2a14; }
+.ck-brow.cant { opacity: .55; }
+.ck-brow.myst { filter: brightness(.4) saturate(.2); }
+.ck-bico { width: 24px; height: 24px; image-rendering: pixelated; flex: 0 0 auto; }
+.ck-bname { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; line-height: 1.2; }
+.ck-bname b { font-size: .8rem; color: #f0dfc0; font-weight: 500; }
+.ck-bprice { font-style: normal; font-size: .7rem; color: #d87a6a; }
+.ck-bprice.ok { color: #8fd88a; }
+.ck-bprice.sell { color: #e0c34a; }
+.ck-bown { font-family: var(--f-pixel); font-size: .75rem; color: rgba(255,235,190,.35); }
+
+/* floating bits */
+.ck-tip { position: absolute; z-index: 30; width: 240px; background: #140f0a; border: 1px solid #6b4c22; padding: 9px 11px; pointer-events: none; box-shadow: 0 6px 0 rgba(0,0,0,.35); }
+.ck-tip b { display: block; font-size: .8rem; color: #ffe9c4; }
+.ck-tip i { display: block; font-style: italic; font-size: .7rem; color: #9a8563; margin: 3px 0; }
+.ck-tip span { display: block; font-size: .7rem; color: #cbb894; }
+.ck-achtoast { position: absolute; z-index: 31; right: 12px; bottom: 12px; background: #33240f; border: 2px solid #b98a2e; padding: 10px 14px; opacity: 0; transform: translateY(8px); transition: opacity .25s, transform .25s; }
+.ck-achtoast.on { opacity: 1; transform: none; }
+.ck-achtoast b { display: block; font-family: var(--f-pixel); font-size: .55rem; color: #e0b060; margin-bottom: 4px; }
+.ck-achtoast span { display: block; font-size: .78rem; color: #ffe9c4; }
+
+@media (max-width: 900px) {
+    .ck-left { flex-basis: 240px; }
+    .ck-store { flex-basis: 210px; }
+}
