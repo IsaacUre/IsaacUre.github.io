@@ -340,15 +340,24 @@ function renderAbout() {
    Recycle Bin, and the browser download shelf all speak to it. */
 var FS = {
     'Home': { items: [
-        { n: 'Desktop', t: 'folder', go: 'This PC' }, { n: 'Downloads', t: 'folder', go: 'Downloads' },
+        { n: 'Desktop', t: 'folder', go: 'Desktop' }, { n: 'Downloads', t: 'folder', go: 'Downloads' },
         { n: 'Documents', t: 'folder', go: 'Documents' }, { n: 'Pictures', t: 'folder', go: 'Pictures' },
         { n: 'Projects', t: 'folder', go: 'Projects' }, { n: 'URE BOY', t: 'ureboy', app: 'ureboy' }
     ] },
     'This PC': { items: [
-        { n: 'Local Disk (C:)', t: 'pc' }, { n: 'Downloads', t: 'folder', go: 'Downloads' },
-        { n: 'Documents', t: 'folder', go: 'Documents' },
+        { n: 'Local Disk (C:)', t: 'pc' }, { n: 'Desktop', t: 'folder', go: 'Desktop' },
+        { n: 'Downloads', t: 'folder', go: 'Downloads' }, { n: 'Documents', t: 'folder', go: 'Documents' },
         { n: 'Pictures', t: 'folder', go: 'Pictures' }, { n: 'Projects', t: 'folder', go: 'Projects' }
     ] },
+    // the Desktop is a real folder — its items ARE the desktop icons
+    'Desktop': { items: [
+        { n: 'This PC', t: 'pc', app: 'explorer', arg: 'This PC', sys: 1 },
+        { n: 'About Isaac', t: 'ure', app: 'about' },
+        { n: 'Steam', t: 'steam', app: 'steam' },
+        { n: 'URE BOY', t: 'ureboy', app: 'ureboy' },
+        { n: 'the room', t: 'room', app: 'room' },
+        { n: 'Recycle Bin', t: 'bin', app: 'bin', sys: 1 }
+    ], empty: 'A perfectly clean desktop. Suspicious.' },
     'Downloads': { items: [], empty: 'Nothing downloaded yet. Edge has one (1) idea.' },
     'Documents': { items: [
         { n: 'about-me.txt', t: 'notepad', app: 'about' }, { n: 'resume.pdf', t: 'notepad', app: 'about' },
@@ -363,8 +372,8 @@ var FS = {
         { n: 'GTI RUN', t: 'gti', app: 'gti' }, { n: 'isaacure.com', t: 'globe', app: 'chrome' }
     ] }
 };
-var FS_ICON = { folder: 'ic-folder', pc: 'ic-pc', notepad: 'ic-notepad', room: 'ic-room', gti: 'ic-gti', ureboy: 'ic-ureboy', photos: 'ic-photos', globe: 'ic-globe', chrome: 'ic-chrome' };
-var KIND = { folder: 'File folder', pc: 'Local disk', notepad: 'Text document', room: 'PNG image', gti: 'PNG image', photos: 'PNG image', ureboy: 'Shortcut', globe: 'Internet shortcut', chrome: 'Application' };
+var FS_ICON = { folder: 'ic-folder', pc: 'ic-pc', notepad: 'ic-notepad', room: 'ic-room', gti: 'ic-gti', ureboy: 'ic-ureboy', photos: 'ic-photos', globe: 'ic-globe', chrome: 'ic-chrome', ure: 'ic-ure', steam: 'ic-steam', bin: 'ic-bin' };
+var KIND = { folder: 'File folder', pc: 'Local disk', notepad: 'Text document', room: 'PNG image', gti: 'PNG image', photos: 'PNG image', ureboy: 'Shortcut', globe: 'Internet shortcut', chrome: 'Application', ure: 'Shortcut', steam: 'Shortcut', bin: 'Recycle Bin' };
 
 var fsSt = null;
 function fsLoad() {
@@ -389,7 +398,23 @@ function fsDelete(path, it) {
     var st = fsLoad(), dyn = (st.add[path] || []).indexOf(it);
     if (dyn >= 0) { st.add[path].splice(dyn, 1); st.bin.push({ it: it, from: path, base: false }); }
     else { st.gone.push(path + '/' + it.n); st.bin.push({ it: it, from: path, base: true }); }
+    if (path === 'Desktop') { delete deskLoad()[it.n]; deskSave(); }
     fsSave(); refreshFileViews();
+}
+function immovable(it) { return !!(it.sys || it.go || it.t === 'folder' || it.t === 'pc'); }
+function fsMove(fromPath, it, toPath, cell) {
+    if (fromPath === toPath || !FS[toPath]) return null;
+    if (itemsFor(fromPath).indexOf(it) < 0) return null;   // stale reference (view changed mid-drag)
+    var st = fsLoad();
+    var moved = { n: uniqueName(toPath, it.n), t: it.t, app: it.app, arg: it.arg, go: it.go, size: it.size, date: it.date };
+    var dyn = (st.add[fromPath] || []).indexOf(it);
+    if (dyn >= 0) st.add[fromPath].splice(dyn, 1);
+    else st.gone.push(fromPath + '/' + it.n);
+    (st.add[toPath] = st.add[toPath] || []).push(moved);
+    if (fromPath === 'Desktop') { delete deskLoad()[it.n]; deskSave(); }
+    fsSave(); refreshFileViews();
+    if (toPath === 'Desktop' && cell) deskDrop(moved.n, cell);
+    return moved;
 }
 function fsRestore(i) {
     var st = fsLoad(), e = st.bin.splice(i, 1)[0]; if (!e) return;
