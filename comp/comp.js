@@ -1318,6 +1318,9 @@ function gDl() { return '<svg class="ic" viewBox="0 0 16 16" shape-rendering="cr
 function gStar() { return '<svg class="ic" viewBox="0 0 16 16" shape-rendering="crispEdges"><g fill="currentColor"><rect x="7" y="1" width="2" height="4"/><rect x="6" y="5" width="4" height="1"/><rect x="2" y="6" width="12" height="2"/><rect x="4" y="8" width="8" height="1"/><rect x="4" y="9" width="3" height="1"/><rect x="9" y="9" width="3" height="1"/><rect x="3" y="10" width="2" height="3"/><rect x="11" y="10" width="2" height="3"/></g></svg>'; }
 function gThumb() { return '<svg class="st-mini" viewBox="0 0 16 16" shape-rendering="crispEdges"><g fill="currentColor"><rect x="2" y="7" width="3" height="7"/><rect x="6" y="6" width="7" height="8"/><rect x="6" y="2" width="2" height="4"/><rect x="8" y="1" width="2" height="2"/><rect x="10" y="2" width="1" height="4"/></g></svg>'; }
 function gCheck() { return '<svg class="st-mini" viewBox="0 0 16 16" shape-rendering="crispEdges"><g fill="currentColor"><rect x="2" y="7" width="2" height="2"/><rect x="4" y="9" width="2" height="2"/><rect x="6" y="11" width="2" height="2"/><rect x="8" y="8" width="2" height="2"/><rect x="10" y="5" width="2" height="2"/><rect x="12" y="3" width="2" height="2"/></g></svg>'; }
+function gBell() { return '<svg class="ic" viewBox="0 0 16 16" shape-rendering="crispEdges"><g fill="currentColor"><rect x="7" y="1" width="2" height="1"/><rect x="5" y="2" width="6" height="1"/><rect x="4" y="3" width="8" height="6"/><rect x="3" y="9" width="10" height="2"/><rect x="2" y="11" width="12" height="1"/><rect x="6" y="13" width="4" height="1"/></g></svg>'; }
+function gDeck() { return '<svg class="st-mini" viewBox="0 0 16 16" shape-rendering="crispEdges"><rect x="1" y="4" width="14" height="8" fill="none" stroke="currentColor" stroke-width="1"/><rect x="4" y="6" width="3" height="3" fill="currentColor"/><rect x="10" y="6" width="2" height="2" fill="currentColor"/></svg>'; }
+function gUsers() { return '<svg class="st-mini" viewBox="0 0 16 16" shape-rendering="crispEdges"><g fill="currentColor"><rect x="3" y="3" width="4" height="4"/><rect x="2" y="8" width="6" height="4"/><rect x="10" y="4" width="3" height="3"/><rect x="9" y="8" width="5" height="3"/></g></svg>'; }
 
 /* ── the catalogue ── */
 var SC = { silver: '#b9c0c6', red: '#d81e05', gb: '#9bbc0f' };
@@ -1464,10 +1467,268 @@ var STG = [
     d: "It is not poker. It is a spreadsheet with a heartbeat, and it will eat your week.",
     price: 1499, disc: 20, owned: false, inst: false, hrs: 0, hrs2w: 0,
     rev: ['Overwhelmingly Positive', 98, 96044], art: ['#2a1030', '#c22a4a', 'BAL'], sc: 'abstract', spec: true, trend: true,
-    ach: [0, 34] }
+    ach: [0, 34] },
+
+  { id: 'satisfactory', t: 'Satisfactory', dev: 'Coffee Stain Studios', pub: 'Coffee Stain', yr: 2024,
+    tags: ['Automation', 'Base Building', 'Open World', 'First-Person', 'Optimization'],
+    s: "Conquer an alien planet by building massive factories — in first person, at conveyor level.",
+    d: "Factorio's philosophy at eye height. Isaac walks his own main bus here and calls it cardio.",
+    price: 3999, disc: 0, owned: true, inst: true, hrs: 89.3, hrs2w: 8.4,
+    rev: ['Overwhelmingly Positive', 97, 190441], art: ['#2a1a10', '#e8842a', 'SAT'], sc: 'factory', feat: true,
+    ach: [28, 48], news: [['1.1 — vertical logistics', "Lifts got smarter, splitters got vertical, the sky got more crowded.", 'Jun 28']] },
+
+  { id: 'portal2', t: 'Portal 2', dev: 'Valve', pub: 'Valve', yr: 2011,
+    tags: ['Puzzle', 'Co-op', 'Comedy', 'First-Person', 'Sci-fi'],
+    s: "Think with portals. The best comedy duo in games is a rogue AI and a potato battery.",
+    d: "Still the gold standard for a punchline landing at the exact moment a physics puzzle clicks.",
+    price: 999, disc: 80, owned: true, inst: true, hrs: 18.2, hrs2w: 0,
+    rev: ['Overwhelmingly Positive', 98, 435019], art: ['#101820', '#3fa8d8', 'P2'], sc: 'abstract',
+    ach: [34, 51] },
+
+  { id: 'kerbal', t: 'Kerbal Space Program', dev: 'Squad', pub: 'Private Division', yr: 2015,
+    tags: ['Space', 'Simulation', 'Physics', 'Sandbox', 'Difficult'],
+    s: "Build a rocket out of parts and hope. Fly little green optimists to places they should not go.",
+    d: "The only game where 'more struts' is both a meme and a valid engineering document.",
+    price: 3999, disc: 75, owned: true, inst: false, hrs: 44.1, hrs2w: 0,
+    rev: ['Overwhelmingly Positive', 95, 105882], art: ['#0d1420', '#7bc043', 'KSP'], sc: 'space', spec: true,
+    ach: [19, 55] },
+
+  { id: 'civ6', t: "Sid Meier's Civilization VI", dev: 'Firaxis Games', pub: '2K', yr: 2016,
+    tags: ['Strategy', 'Turn-Based', '4X', 'Multiplayer', 'Addictive'],
+    s: "Build an empire to stand the test of time. One. More. Turn.",
+    d: "The clock says 2 AM. Gandhi says otherwise. An optimizer's slow-motion chess match against history.",
+    price: 5999, disc: 90, owned: true, inst: true, hrs: 76.8, hrs2w: 0,
+    rev: ['Very Positive', 87, 254120], art: ['#1e2a1a', '#d8b13a', 'CIV'], sc: 'nature', spec: true,
+    ach: [31, 80] },
+
+  { id: 'slaythespire', t: 'Slay the Spire', dev: 'Mega Crit', pub: 'Mega Crit', yr: 2019,
+    tags: ['Roguelike', 'Card Game', 'Deckbuilding', 'Strategy', 'Turn-Based'],
+    s: "Fuse card games and roguelikes. Craft a unique deck, climb the Spire, die, learn, climb again.",
+    d: "Every run is a math problem wearing a fantasy costume. Isaac's kind of costume party.",
+    price: 2499, disc: 66, owned: true, inst: true, hrs: 61.4, hrs2w: 2.1,
+    rev: ['Overwhelmingly Positive', 97, 191230], art: ['#241418', '#c23a2a', 'STS'], sc: 'cards', spec: true,
+    ach: [24, 46] },
+
+  { id: 'tabletop', t: 'Tabletop Simulator', dev: 'Berserk Games', pub: 'Berserk Games', yr: 2015,
+    tags: ['Tabletop', 'Board Game', 'Multiplayer', 'Sandbox', 'RPG'],
+    s: "Physics-driven tabletop sandbox. Flip the table. It's allowed here.",
+    d: "The DM's remote toolkit. Isaac's dice tower is modded, his battle maps are labeled, his players still ignore the plot hooks.",
+    price: 1999, disc: 50, owned: true, inst: true, hrs: 33.7, hrs2w: 1.2,
+    rev: ['Very Positive', 89, 91340], art: ['#0d2318', '#d8b13a', 'TTS'], sc: 'cards',
+    ach: [8, 15] },
+
+  { id: 'stanley', t: 'The Stanley Parable: Ultra Deluxe', dev: 'Crows Crows Crows', pub: 'Crows Crows Crows', yr: 2022,
+    tags: ['Absurdist', 'Comedy', 'Walking Simulator', 'Choices Matter', 'Meta'],
+    s: "Stanley pressed a button. Or did he? A narrator disagrees. Repeatedly.",
+    d: "Absurdist philosophy with a door budget. The closest a game has come to reading Camus in an office chair.",
+    price: 2499, disc: 40, owned: true, inst: true, hrs: 6.6, hrs2w: 0,
+    rev: ['Overwhelmingly Positive', 96, 44210], art: ['#2a2418', '#d8d0b0', 'TSP'], sc: 'abstract',
+    ach: [7, 12], achx: [['Click 430,000 times', 'You did not do this', 0], ['Go outside', "Don't play for 5 years", 0], ['Commitment', 'Play all day Tuesday', 1]] },
+
+  { id: 'papers', t: 'Papers, Please', dev: '3909 LLC', pub: '3909 LLC', yr: 2013,
+    tags: ['Absurdist', 'Simulation', 'Story Rich', 'Dystopian', 'Indie'],
+    s: "Glory to Arstotzka. A border checkpoint, a stamp, and your slowly compressing soul.",
+    d: "Bureaucracy as tragedy, tragedy as gameplay. Cause no trouble.",
+    price: 999, disc: 66, owned: true, inst: true, hrs: 11.2, hrs2w: 0,
+    rev: ['Overwhelmingly Positive', 97, 88450], art: ['#1c1a14', '#a03a2a', 'PP'], sc: 'city',
+    ach: [9, 13] },
+
+  { id: 'hollowknight', t: 'Hollow Knight', dev: 'Team Cherry', pub: 'Team Cherry', yr: 2017,
+    tags: ['Metroidvania', 'Difficult', 'Atmospheric', 'Great Soundtrack', 'Indie'],
+    s: "Forge your own path through a vast, ruined kingdom of insects and heroes.",
+    d: "A kingdom of bugs with better worldbuilding than most trilogies. The map seller is doing his best.",
+    price: 1499, disc: 50, owned: true, inst: true, hrs: 39.5, hrs2w: 0,
+    rev: ['Overwhelmingly Positive', 97, 302110], art: ['#101622', '#7fd4e0', 'HK'], sc: 'cave',
+    ach: [28, 63] },
+
+  { id: 'celeste', t: 'Celeste', dev: 'Extremely OK Games', pub: 'Maddy Makes Games', yr: 2018,
+    tags: ['Platformer', 'Difficult', 'Pixel Graphics', 'Story Rich', 'Great Soundtrack'],
+    s: "Help Madeline survive her inner demons on her journey to the top of Celeste Mountain.",
+    d: "A pixel-perfect platformer about anxiety that is somehow gentle about being brutally hard.",
+    price: 1999, disc: 75, owned: true, inst: true, hrs: 21.3, hrs2w: 0,
+    rev: ['Overwhelmingly Positive', 98, 122480], art: ['#1a2232', '#e07ba0', 'CEL'], sc: 'snow', spec: true,
+    ach: [18, 32] },
+
+  { id: 'terraria', t: 'Terraria', dev: 'Re-Logic', pub: 'Re-Logic', yr: 2011,
+    tags: ['Sandbox', 'Survival', 'Pixel Graphics', 'Crafting', 'Multiplayer'],
+    s: "Dig, fight, explore, build! Nothing is impossible in this action-packed adventure.",
+    d: "2D Minecraft's cooler older sibling. The Wall of Flesh remains a group project.",
+    price: 999, disc: 50, owned: true, inst: false, hrs: 94.6, hrs2w: 0,
+    rev: ['Overwhelmingly Positive', 98, 1121300], art: ['#12241a', '#5db04a', 'TER'], sc: 'cave',
+    ach: [42, 115] },
+
+  { id: 'ets2', t: 'Euro Truck Simulator 2', dev: 'SCS Software', pub: 'SCS Software', yr: 2012,
+    tags: ['Driving', 'Simulation', 'Relaxing', 'Open World', 'Automobile Sim'],
+    s: "Travel across Europe as king of the road, a trucker who delivers important cargo.",
+    d: "Chamomile in game form. Set cruise control on the A8, put on a podcast, feel your heart rate drop.",
+    price: 1999, disc: 75, owned: true, inst: true, hrs: 28.4, hrs2w: 1.8,
+    rev: ['Overwhelmingly Positive', 97, 288420], art: ['#16202a', '#3a7db0', 'ETS'], sc: 'road', spec: true,
+    ach: [21, 71] },
+
+  { id: 'drg', t: 'Deep Rock Galactic', dev: 'Ghost Ship Games', pub: 'Coffee Stain', yr: 2020,
+    tags: ['Co-op', 'FPS', 'Mining', 'Class-Based', 'Multiplayer'],
+    s: "Danger. Darkness. Dwarves. A 1-4 player co-op FPS with 100% destructible caves.",
+    d: "ROCK AND STONE. The only shooter where the real boss is cave geometry and nobody minds.",
+    price: 2999, disc: 67, owned: true, inst: true, hrs: 47.9, hrs2w: 3.3,
+    rev: ['Overwhelmingly Positive', 97, 265110], art: ['#1c1208', '#e8a42a', 'DRG'], sc: 'cave', spec: true,
+    ach: [37, 69] },
+
+  { id: 'vampire', t: 'Vampire Survivors', dev: 'poncle', pub: 'poncle', yr: 2022,
+    tags: ['Roguelike', 'Bullet Hell', 'Pixel Graphics', 'Addictive', 'Casual'],
+    s: "Mow down thousands of night creatures and survive until dawn. Cheap as chips, sharp as garlic.",
+    d: "Five dollars. Five hundred enemies on screen. Five hours gone. The math never favored you.",
+    price: 499, disc: 20, owned: true, inst: true, hrs: 30.1, hrs2w: 2.6,
+    rev: ['Overwhelmingly Positive', 98, 231240], art: ['#170f1c', '#c2a03a', 'VS'], sc: 'dungeon',
+    ach: [88, 202] },
+
+  { id: 'witcher3', t: 'The Witcher 3: Wild Hunt', dev: 'CD PROJEKT RED', pub: 'CD PROJEKT RED', yr: 2015,
+    tags: ['RPG', 'Open World', 'Story Rich', 'Dark Fantasy', 'Mature'],
+    s: "You are Geralt of Rivia, monster slayer for hire, on the trail of the child of prophecy.",
+    d: "The sidequests out-write other games' main plots. Gwent is a load-bearing minigame.",
+    price: 3999, disc: 80, owned: false, inst: false, hrs: 0, hrs2w: 0,
+    rev: ['Overwhelmingly Positive', 96, 762210], art: ['#1a1c14', '#b0b8bc', 'W3'], sc: 'nature', spec: true,
+    ach: [0, 78] },
+
+  { id: 'cyberpunk', t: 'Cyberpunk 2077', dev: 'CD PROJEKT RED', pub: 'CD PROJEKT RED', yr: 2020,
+    tags: ['Open World', 'RPG', 'Sci-fi', 'Story Rich', 'Mature'],
+    s: "An open-world action-adventure set in Night City, a megalopolis obsessed with power and glamour.",
+    d: "The great redemption arc of modern games. Come for Night City at dusk; stay because Johnny won't leave.",
+    price: 5999, disc: 50, owned: false, inst: false, hrs: 0, hrs2w: 0,
+    rev: ['Very Positive', 86, 724110], art: ['#12141c', '#e8d83a', 'CP'], sc: 'city', spec: true, trend: true,
+    ach: [0, 57] },
+
+  { id: 'rdr2', t: 'Red Dead Redemption 2', dev: 'Rockstar Games', pub: 'Rockstar Games', yr: 2019,
+    tags: ['Open World', 'Story Rich', 'Western', 'Adventure', 'Mature'],
+    s: "The epic tale of outlaw Arthur Morgan and the Van der Linde gang, across a gorgeous dying frontier.",
+    d: "A six-minute horse ride where nothing happens, and you would not skip a second of it.",
+    price: 5999, disc: 67, owned: false, inst: false, hrs: 0, hrs2w: 0,
+    rev: ['Very Positive', 91, 622840], art: ['#241410', '#c2482a', 'RDR'], sc: 'nature', spec: true,
+    ach: [0, 51] },
+
+  { id: 'sekiro', t: 'Sekiro: Shadows Die Twice', dev: 'FromSoftware', pub: 'Activision', yr: 2019,
+    tags: ['Souls-like', 'Difficult', 'Ninja', 'Action', 'Singleplayer'],
+    s: "Carve your own clever path to vengeance in the award-winning adventure from FromSoftware.",
+    d: "Hesitation is defeat. A parry rhythm game wearing an action game's clothes.",
+    price: 5999, disc: 50, owned: false, inst: false, hrs: 0, hrs2w: 0,
+    rev: ['Overwhelmingly Positive', 95, 291180], art: ['#1a141c', '#c2452a', 'SEK'], sc: 'dungeon', spec: true,
+    ach: [0, 34] },
+
+  { id: 'f1manager', t: 'F1 Manager 2024', dev: 'Frontier Developments', pub: 'Frontier', yr: 2024,
+    tags: ['Management', 'Racing', 'Strategy', 'Simulation', 'Sports'],
+    s: "Rewrite the 2024 season from the pit wall. Every call is yours.",
+    d: "Basically PIT LANE with a licensing budget. Isaac built his version first — this is opposition research.",
+    price: 3499, disc: 60, owned: false, inst: false, hrs: 0, hrs2w: 0,
+    rev: ['Very Positive', 81, 12840], art: ['#141820', '#e01a2a', 'F1M'], sc: 'road', spec: true,
+    ach: [0, 40] },
+
+  { id: 'dysonsphere', t: 'Dyson Sphere Program', dev: 'Youthcat Studio', pub: 'Gamera Games', yr: 2021,
+    tags: ['Automation', 'Space', 'Base Building', 'Strategy', 'Optimization'],
+    s: "Build the most efficient intergalactic factory ever devised. Then feed it a star.",
+    d: "Factorio, but the factory eventually eats a sun. The logical endpoint of Isaac's whole personality.",
+    price: 2999, disc: 30, owned: false, inst: false, hrs: 0, hrs2w: 0,
+    rev: ['Overwhelmingly Positive', 96, 102110], art: ['#0d1220', '#3ac0e0', 'DSP'], sc: 'space', spec: true, trend: true,
+    ach: [0, 48] },
+
+  { id: 'inscryption', t: 'Inscryption', dev: 'Daniel Mullins Games', pub: 'Devolver Digital', yr: 2021,
+    tags: ['Card Game', 'Horror', 'Roguelike', 'Meta', 'Story Rich'],
+    s: "An inky black card-based odyssey that blends deckbuilding, escape rooms, and psychological horror.",
+    d: "A card game that keeps taking its own mask off. Say nothing about act two to anyone.",
+    price: 1999, disc: 60, owned: false, inst: false, hrs: 0, hrs2w: 0,
+    rev: ['Overwhelmingly Positive', 97, 141230], art: ['#0f1410', '#c2a03a', 'INS'], sc: 'cards', spec: true, trend: true,
+    ach: [0, 44] },
+
+  { id: 'dwarffortress', t: 'Dwarf Fortress', dev: 'Bay 12 Games', pub: 'Kitfox Games', yr: 2022,
+    tags: ['Colony Sim', 'Simulation', 'Procedural Generation', 'Difficult', 'Story Generator'],
+    s: "The deepest, most intricate simulation of a world ever created. Losing is fun!",
+    d: "Twenty years of simulation depth. Your fortress will fall to a sock-related tantrum spiral and you will thank it.",
+    price: 2999, disc: 0, owned: false, inst: false, hrs: 0, hrs2w: 0,
+    rev: ['Overwhelmingly Positive', 95, 33420], art: ['#141210', '#8a9498', 'DF'], sc: 'cave',
+    ach: [0, 0] },
+
+  { id: 'lethal', t: 'Lethal Company', dev: 'Zeekerss', pub: 'Zeekerss', yr: 2023,
+    tags: ['Co-op', 'Horror', 'Comedy', 'Multiplayer', 'Proximity Chat'],
+    s: "A co-op horror about scavenging derelict moons to meet the Company's profit quota.",
+    d: "The scariest thing here is the quota. The funniest is your friend's last words over proximity chat.",
+    price: 999, disc: 0, owned: false, inst: false, hrs: 0, hrs2w: 0,
+    rev: ['Overwhelmingly Positive', 97, 421080], art: ['#0d1014', '#c24a1a', 'LC'], sc: 'factory', trend: true,
+    ach: [0, 0] },
+
+  { id: 'obradinn', t: 'Return of the Obra Dinn', dev: 'Lucas Pope', pub: '3909 LLC', yr: 2018,
+    tags: ['Detective', 'Mystery', 'Story Rich', 'Puzzle', 'Stylized'],
+    s: "An insurance adventure with minimal color. Sixty fates to deduce aboard a ghost ship.",
+    d: "One-bit dithering, one perfect pocket watch, sixty corpses. The best detective game ever shipped.",
+    price: 1999, disc: 40, owned: false, inst: false, hrs: 0, hrs2w: 0,
+    rev: ['Overwhelmingly Positive', 98, 61120], art: ['#e8e4d8', '#242220', 'OD'], sc: 'abstract', trend: true,
+    ach: [0, 10] },
+
+  { id: 'rimworld', t: 'RimWorld', dev: 'Ludeon Studios', pub: 'Ludeon Studios', yr: 2018,
+    tags: ['Colony Sim', 'Base Building', 'Strategy', 'Simulation', 'Story Generator'],
+    s: "A sci-fi colony sim driven by an intelligent AI storyteller.",
+    d: "A spreadsheet that generates better stories than most novels. The storyteller is always watching.",
+    price: 3499, disc: 10, owned: false, inst: false, hrs: 0, hrs2w: 0,
+    rev: ['Overwhelmingly Positive', 98, 168440], art: ['#20180f', '#b07a3a', 'RW'], sc: 'nature',
+    ach: [0, 0] }
 ];
 var SG = {};
 STG.forEach(function (g) { SG[g.id] = g; });
+
+/* ── supplementary store data, merged onto SG ──
+   deck: Steam Deck compatibility ['v'|'p'|'u', note]; dlc: [name, cents, disc%] */
+var STEXT = {
+    gtirun:   { deck: ['v', 'Verified — it IS a handheld'] },
+    pitlane:  { deck: ['v', 'Verified — it IS a handheld'] },
+    urequest: { deck: ['v', 'Verified — it IS a handheld'], dlc: [['The Argent Saga', 0, 0]] },
+    factorio: { dlc: [['Space Age', 3500, 0], ['Elevated Rails', 800, 0]] },
+    civ6:     { dlc: [['Gathering Storm', 3999, 90], ['Rise and Fall', 2999, 90]] },
+    ets2:     { dlc: [['Scandinavia', 1799, 75], ['Going East!', 899, 75]] },
+    witcher3: { dlc: [['Blood and Wine', 1999, 80], ['Hearts of Stone', 999, 80]] },
+    assetto:  { dlc: [['Dream Pack 1', 699, 75], ['Japanese Car Pack', 699, 75]] },
+    cs2:          { deck: ['u', 'Unsupported — anti-cheat'] },
+    rocketleague: { deck: ['u', 'Unsupported — anti-cheat'] },
+    beamng:       { deck: ['p', 'Playable — keyboard advised'] },
+    cities:       { deck: ['p', 'Playable — small text'] },
+    f1manager:    { deck: ['p', 'Playable — small text'] },
+    dwarffortress:{ deck: ['p', 'Playable — bring reading glasses'] }
+};
+Object.keys(STEXT).forEach(function (k) { if (SG[k]) { var x = STEXT[k]; for (var f in x) SG[k][f] = x[f]; } });
+
+/* curators — matched by tag overlap */
+var SCUR = [
+    ['The Optimization Zone', ['Automation', 'Strategy', 'Management', 'Base Building', 'Optimization', 'Colony Sim', '4X'], "We measured. It is optimal."],
+    ['Absurdist Games Weekly', ['Absurdist', 'Detective', 'Choices Matter', 'Meta', 'Dystopian'], "Meaningless, and therefore essential."],
+    ['Rice FSAE Sim Rig', ['Racing', 'Driving', 'Automobile Sim', 'Cars', 'Sports'], "Approved for rig night."],
+    ['Pocket Pixel Reviews', ['Pixel Graphics', 'Arcade', 'Roguelike', 'Platformer', 'Card Game'], "Fits in 160×144 of your heart."],
+    ['The Long Rest Book Club', ['RPG', 'Story Rich', 'Dungeons & Dragons', 'Dark Fantasy', 'Turn-Based'], "Our DM cried. Ten out of ten."]
+];
+function stCurator(g) {
+    for (var i = 0; i < SCUR.length; i++) { var c = SCUR[i]; if (g.tags.some(function (t) { return c[1].indexOf(t) >= 0; })) return c; }
+    return null;
+}
+
+/* friends' canned chat lines */
+var SCHAT = {
+    throttle_body: ["dude the new GTI RUN update is so good", "wanna run laps later?", "argent looking CLEAN in the last pic 🔧"],
+    nat20nate: ["you DMing saturday?", "my bard just seduced the lich. again.", "roll initiative"],
+    spaghetti_bus: ["the bus. it grew.", "3200 SPM and climbing", "sleep is a bottleneck, isaac"],
+    pit_boss: ["box box box", "that undercut call was filthy", "tyres were DONE"],
+    chamomile: ["tea?", "you've been on the computer for four hours", "hydrate"],
+    the_thresher: ["deadline is friday, photos due thursday", "got the shot. front page."],
+    fsae_treasury: ["invoice approved", "we can afford exactly one (1) wing"],
+    _: ["hey", "gg", "one more?"]
+};
+
+/* points shop catalogue */
+var SPTS = [
+    { id: 'fr_gold', n: 'Pixel Gold Frame', c: 1200, k: 'frame', v: '#e0c34a' },
+    { id: 'fr_red', n: 'URE Red Frame', c: 1500, k: 'frame', v: '#d81e05' },
+    { id: 'fr_blue', n: 'Bloom Blue Frame', c: 1000, k: 'frame', v: '#3a9bff' },
+    { id: 'fr_dmg', n: 'DMG Green Frame', c: 800, k: 'frame', v: '#9bbc0f' },
+    { id: 'bg_gtirun', n: 'GTI RUN Profile Background', c: 2000, k: 'bg', v: 'gtirun' },
+    { id: 'bg_bg3', n: "Baldur's Gate 3 Background", c: 2000, k: 'bg', v: 'bg3' },
+    { id: 'bg_factorio', n: 'Factorio Profile Background', c: 2000, k: 'bg', v: 'factorio' },
+    { id: 'bg_hades', n: 'Hades Profile Background', c: 2000, k: 'bg', v: 'hades' },
+    { id: 'av_anim', n: 'Animated URE Avatar', c: 3000, k: 'gag' }
+];
 
 /* shared review flavour for store pages without custom blurbs */
 var SREV = [
@@ -1503,10 +1764,38 @@ function stSeed() {
     if (recall('steam_owned', null) == null) {
         sjSet('owned', STG.filter(function (g) { return g.owned; }).map(function (g) { return g.id; }));
         sjSet('inst', STG.filter(function (g) { return g.owned && g.inst; }).map(function (g) { return g.id; }));
-        sjSet('wish', ['eldenring', 'cities']);
+        sjSet('wish', ['eldenring', 'cities', 'obradinn', 'dysonsphere', 'rimworld']);
         sjSet('cart', []);
         sjSet('hrs', {});
+        store('steam_wishv2', '1');
+    } else {
+        // catalogue grew: fold any new default-owned games into an existing save
+        var o = stOwned(), n = stInst(), ch = false;
+        STG.forEach(function (g) {
+            if (g.owned && o.indexOf(g.id) < 0) { o.push(g.id); ch = true; }
+            if (g.owned && g.inst && n.indexOf(g.id) < 0) { n.push(g.id); ch = true; }
+        });
+        if (ch) { sjSet('owned', o); sjSet('inst', n); }
+        if (recall('steam_wishv2', null) == null) {                       // one-shot: v2's new wishlist seeds, unless already bought
+            var w = stWish();
+            ['obradinn', 'dysonsphere', 'rimworld'].forEach(function (id) { if (w.indexOf(id) < 0 && o.indexOf(id) < 0) w.push(id); });
+            sjSet('wish', w); store('steam_wishv2', '1');
+        }
     }
+    if (recall('steam_points', null) == null) store('steam_points', '4120');
+}
+function stPts() { return +recall('steam_points', '4120') || 0; }
+function stPtsOwned() { return sjGet('pshop', []); }
+function stPtsBuy(item) {
+    var owned = stPtsOwned();
+    if (owned.indexOf(item.id) < 0) {
+        if (stPts() < item.c) return false;
+        store('steam_points', String(stPts() - item.c));
+        owned.push(item.id); sjSet('pshop', owned);
+    }
+    if (item.k === 'frame') store('steam_frame', item.v);
+    if (item.k === 'bg') store('steam_bg', item.v);
+    return true;
 }
 function stOwned() { return sjGet('owned', []); }
 function stInst() { return sjGet('inst', []); }
@@ -1561,6 +1850,48 @@ function stPaint(cv) {
         vgrad('#12203a', a, 0, h);
         for (var st2 = 0; st2 < 60; st2++) box(rnd() * w, rnd() * h * 0.4, 1, 1, 'rgba(255,255,255,.4)');
         for (var bd = 0; bd < 12; bd++) { var bw = 8 + rnd() * 14, bh = 20 + rnd() * (h * 0.6), bx = bd * (w / 12); box(bx, h - bh, bw, bh, bd % 2 ? '#1b2a3e' : '#22384f'); for (var wnd = 0; wnd < 8; wnd++) if (rnd() > .5) box(bx + 2 + (wnd % 3) * 4, h - bh + 3 + ((wnd / 3) | 0) * 6, 2, 2, b); }
+    } else if (sc === 'cards') {
+        vgrad(mixHex(a, '#000000', .2), a, 0, h);                       // felt table
+        var gl2 = x.createRadialGradient(w * 0.5, h * 0.4, 4, w * 0.5, h * 0.4, h * 0.9);
+        gl2.addColorStop(0, 'rgba(255,240,200,.18)'); gl2.addColorStop(1, 'rgba(0,0,0,.25)');
+        x.fillStyle = gl2; x.fillRect(0, 0, w, h);
+        for (var cd = 0; cd < 5; cd++) {
+            x.save(); x.translate(w * (0.22 + cd * 0.14), h * (0.52 + (cd % 2) * 0.06)); x.rotate((rnd() - 0.5) * 0.5);
+            x.fillStyle = 'rgba(0,0,0,.35)'; x.fillRect(-9, -12, 20, 26);
+            x.fillStyle = '#e8e4d4'; x.fillRect(-10, -14, 20, 26);
+            x.fillStyle = cd % 2 ? b : '#a0322a'; x.fillRect(-6, -10, 12, 8);
+            x.fillRect(-3, 2, 6, 6); x.restore();
+        }
+        box(w * 0.06, h * 0.06, 14, 20, mixHex(b, '#000000', .4));      // face-down deck
+        box(w * 0.08, h * 0.04, 14, 20, mixHex(b, '#000000', .2));
+    } else if (sc === 'cave') {
+        vgrad('#05070c', a, 0, h);
+        for (var stx = 0; stx < 12; stx++) {                            // stalactites
+            var sxx = stx * (w / 12) + rnd() * 6, sl = 8 + rnd() * h * 0.3;
+            x.fillStyle = mixHex(a, '#000000', .45);
+            x.beginPath(); x.moveTo(sxx - 5, 0); x.lineTo(sxx + 5, 0); x.lineTo(sxx, sl); x.closePath(); x.fill();
+        }
+        for (var rk = 0; rk < 8; rk++) {                                // floor rocks
+            var rxx = rnd() * w, rh = 6 + rnd() * 14;
+            x.fillStyle = mixHex(a, '#000000', .3);
+            x.beginPath(); x.moveTo(rxx - 10, h); x.lineTo(rxx, h - rh); x.lineTo(rxx + 10, h); x.closePath(); x.fill();
+        }
+        var gl3 = x.createRadialGradient(w * 0.5, h * 0.66, 2, w * 0.5, h * 0.66, h * 0.55);
+        gl3.addColorStop(0, b); gl3.addColorStop(1, 'rgba(0,0,0,0)');
+        x.fillStyle = gl3; x.globalAlpha = .7; x.fillRect(0, 0, w, h); x.globalAlpha = 1;
+        box(w * 0.49, h * 0.6, 3, 6, '#fff');                           // the little explorer
+        for (var gm = 0; gm < 14; gm++) box(rnd() * w, rnd() * h, 1, 1, b);
+    } else if (sc === 'snow') {
+        vgrad('#26304a', mixHex(a, '#ffffff', .25), 0, h);
+        function peak(px2, py2, pw2, col) { x.fillStyle = col; x.beginPath(); x.moveTo(px2 - pw2, h); x.lineTo(px2, py2); x.lineTo(px2 + pw2, h); x.closePath(); x.fill(); }
+        peak(w * 0.7, h * 0.10, w * 0.55, mixHex(a, '#ffffff', .1));
+        peak(w * 0.3, h * 0.22, w * 0.45, a);
+        peak(w * 0.55, h * 0.30, w * 0.35, mixHex(a, '#000000', .25));
+        x.fillStyle = '#eef2fa';                                        // snow caps
+        x.beginPath(); x.moveTo(w * 0.7 - 12, h * 0.10 + 18); x.lineTo(w * 0.7, h * 0.10); x.lineTo(w * 0.7 + 12, h * 0.10 + 18); x.closePath(); x.fill();
+        x.beginPath(); x.moveTo(w * 0.3 - 10, h * 0.22 + 15); x.lineTo(w * 0.3, h * 0.22); x.lineTo(w * 0.3 + 10, h * 0.22 + 15); x.closePath(); x.fill();
+        for (var fl = 0; fl < 40; fl++) box(rnd() * w, rnd() * h, 1, 1, 'rgba(255,255,255,.8)');
+        box(w * 0.52, h * 0.52, 3, 4, b);                               // the climber
     } else {
         for (var band = 0; band < 5; band++) { x.fillStyle = band % 2 ? b : a; x.save(); x.translate(w / 2, h / 2); x.rotate(0.5); x.fillRect(-w, -h + band * (h * 0.5), w * 3, h * 0.42); x.restore(); }
         x.fillStyle = 'rgba(255,255,255,.85)'; x.beginPath(); x.arc(w * (0.3 + (seed % 4) * 0.12), h * 0.5, h * 0.16, 0, 7); x.fill();
@@ -1587,53 +1918,88 @@ function stDisc(g) {
 
 /* ═══════════════════════ Steam: shell + router ═══════════════════════ */
 var ST = null;
+var SMENUS = {
+    Steam: [['About Steam', 'm-about'], ['Settings', 'm-settings'], ['Go Offline…', 'm-offline'], ['Exit', 'm-exit']],
+    View:  [['Store', 'm-vstore'], ['Library', 'm-vlib'], ['Downloads', 'm-vdl'], ['News', 'm-vnews'], ['Friends List', 'm-vfriends']],
+    Friends: [['View Friends List', 'm-vfriends'], ['Add a Friend…', 'm-addfriend'], ['Set Status: Online ✓', 'm-status']],
+    Games: [['Activate a Product on Steam…', 'm-activate'], ['Add a Non-Steam Game…', 'm-nonsteam']],
+    Help:  [['Steam Support', 'm-support'], ['System Information', 'm-sysinfo']]
+};
+var SACCT = [['View my profile', 'm-profile'], ['Account details', 'm-acctdetails'], ['Store preferences', 'm-storeprefs'], ['Sign out', 'm-signout']];
 function renderSteam() {
     return '<div class="steam" id="steamRoot">' +
+        '<div class="st-menu">' + Object.keys(SMENUS).map(function (m) {
+            return '<button class="st-menu-b" data-st="menu" data-id="' + m + '">' + m + '</button>';
+        }).join('') + '</div>' +
         '<header class="st-head">' +
           '<div class="st-headL"><button class="st-arrow" data-st="back" aria-label="Back">‹</button><button class="st-arrow dis" aria-label="Forward">›</button>' +
-            '<span class="st-wm">' + ic('ic-steam', 'st-wm-ic') + 'STEAM</span></div>' +
+            '<span class="st-wm">' + ic('ic-steam', 'st-wm-ic') + '</span></div>' +
           '<nav class="st-tabs">' +
             '<button class="st-tab" data-st="nav" data-id="store">STORE</button>' +
             '<button class="st-tab" data-st="nav" data-id="library">LIBRARY</button>' +
-            '<button class="st-tab" data-st="nav" data-id="community">COMMUNITY</button>' +
+            '<button class="st-tab" data-st="go" data-sec="community" data-view="activity">COMMUNITY</button>' +
+            '<button class="st-tab" data-st="nav" data-id="community">ISAACURE</button>' +
           '</nav>' +
           '<div class="st-headR">' +
-            '<button class="st-wallet" data-st="nav" data-id="cart"><span>$13.37</span></button>' +
+            '<button class="st-hicon" data-st="bell" aria-label="Notifications">' + gBell() + '<span class="st-badge green" id="stBellBadge" hidden>0</span></button>' +
+            '<button class="st-wallet" data-st="nav" data-id="points"><span>$13.37</span></button>' +
             '<button class="st-hicon" data-st="nav" data-id="downloads" aria-label="Downloads">' + gDl() + '<span class="st-badge" id="stDlBadge" hidden>0</span></button>' +
             '<button class="st-hicon" data-st="nav" data-id="cart" aria-label="Cart">' + gCart() + '<span class="st-badge" id="stCartBadge" hidden>0</span></button>' +
-            '<button class="st-av" data-st="nav" data-id="community" aria-label="Profile">' + ic('ic-user') + '</button>' +
+            '<button class="st-av" data-st="acct" aria-label="Account menu">' + ic('ic-user') + '<span class="st-av-caret">▾</span></button>' +
           '</div>' +
         '</header>' +
         '<div class="st-sub" id="stSub"></div>' +
         '<div class="st-body" id="stBody"></div>' +
-        '<div class="st-dock" id="stDock" hidden></div>' +
+        '<footer class="st-status">' +
+          '<button class="st-status-b" data-st="addgame">+ ADD A GAME</button>' +
+          '<button class="st-status-dl" id="stStatusDl" data-st="nav" data-id="downloads">No downloads in queue</button>' +
+          '<button class="st-status-b" data-st="friends">' + gUsers() + ' FRIENDS &amp; CHAT <b id="stFrCount"></b></button>' +
+        '</footer>' +
+        '<div class="st-drop" id="stDrop" hidden></div>' +
+        '<div class="st-notifp" id="stNotifP" hidden></div>' +
+        '<aside class="st-fpanel" id="stFPanel" hidden></aside>' +
+        '<div class="st-chatw" id="stChatW" hidden></div>' +
+        '<div class="st-searchdrop" id="stSearchDrop" hidden></div>' +
+        '<div class="st-modal" id="stModal" hidden></div>' +
         '<div class="st-toast" id="stToast" hidden></div>' +
       '</div>';
 }
 function initSteam(el, id, arg) {
     stSeed();
     ST = { el: el, root: el.querySelector('#steamRoot'), sub: el.querySelector('#stSub'), body: el.querySelector('#stBody'),
-           dock: el.querySelector('#stDock'), toast: el.querySelector('#stToast'),
+           toast: el.querySelector('#stToast'), drop: el.querySelector('#stDrop'), notifp: el.querySelector('#stNotifP'),
+           fpanel: el.querySelector('#stFPanel'), chatw: el.querySelector('#stChatW'), modal: el.querySelector('#stModal'),
+           sdrop: el.querySelector('#stSearchDrop'),
            section: 'store', view: 'home', gid: null, cat: null, q: '', gal: 0, carou: 0,
-           hist: [], carouT: 0, dlT: 0, toastT: 0 };
+           hist: [], carouT: 0, dlT: 0, toastT: 0, chatT: {},
+           notifRead: false, chatWith: null, chats: {}, chatIdx: {}, spHist: [], libCollapse: {} };
     ST.root.addEventListener('click', stClick);
     ST.root.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter') { var s = e.target.closest('[data-search]'); if (s) { ST.q = e.target.value; stGo('store', 'browse', null, { cat: null }); } }
+        if (e.key !== 'Enter') { if (e.key === 'Escape') stCloseLayers(); return; }
+        if (e.target.closest('[data-search]')) { ST.q = e.target.value; stCloseLayers(); stGo('store', 'browse', null, { cat: null }); }
+        else if (e.target.closest('.st-chat-in')) stChatSend();
+        else if (e.target.closest('.st-act-in')) stActivateGo();
     });
     ST.root.addEventListener('input', function (e) {
-        if (!e.target.closest('[data-libsearch]')) return;
-        var q = e.target.value.toLowerCase();
-        ST.body.querySelectorAll('.st-lgrow').forEach(function (r) {
-            if (r.getAttribute('data-st') !== 'lib') return;
-            var n = r.querySelector('.st-lgname');
-            r.style.display = (n && n.textContent.toLowerCase().indexOf(q) >= 0) ? '' : 'none';
-        });
+        if (e.target.closest('[data-libsearch]')) {
+            var q = e.target.value.toLowerCase();
+            ST.body.querySelectorAll('.st-lgrow').forEach(function (r) {
+                if (r.getAttribute('data-st') !== 'lib') return;
+                var n = r.querySelector('.st-lgname');
+                r.style.display = (n && n.textContent.toLowerCase().indexOf(q) >= 0) ? '' : 'none';
+            });
+        } else if (e.target.closest('[data-search]')) stSearchDrop(e.target);
     });
-    stDock();
+    stStatus(); stSyncBadges();
     if (arg && arg.section) { stGo(arg.section, arg.view || 'home', arg.id || null); }
     else stRender();
 }
-function closeSteam() { if (ST) { clearInterval(ST.carouT); clearInterval(ST.dlT); clearTimeout(ST.toastT); } ST = null; }
+function closeSteam() { if (ST) { clearInterval(ST.carouT); clearInterval(ST.dlT); clearTimeout(ST.toastT); for (var k in ST.chatT) clearTimeout(ST.chatT[k]); } ST = null; }
+/* close every floating layer (menus, panels, chat stays) */
+function stCloseLayers(keep) {
+    ['drop', 'notifp', 'sdrop', 'modal'].forEach(function (k) { if (k !== keep && ST[k]) ST[k].hidden = true; });
+    if (keep !== 'fpanel' && keep !== 'chatw') { /* friends panel + chat persist across navigation */ }
+}
 function steamFocus(el, arg) { if (arg && arg.section) stGo(arg.section, arg.view || 'home', arg.id || null); }
 
 function stGo(section, view, gid, extra) {
@@ -1650,13 +2016,20 @@ function stBack() {
 }
 function stRender() {
     clearInterval(ST.carouT); ST.carouT = 0;
-    ST.root.querySelectorAll('.st-tab').forEach(function (t) { t.classList.toggle('sel', t.getAttribute('data-id') === ST.section); });
+    stCloseLayers();
+    ST.root.querySelectorAll('.st-tab').forEach(function (t, i) {
+        var on = t.getAttribute('data-id') === ST.section;
+        if (t.textContent === 'ISAACURE') on = ST.section === 'community' && ST.view === 'home';
+        else if (t.getAttribute('data-id') === 'community') on = ST.section === 'community' && ST.view !== 'home';
+        t.classList.toggle('sel', on);
+    });
     ST.sub.innerHTML = stSubHTML();
     ST.body.innerHTML = stBodyHTML();
     ST.body.scrollTop = 0;
     stPaintAll();
     stSyncBadges();
     if (ST.section === 'store' && ST.view === 'home') stStartCarousel();
+    if (ST.section === 'downloads') stSpark();
 }
 function stSubHTML() {
     function tab(sec, view, label, cat) {
@@ -1664,8 +2037,8 @@ function stSubHTML() {
         return '<button class="st-subtab' + (on ? ' sel' : '') + '" data-st="go" data-sec="' + sec + '" data-view="' + view + '"' + (cat ? ' data-cat="' + esc(cat) + '"' : '') + '>' + label + '</button>';
     }
     if (ST.section === 'store') {
-        return '<div class="st-subL">' + tab('store', 'home', 'Your Store') + tab('store', 'browse', 'Categories', null) + tab('store', 'wishlist', 'Wishlist') + tab('store', 'points', 'Points Shop') + '</div>' +
-            '<label class="st-find"><input type="text" data-search="1" placeholder="search the store" spellcheck="false" value="' + esc(ST.q) + '"></label>';
+        return '<div class="st-subL">' + tab('store', 'home', 'Your Store') + tab('store', 'browse', 'New & Noteworthy', '_new') + tab('store', 'browse', 'Categories', null) + tab('store', 'points', 'Points Shop') + tab('store', 'news', 'News') + tab('store', 'labs', 'Labs') + tab('store', 'wishlist', 'Wishlist') + '</div>' +
+            '<label class="st-find"><input type="text" data-search="1" placeholder="search" spellcheck="false" value="' + esc(ST.q) + '" autocomplete="off"></label>';
     }
     if (ST.section === 'library') {
         return '<div class="st-subL">' + tab('library', 'home', 'Home') + tab('library', 'collections', 'Collections') + '<button class="st-subtab" data-st="nav" data-id="downloads">Downloads</button></div>';
@@ -1678,15 +2051,19 @@ function stSubHTML() {
     return '';
 }
 function stBodyHTML() {
+    var gg = SG[ST.gid];                                  // guard: a bad gid (dev hook, stale state) falls back to the section home
     if (ST.section === 'store') {
-        if (ST.view === 'game') return stStorePage(SG[ST.gid]);
+        if (ST.view === 'game') return gg ? stStorePage(gg) : stStoreHome();
         if (ST.view === 'browse') return stBrowse();
         if (ST.view === 'wishlist') return stWishlistView();
         if (ST.view === 'points') return stPoints();
+        if (ST.view === 'news') return stNews();
+        if (ST.view === 'labs') return stLabs();
         return stStoreHome();
     }
     if (ST.section === 'library') {
-        if (ST.view === 'game') return stLibGame(SG[ST.gid]);
+        if (ST.view === 'game') return gg ? stLibGame(gg) : stLibHome();
+        if (ST.view === 'ach') return gg ? stAchPage(gg) : stLibHome();
         if (ST.view === 'collections') return stCollections();
         return stLibHome();
     }
@@ -1720,7 +2097,13 @@ function stStoreHome() {
     // new & trending
     h += '<h3 class="st-row-h">New &amp; Trending</h3><div class="st-grid">' + trend.map(stGridCard).join('') + '</div>';
     // recommended
-    h += '<h3 class="st-row-h">Because you play <b>Factorio</b></h3><div class="st-scroller">' + STG.filter(function (g) { return g.tags.indexOf('Strategy') >= 0 || g.tags.indexOf('Simulation') >= 0 || g.tags.indexOf('Optimization') >= 0; }).slice(0, 6).map(stSpecCard).join('') + '</div>';
+    h += '<h3 class="st-row-h">Because you play <b>Factorio</b></h3><div class="st-scroller">' + STG.filter(function (g) { return g.id !== 'factorio' && (g.tags.indexOf('Automation') >= 0 || g.tags.indexOf('Optimization') >= 0 || g.tags.indexOf('Base Building') >= 0 || g.tags.indexOf('Colony Sim') >= 0); }).slice(0, 8).map(stSpecCard).join('') + '</div>';
+    // under $10
+    h += '<h3 class="st-row-h">Under $10 <span>big games, small numbers</span></h3><div class="st-scroller">' + STG.filter(function (g) { var f = stFinal(g); return f > 0 && f < 1000; }).slice(0, 10).map(stSpecCard).join('') + '</div>';
+    // free to play
+    h += '<h3 class="st-row-h">Free to Play</h3><div class="st-scroller">' + STG.filter(function (g) { return g.free; }).map(stSpecCard).join('') + '</div>';
+    // from URE Softworks
+    h += '<h3 class="st-row-h">From <b>URE Softworks</b> <span>made upstairs</span></h3><div class="st-scroller">' + STG.filter(function (g) { return g.dev === 'URE Softworks'; }).map(stSpecCard).join('') + '</div>';
     return h + '</div>';
 }
 function stSlide(g) {
@@ -1763,6 +2146,22 @@ function stGridCard(g) {
         '<span class="st-gcard-b"><span class="st-scard-t">' + esc(g.t) + '</span>' +
         '<span class="st-rev ' + stRevClass(g.rev[1]) + '">' + g.rev[0] + '</span>' + px + '</span></button>';
 }
+/* deterministic pseudo-random per game+index, for histograms/global % */
+function stHash(id, i) { var n = 0; for (var c = 0; c < id.length; c++) n = (n * 31 + id.charCodeAt(c)) | 0; n = Math.abs(n + i * 2654435761); return (n % 1000) / 1000; }
+function stHistogram(g) {
+    var bars = '';
+    for (var i = 0; i < 12; i++) {
+        var hgt = 22 + stHash(g.id, i) * 78;
+        var pos = clamp(g.rev[1] + (stHash(g.id, i + 40) - 0.5) * 18, 5, 98);
+        bars += '<span class="st-hist-b" style="height:' + hgt.toFixed(0) + '%"><i style="height:' + pos.toFixed(0) + '%"></i></span>';
+    }
+    return '<div class="st-hist" title="Reviews over time (museum data)">' + bars + '</div>';
+}
+function stDeckBadge(g) {
+    var d = g.deck || ['v', 'Verified'];
+    var label = d[0] === 'v' ? 'Verified' : d[0] === 'p' ? 'Playable' : 'Unsupported';
+    return '<div class="st-deck ' + d[0] + '">' + gDeck() + '<span><b>Steam Deck ' + label + '</b><i>' + esc(d[1]) + '</i></span></div>';
+}
 function stStorePage(g) {
     var owned = isOwned(g.id), inst = isInst(g.id);
     var main = '<div class="st-sp-gal"><canvas class="st-sp-main" id="stGalMain" data-g="' + g.id + '" data-seed="' + (ST.gal + 1) + '"></canvas>' +
@@ -1773,30 +2172,49 @@ function stStorePage(g) {
     else if (inCart(g.id)) buyBtn = '<button class="st-buy incart" data-st="nav" data-id="cart">' + gCart() + ' In Cart — View</button>';
     else buyBtn = '<button class="st-buy" data-st="addcart" data-id="' + g.id + '">' + gCart() + ' Add to Cart</button>';
     var wishBtn = owned ? '' : '<button class="st-ghost" data-st="wish" data-id="' + g.id + '">' + (isWished(g.id) ? '✓ On Wishlist' : '+ Wishlist') + '</button>';
-    var revs = (g.revx || SREV.slice(0, 2)).map(function (r) {
-        return '<div class="st-review"><div class="st-review-h"><span class="st-review-v ' + (r[1] ? 'up' : 'down') + '">' + (r[1] ? gThumb() + ' Recommended' : 'Not Recommended') + '</span><span class="st-review-hrs">' + esc(r[2]) + '</span></div><p>“' + esc(r[0]) + '”</p></div>';
+    var revs = (g.revx || SREV.slice(0, 2)).map(function (r, i) {
+        var helpful = 3 + Math.floor(stHash(g.id, i + 7) * 400), funny = Math.floor(stHash(g.id, i + 13) * 60);
+        return '<div class="st-review"><div class="st-review-h"><span class="st-review-v ' + (r[1] ? 'up' : 'down') + '">' + (r[1] ? gThumb() + ' Recommended' : 'Not Recommended') + '</span><span class="st-review-hrs">' + esc(r[2]) + '</span></div><p>“' + esc(r[0]) + '”</p>' +
+            '<div class="st-review-f"><span>' + helpful + ' people found this helpful' + (funny ? ' · ' + funny + ' found it funny' : '') + '</span><span class="st-award">' + gStar() + (1 + Math.floor(stHash(g.id, i + 21) * 5)) + '</span></div></div>';
     }).join('');
     var sys = [['OS', 'UreOS 11 Pixel Edition or newer'], ['Processor', 'Bloom Core @ 60fps'], ['Memory', '640 KB RAM'], ['Graphics', 'Canvas 2D, pixelated'], ['Storage', 'a corner of localStorage'], ['Notes', 'Thumbs supported']];
     var like = STG.filter(function (o) { return o.id !== g.id && o.tags.some(function (t) { return g.tags.indexOf(t) >= 0; }); }).slice(0, 4);
+    var fromDev = STG.filter(function (o) { return o.id !== g.id && o.dev === g.dev; });
+    var cur = stCurator(g);
+    var dlc = '';
+    if (g.dlc && g.dlc.length) {
+        dlc = '<h3 class="st-sp-h">Content for this game</h3><div class="st-dlc">' + g.dlc.map(function (d) {
+            var final = Math.round(d[1] * (1 - (d[2] || 0) / 100));
+            return '<div class="st-dlc-row"><b>' + esc(g.t) + ' — ' + esc(d[0]) + '</b>' +
+                '<span class="st-dlc-px">' + (d[2] ? '<span class="st-disc-pct">-' + d[2] + '%</span><s>' + stPrice(d[1]) + '</s>' : '') + '<b>' + stPrice(final) + '</b></span>' +
+                '<button class="st-ghost sm" data-st="dlcbuy" data-id="' + g.id + '">Add</button></div>';
+        }).join('') + '</div>';
+    }
+    var tagsN = 5, hasMore = g.tags.length > tagsN;
     return '<div class="st-sp">' +
         '<div class="st-sp-crumb"><button data-st="nav" data-id="store">All Games</button> › <button data-st="cat" data-id="' + esc(g.tags[0]) + '">' + esc(g.tags[0]) + '</button> › <span>' + esc(g.t) + '</span></div>' +
         '<h1 class="st-sp-title">' + esc(g.t) + '</h1>' +
         '<div class="st-sp-cols">' +
           '<div class="st-sp-main-col">' + main +
-            '<div class="st-sp-desc"><p>' + esc(g.d) + '</p></div>' +
-            '<div class="st-sp-tags">' + stTags(g) + '</div>' +
+            '<div class="st-sp-desc"><h4 class="st-sp-about">ABOUT THIS GAME</h4><p>' + esc(g.d) + '</p><p class="st-sp-short2">' + esc(g.s) + '</p></div>' +
+            '<div class="st-sp-tagh">Popular user-defined tags for this product:</div>' +
+            '<div class="st-sp-tags" id="stTagWrap">' + stTags(g, tagsN) + (hasMore ? '<button class="st-tag more" data-st="tagsall">+</button>' : '') + '</div>' +
+            (cur ? '<div class="st-curator">' + gUsers() + '<span><b>' + esc(cur[0]) + '</b> — a curator you follow — says: <i>“' + esc(cur[2]) + '”</i></span></div>' : '') +
           '</div>' +
           '<aside class="st-sp-side">' + stCap(g, 'side') +
             '<p class="st-sp-short">' + esc(g.s) + '</p>' +
             '<div class="st-sp-meta"><div class="st-rev big ' + stRevClass(g.rev[1]) + '"><b>' + g.rev[0] + '</b><span>' + g.rev[2].toLocaleString() + ' reviews · ' + g.rev[1] + '% positive</span><span class="st-rev-bar"><i style="width:' + g.rev[1] + '%"></i></span></div>' +
-              '<dl class="st-facts"><dt>Release</dt><dd>' + g.yr + '</dd><dt>Developer</dt><dd>' + esc(g.dev) + '</dd><dt>Publisher</dt><dd>' + esc(g.pub) + '</dd></dl></div>' +
+              '<dl class="st-facts"><dt>Release</dt><dd>' + g.yr + '</dd><dt>Developer</dt><dd><button class="st-link sm" data-st="devsearch" data-id="' + esc(g.dev) + '">' + esc(g.dev) + '</button></dd><dt>Publisher</dt><dd>' + esc(g.pub) + '</dd></dl></div>' +
+            stDeckBadge(g) +
             '<div class="st-buybox"><div class="st-buybox-h">' + (owned ? 'In your library' : g.free ? 'Play ' + esc(g.t) : 'Buy ' + esc(g.t)) + (g.disc && !owned ? '<span class="st-disc-flag">-' + g.disc + '%</span>' : '') + '</div>' +
               '<div class="st-buybox-b">' + (owned ? '' : '<span class="st-buybox-px">' + (g.disc ? '<s>' + stPrice(g.price) + '</s> ' : '') + '<b>' + stPrice(stFinal(g)) + '</b></span>') + buyBtn + '</div>' + (wishBtn ? '<div class="st-buybox-f">' + wishBtn + '</div>' : '') +
             '</div>' +
           '</aside>' +
         '</div>' +
-        '<h3 class="st-sp-h">Recent Reviews</h3><div class="st-reviews">' + revs + '</div>' +
+        dlc +
+        '<div class="st-sp-revhead"><h3 class="st-sp-h">Recent Reviews</h3>' + stHistogram(g) + '</div><div class="st-reviews">' + revs + '</div>' +
         '<h3 class="st-sp-h">System Requirements</h3><div class="st-sys">' + sys.map(function (s) { return '<div class="st-sys-row"><b>' + s[0] + '</b><span>' + s[1] + '</span></div>'; }).join('') + '</div>' +
+        (fromDev.length ? '<h3 class="st-sp-h">More from ' + esc(g.dev) + '</h3><div class="st-scroller">' + fromDev.map(stSpecCard).join('') + '</div>' : '') +
         '<h3 class="st-sp-h">More like this</h3><div class="st-grid">' + like.map(stGridCard).join('') + '</div>' +
       '</div>';
 }
@@ -1804,10 +2222,11 @@ function stBrowse() {
     var cat = ST.cat, q = ST.q;
     var list = STG.filter(function (g) {
         if (q) return (g.t + ' ' + g.tags.join(' ') + ' ' + g.dev).toLowerCase().indexOf(q.toLowerCase()) >= 0;
-        if (cat) return g.tags.indexOf(cat) >= 0;
+        if (cat && cat !== '_new') return g.tags.indexOf(cat) >= 0;
         return true;
     });
-    var title = q ? 'Search: “' + esc(q) + '”' : cat ? esc(cat) : 'All Games';
+    if (!q && cat === '_new') list = list.slice().sort(function (a, b) { return b.yr - a.yr; });
+    var title = q ? 'Search: “' + esc(q) + '”' : cat === '_new' ? 'New & Noteworthy' : cat ? esc(cat) : 'All Games';
     var allcats = {};
     STG.forEach(function (g) { g.tags.forEach(function (t) { allcats[t] = (allcats[t] || 0) + 1; }); });
     var chips = Object.keys(allcats).sort().map(function (t) { return '<button class="st-chip' + (t === cat ? ' on' : '') + '" data-st="cat" data-id="' + esc(t) + '">' + esc(t) + ' <i>' + allcats[t] + '</i></button>'; }).join('');
@@ -1829,24 +2248,49 @@ function stWishlistView() {
     return '<div class="st-pad"><h2 class="st-browse-h">Your Wishlist <span>' + list.length + ' item' + (list.length === 1 ? '' : 's') + '</span></h2><div class="st-list">' + list.map(stListRow).join('') + '</div></div>';
 }
 function stPoints() {
-    return '<div class="st-pad st-points"><h2 class="st-browse-h">Points Shop</h2><div class="st-points-bal">' + gStar() + ' <b>4,120</b> points</div>' +
-        '<p class="st-empty">Spend points on animated avatars, profile backgrounds, and stickers. (This one is a museum exhibit — the points are real, the shop is a bit.)</p>' +
-        '<div class="st-grid">' + STG.slice(0, 4).map(function (g) { return '<div class="st-gcard static"><canvas class="st-shot" data-g="' + g.id + '" data-seed="7"></canvas><span class="st-gcard-b"><span class="st-scard-t">' + esc(g.t) + ' — Avatar Pack</span><b class="st-points-px">' + gStar() + ' ' + (1000 + g.yr % 900) + '</b></span></div>'; }).join('') + '</div></div>';
+    var owned = stPtsOwned(), fr = recall('steam_frame', ''), bg = recall('steam_bg', '');
+    var items = SPTS.map(function (it) {
+        var own = owned.indexOf(it.id) >= 0;
+        var eq = (it.k === 'frame' && it.v === fr) || (it.k === 'bg' && it.v === bg) || (it.k === 'gag' && own);
+        var art = it.k === 'bg' ? '<canvas class="st-shot" data-g="' + it.v + '" data-seed="7"></canvas>'
+                : it.k === 'frame' ? '<span class="st-pts-frame" style="--fc:' + it.v + '">' + ic('ic-user') + '</span>'
+                : '<span class="st-pts-frame anim">' + ic('ic-ure') + '</span>';
+        var btn = eq ? '<b class="st-owned">' + (it.k === 'gag' ? 'Owned. It blinks.' : 'Equipped') + '</b>'
+                : own ? '<button class="st-ghost sm" data-st="ptsbuy" data-id="' + it.id + '">Equip</button>'
+                : '<button class="st-ghost sm" data-st="ptsbuy" data-id="' + it.id + '">' + gStar() + ' ' + it.c.toLocaleString() + '</button>';
+        return '<div class="st-gcard static st-pts-i">' + art + '<span class="st-gcard-b"><span class="st-scard-t">' + esc(it.n) + '</span><span class="st-pts-row">' + btn + '</span></span></div>';
+    }).join('');
+    return '<div class="st-pad st-points"><h2 class="st-browse-h">Points Shop</h2>' +
+        '<div class="st-points-bal">' + gStar() + ' <b>' + stPts().toLocaleString() + '</b> points <span class="st-pts-hint">earned by existing. spent on looking good.</span></div>' +
+        '<h4 class="st-dl-h">Avatar Frames &amp; Profile Backgrounds <i>equipping actually restyles your profile</i></h4>' +
+        '<div class="st-grid">' + items + '</div></div>';
 }
 
 /* ═══════════════ LIBRARY ═══════════════ */
+function stLibRow(g) {
+    var status = isInst(g.id) ? (g.hrs2w > 0 ? 'ready' : 'installed') : 'notinst';
+    var sel = ST.gid === g.id && (ST.view === 'game' || ST.view === 'ach');
+    return '<button class="st-lgrow' + (sel ? ' sel' : '') + '" data-st="lib" data-id="' + g.id + '">' +
+        '<span class="st-lgchip" style="background:linear-gradient(135deg,' + g.art[0] + ',' + g.art[1] + ')"></span>' +
+        '<span class="st-lgname' + (status === 'notinst' ? ' dim' : '') + '">' + esc(g.t) + '</span>' +
+        (g.hrs2w > 0 && isInst(g.id) ? '<span class="st-lgdot ready"></span>' : '') + '</button>';
+}
 function stLibSidebar() {
     var owned = STG.filter(function (g) { return isOwned(g.id); });
     owned.sort(function (a, b) { return stHrs(b.id) - stHrs(a.id); });
-    var rows = owned.map(function (g) {
-        var status = isInst(g.id) ? (g.hrs2w > 0 ? 'ready' : 'installed') : 'notinst';
-        var label = isInst(g.id) ? '' : 'not installed';
-        return '<button class="st-lgrow' + (ST.gid === g.id && ST.view === 'game' ? ' sel' : '') + '" data-st="lib" data-id="' + g.id + '">' +
-            '<span class="st-lgdot ' + status + '"></span><span class="st-lgname">' + esc(g.t) + '</span>' + (label ? '<span class="st-lgsub">' + label + '</span>' : '') + '</button>';
-    }).join('');
+    var favs = owned.filter(function (g) { return (g.hrs2w || 0) >= 2; });
+    var rest = owned.filter(function (g) { return (g.hrs2w || 0) < 2; });
+    function section(key, label, games) {
+        var closed = !!ST.libCollapse[key];
+        return '<button class="st-lg-head tgl" data-st="libsec" data-id="' + key + '"><i class="st-lg-arr">' + (closed ? '▸' : '▾') + '</i>' + label + ' <i>' + games.length + '</i></button>' +
+            (closed ? '' : games.map(stLibRow).join(''));
+    }
     return '<aside class="st-lib-side"><label class="st-lib-find"><input type="text" placeholder="Search library" spellcheck="false" data-libsearch="1"></label>' +
-        '<div class="st-lib-col"><div class="st-lg-head">Home</div><button class="st-lgrow' + (ST.view === 'home' ? ' sel' : '') + '" data-st="go" data-sec="library" data-view="home"><span class="st-lgdot home"></span><span class="st-lgname">Home</span></button>' +
-        '<div class="st-lg-head">All Games <i>' + owned.length + '</i></div>' + rows + '</div></aside>';
+        '<div class="st-lib-col">' +
+        '<button class="st-lgrow' + (ST.view === 'home' ? ' sel' : '') + '" data-st="go" data-sec="library" data-view="home"><span class="st-lgdot home"></span><span class="st-lgname">Home</span></button>' +
+        section('fav', 'Favorites', favs) +
+        section('all', 'All Games', rest) +
+        '</div></aside>';
 }
 function stLibHome() {
     var owned = STG.filter(function (g) { return isOwned(g.id); });
@@ -1856,7 +2300,14 @@ function stLibHome() {
         ['you', 'reached ' + stHrs('factorio').toFixed(0) + ' hours in', 'Factorio', 'factorio'],
         ['nat20nate', 'is now playing', "Baldur's Gate 3", 'bg3']
     ];
+    var fresh = STG.filter(function (g) { return isOwned(g.id) && g.news; });
     var h = '<div class="st-lib">' + stLibSidebar() + '<div class="st-lib-main">';
+    if (fresh.length) {
+        h += '<h2 class="st-lib-h">What\'s New</h2><div class="st-wn">' + fresh.map(function (g) {
+            return '<button class="st-wn-card" data-st="lib" data-id="' + g.id + '"><canvas class="st-shot" data-g="' + g.id + '" data-seed="6"></canvas>' +
+                '<span class="st-wn-b"><i>' + esc(g.t) + (g.news[0][2] ? ' · ' + esc(g.news[0][2]) : '') + '</i><b>' + esc(g.news[0][0]) + '</b><span class="st-wn-p">' + esc(g.news[0][1]) + '</span></span></button>';
+        }).join('') + '</div>';
+    }
     h += '<h2 class="st-lib-h">Recent games</h2><div class="st-recent">' + recent.map(function (g) {
         return '<button class="st-rtile" data-st="lib" data-id="' + g.id + '"><div class="st-rtile-art">' + stCap(g, 'tile') + '</div>' +
             '<span class="st-rtile-play">' + gPlay() + '</span>' +
@@ -1880,8 +2331,9 @@ function stLibGame(g) {
     var achGrid = '';
     if (ach[1]) {
         var list = (g.achx || []).slice();
-        while (list.length < 8 && list.length < ach[1]) { var gk = list.length < ach[0]; list.push([gk ? 'Achievement ' + (list.length + 1) : 'Locked', gk ? 'Unlocked — nice.' : 'Hidden until you earn it', gk ? 1 : 0]); }
-        achGrid = '<div class="st-ach"><div class="st-ach-h"><span>Achievements</span><span>' + ach[0] + ' of ' + ach[1] + '</span></div>' +
+        var unl = list.filter(function (a) { return a[2]; }).length;
+        while (list.length < 8 && list.length < ach[1]) { var gk = unl < ach[0]; if (gk) unl++; list.push([gk ? 'Achievement ' + (list.length + 1) : 'Locked', gk ? 'Unlocked — nice.' : 'Hidden until you earn it', gk ? 1 : 0]); }
+        achGrid = '<div class="st-ach"><div class="st-ach-h"><span>Achievements</span><span>' + ach[0] + ' of ' + ach[1] + ' · <button class="st-link sm" data-st="ach" data-id="' + g.id + '">View all</button></span></div>' +
             '<div class="st-ach-bar"><i style="width:' + pct + '%"></i></div>' +
             '<div class="st-ach-grid">' + list.slice(0, 8).map(function (a) {
                 return '<div class="st-ach-i' + (a[2] ? '' : ' lock') + '" title="' + esc(a[1]) + '"><span class="st-ach-badge">' + (a[2] ? gStar() : '<span class="st-lockglyph"></span>') + '</span><span class="st-ach-n">' + esc(a[0]) + '</span></div>';
@@ -1902,7 +2354,7 @@ function stLibGame(g) {
         '</div>' +
         '<div class="st-lg-bar"><span><b>' + (g.hrs2w || 0).toFixed(1) + '</b> hrs past two weeks</span><span><b>' + stHrs(g.id).toFixed(1) + '</b> hrs total</span><span>' + (inst ? 'Installed' : dl ? 'Downloading' : 'Ready to install') + '</span><span class="st-lg-dev">' + esc(g.dev) + '</span></div>' +
         '<div class="st-lg-body">' + achGrid + friendsHTML + newsHTML +
-          '<div class="st-lg-card"><h4>Links</h4><div class="st-lg-links"><button class="st-ghost" data-st="game" data-id="' + g.id + '">Store Page</button><button class="st-ghost">Community Hub</button><button class="st-ghost">Guides</button><button class="st-ghost">☁ Cloud: synced</button></div></div>' +
+          '<div class="st-lg-card"><h4>Links</h4><div class="st-lg-links"><button class="st-ghost" data-st="game" data-id="' + g.id + '">Store Page</button>' + (g.ach && g.ach[1] ? '<button class="st-ghost" data-st="ach" data-id="' + g.id + '">Achievements (' + g.ach[0] + '/' + g.ach[1] + ')</button>' : '') + '<button class="st-ghost" data-st="hub" data-id="' + g.id + '">Community Hub</button><button class="st-ghost">☁ Cloud: synced</button></div></div>' +
         '</div></div></div>';
 }
 function stCollections() {
@@ -1919,8 +2371,11 @@ function stProfile() {
     var total = owned.reduce(function (s, g) { return s + stHrs(g.id); }, 0);
     var fav = SG['bg3'];
     var badges = [['Years of Service', '2'], ['Community Ambassador', ''], ['Pixel Pioneer', ''], ['Steam Awards ’26', ''], ['URE BOY Owner', '']];
-    return '<div class="st-prof"><div class="st-prof-hero">' +
-        '<div class="st-prof-av">' + ic('ic-ure') + '</div>' +
+    var bgId = recall('steam_bg', ''), frame = recall('steam_frame', '');
+    var heroStyle = bgId && SG[bgId] ? ' style="background:linear-gradient(120deg,' + SG[bgId].art[0] + 'ee,' + SG[bgId].art[1] + '55),linear-gradient(120deg,#1a2a3c,#16202d)"' : '';
+    var avStyle = frame ? ' style="--frame:' + frame + '" class="st-prof-av framed"' : ' class="st-prof-av"';
+    return '<div class="st-prof"><div class="st-prof-hero"' + heroStyle + '>' +
+        '<div' + avStyle + '>' + ic('ic-ure') + '</div>' +
         '<div class="st-prof-id"><h2>Isaac Ure</h2><span class="st-prof-loc">Houston, Texas · Rice ’29</span><p class="st-prof-tag">Building a GTI, DMing on weekends, optimizing everything else.</p></div>' +
         '<div class="st-level"><span class="st-level-ring">42</span><span class="st-level-xp"><b>Level 42</b><i class="st-xpbar"><span style="width:68%"></span></i><em>680 XP to 43</em></span></div>' +
       '</div>' +
@@ -1954,6 +2409,247 @@ function stFriends() {
         }).join('') + '</div></div>';
 }
 
+/* ═══════════════ ACHIEVEMENTS PAGE ═══════════════ */
+function stAchPage(g) {
+    var ach = g.ach || [0, 0], pct = ach[1] ? Math.round(ach[0] / ach[1] * 100) : 0;
+    var list = (g.achx || []).slice();
+    var unl = list.filter(function (a) { return a[2]; }).length;      // count real unlocks so padding matches the header
+    while (list.length < Math.min(ach[1], 14)) { var gk = unl < ach[0]; if (gk) unl++; list.push([gk ? 'Achievement ' + (list.length + 1) : 'Hidden Achievement', gk ? 'Unlocked — nice.' : 'Details hidden until you earn it', gk ? 1 : 0]); }
+    var rows = list.map(function (a, i) {
+        var glob = clamp(88 - i * (60 / Math.max(1, list.length)) + stHash(g.id, i) * 14, 0.4, 92).toFixed(1);
+        return '<div class="st-achr' + (a[2] ? '' : ' lock') + '"><span class="st-ach-badge">' + (a[2] ? gStar() : '<span class="st-lockglyph"></span>') + '</span>' +
+            '<span class="st-achr-b"><b>' + esc(a[0]) + '</b><i>' + esc(a[1]) + '</i></span>' +
+            '<span class="st-achr-g"><span class="st-achr-gbar"><i style="width:' + glob + '%"></i></span><i>' + glob + '% of players</i></span></div>';
+    }).join('');
+    return '<div class="st-lib">' + stLibSidebar() + '<div class="st-lib-main st-achpage">' +
+        '<div class="st-achp-head"><button class="st-ghost sm" data-st="lib" data-id="' + g.id + '">‹ ' + esc(g.t) + '</button><h2 class="st-lib-h">Achievements</h2>' +
+        '<span class="st-achp-sum">You\'ve unlocked <b>' + ach[0] + ' / ' + ach[1] + '</b> (' + pct + '%)</span></div>' +
+        '<div class="st-ach-bar big"><i style="width:' + pct + '%"></i></div>' +
+        '<div class="st-achlist">' + (ach[1] ? rows : '<p class="st-empty">This game has no achievements. It respects your time. Suspicious.</p>') + '</div>' +
+        (ach[1] > list.length ? '<p class="st-empty">…plus ' + (ach[1] - list.length) + ' more the museum hasn\'t catalogued.</p>' : '') +
+        '</div></div>';
+}
+
+/* ═══════════════ NEWS + LABS ═══════════════ */
+var SNEWS_SITE = [
+    ['isaacure.com', 'the computer is the hub now', "The pixel Windows 11 desktop keeps growing — Steam client, possessed Edge, Task View. The Game Boy stays.", 'Jul 9'],
+    ['URE BOY', 'Summer update', "Three carts and counting. Cloud saves via gist. The DMG palette abides.", 'Jul 2']
+];
+function stNews() {
+    var items = [];
+    STG.forEach(function (g) { (g.news || []).forEach(function (n) { items.push({ g: g, n: n }); }); });
+    var site = SNEWS_SITE.map(function (s) {
+        return '<div class="st-newsrow site"><span class="st-newsart">' + ic('ic-ure') + '</span>' +
+            '<div class="st-news-b"><i>' + esc(s[0]) + (s[3] ? ' · ' + esc(s[3]) : '') + '</i><b>' + esc(s[1]) + '</b><p>' + esc(s[2]) + '</p></div></div>';
+    }).join('');
+    var rows = items.map(function (it) {
+        return '<div class="st-newsrow"><canvas class="st-newsart" data-g="' + it.g.id + '" data-seed="6"></canvas>' +
+            '<div class="st-news-b"><i><button class="st-link sm" data-st="game" data-id="' + it.g.id + '">' + esc(it.g.t) + '</button>' + (it.n[2] ? ' · ' + esc(it.n[2]) : '') + '</i><b>' + esc(it.n[0]) + '</b><p>' + esc(it.n[1]) + '</p></div></div>';
+    }).join('');
+    return '<div class="st-pad"><h2 class="st-browse-h">News <span>your games, your site, your propaganda</span></h2><div class="st-newslist">' + rows + site + '</div></div>';
+}
+var SLABS_WHY = [
+    "because your playtime graph looks like a cry for help",
+    "because the algorithm knows about the GTI",
+    "because you finished your homework (citation needed)",
+    "because entropy comes for us all, but not your backlog",
+    "because it pairs well with chamomile"
+];
+function stLabs() {
+    return '<div class="st-pad st-labs"><h2 class="st-browse-h">Steam Labs <span>experiments in progress</span></h2>' +
+        '<div class="st-lg-card"><h4>Experiment 042 — The URE Interactive Recommender</h4>' +
+        '<p class="st-empty">A machine-learning model trained exclusively on Isaac. Ask it what to play.</p>' +
+        '<button class="st-play" data-st="labsrec">RECOMMEND ME SOMETHING</button>' +
+        '<div class="st-labs-out" id="stLabsOut"></div></div>' +
+        '<div class="st-lg-card"><h4>Experiment 007 — Deep Dive</h4><p class="st-empty">Closed. It dove too deep.</p></div></div>';
+}
+function stLabsRec() {
+    var owned = STG.filter(function (g) { return isOwned(g.id); });
+    var g = owned[Math.floor(Math.random() * owned.length)];
+    var why = SLABS_WHY[Math.floor(Math.random() * SLABS_WHY.length)];
+    var out = ST.body.querySelector('#stLabsOut'); if (!out) return;
+    out.innerHTML = '<button class="st-scard labs" data-st="lib" data-id="' + g.id + '"><canvas class="st-shot" data-g="' + g.id + '" data-seed="9"></canvas>' +
+        '<span class="st-scard-t">' + esc(g.t) + '</span><span class="st-scard-tags">' + esc(why) + '</span></button>';
+    out.querySelectorAll('canvas[data-g]').forEach(stPaint);
+}
+
+/* ═══════════════ FRIENDS PANEL + CHAT ═══════════════ */
+function stFrOnline() { return SFR.filter(function (f) { return f[1] !== 'Offline'; }).length; }
+function stFriendsPanel() {
+    var order = { 'In-Game': 0, 'Online': 1, 'Away': 2, 'Snooze': 3, 'Offline': 4 };
+    var list = SFR.slice().sort(function (a, b) { return order[a[1]] - order[b[1]]; });
+    function row(f) {
+        var cls = f[1] === 'In-Game' ? 'ingame' : f[1] === 'Offline' ? 'off' : f[1] === 'Away' || f[1] === 'Snooze' ? 'away' : 'on';
+        var sub = f[1] === 'In-Game' ? 'Playing ' + f[2] : f[2] || f[1];
+        return '<button class="st-fp-row ' + cls + '" data-st="chat" data-id="' + esc(f[0]) + '"><span class="st-fr-av">' + ic('ic-user') + '</span>' +
+            '<span class="st-fr-b"><b>' + esc(f[0]) + '</b><i>' + esc(sub) + '</i></span></button>';
+    }
+    var on = list.filter(function (f) { return f[1] !== 'Offline'; });
+    var off = list.filter(function (f) { return f[1] === 'Offline'; });
+    ST.fpanel.innerHTML = '<div class="st-fp-head"><b>Friends &amp; Chat</b><button class="st-fp-x" data-st="friends">×</button></div>' +
+        '<div class="st-fp-me">' + ic('ic-user') + '<span><b>Isaac Ure</b><i class="on">Online</i></span></div>' +
+        '<div class="st-fp-list"><div class="st-fp-sec">ONLINE — ' + on.length + '</div>' + on.map(row).join('') +
+        '<div class="st-fp-sec">OFFLINE — ' + off.length + '</div>' + off.map(row).join('') + '</div>';
+}
+function stChatOpen(name) {
+    ST.chatWith = name;
+    if (!ST.chats[name]) {
+        ST.chats[name] = [];
+        var f = SFR.filter(function (x) { return x[0] === name; })[0];
+        if (!f || f[1] !== 'Offline') {                               // offline friends don't greet either
+            var lines = SCHAT[name] || SCHAT._;
+            ST.chats[name].push({ who: name, txt: lines[0] });
+            ST.chatIdx[name] = 1;
+        }
+    }
+    stChatDraw(true);
+}
+function stChatDraw(takeFocus) {
+    var name = ST.chatWith; if (!name) { ST.chatw.hidden = true; return; }
+    var f = SFR.filter(function (x) { return x[0] === name; })[0] || [name, 'Online', '', ''];
+    var cls = f[1] === 'In-Game' ? 'ingame' : f[1] === 'Offline' ? 'off' : 'on';
+    var msgs = (ST.chats[name] || []).map(function (m) {
+        return '<div class="st-chat-m' + (m.who === 'me' ? ' me' : '') + '"><b>' + (m.who === 'me' ? 'Isaac' : esc(m.who)) + ':</b> ' + esc(m.txt) + '</div>';
+    }).join('');
+    // a reply can land mid-typing: keep the draft, only re-take focus if we had it
+    var old = ST.chatw.querySelector('.st-chat-in');
+    var draft = old ? old.value : '';
+    var hadFocus = takeFocus || (old && document.activeElement === old);
+    ST.chatw.hidden = false;
+    ST.chatw.innerHTML = '<div class="st-chat-head ' + cls + '"><b>' + esc(name) + '</b><i>' + esc(f[1] === 'In-Game' ? 'Playing ' + f[2] : f[1]) + '</i><button class="st-fp-x" data-st="chatclose">×</button></div>' +
+        '<div class="st-chat-log" id="stChatLog">' + msgs + '</div>' +
+        '<div class="st-chat-inrow"><input class="st-chat-in" placeholder="Send a message…" autocomplete="off" spellcheck="false"><button class="st-ghost sm" data-st="chatsend">Send</button></div>';
+    var log = ST.chatw.querySelector('#stChatLog'); log.scrollTop = log.scrollHeight;
+    var inp = ST.chatw.querySelector('.st-chat-in');
+    inp.value = takeFocus ? '' : draft;
+    if (hadFocus && !reduce) setTimeout(function () { if (ST && ST.chatw.contains(inp)) inp.focus(); }, 30);
+}
+function stChatSend() {
+    var name = ST.chatWith; if (!name) return;
+    var inp = ST.chatw.querySelector('.st-chat-in'); if (!inp || !inp.value.trim()) return;
+    ST.chats[name].push({ who: 'me', txt: inp.value.trim() });
+    inp.value = '';
+    stChatDraw(true);
+    var f = SFR.filter(function (x) { return x[0] === name; })[0];
+    if (f && f[1] === 'Offline') return;                              // offline friends don't reply
+    clearTimeout(ST.chatT[name]);                                     // per-friend timers: replies survive switching chats
+    ST.chatT[name] = setTimeout(function () {
+        if (!ST) return;
+        var lines = SCHAT[name] || SCHAT._;
+        var i = (ST.chatIdx[name] || 0) % lines.length;
+        ST.chats[name].push({ who: name, txt: lines[i] });
+        ST.chatIdx[name] = i + 1;
+        if (ST.chatWith === name) stChatDraw();                       // append regardless; redraw only if that chat is open
+    }, reduce ? 150 : 900 + Math.random() * 800);
+}
+
+/* ═══════════════ NOTIFICATIONS / MENUS / MODALS ═══════════════ */
+function stNotifItems() {
+    var it = [];
+    var w = stWish().map(function (id) { return SG[id]; }).filter(function (g) { return g && g.disc; });
+    if (w[0]) it.push(['disc', w[0].t + ' is -' + w[0].disc + '% — it\'s on your wishlist', w[0].id]);
+    it.push(['inv', 'throttle_body invited you to play GTI RUN', 'gtirun']);
+    it.push(['ach', 'Achievement unlocked: Box Box Box (PIT LANE)', 'pitlane']);
+    it.push(['sys', 'Your Steam Replay 2025 is ready. It is mostly Factorio.', null]);
+    return it;
+}
+function stNotifToggle() {
+    if (!ST.notifp.hidden) { ST.notifp.hidden = true; return; }
+    stCloseLayers('notifp');
+    ST.notifp.innerHTML = '<div class="st-fp-sec pad">NOTIFICATIONS</div>' + stNotifItems().map(function (n) {
+        return '<button class="st-notif-i"' + (n[2] ? ' data-st="game" data-id="' + n[2] + '"' : '') + '>' +
+            (n[0] === 'disc' ? gCart() : n[0] === 'inv' ? gUsers() : n[0] === 'ach' ? gStar() : gBell()) +
+            '<span>' + esc(n[1]) + '</span></button>';
+    }).join('');
+    ST.notifp.hidden = false;
+    ST.notifRead = true; stSyncBadges();
+}
+function stDropOpen(items, anchor) {
+    stCloseLayers('drop');
+    ST.dropBy = anchor;                                   // so a second click on the same anchor can toggle it closed
+    var r = anchor.getBoundingClientRect(), rootR = ST.root.getBoundingClientRect();
+    ST.drop.innerHTML = items.map(function (m) { return '<button class="st-drop-i" data-st="dropact" data-id="' + m[1] + '">' + esc(m[0]) + '</button>'; }).join('');
+    ST.drop.style.left = Math.min(r.left - rootR.left, rootR.width - 240) + 'px';
+    ST.drop.hidden = false;                               // unhide first so offsetHeight is real
+    var top = r.bottom - rootR.top + 2;
+    if (top + ST.drop.offsetHeight > rootR.height) top = Math.max(0, r.top - rootR.top - ST.drop.offsetHeight - 2);   // flip up (status-bar menus)
+    ST.drop.style.top = top + 'px';
+}
+function stModalOpen(kind) {
+    stCloseLayers('modal');
+    var inner = '';
+    if (kind === 'activate') {
+        inner = '<h3>Activate a Product on Steam</h3><p>Enter your product code. Codes look like <b>URE0Y-XXXXX-XXXXX</b>.</p>' +
+            '<input class="st-act-in" placeholder="URE0Y-....." autocomplete="off" spellcheck="false">' +
+            '<div class="st-modal-btns"><button class="st-play" data-st="activatego">Activate</button><button class="st-ghost" data-st="modalclose">Cancel</button></div>' +
+            '<p class="st-modal-out" id="stActOut"></p>';
+    } else if (kind === 'about') {
+        inner = '<h3>' + ic('ic-steam') + ' About Steam</h3><dl class="st-facts"><dt>Client</dt><dd>Pixel Edition</dd><dt>Built</dt><dd>isaacure.com/comp</dd><dt>Renderer</dt><dd>Canvas 2D, dithered</dd><dt>Framework</dt><dd>none. vanilla. artisanal.</dd></dl>' +
+            '<div class="st-modal-btns"><button class="st-ghost" data-st="modalclose">Close</button></div>';
+    } else if (kind === 'sysinfo') {
+        inner = '<h3>System Information</h3><pre class="st-sysinfo">OS:       UreOS 11 Pixel Edition\nCPU:      Bloom Core @ 60fps\nRAM:      640 KB (ought to be enough)\nGPU:      Canvas 2D, pixelated\nDisplay:  ' + window.innerWidth + '×' + window.innerHeight + ' (this one)\nSteam:    the one you are looking at</pre>' +
+            '<div class="st-modal-btns"><button class="st-ghost" data-st="modalclose">Close</button></div>';
+    } else if (kind === 'settings') {
+        inner = '<h3>Steam Settings</h3>' +
+            '<label class="st-modal-row"><span>Enable Big Picture on wake</span><b>No.</b></label>' +
+            '<label class="st-modal-row"><span>Download region</span><b>Houston (the good rack)</b></label>' +
+            '<label class="st-modal-row"><span>Client beta participation</span><b>URE Client Beta ✓</b></label>' +
+            '<label class="st-modal-row"><span>Steam Cloud</span><b>synced, allegedly</b></label>' +
+            '<div class="st-modal-btns"><button class="st-ghost" data-st="modalclose">Close</button></div>';
+    }
+    ST.modal.innerHTML = '<div class="st-modal-card">' + inner + '</div>';
+    ST.modal.hidden = false;
+    if (kind === 'activate' && !reduce) { var ai = ST.modal.querySelector('.st-act-in'); if (ai) setTimeout(function () { ai.focus(); }, 30); }
+}
+function stActivateGo() {
+    var inp = ST.modal.querySelector('.st-act-in'), out = ST.modal.querySelector('#stActOut'); if (!inp || !out) return;
+    var v = inp.value.trim().toUpperCase();
+    if (!v) { out.textContent = 'Enter a code first.'; return; }
+    if (v.indexOf('URE') >= 0) { out.textContent = 'Code accepted. You already own everything URE makes — it\'s that kind of store.'; stToast('Product activated: the warm feeling of ownership.'); }
+    else out.textContent = 'Invalid product code. This museum only honors URE-codes.';
+}
+var SDROPACT = {
+    'm-about': function () { stModalOpen('about'); },
+    'm-settings': function () { stModalOpen('settings'); },
+    'm-offline': function () { stToast('You are now pretending to be offline.'); },
+    'm-exit': function () { closeWin('steam'); },
+    'm-vstore': function () { stGo('store', 'home', null); },
+    'm-vlib': function () { stGo('library', 'home', null); },
+    'm-vdl': function () { stGo('downloads', 'home', null); },
+    'm-vnews': function () { stGo('store', 'news', null); },
+    'm-vfriends': function () { stFriendsToggle(true); },
+    'm-addfriend': function () { stToast('Your friend code: URE-BOY-1. Choose wisely.'); },
+    'm-status': function () { stToast('Status: Online. The green dot of honor.'); },
+    'm-activate': function () { stModalOpen('activate'); },
+    'm-nonsteam': function () { stToast('Every game here is a non-Steam game if you think about it.'); },
+    'm-support': function () { stToast('Support ticket #0001 filed with Isaac. Response time: whenever.'); },
+    'm-sysinfo': function () { stModalOpen('sysinfo'); },
+    'm-profile': function () { stGo('community', 'home', null); },
+    'm-acctdetails': function () { stToast("Account: it's Isaac. The details are Isaac."); },
+    'm-storeprefs': function () { stToast('Preference saved: more racing games. Obviously.'); },
+    'm-signout': function () { stToast('Nice try — this is Isaac\'s machine.'); }
+};
+function stFriendsToggle(force) {
+    var open = ST.fpanel.hidden || force === true;
+    if (open) { stFriendsPanel(); ST.fpanel.hidden = false; }
+    else ST.fpanel.hidden = true;
+}
+
+/* ═══════════════ SEARCH AUTOCOMPLETE ═══════════════ */
+function stSearchDrop(input) {
+    var q = input.value.trim().toLowerCase();
+    if (!q) { ST.sdrop.hidden = true; return; }
+    var hits = STG.filter(function (g) { return (g.t + ' ' + g.dev).toLowerCase().indexOf(q) >= 0; }).slice(0, 6);
+    if (!hits.length) { ST.sdrop.hidden = true; return; }
+    ST.sdrop.innerHTML = hits.map(function (g) {
+        return '<button class="st-sd-row" data-st="game" data-id="' + g.id + '">' +
+            '<span class="st-lgchip" style="background:linear-gradient(135deg,' + g.art[0] + ',' + g.art[1] + ')"></span>' +
+            '<span class="st-sd-t">' + esc(g.t) + '</span>' +
+            '<span class="st-sd-px">' + (isOwned(g.id) ? 'In Library' : g.free ? 'Free' : stPrice(stFinal(g))) + '</span></button>';
+    }).join('');
+    ST.sdrop.hidden = false;
+}
+
 /* ═══════════════ CART / CHECKOUT ═══════════════ */
 function stCartView() {
     var ids = stCart(), list = ids.map(function (i) { return SG[i]; }).filter(Boolean);
@@ -1966,10 +2662,13 @@ function stCartView() {
                 '<div class="st-cart-info"><b>' + esc(g.t) + '</b><span class="st-rev ' + stRevClass(g.rev[1]) + '">' + g.rev[0] + '</span></div>' +
                 '<div class="st-cart-px">' + (g.disc ? stDisc(g) : '<b>' + stPrice(stFinal(g)) + '</b>') + '<button class="st-cart-rm" data-st="removecart" data-id="' + g.id + '">Remove</button></div></div>';
         }).join('') + '</div>' +
-        '<div class="st-cart-sum">' + (full !== sub ? '<div class="st-cart-line"><span>Discounts</span><b class="st-save">-' + stPrice(full - sub) + '</b></div>' : '') +
+        '<div class="st-cart-sum">' +
+          '<div class="st-gift"><button class="st-gift-b sel" data-st="gift" data-id="me">For my account</button><button class="st-gift-b" data-st="gift" data-id="gift">This is a gift</button></div>' +
+          (full !== sub ? '<div class="st-cart-line"><span>Discounts</span><b class="st-save">-' + stPrice(full - sub) + '</b></div>' : '') +
+          '<div class="st-cart-line"><span>Estimated tax</span><b>$0.00</b></div>' +
           '<div class="st-cart-line total"><span>Estimated total</span><b>' + stPrice(sub) + '</b></div>' +
           '<button class="st-play wide" data-st="checkout">Continue to payment</button>' +
-          '<p class="st-cart-note">This is a museum checkout. No card, no charge — it just drops the game into your library.</p>' +
+          '<p class="st-cart-note">Museum checkout: no card, no charge, no tax (it\'s the one perk). Games land straight in your library.</p>' +
         '</div></div>';
 }
 function stCheckout() {
@@ -1977,10 +2676,13 @@ function stCheckout() {
     stOverlay('Processing your order…', true);
     setTimeout(function () {
         ids.forEach(stGrant);
+        var spent = ids.reduce(function (s, i) { return s + stFinal(SG[i]); }, 0);
+        var pts = spent;                                        // spent is in cents → 100 pts per dollar, like the real thing
+        if (pts) store('steam_points', String(stPts() + pts));
         sjSet('cart', []);
         sjSet('wish', stWish().filter(function (i) { return ids.indexOf(i) < 0; }));
         stClearOverlay();
-        stToast('Purchase complete — ' + ids.length + ' item' + (ids.length === 1 ? '' : 's') + ' added to your library.');
+        stToast('Purchase complete — ' + ids.length + ' item' + (ids.length === 1 ? '' : 's') + ' added' + (pts ? ' (+' + pts.toLocaleString() + ' points)' : '') + '.');
         stGo('library', 'home', null);
     }, reduce ? 200 : 1500);
 }
@@ -2003,6 +2705,7 @@ function stStartDl() {
         var q = stQueue(); if (!q.length) { clearInterval(ST.dlT); ST.dlT = 0; return; }
         var d = q[0];
         d.sp = 3 + Math.random() * 9;
+        ST.spHist.push(d.sp); if (ST.spHist.length > 40) ST.spHist.shift();
         d.pct += reduce ? 100 : (4 + Math.random() * 9);
         if (d.pct >= 100) {
             d.pct = 100; stMarkInst(d.id); var done = q.shift();
@@ -2010,7 +2713,7 @@ function stStartDl() {
             if (!q.length) { clearInterval(ST.dlT); ST.dlT = 0; }
         }
         stDock(); stSyncBadges();
-        if (ST.section === 'downloads') { ST.body.innerHTML = stDownloads(); stPaintAll(); }
+        if (ST.section === 'downloads') { ST.body.innerHTML = stDownloads(); stPaintAll(); stSpark(); }
         else if (ST.section === 'library' && ST.view === 'game') {
             var bar = ST.body.querySelector('.st-play.dis'); if (bar && stInQueue(ST.gid)) bar.innerHTML = gDl() + ' Installing… ' + Math.floor(stInQueue(ST.gid).pct) + '%';
             else if (!stInQueue(ST.gid)) { ST.body.innerHTML = stLibGame(SG[ST.gid]); stPaintAll(); }
@@ -2025,21 +2728,44 @@ function stDownloads() {
         '<div class="st-dl-info"><div class="st-dl-top"><b>' + esc(SG[head.id].t) + '</b><span>' + (head.sp || 0).toFixed(1) + ' MB/s</span></div>' +
         '<div class="st-dl-bar"><i style="width:' + head.pct + '%"></i></div>' +
         '<div class="st-dl-sub"><span>Downloading · ' + Math.floor(head.pct) + '%</span><span>' + Math.max(1, Math.round((100 - head.pct) / 6)) + 's left</span></div></div>' +
+        '<canvas class="st-spark" id="stSpark" width="220" height="44"></canvas>' +
         '<button class="st-ghost" data-st="cancel" data-id="' + head.id + '">Pause</button></div>' : '<div class="st-dl-none">' + gDl() + '<p>No active downloads.</p><span>Install a game from your library or the store to see it here.</span></div>';
     var up = q.slice(1);
     return '<div class="st-pad st-dl"><h2 class="st-browse-h">Downloads</h2>' + active +
         (up.length ? '<h4 class="st-dl-h">Up Next</h4>' + up.map(function (d) { return '<div class="st-dl-q"><canvas class="st-dl-art sm" data-g="' + d.id + '" data-seed="2"></canvas><b>' + esc(SG[d.id].t) + '</b><span>Queued</span></div>'; }).join('') : '') +
         '<h4 class="st-dl-h">Ready to Play <i>' + installed.length + '</i></h4><div class="st-dl-done">' + installed.map(function (g) { return '<button class="st-dl-q done" data-st="lib" data-id="' + g.id + '"><canvas class="st-dl-art sm" data-g="' + g.id + '" data-seed="2"></canvas><b>' + esc(g.t) + '</b><span>' + gCheck() + ' Installed</span></button>'; }).join('') + '</div></div>';
 }
-function stDock() {
+/* the bottom status bar: download state center, friends count right */
+function stStatus() {
     if (!ST) return;
     var q = stQueue(), head = q[0];
-    if (!head) { ST.dock.hidden = true; ST.dock.innerHTML = ''; return; }
-    ST.dock.hidden = false;
-    ST.dock.innerHTML = '<button class="st-dock-in" data-st="nav" data-id="downloads">' + gDl() +
-        '<span class="st-dock-t">' + esc(SG[head.id].t) + '</span>' +
-        '<span class="st-dock-bar"><i style="width:' + head.pct + '%"></i></span>' +
-        '<span class="st-dock-pct">' + Math.floor(head.pct) + '%' + (q.length > 1 ? ' · +' + (q.length - 1) : '') + '</span></button>';
+    var dl = ST.root.querySelector('#stStatusDl');
+    if (dl) {
+        dl.innerHTML = head
+            ? gDl() + ' <b>' + esc(SG[head.id].t) + '</b> — ' + Math.floor(head.pct) + '% (' + (head.sp || 0).toFixed(1) + ' MB/s)' + (q.length > 1 ? ' · +' + (q.length - 1) + ' queued' : '')
+            : 'No downloads in queue · Manage';
+        dl.classList.toggle('busy', !!head);
+    }
+    var fc = ST.root.querySelector('#stFrCount');
+    if (fc) fc.textContent = '(' + stFrOnline() + ')';
+}
+var stDock = stStatus;   // old name, kept for the download tick
+/* sparkline of recent download speeds on the Downloads page */
+function stSpark() {
+    var cv = ST.body.querySelector('#stSpark'); if (!cv) return;
+    var x = cv.getContext('2d'), w = cv.width, h = cv.height, d = ST.spHist;
+    x.clearRect(0, 0, w, h);
+    x.fillStyle = 'rgba(102,192,244,.08)'; x.fillRect(0, 0, w, h);
+    if (d.length < 2) return;
+    var max = Math.max.apply(null, d) || 1;
+    x.beginPath();
+    x.moveTo(0, h);
+    for (var i = 0; i < d.length; i++) x.lineTo(i / (d.length - 1) * w, h - (d[i] / max) * (h - 6) - 2);
+    x.lineTo(w, h); x.closePath();
+    x.fillStyle = 'rgba(102,192,244,.25)'; x.fill();
+    x.beginPath();
+    for (var j = 0; j < d.length; j++) { var px = j / (d.length - 1) * w, py = h - (d[j] / max) * (h - 6) - 2; if (j) x.lineTo(px, py); else x.moveTo(px, py); }
+    x.strokeStyle = '#66c0f4'; x.lineWidth = 1.5; x.stroke();
 }
 
 /* ═══════════════ launch / overlays / toasts ═══════════════ */
@@ -2068,22 +2794,32 @@ function stToast(msg) {
     clearTimeout(ST.toastT); ST.toastT = setTimeout(function () { t.classList.remove('on'); setTimeout(function () { t.hidden = true; }, 300); }, 2600);
 }
 function stSyncBadges() {
-    var c = stCart().length, d = stQueue().length;
-    var cb = ST.root.querySelector('#stCartBadge'), db = ST.root.querySelector('#stDlBadge');
+    var c = stCart().length, d = stQueue().length, n = ST.notifRead ? 0 : stNotifItems().length;
+    var cb = ST.root.querySelector('#stCartBadge'), db = ST.root.querySelector('#stDlBadge'), nb = ST.root.querySelector('#stBellBadge');
     if (cb) { cb.textContent = c; cb.hidden = !c; }
     if (db) { db.textContent = d; db.hidden = !d; }
+    if (nb) { nb.textContent = n; nb.hidden = !n; }
+    stStatus();
 }
 
 /* ═══════════════ one click handler to rule them all ═══════════════ */
 function stClick(e) {
-    var el = e.target.closest('[data-st]'); if (!el) return;
-    var act = el.getAttribute('data-st'), id = el.getAttribute('data-id');
+    var el = e.target.closest('[data-st]');
+    var act = el ? el.getAttribute('data-st') : null;
+    // any click that isn't opening or inside a floating layer closes the layers
+    if (['menu', 'bell', 'acct', 'addgame'].indexOf(act) < 0 && !e.target.closest('.st-drop, .st-notifp, .st-searchdrop, .st-find, .st-modal-card'))
+        stCloseLayers();
+    if (e.target.classList && e.target.classList.contains('st-modal')) { ST.modal.hidden = true; return; }
+    if (!el) return;
+    var id = el.getAttribute('data-id');
     if (act === 'back') return stBack();
-    if (act === 'nav') return stGo(id, 'home', null);
-    if (act === 'go') return stGo(el.getAttribute('data-sec'), el.getAttribute('data-view'), null, { cat: el.getAttribute('data-cat') || null });
+    if (act === 'nav') return id === 'points' ? stGo('store', 'points', null) : stGo(id, 'home', null);
+    if (act === 'go') { ST.q = ''; return stGo(el.getAttribute('data-sec'), el.getAttribute('data-view'), null, { cat: el.getAttribute('data-cat') || null }); }
     if (act === 'game') { ST.q = ''; return stGo('store', 'game', id); }
     if (act === 'lib') return stGo('library', 'game', id);
+    if (act === 'ach') return stGo('library', 'ach', id);
     if (act === 'cat') { ST.q = ''; return stGo('store', 'browse', null, { cat: id }); }
+    if (act === 'devsearch') { ST.q = id; return stGo('store', 'browse', null, { cat: null }); }
     if (act === 'play') return stPlay(id);
     if (act === 'install') return stInstall(id);
     if (act === 'addcart') { var c = stCart(); if (c.indexOf(id) < 0) { c.push(id); sjSet('cart', c); } stSyncBadges(); stToast(SG[id].t + ' — added to cart.'); return stRender(); }
@@ -2103,6 +2839,41 @@ function stClick(e) {
         ST.body.querySelectorAll('.st-sp-th').forEach(function (t, i) { t.classList.toggle('sel', i === ST.gal); });
         return;
     }
+    // ── the client chrome ──
+    if (act === 'menu') { if (!ST.drop.hidden && ST.dropBy === el) { ST.drop.hidden = true; return; } return stDropOpen(SMENUS[id] || [], el); }
+    if (act === 'acct') { if (!ST.drop.hidden && ST.dropBy === el) { ST.drop.hidden = true; return; } return stDropOpen(SACCT, el); }
+    if (act === 'dropact') { ST.drop.hidden = true; var fn = SDROPACT[id]; return fn && fn(); }
+    if (act === 'bell') return stNotifToggle();
+    if (act === 'friends') return stFriendsToggle();
+    if (act === 'chat') { stFriendsToggle(true); return stChatOpen(id); }
+    if (act === 'chatclose') { ST.chatWith = null; ST.chatw.hidden = true; return; }
+    if (act === 'chatsend') return stChatSend();
+    if (act === 'addgame') { if (!ST.drop.hidden && ST.dropBy === el) { ST.drop.hidden = true; return; } return stDropOpen([['Activate a Product on Steam…', 'm-activate'], ['Add a Non-Steam Game…', 'm-nonsteam'], ['Browse the Store', 'm-vstore']], el); }
+    if (act === 'modalclose') { ST.modal.hidden = true; return; }
+    if (act === 'activatego') return stActivateGo();
+    if (act === 'labsrec') return stLabsRec();
+    if (act === 'libsec') { ST.libCollapse[id] = !ST.libCollapse[id]; return stRender(); }
+    if (act === 'tagsall') { var g2 = SG[ST.gid], wrap = ST.body.querySelector('#stTagWrap'); if (g2 && wrap) wrap.innerHTML = stTags(g2); return; }
+    if (act === 'gift') {
+        el.parentNode.querySelectorAll('.st-gift-b').forEach(function (b) { b.classList.toggle('sel', b === el); });
+        if (id === 'gift') stToast('A gift? Generous. It will still end up in Isaac\'s library.');
+        return;
+    }
+    if (act === 'ptsbuy') {
+        var item = SPTS.filter(function (x) { return x.id === id; })[0]; if (!item) return;
+        if (item.k === 'gag') {
+            var po = stPtsOwned();
+            if (po.indexOf(id) < 0) {
+                if (stPts() < item.c) { stToast('Not enough points. Go earn XP. (You can\'t. That\'s the joke.)'); return; }
+                store('steam_points', String(stPts() - item.c)); po.push(id); sjSet('pshop', po);
+            }
+            stToast('It blinks. Trust me.'); return stRender();
+        }
+        if (stPtsBuy(item)) { stToast(item.n + ' — equipped. Check your profile.'); return stRender(); }
+        stToast('Not enough points. Go earn XP. (You can\'t. That\'s the joke.)'); return;
+    }
+    if (act === 'dlcbuy') return stToast('DLC is décor in this museum — admire it from here.');
+    if (act === 'hub') return stToast('The Community Hub is just the friends list with extra steps.');
 }
 
 var APPS = {
@@ -2117,7 +2888,7 @@ var APPS = {
     chrome:   { title: 'Google Chrome', icon: 'ic-chrome', w: 820, h: 560, render: renderChrome, init: initChrome },
     setup:    { title: 'Google Chrome Setup', icon: 'ic-chrome', w: 584, h: 468, render: renderSetup, init: initSetup, onClose: stopSetup },
     bin:      { title: 'Recycle Bin', icon: 'ic-bin', w: 600, h: 400, render: renderBin, init: initBin },
-    steam:    { title: 'Steam', icon: 'ic-steam', w: 960, h: 620, render: renderSteam, init: initSteam, onClose: closeSteam, focusArg: steamFocus },
+    steam:    { title: 'Steam', icon: 'ic-steam', w: 1100, h: 700, render: renderSteam, init: initSteam, onClose: closeSteam, focusArg: steamFocus },
     ureboy:   { launch: '/ureboy/' },
     room:     { launch: '/1p/' },
     gti:      { launch: '/ureboy/' }
@@ -2271,6 +3042,8 @@ tick(); setInterval(tick, 15000);
 if (location.search.indexOf('dev=tv') >= 0) { ['terminal', 'about', 'calc', 'explorer'].forEach(function (a) { openApp(a); }); setTimeout(openTaskView, 60); }
 if (location.search.indexOf('dev=pics') >= 0) openApp('photos', 1);
 if (location.search.indexOf('dev=maxi') >= 0) { openApp('explorer'); openWins.explorer.el.classList.add('maxi'); }
+var devSteam = location.search.match(/dev=steam(?::([a-z]+))?(?::([a-z]+))?(?::([a-z0-9]+))?/);   // ?dev=steam:section:view:gid
+if (devSteam) openApp('steam', devSteam[1] ? { section: devSteam[1], view: devSteam[2] || 'home', id: devSteam[3] || null } : undefined);
 if (location.search.indexOf('fast') >= 0) window.__fastCursor = true;   // dev: instant cursor jumps so the chain runs headless
 if (location.search.indexOf('dev=edge') >= 0) openApp('edge');       // watch the possession play out
 if (location.search.indexOf('dev=chrome') >= 0) { installChrome({ shortcut: true }); openApp('chrome'); }
