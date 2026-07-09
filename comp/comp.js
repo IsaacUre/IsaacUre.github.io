@@ -1907,6 +1907,7 @@ tick(); setInterval(tick, 15000);
 // headless-screenshot hooks (like the room pages' ?dev): populate a state for a one-shot capture
 if (location.search.indexOf('dev=tv') >= 0) { ['terminal', 'about', 'calc', 'explorer'].forEach(function (a) { openApp(a); }); setTimeout(openTaskView, 60); }
 if (location.search.indexOf('dev=pics') >= 0) openApp('photos', 1);
+if (location.search.indexOf('dev=maxi') >= 0) { openApp('explorer'); openWins.explorer.el.classList.add('maxi'); }
 if (location.search.indexOf('fast') >= 0) window.__fastCursor = true;   // dev: instant cursor jumps so the chain runs headless
 if (location.search.indexOf('dev=edge') >= 0) openApp('edge');       // watch the possession play out
 if (location.search.indexOf('dev=chrome') >= 0) { installChrome(); openApp('chrome'); }
