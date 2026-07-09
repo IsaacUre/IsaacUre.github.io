@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="robots" content="noindex, nofollow">
-    <meta name="description" content="Isaac Ure's computer — a pixel-art Windows 11 desktop that acts as the hub. Foundation build, UI only.">
+    <meta name="description" content="Isaac Ure's computer — a pixel-art Windows 11 desktop hub.">
     <meta name="theme-color" content="#0a1226">
     <title>Isaac Ure · the computer</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
@@ -16,10 +16,10 @@
 </head>
 <body>
 
-    <h1 class="sr-only">Isaac Ure · the computer. A pixel-art Windows 11 desktop; use it as the hub.</h1>
+    <h1 class="sr-only">Isaac Ure · the computer. A pixel-art Windows 11 desktop hub.</h1>
     <a class="skip-link" href="/ureboy/">Skip the desktop · boot the URE BOY console</a>
 
-    <!-- ── pixel icon sprite (16×16 unless noted, drawn on the integer grid) ── -->
+    <!-- ── pixel icon sprite (16×16 unless noted, on the integer grid) ── -->
     <svg class="sprite" aria-hidden="true" focusable="false" width="0" height="0" style="position:absolute">
       <defs>
         <symbol id="ic-win" viewBox="0 0 16 16" shape-rendering="crispEdges">
@@ -66,12 +66,6 @@
           </g>
           <rect x="6" y="6" width="4" height="4" fill="#1c1c24"/>
         </symbol>
-        <symbol id="ic-store" viewBox="0 0 16 16" shape-rendering="crispEdges">
-          <rect x="5" y="1" width="6" height="1" fill="#5fb0ff"/><rect x="4" y="2" width="2" height="3" fill="#5fb0ff"/><rect x="10" y="2" width="2" height="3" fill="#5fb0ff"/>
-          <rect x="2" y="5" width="12" height="9" fill="#2f7fd6"/><rect x="2" y="5" width="12" height="2" fill="#3a9bff"/>
-          <rect x="6" y="7" width="1" height="5" fill="#dff0ff"/><rect x="9" y="7" width="1" height="5" fill="#dff0ff"/>
-          <rect x="6" y="7" width="4" height="1" fill="#dff0ff"/><rect x="6" y="11" width="4" height="1" fill="#dff0ff"/><rect x="9" y="9" width="2" height="1" fill="#dff0ff"/>
-        </symbol>
         <symbol id="ic-photos" viewBox="0 0 16 16" shape-rendering="crispEdges">
           <rect x="1" y="2" width="14" height="12" fill="#eef1f4"/><rect x="2" y="3" width="12" height="10" fill="#1f9e98"/>
           <rect x="10" y="5" width="2" height="2" fill="#f4dd7c"/>
@@ -91,6 +85,20 @@
           <rect x="1" y="4" width="7" height="1" fill="#dff0ff"/><rect x="8" y="4" width="6" height="1" fill="#dff0ff"/>
           <rect x="2" y="5" width="6" height="1" fill="#bcdcff"/><rect x="8" y="5" width="5" height="1" fill="#bcdcff"/>
           <rect x="3" y="6" width="4" height="1" fill="#bcdcff"/><rect x="9" y="6" width="3" height="1" fill="#bcdcff"/>
+        </symbol>
+        <symbol id="ic-terminal" viewBox="0 0 16 16" shape-rendering="crispEdges">
+          <rect x="1" y="2" width="14" height="12" fill="#14141c"/><rect x="1" y="2" width="14" height="2" fill="#2b2b38"/>
+          <rect x="2" y="3" width="1" height="1" fill="#d81e05"/>
+          <g fill="#7fe08a"><rect x="3" y="6" width="1" height="1"/><rect x="4" y="7" width="1" height="1"/><rect x="3" y="8" width="1" height="1"/><rect x="6" y="8" width="4" height="1"/></g>
+        </symbol>
+        <symbol id="ic-notepad" viewBox="0 0 16 16" shape-rendering="crispEdges">
+          <rect x="2" y="1" width="12" height="14" fill="#eef1f4"/><rect x="2" y="1" width="12" height="3" fill="#3a9bff"/>
+          <g fill="#9fb0c4"><rect x="4" y="6" width="8" height="1"/><rect x="4" y="8" width="8" height="1"/><rect x="4" y="10" width="6" height="1"/></g>
+        </symbol>
+        <symbol id="ic-globe" viewBox="0 0 16 16" shape-rendering="crispEdges">
+          <rect x="5" y="1" width="6" height="1" fill="#3a9bff"/><rect x="3" y="2" width="10" height="1" fill="#3a9bff"/>
+          <rect x="2" y="3" width="12" height="10" fill="#2f7fd6"/><rect x="3" y="13" width="10" height="1" fill="#3a9bff"/><rect x="5" y="14" width="6" height="1" fill="#3a9bff"/>
+          <g fill="#bcdcff"><rect x="7" y="2" width="2" height="12"/><rect x="2" y="7" width="12" height="2"/><rect x="4" y="4" width="8" height="1"/><rect x="4" y="11" width="8" height="1"/></g>
         </symbol>
         <!-- Isaac's apps -->
         <symbol id="ic-ureboy" viewBox="0 0 16 16" shape-rendering="crispEdges">
@@ -146,7 +154,7 @@
           <rect x="3" y="10" width="2" height="2"/><rect x="11" y="10" width="2" height="2"/></g>
         </symbol>
         <symbol id="ic-net" viewBox="0 0 16 16" shape-rendering="crispEdges">
-          <g fill="currentColor"><rect x="2" y="10" width="2" height="4"/><rect x="6" y="7" width="2" height="7"/><rect x="10" y="4" width="2" height="10"/><rect x="14" y="9" width="0" height="0"/></g>
+          <g fill="currentColor"><rect x="2" y="10" width="2" height="4"/><rect x="6" y="7" width="2" height="7"/><rect x="10" y="4" width="2" height="10"/></g>
           <rect x="13" y="9" width="1" height="5" fill="currentColor" opacity=".4"/>
         </symbol>
         <symbol id="ic-vol" viewBox="0 0 16 16" shape-rendering="crispEdges">
@@ -159,6 +167,29 @@
           <rect x="13" y="7" width="2" height="2" fill="currentColor"/>
           <rect x="2" y="6" width="8" height="4" fill="currentColor"/>
         </symbol>
+        <symbol id="ic-wifi" viewBox="0 0 16 16" shape-rendering="crispEdges">
+          <g fill="currentColor"><rect x="4" y="5" width="8" height="1"/><rect x="3" y="6" width="1" height="1"/><rect x="12" y="6" width="1" height="1"/>
+          <rect x="5" y="8" width="6" height="1"/><rect x="6" y="9" width="4" height="1"/><rect x="7" y="11" width="2" height="2"/></g>
+        </symbol>
+        <symbol id="ic-bt" viewBox="0 0 16 16" shape-rendering="crispEdges">
+          <g fill="currentColor"><rect x="7" y="2" width="1" height="12"/>
+          <rect x="8" y="3" width="1" height="1"/><rect x="9" y="4" width="1" height="1"/><rect x="10" y="5" width="1" height="1"/>
+          <rect x="5" y="5" width="1" height="1"/><rect x="6" y="6" width="1" height="1"/><rect x="9" y="6" width="1" height="1"/><rect x="8" y="7" width="1" height="2"/>
+          <rect x="6" y="9" width="1" height="1"/><rect x="5" y="10" width="1" height="1"/><rect x="9" y="9" width="1" height="1"/><rect x="10" y="10" width="1" height="1"/>
+          <rect x="8" y="11" width="1" height="1"/><rect x="9" y="12" width="1" height="1"/></g>
+        </symbol>
+        <symbol id="ic-plane" viewBox="0 0 16 16" shape-rendering="crispEdges">
+          <g fill="currentColor"><rect x="7" y="1" width="2" height="7"/><rect x="1" y="7" width="14" height="2"/>
+          <rect x="6" y="9" width="4" height="2"/><rect x="5" y="11" width="2" height="2"/><rect x="9" y="11" width="2" height="2"/></g>
+        </symbol>
+        <symbol id="ic-moon" viewBox="0 0 16 16" shape-rendering="crispEdges">
+          <g fill="currentColor"><rect x="5" y="2" width="6" height="2"/><rect x="3" y="4" width="4" height="2"/><rect x="2" y="6" width="3" height="4"/>
+          <rect x="3" y="10" width="4" height="2"/><rect x="5" y="12" width="6" height="2"/><rect x="9" y="10" width="4" height="2"/></g>
+        </symbol>
+        <symbol id="ic-access" viewBox="0 0 16 16" shape-rendering="crispEdges">
+          <g fill="currentColor"><rect x="7" y="1" width="2" height="2"/><rect x="3" y="4" width="10" height="2"/><rect x="7" y="4" width="2" height="6"/>
+          <rect x="4" y="10" width="2" height="4"/><rect x="10" y="10" width="2" height="4"/></g>
+        </symbol>
       </defs>
     </svg>
 
@@ -166,157 +197,91 @@
 
         <canvas class="wall" id="wall" aria-hidden="true"></canvas>
 
-        <!-- ── desktop surface (icons live here; right-click for the menu) ── -->
+        <!-- desktop icons live here; right-click for the menu -->
         <div class="desktop" id="desktop">
           <div class="dicons">
-            <button class="dicon" data-app="explorer" type="button">
-              <span class="dicon-img"><svg class="ic"><use href="#ic-pc"/></svg></span>
-              <span class="dicon-label">This PC</span>
-            </button>
-            <button class="dicon" type="button">
-              <span class="dicon-img"><svg class="ic"><use href="#ic-bin"/></svg></span>
-              <span class="dicon-label">Recycle Bin</span>
-            </button>
-            <button class="dicon" type="button">
-              <span class="dicon-img"><svg class="ic"><use href="#ic-ureboy"/></svg></span>
-              <span class="dicon-label">URE BOY</span>
-            </button>
-            <button class="dicon" type="button">
-              <span class="dicon-img"><svg class="ic"><use href="#ic-room"/></svg></span>
-              <span class="dicon-label">the room</span>
-            </button>
+            <button class="dicon" data-app="explorer" type="button"><span class="dicon-img"><svg class="ic"><use href="#ic-pc"/></svg></span><span class="dicon-label">This PC</span></button>
+            <button class="dicon" data-app="about" type="button"><span class="dicon-img"><svg class="ic"><use href="#ic-ure"/></svg></span><span class="dicon-label">About Isaac</span></button>
+            <button class="dicon" data-app="ureboy" type="button"><span class="dicon-img"><svg class="ic"><use href="#ic-ureboy"/></svg></span><span class="dicon-label">URE BOY</span></button>
+            <button class="dicon" data-app="room" type="button"><span class="dicon-img"><svg class="ic"><use href="#ic-room"/></svg></span><span class="dicon-label">the room</span></button>
+            <button class="dicon" data-app="bin" type="button"><span class="dicon-img"><svg class="ic"><use href="#ic-bin"/></svg></span><span class="dicon-label">Recycle Bin</span></button>
           </div>
         </div>
 
-        <!-- ── a window, to show the chrome (drag the title bar) ── -->
-        <section class="win px-lg lift" id="winExplorer" role="dialog" aria-label="This PC" hidden>
-          <header class="win-bar" id="winBar">
-            <div class="win-id">
-              <svg class="ic win-favicon"><use href="#ic-explorer"/></svg>
-              <span class="win-title">This PC</span>
-            </div>
-            <div class="win-caps">
-              <button class="cap" data-act="min" type="button" aria-label="Minimize">
-                <svg viewBox="0 0 10 10" shape-rendering="crispEdges"><rect x="1" y="5" width="8" height="1" fill="currentColor"/></svg>
-              </button>
-              <button class="cap" data-act="max" type="button" aria-label="Maximize">
-                <svg viewBox="0 0 10 10" shape-rendering="crispEdges"><rect x="1" y="1" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1"/></svg>
-              </button>
-              <button class="cap close" data-act="close" type="button" aria-label="Close">
-                <svg viewBox="0 0 10 10"><path d="M1 1 L9 9 M9 1 L1 9" stroke="currentColor" stroke-width="1.2"/></svg>
-              </button>
-            </div>
-          </header>
-
-          <div class="win-toolbar">
-            <span class="tool-chip">＋ New</span>
-            <span class="tool-div"></span>
-            <span class="tool-ic" title="Cut">✂</span><span class="tool-ic" title="Copy">▤</span><span class="tool-ic" title="Rename">✎</span><span class="tool-ic" title="Delete">🗑</span>
-            <span class="tool-div"></span>
-            <span class="tool-chip">↑↓ Sort</span><span class="tool-chip">▦ View</span>
-          </div>
-
-          <div class="win-body">
-            <nav class="win-nav" aria-label="Folders">
-              <div class="nav-item sel"><svg class="ic"><use href="#ic-ure"/></svg> Home</div>
-              <div class="nav-item"><svg class="ic"><use href="#ic-photos"/></svg> Gallery</div>
-              <div class="nav-group">This PC</div>
-              <div class="nav-item"><svg class="ic"><use href="#ic-folder"/></svg> Desktop</div>
-              <div class="nav-item"><svg class="ic"><use href="#ic-folder"/></svg> Downloads</div>
-              <div class="nav-item"><svg class="ic"><use href="#ic-folder"/></svg> Documents</div>
-              <div class="nav-item"><svg class="ic"><use href="#ic-folder"/></svg> Pictures</div>
-              <div class="nav-item"><svg class="ic"><use href="#ic-pc"/></svg> Local Disk (C:)</div>
-            </nav>
-            <section class="win-main" aria-label="Files">
-              <div class="main-crumb">Home</div>
-              <div class="sect-label">Quick access</div>
-              <div class="fgrid">
-                <div class="fitem"><svg class="ic"><use href="#ic-folder"/></svg><span>Desktop</span></div>
-                <div class="fitem"><svg class="ic"><use href="#ic-folder"/></svg><span>Downloads</span></div>
-                <div class="fitem"><svg class="ic"><use href="#ic-folder"/></svg><span>Documents</span></div>
-                <div class="fitem"><svg class="ic"><use href="#ic-folder"/></svg><span>Pictures</span></div>
-                <div class="fitem"><svg class="ic"><use href="#ic-folder"/></svg><span>Projects</span></div>
-                <div class="fitem"><svg class="ic"><use href="#ic-ureboy"/></svg><span>URE BOY</span></div>
-              </div>
-              <div class="sect-label">Recent</div>
-              <div class="fgrid">
-                <div class="fitem"><svg class="ic"><use href="#ic-room"/></svg><span>the room</span></div>
-                <div class="fitem"><svg class="ic"><use href="#ic-gti"/></svg><span>GTI RUN</span></div>
-                <div class="fitem"><svg class="ic"><use href="#ic-mail"/></svg><span>resume.pdf</span></div>
-              </div>
-            </section>
-          </div>
-        </section>
+        <!-- windows get generated in here -->
+        <div class="windows" id="windows"></div>
 
         <!-- ── Start menu ── -->
         <div class="start px-lg lift" id="startMenu" role="dialog" aria-label="Start" hidden>
-          <div class="start-search">
+          <label class="start-search">
             <svg class="ic"><use href="#ic-search"/></svg>
-            <span>Search for apps, settings, and documents</span>
-          </div>
+            <input id="startSearch" type="text" placeholder="Search for apps, settings, and documents" autocomplete="off" spellcheck="false">
+          </label>
 
-          <div class="start-sec">
+          <div class="start-sec" id="pinnedSec">
             <div class="start-sechead"><span>Pinned</span><button class="chip" type="button">All apps <b>›</b></button></div>
-            <div class="pins">
+            <div class="pins" id="pins">
               <button class="pin" data-app="explorer" type="button"><svg class="ic"><use href="#ic-explorer"/></svg><span>File Explorer</span></button>
-              <button class="pin" type="button"><svg class="ic"><use href="#ic-edge"/></svg><span>Edge</span></button>
-              <button class="pin" type="button"><svg class="ic"><use href="#ic-settings"/></svg><span>Settings</span></button>
-              <button class="pin" type="button"><svg class="ic"><use href="#ic-store"/></svg><span>Store</span></button>
-              <button class="pin" type="button"><svg class="ic"><use href="#ic-photos"/></svg><span>Photos</span></button>
-              <button class="pin" type="button"><svg class="ic"><use href="#ic-calc"/></svg><span>Calculator</span></button>
-              <button class="pin" type="button"><svg class="ic"><use href="#ic-ureboy"/></svg><span>URE BOY</span></button>
-              <button class="pin" type="button"><svg class="ic"><use href="#ic-room"/></svg><span>the room</span></button>
-              <button class="pin" type="button"><svg class="ic"><use href="#ic-gti"/></svg><span>GTI RUN</span></button>
-              <button class="pin" type="button"><svg class="ic"><use href="#ic-folder"/></svg><span>Projects</span></button>
-              <button class="pin" type="button"><svg class="ic"><use href="#ic-ure"/></svg><span>About</span></button>
-              <button class="pin" type="button"><svg class="ic"><use href="#ic-mail"/></svg><span>Mail</span></button>
+              <button class="pin" data-app="edge" type="button"><svg class="ic"><use href="#ic-edge"/></svg><span>Edge</span></button>
+              <button class="pin" data-app="terminal" type="button"><svg class="ic"><use href="#ic-terminal"/></svg><span>Terminal</span></button>
+              <button class="pin" data-app="notepad" type="button"><svg class="ic"><use href="#ic-notepad"/></svg><span>Notepad</span></button>
+              <button class="pin" data-app="settings" type="button"><svg class="ic"><use href="#ic-settings"/></svg><span>Settings</span></button>
+              <button class="pin" data-app="photos" type="button"><svg class="ic"><use href="#ic-photos"/></svg><span>Photos</span></button>
+              <button class="pin" data-app="calc" type="button"><svg class="ic"><use href="#ic-calc"/></svg><span>Calculator</span></button>
+              <button class="pin" data-app="about" type="button"><svg class="ic"><use href="#ic-ure"/></svg><span>About</span></button>
+              <button class="pin" data-app="ureboy" type="button"><svg class="ic"><use href="#ic-ureboy"/></svg><span>URE BOY</span></button>
+              <button class="pin" data-app="room" type="button"><svg class="ic"><use href="#ic-room"/></svg><span>the room</span></button>
+              <button class="pin" data-app="gti" type="button"><svg class="ic"><use href="#ic-gti"/></svg><span>GTI RUN</span></button>
+              <button class="pin" data-app="explorer" type="button"><svg class="ic"><use href="#ic-folder"/></svg><span>Projects</span></button>
             </div>
+            <p class="start-empty" id="startEmpty" hidden>No results.</p>
           </div>
 
-          <div class="start-sec">
+          <div class="start-sec" id="recSec">
             <div class="start-sechead"><span>Recommended</span><button class="chip" type="button">More <b>›</b></button></div>
             <div class="recs">
-              <button class="rec" type="button"><svg class="ic"><use href="#ic-room"/></svg><span class="rec-txt"><b>the room</b><i>Pinned</i></span></button>
-              <button class="rec" type="button"><svg class="ic"><use href="#ic-ureboy"/></svg><span class="rec-txt"><b>URE BOY</b><i>Recently played</i></span></button>
-              <button class="rec" type="button"><svg class="ic"><use href="#ic-gti"/></svg><span class="rec-txt"><b>GTI RUN</b><i>Best 4:12</i></span></button>
-              <button class="rec" type="button"><svg class="ic"><use href="#ic-mail"/></svg><span class="rec-txt"><b>resume.pdf</b><i>Jul 8</i></span></button>
+              <button class="rec" data-app="room" type="button"><svg class="ic"><use href="#ic-room"/></svg><span class="rec-txt"><b>the room</b><i>Pinned</i></span></button>
+              <button class="rec" data-app="ureboy" type="button"><svg class="ic"><use href="#ic-ureboy"/></svg><span class="rec-txt"><b>URE BOY</b><i>Recently played</i></span></button>
+              <button class="rec" data-app="gti" type="button"><svg class="ic"><use href="#ic-gti"/></svg><span class="rec-txt"><b>GTI RUN</b><i>Best 4:12</i></span></button>
+              <button class="rec" data-app="about" type="button"><svg class="ic"><use href="#ic-ure"/></svg><span class="rec-txt"><b>About Isaac</b><i>Pinned</i></span></button>
             </div>
           </div>
 
           <div class="start-foot">
-            <button class="user" type="button"><svg class="ic"><use href="#ic-user"/></svg><span>Isaac Ure</span></button>
-            <button class="powerbtn" type="button" aria-label="Power"><svg class="ic"><use href="#ic-power"/></svg></button>
+            <button class="user" data-app="about" type="button"><svg class="ic"><use href="#ic-user"/></svg><span>Isaac Ure</span></button>
+            <button class="powerbtn" id="powerBtn" type="button" aria-label="Power"><svg class="ic"><use href="#ic-power"/></svg></button>
           </div>
         </div>
+
+        <!-- ── Quick settings flyout ── -->
+        <div class="flyout quick px-lg lift" id="quickPanel" role="dialog" aria-label="Quick settings" hidden></div>
+
+        <!-- ── Calendar flyout ── -->
+        <div class="flyout cal px-lg lift" id="calPanel" role="dialog" aria-label="Calendar" hidden></div>
 
         <!-- ── taskbar ── -->
         <nav class="taskbar" id="taskbar" aria-label="Taskbar">
           <div class="tb-center">
-            <button class="tb-btn start-btn" id="startBtn" type="button" aria-label="Start" aria-expanded="false" aria-haspopup="dialog">
-              <svg class="ic"><use href="#ic-win"/></svg>
-            </button>
-            <button class="tb-search" type="button">
-              <svg class="ic"><use href="#ic-search"/></svg><span>Search</span>
-            </button>
-            <button class="tb-btn" type="button" aria-label="Task view"><svg class="ic"><use href="#ic-taskview"/></svg></button>
+            <button class="tb-btn start-btn" id="startBtn" type="button" aria-label="Start" aria-expanded="false" aria-haspopup="dialog"><svg class="ic"><use href="#ic-win"/></svg></button>
+            <button class="tb-search" id="searchBtn" type="button"><svg class="ic"><use href="#ic-search"/></svg><span>Search</span></button>
+            <button class="tb-btn" id="taskviewBtn" type="button" aria-label="Task view"><svg class="ic"><use href="#ic-taskview"/></svg></button>
             <span class="tb-div"></span>
-            <button class="tb-btn app" id="tbExplorer" type="button" aria-label="File Explorer"><svg class="ic"><use href="#ic-explorer"/></svg></button>
-            <button class="tb-btn app running" type="button" aria-label="Edge"><svg class="ic"><use href="#ic-edge"/></svg></button>
-            <button class="tb-btn app" type="button" aria-label="URE BOY"><svg class="ic"><use href="#ic-ureboy"/></svg></button>
-            <button class="tb-btn app" type="button" aria-label="Settings"><svg class="ic"><use href="#ic-settings"/></svg></button>
+            <button class="tb-btn app" data-app="explorer" type="button" aria-label="File Explorer"><svg class="ic"><use href="#ic-explorer"/></svg></button>
+            <button class="tb-btn app" data-app="edge" type="button" aria-label="Edge"><svg class="ic"><use href="#ic-edge"/></svg></button>
+            <button class="tb-btn app" data-app="terminal" type="button" aria-label="Terminal"><svg class="ic"><use href="#ic-terminal"/></svg></button>
+            <button class="tb-btn app" data-app="settings" type="button" aria-label="Settings"><svg class="ic"><use href="#ic-settings"/></svg></button>
+            <span class="tb-open" id="tbOpen"></span>
           </div>
 
           <div class="tb-tray">
             <button class="tray-btn lang" type="button" aria-label="Input language">ENG</button>
             <button class="tray-btn" type="button" aria-label="Hidden icons"><svg class="ic"><use href="#ic-chevron"/></svg></button>
-            <button class="tray-cluster" type="button" aria-label="Network, sound, battery">
-              <svg class="ic"><use href="#ic-net"/></svg><svg class="ic"><use href="#ic-vol"/></svg><svg class="ic"><use href="#ic-batt"/></svg>
-            </button>
-            <button class="clock" id="clock" type="button" aria-label="Date and time">
+            <button class="tray-cluster" id="quickBtn" type="button" aria-label="Network, sound, battery" aria-haspopup="dialog"><svg class="ic"><use href="#ic-net"/></svg><svg class="ic"><use href="#ic-vol"/></svg><svg class="ic"><use href="#ic-batt"/></svg></button>
+            <button class="clock" id="clock" type="button" aria-label="Date and time" aria-haspopup="dialog">
               <time class="clk-time" id="clkTime">—</time>
               <span class="clk-date" id="clkDate">—</span>
             </button>
-            <span class="showdesk" aria-hidden="true"></span>
+            <span class="showdesk" id="showDesk" aria-hidden="true"></span>
           </div>
         </nav>
 
@@ -326,10 +291,10 @@
           <button class="ctx-item sub" role="menuitem" type="button"><span class="ctx-glyph">↑↓</span> Sort by <b class="ctx-arrow">›</b></button>
           <button class="ctx-item" role="menuitem" type="button" data-act="refresh"><span class="ctx-glyph">↻</span> Refresh</button>
           <div class="ctx-sep"></div>
-          <button class="ctx-item sub" role="menuitem" type="button"><span class="ctx-glyph">＋</span> New <b class="ctx-arrow">›</b></button>
+          <button class="ctx-item" role="menuitem" type="button" data-act="terminal"><svg class="ic"><use href="#ic-terminal"/></svg> Open Terminal</button>
           <div class="ctx-sep"></div>
-          <button class="ctx-item" role="menuitem" type="button"><svg class="ic"><use href="#ic-pc"/></svg> Display settings</button>
-          <button class="ctx-item" role="menuitem" type="button"><svg class="ic"><use href="#ic-ure"/></svg> Personalize</button>
+          <button class="ctx-item" role="menuitem" type="button" data-act="display"><svg class="ic"><use href="#ic-pc"/></svg> Display settings</button>
+          <button class="ctx-item" role="menuitem" type="button" data-act="personalize"><svg class="ic"><use href="#ic-ure"/></svg> Personalize</button>
         </div>
 
     </main>
