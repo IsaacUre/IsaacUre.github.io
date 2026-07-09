@@ -332,17 +332,24 @@ function renderAbout() {
         '</div></div>';
 }
 
-/* —— File Explorer —— */
+/* —— File Explorer + a real (small) file system ——
+   The base FS below is the machine's factory image. On top of it sits
+   a persistent overlay (comp_fs): downloads land in `add`, deleted
+   base files are keyed into `gone`, and everything you throw out
+   waits in `bin` until it's restored or purged. Explorer, the
+   Recycle Bin, and the browser download shelf all speak to it. */
 var FS = {
     'Home': { items: [
-        { n: 'Desktop', t: 'folder', go: 'This PC' }, { n: 'Downloads', t: 'folder', go: 'This PC' },
+        { n: 'Desktop', t: 'folder', go: 'This PC' }, { n: 'Downloads', t: 'folder', go: 'Downloads' },
         { n: 'Documents', t: 'folder', go: 'Documents' }, { n: 'Pictures', t: 'folder', go: 'Pictures' },
         { n: 'Projects', t: 'folder', go: 'Projects' }, { n: 'URE BOY', t: 'ureboy', app: 'ureboy' }
     ] },
     'This PC': { items: [
-        { n: 'Local Disk (C:)', t: 'pc' }, { n: 'Documents', t: 'folder', go: 'Documents' },
+        { n: 'Local Disk (C:)', t: 'pc' }, { n: 'Downloads', t: 'folder', go: 'Downloads' },
+        { n: 'Documents', t: 'folder', go: 'Documents' },
         { n: 'Pictures', t: 'folder', go: 'Pictures' }, { n: 'Projects', t: 'folder', go: 'Projects' }
     ] },
+    'Downloads': { items: [], empty: 'Nothing downloaded yet. Edge has one (1) idea.' },
     'Documents': { items: [
         { n: 'about-me.txt', t: 'notepad', app: 'about' }, { n: 'resume.pdf', t: 'notepad', app: 'about' },
         { n: 'readme.txt', t: 'notepad', app: 'notepad' }
@@ -356,12 +363,75 @@ var FS = {
         { n: 'GTI RUN', t: 'gti', app: 'gti' }, { n: 'isaacure.com', t: 'globe', app: 'chrome' }
     ] }
 };
-var FS_ICON = { folder: 'ic-folder', pc: 'ic-pc', notepad: 'ic-notepad', room: 'ic-room', gti: 'ic-gti', ureboy: 'ic-ureboy', photos: 'ic-photos', globe: 'ic-globe' };
+var FS_ICON = { folder: 'ic-folder', pc: 'ic-pc', notepad: 'ic-notepad', room: 'ic-room', gti: 'ic-gti', ureboy: 'ic-ureboy', photos: 'ic-photos', globe: 'ic-globe', chrome: 'ic-chrome' };
+var KIND = { folder: 'File folder', pc: 'Local disk', notepad: 'Text document', room: 'PNG image', gti: 'PNG image', photos: 'PNG image', ureboy: 'Shortcut', globe: 'Internet shortcut', chrome: 'Application' };
+
+var fsSt = null;
+function fsLoad() {
+    if (fsSt) return fsSt;
+    try { fsSt = JSON.parse(recall('fs', 'null')) || {}; } catch (e) { fsSt = {}; }
+    fsSt.add = fsSt.add || {}; fsSt.gone = fsSt.gone || []; fsSt.bin = fsSt.bin || [];
+    return fsSt;
+}
+function fsSave() { try { store('fs', JSON.stringify(fsSt)); } catch (e) {} }
+function itemsFor(path) {
+    var st = fsLoad(), base = (FS[path] || FS.Home).items;
+    return base.filter(function (it) { return st.gone.indexOf(path + '/' + it.n) < 0; }).concat(st.add[path] || []);
+}
+function fsHas(path, name) { return itemsFor(path).some(function (it) { return it.n === name; }); }
+function uniqueName(path, name) {
+    if (!fsHas(path, name)) return name;
+    var dot = name.lastIndexOf('.'), stem = dot > 0 ? name.slice(0, dot) : name, ext = dot > 0 ? name.slice(dot) : '';
+    for (var i = 2; ; i++) { var cand = stem + ' (' + i + ')' + ext; if (!fsHas(path, cand)) return cand; }
+}
+function fsAddFile(path, it) { var st = fsLoad(); (st.add[path] = st.add[path] || []).push(it); fsSave(); refreshFileViews(); return it; }
+function fsDelete(path, it) {
+    var st = fsLoad(), dyn = (st.add[path] || []).indexOf(it);
+    if (dyn >= 0) { st.add[path].splice(dyn, 1); st.bin.push({ it: it, from: path, base: false }); }
+    else { st.gone.push(path + '/' + it.n); st.bin.push({ it: it, from: path, base: true }); }
+    fsSave(); refreshFileViews();
+}
+function fsRestore(i) {
+    var st = fsLoad(), e = st.bin.splice(i, 1)[0]; if (!e) return;
+    if (e.base) { var k = st.gone.indexOf(e.from + '/' + e.it.n); if (k >= 0) st.gone.splice(k, 1); }
+    else { e.it.n = uniqueName(e.from, e.it.n); (st.add[e.from] = st.add[e.from] || []).push(e.it); }
+    fsSave(); refreshFileViews();
+}
+function fsPurge(i) { var st = fsLoad(); st.bin.splice(i, 1); fsSave(); refreshFileViews(); }
+function fsEmptyBin() { fsLoad().bin = []; fsSave(); refreshFileViews(); }
+function fsRename(path, it, name) {
+    name = String(name || '').trim(); if (!name || name === it.n) return;
+    name = uniqueName(path, name);
+    var st = fsLoad(), dyn = (st.add[path] || []).indexOf(it);
+    if (dyn >= 0) it.n = name;
+    else {  // renaming a factory file: retire the original, add a copy under the new name
+        st.gone.push(path + '/' + it.n);
+        (st.add[path] = st.add[path] || []).push({ n: name, t: it.t, app: it.app, arg: it.arg, go: it.go, size: it.size, date: it.date });
+    }
+    fsSave(); refreshFileViews();
+}
+function refreshFileViews() {
+    if (openWins.explorer && exState.explorer && exState.explorer.draw) exState.explorer.draw();
+    if (openWins.bin) drawBinList(openWins.bin.el);
+}
+function kindOf(it) {
+    if (/\.exe$/i.test(it.n)) return 'Application';
+    if (/\.pdf$/i.test(it.n)) return 'PDF document';
+    return KIND[it.t] || (it.go ? 'File folder' : 'File');
+}
+function sizeOf(it) {
+    if (it.size) return it.size;
+    if (it.t === 'folder' || it.t === 'pc' || it.go) return '';
+    var h = 0; for (var i = 0; i < it.n.length; i++) h = (h * 31 + it.n.charCodeAt(i)) % 997;
+    return (h % 87 + 9) + ' KB';
+}
+function dateOf(it) { return it.date || 'came with the machine'; }
+
 var exState = {};
 function renderExplorer(id, arg) {
     return '<div class="exp">' +
         '<div class="exp-nav">' +
-          navItem('Home', 'ic-explorer') + navItem('Pictures', 'ic-photos') +
+          navItem('Home', 'ic-explorer') + navItem('Downloads', 'ic-download') + navItem('Pictures', 'ic-photos') +
           '<div class="nav-group">This PC</div>' +
           navItem('This PC', 'ic-pc') + navItem('Documents', 'ic-folder') + navItem('Projects', 'ic-folder') +
         '</div>' +
@@ -370,22 +440,31 @@ function renderExplorer(id, arg) {
             '<button class="exp-up" data-nav="home" aria-label="Home">⌂</button>' +
             '<div class="exp-crumb" id="expCrumb"></div></div>' +
           '<div class="exp-grid" id="expGrid"></div>' +
+          '<div class="exp-stat" id="expStat"></div>' +
         '</div></div>';
 }
 function navItem(name, icon) { return '<button class="nav-item" data-folder="' + name + '">' + ic(icon) + ' ' + esc(name) + '</button>'; }
 function initExplorer(el, id, arg) {
     var state = { path: (arg && FS[arg]) ? arg : 'Home', hist: [] };
     exState[id] = state;
-    var grid = el.querySelector('#expGrid'), crumb = el.querySelector('#expCrumb');
+    var grid = el.querySelector('#expGrid'), crumb = el.querySelector('#expCrumb'), stat = el.querySelector('#expStat');
     function draw() {
-        var f = FS[state.path] || FS.Home;
+        var items = itemsFor(state.path);
         crumb.textContent = state.path;
         el.querySelectorAll('.nav-item').forEach(function (n) { n.classList.toggle('sel', n.getAttribute('data-folder') === state.path); });
-        grid.innerHTML = f.items.map(function (it, i) {
-            return '<button class="fitem" data-i="' + i + '">' + ic(FS_ICON[it.t] || 'ic-folder') + '<span>' + esc(it.n) + '</span></button>';
-        }).join('');
+        grid.innerHTML = items.length ? items.map(function (it, i) {
+            return '<button class="fitem" data-i="' + i + '">' + ic(FS_ICON[it.t] || 'ic-folder') + '<span class="fitem-n">' + esc(it.n) + '</span></button>';
+        }).join('') : '<div class="exp-empty">' + esc((FS[state.path] || {}).empty || 'This folder is empty.') + '</div>';
+        stat.textContent = items.length + (items.length === 1 ? ' item' : ' items');
     }
-    function go(p) { if (p === state.path) return; state.hist.push(state.path); state.path = p; draw(); }
+    state.draw = draw;
+    function go(p) { if (p === state.path || !FS[p]) return; state.hist.push(state.path); state.path = p; draw(); }
+    state.go = function (p) { if (FS[p] && p !== state.path) { state.hist.push(state.path); state.path = p; } draw(); };
+    function openItem(it) {
+        if (!it) return;
+        if (it.app) openApp(it.app, it.arg);
+        else if (it.go) go(it.go);
+    }
     el.querySelector('.exp-nav').addEventListener('click', function (e) { var b = e.target.closest('.nav-item'); if (b) go(b.getAttribute('data-folder')); });
     el.querySelector('.exp-bar').addEventListener('click', function (e) {
         var b = e.target.closest('[data-nav]'); if (!b) return;
@@ -394,16 +473,131 @@ function initExplorer(el, id, arg) {
     });
     grid.addEventListener('dblclick', function (e) {
         var b = e.target.closest('.fitem'); if (!b) return;
-        var it = (FS[state.path] || FS.Home).items[+b.getAttribute('data-i')];
-        if (it.app) openApp(it.app, it.arg);
-        else if (it.go) go(it.go);
+        openItem(itemsFor(state.path)[+b.getAttribute('data-i')]);
     });
     grid.addEventListener('click', function (e) {
-        var b = e.target.closest('.fitem'); if (!b) return;
+        var items = itemsFor(state.path), count = items.length + (items.length === 1 ? ' item' : ' items');
+        var b = e.target.closest('.fitem');
+        grid.querySelectorAll('.fitem.sel').forEach(function (x) { x.classList.remove('sel'); });
+        if (!b) { stat.textContent = count; return; }
+        b.classList.add('sel');
+        var it = items[+b.getAttribute('data-i')];
+        stat.textContent = it ? count + '  ·  ' + it.n + (sizeOf(it) ? '  ·  ' + sizeOf(it) : '') : count;
+    });
+    grid.addEventListener('contextmenu', function (e) {
+        e.preventDefault();
+        var b = e.target.closest('.fitem'); if (!b) { closeFctx(); return; }
         grid.querySelectorAll('.fitem.sel').forEach(function (x) { x.classList.remove('sel'); });
         b.classList.add('sel');
+        var it = itemsFor(state.path)[+b.getAttribute('data-i')]; if (!it) return;
+        openFctx(e, { path: state.path, it: it, tile: b, open: function () { openItem(it); }, redraw: draw });
     });
     draw();
+}
+
+/* —— file right-click menu (shared by Explorer windows) —— */
+var fctx = null, fctxT = null;
+function closeFctx() { if (fctx) fctx.hidden = true; fctxT = null; }
+function openFctx(e, t) {
+    setStart(false); closeFlyouts(); closeCtx();
+    if (!fctx) {
+        fctx = document.createElement('div');
+        fctx.className = 'ctx px-sm lift'; fctx.id = 'fctx'; fctx.setAttribute('role', 'menu');
+        fctx.innerHTML =
+            '<button class="ctx-item" data-fact="open" role="menuitem" type="button"><span class="ctx-glyph">↗</span> Open</button>' +
+            '<button class="ctx-item" data-fact="rename" role="menuitem" type="button"><span class="ctx-glyph">✎</span> Rename</button>' +
+            '<button class="ctx-item" data-fact="delete" role="menuitem" type="button">' + ic('ic-bin') + ' Delete</button>' +
+            '<div class="ctx-sep"></div>' +
+            '<button class="ctx-item" data-fact="props" role="menuitem" type="button"><span class="ctx-glyph">ℹ</span> Properties</button>';
+        byId('screen').appendChild(fctx);
+        fctx.addEventListener('click', function (ev) {
+            ev.stopPropagation();
+            var b = ev.target.closest('[data-fact]'); if (!b || !fctxT) return;
+            var act = b.getAttribute('data-fact'), t2 = fctxT; closeFctx();
+            if (act === 'open') t2.open();
+            else if (act === 'rename') startRename(t2);
+            else if (act === 'delete') deleteItem(t2);
+            else if (act === 'props') dlgProps(t2.path, t2.it);
+        });
+    }
+    fctxT = t; fctx.hidden = false;
+    fctx.style.left = clamp(e.clientX, 6, window.innerWidth - 220) + 'px';
+    fctx.style.top = clamp(e.clientY, 6, window.innerHeight - 190) + 'px';
+}
+function deleteItem(t) {
+    var it = t.it;
+    if (it.t === 'folder' || it.t === 'pc' || it.go) {
+        dlgError('Can’t delete “' + it.n + '”', 'UreOS is quite attached to this folder. All of the folders, actually. Try a file.');
+        return;
+    }
+    fsDelete(t.path, it);
+}
+function startRename(t) {
+    var lab = t.tile.querySelector('.fitem-n'); if (!lab) return;
+    var old = t.it.n, done = false;
+    lab.innerHTML = '<input class="fitem-ren" type="text" aria-label="New name">';
+    var inp = lab.firstChild; inp.value = old;
+    function commit(save) {
+        if (done) return; done = true;
+        if (save) fsRename(t.path, t.it, inp.value);
+        t.redraw();
+    }
+    inp.addEventListener('keydown', function (e) {
+        e.stopPropagation();
+        if (e.key === 'Enter') commit(true);
+        else if (e.key === 'Escape') commit(false);
+    });
+    inp.addEventListener('blur', function () { commit(true); });
+    inp.addEventListener('click', function (e) { e.stopPropagation(); });
+    inp.addEventListener('dblclick', function (e) { e.stopPropagation(); });
+    inp.focus();
+    var dot = old.lastIndexOf('.');
+    inp.setSelectionRange(0, dot > 0 ? dot : old.length);
+}
+
+/* —— modal dialogs: error / confirm / info / properties ——
+   Small OS-style dialogs on a dimming veil. Esc or the X cancels;
+   buttons run their callback after closing. Stacked veils are fine. */
+var dlgs = [];
+function dlgOpen(title, bodyHtml, buttons) {
+    var veil = document.createElement('div'); veil.className = 'dlg-veil';
+    veil.style.zIndex = ++zTop;
+    veil.innerHTML = '<div class="dlg px-lg lift" role="alertdialog" aria-label="' + esc(title) + '">' +
+        '<header class="dlg-bar"><span>' + esc(title) + '</span>' +
+          '<button class="cap close dlg-x" type="button" aria-label="Close"><svg viewBox="0 0 10 10"><path d="M1 1 L9 9 M9 1 L1 9" stroke="currentColor" stroke-width="1.2"/></svg></button></header>' +
+        '<div class="dlg-body">' + bodyHtml + '</div>' +
+        '<footer class="dlg-foot">' + buttons.map(function (b, i) {
+            return '<button class="dlg-btn' + (b[1] ? ' ' + b[1] : '') + '" data-di="' + i + '" type="button">' + esc(b[0]) + '</button>';
+        }).join('') + '</footer></div>';
+    document.body.appendChild(veil);
+    function close() { var k = dlgs.indexOf(close); if (k >= 0) dlgs.splice(k, 1); veil.remove(); }
+    veil.addEventListener('click', function (e) {
+        e.stopPropagation();
+        if (e.target.closest('.dlg-x')) { close(); return; }
+        var b = e.target.closest('[data-di]'); if (!b) return;
+        var def = buttons[+b.getAttribute('data-di')];
+        close(); if (def && def[2]) def[2]();
+    });
+    dlgs.push(close);
+    var first = veil.querySelector('.dlg-btn.primary') || veil.querySelector('.dlg-btn');
+    if (first) setTimeout(function () { first.focus(); }, 20);
+    return close;
+}
+function closeTopDlg() { if (!dlgs.length) return false; dlgs[dlgs.length - 1](); return true; }
+function dlgMsg(kind, mark, title, msg, buttons) {
+    return dlgOpen(title, '<div class="dlg-msg"><span class="dlg-badge ' + kind + '">' + mark + '</span><p>' + esc(msg) + '</p></div>', buttons);
+}
+function dlgError(title, msg) { dlgMsg('err', '✕', title, msg, [['OK', 'primary']]); }
+function dlgInfo(title, msg) { dlgMsg('info', 'i', title, msg, [['OK', 'primary']]); }
+function dlgConfirm(title, msg, yes, cb) { dlgMsg('warn', '!', title, msg, [[yes, 'primary', cb], ['Cancel', '']]); }
+function dlgProps(path, it) {
+    var loc = path === 'This PC' ? 'This PC' : 'C:\\Users\\isaac' + (path === 'Home' ? '' : '\\' + path);
+    var rows = [['Name', it.n], ['Type', kindOf(it)], ['Location', loc], ['Size', sizeOf(it) || '—'], ['Created', dateOf(it)], ['Owner', 'isaac (obviously)']];
+    dlgOpen(it.n + ' Properties',
+        '<div class="dlg-props"><span class="dlg-pic">' + ic(FS_ICON[it.t] || 'ic-folder') + '</span>' +
+        '<dl class="specs">' + rows.map(function (r) { return '<dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1]) + '</dd>'; }).join('') + '</dl></div>' +
+        '<label class="dlg-check"><input type="checkbox" disabled> Read-only</label><label class="dlg-check"><input type="checkbox" disabled> Hidden</label>',
+        [['OK', 'primary']]);
 }
 
 /* —— Notepad —— */
@@ -625,16 +819,17 @@ function toast(msg) {
    Edge's one purpose on a fresh machine is to help you install
    Chrome. Open it and the cursor gets quietly possessed — it drifts
    to the address bar, types "chrome install" out of your hands, and
-   walks the whole search → download → installer arc. Chrome is the
-   browser that actually works; Edge just delivers it, then bows out.
-   Replays on every Edge open (testing). ───────────────────────── */
-var pendingInstall = null;
+   walks search → download until ChromeSetup.exe lands in the real
+   Downloads folder. Then the machine lets go: the setup wizard is
+   yours to click through. Replays on every Edge open (testing). ── */
 var BOOKMARKS = [
     ['Steam', 'ic-steam', 'steam'], ['the room', 'ic-room', 'room'], ['URE BOY', 'ic-ureboy', 'ureboy'],
     ['GTI RUN', 'ic-gti', 'gti'], ['About Isaac', 'ic-ure', 'about'], ['GitHub', 'ic-globe', 'ext:https://github.com/IsaacUre'],
     ['Instagram', 'ic-photos', 'ext:https://www.instagram.com/isaacure_/']
 ];
 function dayPart() { var h = new Date().getHours(); return h < 12 ? 'morning' : h < 18 ? 'afternoon' : 'evening'; }
+function dlStamp() { var n = new Date(); return (n.getMonth() + 1) + '/' + n.getDate() + '/' + n.getFullYear() + ' ' + fmtTime(n); }
+function chromeSetupItem() { return { n: uniqueName('Downloads', 'ChromeSetup.exe'), t: 'chrome', app: 'setup', size: '11.2 MB', date: dlStamp() }; }
 
 // shared window-chrome for both browsers, branded by class
 function browserShell(brand, tabTitle, tabIcon, placeholder, bodyHtml) {
@@ -688,9 +883,8 @@ function initEdge(el) {
         if (!alive) return; alive = false; hijack = false;
         timers.forEach(clearTimeout); intervals.forEach(clearInterval); clearTimeout(idleTimer);
         document.removeEventListener('keydown', onKey, true);
-        pendingInstall = null;                    // drop this run's installer so a stale setup can't fire against a newer gag
-        if (openWins.setup) closeWin('setup');    // a running installer shouldn't fake-succeed after we bail
         gagEnd();
+        // note: the setup wizard is a free-standing app now — it owes the gag nothing
     } };
     APPS.edge._gag = gag;
 
@@ -708,7 +902,10 @@ function initEdge(el) {
         if (e.target.closest('.res-hit')) gotoDownload();
         else if (e.target.closest('.dlp-btn')) startDownload();
     });
-    shelf.addEventListener('click', function (e) { if (e.target.closest('.dls-open')) runInstaller(); });
+    shelf.addEventListener('click', function (e) {
+        if (e.target.closest('.dls-open')) runInstaller();
+        else if (e.target.closest('.dls-show')) { gag.cancel(); openApp('explorer', 'Downloads'); }
+    });
 
     function addrClicked() {
         if (!alive || step.addr) return; step.addr = 1;
@@ -764,21 +961,18 @@ function initEdge(el) {
             n = Math.min(100, n + (reduce ? 45 : 5 + Math.random() * 9));
             bar.style.width = n + '%'; pct.textContent = Math.round(n) + '%';
             if (n >= 100) {
-                clearInterval(iv); shelf.innerHTML = shelfDoneHTML();
+                clearInterval(iv);
+                var f = fsAddFile('Downloads', chromeSetupItem());   // a real file in the real Downloads folder
+                shelf.innerHTML = shelfDoneHTML(f.n);
                 after(reduce ? 120 : 520, function () { possess(shelf.querySelector('.dls-open') || shelf, runInstaller); });
             }
         });
     }
     function runInstaller() {
         if (!alive || step.run) return; step.run = 1;
-        shelf.hidden = true;
-        pendingInstall = function () {
-            if (!alive) return;
-            installChrome(); openApp('chrome');
-            toast('Google Chrome installed — welcome home.');
-            gag.cancel(); closeWin('edge');
-        };
+        gag.cancel();                                    // the machine got you the file; the install is yours
         openApp('setup');
+        toast('The machine got you this far. The install is yours.');
     }
 
     /* address-bar autocomplete drop-down */
@@ -824,18 +1018,19 @@ function initEdge(el) {
             '<div class="dls-meta"><b>ChromeSetup.exe</b><div class="dls-bar"><span style="width:0%"></span></div></div>' +
             '<span class="dls-pct">0%</span></div>';
     }
-    function shelfDoneHTML() {
+    function shelfDoneHTML(name) {
         return '<div class="dls">' + ic('ic-chrome', 'dls-ic') +
-            '<div class="dls-meta"><b>ChromeSetup.exe</b><span class="dls-sub">Download complete</span></div>' +
+            '<div class="dls-meta"><b>' + esc(name || 'ChromeSetup.exe') + '</b><span class="dls-sub">Download complete · saved to Downloads</span></div>' +
+            '<button class="dls-show" type="button">Show in folder</button>' +
             '<button class="dls-open" type="button">Open file</button></div>';
     }
     function devJump(p) {
         if (p === 'type') { gagBegin(); omni.classList.add('focus'); url.value = TYPE; openSuggest(TYPE); }
         else if (p === 'results') { url.value = 'bing.com/search?q=chrome+install'; view.innerHTML = resultsHTML(); }
         else if (p === 'download') { url.value = 'https://www.google.com/chrome/'; view.innerHTML = downloadHTML(); }
-        else if (p === 'shelf') { url.value = 'https://www.google.com/chrome/'; view.innerHTML = downloadHTML(); shelf.hidden = false; shelf.innerHTML = shelfDoneHTML(); }
+        else if (p === 'shelf') { url.value = 'https://www.google.com/chrome/'; view.innerHTML = downloadHTML(); var f = fsAddFile('Downloads', chromeSetupItem()); shelf.hidden = false; shelf.innerHTML = shelfDoneHTML(f.n); }
         else if (p === 'setup') { setTimeout(function () { openApp('setup'); }, 0); }   // defer so it lands on top of Edge
-        else if (p === 'done') { installChrome(); setTimeout(function () { openApp('chrome'); closeWin('edge'); toast('Google Chrome installed — welcome home.'); }, 0); }
+        else if (p === 'done') { installChrome({ shortcut: true }); setTimeout(function () { openApp('chrome'); closeWin('edge'); toast('Google Chrome installed — welcome home.'); }, 0); }
     }
 }
 
@@ -862,42 +1057,165 @@ function initChrome(el) {
     });
 }
 
-/* —— Chrome installer window —— */
-function renderSetup() {
-    return '<div class="setup">' +
-        '<div class="setup-head">' + ic('ic-chrome', 'setup-logo') + '<div><b>Google Chrome</b><span>Installer</span></div></div>' +
-        '<div class="setup-body"><p class="setup-status">Preparing to install…</p>' +
-          '<div class="setup-bar"><span></span></div><p class="setup-pct">0%</p></div></div>';
+/* —— Google Chrome Setup: a real wizard you click through yourself ——
+   ChromeSetup.exe lives in the real Downloads folder (the gag put it
+   there, or you re-run it from Explorer). Welcome → license → options
+   → install → finish, with Back / Next / Cancel doing what they say.
+   The options genuinely apply: desktop shortcut, taskbar pin, launch. */
+var EULA = [
+    'GOOGLE CHROME TERMS OF SERVICE',
+    'UreOS 11 Pixel Edition · one (1) user: isaac',
+    '',
+    '1. By installing Google Chrome you agree to stop pretending you were ever going to keep using Edge.',
+    '2. Chrome may use some of your memory. Chrome may use all of your memory. Chrome does not recognize the distinction.',
+    '3. You will open tabs. The tabs will multiply. There is no support for this and there never will be.',
+    '4. The address bar is also a search bar. There has only ever been one bar.',
+    '5. Any telemetry collected is anonymized, aggregated, and honestly not that interesting: you visit isaacure.com and you play GTI RUN.',
+    '6. In the event of a dispute, both parties agree to settle it in URE QUEST. Best of one. No healing potions.',
+    '7. Microsoft Edge will remain installed, quietly, for emergencies. It knows what it did.',
+    '8. Clause 8 was removed for morale reasons.',
+    '9. Updates will install themselves whenever they feel like it, usually mid-sentence.',
+    '10. This agreement is governed by the laws of UreOS, which are mostly vibes.',
+    '',
+    'Scroll complete. You are legally unstoppable.'
+].join('\n');
+var WIZ_LINES = ['Unpacking a faster browser…', 'Uninstalling Bing…', 'Importing 0 favorites…', 'Setting Chrome as default…', 'Reserving RAM (all of it)…', 'Tidying the Start menu…'];
+var WIZ_FILES = ['chrome.exe', 'bloom.pak', 'tabs64.dll', 'omnibox.dat', 'ram_reservation.bin', 'not_edge.manifest', 'gti_easter_egg.rom', 'sync_isaac.json'];
+
+function renderSetup() { return '<div class="wiz" data-step=""></div>'; }
+function initSetup(el, id, arg) {
+    var w = el.querySelector('.wiz');
+    var s = { step: 'welcome', ok: false, dest: 'C:\\Program Files\\Google\\Chrome', shortcut: true, pin: true, launch: true, tidy: false, prog: 0, iv: 0, fi: 0 };
+    el._wiz = s;
+
+    function frame(bodyHtml, backOn, nextLabel, nextOn, cancelOn) {
+        return '<div class="wiz-body">' + bodyHtml + '</div>' +
+            '<footer class="wiz-foot">' +
+              '<button class="wiz-btn" data-w="back" type="button"' + (backOn ? '' : ' disabled') + '>‹ Back</button>' +
+              '<button class="wiz-btn primary" data-w="next" type="button"' + (nextOn ? '' : ' disabled') + '>' + nextLabel + '</button>' +
+              '<button class="wiz-btn" data-w="cancel" type="button"' + (cancelOn === false ? ' disabled' : '') + '>Cancel</button>' +
+            '</footer>';
+    }
+    function stepHTML(name) {
+        if (name === 'welcome') return frame(
+            '<div class="wiz-split"><div class="wiz-side">' + ic('ic-chrome') + '<span>chrome</span></div>' +
+            '<div class="wiz-main"><h2>Welcome to the Google Chrome Setup Wizard</h2>' +
+            '<p>This will install Google Chrome on your computer. You were always going to do this; the wizard just makes it official.</p>' +
+            '<p>It is recommended that you close Microsoft Edge before continuing. It took the download surprisingly well, but it shouldn’t have to watch this part.</p>' +
+            '<p class="wiz-dim">Click Next to continue, or Cancel to keep living like this.</p></div></div>',
+            false, 'Next ›', true);
+        if (name === 'license') return frame(
+            '<div class="wiz-page"><h3>License Agreement</h3>' +
+            '<p class="wiz-dim">Please read the following important information. Nobody ever has, but please.</p>' +
+            '<pre class="wiz-eula">' + esc(EULA) + '</pre>' +
+            '<label class="wiz-radio"><input type="radio" name="eula" data-eula="1"' + (s.ok ? ' checked' : '') + '> I accept the agreement</label>' +
+            '<label class="wiz-radio"><input type="radio" name="eula" data-eula="0"> I do not accept the agreement</label>' +
+            '<p class="wiz-hint" hidden>That’s fine. Edge is thrilled. (Next stays off until you accept.)</p></div>',
+            true, 'Next ›', s.ok);
+        if (name === 'options') return frame(
+            '<div class="wiz-page"><h3>Install Options</h3>' +
+            '<div class="wiz-row"><span>Install to:</span><span class="wiz-path">' + esc(s.dest) + '</span><button class="wiz-browse" type="button">Browse…</button></div>' +
+            '<label class="wiz-check"><input type="checkbox" data-opt="shortcut"' + (s.shortcut ? ' checked' : '') + '> Create a desktop shortcut</label>' +
+            '<label class="wiz-check"><input type="checkbox" data-opt="pin"' + (s.pin ? ' checked' : '') + '> Pin Google Chrome to the taskbar</label>' +
+            '<label class="wiz-check"><input type="checkbox" checked disabled> Set Chrome as the default browser <i>(this one isn’t optional, sorry)</i></label>' +
+            '<p class="wiz-dim" style="margin-top:12px">Space required: 640 KB · Space available: yes</p></div>',
+            true, 'Install', true);
+        if (name === 'progress') return frame(
+            '<div class="wiz-page"><h3>Installing Google Chrome</h3>' +
+            '<p class="wiz-status">Preparing to install…</p>' +
+            '<div class="wiz-bar"><span></span></div>' +
+            '<div class="wiz-sub"><span class="wiz-file">chrome.exe</span><span class="wiz-pct">0%</span></div>' +
+            '<p class="wiz-dim" style="margin-top:14px">Please wait while the wizard does the only thing Edge was ever used for.</p></div>',
+            false, 'Next ›', false);
+        return frame(   // finish
+            '<div class="wiz-split"><div class="wiz-side done">' + ic('ic-chrome') + '<span>✓ installed</span></div>' +
+            '<div class="wiz-main"><h2>Completing the Google Chrome Setup Wizard</h2>' +
+            '<p>Google Chrome has been installed on your computer. The desktop feels faster already. That’s placebo, but enjoy it.</p>' +
+            '<label class="wiz-check"><input type="checkbox" data-opt="launch"' + (s.launch ? ' checked' : '') + '> Launch Google Chrome</label>' +
+            '<label class="wiz-check"><input type="checkbox" data-opt="tidy"' + (s.tidy ? ' checked' : '') + '> Delete ChromeSetup.exe from Downloads</label>' +
+            '<p class="wiz-dim">Click Finish to exit Setup.</p></div></div>',
+            false, 'Finish', true, false);
+    }
+    function goStep(name) {
+        s.step = name; w.setAttribute('data-step', name);
+        w.innerHTML = stepHTML(name);
+        wire();
+        if (name === 'progress') startInstall();
+    }
+    function wire() {
+        var back = w.querySelector('[data-w="back"]'), next = w.querySelector('[data-w="next"]'), cancel = w.querySelector('[data-w="cancel"]');
+        cancel.addEventListener('click', function () {
+            if (cancel.disabled) return;
+            if (s.step === 'progress') dlgConfirm('Cancel Chrome installation?', 'Are you sure? Somewhere, Edge just perked up.', 'Cancel install', function () { stopSetup(el); closeWin('setup'); });
+            else closeWin('setup');
+        });
+        back.addEventListener('click', function () {
+            if (back.disabled) return;
+            if (s.step === 'license') goStep('welcome');
+            else if (s.step === 'options') goStep('license');
+        });
+        next.addEventListener('click', function () {
+            if (next.disabled) return;
+            if (s.step === 'welcome') goStep('license');
+            else if (s.step === 'license') goStep('options');
+            else if (s.step === 'options') goStep('progress');
+            else if (s.step === 'finish') finishInstall();
+        });
+        w.querySelectorAll('[data-eula]').forEach(function (r) {
+            r.addEventListener('change', function () {
+                var acc = w.querySelector('[data-eula="1"]'), dec = w.querySelector('[data-eula="0"]');
+                s.ok = !!(acc && acc.checked);
+                next.disabled = !s.ok;
+                var hint = w.querySelector('.wiz-hint'); if (hint) hint.hidden = !(dec && dec.checked);
+            });
+        });
+        w.querySelectorAll('[data-opt]').forEach(function (c) {
+            c.addEventListener('change', function () { s[c.getAttribute('data-opt')] = c.checked; });
+        });
+        var br = w.querySelector('.wiz-browse');
+        if (br) br.addEventListener('click', function () { dlgInfo('Browse for folder', 'It goes in Program Files. It has always gone in Program Files.'); });
+    }
+    function startInstall() {
+        var bar = w.querySelector('.wiz-bar span'), status = w.querySelector('.wiz-status');
+        var pct = w.querySelector('.wiz-pct'), file = w.querySelector('.wiz-file'), li = -1;
+        if (location.search.indexOf('freeze') >= 0) { bar.style.width = '58%'; pct.textContent = '58%'; status.textContent = WIZ_LINES[3]; file.textContent = 'omnibox.dat'; return; }   // dev: hold for a screenshot
+        s.iv = setInterval(function () {
+            s.prog = Math.min(100, s.prog + (reduce ? 34 : 2.2 + Math.random() * 3.6));
+            bar.style.width = s.prog + '%'; pct.textContent = Math.round(s.prog) + '%';
+            file.textContent = WIZ_FILES[(s.fi++) % WIZ_FILES.length];
+            var want = Math.min(WIZ_LINES.length - 1, Math.floor(s.prog / (100 / WIZ_LINES.length)));
+            if (want !== li) { li = want; status.textContent = WIZ_LINES[want]; }
+            if (s.prog >= 100) {
+                clearInterval(s.iv); s.iv = 0;
+                setTimeout(function () { if (openWins.setup) goStep('finish'); }, reduce ? 80 : 420);
+            }
+        }, reduce ? 50 : 130);
+    }
+    function finishInstall() {
+        closeWin('setup');
+        installChrome({ shortcut: s.shortcut, pin: s.pin });
+        if (s.tidy) fsTidyChromeSetup();
+        if (openWins.edge) closeWin('edge');   // Edge's work here is done
+        if (s.launch) { openApp('chrome'); toast('Google Chrome installed — welcome home.'); }
+        else toast('Chrome installed. It waits patiently in the taskbar.');
+    }
+
+    // dev: ?wstep=license|options|progress|finish jumps straight to a step
+    var wstep = (location.search.match(/[?&]wstep=([a-z]+)/) || [])[1];
+    if (wstep && { welcome: 1, license: 1, options: 1, progress: 1, finish: 1 }[wstep]) { s.ok = true; goStep(wstep); }
+    else goStep('welcome');
 }
-function initSetup(el) {
-    var wrap = el.querySelector('.setup'), status = el.querySelector('.setup-status');
-    var bar = el.querySelector('.setup-bar span'), pctEl = el.querySelector('.setup-pct');
-    var lines = ['Downloading a faster browser…', 'Uninstalling Bing…', 'Importing 0 favorites…', 'Setting Chrome as default…', 'Tidying the Start menu…', 'Almost there…'];
-    var n = 0, li = -1, done = false;
-    if (location.search.indexOf('freeze') >= 0) { bar.style.width = '58%'; pctEl.textContent = '58%'; status.textContent = lines[3]; return; }   // dev: hold for a clean screenshot
-    el._iv = setInterval(function () {
-        n = Math.min(100, n + (reduce ? 50 : 3.5 + Math.random() * 6.5));
-        bar.style.width = n + '%'; pctEl.textContent = Math.round(n) + '%';
-        var want = Math.min(lines.length - 1, Math.floor(n / (100 / lines.length)));
-        if (want !== li) { li = want; status.textContent = lines[li]; }
-        if (n >= 100 && !done) {
-            done = true; clearInterval(el._iv); el._iv = 0;
-            wrap.classList.add('ok'); status.innerHTML = '<b class="setup-ok">✓ Chrome is ready.</b>';
-            setTimeout(function () {
-                var cb = pendingInstall; pendingInstall = null;
-                closeWin('setup'); if (cb) cb();
-            }, reduce ? 160 : 900);
-        }
-    }, reduce ? 60 : 150);
-}
-function stopSetup(el) {
-    if (el && el._iv) clearInterval(el._iv);
-    if (pendingInstall) { pendingInstall = null; if (APPS.edge._gag) APPS.edge._gag.cancel(); }
+function stopSetup(el) { if (el && el._wiz && el._wiz.iv) { clearInterval(el._wiz.iv); el._wiz.iv = 0; } }
+function fsTidyChromeSetup() {
+    var st = fsLoad(), arr = st.add['Downloads'] || [];
+    st.add['Downloads'] = arr.filter(function (it) { return !/^ChromeSetup.*\.exe$/i.test(it.n); });
+    fsSave(); refreshFileViews();
 }
 
-/* register Chrome once "installed": pin it on the taskbar + Start */
-function installChrome() {
-    if (PINNED.indexOf('chrome') < 0) {
+/* register Chrome once installed: taskbar pin + Start pin + optional desktop shortcut */
+function installChrome(opts) {
+    opts = opts || {};
+    if (opts.pin !== false && PINNED.indexOf('chrome') < 0) {
         PINNED.push('chrome');
         var center = taskbar.querySelector('.tb-center'), edgeBtn = center && center.querySelector('.tb-btn.app[data-app="edge"]');
         if (center && !center.querySelector('.tb-btn.app[data-app="chrome"]')) {
@@ -914,7 +1232,16 @@ function installChrome() {
         p.innerHTML = ic('ic-chrome') + '<span>Chrome</span>';
         pins.insertBefore(p, pins.firstChild);
     }
+    if (opts.shortcut) addDesktopIcon('chrome', 'Google Chrome', 'ic-chrome');
     syncTaskbar();
+}
+function addDesktopIcon(app, label, icon) {
+    var dc = document.querySelector('.dicons');
+    if (!dc || dc.querySelector('.dicon[data-app="' + app + '"]')) return;
+    var b = document.createElement('button');
+    b.className = 'dicon'; b.type = 'button'; b.setAttribute('data-app', app);
+    b.innerHTML = '<span class="dicon-img">' + ic(icon) + '</span><span class="dicon-label">' + esc(label) + '</span>';
+    dc.appendChild(b);
 }
 
 /* —— Photos —— */
@@ -937,10 +1264,42 @@ function initPhotos(el) {
     });
 }
 
-/* —— Recycle Bin —— */
+/* —— Recycle Bin: the other half of the file system —— */
 function renderBin() {
-    return '<div class="exp"><div class="exp-main" style="width:100%"><div class="exp-bar"><div class="exp-crumb">Recycle Bin</div></div>' +
-        '<div class="bin-empty">' + ic('ic-bin', 'bin-big') + '<p>Recycle Bin is empty</p><span>Nothing thrown out. Tidy machine.</span></div></div></div>';
+    return '<div class="exp"><div class="exp-main" style="width:100%">' +
+        '<div class="exp-bar"><div class="exp-crumb">Recycle Bin</div>' +
+          '<button class="exp-tool" data-bact="empty" type="button">Empty Recycle Bin</button></div>' +
+        '<div class="bin-body" id="binBody"></div></div></div>';
+}
+function drawBinList(el) {
+    var body = el.querySelector('#binBody'); if (!body) return;
+    var bin = fsLoad().bin;
+    if (!bin.length) {
+        body.innerHTML = '<div class="bin-empty">' + ic('ic-bin', 'bin-big') + '<p>Recycle Bin is empty</p><span>Nothing thrown out. Tidy machine.</span></div>';
+    } else {
+        body.innerHTML = '<div class="bin-list">' + bin.map(function (e, i) {
+            return '<div class="bin-row"><span class="bin-ic">' + ic(FS_ICON[e.it.t] || 'ic-folder') + '</span>' +
+                '<span class="bin-meta"><b>' + esc(e.it.n) + '</b><i>from ' + esc(e.from) + (sizeOf(e.it) ? ' · ' + sizeOf(e.it) : '') + '</i></span>' +
+                '<button class="bin-act" data-bact="restore" data-i="' + i + '" type="button">Restore</button>' +
+                '<button class="bin-act bin-del" data-bact="purge" data-i="' + i + '" type="button">Delete</button></div>';
+        }).join('') + '</div>';
+    }
+    var btn = el.querySelector('[data-bact="empty"]'); if (btn) btn.disabled = !bin.length;
+}
+function initBin(el) {
+    el.addEventListener('click', function (e) {
+        var b = e.target.closest('[data-bact]'); if (!b) return;
+        var act = b.getAttribute('data-bact'), i = +b.getAttribute('data-i');
+        if (act === 'restore') fsRestore(i);
+        else if (act === 'purge') {
+            var entry = fsLoad().bin[i]; if (!entry) return;
+            dlgConfirm('Permanently delete “' + entry.it.n + '”?', 'This skips every bin there is. Gone gone.', 'Delete', function () { fsPurge(i); });
+        } else if (act === 'empty') {
+            var n = fsLoad().bin.length; if (!n) return;
+            dlgConfirm('Empty the Recycle Bin?', n + (n === 1 ? ' item' : ' items') + ' will be permanently deleted. UreOS will remember the tidiness fondly.', 'Empty it', fsEmptyBin);
+        }
+    });
+    drawBinList(el);
 }
 
 /* ═══════════════════════════ Steam ═══════════════════════════
@@ -1747,7 +2106,7 @@ function stClick(e) {
 }
 
 var APPS = {
-    explorer: { title: 'File Explorer', icon: 'ic-explorer', w: 720, h: 460, render: renderExplorer, init: initExplorer },
+    explorer: { title: 'File Explorer', icon: 'ic-explorer', w: 720, h: 460, render: renderExplorer, init: initExplorer, focusArg: function (el, arg) { if (arg && exState.explorer && exState.explorer.go) exState.explorer.go(arg); } },
     about:    { title: 'About Isaac', icon: 'ic-ure', w: 540, h: 480, render: renderAbout },
     notepad:  { title: 'Untitled — Notepad', icon: 'ic-notepad', w: 520, h: 420, render: renderNotepad, init: initNotepad },
     terminal: { title: 'URE Shell', icon: 'ic-terminal', w: 620, h: 400, render: renderTerminal, init: initTerminal },
@@ -1756,8 +2115,8 @@ var APPS = {
     calc:     { title: 'Calculator', icon: 'ic-calc', w: 300, h: 440, render: renderCalc, init: initCalc },
     edge:     { title: 'Microsoft Edge', icon: 'ic-edge', w: 760, h: 520, render: renderEdge, init: initEdge, onClose: function () { if (APPS.edge._gag) APPS.edge._gag.cancel(); }, onMinimize: function () { if (APPS.edge._gag) APPS.edge._gag.cancel(); } },
     chrome:   { title: 'Google Chrome', icon: 'ic-chrome', w: 820, h: 560, render: renderChrome, init: initChrome },
-    setup:    { title: 'Google Chrome Installer', icon: 'ic-chrome', w: 430, h: 300, render: renderSetup, init: initSetup, onClose: stopSetup },
-    bin:      { title: 'Recycle Bin', icon: 'ic-bin', w: 600, h: 400, render: renderBin },
+    setup:    { title: 'Google Chrome Setup', icon: 'ic-chrome', w: 584, h: 468, render: renderSetup, init: initSetup, onClose: stopSetup },
+    bin:      { title: 'Recycle Bin', icon: 'ic-bin', w: 600, h: 400, render: renderBin, init: initBin },
     steam:    { title: 'Steam', icon: 'ic-steam', w: 960, h: 620, render: renderSteam, init: initSteam, onClose: closeSteam, focusArg: steamFocus },
     ureboy:   { launch: '/ureboy/' },
     room:     { launch: '/1p/' },
@@ -1896,8 +2255,12 @@ function shutdown() {
 }
 
 /* ═══════════════════ global dismiss + init ═════════════════ */
-document.addEventListener('click', function () { setStart(false); closeFlyouts(); closeCtx(); });
-document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { setStart(false); closeFlyouts(); closeCtx(); closeTaskView(); } });
+document.addEventListener('click', function () { setStart(false); closeFlyouts(); closeCtx(); closeFctx(); });
+document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    if (closeTopDlg()) return;   // dialogs eat the first Escape
+    setStart(false); closeFlyouts(); closeCtx(); closeFctx(); closeTaskView();
+});
 
 applyAccent(recall('accent', ACCENTS[0].hex));
 if (recall('crt', 'on') !== 'on') document.body.classList.add('no-crt');
@@ -1910,6 +2273,12 @@ if (location.search.indexOf('dev=pics') >= 0) openApp('photos', 1);
 if (location.search.indexOf('dev=maxi') >= 0) { openApp('explorer'); openWins.explorer.el.classList.add('maxi'); }
 if (location.search.indexOf('fast') >= 0) window.__fastCursor = true;   // dev: instant cursor jumps so the chain runs headless
 if (location.search.indexOf('dev=edge') >= 0) openApp('edge');       // watch the possession play out
-if (location.search.indexOf('dev=chrome') >= 0) { installChrome(); openApp('chrome'); }
+if (location.search.indexOf('dev=chrome') >= 0) { installChrome({ shortcut: true }); openApp('chrome'); }
+if (location.search.indexOf('dev=wiz') >= 0) { fsAddFile('Downloads', chromeSetupItem()); openApp('setup'); }   // + &wstep=license|options|progress|finish (&freeze)
+if (location.search.indexOf('dev=dl') >= 0) { fsAddFile('Downloads', chromeSetupItem()); openApp('explorer', 'Downloads'); }
+if (location.search.indexOf('dev=bin') >= 0) {
+    var __f = fsAddFile('Downloads', chromeSetupItem()); fsDelete('Downloads', __f);
+    openApp('bin');
+}
 
 })();
