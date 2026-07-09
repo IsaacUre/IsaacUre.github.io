@@ -42,54 +42,67 @@ function applyAccent(hex) {
 var wall = byId('wall'), wctx = wall.getContext('2d');
 var BAYER = [0,8,2,10, 12,4,14,6, 3,11,1,9, 15,7,13,5];
 var PAL = [
-    [176,198,225],[192,212,233],[206,223,241],[220,232,246],[232,242,251],
-    [9,30,84],[16,48,120],[26,72,166],[38,100,206],[58,132,238],
-    [104,160,246],[150,192,250],[196,222,253]
+    [176,198,225],[192,212,233],[206,223,241],[220,232,246],[233,242,251],   // background
+    [7,22,66],[12,36,96],[22,60,150],[34,92,198],[54,124,232],               // bloom deep→mid
+    [92,158,246],[140,188,250],[188,216,252],[224,238,254]                   // highlights
 ];
-var BG_TOP = [230,240,250], BG_BOT = [164,187,218];
-var C_DEEP = [12,36,96], C_MID = [40,102,208], C_HI = [170,204,251], C_THROAT = [8,26,74];
+var BG_TOP = [231,240,251], BG_BOT = [170,193,223];
+var C_DEEP = [10,30,82], C_MID = [42,112,224], C_HI = [190,218,253], C_THROAT = [7,22,66];
 function lerp(a, b, t) { return a + (b - a) * t; }
 function mix(a, b, t) { return [lerp(a[0],b[0],t)|0, lerp(a[1],b[1],t)|0, lerp(a[2],b[2],t)|0]; }
 function rgb(c) { return 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ')'; }
 
-function petal(g, cx, cy, ang, len, wid, L) {
-    var dir = [Math.cos(ang), Math.sin(ang)];
-    var nrm = [-dir[1], dir[0]];
-    var lit = nrm[0] * L[0] + nrm[1] * L[1];
-    var light = lit > 0 ? mix(C_MID, C_HI, Math.min(1, lit)) : mix(C_MID, C_DEEP, Math.min(1, -lit));
-    var dark = mix(C_DEEP, C_THROAT, 0.35);
+// a rounded, folded ribbon petal — the fold catches light on one edge, shadow in the crease
+function petal(g, cx, cy, ang, len, wid, L, curl) {
+    var dir = [Math.cos(ang), Math.sin(ang)], nrm = [-dir[1], dir[0]];
+    var lit = nrm[0] * L[0] + nrm[1] * L[1];                       // -1 shadow .. 1 lit
+    // keep even shadowed petals a vibrant blue (ambient), only the crease goes deep
+    var light = lit > 0 ? mix(C_MID, C_HI, Math.min(1, lit * 1.2)) : mix(C_MID, C_DEEP, Math.min(0.62, -lit));
+    var dark = mix(C_DEEP, C_MID, 0.24);
     g.save();
     g.translate(cx, cy); g.rotate(ang);
+    g.transform(1, curl, 0, 1, 0, 0);                             // shear along the spine → a swirl/curl
     g.beginPath();
     g.moveTo(0, 0);
-    g.bezierCurveTo(len * 0.30, -wid, len * 0.80, -wid * 0.64, len * 0.98, -wid * 0.16);
-    g.quadraticCurveTo(len * 1.05, 0, len * 0.98, wid * 0.16);
-    g.bezierCurveTo(len * 0.80, wid * 0.64, len * 0.30, wid, 0, 0);
+    g.bezierCurveTo(len * 0.16, -wid, len * 0.72, -wid, len * 0.94, -wid * 0.34);
+    g.quadraticCurveTo(len * 1.04, 0, len * 0.94, wid * 0.34);    // rounded, full tip
+    g.bezierCurveTo(len * 0.72, wid, len * 0.16, wid, 0, 0);
     g.closePath();
     var grad = g.createLinearGradient(0, -wid, 0, wid);
-    if (lit >= 0) { grad.addColorStop(0, rgb(light)); grad.addColorStop(.62, rgb(mix(light, dark, .5))); grad.addColorStop(1, rgb(dark)); }
-    else          { grad.addColorStop(0, rgb(dark)); grad.addColorStop(.38, rgb(mix(light, dark, .5))); grad.addColorStop(1, rgb(light)); }
+    if (lit >= 0) { grad.addColorStop(0, rgb(light)); grad.addColorStop(.55, rgb(mix(light, dark, .55))); grad.addColorStop(1, rgb(dark)); }
+    else          { grad.addColorStop(0, rgb(dark)); grad.addColorStop(.45, rgb(mix(light, dark, .55))); grad.addColorStop(1, rgb(light)); }
     g.fillStyle = grad; g.fill();
-    g.strokeStyle = 'rgba(8,26,70,.30)'; g.lineWidth = Math.max(1, wid * 0.05);
-    g.beginPath(); g.moveTo(0, 0); g.quadraticCurveTo(len * 0.6, 0, len, 0); g.stroke();
+    // bright ridge along the lit fold
+    var ridge = lit >= 0 ? -wid * 0.66 : wid * 0.66;
+    g.globalAlpha = clamp(Math.abs(lit) * 0.85, 0, 0.7);
+    g.strokeStyle = rgb(mix(light, C_HI, 0.65)); g.lineWidth = Math.max(1, wid * 0.13);
+    g.beginPath(); g.moveTo(len * 0.14, ridge * 0.5); g.quadraticCurveTo(len * 0.66, ridge, len * 0.9, ridge * 0.35); g.stroke();
+    g.globalAlpha = 1;
+    // shadow crease down the spine
+    g.strokeStyle = 'rgba(6,20,60,.32)'; g.lineWidth = Math.max(1, wid * 0.06);
+    g.beginPath(); g.moveTo(0, 0); g.quadraticCurveTo(len * 0.55, 0, len * 0.9, 0); g.stroke();
     g.restore();
 }
 function drawBloom(g, cx, cy, base) {
-    var L = [-0.52, -0.86];
-    var throat = g.createRadialGradient(cx, cy, 0, cx, cy, base * 0.20);
-    throat.addColorStop(0, rgb(C_THROAT)); throat.addColorStop(1, 'rgba(8,26,74,0)');
-    g.fillStyle = throat; g.beginPath(); g.arc(cx, cy, base * 0.20, 0, 7); g.fill();
-    var rings = [
-        [0.52, 7, 0.44, 0.0], [0.42, 7, 0.42, 0.5], [0.33, 6, 0.42, 1.0],
-        [0.25, 6, 0.44, 1.5], [0.17, 5, 0.48, 2.0], [0.10, 5, 0.52, 2.5]
-    ];
-    for (var ri = 0; ri < rings.length; ri++) {
-        var R = rings[ri], len = base * R[0], wid = len * R[2], n = R[1];
-        for (var i = 0; i < n; i++) petal(g, cx, cy, R[3] + i * (Math.PI * 2 / n), len, wid, L);
+    var L = [-0.50, -0.87];                                        // light from upper-left
+    var haze = g.createRadialGradient(cx, cy, base * 0.08, cx, cy, base * 0.72);
+    haze.addColorStop(0, 'rgba(118,172,250,.20)'); haze.addColorStop(1, 'rgba(118,172,250,0)');
+    g.fillStyle = haze; g.beginPath(); g.arc(cx, cy, base * 0.72, 0, 7); g.fill();
+    var throat = g.createRadialGradient(cx, cy, 0, cx, cy, base * 0.16);
+    throat.addColorStop(0, rgb(C_THROAT)); throat.addColorStop(1, 'rgba(7,22,66,0)');
+    g.fillStyle = throat; g.beginPath(); g.arc(cx, cy, base * 0.16, 0, 7); g.fill();
+
+    // a spiral of folded petals (golden angle) — large outer petals first (back), tight core last (front)
+    var N = 44, GOLD = 2.399963;
+    for (var i = N - 1; i >= 0; i--) {
+        var f = i / (N - 1);                                       // 0 = core, 1 = outer
+        var len = base * (0.12 + 0.46 * f);
+        var wid = len * (0.66 - 0.16 * f);
+        petal(g, cx, cy, i * GOLD, len, wid, L, 0.34 + 0.22 * f);
     }
-    var bud = g.createRadialGradient(cx, cy - base * 0.02, 0, cx, cy, base * 0.09);
-    bud.addColorStop(0, 'rgba(196,222,253,.85)'); bud.addColorStop(1, 'rgba(120,170,247,0)');
-    g.fillStyle = bud; g.beginPath(); g.arc(cx, cy, base * 0.09, 0, 7); g.fill();
+    var bud = g.createRadialGradient(cx, cy - base * 0.02, 0, cx, cy, base * 0.10);
+    bud.addColorStop(0, 'rgba(206,228,254,.9)'); bud.addColorStop(1, 'rgba(120,170,247,0)');
+    g.fillStyle = bud; g.beginPath(); g.arc(cx, cy, base * 0.10, 0, 7); g.fill();
 }
 function renderWall() {
     var vw = window.innerWidth, vh = window.innerHeight;
@@ -140,7 +153,7 @@ var PINNED = ['explorer', 'edge', 'terminal', 'settings'];
 function openApp(id, arg) {
     var a = APPS[id]; if (!a) return;
     if (a.launch) { window.location.href = a.launch; return; }
-    setStart(false); closeFlyouts(); closeCtx();
+    setStart(false); closeFlyouts(); closeCtx(); closeTaskView();
     if (openWins[id]) { restoreWin(id); focusWin(id); if (a.focusArg) a.focusArg(openWins[id].el, arg); return; }
     createWindow(id, a, arg);
 }
@@ -228,7 +241,57 @@ taskbar.addEventListener('click', function (e) {
 
 function minimizeAll() { Object.keys(openWins).forEach(function (id) { minWin(id); }); }
 byId('showDesk').addEventListener('click', minimizeAll);
-byId('taskviewBtn').addEventListener('click', function (e) { e.stopPropagation(); minimizeAll(); });
+
+/* ── Task view: a live overlay of every open window ── */
+function closeTaskView() {
+    var ov = byId('taskView'); if (!ov) return;
+    ov.classList.remove('on');
+    setTimeout(function () { if (ov.parentNode) ov.remove(); }, reduce ? 0 : 180);
+}
+function openTaskView() {
+    closeTaskView(); setStart(false); closeFlyouts(); closeCtx();
+    var ov = document.createElement('div'); ov.className = 'tv-overlay'; ov.id = 'taskView';
+    var grid = document.createElement('div'); grid.className = 'tv-grid';
+    var ids = Object.keys(openWins);
+    var BW = 300, BH = 188;
+    if (!ids.length) grid.innerHTML = '<p class="tv-empty">No open windows yet. Open something from Start or the taskbar.</p>';
+    ids.forEach(function (id) {
+        var w = openWins[id], a = APPS[id];
+        var maxi = w.el.classList.contains('maxi');
+        var ww = maxi ? window.innerWidth : (w.el.offsetWidth || parseInt(w.el.style.width, 10) || a.w);
+        var wh = maxi ? window.innerHeight - BAR : (w.el.offsetHeight || parseInt(w.el.style.height, 10) || a.h);
+        var scale = Math.min(BW / ww, BH / wh);
+        var clone = w.el.cloneNode(true);
+        clone.className = 'win';   // drop clip-path/drop-shadow; the card frames it
+        clone.style.cssText = 'position:absolute;margin:0;width:' + ww + 'px;height:' + wh + 'px;transform:scale(' + scale + ');transform-origin:top left;' +
+            'left:' + ((BW - ww * scale) / 2) + 'px;top:' + ((BH - wh * scale) / 2) + 'px;';
+        var item = document.createElement('div'); item.className = 'tv-item'; item.setAttribute('data-id', id);
+        var shot = document.createElement('div'); shot.className = 'tv-shot'; shot.style.width = BW + 'px'; shot.style.height = BH + 'px';
+        shot.appendChild(clone);
+        item.appendChild(shot);
+        item.insertAdjacentHTML('beforeend', '<div class="tv-label">' + ic(a.icon) + '<span>' + esc(a.title) + '</span><button class="tv-close" type="button" aria-label="Close ' + esc(a.title) + '">✕</button></div>');
+        grid.appendChild(item);
+    });
+    ov.appendChild(grid);
+    ov.insertAdjacentHTML('beforeend',
+        '<div class="tv-desktops"><div class="tv-desk active"><div class="tv-desk-thumb"></div><span>Desktop 1</span></div>' +
+        '<button class="tv-newdesk" type="button"><span class="tv-plus">+</span><span>New desktop</span></button></div>');
+    document.body.appendChild(ov);
+    requestAnimationFrame(function () { ov.classList.add('on'); });
+
+    grid.addEventListener('click', function (e) {
+        var item = e.target.closest('.tv-item'); if (!item) return;
+        var id = item.getAttribute('data-id');
+        if (e.target.closest('.tv-close')) {
+            closeWin(id); item.remove();
+            if (!grid.querySelector('.tv-item')) grid.innerHTML = '<p class="tv-empty">No open windows.</p>';
+            return;
+        }
+        restoreWin(id); focusWin(id); closeTaskView();
+    });
+    ov.addEventListener('click', function (e) { if (e.target === ov) closeTaskView(); });
+}
+byId('taskviewBtn').addEventListener('click', function (e) { e.stopPropagation(); if (byId('taskView')) closeTaskView(); else openTaskView(); });
 
 /* ═══════════════════════════ apps ═══════════════════════════ */
 var ME = {
@@ -285,8 +348,8 @@ var FS = {
         { n: 'readme.txt', t: 'notepad', app: 'notepad' }
     ] },
     'Pictures': { items: [
-        { n: 'the room.png', t: 'room', app: 'photos' }, { n: 'argent.png', t: 'gti', app: 'photos' },
-        { n: 'bloom.png', t: 'photos', app: 'photos' }
+        { n: 'the room.png', t: 'room', app: 'photos', arg: 0 }, { n: 'argent.png', t: 'gti', app: 'photos', arg: 1 },
+        { n: 'bloom.png', t: 'photos', app: 'photos', arg: 4 }
     ] },
     'Projects': { items: [
         { n: 'URE BOY', t: 'ureboy', app: 'ureboy' }, { n: 'the room', t: 'room', app: 'room' },
@@ -332,7 +395,7 @@ function initExplorer(el, id, arg) {
     grid.addEventListener('dblclick', function (e) {
         var b = e.target.closest('.fitem'); if (!b) return;
         var it = (FS[state.path] || FS.Home).items[+b.getAttribute('data-i')];
-        if (it.app) openApp(it.app);
+        if (it.app) openApp(it.app, it.arg);
         else if (it.go) go(it.go);
     });
     grid.addEventListener('click', function (e) {
@@ -500,19 +563,21 @@ function initEdge(el) {
 
 /* —— Photos —— */
 var PHOTOS = [['ic-room', 'the room'], ['ic-gti', 'Argent'], ['ic-ureboy', 'URE BOY'], ['ic-ure', 'URE'], ['ic-photos', 'bloom'], ['ic-pc', 'the setup']];
-function renderPhotos() {
-    var thumbs = PHOTOS.map(function (p, i) { return '<button class="ph-thumb' + (i === 0 ? ' sel' : '') + '" data-i="' + i + '">' + ic(p[0]) + '</button>'; }).join('');
-    return '<div class="photos"><div class="ph-view" id="phView">' + ic(PHOTOS[0][0], 'ph-big') + '<span class="ph-cap">' + esc(PHOTOS[0][1]) + '</span></div>' +
+function photoTile(p) { return ic(p[0], 'ph-big') + '<span class="ph-cap">' + esc(p[1]) + '</span>'; }
+function renderPhotos(id, arg) {
+    var start = clamp(arg | 0, 0, PHOTOS.length - 1);
+    var thumbs = PHOTOS.map(function (p, i) { return '<button class="ph-thumb' + (i === start ? ' sel' : '') + '" data-i="' + i + '">' + ic(p[0]) + '</button>'; }).join('');
+    return '<div class="photos"><div class="ph-view" id="phView">' + photoTile(PHOTOS[start]) + '</div>' +
         '<div class="ph-strip">' + thumbs + '</div></div>';
 }
+function selectPhoto(el, i) {
+    i = clamp(i | 0, 0, PHOTOS.length - 1);
+    el.querySelectorAll('.ph-thumb').forEach(function (x) { x.classList.toggle('sel', +x.getAttribute('data-i') === i); });
+    el.querySelector('#phView').innerHTML = photoTile(PHOTOS[i]);
+}
 function initPhotos(el) {
-    var view = el.querySelector('#phView');
     el.querySelector('.ph-strip').addEventListener('click', function (e) {
-        var b = e.target.closest('.ph-thumb'); if (!b) return;
-        el.querySelectorAll('.ph-thumb.sel').forEach(function (x) { x.classList.remove('sel'); });
-        b.classList.add('sel');
-        var p = PHOTOS[+b.getAttribute('data-i')];
-        view.innerHTML = ic(p[0], 'ph-big') + '<span class="ph-cap">' + esc(p[1]) + '</span>';
+        var b = e.target.closest('.ph-thumb'); if (b) selectPhoto(el, +b.getAttribute('data-i'));
     });
 }
 
@@ -528,7 +593,7 @@ var APPS = {
     notepad:  { title: 'Untitled — Notepad', icon: 'ic-notepad', w: 520, h: 420, render: renderNotepad, init: initNotepad },
     terminal: { title: 'URE Shell', icon: 'ic-terminal', w: 620, h: 400, render: renderTerminal, init: initTerminal },
     settings: { title: 'Settings', icon: 'ic-settings', w: 660, h: 480, render: renderSettings, init: initSettings },
-    photos:   { title: 'Photos', icon: 'ic-photos', w: 560, h: 440, render: renderPhotos, init: initPhotos },
+    photos:   { title: 'Photos', icon: 'ic-photos', w: 560, h: 440, render: renderPhotos, init: initPhotos, focusArg: function (el, arg) { if (arg != null) selectPhoto(el, arg | 0); } },
     calc:     { title: 'Calculator', icon: 'ic-calc', w: 300, h: 440, render: renderCalc, init: initCalc },
     edge:     { title: 'Edge', icon: 'ic-edge', w: 700, h: 480, render: renderEdge, init: initEdge },
     bin:      { title: 'Recycle Bin', icon: 'ic-bin', w: 600, h: 400, render: renderBin },
@@ -543,7 +608,7 @@ function setStart(open) {
     startMenu.hidden = false;
     requestAnimationFrame(function () { startMenu.classList.toggle('open', open); });
     startBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
-    if (open) { closeFlyouts(); closeCtx(); if (!reduce) setTimeout(function () { startSearch.focus(); }, 40); }
+    if (open) { closeFlyouts(); closeCtx(); closeTaskView(); if (!reduce) setTimeout(function () { startSearch.focus(); }, 40); }
     else { startSearch.value = ''; filterStart(''); }
 }
 startBtn.addEventListener('click', function (e) { e.stopPropagation(); setStart(!startMenu.classList.contains('open')); });
@@ -670,11 +735,15 @@ function shutdown() {
 
 /* ═══════════════════ global dismiss + init ═════════════════ */
 document.addEventListener('click', function () { setStart(false); closeFlyouts(); closeCtx(); });
-document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { setStart(false); closeFlyouts(); closeCtx(); } });
+document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { setStart(false); closeFlyouts(); closeCtx(); closeTaskView(); } });
 
 applyAccent(recall('accent', ACCENTS[0].hex));
 if (recall('crt', 'on') !== 'on') document.body.classList.add('no-crt');
 renderWall();
 tick(); setInterval(tick, 15000);
+
+// headless-screenshot hooks (like the room pages' ?dev): populate a state for a one-shot capture
+if (location.search.indexOf('dev=tv') >= 0) { ['terminal', 'about', 'calc', 'explorer'].forEach(function (a) { openApp(a); }); setTimeout(openTaskView, 60); }
+if (location.search.indexOf('dev=pics') >= 0) openApp('photos', 1);
 
 })();
