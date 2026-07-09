@@ -206,7 +206,7 @@ function wireWindow(id, el) {
     });
 }
 function focusWin(id) { var w = openWins[id]; if (!w) return; w.el.style.zIndex = ++zTop; activeApp = id; syncTaskbar(); }
-function minWin(id) { var w = openWins[id]; if (!w) return; w.min = true; w.el.classList.add('mini'); if (activeApp === id) activeApp = null; syncTaskbar(); }
+function minWin(id) { var w = openWins[id]; if (!w) return; if (APPS[id].onMinimize) APPS[id].onMinimize(w.el); w.min = true; w.el.classList.add('mini'); if (activeApp === id) activeApp = null; syncTaskbar(); }
 function restoreWin(id) { var w = openWins[id]; if (!w) return; w.min = false; w.el.classList.remove('mini'); }
 function closeWin(id) { var w = openWins[id]; if (!w) return; if (APPS[id].onClose) APPS[id].onClose(w.el); w.el.remove(); delete openWins[id]; if (activeApp === id) activeApp = null; syncTaskbar(); }
 
@@ -353,7 +353,7 @@ var FS = {
     ] },
     'Projects': { items: [
         { n: 'URE BOY', t: 'ureboy', app: 'ureboy' }, { n: 'the room', t: 'room', app: 'room' },
-        { n: 'GTI RUN', t: 'gti', app: 'gti' }, { n: 'isaacure.com', t: 'globe', app: 'edge' }
+        { n: 'GTI RUN', t: 'gti', app: 'gti' }, { n: 'isaacure.com', t: 'globe', app: 'chrome' }
     ] }
 };
 var FS_ICON = { folder: 'ic-folder', pc: 'ic-pc', notepad: 'ic-notepad', room: 'ic-room', gti: 'ic-gti', ureboy: 'ic-ureboy', photos: 'ic-photos', globe: 'ic-globe' };
@@ -538,26 +538,383 @@ function initCalc(el) {
     });
 }
 
-/* —— Edge (browser) —— */
-function renderEdge() {
-    var bm = [
-        ['Steam', 'ic-steam', 'steam'], ['the room', 'ic-room', 'room'], ['URE BOY', 'ic-ureboy', 'ureboy'],
-        ['GTI RUN', 'ic-gti', 'gti'], ['About Isaac', 'ic-ure', 'about'], ['GitHub', 'ic-globe', 'ext:https://github.com/IsaacUre']
-    ];
-    var tiles = bm.map(function (b) { return '<button class="bm" data-target="' + b[2] + '">' + ic(b[1]) + '<span>' + esc(b[0]) + '</span></button>'; }).join('');
-    return '<div class="edge">' +
-        '<div class="edge-bar"><span class="edge-nav">‹ › ↻</span><div class="edge-addr">' + ic('ic-search') + '<span>ure://home</span></div></div>' +
-        '<div class="edge-home"><div class="edge-logo">' + ic('ic-edge', 'edge-big') + '<h2>Good ' + dayPart() + ', Isaac</h2></div>' +
-        '<p class="edge-sub">Quick links</p><div class="bm-grid">' + tiles + '</div></div></div>';
+/* ═══════════════ possessed cursor (the "hand of god") ═══════════
+   A fake pixel cursor that the machine can drive. In 'free' mode it
+   mirrors the real (hidden) mouse 1:1; in 'grab' mode it springs
+   toward a target with a pull that ramps up over time — so you can
+   shove it off course (fight) or steer it in (help), but the target
+   always wins in the end. Used to drag you to the address bar and
+   click through the whole Chrome-install charade. ──────────────── */
+var pointer = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+document.addEventListener('mousemove', function (e) { pointer.x = e.clientX; pointer.y = e.clientY; }, { passive: true });
+
+var cur = { el: null, x: 0, y: 0, vx: 0, vy: 0, mode: 'off', raf: 0, getRect: null, onArrive: null, dwell: 0, f: 0, cap: 260 };
+function makeCursor() {
+    var c = document.createElement('div'); c.className = 'fakecursor';
+    c.innerHTML = '<svg viewBox="0 0 12 18" width="24" height="36" shape-rendering="crispEdges" aria-hidden="true">' +
+        '<path d="M1 1 L1 12 L4 9 L6.2 14.4 L8 13.7 L5.8 8.4 L10 8.4 Z" fill="#f7f8fb" stroke="#0c0c10" stroke-width="1" stroke-linejoin="miter"/></svg>';
+    document.body.appendChild(c); return c;
 }
+function positionCursor() { if (cur.el) cur.el.style.transform = 'translate(' + Math.round(cur.x) + 'px,' + Math.round(cur.y) + 'px)'; }
+function freeFollow() { if (cur.mode === 'free') { cur.x = pointer.x; cur.y = pointer.y; positionCursor(); } }
+function gagBegin() {
+    if (cur.mode !== 'off') return;
+    if (!cur.el) cur.el = makeCursor();
+    document.body.classList.add('gagging');
+    cur.x = pointer.x; cur.y = pointer.y; cur.vx = cur.vy = 0; cur.mode = 'free';
+    positionCursor();
+    window.addEventListener('mousemove', freeFollow, true);   // free mode tracks the mouse — no perpetual rAF
+}
+function gagEnd() {
+    if (cur.mode === 'off') return;
+    cur.mode = 'off'; cancelAnimationFrame(cur.raf); cur.raf = 0;
+    window.removeEventListener('mousemove', freeFollow, true);
+    cur.getRect = cur.onArrive = null;
+    document.body.classList.remove('gagging');
+    if (cur.el) { cur.el.remove(); cur.el = null; }
+}
+function possess(targetEl, onArrive) {
+    if (cur.mode === 'off') return;
+    cur.getRect = function () { return (targetEl && document.body.contains(targetEl)) ? targetEl.getBoundingClientRect() : null; };
+    cur.onArrive = onArrive || null; cur.dwell = 0; cur.f = 0;   // frame-driven, clock-independent (cur.cap = 260)
+    cur.mode = 'grab'; if (cur.el) cur.el.classList.add('grab');
+    if (window.__fastCursor) { setTimeout(function () { if (cur.mode === 'grab') cursorArrive(); }, 60); return; }   // dev: skip animation, keep the chain
+    cancelAnimationFrame(cur.raf); cur.raf = requestAnimationFrame(loopGrab);   // rAF only runs while possessing
+}
+function cursorArrive() {
+    var cb = cur.onArrive;
+    cancelAnimationFrame(cur.raf); cur.raf = 0;
+    cur.mode = 'free'; cur.onArrive = null; cur.getRect = null;
+    if (cur.el) cur.el.classList.remove('grab');
+    clickPing(cur.x, cur.y);
+    if (cb) cb();
+}
+function loopGrab() {
+    if (cur.mode !== 'grab') return;
+    var r = cur.getRect && cur.getRect();
+    if (!r) { cursorArrive(); return; }
+    cur.f++;
+    var mx = pointer.x, my = pointer.y;
+    var tx = r.left + r.width / 2, ty = r.top + r.height / 2;
+    var pull = reduce ? 1 : clamp(0.10 + cur.f * 0.013, 0.10, 1);   // fightable early (~1.3s), lands on target late
+    var desx = mx + (tx - mx) * pull, desy = my + (ty - my) * pull;
+    cur.vx = cur.vx * 0.7 + (desx - cur.x) * 0.3;
+    cur.vy = cur.vy * 0.7 + (desy - cur.y) * 0.3;
+    cur.x += cur.vx; cur.y += cur.vy;
+    positionCursor();
+    var d = Math.sqrt((tx - cur.x) * (tx - cur.x) + (ty - cur.y) * (ty - cur.y));
+    cur.dwell = d < 9 ? cur.dwell + 1 : Math.max(0, cur.dwell - 2);
+    if (cur.dwell > 4 || cur.f > cur.cap) { cursorArrive(); return; }
+    cur.raf = requestAnimationFrame(loopGrab);
+}
+function clickPing(x, y) {
+    var p = document.createElement('div'); p.className = 'click-ping';
+    p.style.left = x + 'px'; p.style.top = y + 'px';
+    document.body.appendChild(p);
+    setTimeout(function () { if (p.parentNode) p.remove(); }, 520);
+}
+function toast(msg) {
+    var t = document.createElement('div'); t.className = 'toast px-lg lift';
+    t.innerHTML = ic('ic-chrome') + '<span>' + esc(msg) + '</span>';
+    document.body.appendChild(t);
+    requestAnimationFrame(function () { t.classList.add('on'); });
+    setTimeout(function () { t.classList.remove('on'); setTimeout(function () { if (t.parentNode) t.remove(); }, 320); }, 3400);
+}
+
+/* ═════════════════ Browser: Edge (the gag) + Chrome ═════════════
+   Edge's one purpose on a fresh machine is to help you install
+   Chrome. Open it and the cursor gets quietly possessed — it drifts
+   to the address bar, types "chrome install" out of your hands, and
+   walks the whole search → download → installer arc. Chrome is the
+   browser that actually works; Edge just delivers it, then bows out.
+   Replays on every Edge open (testing). ───────────────────────── */
+var pendingInstall = null;
+var BOOKMARKS = [
+    ['Steam', 'ic-steam', 'steam'], ['the room', 'ic-room', 'room'], ['URE BOY', 'ic-ureboy', 'ureboy'],
+    ['GTI RUN', 'ic-gti', 'gti'], ['About Isaac', 'ic-ure', 'about'], ['GitHub', 'ic-globe', 'ext:https://github.com/IsaacUre'],
+    ['Instagram', 'ic-photos', 'ext:https://www.instagram.com/isaacure_/']
+];
 function dayPart() { var h = new Date().getHours(); return h < 12 ? 'morning' : h < 18 ? 'afternoon' : 'evening'; }
+
+// shared window-chrome for both browsers, branded by class
+function browserShell(brand, tabTitle, tabIcon, placeholder, bodyHtml) {
+    return '<div class="br ' + brand + '" data-brand="' + brand + '">' +
+        '<div class="br-tabs">' +
+          '<div class="br-tab active">' + ic(tabIcon, 'br-fav') + '<span>' + esc(tabTitle) + '</span><i class="br-tabx" aria-hidden="true">×</i></div>' +
+          '<button class="br-newtab" tabindex="-1" aria-label="New tab">+</button>' +
+        '</div>' +
+        '<div class="br-tool">' +
+          '<span class="br-actions"><button class="br-act" tabindex="-1" aria-label="Back">‹</button><button class="br-act" tabindex="-1" aria-label="Forward">›</button><button class="br-act" tabindex="-1" aria-label="Reload">↻</button></span>' +
+          '<label class="br-omni">' + ic('ic-search', 'br-omni-ic') +
+            '<input class="br-url" spellcheck="false" autocomplete="off" aria-label="Address and search bar" value="" placeholder="' + esc(placeholder) + '">' +
+            '<span class="br-fade">' + (brand === 'chrome' ? '★' : '☆') + '</span></label>' +
+          '<button class="br-act br-more" tabindex="-1" aria-label="Settings and more">⋯</button>' +
+        '</div>' +
+        '<div class="br-stage"><div class="br-view">' + bodyHtml + '</div>' +
+          '<div class="br-suggest" hidden></div>' +
+          '<div class="dl-shelf" hidden></div>' +
+        '</div></div>';
+}
+
+/* —— Edge —— */
+function edgeWelcome() {
+    return '<div class="ewc">' +
+        '<div class="ewc-hero">' + ic('ic-edge', 'ewc-logo') +
+          '<h2>Welcome to Microsoft Edge</h2>' +
+          '<p>The last browser you’ll ever need.<sup>*</sup> Fast, secure, and already set as your default.</p>' +
+        '</div>' +
+        '<div class="ewc-cards">' +
+          '<div class="ewc-card"><b>Import favorites</b><span>Bring your stuff over from that other browser.</span></div>' +
+          '<div class="ewc-card"><b>Set as default</b><span class="ewc-done">✓ Already done for you.</span></div>' +
+          '<div class="ewc-card"><b>Get started</b><span>Just start browsing. Try the address bar ↑</span></div>' +
+        '</div>' +
+        '<p class="ewc-fine"><sup>*</sup>Results not guaranteed.</p></div>';
+}
+function renderEdge() {
+    return browserShell('edge', 'Welcome to Microsoft Edge', 'ic-edge', 'Search or enter web address', edgeWelcome());
+}
 function initEdge(el) {
-    el.querySelector('.bm-grid').addEventListener('click', function (e) {
-        var b = e.target.closest('.bm'); if (!b) return;
-        var t = b.getAttribute('data-target');
+    var view = el.querySelector('.br-view'), url = el.querySelector('.br-url');
+    var omni = el.querySelector('.br-omni'), suggest = el.querySelector('.br-suggest'), shelf = el.querySelector('.dl-shelf');
+    var TYPE = 'chrome install';
+    var alive = true, hijack = false, ti = 0;
+    var timers = [], intervals = [], idleTimer = 0;
+    var step = { addr: 0, godl: 0, dl: 0, run: 0 };
+
+    function after(ms, fn) { var t = setTimeout(function () { if (alive) fn(); }, reduce ? Math.min(ms, 140) : ms); timers.push(t); return t; }
+    function every(ms, fn) { var iv = setInterval(fn, ms); intervals.push(iv); return iv; }
+
+    var gag = { cancel: function () {
+        if (!alive) return; alive = false; hijack = false;
+        timers.forEach(clearTimeout); intervals.forEach(clearInterval); clearTimeout(idleTimer);
+        document.removeEventListener('keydown', onKey, true);
+        pendingInstall = null;                    // drop this run's installer so a stale setup can't fire against a newer gag
+        if (openWins.setup) closeWin('setup');    // a running installer shouldn't fake-succeed after we bail
+        gagEnd();
+    } };
+    APPS.edge._gag = gag;
+
+    // headless screenshot hook: ?dev=edge&at=<phase> jumps straight to a phase (static, no timeline)
+    var devAt = (location.search.match(/[?&]at=([a-z]+)/) || [])[1];
+    if (devAt) { devJump(devAt); return; }
+
+    gagBegin();
+    after(reduce ? 60 : 850, function () { possess(url, addrClicked); });
+
+    /* helping: if the user clicks/focuses the bar or the page links themselves */
+    url.addEventListener('focus', addrClicked);
+    omni.addEventListener('mousedown', function () { after(0, addrClicked); });
+    view.addEventListener('click', function (e) {
+        if (e.target.closest('.res-hit')) gotoDownload();
+        else if (e.target.closest('.dlp-btn')) startDownload();
+    });
+    shelf.addEventListener('click', function (e) { if (e.target.closest('.dls-open')) runInstaller(); });
+
+    function addrClicked() {
+        if (!alive || step.addr) return; step.addr = 1;
+        omni.classList.add('focus'); url.value = ''; url.focus();
+        openSuggest(''); hijack = true;
+        document.addEventListener('keydown', onKey, true);
+        armIdle();
+    }
+    function armIdle() { clearTimeout(idleTimer); idleTimer = setTimeout(startAuto, reduce ? 200 : 1200); }
+    function startAuto() {
+        if (!alive || !hijack) return;
+        var iv = every(reduce ? 45 : (100 + Math.floor(Math.random() * 80)), function () {
+            if (!alive || !hijack) { clearInterval(iv); return; }
+            if (typeStep()) clearInterval(iv);
+        });
+    }
+    function onKey(e) {
+        if (!hijack) return;
+        if (e.key === 'Escape') { gag.cancel(); return; }   // let the user bail out
+        e.preventDefault(); e.stopPropagation();
+        intervals.forEach(clearInterval);                    // user grabbed the wheel
+        if (!typeStep()) armIdle();
+    }
+    function typeStep() {
+        if (ti < TYPE.length) { url.value += TYPE.charAt(ti++); openSuggest(url.value); return false; }
+        hijack = false; document.removeEventListener('keydown', onKey, true);
+        clearTimeout(idleTimer); intervals.forEach(clearInterval);
+        submit(); return true;
+    }
+    function submit() {
+        omni.classList.remove('focus'); closeSuggest(); url.blur();
+        url.value = 'bing.com/search?q=chrome+install';
+        view.innerHTML = resultsHTML();
+        after(reduce ? 140 : 1150, function () {
+            possess(view.querySelector('.res-hit') || view, gotoDownload);
+        });
+    }
+    function gotoDownload() {
+        if (!alive || step.godl) return; step.godl = 1;
+        closeSuggest(); url.value = 'https://www.google.com/chrome/';
+        view.innerHTML = downloadHTML();
+        after(reduce ? 140 : 780, function () {
+            possess(view.querySelector('.dlp-btn') || view, startDownload);
+        });
+    }
+    function startDownload() {
+        if (!alive || step.dl) return; step.dl = 1;
+        var btn = view.querySelector('.dlp-btn'); if (btn) btn.classList.add('press');
+        shelf.hidden = false; shelf.innerHTML = shelfHTML();
+        var bar = shelf.querySelector('.dls-bar span'), pct = shelf.querySelector('.dls-pct'), n = 0;
+        var iv = every(reduce ? 60 : 120, function () {
+            if (!alive) { clearInterval(iv); return; }
+            n = Math.min(100, n + (reduce ? 45 : 5 + Math.random() * 9));
+            bar.style.width = n + '%'; pct.textContent = Math.round(n) + '%';
+            if (n >= 100) {
+                clearInterval(iv); shelf.innerHTML = shelfDoneHTML();
+                after(reduce ? 120 : 520, function () { possess(shelf.querySelector('.dls-open') || shelf, runInstaller); });
+            }
+        });
+    }
+    function runInstaller() {
+        if (!alive || step.run) return; step.run = 1;
+        shelf.hidden = true;
+        pendingInstall = function () {
+            if (!alive) return;
+            installChrome(); openApp('chrome');
+            toast('Google Chrome installed — welcome home.');
+            gag.cancel(); closeWin('edge');
+        };
+        openApp('setup');
+    }
+
+    /* address-bar autocomplete drop-down */
+    function openSuggest(q) {
+        suggest.hidden = false;
+        var rows = [
+            [q || 'chrome install', 'ic-search'],
+            ['chrome download — free', 'ic-search'],
+            ['google chrome for windows 11', 'ic-search'],
+            ['is chrome better than edge (it is)', 'ic-search'],
+            ['google.com/chrome', 'ic-globe']
+        ];
+        suggest.innerHTML = rows.map(function (r, i) {
+            return '<div class="sg' + (i === 0 ? ' sel' : '') + '">' + ic(r[1], 'sg-ic') + '<span>' + esc(r[0]) + '</span></div>';
+        }).join('');
+    }
+    function closeSuggest() { suggest.hidden = true; suggest.innerHTML = ''; }
+
+    function resultsHTML() {
+        return '<div class="serp">' +
+            '<div class="serp-top"><span class="serp-logo">bing</span>' +
+              '<label class="serp-box"><input value="chrome install" readonly aria-label="Search">' + ic('ic-search') + '</label></div>' +
+            '<p class="serp-stat">About 4,120,000,000 results · we get it, everybody does this</p>' +
+            '<a class="res-hit"><span class="res-url">https://www.google.com › chrome</span>' +
+              '<span class="res-title">Download and install Google Chrome</span>' +
+              '<span class="res-desc">Get the fast, free web browser everyone on this machine was going to install anyway. Now on UreOS 11.</span></a>' +
+            '<div class="res"><span class="res-url">https://en.wikipedia.org › wiki › Google_Chrome</span>' +
+              '<span class="res-title2">Google Chrome - Wikipedia</span>' +
+              '<span class="res-desc">Cross-platform web browser developed by Google, first released in 2008…</span></div>' +
+            '<div class="res res-sad"><span class="res-url">https://microsoft.com › edge › please</span>' +
+              '<span class="res-title2">Microsoft Edge — wait, are you sure? You can stay.</span>' +
+              '<span class="res-desc">We’ve changed. We have coupons now. Please don’t do this.</span></div></div>';
+    }
+    function downloadHTML() {
+        return '<div class="dlp">' + ic('ic-chrome', 'dlp-chrome') +
+            '<h2 class="dlp-h">The browser built to be yours</h2>' +
+            '<p class="dlp-sub">Fast. Secure. Yours. And, crucially, not Edge.</p>' +
+            '<button class="dlp-btn" type="button">Download Chrome</button>' +
+            '<p class="dlp-fine">For Windows 11 · UreOS Pixel Edition · 64-bit</p></div>';
+    }
+    function shelfHTML() {
+        return '<div class="dls">' + ic('ic-chrome', 'dls-ic') +
+            '<div class="dls-meta"><b>ChromeSetup.exe</b><div class="dls-bar"><span style="width:0%"></span></div></div>' +
+            '<span class="dls-pct">0%</span></div>';
+    }
+    function shelfDoneHTML() {
+        return '<div class="dls">' + ic('ic-chrome', 'dls-ic') +
+            '<div class="dls-meta"><b>ChromeSetup.exe</b><span class="dls-sub">Download complete</span></div>' +
+            '<button class="dls-open" type="button">Open file</button></div>';
+    }
+    function devJump(p) {
+        if (p === 'type') { gagBegin(); omni.classList.add('focus'); url.value = TYPE; openSuggest(TYPE); }
+        else if (p === 'results') { url.value = 'bing.com/search?q=chrome+install'; view.innerHTML = resultsHTML(); }
+        else if (p === 'download') { url.value = 'https://www.google.com/chrome/'; view.innerHTML = downloadHTML(); }
+        else if (p === 'shelf') { url.value = 'https://www.google.com/chrome/'; view.innerHTML = downloadHTML(); shelf.hidden = false; shelf.innerHTML = shelfDoneHTML(); }
+        else if (p === 'setup') { setTimeout(function () { openApp('setup'); }, 0); }   // defer so it lands on top of Edge
+        else if (p === 'done') { installChrome(); setTimeout(function () { openApp('chrome'); closeWin('edge'); toast('Google Chrome installed — welcome home.'); }, 0); }
+    }
+}
+
+/* —— Chrome (the browser that actually works) —— */
+function chromeNTP() {
+    var tiles = BOOKMARKS.map(function (b) {
+        return '<button class="ntp-sc" data-target="' + b[2] + '">' + ic(b[1], 'ntp-scic') + '<span>' + esc(b[0]) + '</span></button>';
+    }).join('') + '<button class="ntp-sc ntp-add" data-target="__add" aria-label="Add shortcut"><span class="ntp-plus">+</span><span>Add</span></button>';
+    return '<div class="ntp">' +
+        '<div class="ntp-brand">' + ic('ic-chrome', 'ntp-logo') + '<h2 class="ntp-word">isaacure</h2></div>' +
+        '<label class="ntp-search">' + ic('ic-search') + '<input class="ntp-q" placeholder="Search isaacure.com or type a URL" spellcheck="false" readonly></label>' +
+        '<div class="ntp-scs">' + tiles + '</div>' +
+        '<p class="ntp-foot">Good ' + dayPart() + ', Isaac — Chrome’s treating you right.</p></div>';
+}
+function renderChrome() {
+    return browserShell('chrome', 'New Tab', 'ic-chrome', 'Search isaacure.com or type a URL', chromeNTP());
+}
+function initChrome(el) {
+    el.querySelector('.ntp-scs').addEventListener('click', function (e) {
+        var b = e.target.closest('.ntp-sc'); if (!b) return;
+        var t = b.getAttribute('data-target'); if (t === '__add') return;
         if (t.indexOf('ext:') === 0) window.open(t.slice(4), '_blank', 'noopener');
         else openApp(t);
     });
+}
+
+/* —— Chrome installer window —— */
+function renderSetup() {
+    return '<div class="setup">' +
+        '<div class="setup-head">' + ic('ic-chrome', 'setup-logo') + '<div><b>Google Chrome</b><span>Installer</span></div></div>' +
+        '<div class="setup-body"><p class="setup-status">Preparing to install…</p>' +
+          '<div class="setup-bar"><span></span></div><p class="setup-pct">0%</p></div></div>';
+}
+function initSetup(el) {
+    var wrap = el.querySelector('.setup'), status = el.querySelector('.setup-status');
+    var bar = el.querySelector('.setup-bar span'), pctEl = el.querySelector('.setup-pct');
+    var lines = ['Downloading a faster browser…', 'Uninstalling Bing…', 'Importing 0 favorites…', 'Setting Chrome as default…', 'Tidying the Start menu…', 'Almost there…'];
+    var n = 0, li = -1, done = false;
+    if (location.search.indexOf('freeze') >= 0) { bar.style.width = '58%'; pctEl.textContent = '58%'; status.textContent = lines[3]; return; }   // dev: hold for a clean screenshot
+    el._iv = setInterval(function () {
+        n = Math.min(100, n + (reduce ? 50 : 3.5 + Math.random() * 6.5));
+        bar.style.width = n + '%'; pctEl.textContent = Math.round(n) + '%';
+        var want = Math.min(lines.length - 1, Math.floor(n / (100 / lines.length)));
+        if (want !== li) { li = want; status.textContent = lines[li]; }
+        if (n >= 100 && !done) {
+            done = true; clearInterval(el._iv); el._iv = 0;
+            wrap.classList.add('ok'); status.innerHTML = '<b class="setup-ok">✓ Chrome is ready.</b>';
+            setTimeout(function () {
+                var cb = pendingInstall; pendingInstall = null;
+                closeWin('setup'); if (cb) cb();
+            }, reduce ? 160 : 900);
+        }
+    }, reduce ? 60 : 150);
+}
+function stopSetup(el) {
+    if (el && el._iv) clearInterval(el._iv);
+    if (pendingInstall) { pendingInstall = null; if (APPS.edge._gag) APPS.edge._gag.cancel(); }
+}
+
+/* register Chrome once "installed": pin it on the taskbar + Start */
+function installChrome() {
+    if (PINNED.indexOf('chrome') < 0) {
+        PINNED.push('chrome');
+        var center = taskbar.querySelector('.tb-center'), edgeBtn = center && center.querySelector('.tb-btn.app[data-app="edge"]');
+        if (center && !center.querySelector('.tb-btn.app[data-app="chrome"]')) {
+            var b = document.createElement('button');
+            b.className = 'tb-btn app'; b.type = 'button'; b.setAttribute('data-app', 'chrome'); b.setAttribute('aria-label', 'Google Chrome');
+            b.innerHTML = ic('ic-chrome');
+            if (edgeBtn) edgeBtn.insertAdjacentElement('afterend', b); else center.insertBefore(b, tbOpen);
+        }
+    }
+    var pins = byId('pins');
+    if (pins && !pins.querySelector('.pin[data-app="chrome"]')) {
+        var p = document.createElement('button');
+        p.className = 'pin'; p.type = 'button'; p.setAttribute('data-app', 'chrome');
+        p.innerHTML = ic('ic-chrome') + '<span>Chrome</span>';
+        pins.insertBefore(p, pins.firstChild);
+    }
+    syncTaskbar();
 }
 
 /* —— Photos —— */
@@ -1397,7 +1754,9 @@ var APPS = {
     settings: { title: 'Settings', icon: 'ic-settings', w: 660, h: 480, render: renderSettings, init: initSettings },
     photos:   { title: 'Photos', icon: 'ic-photos', w: 560, h: 440, render: renderPhotos, init: initPhotos, focusArg: function (el, arg) { if (arg != null) selectPhoto(el, arg | 0); } },
     calc:     { title: 'Calculator', icon: 'ic-calc', w: 300, h: 440, render: renderCalc, init: initCalc },
-    edge:     { title: 'Edge', icon: 'ic-edge', w: 700, h: 480, render: renderEdge, init: initEdge },
+    edge:     { title: 'Microsoft Edge', icon: 'ic-edge', w: 760, h: 520, render: renderEdge, init: initEdge, onClose: function () { if (APPS.edge._gag) APPS.edge._gag.cancel(); }, onMinimize: function () { if (APPS.edge._gag) APPS.edge._gag.cancel(); } },
+    chrome:   { title: 'Google Chrome', icon: 'ic-chrome', w: 820, h: 560, render: renderChrome, init: initChrome },
+    setup:    { title: 'Google Chrome Installer', icon: 'ic-chrome', w: 430, h: 300, render: renderSetup, init: initSetup, onClose: stopSetup },
     bin:      { title: 'Recycle Bin', icon: 'ic-bin', w: 600, h: 400, render: renderBin },
     steam:    { title: 'Steam', icon: 'ic-steam', w: 960, h: 620, render: renderSteam, init: initSteam, onClose: closeSteam, focusArg: steamFocus },
     ureboy:   { launch: '/ureboy/' },
@@ -1548,5 +1907,8 @@ tick(); setInterval(tick, 15000);
 // headless-screenshot hooks (like the room pages' ?dev): populate a state for a one-shot capture
 if (location.search.indexOf('dev=tv') >= 0) { ['terminal', 'about', 'calc', 'explorer'].forEach(function (a) { openApp(a); }); setTimeout(openTaskView, 60); }
 if (location.search.indexOf('dev=pics') >= 0) openApp('photos', 1);
+if (location.search.indexOf('fast') >= 0) window.__fastCursor = true;   // dev: instant cursor jumps so the chain runs headless
+if (location.search.indexOf('dev=edge') >= 0) openApp('edge');       // watch the possession play out
+if (location.search.indexOf('dev=chrome') >= 0) { installChrome(); openApp('chrome'); }
 
 })();
