@@ -616,11 +616,12 @@ function initNotepad(el) {
     var ta = el.querySelector('.np-text'), loc = el.querySelector('.np-loc');
     var back = el.querySelector('.np-back'), save = el.querySelector('.np-save');
     ta.value = recall('notepad', '');
-    function upd() {
+    function upd(e) {
         store('notepad', ta.value);
         var pre = ta.value.slice(0, ta.selectionStart).split('\n');
         loc.textContent = 'Ln ' + pre.length + ', Col ' + (pre[pre.length - 1].length + 1);
-        if (find.appId === 'notepad' && findOpenNow()) runFind();   // keep highlights honest while typing
+        // only real text changes rebuild highlights, and they keep the current match (no scroll yank)
+        if (e && e.type === 'input' && find.appId === 'notepad' && findOpenNow()) runFind(true);
     }
     ta.addEventListener('input', upd); ta.addEventListener('keyup', upd); ta.addEventListener('click', upd);
     ta.addEventListener('scroll', function () { back.scrollTop = ta.scrollTop; });
@@ -1126,7 +1127,10 @@ function initChrome(el) {
         viewEl.innerHTML = p.render();
         urlEl.value = p.url;
     }
-    function sync() { renderTabs(); show(); }
+    function sync() {
+        renderTabs(); show();
+        if (find.appId === 'chrome' && findOpenNow()) runFind();   // re-mark the fresh DOM, fix the count
+    }
 
     function navigate(pid) {
         var t = tabs[cur];
@@ -3183,7 +3187,11 @@ function shutdown() {
 var find = { appId: null, q: '', marks: [], idx: -1 };
 
 function findBar(id) { var w = openWins[id]; return w ? w.el.querySelector('.findbar') : null; }
-function findOpenNow() { var b = find.appId && findBar(find.appId); return !!(b && !b.hidden); }
+function findOpenNow() {
+    var w = find.appId && openWins[find.appId];
+    var b = w && !w.min && findBar(find.appId);              // a minimized window's bar isn't "open"
+    return !!(b && !b.hidden);
+}
 
 function openFind(id) {
     var w = openWins[id]; if (!w) return;
@@ -3267,10 +3275,10 @@ function paintCount() {
     c.classList.toggle('nohit', !!find.q && !find.marks.length);
 }
 
-function runFind() {
+function runFind(keep) {
     var w = openWins[find.appId]; if (!w) return;
     var q = find.q.toLowerCase();
-    if (find.appId === 'notepad') { npFind(w.el, q); paintCount(); return; }
+    if (find.appId === 'notepad') { npFind(w.el, q, keep ? find.idx : -1); paintCount(); return; }
     var root = w.el.querySelector('.win-content');
     unmarkAll(root);
     find.marks = q ? markMatches(root, q) : [];
@@ -3298,8 +3306,9 @@ function navFind(dir) {
     paintCount();
 }
 
-// Notepad: highlight in a mirrored backdrop behind the transparent textarea
-function npFind(winEl, q) {
+// Notepad: highlight in a mirrored backdrop behind the transparent textarea.
+// prevIdx >= 0 = a typing refresh: keep that match current, don't touch scroll.
+function npFind(winEl, q, prevIdx) {
     var ta = winEl.querySelector('.np-text'), back = winEl.querySelector('.np-back');
     back.textContent = '';
     back.style.width = ta.clientWidth + 'px';                // exclude the scrollbar
@@ -3317,7 +3326,12 @@ function npFind(winEl, q) {
     frag.appendChild(document.createTextNode(v.slice(i)));
     back.appendChild(frag);
     back.scrollTop = ta.scrollTop;
-    if (find.marks.length) { find.idx = 0; setCur(0); }
+    if (find.marks.length) {
+        if (prevIdx >= 0) {
+            find.idx = Math.min(prevIdx, find.marks.length - 1);
+            find.marks[find.idx].classList.add('cur');       // hold position, no scroll
+        } else { find.idx = 0; setCur(0); }
+    }
 }
 
 /* ═════════ Alt keybinds — Alt is this OS's Ctrl/Win key ═════════
@@ -3381,6 +3395,7 @@ function chromeCtl(fn, arg) { var w = openWins.chrome; if (w && w.el._br && w.el
 function expCtl(fn) { var w = openWins.explorer; if (w && w.el._nav && w.el._nav[fn]) w.el._nav[fn](); }
 
 document.addEventListener('keydown', function (e) {
+    if (document.body.classList.contains('gagging')) return;   // the Edge gag owns the keyboard
     // find-bar service keys (no modifier)
     if (findOpenNow()) {
         if (e.key === 'F3') { e.preventDefault(); navFind(e.shiftKey ? -1 : 1); return; }
@@ -3406,7 +3421,14 @@ document.addEventListener('keydown', function (e) {
     }
     if (!e.altKey || e.ctrlKey || e.metaKey) return;
 
-    var c = (e.shiftKey ? 'shift+' : '') + e.key.toLowerCase();
+    // dispatch on e.code for letters/digits: on macOS, Option composes
+    // characters (Alt+F arrives as "ƒ"), and layouts move symbols around
+    var code = e.code || '';
+    var k = /^Key[A-Z]$/.test(code) ? code.slice(3).toLowerCase() :
+            /^Digit[0-9]$/.test(code) ? code.slice(5) :
+            code === 'Backquote' ? '`' :
+            code === 'Slash' ? '/' : e.key.toLowerCase();
+    var c = (e.shiftKey ? 'shift+' : '') + k;
     var id = topAppId();
     var fn = id && APP_KEYS[id] && APP_KEYS[id][c];
     if (!fn && id === 'chrome' && /^[1-9]$/.test(c)) fn = function () { chromeCtl('goTab', +c); };
