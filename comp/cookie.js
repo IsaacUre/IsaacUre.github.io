@@ -416,8 +416,8 @@ function paintStore() {
             pr.textContent = fmt(cost); pr.className = 'ck-bprice' + (S.bank >= cost ? ' ok' : '');
             row.classList.toggle('cant', S.bank < cost);
         }
-        // buildings reveal themselves one step ahead, like the real store
-        var seen = own > 0 || S.total >= b[2] * 0.5 || (i && (S.b[B[i - 1][0]] || 0) > 0);
+        // buildings reveal themselves one step ahead, like the real store (the cursor is always on the menu)
+        var seen = i === 0 || own > 0 || S.total >= b[2] * 0.5 || (S.b[B[i - 1][0]] || 0) > 0;
         row.classList.toggle('myst', !seen);
     });
 }
