@@ -208,7 +208,7 @@ function wireWindow(id, el) {
 function focusWin(id) { var w = openWins[id]; if (!w) return; w.el.style.zIndex = ++zTop; activeApp = id; syncTaskbar(); }
 function minWin(id) { var w = openWins[id]; if (!w) return; if (APPS[id].onMinimize) APPS[id].onMinimize(w.el); w.min = true; w.el.classList.add('mini'); if (activeApp === id) activeApp = null; syncTaskbar(); }
 function restoreWin(id) { var w = openWins[id]; if (!w) return; w.min = false; w.el.classList.remove('mini'); }
-function closeWin(id) { var w = openWins[id]; if (!w) return; if (APPS[id].onClose) APPS[id].onClose(w.el); w.el.remove(); delete openWins[id]; if (activeApp === id) activeApp = null; syncTaskbar(); }
+function closeWin(id) { var w = openWins[id]; if (!w) return; if (APPS[id].onClose) APPS[id].onClose(w.el); w.el.remove(); delete openWins[id]; if (activeApp === id) activeApp = null; if (find.appId === id) { find.appId = null; find.marks = []; find.idx = -1; } syncTaskbar(); }
 
 function syncTaskbar() {
     PINNED.forEach(function (id) {
@@ -418,8 +418,12 @@ function fsMove(fromPath, it, toPath, cell) {
 }
 function fsRestore(i) {
     var st = fsLoad(), e = st.bin.splice(i, 1)[0]; if (!e) return;
-    if (e.base) { var k = st.gone.indexOf(e.from + '/' + e.it.n); if (k >= 0) st.gone.splice(k, 1); }
-    else { e.it.n = uniqueName(e.from, e.it.n); (st.add[e.from] = st.add[e.from] || []).push(e.it); }
+    if (e.base && !fsHas(e.from, e.it.n)) { var k = st.gone.indexOf(e.from + '/' + e.it.n); if (k >= 0) st.gone.splice(k, 1); }
+    else {  // dynamic file — or a base file whose name got taken while it sat in the bin.
+            // restore a fresh copy (never mutate a base FS object: its tombstone is name-keyed)
+        var copy = { n: uniqueName(e.from, e.it.n), t: e.it.t, app: e.it.app, arg: e.it.arg, go: e.it.go, size: e.it.size, date: e.it.date };
+        (st.add[e.from] = st.add[e.from] || []).push(copy);
+    }
     fsSave(); refreshFileViews();
 }
 function fsPurge(i) { var st = fsLoad(); st.bin.splice(i, 1); fsSave(); refreshFileViews(); }
@@ -436,7 +440,11 @@ function fsRename(path, it, name) {
     fsSave(); refreshFileViews();
 }
 function refreshFileViews() {
-    if (openWins.explorer && exState.explorer && exState.explorer.draw) exState.explorer.draw();
+    closeFctx();   // the menu's captured tile may be about to detach
+    if (openWins.explorer && exState.explorer && exState.explorer.draw) {
+        // never yank an in-progress rename out from under the user; the commit redraws anyway
+        if (!openWins.explorer.el.querySelector('.fitem-ren')) exState.explorer.draw();
+    }
     if (openWins.bin) drawBinList(openWins.bin.el);
 }
 function kindOf(it) {
@@ -490,6 +498,10 @@ function initExplorer(el, id, arg) {
         if (it.app) openApp(it.app, it.arg);
         else if (it.go) go(it.go);
     }
+    el._nav = {                                                   // Alt+Left / Alt+Up
+        back: function () { if (state.hist.length) { state.path = state.hist.pop(); draw(); } },
+        home: function () { if (state.path !== 'Home') { state.hist.push(state.path); state.path = 'Home'; draw(); } }
+    };
     el.querySelector('.exp-nav').addEventListener('click', function (e) { var b = e.target.closest('.nav-item'); if (b) go(b.getAttribute('data-folder')); });
     el.querySelector('.exp-bar').addEventListener('click', function (e) {
         var b = e.target.closest('[data-nav]'); if (!b) return;
@@ -585,9 +597,10 @@ function startRename(t) {
    buttons run their callback after closing. Stacked veils are fine. */
 var dlgs = [];
 function dlgOpen(title, bodyHtml, buttons) {
+    var opener = document.activeElement;   // give focus back when we're done
     var veil = document.createElement('div'); veil.className = 'dlg-veil';
     veil.style.zIndex = ++zTop;
-    veil.innerHTML = '<div class="dlg px-lg lift" role="alertdialog" aria-label="' + esc(title) + '">' +
+    veil.innerHTML = '<div class="dlg px-lg lift" role="alertdialog" aria-modal="true" aria-label="' + esc(title) + '">' +
         '<header class="dlg-bar"><span>' + esc(title) + '</span>' +
           '<button class="cap close dlg-x" type="button" aria-label="Close"><svg viewBox="0 0 10 10"><path d="M1 1 L9 9 M9 1 L1 9" stroke="currentColor" stroke-width="1.2"/></svg></button></header>' +
         '<div class="dlg-body">' + bodyHtml + '</div>' +
@@ -595,13 +608,25 @@ function dlgOpen(title, bodyHtml, buttons) {
             return '<button class="dlg-btn' + (b[1] ? ' ' + b[1] : '') + '" data-di="' + i + '" type="button">' + esc(b[0]) + '</button>';
         }).join('') + '</footer></div>';
     document.body.appendChild(veil);
-    function close() { var k = dlgs.indexOf(close); if (k >= 0) dlgs.splice(k, 1); veil.remove(); }
+    function close() {
+        var k = dlgs.indexOf(close); if (k >= 0) dlgs.splice(k, 1);
+        veil.remove();
+        if (opener && opener.focus && document.contains(opener)) opener.focus();
+    }
     veil.addEventListener('click', function (e) {
         e.stopPropagation();
         if (e.target.closest('.dlg-x')) { close(); return; }
         var b = e.target.closest('[data-di]'); if (!b) return;
         var def = buttons[+b.getAttribute('data-di')];
         close(); if (def && def[2]) def[2]();
+    });
+    veil.addEventListener('keydown', function (e) {   // keep Tab inside the dialog
+        if (e.key !== 'Tab') return;
+        e.preventDefault();
+        var f = Array.prototype.filter.call(veil.querySelectorAll('button, input'), function (x) { return !x.disabled; });
+        if (!f.length) return;
+        var i = f.indexOf(document.activeElement);
+        f[e.shiftKey ? (i <= 0 ? f.length - 1 : i - 1) : (i < 0 || i === f.length - 1 ? 0 : i + 1)].focus();
     });
     dlgs.push(close);
     var first = veil.querySelector('.dlg-btn.primary') || veil.querySelector('.dlg-btn');
@@ -629,18 +654,28 @@ function dlgProps(path, it) {
 function renderNotepad() {
     return '<div class="np">' +
         '<div class="np-menu"><span>File</span><span>Edit</span><span>Format</span><span>View</span><span>Help</span></div>' +
-        '<textarea class="np-text" spellcheck="false" placeholder="Start typing. It saves itself."></textarea>' +
-        '<div class="np-status"><span class="np-loc">Ln 1, Col 1</span><span>UTF-8 · UreOS</span></div></div>';
+        '<div class="np-wrap"><div class="np-back" aria-hidden="true"></div>' +
+        '<textarea class="np-text" spellcheck="false" placeholder="Start typing. It saves itself."></textarea></div>' +
+        '<div class="np-status"><span class="np-loc">Ln 1, Col 1</span><span class="np-save">UTF-8 · UreOS</span></div></div>';
 }
 function initNotepad(el) {
     var ta = el.querySelector('.np-text'), loc = el.querySelector('.np-loc');
+    var back = el.querySelector('.np-back'), save = el.querySelector('.np-save');
     ta.value = recall('notepad', '');
-    function upd() {
+    function upd(e) {
         store('notepad', ta.value);
         var pre = ta.value.slice(0, ta.selectionStart).split('\n');
         loc.textContent = 'Ln ' + pre.length + ', Col ' + (pre[pre.length - 1].length + 1);
+        // only real text changes rebuild highlights, and they keep the current match (no scroll yank)
+        if (e && e.type === 'input' && find.appId === 'notepad' && findOpenNow()) runFind(true);
     }
     ta.addEventListener('input', upd); ta.addEventListener('keyup', upd); ta.addEventListener('click', upd);
+    ta.addEventListener('scroll', function () { back.scrollTop = ta.scrollTop; });
+    el._flash = function () {                                       // Alt+S: it already saved itself
+        save.textContent = '✓ Saved (it always is)';
+        clearTimeout(el._flashT);
+        el._flashT = setTimeout(function () { save.textContent = 'UTF-8 · UreOS'; }, 1400);
+    };
     if (!reduce) setTimeout(function () { ta.focus(); }, 30);
 }
 
@@ -657,7 +692,11 @@ function initTerminal(el) {
     function print(html, cls) { var d = document.createElement('div'); d.className = 'term-row' + (cls ? ' ' + cls : ''); d.innerHTML = html; out.appendChild(d); term.scrollTop = term.scrollHeight; }
     print(esc(TERM_BANNER), 't-dim');
     var CMDS = {
-        help: function () { print('commands: <b>help about whoami ls open date echo neofetch gti socials clear exit</b>'); },
+        help: function () { print('commands: <b>help about whoami ls open date echo neofetch gti socials keys clear exit</b>'); },
+        keys: function () {
+            print('<b>Alt is this OS\'s Ctrl.</b> Alt+/ shows the full map. Highlights:');
+            print('Alt+F find in app · Alt+E explorer · Alt+T/W chrome tabs · Alt+` cycle windows · Alt+L clears me');
+        },
         about: function () { print(esc(ME.bio)); },
         whoami: function () { print('isaac'); },
         ls: function () { print('about  projects  pictures  ureboy  the-room  gti-run  resume.pdf'); },
@@ -686,6 +725,7 @@ function initTerminal(el) {
     }
     inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { run(inp.value); inp.value = ''; } });
     term.addEventListener('click', function () { inp.focus(); });
+    el._clear = function () { out.innerHTML = ''; };              // Alt+L, shell-style
     if (!reduce) setTimeout(function () { inp.focus(); }, 30);
 }
 
@@ -928,7 +968,8 @@ function initEdge(el) {
         else if (e.target.closest('.dlp-btn')) startDownload();
     });
     shelf.addEventListener('click', function (e) {
-        if (e.target.closest('.dls-open')) runInstaller();
+        // unguarded: the button must work even after the gag is cancelled (runInstaller is the possess path)
+        if (e.target.closest('.dls-open')) { gag.cancel(); openApp('setup'); }
         else if (e.target.closest('.dls-show')) { gag.cancel(); openApp('explorer', 'Downloads'); }
     });
 
@@ -1059,27 +1100,161 @@ function initEdge(el) {
     }
 }
 
-/* —— Chrome (the browser that actually works) —— */
+/* —— Chrome (the browser that actually works) ——
+   Real tab mechanics: a tab model with per-tab history, an omnibox
+   that navigates internal ure:// pages, and a controller (el._br)
+   the Alt keybinds drive — Alt+T/W, Alt+Shift+T, Alt+digits, Alt+L,
+   Alt+R, Alt+arrows. Clicking a bookmark opens its site page in the
+   tab; the page's button launches the real thing. */
 function chromeNTP() {
     var tiles = BOOKMARKS.map(function (b) {
         return '<button class="ntp-sc" data-target="' + b[2] + '">' + ic(b[1], 'ntp-scic') + '<span>' + esc(b[0]) + '</span></button>';
     }).join('') + '<button class="ntp-sc ntp-add" data-target="__add" aria-label="Add shortcut"><span class="ntp-plus">+</span><span>Add</span></button>';
     return '<div class="ntp">' +
         '<div class="ntp-brand">' + ic('ic-chrome', 'ntp-logo') + '<h2 class="ntp-word">isaacure</h2></div>' +
-        '<label class="ntp-search">' + ic('ic-search') + '<input class="ntp-q" placeholder="Search isaacure.com or type a URL" spellcheck="false" readonly></label>' +
+        '<label class="ntp-search">' + ic('ic-search') + '<input class="ntp-q" placeholder="Search isaacure.com or type a URL" spellcheck="false"></label>' +
         '<div class="ntp-scs">' + tiles + '</div>' +
         '<p class="ntp-foot">Good ' + dayPart() + ', Isaac — Chrome’s treating you right.</p></div>';
+}
+function sitePage(icon, name, url, desc, launch) {
+    return function () {
+        return '<div class="cpage">' + ic(icon, 'cpage-ic') +
+            '<h2>' + esc(name) + '</h2><span class="cpage-url">' + esc(url) + '</span>' +
+            '<p>' + esc(desc) + '</p>' +
+            '<button class="cpage-go" data-launch="' + launch + '" type="button">Open ' + esc(name) + '</button></div>';
+    };
+}
+var CPAGES = {
+    ntp:    { title: 'New Tab', icon: 'ic-chrome', url: '', render: chromeNTP },
+    steam:  { title: 'Steam', icon: 'ic-steam', url: 'ure://steam', render: sitePage('ic-steam', 'Steam', 'ure://steam', 'Every game on this machine lives here. The backlog is a lifestyle.', 'steam') },
+    room:   { title: 'the room', icon: 'ic-room', url: 'ure://room', render: sitePage('ic-room', 'the room', 'ure://room', 'The apartment in first person. WASD in, find the glowing thing.', 'room') },
+    ureboy: { title: 'URE BOY', icon: 'ic-ureboy', url: 'ure://ureboy', render: sitePage('ic-ureboy', 'URE BOY', 'ure://ureboy', 'The little red console. It still goes somewhere.', 'ureboy') },
+    gti:    { title: 'GTI RUN', icon: 'ic-gti', url: 'ure://gti', render: sitePage('ic-gti', 'GTI RUN', 'ure://gti', 'Drive Argent. Chase the lap time. Mind the cones.', 'gti') },
+    about:  { title: 'About Isaac', icon: 'ic-ure', url: 'ure://about', render: sitePage('ic-ure', 'About Isaac', 'ure://about', 'The whole bio — specs, links, and the story of the silver GTI.', 'about') }
+};
+function pageFor(pid) {
+    if (CPAGES[pid]) return CPAGES[pid];
+    if (pid.indexOf('search:') === 0) {
+        var q = pid.slice(7);
+        return { title: q + ' — ure search', icon: 'ic-search', url: 'ure://search?q=' + q, render: function () { return searchPage(q); } };
+    }
+    return CPAGES.ntp;
+}
+function searchPage(q) {
+    var lq = q.toLowerCase();
+    var hits = Object.keys(CPAGES).filter(function (id) {
+        return id !== 'ntp' && (id.indexOf(lq) >= 0 || CPAGES[id].title.toLowerCase().indexOf(lq) >= 0);
+    });
+    var rows = hits.map(function (id) {
+        var p = CPAGES[id];
+        return '<button class="cs-hit" data-goto="' + id + '" type="button">' + ic(p.icon) +
+            '<span class="cs-txt"><b>' + esc(p.title) + '</b><i>' + esc(p.url) + '</i></span></button>';
+    }).join('');
+    return '<div class="cserp"><div class="cs-head">' + ic('ic-search') + '<span>ure search</span></div>' +
+        '<p class="cs-stat">' + (hits.length ? 'About ' + hits.length + ' results (0.001s) — it’s a small internet' :
+            'No results for “' + esc(q) + '” — it’s a very small internet. Try “steam” or “room”.') + '</p>' + rows + '</div>';
 }
 function renderChrome() {
     return browserShell('chrome', 'New Tab', 'ic-chrome', 'Search isaacure.com or type a URL', chromeNTP());
 }
 function initChrome(el) {
-    el.querySelector('.ntp-scs').addEventListener('click', function (e) {
-        var b = e.target.closest('.ntp-sc'); if (!b) return;
-        var t = b.getAttribute('data-target'); if (t === '__add') return;
-        if (t.indexOf('ext:') === 0) window.open(t.slice(4), '_blank', 'noopener');
-        else openApp(t);
+    var tabsEl = el.querySelector('.br-tabs'), viewEl = el.querySelector('.br-view'), urlEl = el.querySelector('.br-url');
+    var tabs = [{ hist: ['ntp'], pos: 0 }], cur = 0, closedStack = [];
+
+    function curPid() { var t = tabs[cur]; return t.hist[t.pos]; }
+    function renderTabs() {
+        tabsEl.innerHTML = tabs.map(function (t, i) {
+            var p = pageFor(t.hist[t.pos]);
+            return '<div class="br-tab' + (i === cur ? ' active' : '') + '" data-i="' + i + '">' + ic(p.icon, 'br-fav') +
+                '<span>' + esc(p.title) + '</span><i class="br-tabx" data-x="' + i + '" aria-hidden="true">×</i></div>';
+        }).join('') + '<button class="br-newtab" tabindex="-1" aria-label="New tab">+</button>';
+    }
+    function show() {
+        var p = pageFor(curPid());
+        viewEl.innerHTML = p.render();
+        urlEl.value = p.url;
+    }
+    function sync() {
+        renderTabs(); show();
+        if (find.appId === 'chrome' && findOpenNow()) runFind();   // re-mark the fresh DOM, fix the count
+    }
+
+    function navigate(pid) {
+        var t = tabs[cur];
+        t.hist = t.hist.slice(0, t.pos + 1); t.hist.push(pid); t.pos++;
+        sync();
+    }
+    var ctl = el._br = {
+        newTab: function () { tabs.push({ hist: ['ntp'], pos: 0 }); cur = tabs.length - 1; sync(); ctl.focusOmni(); },
+        closeTab: function (i) {
+            closedStack.push(tabs[i].hist[tabs[i].pos]);
+            tabs.splice(i, 1);
+            if (!tabs.length) { closeWin('chrome'); return; }     // last tab closes the window, like Chrome
+            cur = i < cur ? cur - 1 : Math.min(cur, tabs.length - 1);
+            sync();
+        },
+        closeCur: function () { ctl.closeTab(cur); },
+        reopen: function () { if (closedStack.length) { tabs.push({ hist: [closedStack.pop()], pos: 0 }); cur = tabs.length - 1; sync(); } },
+        goTab: function (n) { cur = n === 9 ? tabs.length - 1 : Math.min(n - 1, tabs.length - 1); sync(); },
+        back: function () { var t = tabs[cur]; if (t.pos > 0) { t.pos--; sync(); } },
+        fwd: function () { var t = tabs[cur]; if (t.pos < t.hist.length - 1) { t.pos++; sync(); } },
+        reload: function () {
+            sync();
+            var fav = tabsEl.querySelector('.br-tab.active .br-fav');
+            if (fav && !reduce) { fav.classList.add('spin'); setTimeout(function () { fav.classList.remove('spin'); }, 500); }
+        },
+        focusOmni: function () { urlEl.focus(); urlEl.select(); }
+    };
+
+    function resolve(raw) {
+        var q = raw.trim(); if (!q) return;
+        var lq = q.toLowerCase().replace(/^ure:\/\//, '').replace(/\/$/, '');
+        if (lq === 'newtab' || lq === 'home') { navigate('ntp'); return; }
+        for (var id in CPAGES) {
+            if (id === lq || CPAGES[id].title.toLowerCase() === lq) { navigate(id); return; }
+        }
+        for (var b = 0; b < BOOKMARKS.length; b++) {
+            var bk = BOOKMARKS[b];
+            if (bk[0].toLowerCase() === lq && bk[2].indexOf('ext:') === 0) { window.open(bk[2].slice(4), '_blank', 'noopener'); return; }
+        }
+        navigate('search:' + q);
+    }
+
+    tabsEl.addEventListener('click', function (e) {
+        var x = e.target.closest('.br-tabx');
+        if (x) { ctl.closeTab(+x.getAttribute('data-x')); return; }
+        if (e.target.closest('.br-newtab')) { ctl.newTab(); return; }
+        var t = e.target.closest('.br-tab');
+        if (t) { cur = +t.getAttribute('data-i'); sync(); }
     });
+    tabsEl.addEventListener('auxclick', function (e) {          // middle-click closes, like Chrome
+        if (e.button !== 1) return;
+        var t = e.target.closest('.br-tab');
+        if (t) { e.preventDefault(); ctl.closeTab(+t.getAttribute('data-i')); }
+    });
+    urlEl.addEventListener('keydown', function (e) { if (e.key === 'Enter') resolve(urlEl.value); });
+    el.querySelector('.br-actions').addEventListener('click', function (e) {
+        var b = e.target.closest('.br-act'); if (!b) return;
+        var lbl = b.getAttribute('aria-label');
+        if (lbl === 'Back') ctl.back(); else if (lbl === 'Forward') ctl.fwd(); else if (lbl === 'Reload') ctl.reload();
+    });
+    viewEl.addEventListener('click', function (e) {
+        var sc = e.target.closest('.ntp-sc');
+        if (sc) {
+            var t = sc.getAttribute('data-target'); if (t === '__add') return;
+            if (t.indexOf('ext:') === 0) window.open(t.slice(4), '_blank', 'noopener');
+            else navigate(t);                                    // bookmark → its site page, in-tab
+            return;
+        }
+        var go = e.target.closest('.cs-hit');
+        if (go) { navigate(go.getAttribute('data-goto')); return; }
+        var launch = e.target.closest('[data-launch]');
+        if (launch) openApp(launch.getAttribute('data-launch'));
+    });
+    viewEl.addEventListener('keydown', function (e) {           // NTP search box
+        if (e.key === 'Enter' && e.target.classList.contains('ntp-q')) resolve(e.target.value);
+    });
+    sync();
 }
 
 /* —— Google Chrome Setup: a real wizard you click through yourself ——
@@ -1205,6 +1380,7 @@ function initSetup(el, id, arg) {
         var pct = w.querySelector('.wiz-pct'), file = w.querySelector('.wiz-file'), li = -1;
         if (location.search.indexOf('freeze') >= 0) { bar.style.width = '58%'; pct.textContent = '58%'; status.textContent = WIZ_LINES[3]; file.textContent = 'omnibox.dat'; return; }   // dev: hold for a screenshot
         s.iv = setInterval(function () {
+            if (dlgs.length) return;   // the cancel-confirm is up — a polite installer waits
             s.prog = Math.min(100, s.prog + (reduce ? 34 : 2.2 + Math.random() * 3.6));
             bar.style.width = s.prog + '%'; pct.textContent = Math.round(s.prog) + '%';
             file.textContent = WIZ_FILES[(s.fi++) % WIZ_FILES.length];
@@ -1212,13 +1388,13 @@ function initSetup(el, id, arg) {
             if (want !== li) { li = want; status.textContent = WIZ_LINES[want]; }
             if (s.prog >= 100) {
                 clearInterval(s.iv); s.iv = 0;
+                installChrome({ shortcut: s.shortcut, pin: s.pin });   // installed at 100%, not at Finish — X can't undo reality
                 setTimeout(function () { if (openWins.setup) goStep('finish'); }, reduce ? 80 : 420);
             }
         }, reduce ? 50 : 130);
     }
     function finishInstall() {
         closeWin('setup');
-        installChrome({ shortcut: s.shortcut, pin: s.pin });
         if (s.tidy) fsTidyChromeSetup();
         if (openWins.edge) closeWin('edge');   // Edge's work here is done
         if (s.launch) { openApp('chrome'); toast('Google Chrome installed — welcome home.'); }
@@ -1227,7 +1403,11 @@ function initSetup(el, id, arg) {
 
     // dev: ?wstep=license|options|progress|finish jumps straight to a step
     var wstep = (location.search.match(/[?&]wstep=([a-z]+)/) || [])[1];
-    if (wstep && { welcome: 1, license: 1, options: 1, progress: 1, finish: 1 }[wstep]) { s.ok = true; goStep(wstep); }
+    if (wstep && { welcome: 1, license: 1, options: 1, progress: 1, finish: 1 }[wstep]) {
+        s.ok = true;
+        if (wstep === 'finish') installChrome({ shortcut: s.shortcut, pin: s.pin });   // finish implies the install already ran
+        goStep(wstep);
+    }
     else goStep('welcome');
 }
 function stopSetup(el) { if (el && el._wiz && el._wiz.iv) { clearInterval(el._wiz.iv); el._wiz.iv = 0; } }
@@ -1318,7 +1498,10 @@ function initBin(el) {
         if (act === 'restore') fsRestore(i);
         else if (act === 'purge') {
             var entry = fsLoad().bin[i]; if (!entry) return;
-            dlgConfirm('Permanently delete “' + entry.it.n + '”?', 'This skips every bin there is. Gone gone.', 'Delete', function () { fsPurge(i); });
+            dlgConfirm('Permanently delete “' + entry.it.n + '”?', 'This skips every bin there is. Gone gone.', 'Delete', function () {
+                var k = fsLoad().bin.indexOf(entry);   // re-resolve: the bin may have changed under the dialog
+                if (k >= 0) fsPurge(k);
+            });
         } else if (act === 'empty') {
             var n = fsLoad().bin.length; if (!n) return;
             dlgConfirm('Empty the Recycle Bin?', n + (n === 1 ? ' item' : ' items') + ' will be permanently deleted. UreOS will remember the tidiness fondly.', 'Empty it', fsEmptyBin);
@@ -3022,7 +3205,7 @@ function buildCal() {
 var ctx = byId('ctx');
 function closeCtx() { ctx.hidden = true; }
 desktop.addEventListener('contextmenu', function (e) {
-    e.preventDefault(); setStart(false); closeFlyouts();
+    e.preventDefault(); setStart(false); closeFlyouts(); closeFctx();
     ctx.hidden = false;
     ctx.style.left = clamp(e.clientX, 6, window.innerWidth - ctx.offsetWidth - 6) + 'px';
     ctx.style.top = clamp(e.clientY, 6, window.innerHeight - ctx.offsetHeight - 6) + 'px';
@@ -3049,6 +3232,288 @@ function shutdown() {
         setTimeout(function () { ov.classList.remove('on'); setTimeout(function () { ov.remove(); }, 400); }, 900);
     }, reduce ? 200 : 1400);
 }
+
+/* ═════════════ in-app find (Alt+F) — Chrome-style bar ═══════════
+   One find state at a time; the bar lives inside the focused window
+   (top-right, like Chrome). Matches get <mark class="fnd">, current
+   gets .cur; Enter/Shift+Enter and F3/Shift+F3 cycle with wraparound.
+   Notepad is special-cased: you can't wrap marks inside a textarea,
+   so a mirrored backdrop div carries the highlights behind it. */
+var find = { appId: null, q: '', marks: [], idx: -1 };
+
+function findBar(id) { var w = openWins[id]; return w ? w.el.querySelector('.findbar') : null; }
+function findOpenNow() {
+    var w = find.appId && openWins[find.appId];
+    var b = w && !w.min && findBar(find.appId);              // a minimized window's bar isn't "open"
+    return !!(b && !b.hidden);
+}
+
+function openFind(id) {
+    var w = openWins[id]; if (!w) return;
+    if (find.appId && find.appId !== id) closeFind();
+    find.appId = id;
+    var bar = findBar(id);
+    if (!bar) {
+        bar = document.createElement('div');
+        bar.className = 'findbar px-sm';
+        bar.innerHTML = '<input class="find-in" type="text" spellcheck="false" autocomplete="off" aria-label="Find in ' + esc(APPS[id].title) + '">' +
+            '<span class="find-count"></span><span class="find-div"></span>' +
+            '<button class="find-btn" data-f="-1" type="button" aria-label="Previous match">▲</button>' +
+            '<button class="find-btn" data-f="1" type="button" aria-label="Next match">▼</button>' +
+            '<button class="find-btn" data-f="x" type="button" aria-label="Close find bar">✕</button>';
+        w.el.appendChild(bar);
+        var inp = bar.querySelector('.find-in');
+        inp.addEventListener('input', function () { find.q = inp.value; runFind(); });
+        inp.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') { e.preventDefault(); navFind(e.shiftKey ? -1 : 1); }
+        });
+        bar.addEventListener('click', function (e) {
+            var b = e.target.closest('.find-btn'); if (!b) return;
+            var f = b.getAttribute('data-f');
+            if (f === 'x') closeFind(); else navFind(+f);
+        });
+    }
+    bar.hidden = false;
+    var box = bar.querySelector('.find-in');
+    box.value = find.q;                      // Chrome remembers the last query
+    box.focus(); box.select();
+    if (find.q) runFind();
+}
+
+function closeFind() {
+    if (!find.appId) return;
+    var w = openWins[find.appId];
+    if (w) {
+        var bar = findBar(find.appId); if (bar) bar.hidden = true;
+        var root = w.el.querySelector('.win-content'); if (root) unmarkAll(root);
+        var back = w.el.querySelector('.np-back'); if (back) back.textContent = '';
+    }
+    find.appId = null; find.marks = []; find.idx = -1;
+}
+
+function unmarkAll(root) {
+    var ms = root.querySelectorAll('mark.fnd');
+    for (var i = 0; i < ms.length; i++) ms[i].parentNode.replaceChild(document.createTextNode(ms[i].textContent), ms[i]);
+    if (ms.length) root.normalize();
+}
+
+// wrap every match in the window's content; skips chrome, form fields, and hidden text (like the real find)
+function markMatches(root, q) {
+    var hits = [], nodes = [];
+    var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: function (n) {
+        if (n.nodeValue.toLowerCase().indexOf(q) < 0) return NodeFilter.FILTER_REJECT;
+        var el = n.parentElement;
+        if (!el || !el.offsetParent || el.closest('script,style,input,textarea,.findbar')) return NodeFilter.FILTER_REJECT;
+        return NodeFilter.FILTER_ACCEPT;
+    } });
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    nodes.forEach(function (node) {
+        var text = node.nodeValue, lower = text.toLowerCase(), i = 0, pos;
+        var frag = document.createDocumentFragment();
+        while ((pos = lower.indexOf(q, i)) >= 0) {
+            frag.appendChild(document.createTextNode(text.slice(i, pos)));
+            var m = document.createElement('mark'); m.className = 'fnd';
+            m.textContent = text.slice(pos, pos + q.length);
+            frag.appendChild(m); hits.push(m);
+            i = pos + q.length;
+        }
+        frag.appendChild(document.createTextNode(text.slice(i)));
+        node.parentNode.replaceChild(frag, node);
+    });
+    return hits;
+}
+
+function paintCount() {
+    var bar = findBar(find.appId); if (!bar) return;
+    var c = bar.querySelector('.find-count');
+    c.textContent = find.q ? (find.idx + 1) + '/' + find.marks.length : '';
+    c.classList.toggle('nohit', !!find.q && !find.marks.length);
+}
+
+function runFind(keep) {
+    var w = openWins[find.appId]; if (!w) return;
+    var q = find.q.toLowerCase();
+    if (find.appId === 'notepad') { npFind(w.el, q, keep ? find.idx : -1); paintCount(); return; }
+    var root = w.el.querySelector('.win-content');
+    unmarkAll(root);
+    find.marks = q ? markMatches(root, q) : [];
+    find.idx = find.marks.length ? 0 : -1;
+    if (find.idx === 0) setCur(0);
+    paintCount();
+}
+
+function setCur(i) {
+    if (find.marks[find.idx]) find.marks[find.idx].classList.remove('cur');
+    find.idx = i;
+    var m = find.marks[i]; m.classList.add('cur');
+    if (find.appId === 'notepad') {
+        var w = openWins.notepad, ta = w.el.querySelector('.np-text'), back = w.el.querySelector('.np-back');
+        ta.scrollTop = Math.max(0, m.offsetTop - ta.clientHeight / 2);
+        back.scrollTop = ta.scrollTop;
+    } else m.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
+
+function navFind(dir) {
+    var stale = find.marks.some(function (m) { return !m.isConnected; });
+    if (stale) { runFind(); return; }                        // app re-rendered under us
+    var total = find.marks.length; if (!total) return;
+    setCur((find.idx + dir + total) % total);
+    paintCount();
+}
+
+// Notepad: highlight in a mirrored backdrop behind the transparent textarea.
+// prevIdx >= 0 = a typing refresh: keep that match current, don't touch scroll.
+function npFind(winEl, q, prevIdx) {
+    var ta = winEl.querySelector('.np-text'), back = winEl.querySelector('.np-back');
+    back.textContent = '';
+    back.style.width = ta.clientWidth + 'px';                // exclude the scrollbar
+    find.marks = []; find.idx = -1;
+    if (!q) return;
+    var v = ta.value, lower = v.toLowerCase(), i = 0, pos;
+    var frag = document.createDocumentFragment();
+    while ((pos = lower.indexOf(q, i)) >= 0) {
+        frag.appendChild(document.createTextNode(v.slice(i, pos)));
+        var m = document.createElement('mark'); m.className = 'fnd';
+        m.textContent = v.slice(pos, pos + q.length);
+        frag.appendChild(m); find.marks.push(m);
+        i = pos + q.length;
+    }
+    frag.appendChild(document.createTextNode(v.slice(i)));
+    back.appendChild(frag);
+    back.scrollTop = ta.scrollTop;
+    if (find.marks.length) {
+        if (prevIdx >= 0) {
+            find.idx = Math.min(prevIdx, find.marks.length - 1);
+            find.marks[find.idx].classList.add('cur');       // hold position, no scroll
+        } else { find.idx = 0; setCur(0); }
+    }
+}
+
+/* ═════════ Alt keybinds — Alt is this OS's Ctrl/Win key ═════════
+   The real browser owns Ctrl+T/W/N, so the pixel OS claims Alt.
+   App-scoped binds win over system binds (Chrome's Alt+W closes a
+   tab; anywhere else it closes the window). Alt+/ shows the map. */
+function topAppId() { return (activeApp && openWins[activeApp] && !openWins[activeApp].min) ? activeApp : null; }
+
+function cycleWindows() {
+    var ids = Object.keys(openWins).filter(function (id) { return !openWins[id].min; });
+    if (!ids.length) return;
+    ids.sort(function (a, b) { return (+openWins[a].el.style.zIndex || 0) - (+openWins[b].el.style.zIndex || 0); });
+    focusWin(ids[0]);                                        // bottom-most rises: round-robin
+}
+function taskbarSlot(n) {
+    var btns = taskbar.querySelectorAll('.tb-btn.app');
+    if (btns[n - 1]) btns[n - 1].click();
+}
+
+var OS_KEYS = {
+    'f': function () { var id = topAppId(); if (id) openFind(id); },
+    'e': function () { openApp('explorer'); },               // Win+E
+    'i': function () { openApp('settings'); },               // Win+I
+    'a': function () { toggleFlyout(quickPanel, buildQuick); },   // Win+A
+    'n': function () { toggleFlyout(calPanel, buildCal); },       // Win+N
+    's': function () { setStart(!startMenu.classList.contains('open')); },
+    'd': minimizeAll,                                        // Win+D
+    'v': function () { if (byId('taskView')) closeTaskView(); else openTaskView(); },
+    'm': function () { var id = topAppId(); if (id) minWin(id); },
+    'w': function () { var id = topAppId(); if (id) closeWin(id); },
+    'arrowup': function () { var id = topAppId(); if (id) openWins[id].el.classList.add('maxi'); },
+    'arrowdown': function () {
+        var id = topAppId(); if (!id) return;
+        var el = openWins[id].el;
+        if (el.classList.contains('maxi')) el.classList.remove('maxi'); else minWin(id);
+    },
+    '`': cycleWindows, 'tab': cycleWindows,
+    '/': function () { toggleCheat(); }
+};
+
+// per-app binds — each app exposes a controller on its window element
+var APP_KEYS = {
+    chrome: {
+        't': function () { chromeCtl('newTab'); },
+        'w': function () { chromeCtl('closeCur'); },
+        'shift+t': function () { chromeCtl('reopen'); },
+        'l': function () { chromeCtl('focusOmni'); },
+        'd': function () { chromeCtl('focusOmni'); },        // Alt+D is the address bar in real Chrome
+        'r': function () { chromeCtl('reload'); },
+        'arrowleft': function () { chromeCtl('back'); },
+        'arrowright': function () { chromeCtl('fwd'); }
+    },
+    explorer: {
+        'arrowleft': function () { expCtl('back'); },
+        'arrowup': function () { expCtl('home'); }
+    },
+    terminal: { 'l': function () { var w = openWins.terminal; if (w && w.el._clear) w.el._clear(); } },
+    notepad:  { 's': function () { var w = openWins.notepad; if (w && w.el._flash) w.el._flash(); } }
+};
+function chromeCtl(fn, arg) { var w = openWins.chrome; if (w && w.el._br && w.el._br[fn]) w.el._br[fn](arg); }
+function expCtl(fn) { var w = openWins.explorer; if (w && w.el._nav && w.el._nav[fn]) w.el._nav[fn](); }
+
+document.addEventListener('keydown', function (e) {
+    if (document.body.classList.contains('gagging')) return;   // the Edge gag owns the keyboard
+    // find-bar service keys (no modifier)
+    if (findOpenNow()) {
+        if (e.key === 'F3') { e.preventDefault(); navFind(e.shiftKey ? -1 : 1); return; }
+        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeFind(); return; }
+    }
+    if (byId('cheatsheet') && e.key === 'Escape') { e.stopPropagation(); closeCheat(); return; }
+
+    var typing = e.target && /^(INPUT|TEXTAREA)$/.test(e.target.tagName);
+    if (!e.altKey && !e.ctrlKey && !e.metaKey && !typing) {
+        // plain-key niceties for the focused app
+        if (activeApp === 'photos' && openWins.photos && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+            var cur = openWins.photos.el.querySelector('.ph-thumb.sel');
+            var i = cur ? +cur.getAttribute('data-i') : 0;
+            selectPhoto(openWins.photos.el, (i + (e.key === 'ArrowRight' ? 1 : -1) + PHOTOS.length) % PHOTOS.length);
+            e.preventDefault(); return;
+        }
+        if (activeApp === 'explorer' && openWins.explorer && e.key === 'Enter') {
+            var sel = openWins.explorer.el.querySelector('.fitem.sel');
+            if (sel) { sel.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); e.preventDefault(); }
+            return;
+        }
+        return;
+    }
+    if (!e.altKey || e.ctrlKey || e.metaKey) return;
+
+    // dispatch on e.code for letters/digits: on macOS, Option composes
+    // characters (Alt+F arrives as "ƒ"), and layouts move symbols around
+    var code = e.code || '';
+    var k = /^Key[A-Z]$/.test(code) ? code.slice(3).toLowerCase() :
+            /^Digit[0-9]$/.test(code) ? code.slice(5) :
+            code === 'Backquote' ? '`' :
+            code === 'Slash' ? '/' : e.key.toLowerCase();
+    var c = (e.shiftKey ? 'shift+' : '') + k;
+    var id = topAppId();
+    var fn = id && APP_KEYS[id] && APP_KEYS[id][c];
+    if (!fn && id === 'chrome' && /^[1-9]$/.test(c)) fn = function () { chromeCtl('goTab', +c); };
+    if (!fn) fn = OS_KEYS[c];
+    if (!fn && /^[1-9]$/.test(c)) fn = function () { taskbarSlot(+c); };
+    if (fn) { e.preventDefault(); e.stopPropagation(); fn(e); }
+}, true);
+
+/* ── the shortcut map (Alt+/) ── */
+var CHEATS = [
+    ['System', [['Alt+F', 'Find in app'], ['Alt+S', 'Start'], ['Alt+E', 'File Explorer'], ['Alt+I', 'Settings'], ['Alt+A', 'Quick settings'], ['Alt+N', 'Calendar'], ['Alt+V', 'Task view'], ['Alt+D', 'Show desktop'], ['Alt+1…9', 'Taskbar apps'], ['Alt+/', 'This card']]],
+    ['Windows', [['Alt+W', 'Close window'], ['Alt+M', 'Minimize'], ['Alt+↑', 'Maximize'], ['Alt+↓', 'Restore / minimize'], ['Alt+`', 'Cycle windows']]],
+    ['Chrome', [['Alt+T', 'New tab'], ['Alt+W', 'Close tab'], ['Alt+Shift+T', 'Reopen closed tab'], ['Alt+1…9', 'Go to tab'], ['Alt+L', 'Address bar'], ['Alt+R', 'Reload'], ['Alt+←/→', 'Back / forward']]],
+    ['In apps', [['Alt+←/↑', 'Explorer: back / home'], ['Enter', 'Explorer: open selected'], ['Alt+L', 'Terminal: clear'], ['←/→', 'Photos: browse'], ['F3', 'Find: next match'], ['Esc', 'Close find / this card']]]
+];
+function closeCheat() { var c = byId('cheatsheet'); if (c) c.remove(); }
+function openCheat() {
+    closeCheat(); setStart(false); closeFlyouts(); closeCtx(); closeTaskView();
+    var ov = document.createElement('div'); ov.className = 'cheat-overlay'; ov.id = 'cheatsheet';
+    ov.innerHTML = '<div class="cheat px-lg lift"><div class="cheat-head">' + ic('ic-win') + '<b>Keyboard shortcuts</b>' +
+        '<span class="cheat-sub">Alt is this machine’s Ctrl — the real one belongs to your browser</span></div>' +
+        '<div class="cheat-grid">' + CHEATS.map(function (g) {
+            return '<div class="cheat-col"><h3>' + g[0] + '</h3>' + g[1].map(function (k) {
+                return '<div class="cheat-row"><kbd>' + esc(k[0]) + '</kbd><span>' + esc(k[1]) + '</span></div>';
+            }).join('') + '</div>';
+        }).join('') + '</div></div>';
+    document.body.appendChild(ov);
+    ov.addEventListener('click', function (e) { if (e.target === ov) closeCheat(); });
+}
+function toggleCheat() { if (byId('cheatsheet')) closeCheat(); else openCheat(); }
 
 /* ═══════════════════ global dismiss + init ═════════════════ */
 document.addEventListener('click', function () { setStart(false); closeFlyouts(); closeCtx(); closeFctx(); });
@@ -3077,6 +3542,28 @@ if (location.search.indexOf('dev=dl') >= 0) { fsAddFile('Downloads', chromeSetup
 if (location.search.indexOf('dev=bin') >= 0) {
     var __f = fsAddFile('Downloads', chromeSetupItem()); fsDelete('Downloads', __f);
     openApp('bin');
+}
+if (location.search.indexOf('dev=find') >= 0) {
+    openApp('about'); openFind('about');
+    find.q = 'rice'; findBar('about').querySelector('.find-in').value = 'rice'; runFind();
+}
+if (location.search.indexOf('dev=findnp') >= 0) {
+    openApp('notepad');
+    var devTa = openWins.notepad.el.querySelector('.np-text');
+    devTa.value = 'the quick silver GTI ran the back roads.\nthe room is upstairs; the console is on the desk.\nchamomile, not caffeine — that is the rule.';
+    openFind('notepad');
+    find.q = 'the'; findBar('notepad').querySelector('.find-in').value = 'the'; runFind();
+}
+if (location.search.indexOf('dev=keys') >= 0) openCheat();
+if (location.search.indexOf('dev=tabs') >= 0) {
+    installChrome({ shortcut: true }); openApp('chrome');
+    var devBr = openWins.chrome.el._br;
+    devBr.newTab(); openWins.chrome.el.querySelector('.br-url').value = 'room';
+    (function () {
+        var urlEl = openWins.chrome.el.querySelector('.br-url');
+        urlEl.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    })();
+    devBr.newTab(); devBr.goTab(2);
 }
 
 })();
