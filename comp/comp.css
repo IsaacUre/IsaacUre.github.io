@@ -297,8 +297,9 @@ svg .ic, .ic use { image-rendering: pixelated; }
     overflow: hidden;
 }
 .win.maxi {
+    /* !important on all four: createWindow sizes windows inline, and inline beats the class */
     left: 0 !important; top: 0 !important;
-    width: 100vw; height: calc(100vh - var(--bar-h));
+    width: 100vw !important; height: calc(100vh - var(--bar-h)) !important;
     clip-path: none; filter: none;
 }
 .win-bar {
