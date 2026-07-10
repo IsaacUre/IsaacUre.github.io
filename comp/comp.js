@@ -150,9 +150,16 @@ var winLayer = byId('windows'), taskbar = byId('taskbar'), tbOpen = byId('tbOpen
 var openWins = {}, zTop = 20, activeApp = null;
 var PINNED = ['explorer', 'edge', 'terminal', 'steam', 'settings'];
 
+function teardownApps() {   // give every open app its onClose (saves, playtime) before the page goes away
+    Object.keys(openWins).forEach(function (id) {
+        var a = APPS[id];
+        if (a && a.onClose) { try { a.onClose(openWins[id].el); } catch (e) {} }
+    });
+}
+window.addEventListener('pagehide', teardownApps);
 function openApp(id, arg) {
     var a = APPS[id]; if (!a) return;
-    if (a.launch) { window.location.href = a.launch; return; }
+    if (a.launch) { teardownApps(); window.location.href = a.launch; return; }
     setStart(false); closeFlyouts(); closeCtx(); closeTaskView();
     if (openWins[id]) { restoreWin(id); focusWin(id); if (a.focusArg) a.focusArg(openWins[id].el, arg); return; }
     createWindow(id, a, arg);
@@ -1200,6 +1207,8 @@ function initEdge(el) {
     }
     function onKey(e) {
         if (!hijack) return;
+        // keys aimed at another app's text field (terminal, notepad, a game) are not ours to steal
+        if (e.target !== url && (/^(INPUT|TEXTAREA)$/.test(e.target.tagName || '') || e.target.isContentEditable)) return;
         if (e.key === 'Escape') { gag.cancel(); return; }   // let the user bail out
         e.preventDefault(); e.stopPropagation();
         intervals.forEach(clearInterval);                    // user grabbed the wheel
@@ -2337,6 +2346,17 @@ var STG = [
     rev: ['Very Positive', 90, 512], art: ['#2d1e3a', SC.gb, 'URE'], sc: 'dungeon', launch: '/ureboy/',
     ach: [11, 16], achx: [['First Blood', 'Win a battle', 1], ['Lorekeeper', 'Read every codex', 1], ['Pacifist', 'Clear a floor unhurt', 0], ['Nat 20', 'Land a crit', 1]] },
 
+  // the only game on this Steam that actually runs IN the desktop — window.COOKIE, comp/cookie.js
+  { id: 'cookie', t: 'Cookie Clicker', dev: 'Orteil', pub: 'DashNet', yr: 2013,
+    tags: ['Clicker', 'Idle', 'Free to Play', 'Casual', 'Singleplayer'],
+    s: "An idle game about baking cookies. Click the cookie. Employ grandmas. Question nothing.",
+    d: "The one that started it all, ported to UreOS as a real desktop app. The numbers are the real numbers: 1.15× price curves, ×7 Frenzies, kittens that scale with milk, and an ascension formula you will do actual math about. Your grandmas keep the ovens on while the window is open.",
+    price: 0, disc: 0, free: true, owned: false, inst: false, hrs: 0, hrs2w: 0,
+    rev: ['Overwhelmingly Positive', 97, 214883], art: ['#3a2210', '#d9973a', 'CC'], sc: 'cookie', trend: true, spec: true,
+    app: 'cookie', live: true,
+    ach: [0, 40], achx: [],
+    news: [['v1.0 — the UreOS port', "Cookie Clicker now runs in a real window on the pixel desktop. Achievements sync to this very Steam client. The grandmas came with the port; we did not ask them to.", 'Jul 9']] },
+
   { id: 'bg3', t: "Baldur's Gate 3", dev: 'Larian Studios', pub: 'Larian Studios', yr: 2023,
     tags: ['RPG', 'Dungeons & Dragons', 'Story Rich', 'Turn-Based', 'Co-op'],
     s: "Gather your party and venture forth. A cinematic take on the world's greatest role-playing game.",
@@ -2751,7 +2771,7 @@ function stSeed() {
         sjSet('inst', STG.filter(function (g) { return g.owned && g.inst; }).map(function (g) { return g.id; }));
         sjSet('wish', ['eldenring', 'cities', 'obradinn', 'dysonsphere', 'rimworld']);
         sjSet('cart', []);
-        sjSet('hrs', {});
+        sjSet('hrs', sjGet('hrs', {}));   // don't wipe hours a desktop game banked before Steam first opened
         store('steam_wishv2', '1');
     } else {
         // catalogue grew: fold any new default-owned games into an existing save
@@ -2791,6 +2811,22 @@ function isInst(id) { return stInst().indexOf(id) >= 0; }
 function isWished(id) { return stWish().indexOf(id) >= 0; }
 function inCart(id) { return stCart().indexOf(id) >= 0; }
 function stHrs(id) { var h = sjGet('hrs', {}); var g = SG[id]; return (g.hrs || 0) + (h[id] || 0); }
+function stHrs2w(id) {   // static shelf figure + real timestamped sessions from the last 14 days
+    var w = sjGet('hrs2w', {})[id] || [], cut = Date.now() - 14 * 864e5;
+    var live = 0; w.forEach(function (e) { if (e.t > cut) live += e.h; });
+    return ((SG[id] && SG[id].hrs2w) || 0) + live;
+}
+function bankPlaytime(id, hrs) {   // real desktop-app sessions land on the library page (raw; round at display)
+    if (!(hrs > 0)) return;
+    var h = sjGet('hrs', {}); h[id] = (h[id] || 0) + hrs; sjSet('hrs', h);
+    var w = sjGet('hrs2w', {}); (w[id] = w[id] || []).push({ t: Date.now(), h: hrs });
+    if (w[id].length > 40) w[id] = w[id].slice(-40);
+    sjSet('hrs2w', w);
+    if (ST && ST.section === 'library' && ST.gid === id) {   // refresh an open Steam view so it never shows stale numbers
+        if (ST.view === 'game') { ST.body.innerHTML = stLibGame(SG[id]); stPaintAll(); }
+        else if (ST.view === 'ach') { ST.body.innerHTML = stAchPage(SG[id]); stPaintAll(); }
+    }
+}
 function stGrant(id) { var o = stOwned(); if (o.indexOf(id) < 0) { o.push(id); sjSet('owned', o); } }
 function stMarkInst(id) { var s = stInst(); if (s.indexOf(id) < 0) { s.push(id); sjSet('inst', s); } }
 
@@ -2877,6 +2913,21 @@ function stPaint(cv) {
         x.beginPath(); x.moveTo(w * 0.3 - 10, h * 0.22 + 15); x.lineTo(w * 0.3, h * 0.22); x.lineTo(w * 0.3 + 10, h * 0.22 + 15); x.closePath(); x.fill();
         for (var fl = 0; fl < 40; fl++) box(rnd() * w, rnd() * h, 1, 1, 'rgba(255,255,255,.8)');
         box(w * 0.52, h * 0.52, 3, 4, b);                               // the climber
+    } else if (sc === 'cookie') {
+        vgrad(mixHex(a, '#000000', .25), a, 0, h);                      // warm bakery gloom
+        for (var cr2 = 0; cr2 < 26; cr2++) box(rnd() * w, rnd() * h, rnd() > .8 ? 2 : 1, rnd() > .8 ? 2 : 1, 'rgba(217,151,58,.35)');   // crumb rain
+        var ccx = w * 0.5, ccy = h * 0.52, ccr = h * 0.34;
+        x.fillStyle = 'rgba(0,0,0,.35)'; x.beginPath(); x.arc(ccx + 3, ccy + 4, ccr, 0, 7); x.fill();
+        x.fillStyle = '#c9853a'; x.beginPath(); x.arc(ccx, ccy, ccr, 0, 7); x.fill();
+        x.fillStyle = '#a3672a'; x.beginPath(); x.arc(ccx, ccy, ccr, 0.6, 2.8); x.lineTo(ccx, ccy); x.fill();   // shaded edge
+        x.fillStyle = b; x.globalAlpha = .25; x.beginPath(); x.arc(ccx - ccr * 0.25, ccy - ccr * 0.25, ccr * 0.7, 0, 7); x.fill(); x.globalAlpha = 1;
+        for (var chp = 0; chp < 9; chp++) {                             // chips
+            var ca = rnd() * 6.28, cdd = rnd() * (ccr - 5);
+            box(ccx + Math.cos(ca) * cdd - 2, ccy + Math.sin(ca) * cdd - 2, 4, 4, '#4a2a12');
+        }
+        var glc = x.createRadialGradient(ccx, ccy, 2, ccx, ccy, h * 0.7);
+        glc.addColorStop(0, 'rgba(240,200,120,.25)'); glc.addColorStop(1, 'rgba(0,0,0,0)');
+        x.fillStyle = glc; x.fillRect(0, 0, w, h);
     } else {
         for (var band = 0; band < 5; band++) { x.fillStyle = band % 2 ? b : a; x.save(); x.translate(w / 2, h / 2); x.rotate(0.5); x.fillRect(-w, -h + band * (h * 0.5), w * 3, h * 0.42); x.restore(); }
         x.fillStyle = 'rgba(255,255,255,.85)'; x.beginPath(); x.arc(w * (0.3 + (seed % 4) * 0.12), h * 0.5, h * 0.16, 0, 7); x.fill();
@@ -3307,6 +3358,7 @@ function stLibHome() {
     return h;
 }
 function stLibGame(g) {
+    stLive(g);
     var inst = isInst(g.id), dl = stInQueue(g.id);
     var playBtn;
     if (dl) playBtn = '<button class="st-play wide dis">' + gDl() + ' Installing… ' + dl.pct + '%</button>';
@@ -3337,7 +3389,7 @@ function stLibGame(g) {
             '</div>' +
           '</div>' +
         '</div>' +
-        '<div class="st-lg-bar"><span><b>' + (g.hrs2w || 0).toFixed(1) + '</b> hrs past two weeks</span><span><b>' + stHrs(g.id).toFixed(1) + '</b> hrs total</span><span>' + (inst ? 'Installed' : dl ? 'Downloading' : 'Ready to install') + '</span><span class="st-lg-dev">' + esc(g.dev) + '</span></div>' +
+        '<div class="st-lg-bar"><span><b>' + stHrs2w(g.id).toFixed(1) + '</b> hrs past two weeks</span><span><b>' + stHrs(g.id).toFixed(1) + '</b> hrs total</span><span>' + (inst ? 'Installed' : dl ? 'Downloading' : 'Ready to install') + '</span><span class="st-lg-dev">' + esc(g.dev) + '</span></div>' +
         '<div class="st-lg-body">' + achGrid + friendsHTML + newsHTML +
           '<div class="st-lg-card"><h4>Links</h4><div class="st-lg-links"><button class="st-ghost" data-st="game" data-id="' + g.id + '">Store Page</button>' + (g.ach && g.ach[1] ? '<button class="st-ghost" data-st="ach" data-id="' + g.id + '">Achievements (' + g.ach[0] + '/' + g.ach[1] + ')</button>' : '') + '<button class="st-ghost" data-st="hub" data-id="' + g.id + '">Community Hub</button><button class="st-ghost">☁ Cloud: synced</button></div></div>' +
         '</div></div></div>';
@@ -3395,7 +3447,14 @@ function stFriends() {
 }
 
 /* ═══════════════ ACHIEVEMENTS PAGE ═══════════════ */
+function stLive(g) {   // games that run on this desktop report their real achievements
+    if (g.live && window.COOKIE) {
+        var la = window.COOKIE.steamAch();
+        g.ach = [la.n, la.total]; g.achx = la.list;
+    }
+}
 function stAchPage(g) {
+    stLive(g);
     var ach = g.ach || [0, 0], pct = ach[1] ? Math.round(ach[0] / ach[1] * 100) : 0;
     var list = (g.achx || []).slice();
     var unl = list.filter(function (a) { return a[2]; }).length;      // count real unlocks so padding matches the header
@@ -3757,7 +3816,8 @@ function stSpark() {
 function stPlay(id) {
     var g = SG[id];
     if (!isInst(id)) { stInstall(id); return; }
-    if (g.launch) { window.location.href = g.launch; return; }
+    if (g.app) { openApp(g.app); stToast('Launching ' + g.t + '…'); return; }   // runs right here on the desktop
+    if (g.launch) { teardownApps(); window.location.href = g.launch; return; }
     stOverlay('Preparing to launch ' + esc(g.t) + '…', true);
     setTimeout(function () {
         stClearOverlay();
@@ -3874,6 +3934,10 @@ var APPS = {
     setup:    { title: 'Google Chrome Setup', icon: 'ic-chrome', w: 584, h: 468, render: renderSetup, init: initSetup, onClose: stopSetup },
     bin:      { title: 'Recycle Bin', icon: 'ic-bin', w: 600, h: 400, render: renderBin, init: initBin },
     steam:    { title: 'Steam', icon: 'ic-steam', w: 1100, h: 700, render: renderSteam, init: initSteam, onClose: closeSteam, focusArg: steamFocus },
+    cookie:   { title: 'Cookie Clicker', icon: 'ic-cookie', w: 980, h: 620,
+        render: function () { return window.COOKIE ? window.COOKIE.render() : '<p style="padding:24px">The oven never preheated (cookie.js missing).</p>'; },
+        init: function (el) { if (window.COOKIE) window.COOKIE.init(el); },
+        onClose: function () { if (window.COOKIE) bankPlaytime('cookie', window.COOKIE.close() || 0); } },
     ureboy:   { launch: '/ureboy/' },
     room:     { launch: '/1p/' },
     gti:      { launch: '/ureboy/' }
@@ -4339,6 +4403,7 @@ if (location.search.indexOf('dev=bin') >= 0) {
     var __f = fsAddFile('Downloads', chromeSetupItem()); fsDelete('Downloads', __f);
     openApp('bin');
 }
+if (location.search.indexOf('dev=cookie') >= 0) openApp('cookie');   // + &ckdev seeds a mature bakery
 if (location.search.indexOf('dev=dnd') >= 0) {   // a file moved Downloads→Desktop + a repositioned icon, in Explorer's Desktop view
     var __d = fsAddFile('Downloads', chromeSetupItem());
     fsMove('Downloads', __d, 'Desktop', [2, 1]);
