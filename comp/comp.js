@@ -212,7 +212,7 @@ function wireWindow(id, el) {
         bar.addEventListener('pointermove', mv); bar.addEventListener('pointerup', up);
     });
 }
-function focusWin(id) { var w = openWins[id]; if (!w) return; w.el.style.zIndex = ++zTop; activeApp = id; syncTaskbar(); }
+function focusWin(id) { var w = openWins[id]; if (!w) return; w.el.style.zIndex = ++zTop; activeApp = id; if (APPS[id].onFocus) APPS[id].onFocus(w.el); syncTaskbar(); }
 function minWin(id) { var w = openWins[id]; if (!w) return; if (APPS[id].onMinimize) APPS[id].onMinimize(w.el); w.min = true; w.el.classList.add('mini'); if (activeApp === id) activeApp = null; syncTaskbar(); }
 function restoreWin(id) { var w = openWins[id]; if (!w) return; w.min = false; w.el.classList.remove('mini'); }
 function closeWin(id) { var w = openWins[id]; if (!w) return; if (APPS[id].onClose) APPS[id].onClose(w.el); w.el.remove(); delete openWins[id]; if (activeApp === id) activeApp = null; if (find.appId === id) { find.appId = null; find.marks = []; find.idx = -1; } syncTaskbar(); }
@@ -3944,6 +3944,7 @@ var APPS = {
     terraria: { title: 'Terraria', icon: 'ic-terraria', w: 1040, h: 640,
         render: function () { return window.TERRA ? window.TERRA.render() : '<p style="padding:24px">World generation failed to start (terraria.js missing).</p>'; },
         init: function (el) { if (window.TERRA) window.TERRA.init(el); },
+        onFocus: function (el) { var r = el.querySelector('.tr'); if (r) r.focus(); },   // keys follow the window
         onClose: function () { if (window.TERRA) bankPlaytime('terraria', window.TERRA.close() || 0); } },
     ureboy:   { launch: '/ureboy/' },
     room:     { launch: '/1p/' },

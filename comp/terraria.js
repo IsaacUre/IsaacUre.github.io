@@ -131,6 +131,7 @@ function sLoad() {
 }
 function sSave() {
     if (!S) return;
+    if (RT && RT.w) S.tiles = packWorld(RT.w);   // never checkpoint live inventory against a stale world
     S.t = Date.now();
     try { localStorage.setItem('comp_terraria', JSON.stringify(S)); } catch (e) {}
 }
@@ -309,6 +310,10 @@ function init(el) {
     }
     RT.w = w;
     if (!S.inv) S.inv = startInv();
+    if (S.hp <= 0) {   // saved mid-death-overlay: finish the respawn now
+        S.hp = S.maxhp;
+        if (S.spawnx != null) { S.px = S.spawnx; S.py = S.spawny; }
+    }
 
     // dev hooks for screenshots: ?tdev=night|cave|boss|kit
     var tdev = (location.search.match(/[?&]tdev=([a-z]+)/) || [])[1];
@@ -327,7 +332,7 @@ function init(el) {
     if (RT.openPanel) togglePanel(true);
     RT.last = performance.now();
     RT.raf = requestAnimationFrame(loop);
-    RT.timers.push(setInterval(function () { S.tiles = packWorld(RT.w); sSave(); }, 30000));
+    RT.timers.push(setInterval(sSave, 30000));
     toast(S.day > 1 || S.tiles ? 'Welcome back to ' + worldName() + '.' : 'Welcome to ' + worldName() + '. The copper kit is in your hotbar.');
 }
 function worldName() { return 'World of Ure (' + (S.seed % 1000) + ')'; }
@@ -341,9 +346,10 @@ function wireInput(root) {
         if (e.key.toLowerCase() === 'e') togglePanel(!RT.panel);
         var n = parseInt(e.key, 10);
         if (!isNaN(n)) { S.sel = (n + 9) % 10; paintHotbar(); }
-        e.stopPropagation();
+        if (e.key !== 'Escape') e.stopPropagation();   // an unconsumed Escape belongs to the desktop
     });
     root.addEventListener('keyup', function (e) { RT.keys[e.key.toLowerCase()] = false; e.stopPropagation(); });
+    root.addEventListener('blur', function () { RT.keys = {}; RT.mouse.l = RT.mouse.r = false; });   // no ghost-walking
     RT.cv.addEventListener('pointermove', function (e) {
         var r = RT.cv.getBoundingClientRect();
         RT.mouse.x = (e.clientX - r.left) / (r.width / RT.cv.width);
@@ -351,7 +357,7 @@ function wireInput(root) {
     });
     RT.cv.addEventListener('pointerdown', function (e) {
         root.focus();
-        if (e.button === 0) RT.mouse.l = true;
+        if (e.button === 0) { RT.mouse.l = true; RT.mouse.lEdge = true; }
         if (e.button === 2) { RT.mouse.r = true; placeAt(); }
     });
     window.addEventListener('pointerup', RT.mup = function (e) { if (e.button === 0) RT.mouse.l = false; if (e.button === 2) RT.mouse.r = false; });
@@ -385,6 +391,7 @@ function loop(now) {
     RT.acc += dt;
     var steps = 0;
     while (RT.acc >= 16.66 && steps < 4) { step(); RT.acc -= 16.66; steps++; }
+    if (steps === 4) RT.acc = 0;   // drop backlog: lag never becomes a 4x fast-forward
     draw();
 }
 
@@ -427,9 +434,12 @@ function step() {
         var dx = (S.px + 5) - d.x, dy = (S.py + 10) - d.y, dist = Math.sqrt(dx * dx + dy * dy);
         if (dist < 34) { d.x += dx / dist * 2.4; d.y += dy / dist * 2.4; }
         if (dist < 8) {
-            if (d.id === 'coin') S.coins += d.c;
-            else invGive(d.id, d.c);
-            RT.drops.splice(i, 1);
+            if (d.id === 'coin') { S.coins += d.c; RT.drops.splice(i, 1); }
+            else {
+                var left = invGive(d.id, d.c);
+                if (left) d.c = left;   // inventory full: the rest stays on the ground, like the real game
+                else RT.drops.splice(i, 1);
+            }
             paintHotbar(); paintCoins();
             if (S.coins >= 10000) unlock('loaded');
         }
@@ -451,14 +461,19 @@ function tileAt(px, py) {
     return RT.w[y * W + x];
 }
 function moveBody() {
-    // horizontal
+    // horizontal: step, then back off to the collision face (no full-revert float)
     S.px += RT.vx;
-    if (hitSolid()) { S.px -= RT.vx; RT.vx = 0; }
+    if (hitSolid()) {
+        var sx2 = RT.vx > 0 ? 1 : -1, gx = 0;
+        while (hitSolid() && gx++ < 16) S.px -= sx2 * 0.25;
+        RT.vx = 0;
+    }
     // vertical
     S.py += RT.vy;
     if (hitSolid()) {
-        S.py -= RT.vy;
-        if (RT.vy > 0) RT.ground = true;
+        var sy2 = RT.vy > 0 ? 1 : -1, gy = 0;
+        while (hitSolid() && gy++ < 32) S.py -= sy2 * 0.25;
+        if (sy2 > 0) RT.ground = true;
         RT.vy = 0;
     } else if (Math.abs(RT.vy) > 0.3) RT.ground = false;
     S.px = clamp(S.px, TS, (W - 2) * TS); S.py = clamp(S.py, TS, (H - 3) * TS);
@@ -476,7 +491,10 @@ function useHeld() {
     var h = held(), m = mouseWorld();
     var def = h ? ITEMS[h.id] : null;
     if (def && def.kind === 'sword') { swing(def.dmg); return; }
-    if (def && def.kind === 'use' && h.id === 'suseye') { summonEye(); return; }
+    if (def && def.kind === 'use' && h.id === 'suseye') {
+        if (RT.mouse.lEdge) { RT.mouse.lEdge = false; summonEye(); }   // once per click, not 60x/s
+        return;
+    }
     // mining (pick/axe — or fists for pots and torches)
     var tx = Math.floor(m.x / TS), ty = Math.floor(m.y / TS);
     if (tx < 1 || tx >= W - 1 || ty < 1 || ty >= H - 1) return;
@@ -515,7 +533,7 @@ function chopTree(tx, ty) {
         if (t === T_TRUNK) { RT.w[y * W + tx] = T_AIR; woodN++; }
         else break;
     }
-    for (var oy = -14; oy <= 2; oy++) for (var ox = -3; ox <= 3; ox++) {
+    for (var oy = -14; oy <= 2; oy++) for (var ox = -2; ox <= 2; ox++) {   // own canopy only; neighbors keep theirs
         var yy = ty + oy, xx = tx + ox;
         if (yy > 0 && yy < H && xx > 0 && xx < W && RT.w[yy * W + xx] === T_LEAF) RT.w[yy * W + xx] = T_AIR;
     }
@@ -529,7 +547,7 @@ function potLoot(tx, ty) {
     else drop(tx, ty, 'gel', 2 + (Math.random() * 3 | 0));
 }
 function placeAt() {
-    if (RT.panel) return;
+    if (RT.panel || RT.dead) return;
     var h = held(); if (!h) return;
     var def = ITEMS[h.id]; if (!def || def.kind !== 'block') return;
     var m = mouseWorld(), tx = Math.floor(m.x / TS), ty = Math.floor(m.y / TS);
@@ -565,7 +583,7 @@ function swing(dmg) {
 }
 function craft(ri) {
     var r = RECIPES[ri];
-    if (!r || !canCraft(r)) return;
+    if (RT.dead || !r || !canCraft(r)) return;
     r[3].forEach(function (ing) { invTake(ing[0], ing[1]); });
     var over = invGive(r[0], r[1]);
     if (r[0] === 'bench') unlock('benched');
@@ -582,7 +600,8 @@ function spawnTick() {
     if (RT.foes.length >= 6 || RT.anim % 90 !== 0 || RT.dead) return;
     var deep = S.py / TS > 70;
     var side = Math.random() < 0.5 ? -1 : 1;
-    var sx = S.px + side * (300 + Math.random() * 240);
+    var halfView = RT.cv ? RT.cv.width / 2 : 300;
+    var sx = S.px + side * (Math.max(300, halfView + 40) + Math.random() * 240);
     var tx = Math.floor(sx / TS);
     if (tx < 2 || tx >= W - 2) return;
     var kind;
@@ -592,11 +611,13 @@ function spawnTick() {
     else return;
     var ty;
     if (kind === 'eye') ty = Math.max(4, Math.floor(S.py / TS) - 8 - Math.random() * 6);
-    else {   // find ground near the player's depth
+    else {   // find ground near the player's depth — and never inside it
         ty = Math.floor(S.py / TS) - 6;
         var guard = 0;
         while (guard++ < 40 && ty < H - 3 && !SOLID[RT.w[(ty + 1) * W + tx]]) ty++;
         if (guard >= 40) return;
+        if (SOLID[RT.w[ty * W + tx]] || SOLID[RT.w[(ty - 1) * W + tx]]) return;   // buried: retry next tick elsewhere
+        if (RT.w[(ty + 1) * W + tx] === T_LAVA) return;                            // lava is not a floor
     }
     var pinky = kind === 'slime' && Math.random() < 0.012;
     RT.foes.push({
@@ -615,16 +636,20 @@ function foeStep(f) {
             f.vy = 0; f.vx *= 0.6;
             if (f.t % 100 === 0) { f.vy = -2.6 - Math.random(); f.vx = toward * (0.8 + Math.random() * 0.6); }
         }
-        f.x += f.vx; f.y += f.vy;
-        if (SOLID[tileAt(f.x + 4, f.y + 4)]) { f.x -= f.vx; f.vx = -f.vx * 0.5; }
+        f.x += f.vx;
+        if (SOLID[tileAt(f.x + 4, f.y + 4)] || SOLID[tileAt(f.x + 4, f.y + 8)]) { f.x -= f.vx; f.vx = -f.vx * 0.5; }
+        f.y += f.vy;
+        if (SOLID[tileAt(f.x + 4, f.y)] || SOLID[tileAt(f.x + 4, f.y + 8)]) { f.y -= f.vy; f.vy = 0; }
     } else if (f.kind === 'zombie') {
         f.vy = Math.min(f.vy + 0.17, 5);
         var onG = SOLID[tileAt(f.x + 4, f.y + 17)];
         if (onG) { f.vy = 0; f.vx = toward * 0.55; }
         var aheadSolid = SOLID[tileAt(f.x + 4 + toward * 6, f.y + 12)];
         if (onG && aheadSolid) f.vy = -3.3;
-        f.x += f.vx; f.y += f.vy;
-        if (SOLID[tileAt(f.x + 4, f.y + 8)]) { f.x -= f.vx; }
+        f.x += f.vx;
+        if (SOLID[tileAt(f.x + 4, f.y + 2)] || SOLID[tileAt(f.x + 4, f.y + 15)]) { f.x -= f.vx; }
+        f.y += f.vy;
+        if (SOLID[tileAt(f.x + 4, f.y)] || SOLID[tileAt(f.x + 4, f.y + 17)]) { f.y -= f.vy; f.vy = 0; }
         if (!isNight() && f.t % 60 === 0) f.hp -= 5;   // zombies crumble at dawn
     } else {   // demon eye: lazy sine homing
         var dy = S.py - f.y;
@@ -634,12 +659,12 @@ function foeStep(f) {
         f.x += f.vx; f.y += f.vy;
         if (!isNight() && f.t % 60 === 0) f.hp -= 5;
     }
+    // gone? (the dead bite no one)
+    if (f.hp <= 0) { foeDrops(f); return true; }
     // contact damage
     var pdx = (S.px + 5) - (f.x + 4), pdy = (S.py + 10) - (f.y + 6);
     if (Math.abs(pdx) < 10 && Math.abs(pdy) < 14 && RT.iframe <= 0 && !RT.dead) hurt(f.dmg, pdx > 0 ? 1 : -1);
-    // gone?
-    if (f.hp <= 0) { foeDrops(f); return true; }
-    if (Math.abs(f.x - S.px) > 800) return true;
+    if (Math.abs(f.x - S.px) > 800 || Math.abs(f.y - S.py) > 420) return true;
     return false;
 }
 function hitFoe(f, dmg, dir) {
@@ -664,6 +689,7 @@ function hurt(dmg, dir) {
 }
 function die() {
     RT.dead = 300;   // 5s
+    togglePanel(false);
     var lost = Math.floor(S.coins / 2); S.coins -= lost;
     RT.root.querySelector('.tr-death').hidden = false;
     RT.root.querySelector('.tr-death span').textContent = lost ? 'and dropped ' + coinFmt(lost) + ' on the way down.' : 'The dirt sends its regards.';
@@ -1051,11 +1077,11 @@ function close() {
         cancelAnimationFrame(RT.raf);
         RT.timers.forEach(function (t) { clearTimeout(t); clearInterval(t); });
         window.removeEventListener('pointerup', RT.mup);
-        S.tiles = packWorld(RT.w);
+        S.tiles = packWorld(RT.w);   // pack before RT goes away (sSave below sees RT null)
         RT = null;
     }
     sSave();
-    return Math.round(hrs * 10) / 10;
+    return hrs;   // raw — the caller accumulates, display rounds
 }
 function steamAch() {
     sLoad();
