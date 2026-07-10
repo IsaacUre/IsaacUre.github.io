@@ -126,6 +126,12 @@ svg .ic, .ic use { image-rendering: pixelated; }
 /* ────────────────────────── desktop ─────────────────────────── */
 .desktop { position: absolute; inset: 0 0 var(--bar-h) 0; z-index: 1; }
 
+/* the window layer is its own stacking context: inline z-indexes from
+   focus cycling (zTop 20, 21, 22…) are trapped inside it, so windows can
+   never climb above the taskbar (50), Start (55), flyouts (56), or menus */
+.windows { position: absolute; inset: 0; z-index: 10; pointer-events: none; }
+.windows .win { pointer-events: auto; }
+
 /* icons sit on a 92×100 snap grid, positioned by renderDesktop */
 .dicon {
     position: absolute; width: 84px; padding: 8px 4px 7px;
@@ -234,10 +240,12 @@ body.dnd, body.dnd * { cursor: grabbing !important; }
     background: linear-gradient(var(--hi), transparent 3px), var(--glass-2);
     border: 1px solid var(--line);
     padding: 22px 22px 0;
-    opacity: 0; pointer-events: none;
-    transition: opacity .14s ease, transform .14s ease;
+    max-height: calc(100vh - var(--bar-h) - 24px);          /* short screens: scroll inside, never clip off-top */
+    overflow-y: auto;
+    opacity: 0; pointer-events: none; visibility: hidden;   /* visibility drops the closed menu from tab order */
+    transition: opacity .14s ease, transform .14s ease, visibility .14s;
 }
-.start.open { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
+.start.open { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; visibility: visible; }
 
 .start-search {
     display: flex; align-items: center; gap: 9px;
@@ -408,6 +416,17 @@ body.dnd, body.dnd * { cursor: grabbing !important; }
     .pins { grid-template-columns: repeat(4, 1fr); }
     .recs { grid-template-columns: 1fr; }
     .win-nav { width: 132px; }
+}
+@media (max-width: 520px) {
+    /* the centered cluster is wider than a phone — anchor it left and
+       slim everything down so the clock always fits */
+    .tb-center { left: 4px; transform: none; gap: 2px; }
+    .tb-search, #taskviewBtn, .tray-btn { display: none; }
+    .tb-btn { width: 36px; height: 38px; }
+    .tb-btn .ic { width: 22px; height: 22px; }
+    .tray-cluster { padding: 0 5px; }
+    .clock { padding: 0 6px; }
+    .showdesk { display: none; }
 }
 @media (max-width: 420px) {
     .dicon { width: 72px; }
@@ -778,7 +797,9 @@ body.gagging .screen, body.gagging .screen * { cursor: none !important; }
     box-shadow: 0 8px 0 rgba(0,0,0,.28), 0 2px 0 rgba(0,0,0,.3);
 }
 .tv-shot * { pointer-events: none; }
-.tv-item:hover .tv-shot { border-color: var(--accent); }
+.tv-item:hover .tv-shot, .tv-item:focus-visible .tv-shot { border-color: var(--accent); }
+.tv-item:focus-visible { outline: none; }
+.tv-item:focus-visible .tv-close { opacity: 1; }
 .tv-label { display: flex; align-items: center; gap: 8px; padding: 0 2px; font-size: .82rem; color: var(--ink); }
 .tv-label .ic { width: 18px; height: 18px; }
 .tv-label span { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
