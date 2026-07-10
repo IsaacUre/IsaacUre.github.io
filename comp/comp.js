@@ -213,9 +213,16 @@ function wireWindow(id, el) {
     });
 }
 function focusWin(id) { var w = openWins[id]; if (!w) return; w.el.style.zIndex = ++zTop; activeApp = id; if (APPS[id].onFocus) APPS[id].onFocus(w.el); syncTaskbar(); }
-function minWin(id) { var w = openWins[id]; if (!w) return; if (APPS[id].onMinimize) APPS[id].onMinimize(w.el); w.min = true; w.el.classList.add('mini'); if (activeApp === id) activeApp = null; syncTaskbar(); }
-function restoreWin(id) { var w = openWins[id]; if (!w) return; w.min = false; w.el.classList.remove('mini'); }
-function closeWin(id) { var w = openWins[id]; if (!w) return; if (APPS[id].onClose) APPS[id].onClose(w.el); w.el.remove(); delete openWins[id]; if (activeApp === id) activeApp = null; if (find.appId === id) { find.appId = null; find.marks = []; find.idx = -1; } syncTaskbar(); }
+// after the active window goes away, focus falls to the topmost remaining one
+function refocusTop() {
+    var ids = Object.keys(openWins).filter(function (id) { return !openWins[id].min; });
+    if (!ids.length) { activeApp = null; return; }
+    ids.sort(function (a, b) { return (+openWins[b].el.style.zIndex || 0) - (+openWins[a].el.style.zIndex || 0); });
+    activeApp = ids[0];
+}
+function minWin(id) { var w = openWins[id]; if (!w) return; if (APPS[id].onMinimize) APPS[id].onMinimize(w.el); w.min = true; w.el.classList.add('mini'); if (activeApp === id) refocusTop(); syncTaskbar(); }
+function restoreWin(id) { var w = openWins[id]; if (!w) return; w.min = false; w.el.classList.remove('mini'); if (APPS[id].onRestore) APPS[id].onRestore(w.el); }
+function closeWin(id) { var w = openWins[id]; if (!w) return; if (APPS[id].onClose) APPS[id].onClose(w.el); w.el.remove(); delete openWins[id]; if (activeApp === id) refocusTop(); if (find.appId === id) { find.appId = null; find.marks = []; find.idx = -1; } syncTaskbar(); }
 
 function syncTaskbar() {
     PINNED.forEach(function (id) {
@@ -260,7 +267,7 @@ function openTaskView() {
     var ov = document.createElement('div'); ov.className = 'tv-overlay'; ov.id = 'taskView';
     var grid = document.createElement('div'); grid.className = 'tv-grid';
     var ids = Object.keys(openWins);
-    var BW = 300, BH = 188;
+    var BW = clamp(window.innerWidth - 90, 190, 300), BH = Math.round(BW * 0.63);   // phone-friendly cards
     if (!ids.length) grid.innerHTML = '<p class="tv-empty">No open windows yet. Open something from Start or the taskbar.</p>';
     ids.forEach(function (id) {
         var w = openWins[id], a = APPS[id];
@@ -272,7 +279,17 @@ function openTaskView() {
         clone.className = 'win';   // drop clip-path/drop-shadow; the card frames it
         clone.style.cssText = 'position:absolute;margin:0;width:' + ww + 'px;height:' + wh + 'px;transform:scale(' + scale + ');transform-origin:top left;' +
             'left:' + ((BW - ww * scale) / 2) + 'px;top:' + ((BH - wh * scale) / 2) + 'px;';
+        // cloneNode skips canvas bitmaps and live textarea values — carry them over
+        var sc = w.el.querySelectorAll('canvas'), dc = clone.querySelectorAll('canvas');
+        for (var ci = 0; ci < sc.length; ci++) {
+            if (dc[ci] && sc[ci].width) { try { dc[ci].getContext('2d').drawImage(sc[ci], 0, 0); } catch (err) {} }
+        }
+        var st = w.el.querySelectorAll('textarea'), dt = clone.querySelectorAll('textarea');
+        for (var ti = 0; ti < st.length; ti++) if (dt[ti]) dt[ti].value = st[ti].value;
         var item = document.createElement('div'); item.className = 'tv-item'; item.setAttribute('data-id', id);
+        item.tabIndex = 0; item.setAttribute('role', 'button');            // keyboard-reachable card
+        item.setAttribute('aria-label', 'Switch to ' + a.title);
+        item.style.width = BW + 'px';
         var shot = document.createElement('div'); shot.className = 'tv-shot'; shot.style.width = BW + 'px'; shot.style.height = BH + 'px';
         shot.appendChild(clone);
         item.appendChild(shot);
@@ -296,6 +313,16 @@ function openTaskView() {
         }
         restoreWin(id); focusWin(id); closeTaskView();
     });
+    grid.addEventListener('keydown', function (e) {                        // Enter/Space activate, Delete closes
+        var item = e.target.closest('.tv-item'); if (!item) return;
+        var id = item.getAttribute('data-id');
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); restoreWin(id); focusWin(id); closeTaskView(); }
+        else if (e.key === 'Delete') {
+            e.preventDefault(); closeWin(id); item.remove();
+            if (!grid.querySelector('.tv-item')) grid.innerHTML = '<p class="tv-empty">No open windows.</p>';
+        }
+    });
+    var first = grid.querySelector('.tv-item'); if (first) setTimeout(function () { first.focus(); }, 30);   // focus isn't motion
     ov.addEventListener('click', function (e) { if (e.target === ov) closeTaskView(); });
 }
 byId('taskviewBtn').addEventListener('click', function (e) { e.stopPropagation(); if (byId('taskView')) closeTaskView(); else openTaskView(); });
@@ -894,12 +921,17 @@ function initNotepad(el) {
     }
     ta.addEventListener('input', upd); ta.addEventListener('keyup', upd); ta.addEventListener('click', upd);
     ta.addEventListener('scroll', function () { back.scrollTop = ta.scrollTop; });
+    if (window.ResizeObserver) {                                    // maximize/restore re-pins the mirror
+        new ResizeObserver(function () {
+            if (find.appId === 'notepad' && findOpenNow()) runFind(true);
+        }).observe(ta);
+    }
     el._flash = function () {                                       // Alt+S: it already saved itself
         save.textContent = '✓ Saved (it always is)';
         clearTimeout(el._flashT);
         el._flashT = setTimeout(function () { save.textContent = 'UTF-8 · UreOS'; }, 1400);
     };
-    if (!reduce) setTimeout(function () { ta.focus(); }, 30);
+    setTimeout(function () { ta.focus(); }, 30);   // focus isn't motion — place it under reduced-motion too
 }
 
 /* —— Terminal —— */
@@ -949,7 +981,7 @@ function initTerminal(el) {
     inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { run(inp.value); inp.value = ''; } });
     term.addEventListener('click', function () { inp.focus(); });
     el._clear = function () { out.innerHTML = ''; };              // Alt+L, shell-style
-    if (!reduce) setTimeout(function () { inp.focus(); }, 30);
+    setTimeout(function () { inp.focus(); }, 30);   // focus isn't motion
 }
 
 /* —— Settings —— */
@@ -1163,8 +1195,14 @@ function initEdge(el) {
 
     var gag = { cancel: function () {
         if (!alive) return; alive = false; hijack = false;
+        gag.dead = true;                                     // observable from outside the closure
         timers.forEach(clearTimeout); intervals.forEach(clearInterval); clearTimeout(idleTimer);
         document.removeEventListener('keydown', onKey, true);
+        closeSuggest(); omni.classList.remove('focus'); url.blur();   // don't strand the dropdown/focus ring
+        if (step.dl && shelf.querySelector('.dls-bar')) {    // download was mid-flight: land the file
+            var f = fsAddFile('Downloads', chromeSetupItem());
+            shelf.innerHTML = shelfDoneHTML(f.n);
+        }
         gagEnd();
         // note: the setup wizard is a free-standing app now — it owes the gag nothing
     } };
@@ -1186,8 +1224,8 @@ function initEdge(el) {
     });
     shelf.addEventListener('click', function (e) {
         // unguarded: the button must work even after the gag is cancelled (runInstaller is the possess path)
-        if (e.target.closest('.dls-open')) { gag.cancel(); openApp('setup'); }
-        else if (e.target.closest('.dls-show')) { gag.cancel(); openApp('explorer', 'Downloads'); }
+        if (e.target.closest('.dls-open')) { gag.done = true; gag.cancel(); openApp('setup'); }
+        else if (e.target.closest('.dls-show')) { gag.done = true; gag.cancel(); openApp('explorer', 'Downloads'); }
     });
 
     function addrClicked() {
@@ -1209,7 +1247,7 @@ function initEdge(el) {
         if (!hijack) return;
         // keys aimed at another app's text field (terminal, notepad, a game) are not ours to steal
         if (e.target !== url && (/^(INPUT|TEXTAREA)$/.test(e.target.tagName || '') || e.target.isContentEditable)) return;
-        if (e.key === 'Escape') { gag.cancel(); return; }   // let the user bail out
+        if (e.key === 'Escape') { gag.done = true; gag.cancel(); return; }   // a deliberate bail-out sticks
         e.preventDefault(); e.stopPropagation();
         intervals.forEach(clearInterval);                    // user grabbed the wheel
         if (!typeStep()) armIdle();
@@ -1255,6 +1293,7 @@ function initEdge(el) {
     }
     function runInstaller() {
         if (!alive || step.run) return; step.run = 1;
+        gag.done = true;                                 // a natural finish shouldn't replay on restore
         gag.cancel();                                    // the machine got you the file; the install is yours
         openApp('setup');
         toast('The machine got you this far. The install is yours.');
@@ -2213,10 +2252,11 @@ function fsTidyChromeSetup() {
 /* register Chrome once installed: taskbar pin + Start pin + optional desktop shortcut */
 function installChrome(opts) {
     opts = opts || {};
+    store('chrome', JSON.stringify({ shortcut: !!opts.shortcut, pin: opts.pin !== false }));   // installs survive reload
     if (opts.pin !== false && PINNED.indexOf('chrome') < 0) {
         PINNED.push('chrome');
         var center = taskbar.querySelector('.tb-center'), edgeBtn = center && center.querySelector('.tb-btn.app[data-app="edge"]');
-        if (center && !center.querySelector('.tb-btn.app[data-app="chrome"]')) {
+        if (center && !center.querySelector(':scope > .tb-btn.app[data-app="chrome"]')) {   // ignore the temp #tbOpen button
             var b = document.createElement('button');
             b.className = 'tb-btn app'; b.type = 'button'; b.setAttribute('data-app', 'chrome'); b.setAttribute('aria-label', 'Google Chrome');
             b.innerHTML = ic('ic-chrome');
@@ -3014,7 +3054,7 @@ function initSteam(el, id, arg) {
     ST.root.addEventListener('click', stClick);
     ST.root.addEventListener('keydown', function (e) {
         if (e.key !== 'Enter') { if (e.key === 'Escape') stCloseLayers(); return; }
-        if (e.target.closest('[data-search]')) { ST.q = e.target.value; stCloseLayers(); stGo('store', 'browse', null, { cat: null }); }
+        if (e.target.closest('[data-search]')) { stCloseLayers(); stGo('store', 'browse', null, { cat: null, q: e.target.value }); }
         else if (e.target.closest('.st-chat-in')) stChatSend();
         else if (e.target.closest('.st-act-in')) stActivateGo();
     });
@@ -3044,7 +3084,7 @@ function stGo(section, view, gid, extra) {
     ST.hist.push({ section: ST.section, view: ST.view, gid: ST.gid, cat: ST.cat, q: ST.q });
     if (ST.hist.length > 40) ST.hist.shift();
     ST.section = section; ST.view = view || 'home'; ST.gid = gid || null; ST.gal = 0; ST.carou = 0;
-    if (extra) { if ('cat' in extra) ST.cat = extra.cat; }
+    if (extra) { if ('cat' in extra) ST.cat = extra.cat; if ('q' in extra) ST.q = extra.q; }   // applied AFTER the history snapshot
     stRender();
 }
 function stBack() {
@@ -3569,7 +3609,7 @@ function stChatDraw(takeFocus) {
     var log = ST.chatw.querySelector('#stChatLog'); log.scrollTop = log.scrollHeight;
     var inp = ST.chatw.querySelector('.st-chat-in');
     inp.value = takeFocus ? '' : draft;
-    if (hadFocus && !reduce) setTimeout(function () { if (ST && ST.chatw.contains(inp)) inp.focus(); }, 30);
+    if (hadFocus) setTimeout(function () { if (ST && ST.chatw.contains(inp)) inp.focus(); }, 30);   // focus isn't motion
 }
 function stChatSend() {
     var name = ST.chatWith; if (!name) return;
@@ -3646,7 +3686,7 @@ function stModalOpen(kind) {
     }
     ST.modal.innerHTML = '<div class="st-modal-card">' + inner + '</div>';
     ST.modal.hidden = false;
-    if (kind === 'activate' && !reduce) { var ai = ST.modal.querySelector('.st-act-in'); if (ai) setTimeout(function () { ai.focus(); }, 30); }
+    if (kind === 'activate') { var ai = ST.modal.querySelector('.st-act-in'); if (ai) setTimeout(function () { ai.focus(); }, 30); }   // focus isn't motion
 }
 function stActivateGo() {
     var inp = ST.modal.querySelector('.st-act-in'), out = ST.modal.querySelector('#stActOut'); if (!inp || !out) return;
@@ -3762,8 +3802,10 @@ function stStartDl() {
         stDock(); stSyncBadges();
         if (ST.section === 'downloads') { ST.body.innerHTML = stDownloads(); stPaintAll(); stSpark(); }
         else if (ST.section === 'library' && ST.view === 'game') {
-            var bar = ST.body.querySelector('.st-play.dis'); if (bar && stInQueue(ST.gid)) bar.innerHTML = gDl() + ' Installing… ' + Math.floor(stInQueue(ST.gid).pct) + '%';
-            else if (!stInQueue(ST.gid)) { ST.body.innerHTML = stLibGame(SG[ST.gid]); stPaintAll(); }
+            // only touch the DOM when it disagrees with the queue — no 420ms re-render of unrelated pages
+            var dl2 = stInQueue(ST.gid), bar = ST.body.querySelector('.st-play.dis');
+            if (bar && dl2) bar.innerHTML = gDl() + ' Installing… ' + Math.floor(dl2.pct) + '%';
+            else if (!!bar !== !!dl2) { ST.body.innerHTML = stLibGame(SG[ST.gid]); stPaintAll(); }
         }
     }, reduce ? 120 : 420);
 }
@@ -3862,12 +3904,12 @@ function stClick(e) {
     var id = el.getAttribute('data-id');
     if (act === 'back') return stBack();
     if (act === 'nav') return id === 'points' ? stGo('store', 'points', null) : stGo(id, 'home', null);
-    if (act === 'go') { ST.q = ''; return stGo(el.getAttribute('data-sec'), el.getAttribute('data-view'), null, { cat: el.getAttribute('data-cat') || null }); }
-    if (act === 'game') { ST.q = ''; return stGo('store', 'game', id); }
+    if (act === 'go') { return stGo(el.getAttribute('data-sec'), el.getAttribute('data-view'), null, { cat: el.getAttribute('data-cat') || null, q: '' }); }
+    if (act === 'game') { return stGo('store', 'game', id, { q: '' }); }
     if (act === 'lib') return stGo('library', 'game', id);
     if (act === 'ach') return stGo('library', 'ach', id);
-    if (act === 'cat') { ST.q = ''; return stGo('store', 'browse', null, { cat: id }); }
-    if (act === 'devsearch') { ST.q = id; return stGo('store', 'browse', null, { cat: null }); }
+    if (act === 'cat') { return stGo('store', 'browse', null, { cat: id, q: '' }); }
+    if (act === 'devsearch') { return stGo('store', 'browse', null, { cat: null, q: id }); }
     if (act === 'play') return stPlay(id);
     if (act === 'install') return stInstall(id);
     if (act === 'addcart') { var c = stCart(); if (c.indexOf(id) < 0) { c.push(id); sjSet('cart', c); } stSyncBadges(); stToast(SG[id].t + ' — added to cart.'); return stRender(); }
@@ -3932,7 +3974,8 @@ var APPS = {
     settings: { title: 'Settings', icon: 'ic-settings', w: 660, h: 480, render: renderSettings, init: initSettings },
     photos:   { title: 'Photos', icon: 'ic-photos', w: 560, h: 440, render: renderPhotos, init: initPhotos, focusArg: function (el, arg) { if (arg != null) selectPhoto(el, arg | 0); } },
     calc:     { title: 'Calculator', icon: 'ic-calc', w: 300, h: 440, render: renderCalc, init: initCalc },
-    edge:     { title: 'Microsoft Edge', icon: 'ic-edge', w: 760, h: 520, render: renderEdge, init: initEdge, onClose: function () { if (APPS.edge._gag) APPS.edge._gag.cancel(); }, onMinimize: function () { if (APPS.edge._gag) APPS.edge._gag.cancel(); } },
+    edge:     { title: 'Microsoft Edge', icon: 'ic-edge', w: 760, h: 520, render: renderEdge, init: initEdge, onClose: function () { if (APPS.edge._gag) APPS.edge._gag.cancel(); }, onMinimize: function () { if (APPS.edge._gag) APPS.edge._gag.cancel(); },
+              onRestore: function (el) { var g = APPS.edge._gag; if (g && g.dead && !g.done) { el.querySelector('.win-content').innerHTML = renderEdge(); initEdge(el); } } },
     chrome:   { title: 'Google Chrome', icon: 'ic-chrome', w: 980, h: 640, render: renderChrome, init: initChrome, onClose: closeChrome },
     setup:    { title: 'Google Chrome Setup', icon: 'ic-chrome', w: 584, h: 468, render: renderSetup, init: initSetup, onClose: stopSetup },
     bin:      { title: 'Recycle Bin', icon: 'ic-bin', w: 600, h: 400, render: renderBin, init: initBin },
@@ -3955,9 +3998,12 @@ var APPS = {
 var startMenu = byId('startMenu'), startBtn = byId('startBtn'), startSearch = byId('startSearch');
 function setStart(open) {
     startMenu.hidden = false;
-    requestAnimationFrame(function () { startMenu.classList.toggle('open', open); });
+    void startMenu.offsetWidth;   // commit the unhidden state so the fade still animates —
+    // fully synchronous: .open is never stale (the keybind layer gates on it, and a
+    // queued rAF could land AFTER a close and corrupt the state)
+    startMenu.classList.toggle('open', open);
     startBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
-    if (open) { closeFlyouts(); closeCtx(); closeTaskView(); if (!reduce) setTimeout(function () { startSearch.focus(); }, 40); }
+    if (open) { closeFlyouts(); closeCtx(); closeTaskView(); setTimeout(function () { startSearch.focus(); }, 40); }
     else { startSearch.value = ''; filterStart(''); }
 }
 startBtn.addEventListener('click', function (e) { e.stopPropagation(); setStart(!startMenu.classList.contains('open')); });
@@ -4313,9 +4359,13 @@ function chromeCtl(fn, arg) { var w = openWins.chrome; if (w && w.el._br && w.el
 function expCtl(fn) { var w = openWins.explorer; if (w && w.el._nav && w.el._nav[fn]) w.el._nav[fn](); }
 
 document.addEventListener('keydown', function (e) {
-    if (document.body.classList.contains('gagging')) return;   // the Edge gag owns the keyboard
-    // find-bar service keys (no modifier)
-    if (findOpenNow()) {
+    if (document.body.classList.contains('gagging')) {          // the Edge gag owns the keyboard…
+        if (e.key === 'Escape' && APPS.edge._gag) { APPS.edge._gag.done = true; APPS.edge._gag.cancel(); }   // …but Esc always bails out, and sticks
+        return;
+    }
+    // find-bar service keys — only for the ACTIVE window, and only when no
+    // higher-priority surface (dialog, cheat sheet, start menu) is up
+    if (findOpenNow() && find.appId === activeApp && !dlgs.length && !byId('cheatsheet') && !startMenu.classList.contains('open')) {
         if (e.key === 'F3') { e.preventDefault(); navFind(e.shiftKey ? -1 : 1); return; }
         if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeFind(); return; }
     }
@@ -4323,6 +4373,7 @@ document.addEventListener('keydown', function (e) {
 
     var typing = e.target && /^(INPUT|TEXTAREA)$/.test(e.target.tagName);
     if (!e.altKey && !e.ctrlKey && !e.metaKey && !typing) {
+        if (dlgs.length) return;                             // a modal dialog owns plain keys
         // plain-key niceties for the focused app
         if (activeApp === 'photos' && openWins.photos && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
             var cur = openWins.photos.el.querySelector('.ph-thumb.sel');
@@ -4388,6 +4439,7 @@ document.addEventListener('keydown', function (e) {
 
 applyAccent(recall('accent', ACCENTS[0].hex));
 if (recall('crt', 'on') !== 'on') document.body.classList.add('no-crt');
+try { var chromeSt = JSON.parse(recall('chrome', 'null')); if (chromeSt) installChrome(chromeSt); } catch (e) {}   // reinstate an installed Chrome
 renderWall();
 renderDesktop();
 // the Chrome shortcut persists as a real file — if it exists anywhere, the install is real too
