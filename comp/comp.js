@@ -150,9 +150,16 @@ var winLayer = byId('windows'), taskbar = byId('taskbar'), tbOpen = byId('tbOpen
 var openWins = {}, zTop = 20, activeApp = null;
 var PINNED = ['explorer', 'edge', 'terminal', 'steam', 'settings'];
 
+function teardownApps() {   // give every open app its onClose (saves, playtime) before the page goes away
+    Object.keys(openWins).forEach(function (id) {
+        var a = APPS[id];
+        if (a && a.onClose) { try { a.onClose(openWins[id].el); } catch (e) {} }
+    });
+}
+window.addEventListener('pagehide', teardownApps);
 function openApp(id, arg) {
     var a = APPS[id]; if (!a) return;
-    if (a.launch) { window.location.href = a.launch; return; }
+    if (a.launch) { teardownApps(); window.location.href = a.launch; return; }
     setStart(false); closeFlyouts(); closeCtx(); closeTaskView();
     if (openWins[id]) { restoreWin(id); focusWin(id); if (a.focusArg) a.focusArg(openWins[id].el, arg); return; }
     createWindow(id, a, arg);
@@ -1200,6 +1207,8 @@ function initEdge(el) {
     }
     function onKey(e) {
         if (!hijack) return;
+        // keys aimed at another app's text field (terminal, notepad, a game) are not ours to steal
+        if (e.target !== url && (/^(INPUT|TEXTAREA)$/.test(e.target.tagName || '') || e.target.isContentEditable)) return;
         if (e.key === 'Escape') { gag.cancel(); return; }   // let the user bail out
         e.preventDefault(); e.stopPropagation();
         intervals.forEach(clearInterval);                    // user grabbed the wheel
@@ -2762,7 +2771,7 @@ function stSeed() {
         sjSet('inst', STG.filter(function (g) { return g.owned && g.inst; }).map(function (g) { return g.id; }));
         sjSet('wish', ['eldenring', 'cities', 'obradinn', 'dysonsphere', 'rimworld']);
         sjSet('cart', []);
-        sjSet('hrs', {});
+        sjSet('hrs', sjGet('hrs', {}));   // don't wipe hours a desktop game banked before Steam first opened
         store('steam_wishv2', '1');
     } else {
         // catalogue grew: fold any new default-owned games into an existing save
@@ -2802,6 +2811,22 @@ function isInst(id) { return stInst().indexOf(id) >= 0; }
 function isWished(id) { return stWish().indexOf(id) >= 0; }
 function inCart(id) { return stCart().indexOf(id) >= 0; }
 function stHrs(id) { var h = sjGet('hrs', {}); var g = SG[id]; return (g.hrs || 0) + (h[id] || 0); }
+function stHrs2w(id) {   // static shelf figure + real timestamped sessions from the last 14 days
+    var w = sjGet('hrs2w', {})[id] || [], cut = Date.now() - 14 * 864e5;
+    var live = 0; w.forEach(function (e) { if (e.t > cut) live += e.h; });
+    return ((SG[id] && SG[id].hrs2w) || 0) + live;
+}
+function bankPlaytime(id, hrs) {   // real desktop-app sessions land on the library page (raw; round at display)
+    if (!(hrs > 0)) return;
+    var h = sjGet('hrs', {}); h[id] = (h[id] || 0) + hrs; sjSet('hrs', h);
+    var w = sjGet('hrs2w', {}); (w[id] = w[id] || []).push({ t: Date.now(), h: hrs });
+    if (w[id].length > 40) w[id] = w[id].slice(-40);
+    sjSet('hrs2w', w);
+    if (ST && ST.section === 'library' && ST.gid === id) {   // refresh an open Steam view so it never shows stale numbers
+        if (ST.view === 'game') { ST.body.innerHTML = stLibGame(SG[id]); stPaintAll(); }
+        else if (ST.view === 'ach') { ST.body.innerHTML = stAchPage(SG[id]); stPaintAll(); }
+    }
+}
 function stGrant(id) { var o = stOwned(); if (o.indexOf(id) < 0) { o.push(id); sjSet('owned', o); } }
 function stMarkInst(id) { var s = stInst(); if (s.indexOf(id) < 0) { s.push(id); sjSet('inst', s); } }
 
@@ -3364,7 +3389,7 @@ function stLibGame(g) {
             '</div>' +
           '</div>' +
         '</div>' +
-        '<div class="st-lg-bar"><span><b>' + (g.hrs2w || 0).toFixed(1) + '</b> hrs past two weeks</span><span><b>' + stHrs(g.id).toFixed(1) + '</b> hrs total</span><span>' + (inst ? 'Installed' : dl ? 'Downloading' : 'Ready to install') + '</span><span class="st-lg-dev">' + esc(g.dev) + '</span></div>' +
+        '<div class="st-lg-bar"><span><b>' + stHrs2w(g.id).toFixed(1) + '</b> hrs past two weeks</span><span><b>' + stHrs(g.id).toFixed(1) + '</b> hrs total</span><span>' + (inst ? 'Installed' : dl ? 'Downloading' : 'Ready to install') + '</span><span class="st-lg-dev">' + esc(g.dev) + '</span></div>' +
         '<div class="st-lg-body">' + achGrid + friendsHTML + newsHTML +
           '<div class="st-lg-card"><h4>Links</h4><div class="st-lg-links"><button class="st-ghost" data-st="game" data-id="' + g.id + '">Store Page</button>' + (g.ach && g.ach[1] ? '<button class="st-ghost" data-st="ach" data-id="' + g.id + '">Achievements (' + g.ach[0] + '/' + g.ach[1] + ')</button>' : '') + '<button class="st-ghost" data-st="hub" data-id="' + g.id + '">Community Hub</button><button class="st-ghost">☁ Cloud: synced</button></div></div>' +
         '</div></div></div>';
@@ -3792,7 +3817,7 @@ function stPlay(id) {
     var g = SG[id];
     if (!isInst(id)) { stInstall(id); return; }
     if (g.app) { openApp(g.app); stToast('Launching ' + g.t + '…'); return; }   // runs right here on the desktop
-    if (g.launch) { window.location.href = g.launch; return; }
+    if (g.launch) { teardownApps(); window.location.href = g.launch; return; }
     stOverlay('Preparing to launch ' + esc(g.t) + '…', true);
     setTimeout(function () {
         stClearOverlay();
@@ -3912,11 +3937,7 @@ var APPS = {
     cookie:   { title: 'Cookie Clicker', icon: 'ic-cookie', w: 980, h: 620,
         render: function () { return window.COOKIE ? window.COOKIE.render() : '<p style="padding:24px">The oven never preheated (cookie.js missing).</p>'; },
         init: function (el) { if (window.COOKIE) window.COOKIE.init(el); },
-        onClose: function () {
-            if (!window.COOKIE) return;
-            var hrs = window.COOKIE.close() || 0;   // real playtime lands on the Steam library page
-            if (hrs > 0) { var h = sjGet('hrs', {}); h.cookie = Math.round(((h.cookie || 0) + hrs) * 10) / 10; sjSet('hrs', h); }
-        } },
+        onClose: function () { if (window.COOKIE) bankPlaytime('cookie', window.COOKIE.close() || 0); } },
     ureboy:   { launch: '/ureboy/' },
     room:     { launch: '/1p/' },
     gti:      { launch: '/ureboy/' }

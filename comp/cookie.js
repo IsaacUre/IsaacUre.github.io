@@ -308,7 +308,7 @@ function init(el) {
         paintStore();
     });
     q('.ck-brows').addEventListener('click', function (e) {
-        var row = e.target.closest('.ck-brow'); if (!row) return;
+        var row = e.target.closest('.ck-brow'); if (!row || row.classList.contains('myst')) return;
         var id = row.getAttribute('data-b'), own = S.b[id] || 0;
         if (RT.buyN < 0) {   // sell one
             if (!own) return;
@@ -321,11 +321,12 @@ function init(el) {
         paintStore(); paintUps(); paintCounts(); checkAch();
     });
     wireTip(q('.ck-brows'), '.ck-brow', function (row) {
+        if (row.classList.contains('myst')) return '<b>???</b><i>A mysterious building. Keep baking.</i>';
         var b = B[+row.getAttribute('data-bi')], own = S.b[b[0]] || 0;
         var each = b[3] * Math.pow(2, tiersOwned(b[0]));
         return '<b>' + esc(b[1]) + '</b><i>' + esc(b[4]) + '</i>' +
             (own ? '<span>each produces <b>' + fmt1(each) + '</b> CpS · all ' + own + ' produce <b>' + fmt1(each * own) + '</b> CpS</span>' : '') +
-            (RT.buyN < 0 ? '<span>sells for <b>' + fmt(sellback(b[0], own, 1)) + '</b></span>' : '');
+            (RT.buyN < 0 && own ? '<span>sells for <b>' + fmt(sellback(b[0], own, 1)) + '</b></span>' : '');
     });
 
     /* — upgrades — */
@@ -345,6 +346,7 @@ function init(el) {
     q('.ck-tabs').addEventListener('click', function (e) {
         var t = e.target.closest('.ck-tab'); if (!t) return;
         RT.tab = t.getAttribute('data-tab');
+        RT.wipeArmed = false;   // switching tabs disarms the wipe confirm
         RT.root.querySelectorAll('.ck-tab').forEach(function (x) { x.classList.toggle('sel', x === t); });
         paintTab();
     });
@@ -356,12 +358,13 @@ function init(el) {
             var gain = prestigeAt(S.all) - S.chips; if (gain <= 0) return;
             S.chips += gain; S.resets++;
             S.bank = 0; S.total = 0; S.b = {}; S.up = {};
-            RT.buffs = [];
+            RT.buffs = []; killGold(); sSave();
             checkAch(); paintAll();
             newsSet('News : local bakery ascends to a higher plane; returns with ' + gain + ' heavenly chip' + (gain === 1 ? '' : 's') + ' and a hunger.');
         } else if (act === 'wipe') {
-            if (!a.classList.contains('armed')) { a.classList.add('armed'); a.textContent = 'Really wipe the whole save? No bin for this one'; return; }
-            S = fresh(); sSave(); RT.buffs = []; paintAll();
+            if (!RT.wipeArmed) { RT.wipeArmed = true; paintTab(); return; }
+            RT.wipeArmed = false;
+            S = fresh(); sSave(); RT.buffs = []; killGold(); paintAll();
         }
     });
 
@@ -378,10 +381,15 @@ function init(el) {
     });
 
     /* — loops — */
-    RT.timers.push(setInterval(function () {   // economy: 20 ticks/s
-        var g = cps() / 20;
+    RT.lastTick = Date.now();
+    RT.timers.push(setInterval(function () {   // economy accrues by WALL TIME, so throttled background tabs still bake
+        var now = Date.now(), dt = (now - RT.lastTick) / 1000;
+        RT.lastTick = now;
+        if (dt <= 0) return;
+        var g;
+        if (dt > 90) g = Math.min(dt, 21600) * cps(true) * 0.5;   // long gap (sleep/heavy throttle): offline policy
+        else g = cps() * dt;
         S.bank += g; S.total += g; S.all += g;
-        var now = Date.now();
         RT.buffs = RT.buffs.filter(function (bf) { return bf.end > now; });
     }, 50));
     RT.timers.push(setInterval(function () { paintCounts(); paintBuffs(); }, 150));
@@ -408,17 +416,19 @@ function paintCounts() {
 function paintStore() {
     RT.root.querySelectorAll('.ck-brow').forEach(function (row, i) {
         var b = B[i], own = S.b[b[0]] || 0;
+        // buildings reveal themselves one step ahead, like the real store (the cursor is always on the menu)
+        var seen = i === 0 || own > 0 || S.total >= b[2] * 0.5 || (S.b[B[i - 1][0]] || 0) > 0;
+        row.classList.toggle('myst', !seen);
+        row.querySelector('.ck-bname b').textContent = seen ? b[1] : '???';   // mystery rows keep their secrets
         row.querySelector('.ck-bown').textContent = own || '';
         var pr = row.querySelector('.ck-bprice');
+        if (!seen) { pr.textContent = '?'; pr.className = 'ck-bprice'; row.classList.add('cant'); return; }
         if (RT.buyN < 0) { pr.textContent = own ? '+' + fmt(sellback(b[0], own, 1)) : '—'; pr.className = 'ck-bprice sell'; row.classList.toggle('cant', !own); }
         else {
             var cost = price(b[0], own, RT.buyN);
             pr.textContent = fmt(cost); pr.className = 'ck-bprice' + (S.bank >= cost ? ' ok' : '');
             row.classList.toggle('cant', S.bank < cost);
         }
-        // buildings reveal themselves one step ahead, like the real store (the cursor is always on the menu)
-        var seen = i === 0 || own > 0 || S.total >= b[2] * 0.5 || (S.b[B[i - 1][0]] || 0) > 0;
-        row.classList.toggle('myst', !seen);
     });
 }
 function upVisible(u) {
@@ -430,9 +440,18 @@ function upVisible(u) {
 }
 function paintUps() {
     var vis = UP.filter(upVisible).sort(function (a, b) { return a.cost - b.cost; }).slice(0, 12);
-    RT.q('.ck-ups').innerHTML = vis.length ? vis.map(function (u) {
-        return '<button class="ck-up k-' + u.kind + (S.bank >= u.cost ? '' : ' cant') + '" data-u="' + u.id + '"><span></span></button>';
-    }).join('') : '<span class="ck-noup">Bake more. Upgrades will come.</span>';
+    var key = vis.map(function (u) { return u.id; }).join(','), box = RT.q('.ck-ups');
+    if (key !== RT.upsKey) {   // rebuild only when the set changes — never yank a button out from under a click
+        RT.upsKey = key;
+        box.innerHTML = vis.length ? vis.map(function (u) {
+            return '<button class="ck-up k-' + u.kind + (S.bank >= u.cost ? '' : ' cant') + '" data-u="' + u.id + '"><span></span></button>';
+        }).join('') : '<span class="ck-noup">Bake more. Upgrades will come.</span>';
+    } else {
+        box.querySelectorAll('.ck-up').forEach(function (b) {
+            var def = UPBY[b.getAttribute('data-u')];
+            if (def) b.classList.toggle('cant', S.bank < def.cost);
+        });
+    }
 }
 function paintBuffs() {
     var now = Date.now();
@@ -453,7 +472,7 @@ function paintTab() {
             ['Heavenly chips', fmt(S.chips) + (S.chips ? ' (+' + S.chips + '% CpS)' : '')], ['Ascensions', S.resets]
         ];
         el.innerHTML = '<dl class="ck-stats">' + rows.map(function (r) { return '<dt>' + r[0] + '</dt><dd>' + r[1] + '</dd>'; }).join('') + '</dl>' +
-            '<button class="ck-wipe" data-ck="wipe" type="button">Wipe save</button>';
+            '<button class="ck-wipe' + (RT.wipeArmed ? ' armed' : '') + '" data-ck="wipe" type="button">' + (RT.wipeArmed ? 'Really wipe the whole save? No bin for this one' : 'Wipe save') + '</button>';
     } else if (RT.tab === 'ach') {
         el.innerHTML = '<div class="ck-achgrid">' + ACH.map(function (a) {
             var got = !!S.ach[a.id];
@@ -479,6 +498,7 @@ function scheduleGold(ms) {
 function spawnGold() {
     if (RT.gold) return;
     var left = RT.q('.ck-left'), r = left.getBoundingClientRect();
+    if (r.width < 110 || r.height < 220) return;   // minimized/tiny: skip — the schedule already queued the next one
     var g = document.createElement('button');
     g.className = 'ck-gold'; g.setAttribute('aria-label', 'Golden cookie!');
     var cv = document.createElement('canvas'); g.appendChild(cv); paintGold(cv);
@@ -489,14 +509,18 @@ function spawnGold() {
         e.stopPropagation();
         S.gold++;
         var roll = Math.random();
-        if (roll < 0.45) { RT.buffs.push({ k: 'frenzy', end: Date.now() + 77000 }); newsSet('Frenzy! Cookie production ×7 for 77 seconds!'); }
+        if (roll < 0.45) { addBuff('frenzy', 77000); newsSet('Frenzy! Cookie production ×7 for 77 seconds!'); }
         else if (roll < 0.9) { var lucky = Math.min(S.bank * 0.15, cps(true) * 900) + 13; S.bank += lucky; S.total += lucky; S.all += lucky; newsSet('Lucky! +' + fmt(lucky) + ' cookies!'); }
-        else { RT.buffs.push({ k: 'click', end: Date.now() + 13000 }); newsSet('Click frenzy! Clicking power ×777 for 13 seconds!'); }
+        else { addBuff('click', 13000); newsSet('Click frenzy! Clicking power ×777 for 13 seconds!'); }
         killGold(); checkAch(); paintCounts(); paintBuffs();
     });
     RT.timers.push(setTimeout(killGold, 13000));
 }
 function killGold() { if (RT.gold) { RT.gold.remove(); RT.gold = null; } }
+function addBuff(k, ms) {   // buffs refresh, never stack (one Frenzy is x7; two golden cookies is not x49)
+    var f = null; RT.buffs.forEach(function (bf) { if (bf.k === k) f = bf; });
+    if (f) f.end = Date.now() + ms; else RT.buffs.push({ k: k, end: Date.now() + ms });
+}
 function paintGold(cv) {
     cv.width = 20; cv.height = 20; var x = cv.getContext('2d');
     for (var yy = 0; yy < 20; yy++) for (var xx = 0; xx < 20; xx++) {
@@ -516,10 +540,15 @@ function checkAch() {
         sSave();
         var t = RT.q('.ck-achtoast');
         t.innerHTML = '<b>Achievement unlocked</b>' + got.slice(0, 3).map(function (a) { return '<span>' + esc(a.n) + '</span>'; }).join('');
-        t.hidden = false; t.classList.remove('on'); void t.offsetWidth; t.classList.add('on');
-        RT.timers.push(setTimeout(function () { t.classList.remove('on'); t.hidden = true; }, 3400));
+        showToastEl(t, 3400);
         if (RT.tab === 'ach' || RT.tab === 'stats') paintTab();
     }
+}
+function showToastEl(t, ms) {   // one hide-timer at a time: a fresh toast is never cut short by a stale timer
+    t.hidden = false; t.classList.remove('on'); void t.offsetWidth; t.classList.add('on');
+    clearTimeout(RT.toastT);
+    RT.toastT = setTimeout(function () { t.classList.remove('on'); t.hidden = true; }, ms);
+    RT.timers.push(RT.toastT);
 }
 
 /* ───────────────────────── news / tooltip / fx ───────────────────────── */
@@ -535,9 +564,9 @@ function wireTip(container, sel, html) {
         var t = e.target.closest(sel), tip = RT.q('.ck-tip');
         if (!t) { tip.hidden = true; return; }
         tip.innerHTML = html(t); tip.hidden = false;
-        var rr = RT.root.getBoundingClientRect();
+        var rr = RT.root.getBoundingClientRect(), th = tip.offsetHeight || 110;
         tip.style.left = clamp(e.clientX - rr.left - 240, 6, rr.width - 250) + 'px';
-        tip.style.top = clamp(e.clientY - rr.top + 14, 6, rr.height - 110) + 'px';
+        tip.style.top = clamp(e.clientY - rr.top + 14, 6, rr.height - th - 6) + 'px';
     });
     container.addEventListener('mouseleave', function () { RT.q('.ck-tip').hidden = true; });
 }
@@ -561,7 +590,7 @@ function rafLoop() {
     var cv = RT.rainCv, left = RT.q('.ck-left');
     if (!cv || !left) return;
     var w = left.clientWidth, h = left.clientHeight;
-    if (cv.width !== w) { cv.width = w; cv.height = h; }
+    if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
     var x = cv.getContext('2d'); x.clearRect(0, 0, w, h);
     x.fillStyle = 'rgba(190,140,70,.5)';
     RT.rainDrops.forEach(function (d) {
@@ -585,13 +614,15 @@ function rafLoop() {
 function close() {
     var hrs = RT ? (Date.now() - RT.started) / 3600000 : 0;
     if (RT) {
+        var inp = RT.root.querySelector('.ck-name-in');   // commit an in-flight bakery rename before teardown
+        if (inp && inp.value.trim()) S.name = inp.value.trim().slice(0, 28);
         RT.timers.forEach(function (t) { clearTimeout(t); clearInterval(t); });
         cancelAnimationFrame(RT.raf);
         killGold();
         RT = null;
     }
     sSave();
-    return Math.round(hrs * 10) / 10;
+    return hrs;   // raw — the caller accumulates, display rounds
 }
 function steamAch() {
     sLoad();
