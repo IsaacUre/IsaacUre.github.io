@@ -1907,3 +1907,60 @@ span.st-newsart .ic { width: 40px; height: 40px; }
     .ck-left { flex-basis: 240px; }
     .ck-store { flex-basis: 210px; }
 }
+
+/* ══════════════════════ Terraria ══════════════════════ */
+.tr { position: relative; background: #0c0e18; min-width: 0; overflow: hidden; outline: 0; cursor: crosshair; }
+.tr-cv { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
+
+/* HUD */
+.tr-hud { position: absolute; inset: 0; pointer-events: none; }
+.tr-hotbar { position: absolute; top: 8px; left: 8px; display: flex; gap: 3px; pointer-events: auto; }
+.tr-slot { position: relative; width: 34px; height: 34px; background: rgba(20, 24, 40, .78); border: 2px solid rgba(120, 130, 160, .5); display: grid; place-items: center; cursor: pointer; }
+.tr-slot.sel { border-color: #e8c23a; background: rgba(50, 44, 20, .82); }
+.tr-slot .tri { width: 14px; height: 14px; display: block; box-shadow: inset -3px -3px 0 rgba(0,0,0,.35), inset 2px 2px 0 rgba(255,255,255,.25); }
+.tr-slot .tri-pick { clip-path: polygon(0 0, 100% 0, 100% 45%, 55% 45%, 55% 100%, 30% 100%, 30% 45%, 0 45%); }
+.tr-slot .tri-axe { clip-path: polygon(0 0, 70% 0, 70% 55%, 45% 55%, 45% 100%, 20% 100%, 20% 55%, 0 55%); }
+.tr-slot .tri-sword { clip-path: polygon(40% 0, 60% 0, 60% 70%, 100% 70%, 100% 90%, 60% 90%, 60% 100%, 40% 100%, 40% 90%, 0 90%, 0 70%, 40% 70%); }
+.tr-slot i { position: absolute; right: 2px; bottom: 1px; font-style: normal; font-size: .62rem; color: #fff; text-shadow: 0 1px 0 #000; }
+.tr-slot u { position: absolute; left: 2px; top: 0; font-size: .56rem; text-decoration: none; color: rgba(255,255,255,.45); }
+.tr-hearts { position: absolute; top: 8px; right: 10px; display: flex; align-items: center; gap: 3px; flex-wrap: wrap; max-width: 260px; justify-content: flex-end; }
+.tr-heart { width: 14px; height: 13px; background: #e04a6a; clip-path: polygon(50% 100%, 0 45%, 0 15%, 25% 0, 50% 22%, 75% 0, 100% 15%, 100% 45%); box-shadow: inset -2px -2px 0 rgba(0,0,0,.3); }
+.tr-heart.half { opacity: .55; }
+.tr-heart.empty { opacity: .18; }
+.tr-hearts b { font-size: .68rem; color: #ffd8de; text-shadow: 0 1px 0 #000; margin-left: 4px; }
+.tr-coins { position: absolute; top: 48px; right: 12px; font-size: .7rem; color: #ffe9a0; text-shadow: 0 1px 0 #000; }
+.tr-depth { position: absolute; bottom: 26px; right: 12px; font-size: .68rem; color: rgba(255,255,255,.65); text-shadow: 0 1px 0 #000; }
+.tr-hint { position: absolute; bottom: 4px; left: 0; right: 0; text-align: center; font-size: .64rem; color: rgba(255,255,255,.4); text-shadow: 0 1px 0 #000; pointer-events: none; }
+
+/* inventory + crafting panel */
+.tr-panel { position: absolute; top: 52px; left: 8px; display: flex; gap: 10px; padding: 10px; background: rgba(14, 18, 34, .92); border: 2px solid rgba(120, 130, 160, .5); max-height: calc(100% - 90px); }
+.tr-inv h4, .tr-craft h4 { font-family: var(--f-pixel); font-size: .5rem; color: #b9c4e0; margin-bottom: 7px; letter-spacing: 1px; }
+.tr-grid { display: grid; grid-template-columns: repeat(10, 34px); gap: 3px; }
+.tr-invhint { margin-top: 6px; font-size: .62rem; color: rgba(255,255,255,.4); max-width: 340px; }
+.tr-craft { border-left: 1px solid rgba(120,130,160,.3); padding-left: 10px; min-width: 190px; }
+.tr-recipes { display: flex; flex-direction: column; gap: 3px; overflow-y: auto; max-height: 300px; }
+.tr-rec { display: flex; align-items: center; gap: 8px; padding: 4px 7px; background: rgba(40, 48, 76, .6); border: 1px solid rgba(120,130,160,.35); color: #dde4f4; font-size: .7rem; cursor: pointer; text-align: left; }
+.tr-rec .tri { width: 12px; height: 12px; flex: 0 0 auto; box-shadow: inset -2px -2px 0 rgba(0,0,0,.35); }
+.tr-rec:hover { background: rgba(70, 82, 120, .7); }
+.tr-rec.cant { opacity: .38; }
+
+/* boss bar / toast / death */
+.tr-bosshp { position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%); width: min(380px, 70%); text-align: center; pointer-events: none; }
+.tr-bosshp b { font-size: .7rem; color: #ffb9c4; text-shadow: 0 1px 0 #000; }
+.tr-bossbar { height: 10px; margin-top: 3px; background: rgba(0,0,0,.55); border: 1px solid #8a2222; }
+.tr-bossbar i { display: block; height: 100%; background: linear-gradient(180deg, #e04a4a, #8a1a1a); }
+.tr-toast { position: absolute; top: 54px; left: 50%; transform: translateX(-50%); padding: 7px 14px; background: rgba(14, 18, 34, .9); border: 2px solid rgba(232, 194, 58, .7); pointer-events: none; opacity: 0; transition: opacity .25s; text-align: center; }
+.tr-toast.on { opacity: 1; }
+.tr-toast b { display: block; font-family: var(--f-pixel); font-size: .5rem; color: #e8c23a; margin-bottom: 3px; }
+.tr-toast span { font-size: .74rem; color: #f2ecd8; }
+.tr-death { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; background: rgba(40, 4, 8, .55); pointer-events: none; }
+.tr-death b { font-family: var(--f-pixel); font-size: .8rem; color: #ff9aa8; text-shadow: 0 2px 0 #000; }
+.tr-death span { font-size: .74rem; color: #e8c9ce; }
+
+/* tooltip */
+.tr-tip { position: absolute; z-index: 5; max-width: 210px; padding: 6px 9px; background: rgba(10, 13, 26, .95); border: 1px solid rgba(232, 194, 58, .6); font-size: .68rem; color: #f2ecd8; pointer-events: none; }
+
+@media (max-width: 760px) {
+    .tr-grid { grid-template-columns: repeat(6, 34px); }
+    .tr-panel { flex-direction: column; }
+}

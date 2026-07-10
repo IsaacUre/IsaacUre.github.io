@@ -2353,7 +2353,7 @@ var STG = [
     d: "The one that started it all, ported to UreOS as a real desktop app. The numbers are the real numbers: 1.15× price curves, ×7 Frenzies, kittens that scale with milk, and an ascension formula you will do actual math about. Your grandmas keep the ovens on while the window is open.",
     price: 0, disc: 0, free: true, owned: false, inst: false, hrs: 0, hrs2w: 0,
     rev: ['Overwhelmingly Positive', 97, 214883], art: ['#3a2210', '#d9973a', 'CC'], sc: 'cookie', trend: true, spec: true,
-    app: 'cookie', live: true,
+    app: 'cookie', live: 'COOKIE',
     ach: [0, 40], achx: [],
     news: [['v1.0 — the UreOS port', "Cookie Clicker now runs in a real window on the pixel desktop. Achievements sync to this very Steam client. The grandmas came with the port; we did not ask them to.", 'Jul 9']] },
 
@@ -2557,10 +2557,12 @@ var STG = [
   { id: 'terraria', t: 'Terraria', dev: 'Re-Logic', pub: 'Re-Logic', yr: 2011,
     tags: ['Sandbox', 'Survival', 'Pixel Graphics', 'Crafting', 'Multiplayer'],
     s: "Dig, fight, explore, build! Nothing is impossible in this action-packed adventure.",
-    d: "2D Minecraft's cooler older sibling. The Wall of Flesh remains a group project.",
+    d: "2D Minecraft's cooler older sibling, ported to run IN a window on this desktop: a real generated world with caves, four ore tiers, flood-fill torchlight, a day/night cycle, slimes, zombies, demon eyes, proximity crafting, and the Eye of Cthulhu if you craft something you shouldn't. Isaac's 94 hours came with the shelf copy; yours count from here.",
     price: 999, disc: 50, owned: true, inst: false, hrs: 94.6, hrs2w: 0,
     rev: ['Overwhelmingly Positive', 98, 1121300], art: ['#12241a', '#5db04a', 'TER'], sc: 'cave',
-    ach: [42, 115] },
+    app: 'terraria', live: 'TERRA',
+    ach: [0, 16],
+    news: [['v1.0 — the UreOS port', "Terraria now generates a real 360x180 world inside a desktop window. The guide did not survive the port. He is fine. He is somewhere.", 'Jul 10']] },
 
   { id: 'ets2', t: 'Euro Truck Simulator 2', dev: 'SCS Software', pub: 'SCS Software', yr: 2012,
     tags: ['Driving', 'Simulation', 'Relaxing', 'Open World', 'Automobile Sim'],
@@ -3448,8 +3450,9 @@ function stFriends() {
 
 /* ═══════════════ ACHIEVEMENTS PAGE ═══════════════ */
 function stLive(g) {   // games that run on this desktop report their real achievements
-    if (g.live && window.COOKIE) {
-        var la = window.COOKIE.steamAch();
+    var api = g.live && window[g.live];
+    if (api && api.steamAch) {
+        var la = api.steamAch();
         g.ach = [la.n, la.total]; g.achx = la.list;
     }
 }
@@ -3938,6 +3941,10 @@ var APPS = {
         render: function () { return window.COOKIE ? window.COOKIE.render() : '<p style="padding:24px">The oven never preheated (cookie.js missing).</p>'; },
         init: function (el) { if (window.COOKIE) window.COOKIE.init(el); },
         onClose: function () { if (window.COOKIE) bankPlaytime('cookie', window.COOKIE.close() || 0); } },
+    terraria: { title: 'Terraria', icon: 'ic-terraria', w: 1040, h: 640,
+        render: function () { return window.TERRA ? window.TERRA.render() : '<p style="padding:24px">World generation failed to start (terraria.js missing).</p>'; },
+        init: function (el) { if (window.TERRA) window.TERRA.init(el); },
+        onClose: function () { if (window.TERRA) bankPlaytime('terraria', window.TERRA.close() || 0); } },
     ureboy:   { launch: '/ureboy/' },
     room:     { launch: '/1p/' },
     gti:      { launch: '/ureboy/' }
@@ -4404,6 +4411,7 @@ if (location.search.indexOf('dev=bin') >= 0) {
     openApp('bin');
 }
 if (location.search.indexOf('dev=cookie') >= 0) openApp('cookie');   // + &ckdev seeds a mature bakery
+if (location.search.indexOf('dev=terra') >= 0) openApp('terraria');   // + &tdev=night|cave|boss|kit
 if (location.search.indexOf('dev=dnd') >= 0) {   // a file moved Downloads→Desktop + a repositioned icon, in Explorer's Desktop view
     var __d = fsAddFile('Downloads', chromeSetupItem());
     fsMove('Downloads', __d, 'Desktop', [2, 1]);
