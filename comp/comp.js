@@ -171,11 +171,14 @@ function createWindow(id, a, arg) {
     var left = clamp(Math.round((window.innerWidth - w) / 2) + (n % 5) * 26 - 52, 8, window.innerWidth - w - 8);
     var top = clamp(Math.round((window.innerHeight - BAR - h) / 2) + (n % 5) * 22 - 40, 8, window.innerHeight - BAR - h - 8);
     var el = document.createElement('section');
-    el.className = 'win px-lg lift'; el.setAttribute('data-app', id); el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', a.title);
+    el.className = 'win px-lg lift' + (a.titlebar ? ' win-tabbar' : ''); el.setAttribute('data-app', id); el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', a.title);
     el.style.cssText = 'left:' + left + 'px;top:' + top + 'px;width:' + w + 'px;height:' + h + 'px';
+    // apps may hand back their own title-bar lead (Chrome puts its tab strip here, so tabs share the caps row)
+    var barLead = a.titlebar ? a.titlebar(id, arg)
+        : '<div class="win-id">' + ic(a.icon, 'win-favicon') + '<span class="win-title">' + esc(a.title) + '</span></div>';
     el.innerHTML =
         '<header class="win-bar">' +
-          '<div class="win-id">' + ic(a.icon, 'win-favicon') + '<span class="win-title">' + esc(a.title) + '</span></div>' +
+          barLead +
           '<div class="win-caps">' +
             '<button class="cap" data-cap="min" type="button" aria-label="Minimize"><svg viewBox="0 0 10 10" shape-rendering="crispEdges"><rect x="1" y="5" width="8" height="1" fill="currentColor"/></svg></button>' +
             '<button class="cap" data-cap="max" type="button" aria-label="Maximize"><svg viewBox="0 0 10 10" shape-rendering="crispEdges"><rect x="1" y="1" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1"/></svg></button>' +
@@ -199,9 +202,10 @@ function wireWindow(id, el) {
         else if (cap === 'min') minWin(id);
         else el.classList.toggle('maxi');
     });
-    bar.addEventListener('dblclick', function (e) { if (!e.target.closest('.cap')) el.classList.toggle('maxi'); });
+    bar.addEventListener('dblclick', function (e) { if (!e.target.closest('.cap, .cr-tab, .cr-plusbtn')) el.classList.toggle('maxi'); });
     bar.addEventListener('pointerdown', function (e) {
-        if (e.target.closest('.cap') || el.classList.contains('maxi')) return;
+        // tabs and the new-tab button live in Chrome's title bar; they must click, not drag the window
+        if (e.target.closest('.cap, .cr-tab, .cr-plusbtn') || el.classList.contains('maxi')) return;
         var r = el.getBoundingClientRect(), ox = e.clientX - r.left, oy = e.clientY - r.top;
         bar.setPointerCapture(e.pointerId);
         function mv(ev) {
@@ -1773,9 +1777,17 @@ function crCloseTab(i) {
 }
 
 /* ═════════════ shell rendering ═════════════ */
+// Chrome's tab strip IS the window title bar — createWindow drops this in beside the min/max/close caps.
+// The trailing spacer is the draggable "empty strip" region, exactly like the real browser.
+function crTitlebar() {
+    return '<div class="cr-tabstrip">' +
+        '<div class="cr-tabs" id="crTabs"></div>' +
+        '<button class="cr-plusbtn" id="crPlus" aria-label="New tab">+</button>' +
+        '<div class="cr-tabspace"></div>' +
+    '</div>';
+}
 function renderChrome() {
     return '<div class="cr" id="crRoot">' +
-        '<div class="cr-tabstrip"><div class="cr-tabs" id="crTabs"></div><button class="cr-plusbtn" id="crPlus" aria-label="New tab">+</button></div>' +
         '<div class="cr-tool">' +
           '<button class="cr-nav" id="crBack" aria-label="Back">‹</button>' +
           '<button class="cr-nav" id="crFwd" aria-label="Forward">›</button>' +
@@ -1816,7 +1828,7 @@ function crChrome() {
     if (set.bmbar) bar.innerHTML = crBM().map(function (b) {
         return crLink(b[1], crFav((WEB[crResolveKey(b[1])] || {}).fav) + '<span>' + esc(b[0]) + '</span>', 'cr-bmchip');
     }).join('');
-    CR.root.classList.toggle('incog', !!CR.incog);
+    CR.el.classList.toggle('cr-incog', !!CR.incog);   // on the window: reaches the title-bar strip and the toolbar alike
 }
 function crPage() {
     crDinoStop();                                          // leaving a dino tab always parks the game
@@ -1942,7 +1954,7 @@ function crDinoBoot(view) {
 /* ═════════════ init / teardown ═════════════ */
 function initChrome(el) {
     CR = { el: el, root: el.querySelector('#crRoot'), tabs: [{ url: 'chrome://newtab', hist: ['chrome://newtab'], hi: 0, scroll: 0 }], active: 0, zoom: 1, incog: false, sugSel: 0, dinoRaf: 0, closed: [] };
-    var root = CR.root, url = el.querySelector('#crUrl'), suggest = el.querySelector('#crSuggest'), menu = el.querySelector('#crMenu');
+    var url = el.querySelector('#crUrl'), suggest = el.querySelector('#crSuggest'), menu = el.querySelector('#crMenu');
 
     /* controller for the Alt keybind layer (Alt+T/W/Shift+T/digits/L/R/arrows) */
     el._br = {
@@ -1962,8 +1974,9 @@ function initChrome(el) {
         focusOmni: function () { url.focus(); url.select(); }
     };
 
-    /* one delegated click handler for the whole browser */
-    root.addEventListener('click', function (e) {
+    /* one delegated click handler for the whole browser — bound to the window, since the
+       tab strip now lives up in the title bar (outside #crRoot) yet still fires tab clicks */
+    el.addEventListener('click', function (e) {
         if (!e.target.closest('#crMenu') && !e.target.closest('#crMore')) menu.hidden = true;
         if (!e.target.closest('#crOmni')) { suggest.hidden = true; }
         var l = e.target.closest('.cr-l');
@@ -3976,7 +3989,7 @@ var APPS = {
     calc:     { title: 'Calculator', icon: 'ic-calc', w: 300, h: 440, render: renderCalc, init: initCalc },
     edge:     { title: 'Microsoft Edge', icon: 'ic-edge', w: 760, h: 520, render: renderEdge, init: initEdge, onClose: function () { if (APPS.edge._gag) APPS.edge._gag.cancel(); }, onMinimize: function () { if (APPS.edge._gag) APPS.edge._gag.cancel(); },
               onRestore: function (el) { var g = APPS.edge._gag; if (g && g.dead && !g.done) { el.querySelector('.win-content').innerHTML = renderEdge(); initEdge(el); } } },
-    chrome:   { title: 'Google Chrome', icon: 'ic-chrome', w: 980, h: 640, render: renderChrome, init: initChrome, onClose: closeChrome },
+    chrome:   { title: 'Google Chrome', icon: 'ic-chrome', w: 980, h: 640, titlebar: crTitlebar, render: renderChrome, init: initChrome, onClose: closeChrome },
     setup:    { title: 'Google Chrome Setup', icon: 'ic-chrome', w: 584, h: 468, render: renderSetup, init: initSetup, onClose: stopSetup },
     bin:      { title: 'Recycle Bin', icon: 'ic-bin', w: 600, h: 400, render: renderBin, init: initBin },
     steam:    { title: 'Steam', icon: 'ic-steam', w: 1100, h: 700, render: renderSteam, init: initSteam, onClose: closeSteam, focusArg: steamFocus },

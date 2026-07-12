@@ -1517,8 +1517,10 @@ span.st-newsart .ic { width: 40px; height: 40px; }
 .cr { display: flex; flex-direction: column; background: #fff; color: #202124; font-family: var(--f-ui); position: relative; overflow: hidden; }
 .cr button { color: inherit; font-family: inherit; }
 
-/* tab strip */
-.cr-tabstrip { flex: 0 0 auto; display: flex; align-items: flex-end; gap: 1px; height: 34px; padding: 4px 8px 0; background: #dee1e6; }
+/* tab strip — lives in the window title bar (see .win-tabbar), so it stretches full-height and
+   ends in a draggable spacer that leaves room before the min/max/close caps */
+.cr-tabstrip { flex: 1 1 auto; display: flex; align-items: flex-end; gap: 1px; height: 100%; min-width: 0; padding: 6px 4px 0 6px; background: #dee1e6; }
+.cr-tabspace { flex: 1 1 auto; align-self: stretch; min-width: 28px; }
 .cr-tabs { display: flex; align-items: flex-end; gap: 1px; min-width: 0; flex: 0 1 auto; overflow: hidden; }
 .cr-tab { display: flex; align-items: center; gap: 7px; height: 30px; padding: 0 8px 0 10px; min-width: 0; flex: 0 1 190px;
     font-size: .76rem; color: #3c4043; cursor: pointer; position: relative;
@@ -1529,8 +1531,15 @@ span.st-newsart .ic { width: 40px; height: 40px; }
 .cr-tabx { flex: 0 0 auto; width: 16px; height: 16px; display: grid; place-items: center; border-radius: 2px; color: #5f6368; font-size: .8rem; line-height: 1; }
 .cr-tabx:hover { background: #d2d5da; color: #202124; }
 .cr-tab.on .cr-tabx:hover { background: #e8eaed; }
-.cr-plusbtn { flex: 0 0 auto; width: 26px; height: 26px; margin: 0 0 2px 4px; display: grid; place-items: center; border-radius: 3px; color: #5f6368; font-size: 1rem; }
+.cr-plusbtn { flex: 0 0 auto; width: 26px; height: 26px; margin: 0 0 2px 4px; display: grid; place-items: center; border-radius: 3px; color: #5f6368; font-size: 1rem; cursor: pointer; }
 .cr-plusbtn:hover { background: #cdd1d6; }
+
+/* Chrome puts its tabs IN the title bar — kill the generic dark OS bar and let the strip fill it,
+   so the caps (min/max/close) ride the same row as the tabs, exactly like the real browser */
+.win-tabbar .win-bar { height: 40px; padding: 0; background: #dee1e6; border-bottom: 0; }
+.win-tabbar .cap { color: #5f6368; }
+.win-tabbar .cap:hover { background: rgba(0,0,0,.08); color: #202124; }
+.win-tabbar .cap.close:hover { background: var(--close-red); color: #fff; }
 
 /* favicon chips */
 .cr-fav { width: 14px; height: 14px; flex: 0 0 auto; }
@@ -1575,7 +1584,7 @@ span.st-newsart .ic { width: 40px; height: 40px; }
 .cr-chip:hover { background: #f6fafe; }
 
 /* suggestions dropdown */
-.cr-suggest { position: absolute; z-index: 30; top: 70px; left: 116px; right: 130px; padding: 6px 0 8px;
+.cr-suggest { position: absolute; z-index: 30; top: 36px; left: 116px; right: 130px; padding: 6px 0 8px;
     background: #fff; border-radius: 0 0 12px 12px; box-shadow: 0 4px 12px rgba(60,64,67,.28); border: 1px solid #dadce0; border-top: 0; }
 .cr-sg { display: flex; align-items: center; gap: 10px; padding: 6px 16px; font-size: .78rem; color: #202124; cursor: pointer; }
 .cr-sg.sel, .cr-sg:hover { background: #f1f3f4; }
@@ -1584,7 +1593,7 @@ span.st-newsart .ic { width: 40px; height: 40px; }
 .cr-sgn { color: #80868b; font-size: .72rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* three-dot menu */
-.cr-menu { position: absolute; z-index: 32; top: 74px; right: 10px; width: 230px; padding: 6px 0; max-height: calc(100% - 84px); overflow-y: auto;
+.cr-menu { position: absolute; z-index: 32; top: 40px; right: 10px; width: 230px; padding: 6px 0; max-height: calc(100% - 50px); overflow-y: auto;
     background: #fff; border-radius: 8px; box-shadow: 0 6px 18px rgba(60,64,67,.32); border: 1px solid #dadce0; }
 .cr-mi { display: block; width: 100%; padding: 7px 16px; text-align: left; font-size: .78rem; color: #202124; }
 .cr-mi:hover { background: #f1f3f4; }
@@ -1596,24 +1605,29 @@ span.st-newsart .ic { width: 40px; height: 40px; }
 .cr-mzctl b { font-size: .74rem; min-width: 38px; text-align: center; }
 
 /* star bubble */
-.cr-bubble { position: absolute; z-index: 33; top: 74px; right: 90px; padding: 8px 14px; background: #fff; border: 1px solid #dadce0;
+.cr-bubble { position: absolute; z-index: 33; top: 40px; right: 90px; padding: 8px 14px; background: #fff; border: 1px solid #dadce0;
     border-radius: 8px; box-shadow: 0 4px 12px rgba(60,64,67,.28); font-size: .78rem; color: #202124; }
 
-/* incognito skin */
-.cr.incog .cr-tabstrip { background: #202124; }
-.cr.incog .cr-tab { color: #bdc1c6; }
-.cr.incog .cr-tab:hover { background: #35363a; }
-.cr.incog .cr-tab.on { background: #35363a; color: #e8eaed; }
-.cr.incog .cr-tool { background: #35363a; border-bottom-color: #202124; }
-.cr.incog .cr-nav, .cr.incog .cr-star { color: #bdc1c6; }
-.cr.incog .cr-nav:hover { background: #4a4b4f; color: #e8eaed; }
-.cr.incog .cr-omni { background: #202124; }
-.cr.incog .cr-url { color: #e8eaed; }
-.cr.incog .cr-bmbar { background: #35363a; border-bottom-color: #202124; }
-.cr.incog .cr-bmchip { color: #bdc1c6; }
-.cr.incog .cr-bmchip:hover { background: #4a4b4f; }
-.cr.incog .cr-tabx, .cr.incog .cr-plusbtn { color: #9aa0a6; }
-.cr.incog .cr-tabx:hover, .cr.incog .cr-tab.on .cr-tabx:hover, .cr.incog .cr-plusbtn:hover { background: #4a4b4f; color: #e8eaed; }
+/* incognito skin — the class rides the window now (.cr-incog), so it reaches both the
+   title-bar strip and the toolbar/body inside .cr */
+.cr-incog .win-bar { background: #202124; }
+.cr-incog .cap { color: #bdc1c6; }
+.cr-incog .cap:hover { background: rgba(255,255,255,.12); color: #e8eaed; }
+.cr-incog .cap.close:hover { background: var(--close-red); color: #fff; }
+.cr-incog .cr-tabstrip { background: #202124; }
+.cr-incog .cr-tab { color: #bdc1c6; }
+.cr-incog .cr-tab:hover { background: #35363a; }
+.cr-incog .cr-tab.on { background: #35363a; color: #e8eaed; }
+.cr-incog .cr-tool { background: #35363a; border-bottom-color: #202124; }
+.cr-incog .cr-nav, .cr-incog .cr-star { color: #bdc1c6; }
+.cr-incog .cr-nav:hover { background: #4a4b4f; color: #e8eaed; }
+.cr-incog .cr-omni { background: #202124; }
+.cr-incog .cr-url { color: #e8eaed; }
+.cr-incog .cr-bmbar { background: #35363a; border-bottom-color: #202124; }
+.cr-incog .cr-bmchip { color: #bdc1c6; }
+.cr-incog .cr-bmchip:hover { background: #4a4b4f; }
+.cr-incog .cr-tabx, .cr-incog .cr-plusbtn { color: #9aa0a6; }
+.cr-incog .cr-tabx:hover, .cr-incog .cr-tab.on .cr-tabx:hover, .cr-incog .cr-plusbtn:hover { background: #4a4b4f; color: #e8eaed; }
 
 /* NTP */
 .cr-ntp { min-height: 100%; display: flex; flex-direction: column; align-items: center; padding: 56px 24px 24px; }
