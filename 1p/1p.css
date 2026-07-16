@@ -176,6 +176,13 @@ a, button { -webkit-tap-highlight-color: transparent; }
     .coarse-only { display: inline; }
 }
 
+.room-exits {
+    display: flex;
+    gap: .5rem;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
 .room-exit {
     font-family: var(--font-ui);
     font-size: .78rem;
