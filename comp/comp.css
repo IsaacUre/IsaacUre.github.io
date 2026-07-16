@@ -556,7 +556,24 @@ body.dnd, body.dnd * { cursor: grabbing !important; }
 .calc-key.wide { grid-column: span 2; }
 
 /* —— Browser shell (Edge; Chrome has its own .cr skin) —— */
-.br { display: flex; flex-direction: column; background: #1e1f28; min-width: 0; }
+.br { display: flex; flex-direction: column; background: #1e1f28; min-width: 0; position: relative; }   /* anchors .bctx */
+
+/* ── right-click menus, both browsers — Chrome-light by default, .dark for Edge + Incognito ── */
+.bctx { position: absolute; z-index: 34; min-width: 208px; padding: 5px 0; background: #fff; border: 1px solid #dadce0;
+    border-radius: 8px; box-shadow: 0 6px 18px rgba(60,64,67,.32); outline: 0; font-family: var(--f-ui); }
+.bctx-i { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 18px; padding: 6px 16px;
+    text-align: left; font-size: .78rem; color: #202124; }
+.bctx-i:hover:not([disabled]), .bctx-i:focus-visible { background: #f1f3f4; outline: 0; }
+.bctx-i[disabled] { color: #b8bcc1; }
+.bctx-hint { color: #80868b; font-size: .72rem; }
+.bctx-i[disabled] .bctx-hint { color: inherit; }
+.bctx-sep { height: 1px; background: #e8eaed; margin: 5px 0; }
+.bctx.dark { background: #2d2e36; border-color: var(--line-2); box-shadow: 0 6px 18px rgba(0,0,0,.5); }
+.bctx.dark .bctx-i { color: var(--ink); }
+.bctx.dark .bctx-i:hover:not([disabled]), .bctx.dark .bctx-i:focus-visible { background: rgba(255,255,255,.08); }
+.bctx.dark .bctx-i[disabled] { color: var(--ink-faint); }
+.bctx.dark .bctx-hint { color: var(--ink-faint); }
+.bctx.dark .bctx-sep { background: var(--line); }
 /* tab strip — lives in the window title bar (see .win-tabbar), stretching full-height and
    ending in a draggable spacer that leaves room before the min/max/close caps */
 .br-tabs { flex: 1 1 auto; display: flex; align-items: flex-end; gap: 3px; height: 100%; min-width: 0; padding: 5px 4px 0 8px; background: #15161c; }
@@ -1580,7 +1597,8 @@ span.st-newsart .ic { width: 40px; height: 40px; }
 .cr-bmchip:hover { background: #f1f3f4; }
 
 /* page view */
-.cr-view { flex: 1 1 auto; min-height: 0; overflow-y: auto; background: #fff; outline: 0; }
+.cr-view { flex: 1 1 auto; min-height: 0; overflow-y: auto; background: #fff; outline: 0;
+    user-select: text; -webkit-user-select: text; }   /* pages are real enough to select — and to right-click → Search */
 .cr-view ::selection { background: #a8c7fa; }
 .cr-view::-webkit-scrollbar-thumb { background: rgba(0,0,0,.28); border: 2px solid transparent; background-clip: padding-box; border-radius: 6px; }
 .cr-view::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,.45); background-clip: padding-box; }
@@ -1617,6 +1635,16 @@ span.st-newsart .ic { width: 40px; height: 40px; }
 /* star bubble */
 .cr-bubble { position: absolute; z-index: 33; top: 40px; right: 90px; padding: 8px 14px; background: #fff; border: 1px solid #dadce0;
     border-radius: 8px; box-shadow: 0 4px 12px rgba(60,64,67,.28); font-size: .78rem; color: #202124; }
+
+/* view-source: — numbered lines, real Chrome's tag/attr/string tints */
+.cr-src { padding: 10px 14px 10px 0; background: #fff; color: #202124;
+    font-family: Consolas, 'Courier New', monospace; font-size: .72rem; line-height: 1.55; }
+.cr-src ol { margin: 0; padding-left: 52px; }
+.cr-src li { white-space: pre-wrap; word-break: break-all; }
+.cr-src li::marker { color: #9aa0a6; }
+.cr-src .st { color: #881280; font-style: normal; }
+.cr-src .sa { color: #994500; font-style: normal; }
+.cr-src .ss { color: #1a1aa6; font-style: normal; }
 
 /* incognito skin — the class rides the window now (.cr-incog), so it reaches both the
    title-bar strip and the toolbar/body inside .cr */
