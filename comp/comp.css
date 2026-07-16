@@ -555,18 +555,28 @@ body.dnd, body.dnd * { cursor: grabbing !important; }
 .calc-key.eq { background: var(--accent); color: #fff; border-color: var(--accent); }
 .calc-key.wide { grid-column: span 2; }
 
-/* —— Browser shell (Edge + Chrome) —— */
+/* —— Browser shell (Edge; Chrome has its own .cr skin) —— */
 .br { display: flex; flex-direction: column; background: #1e1f28; min-width: 0; }
-.br-tabs { display: flex; align-items: flex-end; gap: 3px; height: 34px; padding: 5px 8px 0; background: #15161c; flex: 0 0 auto; }
-.br-tab { display: flex; align-items: center; gap: 7px; height: 29px; max-width: 220px; padding: 0 8px 0 11px; border-radius: 7px 7px 0 0; background: transparent; font-size: .78rem; color: var(--ink-dim); cursor: pointer; }
+/* tab strip — lives in the window title bar (see .win-tabbar), stretching full-height and
+   ending in a draggable spacer that leaves room before the min/max/close caps */
+.br-tabs { flex: 1 1 auto; display: flex; align-items: flex-end; gap: 3px; height: 100%; min-width: 0; padding: 5px 4px 0 8px; background: #15161c; }
+.br-tabspace { flex: 1 1 auto; align-self: stretch; min-width: 28px; }
+/* the shared .win-tabbar rules paint the bar Chrome-light; Edge's shell is dark, so win on specificity */
+.win-tabbar[data-app="edge"] .win-bar { background: #15161c; }
+.win-tabbar[data-app="edge"] .cap { color: var(--ink-dim); }
+.win-tabbar[data-app="edge"] .cap:hover { background: rgba(255,255,255,.10); color: var(--ink); }
+.win-tabbar[data-app="edge"] .cap.close:hover { background: var(--close-red); color: #fff; }
+/* the tab and + are set-dressing (Edge exists to install Chrome) — they drag the window like the
+   rest of the bar, so no pointer cursor pretending they click */
+.br-tab { display: flex; align-items: center; gap: 7px; height: 29px; flex: 0 1 220px; min-width: 0; padding: 0 8px 0 11px; border-radius: 7px 7px 0 0; background: transparent; font-size: .78rem; color: var(--ink-dim); }
 .br-tab:hover { background: rgba(255,255,255,.05); }
 .br-tab.active { background: #1e1f28; color: var(--ink); }
 .br-tabx:hover { color: #fff; }
 .br-fav.spin { animation: sdspin .5s linear 1; }
-.br-fav { width: 15px; height: 15px; }
+.br-fav { width: 15px; height: 15px; flex: 0 0 auto; }
 .br-tab span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.br-tabx { font-style: normal; color: var(--ink-faint); font-size: 1rem; margin-left: 2px; }
-.br-newtab { width: 26px; height: 26px; border-radius: 5px; color: var(--ink-dim); font-size: 1.15rem; line-height: 1; }
+.br-tabx { font-style: normal; color: var(--ink-faint); font-size: 1rem; margin-left: 2px; flex: 0 0 auto; }
+.br-newtab { width: 26px; height: 26px; border-radius: 5px; color: var(--ink-dim); font-size: 1.15rem; line-height: 1; cursor: inherit; }
 .br-newtab:hover { background: rgba(255,255,255,.08); color: var(--ink); }
 .br-tool { display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 10px; background: #1e1f28; border-bottom: 1px solid var(--line); flex: 0 0 auto; }
 .br-actions { display: flex; gap: 1px; flex: 0 0 auto; }

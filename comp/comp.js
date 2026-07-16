@@ -204,7 +204,8 @@ function wireWindow(id, el) {
     });
     bar.addEventListener('dblclick', function (e) { if (!e.target.closest('.cap, .cr-tab, .cr-plusbtn')) el.classList.toggle('maxi'); });
     bar.addEventListener('pointerdown', function (e) {
-        // tabs and the new-tab button live in Chrome's title bar; they must click, not drag the window
+        // Chrome's tabs and new-tab button live in its title bar; they must click, not drag the window
+        // (Edge's .br-tab strip is set-dressing, so it stays draggable like the rest of the bar)
         if (e.target.closest('.cap, .cr-tab, .cr-plusbtn') || el.classList.contains('maxi')) return;
         var r = el.getBoundingClientRect(), ox = e.clientX - r.left, oy = e.clientY - r.top;
         bar.setPointerCapture(e.pointerId);
@@ -1149,13 +1150,9 @@ function toast(msg) {
 function dlStamp() { var n = new Date(); return (n.getMonth() + 1) + '/' + n.getDate() + '/' + n.getFullYear() + ' ' + fmtTime(n); }
 function chromeSetupItem() { return { n: uniqueName('Downloads', 'ChromeSetup.exe'), t: 'chrome', app: 'setup', size: '11.2 MB', date: dlStamp() }; }
 
-// shared window-chrome for both browsers, branded by class
-function browserShell(brand, tabTitle, tabIcon, placeholder, bodyHtml) {
+// browser window-chrome below the title bar (the tab strip lives up there — see edgeTitlebar)
+function browserShell(brand, placeholder, bodyHtml) {
     return '<div class="br ' + brand + '" data-brand="' + brand + '">' +
-        '<div class="br-tabs">' +
-          '<div class="br-tab active">' + ic(tabIcon, 'br-fav') + '<span>' + esc(tabTitle) + '</span><i class="br-tabx" aria-hidden="true">×</i></div>' +
-          '<button class="br-newtab" tabindex="-1" aria-label="New tab">+</button>' +
-        '</div>' +
         '<div class="br-tool">' +
           '<span class="br-actions"><button class="br-act" tabindex="-1" aria-label="Back">‹</button><button class="br-act" tabindex="-1" aria-label="Forward">›</button><button class="br-act" tabindex="-1" aria-label="Reload">↻</button></span>' +
           '<label class="br-omni">' + ic('ic-search', 'br-omni-ic') +
@@ -1183,8 +1180,17 @@ function edgeWelcome() {
         '</div>' +
         '<p class="ewc-fine"><sup>*</sup>Results not guaranteed.</p></div>';
 }
+// Edge's tab strip IS the window title bar, same as Chrome's (see crTitlebar) — one decorative
+// tab beside the caps, with a draggable spacer filling the rest of the row
+function edgeTitlebar() {
+    return '<div class="br-tabs">' +
+        '<div class="br-tab active">' + ic('ic-edge', 'br-fav') + '<span>Welcome to Microsoft Edge</span><i class="br-tabx" aria-hidden="true">×</i></div>' +
+        '<button class="br-newtab" tabindex="-1" aria-label="New tab">+</button>' +
+        '<div class="br-tabspace"></div>' +
+    '</div>';
+}
 function renderEdge() {
-    return browserShell('edge', 'Welcome to Microsoft Edge', 'ic-edge', 'Search or enter web address', edgeWelcome());
+    return browserShell('edge', 'Search or enter web address', edgeWelcome());
 }
 function initEdge(el) {
     var view = el.querySelector('.br-view'), url = el.querySelector('.br-url');
@@ -3987,7 +3993,7 @@ var APPS = {
     settings: { title: 'Settings', icon: 'ic-settings', w: 660, h: 480, render: renderSettings, init: initSettings },
     photos:   { title: 'Photos', icon: 'ic-photos', w: 560, h: 440, render: renderPhotos, init: initPhotos, focusArg: function (el, arg) { if (arg != null) selectPhoto(el, arg | 0); } },
     calc:     { title: 'Calculator', icon: 'ic-calc', w: 300, h: 440, render: renderCalc, init: initCalc },
-    edge:     { title: 'Microsoft Edge', icon: 'ic-edge', w: 760, h: 520, render: renderEdge, init: initEdge, onClose: function () { if (APPS.edge._gag) APPS.edge._gag.cancel(); }, onMinimize: function () { if (APPS.edge._gag) APPS.edge._gag.cancel(); },
+    edge:     { title: 'Microsoft Edge', icon: 'ic-edge', w: 760, h: 520, titlebar: edgeTitlebar, render: renderEdge, init: initEdge, onClose: function () { if (APPS.edge._gag) APPS.edge._gag.cancel(); }, onMinimize: function () { if (APPS.edge._gag) APPS.edge._gag.cancel(); },
               onRestore: function (el) { var g = APPS.edge._gag; if (g && g.dead && !g.done) { el.querySelector('.win-content').innerHTML = renderEdge(); initEdge(el); } } },
     chrome:   { title: 'Google Chrome', icon: 'ic-chrome', w: 980, h: 640, titlebar: crTitlebar, render: renderChrome, init: initChrome, onClose: closeChrome },
     setup:    { title: 'Google Chrome Setup', icon: 'ic-chrome', w: 584, h: 468, render: renderSetup, init: initSetup, onClose: stopSetup },
