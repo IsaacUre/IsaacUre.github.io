@@ -228,11 +228,13 @@ function mix(hex, t) {
 }
 
 /* the two glowing screens on the desk: walk up, face one, press E.
-   x/z/y locate the glow + prompt; the rest styles the halo. */
+   x/z/y locate the glow + prompt; the rest styles the halo. the desk is on
+   the WEST wall, so the screens face east (+x) and you meet them from the
+   room side — see the PL.x guard in the glow loop and checkPrompt. */
 var HOTS = [
-    { x: 26.3, z: 4.94, y: 4.9, href: '/ureboy/', html: 'boot the <b>URE BOY</b>',
+    { x: 17.19, z: 7.2, y: 4.9, href: '/ureboy/', html: 'boot the <b>URE BOY</b>',
       rgb: '255,84,54', base: 14, amp: 6, spd: 2.4, a0: 0.3, a1: 0.25 },
-    { x: 24.5, z: 4.2, y: 5.4, href: '/comp/', html: 'sit down at the <b>PC</b>',
+    { x: 16.45, z: 9.0, y: 5.4, href: '/comp/', html: 'sit down at the <b>PC</b>',
       rgb: '116,176,255', base: 12, amp: 3, spd: 1.6, a0: 0.22, a1: 0.16 }
 ];
 
@@ -276,44 +278,53 @@ function buildFurniture() {
     fbox(212, 95, 216, 99, 2.4, 2.9, P.red);
     fbox(222, 100, 226, 104, 2.4, 2.9, P.purp);
     circ(226, 101, 2.6);
-    /* desk with pedestal, and on it: the PC, THE URE BOY, mug, camera */
-    fbox(182, 30, 246, 52, 3.4, 3.8, P.wd1);
-    fbox(184, 32, 187, 50, 0, 3.4, P.wd2);
-    fbox(227, 31, 244, 51, 0, 3.4, P.wd2);
-    fbox(226.4, 30.4, 226.9, 51, 2.0, 2.2, P.wd3);
+    /* desk with pedestal, and on it: the PC, THE URE BOY, mug, camera. it used
+       to stand along the NORTH wall; now it runs down the WEST wall. every
+       piece is authored in its old north-wall frame and rotated 90° into place
+       by dbox — new_x = z + 98, new_z = 268 - x — so the intricate layering
+       (screen, eye, taskbar icons) survives untouched. the faces that looked
+       south into the room (+z) become the faces that look east into it (+x). */
+    function dbox(x0, z0, x1, z1, y0, y1, c, glow) {
+        fbox(z0 + 98, 268 - x1, z1 + 98, 268 - x0, y0, y1, c, glow);
+    }
+    dbox(182, 30, 246, 52, 3.4, 3.8, P.wd1);
+    dbox(184, 32, 187, 50, 0, 3.4, P.wd2);
+    dbox(227, 31, 244, 51, 0, 3.4, P.wd2);
+    dbox(226.4, 30.4, 226.9, 51, 2.0, 2.2, P.wd3);
     /* the PC: a monitor running UreOS (bloom wallpaper, taskbar), keyboard,
        mouse, tower under the desk. walk up and it goes to /comp/ */
-    fbox(191, 32, 201, 35, 3.8, 3.95, '#26262b');                 // stand base
-    fbox(194.5, 32.5, 197.5, 34, 3.95, 4.4, '#1d1d22');           // stand neck
-    fbox(186, 31.5, 206, 33.2, 4.25, 6.55, '#1b1b20');            // bezel
-    fbox(187, 33.2, 205, 33.6, 4.45, 6.35, '#1e4da8', true);      // screen: bloom sky
-    fbox(195, 33.6, 204, 33.7, 4.95, 5.85, '#4a86dd', true);      // the bloom
-    fbox(197, 33.7, 202, 33.78, 5.15, 5.65, '#78b0f4', true);
-    fbox(187, 33.6, 205, 33.7, 4.45, 4.68, '#10101a', true);      // taskbar
-    fbox(194.6, 33.7, 195.4, 33.78, 4.5, 4.62, P.red, true);      // its icons
-    fbox(196.2, 33.7, 197, 33.78, 4.5, 4.62, P.gold, true);
-    fbox(197.8, 33.7, 198.6, 33.78, 4.5, 4.62, P.teal, true);
-    fbox(187, 44.5, 203, 49, 3.8, 4.02, '#26262b');               // keyboard
-    fbox(188, 45, 202, 48.4, 4.02, 4.1, P.slate);
-    fbox(216, 45, 219.5, 48.6, 3.8, 4.12, P.porc);                // mouse
-    fbox(190, 35, 201, 49, 0, 3.15, '#1d1d22');                   // tower below
-    fbox(194.8, 49, 196.2, 49.6, 2.5, 2.75, P.teal, true);        // power light
-    fbox(219, 37, 224, 42, 3.8, 4.5, P.porc);                     // mug
-    fbox(207, 37, 214, 42, 3.8, 5.3, P.shell, true);
-    fbox(207.8, 41.95, 213.2, 42.6, 4.3, 5.05, P.dmg, true);      // screen faces the room
-    fbox(209, 42.6, 212, 42.72, 4.5, 4.85, '#0f380f', true);      // the eye on screen
-    fbox(208, 36.6, 213, 37.05, 5.3, 5.55, P.red, true);          // cartridge up top
-    fbox(229, 36, 237, 42, 3.8, 4.4, '#2a2a30');
-    fbox(230, 35.4, 233, 36, 3.95, 4.25, P.glass);
-    rectC(180, 28, 248, 54);
+    dbox(191, 32, 201, 35, 3.8, 3.95, '#26262b');                 // stand base
+    dbox(194.5, 32.5, 197.5, 34, 3.95, 4.4, '#1d1d22');           // stand neck
+    dbox(186, 31.5, 206, 33.2, 4.25, 6.55, '#1b1b20');            // bezel
+    dbox(187, 33.2, 205, 33.6, 4.45, 6.35, '#1e4da8', true);      // screen: bloom sky
+    dbox(195, 33.6, 204, 33.7, 4.95, 5.85, '#4a86dd', true);      // the bloom
+    dbox(197, 33.7, 202, 33.78, 5.15, 5.65, '#78b0f4', true);
+    dbox(187, 33.6, 205, 33.7, 4.45, 4.68, '#10101a', true);      // taskbar
+    dbox(194.6, 33.7, 195.4, 33.78, 4.5, 4.62, P.red, true);      // its icons
+    dbox(196.2, 33.7, 197, 33.78, 4.5, 4.62, P.gold, true);
+    dbox(197.8, 33.7, 198.6, 33.78, 4.5, 4.62, P.teal, true);
+    dbox(187, 44.5, 203, 49, 3.8, 4.02, '#26262b');               // keyboard
+    dbox(188, 45, 202, 48.4, 4.02, 4.1, P.slate);
+    dbox(216, 45, 219.5, 48.6, 3.8, 4.12, P.porc);                // mouse
+    dbox(190, 35, 201, 49, 0, 3.15, '#1d1d22');                   // tower below
+    dbox(194.8, 49, 196.2, 49.6, 2.5, 2.75, P.teal, true);        // power light
+    dbox(219, 37, 224, 42, 3.8, 4.5, P.porc);                     // mug
+    dbox(207, 37, 214, 42, 3.8, 5.3, P.shell, true);
+    dbox(207.8, 41.95, 213.2, 42.6, 4.3, 5.05, P.dmg, true);      // screen faces the room
+    dbox(209, 42.6, 212, 42.72, 4.5, 4.85, '#0f380f', true);      // the eye on screen
+    dbox(208, 36.6, 213, 37.05, 5.3, 5.55, P.red, true);          // cartridge up top
+    dbox(229, 36, 237, 42, 3.8, 4.4, '#2a2a30');                  // camera
+    dbox(230, 35.4, 233, 36, 3.95, 4.25, P.glass);                // its lens
+    rectC(126, 20, 152, 88);
     /* tv on the north wall + glass panel */
     fbox(187, 8.2, 242, 10.4, 4.6, 8.0, '#26262b');
     fbox(190, 10.4, 239, 10.9, 4.85, 7.75, P.glass, true);
-    /* plant */
-    fbox(134, 38, 144, 48, 0, 1.5, P.pot);
-    fbox(132, 36, 146, 50, 1.5, 3.6, P.grn);
-    fbox(135, 39, 143, 47, 3.6, 4.6, P.grn2);
-    circ(139, 42, 1.2);
+    /* plant — the desk took its old west-wall spot, so it moved to the north
+       wall corner, tucked between the desk's north end and the TV */
+    fbox(158, 12, 168, 22, 0, 1.5, P.pot);
+    fbox(156, 10, 170, 24, 1.5, 3.6, P.grn);
+    fbox(159, 13, 167, 21, 3.6, 4.6, P.grn2);
+    circ(163, 17, 1.2);
     /* floor lamp */
     fbox(299, 40, 301.5, 42.5, 0, 6.5, '#2a2a30');
     fbox(295, 36.5, 305.5, 46, 6.5, 8.2, P.yell, true);
@@ -711,11 +722,11 @@ function render() {
     for (i = 0; i < faces.length; i++) drawPoly(faces[i].p, faces[i].c);
 
     /* the screen glows, each pulsing over its spot on the desk. a screen
-       only lights the half-space it faces (south), so nothing haloes the
-       back of the monitor from the sliver behind the desk */
+       only lights the half-space it faces (east), so nothing haloes the
+       back of the monitor from the sliver behind the desk (west of it) */
     for (i = 0; i < HOTS.length; i++) {
         var hs = HOTS[i];
-        if (PL.z <= hs.z) continue;
+        if (PL.x <= hs.x) continue;
         var gdx = hs.x - PL.x, gdz = hs.z - PL.z;
         var gdep = gdx * PL.dirX + gdz * PL.dirZ;
         if (gdep <= 0.3) continue;
@@ -1305,7 +1316,7 @@ function checkPrompt() {
     if (!TRANS.on) {
         for (var i = 0; i < HOTS.length; i++) {
             var hs = HOTS[i];
-            if (PL.z <= hs.z) continue;            // screens face south: no
+            if (PL.x <= hs.x) continue;            // screens face east: no
             var dx = hs.x - PL.x, dz = hs.z - PL.z; // prompting through their backs
             var d = Math.sqrt(dx * dx + dz * dz);
             var facing = (dx * PL.dirX + dz * PL.dirZ) / (d || 1);
