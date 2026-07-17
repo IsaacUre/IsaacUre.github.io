@@ -710,9 +710,12 @@ function render() {
     faces.sort(function (a, b) { return a.d - b.d; });
     for (i = 0; i < faces.length; i++) drawPoly(faces[i].p, faces[i].c);
 
-    /* the screen glows, each pulsing over its spot on the desk */
+    /* the screen glows, each pulsing over its spot on the desk. a screen
+       only lights the half-space it faces (south), so nothing haloes the
+       back of the monitor from the sliver behind the desk */
     for (i = 0; i < HOTS.length; i++) {
         var hs = HOTS[i];
+        if (PL.z <= hs.z) continue;
         var gdx = hs.x - PL.x, gdz = hs.z - PL.z;
         var gdep = gdx * PL.dirX + gdz * PL.dirZ;
         if (gdep <= 0.3) continue;
@@ -880,17 +883,19 @@ function onUp(e) {
 var promptOn = false, promptTgt = null;
 function checkPrompt() {
     /* both screens share the desk, so pick whichever is nearer the center
-       of view; a small stickiness bonus keeps the label from flickering
-       when the player looks between them */
-    var best = null, bestScore = -1;
+       of view. stickiness lives in ANGLE space: a cosine bonus balloons to
+       ~16 degrees near dead-center (cos is flat there), wide enough to hold
+       the wrong target against a player staring straight at the other one */
+    var best = null, bestScore = -1e9;
     if (!TRANS.on) {
         for (var i = 0; i < HOTS.length; i++) {
             var hs = HOTS[i];
-            var dx = hs.x - PL.x, dz = hs.z - PL.z;
+            if (PL.z <= hs.z) continue;            // screens face south: no
+            var dx = hs.x - PL.x, dz = hs.z - PL.z; // prompting through their backs
             var d = Math.sqrt(dx * dx + dz * dz);
             var facing = (dx * PL.dirX + dz * PL.dirZ) / (d || 1);
             if (d >= 7 || facing <= 0.55) continue;
-            var score = facing + (hs === promptTgt ? 0.04 : 0);
+            var score = -Math.acos(clamp(facing, -1, 1)) + (hs === promptTgt ? 0.03 : 0);
             if (score > bestScore) { bestScore = score; best = hs; }
         }
     }
