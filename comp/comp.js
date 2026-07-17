@@ -4008,6 +4008,11 @@ var APPS = {
         init: function (el) { if (window.TERRA) window.TERRA.init(el); },
         onFocus: function (el) { var r = el.querySelector('.tr'); if (r) r.focus(); },   // keys follow the window
         onClose: function () { if (window.TERRA) bankPlaytime('terraria', window.TERRA.close() || 0); } },
+    minecraft: { title: 'Minecraft', icon: 'ic-minecraft', w: 1080, h: 660,
+        render: function () { return window.MC ? window.MC.render() : '<p style="padding:24px">The world fell into the void (minecraft.js missing).</p>'; },
+        init: function (el) { if (window.MC) window.MC.init(el); },
+        onFocus: function (el) { var r = el.querySelector('.mc'); if (r) r.focus(); },
+        onClose: function () { if (window.MC) bankPlaytime('minecraft', window.MC.close() || 0); } },
     ureboy:   { launch: '/ureboy/' },
     room:     { launch: '/1p/' },
     gti:      { launch: '/ureboy/' }
@@ -4484,6 +4489,7 @@ if (location.search.indexOf('dev=bin') >= 0) {
 }
 if (location.search.indexOf('dev=cookie') >= 0) openApp('cookie');   // + &ckdev seeds a mature bakery
 if (location.search.indexOf('dev=terra') >= 0) openApp('terraria');   // + &tdev=night|cave|boss|kit
+if (location.search.indexOf('dev=mc') >= 0) openApp('minecraft');   // + &mcdev=kit,night,dusk,cave,mobs (&mcseed=N)
 if (location.search.indexOf('dev=dnd') >= 0) {   // a file moved Downloads→Desktop + a repositioned icon, in Explorer's Desktop view
     var __d = fsAddFile('Downloads', chromeSetupItem());
     fsMove('Downloads', __d, 'Desktop', [2, 1]);
