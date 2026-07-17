@@ -22,14 +22,15 @@
 
         <header class="room-bar">
             <div class="room-wordmark">URE<span class="room-wordmark-room">ROOM</span><span class="room-wordmark-1p">1P</span></div>
-            <nav class="room-tools" aria-label="other versions">
+            <nav class="room-tools" aria-label="views">
+                <button class="tool" id="mapTool" type="button" aria-pressed="false" title="M · the dollhouse map">map</button>
                 <a class="tool" href="/room/">flat</a>
                 <a class="tool" href="/room3d/">3d</a>
             </nav>
         </header>
 
         <div class="room-holder" id="roomHolder">
-            <canvas id="roomView" role="img" aria-label="First person view inside a pixel apartment: wood floors, cream walls, the furniture from the floor plan. On the desk by the TV, the URE BOY console glows red and a PC monitor glows blue."></canvas>
+            <canvas id="roomView" role="img" aria-label="First person view inside a pixel apartment: wood floors, cream walls, the furniture from the floor plan. On the desk by the TV, the URE BOY console glows red and a PC monitor glows blue. Press M for a spinning dollhouse map."></canvas>
             <button class="boot-prompt" id="bootPrompt" type="button" hidden>
                 <span class="boot-key" aria-hidden="true">E</span> boot the <b>URE BOY</b>
             </button>
@@ -37,7 +38,7 @@
 
         <footer class="room-foot">
             <p class="cabinet-tip">
-                <span class="fine-only"><b>wasd</b> walks · <b>arrows</b> or drag looks · </span><span class="coarse-only"><b>left thumb</b> walks · <b>right thumb</b> looks · </span>find the <b>glowing things</b>
+                <span class="fine-only"><b>wasd</b> walks · <b>arrows</b> or drag looks · <b>m</b> maps · </span><span class="coarse-only"><b>left thumb</b> walks · <b>right thumb</b> looks · <b>tap the map</b> · </span>find the <b>glowing things</b>
             </p>
             <div class="room-exits">
                 <a class="room-exit" href="/ureboy/">skip the walk ▸ boot the <b>URE BOY</b></a>
