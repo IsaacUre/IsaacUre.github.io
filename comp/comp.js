@@ -614,6 +614,11 @@ var TREE_C = {
 
 var TREE_USER = {
     $: { d: '9/2/2025', j: 260 },
+    // the profile's own folders — junctions to the keys that hold them, so
+    // C:\Users\isaac actually contains the folders that claim it as parent
+    // (Up, the 'isaac' breadcrumb, and `cd ..`/`dir` all land here)
+    'Desktop': '>Desktop', 'Documents': '>Documents', 'Downloads': '>Downloads',
+    'Music': '>Music', 'Pictures': '>Pictures', 'Videos': '>Videos', 'Projects': '>Projects',
     'AppData': {
         'Local': {
             'Temp': { $: { e: 'Deleting these does nothing. They respawn. Everyone knows this.' }, '~DFC112.tmp': 0, '~DF99B0.tmp': 0, 'msohtmlclip1.tmp': 0, 'FXSAPIDebugLogFile.txt': 0, 'chrome_installer.log': 0 },
@@ -998,8 +1003,9 @@ function fsRename(path, it, name) {
 function refreshFileViews() {
     closeFctx();   // the menu's captured tile may be about to detach
     if (openWins.explorer && exState.explorer && exState.explorer.draw) {
-        // never yank an in-progress rename out from under the user; the commit redraws anyway
-        if (!openWins.explorer.el.querySelector('.fitem-ren')) exState.explorer.draw();
+        // never yank an in-progress rename OR a half-typed address bar out from
+        // under the user; both redraw themselves when they commit
+        if (!openWins.explorer.el.querySelector('.fitem-ren, .exp-addr')) exState.explorer.draw();
     }
     if (openWins.bin) drawBinList(openWins.bin.el);
     renderDesktop();
@@ -1090,10 +1096,12 @@ function binSoup(name, ext) {
 function contentFor(it) {
     if (it.cid && TXT[it.cid]) return TXT[it.cid];
     var ext = extOf(it.n), rnd = lcgFor(fsHash(it.cid || it.n));
-    if (it.t === 'ini') return genIni(it.n, rnd);
-    if (it.t === 'log') return genLog(it.n, rnd);
-    if (it.t === 'js' || it.t === 'html' || it.t === 'css' || it.t === 'code') return genCode(it.n, ext, rnd);
-    if (it.t === 'txt') return genTxt(it.n, rnd);
+    // trust the extension over it.t: legacy items carry t:'notepad' but a .txt name
+    var t = EXT_T[ext] || it.t;
+    if (t === 'ini') return genIni(it.n, rnd);
+    if (t === 'log') return genLog(it.n, rnd);
+    if (t === 'js' || t === 'html' || t === 'css' || t === 'code') return genCode(it.n, ext, rnd);
+    if (t === 'txt') return genTxt(it.n, rnd);
     return binSoup(it.cid || it.n, ext);
 }
 
@@ -1426,7 +1434,10 @@ function dlgError(title, msg) { dlgMsg('err', '✕', title, msg, [['OK', 'primar
 function dlgInfo(title, msg) { dlgMsg('info', 'i', title, msg, [['OK', 'primary']]); }
 function dlgConfirm(title, msg, yes, cb) { dlgMsg('warn', '!', title, msg, [[yes, 'primary', cb], ['Cancel', '']]); }
 function dlgProps(path, it) {
-    var loc = (FS[path] || {}).label || (path === 'This PC' ? 'This PC' : 'C:\\Users\\isaac' + (path === 'Home' ? '' : '\\' + path));
+    // location is a real path, not the display label — Home's label is "Home" but it lives at C:\Users\isaac
+    var loc = path === 'Home' ? 'C:\\Users\\isaac'
+        : path === 'This PC' ? 'This PC'
+        : (FS[path] || {}).label || ('C:\\Users\\isaac\\' + path);
     var rows = [['Name', it.n], ['Type', kindOf(it)], ['Location', loc]];
     var h = fsHash(it.cid || it.n);
     if ((it.t === 'drive' || it.t === 'usb') && it.cap) rows.push(['Free space', it.cap[0] + ' GB of ' + it.cap[1] + ' GB']);
@@ -1705,11 +1716,14 @@ function initTerminal(el) {
     function pathLabel() { return cwd === 'Home' ? '~' : (FS[cwd] || {}).label || cwd; }
     function setCwd(k) { cwd = k; if (pathEl) pathEl.textContent = pathLabel(); }
     function findHere(name) {
-        var low = String(name || '').toLowerCase();
+        var low = String(name || '').replace(/^"|"$/g, '').toLowerCase();   // `cd "My Games"` works too
         var hit = null;
         itemsFor(cwd).forEach(function (it) { if (!hit && it.n.toLowerCase() === low) hit = it; });
         return hit;
     }
+    // a child of the current folder wins over a same-named global key, so
+    // `cd Documents` inside D:\archive\...\ enters the LOCAL Documents
+    function localThenGlobal(a) { var hit = findHere(a); return (hit && hit.go) ? hit.go : fsResolve(a); }
     print(esc(TERM_BANNER), 't-dim');
     var CMDS = {
         help: function () {
@@ -1726,7 +1740,7 @@ function initTerminal(el) {
         pwd: function () { print(esc(pathLabel())); },
         ls: function () { CMDS.dir(); },
         dir: function (a) {
-            var key = a ? (fsResolve(a) || (findHere(a) && findHere(a).go)) : cwd;
+            var key = a ? localThenGlobal(a) : cwd;
             if (!key || !FS[key]) { print('The system cannot find the path specified.', 't-err'); return; }
             var items = itemsFor(key), rows = [' Directory of ' + ((FS[key] || {}).label || key), ''];
             items.forEach(function (it) {
@@ -1743,8 +1757,7 @@ function initTerminal(el) {
                 if (p) setCwd(p); else print('you are already as up as it gets.', 't-err');
                 return;
             }
-            var key = fsResolve(a);
-            if (!key) { var hit = findHere(a); if (hit && hit.go) key = hit.go; }
+            var key = localThenGlobal(a);
             if (key && FS[key]) setCwd(key);
             else print('The system cannot find the path specified: ' + esc(a), 't-err');
         },
@@ -1759,7 +1772,7 @@ function initTerminal(el) {
         },
         cat: function (a) { CMDS.type(a); },
         tree: function (a) {
-            var key = a ? fsResolve(a) : cwd;
+            var key = a ? localThenGlobal(a) : cwd;
             if (!key || !FS[key]) { print('Invalid path.', 't-err'); return; }
             var lines = [(FS[key] || {}).label || key], budget = { n: 220 };
             (function walk(k, prefix, seen) {
@@ -1793,18 +1806,19 @@ function initTerminal(el) {
             if (!a) { print("open what? try: open notepad, or open a file that is sitting right here", 't-err'); return; }
             var it = findHere(a);
             if (it) { print('opening ' + esc(it.n) + '...'); openItemFrom(it); return; }
-            if (APPS[a]) { print('opening ' + esc(a) + '...'); openApp(a); return; }
+            if (Object.prototype.hasOwnProperty.call(APPS, a)) { print('opening ' + esc(a) + '...'); openApp(a); return; }
             print("nothing here by that name. 'dir' shows what is.", 't-err');
         }
     };
     function run(line) {
         print('<span class="term-prompt">isaac@ure</span>:<span class="term-path">' + esc(pathLabel()) + '</span>$ ' + esc(line), 't-cmd');
-        var parts = line.trim().split(/\s+/), cmd = parts.shift();
+        var parts = line.trim().split(/\s+/), cmd = (parts.shift() || '').toLowerCase();
         if (!cmd) return;
         if (cmd === 'echo') { print(esc(parts.join(' '))); return; }
         if (cmd === 'sudo') { print("nice try. this is a personal machine.", 't-err'); return; }
         if (cmd === 'rm' || cmd === 'format') { print("absolutely not.", 't-err'); return; }
-        if (CMDS[cmd.toLowerCase()]) CMDS[cmd.toLowerCase()](parts.join(' '));
+        // hasOwnProperty: bare-name lookup would otherwise hit Object.prototype ('constructor', '__proto__') and throw
+        if (Object.prototype.hasOwnProperty.call(CMDS, cmd)) CMDS[cmd](parts.join(' '));
         else print("ure-sh: command not found: " + esc(cmd) + "  (try 'help')", 't-err');
     }
     inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { run(inp.value); inp.value = ''; } });
