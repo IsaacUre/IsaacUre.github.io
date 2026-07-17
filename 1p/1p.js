@@ -6,7 +6,8 @@
    into a per-pixel depth buffer seeded from the walls, so
    furniture occludes furniture (and walls) honestly. Distance
    fog, a real-clock sky in the windows. Zero dependencies.
-   The glowing thing on the desk still goes somewhere.
+   Two glowing screens on the desk now: the URE BOY boots the
+   console, the PC sits you down at /comp/.
    ============================================================ */
 (function () {
 'use strict';
@@ -226,7 +227,14 @@ function mix(hex, t) {
     return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
 }
 
-var GLOWP = { x: 26.3, z: 4.94, y: 4.9 };          // the URE BOY, for glow + prompt
+/* the two glowing screens on the desk: walk up, face one, press E.
+   x/z/y locate the glow + prompt; the rest styles the halo. */
+var HOTS = [
+    { x: 26.3, z: 4.94, y: 4.9, href: '/ureboy/', html: 'boot the <b>URE BOY</b>',
+      rgb: '255,84,54', base: 14, amp: 6, spd: 2.4, a0: 0.3, a1: 0.25 },
+    { x: 24.5, z: 4.2, y: 5.4, href: '/comp/', html: 'sit down at the <b>PC</b>',
+      rgb: '116,176,255', base: 12, amp: 3, spd: 1.6, a0: 0.22, a1: 0.16 }
+];
 
 function buildFurniture() {
     FURN.length = 0; RUGS.length = 0; CIRC.length = 0; RECTS.length = 0;
@@ -268,12 +276,29 @@ function buildFurniture() {
     fbox(212, 95, 216, 99, 2.4, 2.9, P.red);
     fbox(222, 100, 226, 104, 2.4, 2.9, P.purp);
     circ(226, 101, 2.6);
-    /* desk with pedestal, and on it: mug, THE URE BOY, camera */
+    /* desk with pedestal, and on it: the PC, THE URE BOY, mug, camera */
     fbox(182, 30, 246, 52, 3.4, 3.8, P.wd1);
     fbox(184, 32, 187, 50, 0, 3.4, P.wd2);
     fbox(227, 31, 244, 51, 0, 3.4, P.wd2);
     fbox(226.4, 30.4, 226.9, 51, 2.0, 2.2, P.wd3);
-    fbox(189, 37, 194, 42, 3.8, 4.5, P.porc);
+    /* the PC: a monitor running UreOS (bloom wallpaper, taskbar), keyboard,
+       mouse, tower under the desk. walk up and it goes to /comp/ */
+    fbox(191, 32, 201, 35, 3.8, 3.95, '#26262b');                 // stand base
+    fbox(194.5, 32.5, 197.5, 34, 3.95, 4.4, '#1d1d22');           // stand neck
+    fbox(186, 31.5, 206, 33.2, 4.25, 6.55, '#1b1b20');            // bezel
+    fbox(187, 33.2, 205, 33.6, 4.45, 6.35, '#1e4da8', true);      // screen: bloom sky
+    fbox(195, 33.6, 204, 33.7, 4.95, 5.85, '#4a86dd', true);      // the bloom
+    fbox(197, 33.7, 202, 33.78, 5.15, 5.65, '#78b0f4', true);
+    fbox(187, 33.6, 205, 33.7, 4.45, 4.68, '#10101a', true);      // taskbar
+    fbox(194.6, 33.7, 195.4, 33.78, 4.5, 4.62, P.red, true);      // its icons
+    fbox(196.2, 33.7, 197, 33.78, 4.5, 4.62, P.gold, true);
+    fbox(197.8, 33.7, 198.6, 33.78, 4.5, 4.62, P.teal, true);
+    fbox(187, 44.5, 203, 49, 3.8, 4.02, '#26262b');               // keyboard
+    fbox(188, 45, 202, 48.4, 4.02, 4.1, P.slate);
+    fbox(216, 45, 219.5, 48.6, 3.8, 4.12, P.porc);                // mouse
+    fbox(190, 35, 201, 49, 0, 3.15, '#1d1d22');                   // tower below
+    fbox(194.8, 49, 196.2, 49.6, 2.5, 2.75, P.teal, true);        // power light
+    fbox(219, 37, 224, 42, 3.8, 4.5, P.porc);                     // mug
     fbox(207, 37, 214, 42, 3.8, 5.3, P.shell, true);
     fbox(207.8, 41.95, 213.2, 42.6, 4.3, 5.05, P.dmg, true);      // screen faces the room
     fbox(209, 42.6, 212, 42.72, 4.5, 4.85, '#0f380f', true);      // the eye on screen
@@ -685,28 +710,32 @@ function render() {
     faces.sort(function (a, b) { return a.d - b.d; });
     for (i = 0; i < faces.length; i++) drawPoly(faces[i].p, faces[i].c);
 
-    /* the URE BOY glow, pulsing over its corner of the desk */
-    var gdx = GLOWP.x - PL.x, gdz = GLOWP.z - PL.z;
-    var gdep = gdx * PL.dirX + gdz * PL.dirZ;
-    if (gdep > 0.3) {
+    /* the screen glows, each pulsing over its spot on the desk. a screen
+       only lights the half-space it faces (south), so nothing haloes the
+       back of the monitor from the sliver behind the desk */
+    for (i = 0; i < HOTS.length; i++) {
+        var hs = HOTS[i];
+        if (PL.z <= hs.z) continue;
+        var gdx = hs.x - PL.x, gdz = hs.z - PL.z;
+        var gdep = gdx * PL.dirX + gdz * PL.dirZ;
+        if (gdep <= 0.3) continue;
         var glat = (gdx * PL.planeX + gdz * PL.planeZ) / PLANE;
         var gsx = W / 2 + glat / gdep * FOCAL;
-        var gsy = horizon + (EYE - GLOWP.y) / gdep * FOCAL;
+        var gsy = horizon + (EYE - hs.y) / gdep * FOCAL;
         var gcol = clamp(Math.round(gsx), 0, W - 1);
         var grow = clamp(Math.round(gsy), 0, H - 1);
         /* the nearest surface at the glow's pixel — walls AND furniture, so a
            chair between you and the desk hides the halo too */
         var gnear = 1 / DEPTH[grow * W + gcol];
-        if (gnear >= gdep - 0.6) {
-            var pulse = reduce ? 0.5 : (Math.sin(T * 2.4) + 1) / 2;
-            var gr = (14 + pulse * 6) * FOCAL / (gdep * 42);
-            gr = clamp(gr, 6, 70);
-            var grad = ctx.createRadialGradient(gsx, gsy, 1, gsx, gsy, gr);
-            grad.addColorStop(0, 'rgba(255,84,54,' + (0.3 + pulse * 0.25) + ')');
-            grad.addColorStop(1, 'rgba(255,84,54,0)');
-            ctx.fillStyle = grad;
-            ctx.fillRect(gsx - gr, gsy - gr, gr * 2, gr * 2);
-        }
+        if (gnear < gdep - 0.6) continue;
+        var pulse = reduce ? 0.5 : (Math.sin(T * hs.spd + i * 1.7) + 1) / 2;
+        var gr = (hs.base + pulse * hs.amp) * FOCAL / (gdep * 42);
+        gr = clamp(gr, 6, 70);
+        var grad = ctx.createRadialGradient(gsx, gsy, 1, gsx, gsy, gr);
+        grad.addColorStop(0, 'rgba(' + hs.rgb + ',' + (hs.a0 + pulse * hs.a1) + ')');
+        grad.addColorStop(1, 'rgba(' + hs.rgb + ',0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(gsx - gr, gsy - gr, gr * 2, gr * 2);
     }
 
     /* phase tint */
@@ -976,15 +1005,24 @@ function renderMap() {
     for (i = 0; i < faces.length; i++) mquad(faces[i].p[0], faces[i].p[1], faces[i].p[2], faces[i].p[3], faces[i].c);
     for (i = 0; i < post.length; i++) mquad(post[i].p[0], post[i].p[1], post[i].p[2], post[i].p[3], post[i].c);
 
-    /* the URE BOY's glow + blinking LED, over everything like /room3d/ */
-    var up = mproj(GLOWP.x * 8, GLOWP.y * HSQ, GLOWP.z * 8);
-    var gr = 10 + pu * 6;
-    var grad = ctx.createRadialGradient(up.x, up.y, 1, up.x, up.y, gr);
-    grad.addColorStop(0, 'rgba(255,84,54,' + (0.34 + pu * 0.25) + ')');
-    grad.addColorStop(1, 'rgba(255,84,54,0)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(up.x - gr, up.y - gr, gr * 2, gr * 2);
-    if (reduce || FR % 2) { ctx.fillStyle = P.red; ctx.fillRect(Math.round(up.x) - 4, Math.round(up.y), 2, 2); }
+    /* both glowing screens on the desk, over everything like /room3d/. no
+       depth test up here: from a dollhouse camera the halos are the whole
+       point of the shot, and the walls they'd hide behind are cut away */
+    for (i = 0; i < HOTS.length; i++) {
+        var hs = HOTS[i];
+        var up = mproj(hs.x * 8, hs.y * HSQ, hs.z * 8);
+        var hp = reduce ? 0.5 : (Math.sin(T * hs.spd + i * 1.7) + 1) / 2;
+        var gr = hs.base * 0.72 + hp * hs.amp;
+        var grad = ctx.createRadialGradient(up.x, up.y, 1, up.x, up.y, gr);
+        grad.addColorStop(0, 'rgba(' + hs.rgb + ',' + (hs.a0 + hp * hs.a1) + ')');
+        grad.addColorStop(1, 'rgba(' + hs.rgb + ',0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(up.x - gr, up.y - gr, gr * 2, gr * 2);
+        if (reduce || FR % 2) {                    // the LED, blinking on the room3d cadence
+            ctx.fillStyle = 'rgb(' + hs.rgb + ')';
+            ctx.fillRect(Math.round(up.x) - 4, Math.round(up.y), 2, 2);
+        }
+    }
 
     /* the ✕ that walks you back (its hit region is bigger than the card: a
        thumb on a phone is nowhere near this precise) */
@@ -1022,7 +1060,10 @@ function openMap() {
     msctx.fillStyle = '#0b0b10';
     msctx.fillRect(0, 0, W, H);
     msctx.globalAlpha = 1;
-    if (promptEl) { promptOn = false; promptEl.hidden = true; }
+    /* the walk view's prompt has no meaning up here, and promptOn is what gates
+       E: drop the target too so a stale one can't be booted from the map */
+    promptOn = false; promptTgt = null;
+    if (promptEl) promptEl.hidden = true;
     if (mapBtn) mapBtn.setAttribute('aria-pressed', 'true');
     swapTip(true);
     needsDraw = true;
@@ -1048,10 +1089,11 @@ function mpinchDist() {
 /* ───────────────────── dither exit ────────────────────────── */
 var BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
 var TRANS = { on: false, t: 0, dur: 0.55 };
-var navDone = false, navTimer = null;
-function goConsole() { if (navDone) return; navDone = true; window.location.href = '/ureboy/'; }
-function enterConsole() {
+var navDone = false, navTimer = null, navDest = '/ureboy/';
+function goConsole() { if (navDone) return; navDone = true; window.location.href = navDest; }
+function enterConsole(href) {
     if (navDone || TRANS.on) return;
+    if (href) navDest = href;
     if (reduce) { goConsole(); return; }
     TRANS.on = true; TRANS.t = 0;
     clearTimeout(navTimer);
@@ -1114,7 +1156,7 @@ function onKey(e, down) {
         /* Enter keeps native behavior on focused links/buttons */
         var t = e.target;
         if (k === 'enter' && t && t !== promptEl && (t.tagName === 'A' || t.tagName === 'BUTTON')) return;
-        enterConsole();
+        enterConsole(promptTgt && promptTgt.href);
     }
     else used = false;
     if (used && down) e.preventDefault();
@@ -1253,15 +1295,32 @@ function onUp(e) {
 }
 
 /* ──────────────── the boot prompt (proximity) ──────────────── */
-var promptOn = false;
+var promptOn = false, promptTgt = null;
 function checkPrompt() {
-    var dx = GLOWP.x - PL.x, dz = GLOWP.z - PL.z;
-    var d = Math.sqrt(dx * dx + dz * dz);
-    var facing = (dx * PL.dirX + dz * PL.dirZ) / (d || 1);
-    var on = d < 7 && facing > 0.55 && !TRANS.on;
-    if (on !== promptOn) {
-        promptOn = on;
-        if (promptEl) promptEl.hidden = !on;
+    /* both screens share the desk, so pick whichever is nearer the center
+       of view. stickiness lives in ANGLE space: a cosine bonus balloons to
+       ~16 degrees near dead-center (cos is flat there), wide enough to hold
+       the wrong target against a player staring straight at the other one */
+    var best = null, bestScore = -1e9;
+    if (!TRANS.on) {
+        for (var i = 0; i < HOTS.length; i++) {
+            var hs = HOTS[i];
+            if (PL.z <= hs.z) continue;            // screens face south: no
+            var dx = hs.x - PL.x, dz = hs.z - PL.z; // prompting through their backs
+            var d = Math.sqrt(dx * dx + dz * dz);
+            var facing = (dx * PL.dirX + dz * PL.dirZ) / (d || 1);
+            if (d >= 7 || facing <= 0.55) continue;
+            var score = -Math.acos(clamp(facing, -1, 1)) + (hs === promptTgt ? 0.03 : 0);
+            if (score > bestScore) { bestScore = score; best = hs; }
+        }
+    }
+    if (best !== promptTgt) {
+        promptTgt = best;
+        promptOn = !!best;
+        if (promptEl) {
+            if (best) promptEl.innerHTML = '<span class="boot-key" aria-hidden="true">E</span> ' + best.html;
+            promptEl.hidden = !best;
+        }
     }
 }
 
@@ -1365,6 +1424,7 @@ function boot() {
                 keys: function () { return KEYS; },              // held-key state, for regression checks
                 renderMs: function (n) { var t = performance.now(); for (var i = 0; i < (n || 100); i++) render(); return (performance.now() - t) / (n || 100); },
                 mapMs: function (n) { var t = performance.now(); for (var i = 0; i < (n || 100); i++) renderMap(); return (performance.now() - t) / (n || 100); },
+                prompt: function () { checkPrompt(); return promptTgt ? promptTgt.href : null; },
                 map: {
                     open: openMap, close: closeMap,
                     set: function (y, p, z) {
@@ -1397,7 +1457,7 @@ function boot() {
         KEYS = {}; stick.dx = 0; stick.dy = 0;
         MPTRS = {}; mpinch.on = false; mdrag.on = false; MAPV.vyaw = 0;
     });
-    if (promptEl) promptEl.addEventListener('click', function () { enterConsole(); });
+    if (promptEl) promptEl.addEventListener('click', function () { enterConsole(promptTgt && promptTgt.href); });
     mapBtn = byId('mapTool');
     if (mapBtn) mapBtn.addEventListener('click', function () { toggleMap(); });
     tipP = document.querySelector('.cabinet-tip');

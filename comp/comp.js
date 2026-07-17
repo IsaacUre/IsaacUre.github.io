@@ -160,7 +160,7 @@ window.addEventListener('pagehide', teardownApps);
 function openApp(id, arg) {
     var a = APPS[id]; if (!a) return;
     if (a.launch) { teardownApps(); window.location.href = a.launch; return; }
-    setStart(false); closeFlyouts(); closeCtx(); closeTaskView();
+    setStart(false); closeFlyouts(); closeCtx(); closeBctx(); closeTaskView();
     if (openWins[id]) { restoreWin(id); focusWin(id); if (a.focusArg) a.focusArg(openWins[id].el, arg); return; }
     createWindow(id, a, arg);
 }
@@ -206,7 +206,9 @@ function wireWindow(id, el) {
     bar.addEventListener('pointerdown', function (e) {
         // Chrome's tabs and new-tab button live in its title bar; they must click, not drag the window
         // (Edge's .br-tab strip is set-dressing, so it stays draggable like the rest of the bar)
+        if (e.button !== 0) return;                       // right-click is a menu now, never a drag
         if (e.target.closest('.cap, .cr-tab, .cr-plusbtn') || el.classList.contains('maxi')) return;
+        closeBctx();                                      // a menu would ride along with the window
         var r = el.getBoundingClientRect(), ox = e.clientX - r.left, oy = e.clientY - r.top;
         bar.setPointerCapture(e.pointerId);
         function mv(ev) {
@@ -225,7 +227,7 @@ function refocusTop() {
     ids.sort(function (a, b) { return (+openWins[b].el.style.zIndex || 0) - (+openWins[a].el.style.zIndex || 0); });
     activeApp = ids[0];
 }
-function minWin(id) { var w = openWins[id]; if (!w) return; if (APPS[id].onMinimize) APPS[id].onMinimize(w.el); w.min = true; w.el.classList.add('mini'); if (activeApp === id) refocusTop(); syncTaskbar(); }
+function minWin(id) { var w = openWins[id]; if (!w) return; closeBctx(); if (APPS[id].onMinimize) APPS[id].onMinimize(w.el); w.min = true; w.el.classList.add('mini'); if (activeApp === id) refocusTop(); syncTaskbar(); }
 function restoreWin(id) { var w = openWins[id]; if (!w) return; w.min = false; w.el.classList.remove('mini'); if (APPS[id].onRestore) APPS[id].onRestore(w.el); }
 function closeWin(id) { var w = openWins[id]; if (!w) return; if (APPS[id].onClose) APPS[id].onClose(w.el); w.el.remove(); delete openWins[id]; if (activeApp === id) refocusTop(); if (find.appId === id) { find.appId = null; find.marks = []; find.idx = -1; } syncTaskbar(); }
 
@@ -268,7 +270,7 @@ function closeTaskView() {
     setTimeout(function () { if (ov.parentNode) ov.remove(); }, reduce ? 0 : 180);
 }
 function openTaskView() {
-    closeTaskView(); setStart(false); closeFlyouts(); closeCtx();
+    closeTaskView(); setStart(false); closeFlyouts(); closeCtx(); closeBctx();
     var ov = document.createElement('div'); ov.className = 'tv-overlay'; ov.id = 'taskView';
     var grid = document.createElement('div'); grid.className = 'tv-grid';
     var ids = Object.keys(openWins);
@@ -589,7 +591,7 @@ function initExplorer(el, id, arg) {
 var fctx = null, fctxT = null;
 function closeFctx() { if (fctx) fctx.hidden = true; fctxT = null; }
 function openFctx(e, t) {
-    setStart(false); closeFlyouts(); closeCtx();
+    setStart(false); closeFlyouts(); closeCtx(); closeBctx();
     if (!fctx) {
         fctx = document.createElement('div');
         fctx.className = 'ctx px-sm lift'; fctx.id = 'fctx'; fctx.setAttribute('role', 'menu');
@@ -1166,6 +1168,81 @@ function browserShell(brand, placeholder, bodyHtml) {
         '</div></div>';
 }
 
+/* ═════════════ right-click menus (both browsers) ═════════════
+   One open menu at a time, absolutely positioned inside the window it
+   serves — Chrome-light by default, dark for Edge and Incognito.
+   Items are {k, t, hint, dis} objects or the string 'sep'. Picking an
+   item dispatches its k through the fn handed to openBctx.
+   OSCLIP is the machine's clipboard: every sim copy lands there (and
+   is mirrored to the real clipboard where the host browser allows,
+   so sim-copied text pastes outside) — Paste reads OSCLIP only, so
+   the host never prompts for clipboard-read permission. */
+var bctxEl = null, OSCLIP = '';
+function setClip(text) {
+    OSCLIP = String(text || '');
+    try { navigator.clipboard.writeText(OSCLIP).catch(function () {}); } catch (err) {}
+}
+function closeBctx() { if (bctxEl) { bctxEl.remove(); bctxEl = null; } }
+function openBctx(host, e, items, fn, dark) {
+    closeBctx(); closeCtx(); closeFctx(); setStart(false); closeFlyouts();
+    var m = document.createElement('div');
+    m.className = 'bctx' + (dark ? ' dark' : ''); m.setAttribute('role', 'menu'); m.tabIndex = -1;
+    m.innerHTML = items.map(function (it) {
+        if (it === 'sep') return '<div class="bctx-sep"></div>';
+        return '<button class="bctx-i" type="button" role="menuitem" data-bx="' + it.k + '"' + (it.dis ? ' disabled' : '') + '>' +
+            '<span>' + esc(it.t) + '</span>' + (it.hint ? '<span class="bctx-hint">' + esc(it.hint) + '</span>' : '') + '</button>';
+    }).join('');
+    host.appendChild(m);
+    var hr = host.getBoundingClientRect();
+    m.style.left = clamp(e.clientX - hr.left, 4, Math.max(4, hr.width - m.offsetWidth - 4)) + 'px';
+    m.style.top = clamp(e.clientY - hr.top, 4, Math.max(4, hr.height - m.offsetHeight - 4)) + 'px';
+    m.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        var b = ev.target.closest('[data-bx]'); if (!b) return;
+        var act = b.getAttribute('data-bx'); closeBctx(); fn(act);
+    });
+    m.addEventListener('contextmenu', function (ev) { ev.preventDefault(); ev.stopPropagation(); });
+    m.addEventListener('keydown', function (ev) {   // arrows walk the menu, like the real one
+        var all = m.querySelectorAll('.bctx-i:not([disabled])'); if (!all.length) return;
+        var i = Array.prototype.indexOf.call(all, document.activeElement);
+        if (ev.key === 'ArrowDown') { ev.preventDefault(); (all[i + 1] || all[0]).focus(); }
+        else if (ev.key === 'ArrowUp') { ev.preventDefault(); (all[i - 1] || all[all.length - 1]).focus(); }
+        else if (ev.key === 'Home') { ev.preventDefault(); all[0].focus(); }
+        else if (ev.key === 'End') { ev.preventDefault(); all[all.length - 1].focus(); }
+    });
+    m.focus();
+    bctxEl = m;
+}
+/* text-field menu, shared by both browsers. Selection and value are
+   snapshotted at open time — focusing the menu (or Edge's possessed
+   focus handler wiping the bar) must not change what Cut/Copy grab. */
+function bctxInput(host, e, inp, opts, dark) {
+    var s0 = inp.selectionStart || 0, s1 = inp.selectionEnd || 0, v0 = inp.value, hasSel = s1 > s0;
+    var items = [
+        { k: 'cut', t: 'Cut', dis: !hasSel },
+        { k: 'copy', t: 'Copy', dis: !hasSel },
+        { k: 'paste', t: 'Paste', dis: !OSCLIP }
+    ];
+    if (opts && opts.go) items.push({ k: 'pgo', t: 'Paste and go', dis: !OSCLIP });
+    items.push('sep', { k: 'all', t: 'Select all', dis: !v0 });
+    openBctx(host, e, items, function (a) {
+        inp.focus();
+        if (a === 'all') { inp.select(); return; }
+        if (a === 'cut' || a === 'copy') {
+            setClip(v0.slice(s0, s1));
+            if (a === 'cut') { inp.value = v0.slice(0, s0) + v0.slice(s1); inp.setSelectionRange(s0, s0); inp.dispatchEvent(new Event('input', { bubbles: true })); }
+            else inp.setSelectionRange(s0, s1);
+            return;
+        }
+        if (a === 'paste' || a === 'pgo') {
+            inp.value = v0.slice(0, s0) + OSCLIP + v0.slice(s1);
+            var p = s0 + OSCLIP.length; inp.setSelectionRange(p, p);
+            inp.dispatchEvent(new Event('input', { bubbles: true }));
+            if (a === 'pgo') opts.go(inp.value);
+        }
+    }, dark);
+}
+
 /* —— Edge —— */
 function edgeWelcome() {
     return '<div class="ewc">' +
@@ -1192,9 +1269,69 @@ function edgeTitlebar() {
 function renderEdge() {
     return browserShell('edge', 'Search or enter web address', edgeWelcome());
 }
+/* Edge's right-click menu: the full corporate spread, in character.
+   The one real action is closing the only tab (which closes the
+   window, like a real browser) — everything else answers honestly
+   about what this browser is for. */
+function edgeCtxMenu(el, e) {
+    e.preventDefault();
+    if (e.target.closest('.win-caps')) { closeBctx(); return; }
+    var br = el.querySelector('.br'), urlbar = el.querySelector('.br-url');
+    var inp = e.target.closest('input');
+    if (inp && !inp.readOnly && !inp.disabled) { bctxInput(br, e, inp, null, true); return; }
+    if (e.target.closest('.br-tabs')) {
+        openBctx(br, e, [
+            { k: 'nt', t: 'New tab to the right' },
+            { k: 'dp', t: 'Duplicate tab' },
+            'sep',
+            { k: 'cl', t: 'Close tab' }
+        ], function (a) {
+            if (a === 'cl') closeWin('edge');   // the only tab IS the window
+            else if (a === 'nt') toast('Edge considered a second tab. One is already more than it needs.');
+            else toast('Tab not duplicated. Nobody needs to be welcomed twice.');
+        }, true);
+        return;
+    }
+    openBctx(br, e, [
+        { k: 'back', t: 'Back', dis: true },
+        { k: 'fwd', t: 'Forward', dis: true },
+        { k: 'rfr', t: 'Refresh' },
+        'sep',
+        { k: 'sav', t: 'Save as…' },
+        { k: 'prt', t: 'Print…' },
+        { k: 'cst', t: 'Cast media to device' },
+        'sep',
+        { k: 'col', t: 'Add page to Collections' },
+        { k: 'shr', t: 'Share' },
+        { k: 'cap', t: 'Web capture' },
+        'sep',
+        { k: 'src', t: 'View page source' },
+        { k: 'ins', t: 'Inspect' }
+    ], function (a) {
+        if (a === 'rfr') toast('Refreshed. Everything is exactly as Edge left it.');
+        else if (a === 'sav') {
+            var base = (urlbar.value || 'Welcome to Microsoft Edge').replace(/[\\/:*?"<>|]+/g, '-').slice(0, 48);
+            var f = fsAddFile('Downloads', { n: uniqueName('Downloads', base + '.html'), t: 'globe', size: '9 KB', date: dlStamp() });
+            toast('Saved “' + f.n + '” to Downloads. A keepsake.');
+        }
+        else if (a === 'prt') toast('Sent to the printer. The printer was also hoping for Chrome.');
+        else if (a === 'cst') toast('Searched for devices. Even the smart fridge said it was busy.');
+        else if (a === 'col') toast('Added to Collections. The collection is this page, forty times.');
+        else if (a === 'shr') toast('Share sheet opened and closed on its own. It’s for the best.');
+        else if (a === 'cap') toast('Captured. It’s a screenshot of the inevitable.');
+        else if (a === 'src') toast('view-source is a Chrome feature. You know what to do.');
+        else if (a === 'ins') toast('Inspection complete: this browser exists to download another browser.');
+    }, true);
+}
 function initEdge(el) {
     var view = el.querySelector('.br-view'), url = el.querySelector('.br-url');
     var omni = el.querySelector('.br-omni'), suggest = el.querySelector('.br-suggest'), shelf = el.querySelector('.dl-shelf');
+
+    if (!el._ectx) {   // the window element survives restore re-renders; bind its listeners once
+        el._ectx = 1;
+        el.addEventListener('contextmenu', function (e) { edgeCtxMenu(el, e); });
+        el.addEventListener('scroll', closeBctx, true);   // real menus don't scroll along with the page
+    }
     var TYPE = 'chrome install';
     var alive = true, hijack = false, ti = 0;
     var timers = [], intervals = [], idleTimer = 0;
@@ -1715,10 +1852,33 @@ webPage('chrome://downloads', {
     }
 });
 
+/* — view-source: (right-click → View page source) — a real page whose
+   content is the target site's actual render() output, escaped, split
+   onto numbered lines, with tags/attributes/strings tinted like the
+   real thing. The target comes off the active tab's URL directly. */
+webPage('__viewsource', {
+    title: 'view-source', fav: { ch: '</>', c: '#5f6368' },
+    render: function () {
+        var target = String(crTab().url).replace(/^(view-source:)+/i, '');
+        var s = crSite(target);
+        if (s === WEB['__viewsource']) s = WEB.__err;   // never render ourselves — that way lies recursion
+        var html = s === WEB.__err ? s.render(String(target).split('/')[0]) : s.render(crQOf(target));
+        var lines = html.replace(/></g, '>\n<').split('\n');
+        return '<div class="cr-src"><ol>' + lines.map(function (ln) {
+            var h = esc(ln)
+                .replace(/(&quot;[^&]*?&quot;)/g, '<i class="ss">$1</i>')
+                .replace(/([a-z-]+)=(?=<i class="ss">)/gi, '<i class="sa">$1</i>=')
+                .replace(/(&lt;\/?)([a-z][a-z0-9-]*)/gi, '$1<i class="st">$2</i>');
+            return '<li>' + h + '</li>';
+        }).join('') + '</ol></div>';
+    }
+});
+
 /* ═════════════ URL parsing / navigation engine ═════════════ */
 var WEB_LC = null;                                        // lowercase key → real key, built lazily after all webPage() calls
 function crResolveKey(input) {
     var u = String(input || '').trim();
+    if (/^view-source:/i.test(u)) return '__viewsource';
     u = u.replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/+$/, '');
     if (/^chrome:\/\//i.test(input)) u = input.trim().toLowerCase().replace(/\/+$/, '');
     if (!WEB_LC) { WEB_LC = {}; Object.keys(WEB).forEach(function (k) { WEB_LC[k.toLowerCase()] = k; }); }
@@ -1732,6 +1892,7 @@ function crResolveKey(input) {
 function crParse(input) {
     var u = String(input || '').trim();
     if (!u) return null;
+    if (/^view-source:/i.test(u)) return u;   // the prefix IS the URL — resolving it would eat the target
     var key = crResolveKey(u);
     if (key) return key === 'google.com/search' ? u.replace(/^https?:\/\//i, '').replace(/^www\./i, '') : key;
     if (/^[a-z0-9.-]+\.[a-z]{2,}(\/\S*)?$/i.test(u) || /^chrome:\/\//i.test(u)) return u;   // URL-shaped → will 404
@@ -1747,6 +1908,7 @@ function crQOf(url) {
     try { return decodeURIComponent(raw); } catch (e) { return raw; }   // a stray % must not brick the tab strip
 }
 function crTitleOf(url) {
+    if (/^view-source:/i.test(String(url))) return String(url);   // the URL is the tab title, like the real thing
     var s = crSite(url);
     if (s === WEB.__err) return String(url).split('/')[0];
     return typeof s.title === 'function' ? s.title(crQOf(url)) : s.title;
@@ -1996,6 +2158,8 @@ function initChrome(el) {
         var su = e.target.closest('.cr-sg');
         if (su) { suggest.hidden = true; crNav(crParse(su.getAttribute('data-su'))); return; }
     });
+    el.addEventListener('contextmenu', crCtxMenu);
+    el.addEventListener('scroll', closeBctx, true);       // real menus don't scroll along with the page
     el.querySelector('#crPlus').addEventListener('click', function () { crNewTab(); });
     el.querySelector('#crTabs').addEventListener('auxclick', function (e) {   // middle-click closes, like Chrome
         if (e.button !== 1) return;
@@ -2058,6 +2222,15 @@ function crBubble(msg) {
     clearTimeout(CR.bubbleT);
     CR.bubbleT = setTimeout(function () { if (CR) b.hidden = true; }, 1600);
 }
+// swap whole sessions, like a separate window: regular tabs park and return untouched
+function crIncogSwap() {
+    var held = CR.held || null;
+    CR.held = { tabs: CR.tabs, active: CR.active, closed: CR.closed };
+    CR.incog = !CR.incog;
+    if (held) { CR.tabs = held.tabs; CR.active = Math.min(held.active, held.tabs.length - 1); CR.closed = held.closed; crChrome(); crTabs(); crPage(); }
+    else { CR.tabs = []; CR.closed = []; CR.active = 0; crNewTab(); }
+    toast(CR.incog ? 'Incognito: history is off. Your regular tabs are waiting where you left them.' : 'Back to regular browsing. The record resumes.');
+}
 function crMenuOpen() {
     var menu = CR.el.querySelector('#crMenu');
     if (!menu.hidden) { menu.hidden = true; return; }
@@ -2089,15 +2262,7 @@ function crMenuAct(a) {
     }
     menu.hidden = true;
     if (a === 'newtab') crNewTab();
-    else if (a === 'incog') {
-        // swap whole sessions, like a separate window: regular tabs park and return untouched
-        var held = CR.held || null;
-        CR.held = { tabs: CR.tabs, active: CR.active, closed: CR.closed };
-        CR.incog = !CR.incog;
-        if (held) { CR.tabs = held.tabs; CR.active = Math.min(held.active, held.tabs.length - 1); CR.closed = held.closed; crChrome(); crTabs(); crPage(); }
-        else { CR.tabs = []; CR.closed = []; CR.active = 0; crNewTab(); }
-        toast(CR.incog ? 'Incognito: history is off. Your regular tabs are waiting where you left them.' : 'Back to regular browsing. The record resumes.');
-    }
+    else if (a === 'incog') crIncogSwap();
     else if (a === 'history') crNav('chrome://history');
     else if (a === 'downloads') crNav('chrome://downloads');
     else if (a === 'bookmarks') crNav('chrome://bookmarks');
@@ -2106,6 +2271,143 @@ function crMenuAct(a) {
     else if (a === 'settings') crNav('chrome://settings');
     else if (a === 'about') crNav('chrome://settings');
     else if (a === 'exit') closeWin('chrome');
+}
+
+/* ═════════════ Chrome right-click — context-aware, like the real one ═════════════
+   What you clicked decides the menu: a tab, the empty strip, a link,
+   selected text, a text field, or the page itself. Every non-gag item
+   genuinely works — background tab opens, session-swapped incognito,
+   files saved into the real Downloads folder, view-source tabs. */
+function crFullURL(href) { return /^[a-z][a-z0-9+.-]*:/i.test(href) ? href : 'https://' + href; }
+function crBgTab(url, at) {   // insert without switching — "Open link in new tab"
+    CR.tabs.splice(at, 0, { url: url, hist: [url], hi: 0, scroll: 0 });
+    if (at <= CR.active) CR.active++;
+    crTabs();
+}
+function crActivateTab(i) {
+    var cur = CR.tabs[CR.active];                          // may be gone: close-others/right splice first
+    if (cur) cur.scroll = CR.el.querySelector('#crView').scrollTop;
+    CR.active = i; crChrome(); crTabs(); crPage();
+}
+function crSaveFile(title, html) {
+    var name = String(title).replace(/[\\/:*?"<>|]+/g, '-').slice(0, 48) + '.html';
+    var f = fsAddFile('Downloads', { n: uniqueName('Downloads', name), t: 'globe', size: (Math.max(html.length, 512) / 1024).toFixed(1) + ' KB', date: dlStamp() });
+    crBubble('Saved “' + f.n + '” to Downloads');
+}
+function crCtxMenu(e) {
+    e.preventDefault();
+    CR.el.querySelector('#crMenu').hidden = true;
+    CR.el.querySelector('#crSuggest').hidden = true;
+    if (e.target.closest('.win-caps')) { closeBctx(); return; }
+    var host = CR.root, dark = !!CR.incog, t = crTab();
+
+    var inp = e.target.closest('input, textarea');
+    if (inp && !inp.readOnly && !inp.disabled) {
+        var isOmni = inp.id === 'crUrl';
+        bctxInput(host, e, inp, isOmni ? { go: function (v) {
+            CR.el.querySelector('#crSuggest').hidden = true; inp.blur(); crNav(crParse(v));
+        } } : null, dark);
+        return;
+    }
+
+    var tabEl = e.target.closest('.cr-tab');
+    if (tabEl) {
+        var i = +tabEl.getAttribute('data-ti'), n = CR.tabs.length;
+        openBctx(host, e, [
+            { k: 'tnr', t: 'New tab to the right' },
+            'sep',
+            { k: 'trl', t: 'Reload' },
+            { k: 'tdp', t: 'Duplicate' },
+            'sep',
+            { k: 'tcl', t: 'Close tab', hint: i === CR.active ? 'Alt+W' : '' },
+            { k: 'tco', t: 'Close other tabs', dis: n < 2 },
+            { k: 'tcr', t: 'Close tabs to the right', dis: i >= n - 1 }
+        ], function (a) {
+            var T = CR.tabs[i]; if (!T) return;
+            crTab().scroll = CR.el.querySelector('#crView').scrollTop;   // save now: the splices below can strand CR.active
+            if (a === 'tnr') { CR.tabs.splice(i + 1, 0, { url: 'chrome://newtab', hist: ['chrome://newtab'], hi: 0, scroll: 0 }); crActivateTab(i + 1); }
+            else if (a === 'trl') { if (i === CR.active) crPage(); }
+            else if (a === 'tdp') { CR.tabs.splice(i + 1, 0, { url: T.url, hist: T.hist.slice(), hi: T.hi, scroll: T.scroll }); crActivateTab(i + 1); }
+            else if (a === 'tcl') crCloseTab(i);
+            else if (a === 'tco') {
+                CR.tabs.forEach(function (x, xi) { if (xi !== i) CR.closed.push(x.url); });
+                CR.tabs = [T]; crActivateTab(0);
+            }
+            else if (a === 'tcr') {
+                CR.tabs.splice(i + 1).forEach(function (x) { CR.closed.push(x.url); });
+                crActivateTab(Math.min(CR.active, i));
+            }
+        }, dark);
+        return;
+    }
+    if (e.target.closest('.cr-tabstrip')) {
+        openBctx(host, e, [
+            { k: 'snt', t: 'New tab', hint: 'Alt+T' },
+            { k: 'srt', t: 'Reopen closed tab', hint: 'Alt+Shift+T', dis: !CR.closed.length }
+        ], function (a) {
+            if (a === 'snt') crNewTab();
+            else if (CR.closed.length) crNewTab(CR.closed.pop());
+        }, dark);
+        return;
+    }
+
+    var l = e.target.closest('.cr-l[data-href], .cr-sg[data-su]');
+    if (l) {
+        var href = l.getAttribute('data-href') || crParse(l.getAttribute('data-su'));
+        openBctx(host, e, [
+            { k: 'lnt', t: 'Open link in new tab' },
+            { k: 'lni', t: 'Open link in Incognito window' },
+            'sep',
+            { k: 'lcp', t: 'Copy link address' },
+            { k: 'lsv', t: 'Save link as…' }
+        ], function (a) {
+            if (a === 'lnt') crBgTab(href, CR.active + 1);
+            else if (a === 'lni') { if (CR.incog) crNewTab(href); else { crIncogSwap(); crNav(href); } }
+            else if (a === 'lcp') { setClip(crFullURL(href)); crBubble('Link address copied'); }
+            else if (a === 'lsv') {
+                var s = crSite(href);
+                crSaveFile(crTitleOf(href), s === WEB.__err ? s.render(String(href).split('/')[0]) : s.render(crQOf(href)));
+            }
+        }, dark);
+        return;
+    }
+
+    var sel = window.getSelection(), st = sel ? String(sel).trim() : '';
+    if (st && sel.anchorNode && CR.el.contains(sel.anchorNode) && e.target.closest('#crView')) {
+        var short = st.length > 22 ? st.slice(0, 22) + '…' : st;
+        openBctx(host, e, [
+            { k: 'scp', t: 'Copy' },
+            'sep',
+            { k: 'ssr', t: 'Search Google for “' + short + '”' },
+            'sep',
+            { k: 'spr', t: 'Print…' }
+        ], function (a) {
+            if (a === 'scp') { setClip(st); crBubble('Copied'); }
+            else if (a === 'ssr') crNewTab('google.com/search?q=' + encodeURIComponent(st));
+            else toast('Saved as bloom.pdf to a printer that isn’t real.');
+        }, dark);
+        return;
+    }
+
+    openBctx(host, e, [
+        { k: 'back', t: 'Back', hint: 'Alt+←', dis: t.hi <= 0 },
+        { k: 'fwd', t: 'Forward', hint: 'Alt+→', dis: t.hi >= t.hist.length - 1 },
+        { k: 'rld', t: 'Reload', hint: 'Alt+R' },
+        'sep',
+        { k: 'sav', t: 'Save as…' },
+        { k: 'prt', t: 'Print…' },
+        'sep',
+        { k: 'src', t: 'View page source', dis: /^view-source:/i.test(t.url) },
+        { k: 'ins', t: 'Inspect' }
+    ], function (a) {
+        if (a === 'back') crBack();
+        else if (a === 'fwd') crFwd();
+        else if (a === 'rld') crPage();
+        else if (a === 'sav') crSaveFile(crTitleOf(t.url), CR.el.querySelector('#crView').innerHTML);
+        else if (a === 'prt') toast('Saved as bloom.pdf to a printer that isn’t real.');
+        else if (a === 'src') crNewTab('view-source:' + t.url);
+        else toast('Inspected. It’s pixels all the way down.');
+    }, dark);
 }
 
 /* —— Google Chrome Setup: a real wizard you click through yourself ——
@@ -4022,7 +4324,7 @@ function setStart(open) {
     // queued rAF could land AFTER a close and corrupt the state)
     startMenu.classList.toggle('open', open);
     startBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
-    if (open) { closeFlyouts(); closeCtx(); closeTaskView(); setTimeout(function () { startSearch.focus(); }, 40); }
+    if (open) { closeFlyouts(); closeCtx(); closeBctx(); closeTaskView(); setTimeout(function () { startSearch.focus(); }, 40); }
     else { startSearch.value = ''; filterStart(''); }
 }
 startBtn.addEventListener('click', function (e) { e.stopPropagation(); setStart(!startMenu.classList.contains('open')); });
@@ -4074,7 +4376,7 @@ function closeFlyouts() { quickPanel.hidden = true; calPanel.hidden = true; }
 
 function toggleFlyout(panel, build) {
     var opening = panel.hidden;
-    closeFlyouts(); setStart(false); closeCtx();
+    closeFlyouts(); setStart(false); closeCtx(); closeBctx();
     if (opening) { build(); panel.hidden = false; }
 }
 byId('quickBtn').addEventListener('click', function (e) { e.stopPropagation(); toggleFlyout(quickPanel, buildQuick); });
@@ -4124,7 +4426,7 @@ function buildCal() {
 var ctx = byId('ctx');
 function closeCtx() { ctx.hidden = true; }
 desktop.addEventListener('contextmenu', function (e) {
-    e.preventDefault(); setStart(false); closeFlyouts(); closeFctx();
+    e.preventDefault(); setStart(false); closeFlyouts(); closeFctx(); closeBctx();
     var d = e.target.closest('.dicon');
     if (d) {   // icons get the file menu; empty desktop gets the desktop menu
         closeCtx();
@@ -4434,7 +4736,7 @@ var CHEATS = [
 ];
 function closeCheat() { var c = byId('cheatsheet'); if (c) c.remove(); }
 function openCheat() {
-    closeCheat(); setStart(false); closeFlyouts(); closeCtx(); closeTaskView();
+    closeCheat(); setStart(false); closeFlyouts(); closeCtx(); closeBctx(); closeTaskView();
     var ov = document.createElement('div'); ov.className = 'cheat-overlay'; ov.id = 'cheatsheet';
     ov.innerHTML = '<div class="cheat px-lg lift"><div class="cheat-head">' + ic('ic-win') + '<b>Keyboard shortcuts</b>' +
         '<span class="cheat-sub">Alt is this machine’s Ctrl — the real one belongs to your browser</span></div>' +
@@ -4449,11 +4751,12 @@ function openCheat() {
 function toggleCheat() { if (byId('cheatsheet')) closeCheat(); else openCheat(); }
 
 /* ═══════════════════ global dismiss + init ═════════════════ */
-document.addEventListener('click', function () { setStart(false); closeFlyouts(); closeCtx(); closeFctx(); });
+document.addEventListener('click', function () { setStart(false); closeFlyouts(); closeCtx(); closeFctx(); closeBctx(); });
+document.addEventListener('auxclick', closeBctx);   // middle-click closes tabs behind an open menu — don't leave it stale
 document.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape') return;
     if (closeTopDlg()) return;   // dialogs eat the first Escape
-    setStart(false); closeFlyouts(); closeCtx(); closeFctx(); closeTaskView();
+    setStart(false); closeFlyouts(); closeCtx(); closeFctx(); closeBctx(); closeTaskView();
 });
 
 applyAccent(recall('accent', ACCENTS[0].hex));
