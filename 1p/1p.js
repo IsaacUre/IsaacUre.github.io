@@ -782,19 +782,31 @@ function drawMinimap() {
 var HSQ = 3.6;                                     // cell heights -> dollhouse px (the /room3d/ squash)
 var MCX = 160, MCZ = 208;                          // plan center, in plan px like /room3d/
 var MAPV = { on: false, yaw: -0.62, pitch: 0.94, zoom: 1.05, vyaw: 0, idleT: 4 };
-var MBOXES = [], MFLATS = [];
+var MBOXES = [], MFLATS = [], PAWN = null;
 var MAPSNAP = mk(W, H), msctx = MAPSNAP.getContext('2d');
 var mdrag = { on: false, id: -1, x0: 0, y0: 0, lx: 0, ly: 0, moved: 0, t0: 0, type: 'mouse' };
 var MPTRS = {};
 var mpinch = { on: false, d0: 0, z0: 1 };
 
+/* every face color is fixed for the life of the scene (the sun is pinned to
+   the world, the palette never changes), so bake all five now: the frame
+   loop should never rebuild a color string it already built */
+function mkbox(x, z, w, d, y0, h, c, t, glow, hull) {
+    return {
+        x: x, z: z, w: w, d: d, y0: y0, h: h, hull: hull || '',
+        cTop: shade(t || c, glow ? 1 : LIGHT.top),
+        cXp: shade(c, glow ? 0.96 : LIGHT.xp), cXn: shade(c, glow ? 0.96 : LIGHT.xn),
+        cZp: shade(c, glow ? 0.96 : LIGHT.zp), cZn: shade(c, glow ? 0.96 : LIGHT.zn)
+    };
+}
 function mbox(x, z, w, d, y0, h, c, t, glow, hull) {
-    MBOXES.push({ x: x, z: z, w: w, d: d, y0: y0, h: h, c: c, t: t || c, glow: glow || false, hull: hull || '' });
+    MBOXES.push(mkbox(x, z, w, d, y0, h, c, t, glow, hull));
 }
 function mflat(x, z, w, d, c, a) { MFLATS.push({ x: x, z: z, w: w, d: d, c: c, a: a || 1 }); }
 
 function buildMapScene() {
     MBOXES.length = 0; MFLATS.length = 0;
+    PAWN = mkbox(0, 0, 6, 6, 0, 12, P.red, '#ff5436', true, '');   // you, moved into place each frame
     var i, o, r, c, zz, cx, cz;
 
     /* floors, inset from the wall ring like /room3d/ */
@@ -917,22 +929,18 @@ function mpush(list, v, col) {
         p3 = mproj(v[6], v[7], v[8]), p4 = mproj(v[9], v[10], v[11]);
     list.push({ p: [p1, p2, p3, p4], c: col, d: (p1.d + p2.d + p3.d + p4.d) / 4 });
 }
+function byDepth(a, b) { return a.d - b.d; }
 function collectMapBox(o, faces, post) {
     var x0 = o.x, x1 = o.x + o.w, z0 = o.z, z1 = o.z + o.d;
     var yb = o.y0, yt = o.y0 + o.h;
-    var lit = o.glow;
-    mpush(faces, [x0, yt, z0, x1, yt, z0, x1, yt, z1, x0, yt, z1], shade(o.t, lit ? 1 : LIGHT.top));
-    if (MS.sy > 0) mpush(o.hull === 'e' ? post : faces, [x1, yb, z0, x1, yb, z1, x1, yt, z1, x1, yt, z0], shade(o.c, lit ? 0.96 : LIGHT.xp));
-    else if (MS.sy < 0) mpush(o.hull === 'w' ? post : faces, [x0, yb, z0, x0, yb, z1, x0, yt, z1, x0, yt, z0], shade(o.c, lit ? 0.96 : LIGHT.xn));
-    if (MS.cy > 0) mpush(o.hull === 's' ? post : faces, [x0, yb, z1, x1, yb, z1, x1, yt, z1, x0, yt, z1], shade(o.c, lit ? 0.96 : LIGHT.zp));
-    else if (MS.cy < 0) mpush(o.hull === 'n' ? post : faces, [x0, yb, z0, x1, yb, z0, x1, yt, z0, x0, yt, z0], shade(o.c, lit ? 0.96 : LIGHT.zn));
+    mpush(faces, [x0, yt, z0, x1, yt, z0, x1, yt, z1, x0, yt, z1], o.cTop);
+    if (MS.sy > 0) mpush(o.hull === 'e' ? post : faces, [x1, yb, z0, x1, yb, z1, x1, yt, z1, x1, yt, z0], o.cXp);
+    else if (MS.sy < 0) mpush(o.hull === 'w' ? post : faces, [x0, yb, z0, x0, yb, z1, x0, yt, z1, x0, yt, z0], o.cXn);
+    if (MS.cy > 0) mpush(o.hull === 's' ? post : faces, [x0, yb, z1, x1, yb, z1, x1, yt, z1, x0, yt, z1], o.cZp);
+    else if (MS.cy < 0) mpush(o.hull === 'n' ? post : faces, [x0, yb, z0, x1, yb, z0, x1, yt, z0, x0, yt, z0], o.cZn);
 }
 function renderMap() {
-    /* the paused world behind, dimmed */
-    ctx.drawImage(MAPSNAP, 0, 0);
-    ctx.globalAlpha = 0.8;
-    R(ctx, 0, 0, W, H, '#0b0b10');
-    ctx.globalAlpha = 1;
+    ctx.drawImage(MAPSNAP, 0, 0);              // the paused world, dimmed at snapshot time
     mapCamPrep();
 
     var i, f;
@@ -957,13 +965,14 @@ function renderMap() {
 
     var faces = [], post = [];
     for (i = 0; i < MBOXES.length; i++) collectMapBox(MBOXES[i], faces, post);
-    collectMapBox({ x: ppx - 3, z: ppz - 3, w: 6, d: 6, y0: 0, h: 12, c: P.red, t: '#ff5436', glow: true, hull: '' }, faces, post);
+    PAWN.x = ppx - 3; PAWN.z = ppz - 3;
+    collectMapBox(PAWN, faces, post);
     var tip = mproj(ppx + PL.dirX * 11, 0.5, ppz + PL.dirZ * 11);
     var b1 = mproj(ppx - PL.dirZ * 4.5 + PL.dirX * 2, 0.5, ppz + PL.dirX * 4.5 + PL.dirZ * 2);
     var b2 = mproj(ppx + PL.dirZ * 4.5 + PL.dirX * 2, 0.5, ppz - PL.dirX * 4.5 + PL.dirZ * 2);
     faces.push({ p: [tip, b1, b2, b2], c: '#ff5436', d: (tip.d + b1.d + b2.d) / 3 });
-    faces.sort(function (a, b) { return a.d - b.d; });
-    post.sort(function (a, b) { return a.d - b.d; });
+    faces.sort(byDepth);
+    post.sort(byDepth);
     for (i = 0; i < faces.length; i++) mquad(faces[i].p[0], faces[i].p[1], faces[i].p[2], faces[i].p[3], faces[i].c);
     for (i = 0; i < post.length; i++) mquad(post[i].p[0], post[i].p[1], post[i].p[2], post[i].p[3], post[i].c);
 
@@ -977,32 +986,42 @@ function renderMap() {
     ctx.fillRect(up.x - gr, up.y - gr, gr * 2, gr * 2);
     if (reduce || FR % 2) { ctx.fillStyle = P.red; ctx.fillRect(Math.round(up.x) - 4, Math.round(up.y), 2, 2); }
 
-    /* the ✕ that walks you back */
-    R(ctx, W - 17, 3, 14, 14, '#101014');
-    box1(ctx, W - 17, 3, 14, 14, '#45453f');
+    /* the ✕ that walks you back (its hit region is bigger than the card: a
+       thumb on a phone is nowhere near this precise) */
+    R(ctx, W - 21, 3, 18, 18, '#101014');
+    box1(ctx, W - 21, 3, 18, 18, '#45453f');
     ctx.fillStyle = '#ff5436';
-    for (i = 0; i < 6; i++) {
-        ctx.fillRect(W - 13 + i, 7 + i, 1, 1);
-        ctx.fillRect(W - 8 - i, 7 + i, 1, 1);
+    for (i = 0; i < 8; i++) {
+        ctx.fillRect(W - 16 + i, 8 + i, 1, 1);
+        ctx.fillRect(W - 9 - i, 8 + i, 1, 1);
     }
 }
 
-var mapBtn = null, tipP = null, TIP_HOME = '';
-var TIP_MAP = '<span class="fine-only"><b>drag</b> spins · <b>scroll</b> zooms · <b>m</b> closes · </span><span class="coarse-only"><b>drag</b> spins · <b>pinch</b> zooms · <b>✕</b> closes · </span>the <b>red one</b> is you';
+var mapBtn = null, tipP = null, TIP_HOME = '', mapOpenT = 0;
+var TIP_MAP = '<span class="fine-only"><b>drag</b> spins · <b>scroll</b> zooms · <b>m</b> closes · </span><span class="coarse-only"><b>drag</b> spins · <b>pinch</b> zooms · <b>✕</b> or <b>map</b> closes · </span>the <b>red one</b> is you';
 function swapTip(mapMode) {
     if (tipP) tipP.innerHTML = mapMode ? TIP_MAP : TIP_HOME;
 }
 function openMap() {
-    if (MAPV.on || TRANS.on) return;
+    /* navDone, not just TRANS.on: the reduced-motion exit skips the dither and
+       goes straight to location.href, and the page stays live until it commits */
+    if (MAPV.on || TRANS.on || navDone) return;
     MAPV.on = true;
     MAPV.vyaw = 0;
     MAPV.idleT = 4;                                // spins gently from the first frame
-    KEYS = {};
+    mapOpenT = Date.now();                         // wall clock, not T: see the grace period in onUp
+    /* KEYS survives on purpose: frame() never moves you while the map is up, and
+       the OS only auto-repeats the last key — wiping would eat a held W forever */
     look.id = -1; stick.id = -1; stick.dx = 0; stick.dy = 0;
-    /* snapshot the scene once: the world is paused behind the overlay */
+    /* snapshot the scene once, dim baked in: the world is paused behind the
+       overlay, so the backdrop is one blit per frame and nothing more */
     hideMini = true; render(); hideMini = false;
     msctx.clearRect(0, 0, W, H);
     msctx.drawImage(buf, 0, 0);
+    msctx.globalAlpha = 0.8;
+    msctx.fillStyle = '#0b0b10';
+    msctx.fillRect(0, 0, W, H);
+    msctx.globalAlpha = 1;
     if (promptEl) { promptOn = false; promptEl.hidden = true; }
     if (mapBtn) mapBtn.setAttribute('aria-pressed', 'true');
     swapTip(true);
@@ -1151,8 +1170,9 @@ function onDown(e) {
 }
 function onMove(e) {
     if (MAPV.on) {
+        MAPV.idleT = 0;                            // any pointer activity defers the idle spin,
         if (MPTRS[e.pointerId]) { MPTRS[e.pointerId].x = e.clientX; MPTRS[e.pointerId].y = e.clientY; }
-        if (mpinch.on) {
+        if (mpinch.on) {                           // including a pinch, which is not a drag
             var pd = mpinchDist();
             if (pd > 0) { MAPV.zoom = clamp(mpinch.z0 * pd / mpinch.d0, 0.7, 1.8); needsDraw = true; }
             return;
@@ -1164,7 +1184,6 @@ function onMove(e) {
             MAPV.yaw += mdx * 0.008;
             MAPV.pitch = clamp(MAPV.pitch + mdy * 0.005, 0.55, 1.25);
             MAPV.vyaw = mdx * 0.008 * 60;
-            MAPV.idleT = 0;
             needsDraw = true;
         }
         return;
@@ -1187,25 +1206,36 @@ function onUp(e) {
     if (MAPV.on) {
         delete MPTRS[e.pointerId];
         if (mpinch.on) {
-            if (mptrCount() < 2) {
-                mpinch.on = false;
-                /* one finger stays down: let it spin again */
-                var k, rest = null;
-                for (k in MPTRS) if (MPTRS.hasOwnProperty(k)) rest = k;
-                if (rest !== null) {
-                    mdrag.on = true; mdrag.id = parseInt(rest, 10) || rest;
-                    mdrag.x0 = mdrag.lx = MPTRS[rest].x; mdrag.y0 = mdrag.ly = MPTRS[rest].y;
-                    mdrag.moved = 99;              // a pinch leftover is never a tap
-                }
+            if (mptrCount() >= 2) {
+                /* a third finger lifted: mpinchDist now measures a different pair,
+                   so re-baseline or the zoom snaps to whatever they were holding */
+                mpinch.d0 = mpinchDist() || 1; mpinch.z0 = MAPV.zoom;
+                return;
+            }
+            mpinch.on = false;
+            /* one finger stays down: let it spin again. Number(), not parseInt||:
+               a surviving pointerId 0 (firefox's mouse) is falsy and would fall
+               back to the string key, which never === the number again */
+            var k, rest = null;
+            for (k in MPTRS) if (MPTRS.hasOwnProperty(k)) rest = k;
+            if (rest !== null) {
+                mdrag.on = true; mdrag.id = Number(rest);
+                mdrag.x0 = mdrag.lx = MPTRS[rest].x; mdrag.y0 = mdrag.ly = MPTRS[rest].y;
+                mdrag.moved = 99;                  // a pinch leftover is never a tap
             }
             return;
         }
         if (mdrag.on && e.pointerId === mdrag.id) {
             mdrag.on = false;
+            if (isCancel) MAPV.vyaw = 0;           // the system stole the gesture; don't fling
             var mslop = mdrag.type === 'mouse' ? 6 : 11;
-            if (!isCancel && mdrag.moved < mslop && T - mdrag.t0 < 0.5) {
+            if (!isCancel && mdrag.moved < mslop && T - mdrag.t0 < 0.5 && Date.now() - mapOpenT > 350) {
+                /* the ✕ sits where the minimap was: without the grace period a
+                   double-tap on the minimap would open the map and shut it again.
+                   Wall clock on purpose — T stops with rAF, and a guard that has
+                   to EXPIRE must never be able to freeze the ✕ shut */
                 var mc = bufCoords(e);
-                if (mc.x >= W - 28 && mc.y <= 28) closeMap();
+                if (mc.x >= W - 32 && mc.y <= 30) closeMap();
             }
         }
         return;
@@ -1257,8 +1287,9 @@ function frame(ts) {
         MAPV.idleT += dt;
         if (!reduce && !mdrag.on && MAPV.idleT > 4) { MAPV.yaw += dt * 0.12; needsDraw = true; }
         if (!reduce) needsDraw = true;             // the ring + glow pulse
-        if (!needsDraw && FR === lastFR) return;
-        lastFR = FR;
+        /* no FR tick here: nothing in the map animates on the blink cadence, so
+           under reduced motion this view is genuinely still until you touch it */
+        if (!needsDraw) return;
         needsDraw = false;
         renderMap();
         present();
@@ -1331,6 +1362,7 @@ function boot() {
                     if (isFinite(pit)) PL.pitch = clamp(pit, -80, 80);
                 },
                 shot: function () { if (MAPV.on) renderMap(); else render(); return buf.toDataURL('image/png'); },
+                keys: function () { return KEYS; },              // held-key state, for regression checks
                 renderMs: function (n) { var t = performance.now(); for (var i = 0; i < (n || 100); i++) render(); return (performance.now() - t) / (n || 100); },
                 mapMs: function (n) { var t = performance.now(); for (var i = 0; i < (n || 100); i++) renderMap(); return (performance.now() - t) / (n || 100); },
                 map: {
@@ -1355,7 +1387,9 @@ function boot() {
     } else {
         holder.addEventListener('mousedown', function (e) { e.pointerId = 1; e.pointerType = 'mouse'; onDown(e); });
         holder.addEventListener('mousemove', function (e) { e.pointerId = 1; onMove(e); });
-        holder.addEventListener('mouseup', function (e) { e.pointerId = 1; onUp(e); });
+        /* on window, not holder: without pointer capture a button released off
+           the canvas never comes back, and the map would spin on hover forever */
+        window.addEventListener('mouseup', function (e) { e.pointerId = 1; onUp(e); });
     }
     window.addEventListener('keydown', function (e) { onKey(e, true); });
     window.addEventListener('keyup', function (e) { onKey(e, false); });
@@ -1380,6 +1414,10 @@ function boot() {
         if (e.persisted) {
             navDone = false; TRANS.on = false; TRANS.t = 0;
             clearTimeout(navTimer);
+            /* a pointer that was down when the page froze never sends its up:
+               left in MPTRS it makes the next single finger read as a pinch */
+            MPTRS = {}; mpinch.on = false; mdrag.on = false; MAPV.vyaw = 0;
+            KEYS = {}; stick.id = -1; stick.dx = 0; stick.dy = 0; look.id = -1;
             needsDraw = true;
         }
     });
