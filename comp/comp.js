@@ -862,7 +862,7 @@ function fsCompile(rootKey, label, node, crumb, meta) {
         if (!it.size) { var r = EXT_KB[ext]; it.size = r ? fmtKb(r[0] + h % Math.max(1, r[1] - r[0])) : ((h % 87 + 9) + ' KB'); }
         if (!it.date) {
             var base = meta.d.split('/'), dt = new Date(+base[2], +base[0] - 1, +base[1] + h % Math.max(1, meta.j));
-            var hr = 7 + (h >> 4) % 16, mn = (h >> 8) % 60;
+            var hr = 7 + (h >>> 4) % 16, mn = (h >>> 8) % 60;   // unsigned: a signed >> here makes 3:0-48 AM
             it.date = (dt.getMonth() + 1) + '/' + dt.getDate() + '/' + dt.getFullYear() + ' ' + (hr % 12 === 0 ? 12 : hr % 12) + ':' + (mn < 10 ? '0' : '') + mn + (hr < 12 ? ' AM' : ' PM');
         }
         it.cid = it.cid || path;   // filler content is keyed by path too
@@ -916,6 +916,20 @@ function itemsFor(path) {
     return base.filter(function (it) { return (!it.when || it.when()) && st.gone.indexOf(path + '/' + it.n) < 0; }).concat(st.add[path] || []);
 }
 function fsHas(path, name) { return itemsFor(path).some(function (it) { return it.n === name; }); }
+/* Tiles carry both their index and their name. when()-gated items (a Steam
+   game finishing its install, Chrome arriving) can appear in itemsFor()
+   between a draw and the next click, shifting every index under the
+   rendered tiles — so the NAME is the source of truth and the index is
+   only a fast path. Every handler that turns a tile back into an item
+   goes through here. */
+function tileItem(path, tile) {
+    if (!tile) return null;
+    var items = itemsFor(path), n = tile.getAttribute('data-n');
+    var it = items[+tile.getAttribute('data-i')];
+    if (it && (n === null || it.n === n)) return it;
+    for (var i = 0; i < items.length; i++) if (items[i].n === n) return items[i];
+    return null;
+}
 function uniqueName(path, name) {
     if (!fsHas(path, name)) return name;
     var dot = name.lastIndexOf('.'), stem = dot > 0 ? name.slice(0, dot) : name, ext = dot > 0 ? name.slice(dot) : '';
@@ -952,8 +966,10 @@ function fsRestore(i) {
         var copy = { n: uniqueName(e.from, e.it.n), t: e.it.t, app: e.it.app, arg: e.it.arg, go: e.it.go, size: e.it.size, date: e.it.date, crit: e.it.crit, cid: e.it.cid, ph: e.it.ph };
         (st.add[e.from] = st.add[e.from] || []).push(copy);
     }
-    fsSave(); refreshFileViews();
+    fsSave();
+    // install BEFORE the redraw: it flips when:chrome, and installChrome refreshes too
     if (chromeOnDisk() && PINNED.indexOf('chrome') < 0) installChrome({ shortcut: false });   // a restored shortcut re-registers Chrome
+    refreshFileViews();
 }
 function chromeOnDisk() {   // the install is real wherever the shortcut lives, not just on the Desktop
     var found = false;
@@ -1104,12 +1120,12 @@ function renderExplorer(id, arg) {
 }
 function navItem(name, icon, key) { return '<button class="nav-item" data-folder="' + esc(key || name) + '">' + ic(icon) + ' ' + esc(name) + '</button>'; }
 function fileTile(it, i) {
-    return '<button class="fitem" data-i="' + i + '">' + ic(FS_ICON[it.t] || 'ic-folder') + '<span class="fitem-n">' + esc(it.n) + '</span></button>';
+    return '<button class="fitem" data-i="' + i + '" data-n="' + esc(it.n) + '">' + ic(FS_ICON[it.t] || 'ic-folder') + '<span class="fitem-n">' + esc(it.n) + '</span></button>';
 }
 function driveTile(it, i) {
     var free = it.cap ? it.cap[0] : 0, total = it.cap ? it.cap[1] : 1;
     var used = Math.round((total - free) / total * 100);
-    return '<button class="fitem fdrive" data-i="' + i + '">' + ic(FS_ICON[it.t] || 'ic-drive') +
+    return '<button class="fitem fdrive" data-i="' + i + '" data-n="' + esc(it.n) + '">' + ic(FS_ICON[it.t] || 'ic-drive') +
         '<span class="fd-body"><span class="fitem-n">' + esc(it.n) + '</span>' +
         (it.cap ? '<span class="fd-bar"><i style="width:' + used + '%"' + (used > 88 ? ' class="hot"' : '') + '></i></span>' +
         '<span class="fd-free">' + free + ' GB free of ' + total + ' GB</span>' : '<span class="fd-free">No disc inserted</span>') +
@@ -1125,6 +1141,12 @@ function initExplorer(el, id, arg) {
             return '<button class="crumb-seg' + (i === segs.length - 1 ? ' cur' : '') + '" data-k="' + esc(s[1]) + '" type="button">' + esc(s[0]) + '</button>';
         }).join('<span class="crumb-sep">›</span>');
     }
+    function statCount() {   // "N of M items" whenever a filter is hiding something
+        var items = itemsFor(state.path), q = state.filter.toLowerCase();
+        var shown = !q ? items.length : items.filter(function (it) { return it.n.toLowerCase().indexOf(q) >= 0; }).length;
+        var tail = items.length === 1 ? ' item' : ' items';
+        return q ? shown + ' of ' + items.length + tail : items.length + tail;
+    }
     function draw() {
         var items = itemsFor(state.path), q = state.filter.toLowerCase();
         var view = [];
@@ -1139,8 +1161,7 @@ function initExplorer(el, id, arg) {
         });
         grid.innerHTML = view.length ? html
             : '<div class="exp-empty">' + esc(q ? 'Nothing here matches "' + state.filter + '".' : (FS[state.path] || {}).empty || 'This folder is empty.') + '</div>';
-        stat.textContent = q ? view.length + ' of ' + items.length + (items.length === 1 ? ' item' : ' items')
-            : items.length + (items.length === 1 ? ' item' : ' items');
+        stat.textContent = statCount();
     }
     state.draw = draw;
     function go(p) {
@@ -1192,23 +1213,22 @@ function initExplorer(el, id, arg) {
     search.addEventListener('keydown', function (e) { e.stopPropagation(); if (e.key === 'Escape') { search.value = ''; state.filter = ''; draw(); } });
     grid.addEventListener('dblclick', function (e) {
         var b = e.target.closest('.fitem'); if (!b) return;
-        openItem(itemsFor(state.path)[+b.getAttribute('data-i')]);
+        openItem(tileItem(state.path, b));
     });
     grid.addEventListener('click', function (e) {
-        var items = itemsFor(state.path), count = items.length + (items.length === 1 ? ' item' : ' items');
         var b = e.target.closest('.fitem');
         grid.querySelectorAll('.fitem.sel').forEach(function (x) { x.classList.remove('sel'); });
-        if (!b) { stat.textContent = count; return; }
+        if (!b) { stat.textContent = statCount(); return; }
         b.classList.add('sel');
-        var it = items[+b.getAttribute('data-i')];
-        stat.textContent = it ? count + '  ·  ' + it.n + (sizeOf(it) ? '  ·  ' + sizeOf(it) : '') + '  ·  ' + kindOf(it) : count;
+        var it = tileItem(state.path, b);
+        stat.textContent = it ? statCount() + '  ·  ' + it.n + (sizeOf(it) ? '  ·  ' + sizeOf(it) : '') + '  ·  ' + kindOf(it) : statCount();
     });
     grid.addEventListener('contextmenu', function (e) {
         e.preventDefault();
         var b = e.target.closest('.fitem'); if (!b) { closeFctx(); return; }
         grid.querySelectorAll('.fitem.sel').forEach(function (x) { x.classList.remove('sel'); });
         b.classList.add('sel');
-        var it = itemsFor(state.path)[+b.getAttribute('data-i')]; if (!it) return;
+        var it = tileItem(state.path, b); if (!it) return;
         openFctx(e, { path: state.path, it: it, tile: b, open: function () { openItem(it); }, redraw: draw });
     });
     draw();
@@ -1236,7 +1256,7 @@ function openFileByType(it) {
         openApp('notepad', { file: { n: it.n, body: contentFor(it) } });
     else if (t === 'pdf') openApp('reader', { n: it.n });
     else if (t === 'img') openApp('photos', it.ph != null ? it.ph : fsHash(it.cid || it.n) % PHOTOS.length);
-    else if (t === 'audio' || t === 'video') openApp('player', { n: it.n, video: t === 'video' });
+    else if (t === 'audio' || t === 'video') openApp('player', { n: it.n, cid: it.cid, video: t === 'video' });
     else if (t === 'font') dlgFont(it);
     else if (t === 'exe') dlgError('This app can’t run on your PC', 'To find a version for your PC, check with the software publisher. They will also be confused.');
     else if (t === 'disc') dlgError('Insert a disc', 'The tray is decorative. It has always been decorative.');
@@ -1259,9 +1279,10 @@ function dlgOpenWith(it) {
 }
 function dlgFont(it) {
     var stem = it.n.replace(/\.[^.]+$/, '');
-    var fam = /press start/i.test(stem) ? '"Press Start 2P", monospace'
-        : /vt323/i.test(stem) ? '"VT323", monospace'
-        : /silkscreen/i.test(stem) ? '"Silkscreen", monospace' : null;
+    // single quotes: this goes inside a double-quoted style attribute
+    var fam = /press start/i.test(stem) ? "'Press Start 2P', monospace"
+        : /vt323/i.test(stem) ? "'VT323', monospace"
+        : /silkscreen/i.test(stem) ? "'Silkscreen', monospace" : null;
     var note = fam ? 'This one actually renders. It’s one of the three fonts this entire website is built from.'
         : /comic sans/i.test(stem) ? 'Not installed on this machine. Some doors we keep closed.'
         : /papyrus/i.test(stem) ? 'Not installed. The avatar of fonts.'
@@ -1411,7 +1432,7 @@ function dlgProps(path, it) {
     if ((it.t === 'drive' || it.t === 'usb') && it.cap) rows.push(['Free space', it.cap[0] + ' GB of ' + it.cap[1] + ' GB']);
     else if (it.go && FS[it.go]) { var c = fsCount(it.go); rows.push(['Contains', c.files + ' files, ' + c.dirs + ' folders']); }
     else rows.push(['Size', sizeOf(it) || '—']);
-    if (it.t === 'audio' || it.t === 'video') rows.push(['Length', (2 + h % 3) + ':' + (10 + (h >> 3) % 50)]);
+    if (it.t === 'audio' || it.t === 'video') rows.push(['Length', plFmt(mediaLen(it))]);   // same source as the player's clock
     if (it.t === 'img') rows.push(['Dimensions', '160 × 144 (everything here is, if you zoom out enough)']);
     if (it.t === 'font') rows.push(['Font family', it.n.replace(/\.[^.]+$/, '')]);
     if (it.crit) rows.push(['Status', 'Protected. Aggressively.']);
@@ -1475,7 +1496,7 @@ function renderDesktop() {
     if (oldFoc && oldFoc.classList && oldFoc.classList.contains('dicon') && desk.contains(oldFoc))
         focN = (oldFoc.querySelector('.fitem-n') || {}).textContent || null;
     desk.innerHTML = deskLayout().list.map(function (o, i) {
-        return '<button class="dicon" data-i="' + i + '" type="button" style="left:' + (DESK_PAD + o.cell[0] * DESK_CW) + 'px;top:' + (DESK_PAD + o.cell[1] * DESK_CH) + 'px">' +
+        return '<button class="dicon" data-i="' + i + '" data-n="' + esc(o.it.n) + '" type="button" style="left:' + (DESK_PAD + o.cell[0] * DESK_CW) + 'px;top:' + (DESK_PAD + o.cell[1] * DESK_CH) + 'px">' +
             '<span class="dicon-img">' + ic(FS_ICON[o.it.t] || 'ic-folder') + '</span>' +
             '<span class="dicon-label fitem-n">' + esc(o.it.n) + '</span></button>';
     }).join('');
@@ -1522,7 +1543,7 @@ document.addEventListener('pointerdown', function (e) {
     var from = tile.classList.contains('dicon') ? 'Desktop' : exPath();
     if (!from) return;
     if (from !== 'Desktop' && e.pointerType === 'touch') return;   // keep touch scrolling inside Explorer
-    var it = itemsFor(from)[+tile.getAttribute('data-i')]; if (!it) return;
+    var it = tileItem(from, tile); if (!it) return;
     dnd.cand = { id: e.pointerId, x: e.clientX, y: e.clientY, tile: tile, it: it, from: from };
 });
 window.addEventListener('pointermove', function (e) {
@@ -1573,14 +1594,14 @@ function dndTarget(x, y) {
     var el = document.elementFromPoint(x, y); if (!el) return null;
     var fit = el.closest('.exp-grid .fitem');   // a folder tile inside Explorer
     if (fit) {
-        var fi = itemsFor(exPath())[+fit.getAttribute('data-i')];
+        var fi = tileItem(exPath(), fit);
         if (fi && fi.go && FS[fi.go]) return { kind: 'folder', path: fi.go, el: fit };
     }
     var nav = el.closest('.exp-nav .nav-item');
     if (nav) { var p = nav.getAttribute('data-folder'); if (FS[p]) return { kind: 'folder', path: p, el: nav }; }
     var dic = el.closest('#desktop .dicon');
     if (dic) {
-        var di = itemsFor('Desktop')[+dic.getAttribute('data-i')];
+        var di = tileItem('Desktop', dic);
         if (di && di.app === 'bin' && (!dnd.cand || di !== dnd.cand.it)) return { kind: 'bin', el: dic };   // the bin can't eat itself
         return { kind: 'desk' };   // dropping on a non-bin icon = that spot on the desktop
     }
@@ -3395,6 +3416,7 @@ function installChrome(opts) {
     // the desktop shortcut is a real file in the Desktop folder now
     if (opts.shortcut && !fsHas('Desktop', 'Google Chrome')) fsAddFile('Desktop', { n: 'Google Chrome', t: 'chrome', app: 'chrome', date: dlStamp() });
     syncTaskbar();
+    refreshFileViews();   // when:chrome just flipped — C:\Program Files\Google exists now
 }
 
 /* —— Photos —— */
@@ -3492,6 +3514,8 @@ function renderPlayer(id, arg) {
         '</div></div>';
 }
 function plFmt(s) { s = Math.max(0, Math.floor(s)); return Math.floor(s / 60) + ':' + (s % 60 < 10 ? '0' : '') + s % 60; }
+// one duration per file, so Properties and the player never disagree
+function mediaLen(it) { return 110 + fsHash(it.cid || it.n) % 170; }
 function plStop(el) {
     var st = el._pl; if (!st) return;
     st.playing = false;
@@ -3502,19 +3526,24 @@ function plStop(el) {
 function plLoad(el, a) {
     a = a || { n: 'ure boy theme.mp3' };
     plStop(el);
-    var seed = fsHash(a.n), rnd = lcgFor(seed);
+    var seed = fsHash(a.cid || a.n), rnd = lcgFor(seed);
     var st = el._pl = {
         n: a.n, video: !!a.video, seed: seed, playing: false, t: 0,
-        len: 110 + seed % 170, bpm: 96 + seed % 52, step: 0,
+        len: mediaLen(a), bpm: 96 + seed % 52, step: 0,
         seq: [], eq: [4, 9, 6, 12, 8, 5, 10, 7]
     };
     for (var i = 0; i < 16; i++) st.seq.push(Math.floor(rnd() * 10));
     el.querySelector('#plTitle').textContent = a.n;
-    el.querySelector('#plTime').textContent = '0:00 / ' + plFmt(st.len);
-    el.querySelector('#plFill').style.width = '0%';
+    plPaint(el);
     var title = el.querySelector('.win-title'); if (title) title.textContent = a.n + ' — URE Media';
     plDrawLoop(el);
     plToggle(el, true);                                    // opening a track means play it
+}
+function plPaint(el) {                                      // the bar and clock, wherever st.t currently is
+    var st = el._pl; if (!st) return;
+    var fill = el.querySelector('#plFill'), tm = el.querySelector('#plTime');
+    if (fill) fill.style.width = (st.t / st.len * 100) + '%';
+    if (tm) tm.textContent = plFmt(st.t) + ' / ' + plFmt(st.len);
 }
 function plToggle(el, on) {
     var st = el._pl; if (!st) return;
@@ -3529,16 +3558,17 @@ function plToggle(el, on) {
         if (!st.playing) return;
         st.t += spb; if (st.t >= st.len) st.t = 0;         // loop; nobody is watching the clock
         var s = st.seq[st.step % 16];
-        if (st.ac) {
+        // only a RUNNING context gets tones: while suspended (autoplay policy — the
+        // ?dev hooks open with no user gesture) currentTime is frozen, so every
+        // queued oscillator would stack on one timestamp and fire as one clap on resume
+        if (st.ac && st.ac.state === 'running') {
             var scale = [0, 3, 5, 7, 10], base = 220 * Math.pow(2, Math.floor(s / 5));
             var f = base * Math.pow(2, scale[s % 5] / 12);
             plTone(st, f, spb * 0.86, 'square', 0.035);
             if (st.step % 4 === 0) plTone(st, base / 2, spb * 1.7, 'triangle', 0.05);
         }
         st.step++;
-        var fill = el.querySelector('#plFill'), tm = el.querySelector('#plTime');
-        if (fill) fill.style.width = (st.t / st.len * 100) + '%';
-        if (tm) tm.textContent = plFmt(st.t) + ' / ' + plFmt(st.len);
+        plPaint(el);
     }, spb * 1000);
 }
 function plTone(st, freq, dur, type, vol) {
@@ -3581,7 +3611,9 @@ function initPlayer(el, id, arg) {
     el.querySelector('#plPlay').addEventListener('click', function () { plToggle(el); });
     el.querySelector('#plTrack').addEventListener('click', function (e) {
         var st = el._pl, r = e.currentTarget.getBoundingClientRect();
-        if (st) st.t = Math.max(0, Math.min(0.999, (e.clientX - r.left) / r.width)) * st.len;
+        if (!st) return;
+        st.t = Math.max(0, Math.min(0.999, (e.clientX - r.left) / r.width)) * st.len;
+        plPaint(el);                                       // seeking while paused still moves the bar
     });
 }
 
@@ -3600,6 +3632,7 @@ function bsodStop(f) {
 function bsod(fileName) {
     try { sessionStorage.setItem('comp_bsod', fileName); } catch (e) {}
     while (dlgs.length) closeTopDlg();
+    teardownApps();          // the machine is down: nothing keeps bleeping over the blue screen
     var d = document.createElement('div'); d.className = 'bsod';
     var rnd = lcgFor(fsHash(fileName)), qr = '';
     for (var y = 0; y < 11; y++) for (var x = 0; x < 11; x++) {
@@ -4198,7 +4231,12 @@ function bankPlaytime(id, hrs) {   // real desktop-app sessions land on the libr
     }
 }
 function stGrant(id) { var o = stOwned(); if (o.indexOf(id) < 0) { o.push(id); sjSet('owned', o); } }
-function stMarkInst(id) { var s = stInst(); if (s.indexOf(id) < 0) { s.push(id); sjSet('inst', s); } }
+function stMarkInst(id) {
+    var s = stInst();
+    // a finished install flips when:inst:<id> — the game's folder appears under
+    // C:\Program Files\Steam\steamapps\common, so any open Explorer must redraw
+    if (s.indexOf(id) < 0) { s.push(id); sjSet('inst', s); refreshFileViews(); }
+}
 
 /* ═══════ procedural "screenshots" — painted crisp on a small canvas ═══════ */
 function stRng(s) { s = s >>> 0; return function () { s = (s + 0x6D2B79F5) | 0; var t = Math.imul(s ^ (s >>> 15), 1 | s); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
@@ -5374,7 +5412,7 @@ desktop.addEventListener('click', function (e) {
 });
 desktop.addEventListener('dblclick', function (e) {
     var d = e.target.closest('.dicon'); if (!d) return;
-    var it = itemsFor('Desktop')[+d.getAttribute('data-i')]; if (!it) return;
+    var it = tileItem('Desktop', d); if (!it) return;
     openItemFrom(it);                             // files dropped on the desktop open like anywhere else
 });
 
@@ -5442,7 +5480,7 @@ desktop.addEventListener('contextmenu', function (e) {
         closeCtx();
         desktop.querySelectorAll('.dicon.sel').forEach(function (x) { x.classList.remove('sel'); });
         d.classList.add('sel');
-        var it = itemsFor('Desktop')[+d.getAttribute('data-i')]; if (!it) return;
+        var it = tileItem('Desktop', d); if (!it) return;
         openFctx(e, { path: 'Desktop', it: it, tile: d, open: function () { openItemFrom(it); }, redraw: renderDesktop });
         return;
     }
