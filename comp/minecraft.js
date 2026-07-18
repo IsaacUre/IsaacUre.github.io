@@ -27,6 +27,7 @@
 
     var S = null;      // save state (persisted)
     var RT = null;     // runtime (rebuilt every open)
+    var EMPTY_KEYS = {};   // stand-in for RT.keys while a GUI suppresses movement
 
     function sLoad() {
         try { var s = JSON.parse(localStorage.getItem('comp_mc') || 'null'); if (s && s.seed != null) return s; } catch (e) {}
@@ -690,9 +691,9 @@
                     if (t !== AIR) break;
                 }
             }
-            // decor
+            // decor — only on dry land (never overwrite the water column of a submerged grass floor)
             var top = bl[lx | (lz << 4) | (h << 8)];
-            if (top === GRASS && h < CH - 2) {
+            if (top === GRASS && h < CH - 2 && bl[lx | (lz << 4) | ((h + 1) << 8)] === AIR) {
                 var d = hash2(wx * 3 + 41, wz * 3 - 89);
                 if (d < 0.06) bl[lx | (lz << 4) | ((h + 1) << 8)] = TALLGRASS;
                 else if (d < 0.068) bl[lx | (lz << 4) | ((h + 1) << 8)] = hash2(wx, wz + 999) < 0.5 ? DANDELION : POPPY;
@@ -938,7 +939,9 @@
     function logNear(wx, wy, wz) {
         for (var dx = -4; dx <= 4; dx++) for (var dy = -4; dy <= 4; dy++) for (var dz = -4; dz <= 4; dz++) {
             if (Math.abs(dx) + Math.abs(dy) + Math.abs(dz) > 5) continue;
-            if (getB(wx + dx, wy + dy, wz + dz) === LOG) return true;
+            var b = getB(wx + dx, wy + dy, wz + dz);
+            if (b === LOG) return true;
+            if (b === -1) return true;   // trunk may sit in an unloaded neighbor: don't decay blind
         }
         return false;
     }
@@ -967,7 +970,11 @@
     function faceUV(d, cr) {   // texture coords per corner, v runs down the tile
         if (d === 2) return [cr[0], cr[2]];
         if (d === 3) return [cr[0], 1 - cr[2]];
-        if (d === 0 || d === 1) return [cr[2], 1 - cr[1]];
+        // opposite faces are seen from opposite sides, so +x and -z must flip u to
+        // read the same way to an outside viewer (directional tiles: TNT text, table tools)
+        if (d === 0) return [1 - cr[2], 1 - cr[1]];
+        if (d === 1) return [cr[2], 1 - cr[1]];
+        if (d === 5) return [1 - cr[0], 1 - cr[1]];
         return [cr[0], 1 - cr[1]];
     }
     function cornerLight(nx, ny, nz, s1, s2) {   // smooth light: 4-cell average + AO at one vertex
@@ -1403,6 +1410,15 @@
         return n;
     }
     function invCount(id) { var n = 0; for (var i = 0; i < 36; i++) if (S.inv[i] && S.inv[i].id === id) n += S.inv[i].c; return n; }
+    function invFree(id) {   // how many of `id` would fit right now (empty slots + partial stacks)
+        var max = stkMax(id), free = 0;
+        for (var i = 0; i < 36; i++) {
+            var s = S.inv[i];
+            if (!s) free += max;
+            else if (s.id === id && s.dur == null) free += Math.max(0, max - s.c);
+        }
+        return free;
+    }
     function invTake(id, n) {
         for (var i = 0; i < 36 && n > 0; i++) {
             var s = S.inv[i];
@@ -1464,7 +1480,9 @@
     }
     function stepPlayer(dt) {
         if (RT.dead || RT.sleep) return;
-        var k = RT.keys, water = inFluid(WATER), lava = inFluid(LAVA), fluid = water || lava;
+        // a GUI is open: stop reading movement keys (no walking off ledges while sorting items)
+        // but keep gravity + collision live so the body still settles
+        var k = RT.panel ? EMPTY_KEYS : RT.keys, water = inFluid(WATER), lava = inFluid(LAVA), fluid = water || lava;
         var fwd = (k.w ? 1 : 0) - (k.s ? 1 : 0), str = (k.d ? 1 : 0) - (k.a ? 1 : 0);
         var sneak = k.shift && !fluid;
         RT.sprint = RT.sprint && fwd > 0 && S.food > 6 && !sneak;
@@ -1501,7 +1519,9 @@
             if (RT.vy < 0) {
                 RT.ground = true;
                 var fall = RT.fallY - S.py;
-                if (fall > 3.5 && !water) {
+                // re-sample fluid at the landing box: a fast fall can plunge through a shallow
+                // pond in one frame, so the frame-start `water` misses it
+                if (fall > 3.5 && !water && !inFluid(WATER)) {
                     hurt(Math.floor(fall - 3), null);
                     snd('fall');
                 }
@@ -1564,13 +1584,13 @@
         S.hp = 0;
         RT.dead = true;
         RT.digT = 0; RT.eatT = 0; RT.bowT = 0;
+        closePanel(true);   // fold cursor + crafting-grid items into the inventory FIRST so they scatter too
         for (var i = 0; i < 36; i++) {   // your stuff scatters where you fell
             var s = S.inv[i];
             if (s) dropItem(S.px, S.py + 1, S.pz, s.id, s.c, s.dur, true);
             S.inv[i] = null;
         }
         S.deaths++;
-        closePanel();
         unlockCursor();
         showDeath();
         snd('die');
@@ -1886,7 +1906,7 @@
                 if (dist < 3) { if (!f.fuse) snd('fuse'); f.fuse += dt; want = null; sp = 0; }
                 else if (f.fuse > 0 && dist > 7) f.fuse = Math.max(0, f.fuse - dt * 2);
                 else if (f.fuse > 0) f.fuse += dt * 0.4;   // committed once lit unless you really run
-                if (f.fuse >= 1.5) { explode(f.x, f.y + f.h / 2, f.z, 3, 22); killFoe(f); return true; }
+                if (f.fuse >= 1.5) { killFoe(f); explode(f.x, f.y + f.h / 2, f.z, 3, 22); return false; }
             }
         } else {
             f.wt -= dt;
@@ -2687,7 +2707,8 @@
             var r = matchRecipe(RT.craft, RT.craftW);
             if (!r) return;
             if (shiftAll) {
-                if (invGive(r.out, r.n) > 0) return;
+                if (invFree(r.out) < r.n) return;   // must fit fully, or we'd deposit output without consuming ingredients
+                invGive(r.out, r.n);
             } else {
                 if (RT.cur && (RT.cur.id !== r.out || RT.cur.c + r.n > stkMax(r.out))) return;
                 if (RT.cur) RT.cur.c += r.n;
@@ -3143,7 +3164,12 @@
             fps: 0, fpsN: 0, fpsT: 0, f3: false, musT: 25, tipT: 0, tipId: null, devFree: !!devModes, raf: 0, timers: []
         };
         buildSkyGeo(G);
-        if (S.hp <= 0) { S.hp = 20; S.food = 20; }   // died mid-save: respawn silently
+        if (S.hp <= 0) {   // died mid-save: respawn silently at the last bed/world spawn (and clear the dead flag, or input stays frozen all session)
+            S.hp = 20; S.food = 20; S.sat = 5; S.air = 10;
+            RT.dead = false;
+            var dsp = S.spawn || S.wspawn;
+            if (dsp) { S.px = dsp[0]; S.py = dsp[1]; S.pz = dsp[2]; RT.fallY = dsp[1]; }
+        }
         if (devModes) devPost(devModes);
         // fresh world: starting position + a bootstrapping run of chunks
         if (!S.wspawn) {
@@ -3253,6 +3279,7 @@
         var m = q.match(/mcdev=([a-z,]+)/);
         if (!m) return null;
         var modes = m[1].split(',');
+        if (modes.indexOf('load') >= 0) return modes;   // keep the persisted save; just enable the driver + devFree
         var sm = q.match(/mcseed=(\d+)/);
         S = sNew();
         S.seed = sm ? sm[1] | 0 : 1337;
@@ -3313,7 +3340,11 @@
             openInv: function () { openPanel('inv'); },
             openPanel: function (k, t) { openPanel(k, t); },
             place: function (id) { var t = RT.target; if (t) { S.inv[S.sel] = { id: id, c: 1 }; tryUse(); } },
-            setB: setB, getB: getB, explode: explode, unlockAll: function () { for (var i = 0; i < ACH.length; i++) unlock(ACH[i].id); }
+            setB: setB, getB: getB, explode: explode, unlockAll: function () { for (var i = 0; i < ACH.length; i++) unlock(ACH[i].id); },
+            craftGrid: function (arr) { RT.craftW = 3; for (var i = 0; i < 9; i++) RT.craft[i] = arr[i] ? { id: arr[i][0], c: arr[i][1] } : null; },
+            shiftCraft: function () { takeCraft(true); },
+            invSnap: function () { var o = {}; for (var i = 0; i < 36; i++) { var s = S.inv[i]; if (s) o[s.id] = (o[s.id] || 0) + s.c; } return o; },
+            invFree: invFree, craftSnap: function () { return RT.craft.map(function (s) { return s ? s.id + ':' + s.c : null; }); }
         };
         if (has('mobs')) setTimeout(function () {
             ['zombie', 'skeleton', 'creeper', 'spider', 'pig', 'cow', 'sheep', 'chicken'].forEach(function (kk, i) {
@@ -3337,6 +3368,7 @@
     function close() {
         if (!RT) return 0;
         var hrs = RT.playT / 3600;
+        if (RT.panel) closePanel(true);   // fold cursor + crafting-grid items back before the save (else they vanish)
         sSave();
         cancelAnimationFrame(RT.raf);
         for (var i = 0; i < RT.timers.length; i++) clearInterval(RT.timers[i]);
@@ -3345,6 +3377,10 @@
         document.removeEventListener('pointerlockchange', RT.plc);
         window.removeEventListener('mouseup', RT.mup);
         unlockCursor();
+        if (RT.G && RT.G.gl) {   // hand the GPU context back rather than waiting on GC across many open/close cycles
+            var lose = RT.G.gl.getExtension('WEBGL_lose_context');
+            if (lose) try { lose.loseContext(); } catch (e) {}
+        }
         if (AC) { try { AC.close(); } catch (e) {} AC = null; }
         RT = null;
         return hrs;
