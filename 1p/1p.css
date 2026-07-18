@@ -95,6 +95,11 @@ a, button { -webkit-tap-highlight-color: transparent; }
     text-decoration: none;
 }
 .tool:hover { background: rgba(255,255,255,.12); color: #fff; }
+.tool[aria-pressed="true"] {
+    background: rgba(216, 30, 5, .16);
+    border-color: var(--red-dim);
+    color: #fff;
+}
 
 .room-holder {
     position: relative;
@@ -174,6 +179,13 @@ a, button { -webkit-tap-highlight-color: transparent; }
 @media (pointer: coarse) {
     .fine-only { display: none; }
     .coarse-only { display: inline; }
+}
+
+.room-exits {
+    display: flex;
+    gap: .5rem;
+    flex-wrap: wrap;
+    justify-content: center;
 }
 
 .room-exit {

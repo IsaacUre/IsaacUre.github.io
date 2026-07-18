@@ -160,7 +160,7 @@ window.addEventListener('pagehide', teardownApps);
 function openApp(id, arg) {
     var a = APPS[id]; if (!a) return;
     if (a.launch) { teardownApps(); window.location.href = a.launch; return; }
-    setStart(false); closeFlyouts(); closeCtx(); closeTaskView();
+    setStart(false); closeFlyouts(); closeCtx(); closeBctx(); closeTaskView();
     if (openWins[id]) { restoreWin(id); focusWin(id); if (a.focusArg) a.focusArg(openWins[id].el, arg); return; }
     createWindow(id, a, arg);
 }
@@ -206,7 +206,9 @@ function wireWindow(id, el) {
     bar.addEventListener('pointerdown', function (e) {
         // Chrome's tabs and new-tab button live in its title bar; they must click, not drag the window
         // (Edge's .br-tab strip is set-dressing, so it stays draggable like the rest of the bar)
+        if (e.button !== 0) return;                       // right-click is a menu now, never a drag
         if (e.target.closest('.cap, .cr-tab, .cr-plusbtn') || el.classList.contains('maxi')) return;
+        closeBctx();                                      // a menu would ride along with the window
         var r = el.getBoundingClientRect(), ox = e.clientX - r.left, oy = e.clientY - r.top;
         bar.setPointerCapture(e.pointerId);
         function mv(ev) {
@@ -225,7 +227,7 @@ function refocusTop() {
     ids.sort(function (a, b) { return (+openWins[b].el.style.zIndex || 0) - (+openWins[a].el.style.zIndex || 0); });
     activeApp = ids[0];
 }
-function minWin(id) { var w = openWins[id]; if (!w) return; if (APPS[id].onMinimize) APPS[id].onMinimize(w.el); w.min = true; w.el.classList.add('mini'); if (activeApp === id) refocusTop(); syncTaskbar(); }
+function minWin(id) { var w = openWins[id]; if (!w) return; closeBctx(); if (APPS[id].onMinimize) APPS[id].onMinimize(w.el); w.min = true; w.el.classList.add('mini'); if (activeApp === id) refocusTop(); syncTaskbar(); }
 function restoreWin(id) { var w = openWins[id]; if (!w) return; w.min = false; w.el.classList.remove('mini'); if (APPS[id].onRestore) APPS[id].onRestore(w.el); }
 function closeWin(id) { var w = openWins[id]; if (!w) return; if (APPS[id].onClose) APPS[id].onClose(w.el); w.el.remove(); delete openWins[id]; if (activeApp === id) refocusTop(); if (find.appId === id) { find.appId = null; find.marks = []; find.idx = -1; } syncTaskbar(); }
 
@@ -268,7 +270,7 @@ function closeTaskView() {
     setTimeout(function () { if (ov.parentNode) ov.remove(); }, reduce ? 0 : 180);
 }
 function openTaskView() {
-    closeTaskView(); setStart(false); closeFlyouts(); closeCtx();
+    closeTaskView(); setStart(false); closeFlyouts(); closeCtx(); closeBctx();
     var ov = document.createElement('div'); ov.className = 'tv-overlay'; ov.id = 'taskView';
     var grid = document.createElement('div'); grid.className = 'tv-grid';
     var ids = Object.keys(openWins);
@@ -371,22 +373,43 @@ function renderAbout() {
         '</div></div>';
 }
 
-/* —— File Explorer + a real (small) file system ——
+/* —— File Explorer + a real (DEEP) file system ——
    The base FS below is the machine's factory image. On top of it sits
    a persistent overlay (comp_fs): downloads land in `add`, deleted
    base files are keyed into `gone`, and everything you throw out
    waits in `bin` until it's restored or purged. Explorer, the
-   Recycle Bin, and the browser download shelf all speak to it. */
+   Recycle Bin, and the browser download shelf all speak to it.
+
+   The factory image is authored as nested TREE literals and compiled
+   into flat FS entries keyed by path ('C:/Windows/System32'). The
+   original flat keys (Home, Desktop, Downloads, Documents, Pictures,
+   Projects, This PC) survive untouched so existing comp_fs overlays
+   keep pointing at real folders.
+
+   TREE grammar (see fsCompile):
+     value {}        → subfolder ($ key = meta: e empty-msg, d base date, j jitter days)
+     value 0         → file, everything inferred from the extension
+     value 'text'    → file whose CONTENT is that text (opens in Notepad)
+     value '>Key'    → junction to another FS key
+     value '@app'    → file that launches an app (exe shortcuts); '@!x' = special
+     value [size, date, flags] → explicit meta; flags: 'crit' (BSOD-protected),
+       'ph:N' (Photos index), 'when:chrome' / 'when:inst:<id>' (conditional) */
 var FS = {
     'Home': { items: [
         { n: 'Desktop', t: 'folder', go: 'Desktop' }, { n: 'Downloads', t: 'folder', go: 'Downloads' },
         { n: 'Documents', t: 'folder', go: 'Documents' }, { n: 'Pictures', t: 'folder', go: 'Pictures' },
+        { n: 'Music', t: 'folder', go: 'Music' }, { n: 'Videos', t: 'folder', go: 'Videos' },
         { n: 'Projects', t: 'folder', go: 'Projects' }, { n: 'URE BOY', t: 'ureboy', app: 'ureboy' }
     ] },
     'This PC': { items: [
-        { n: 'Local Disk (C:)', t: 'pc' }, { n: 'Desktop', t: 'folder', go: 'Desktop' },
-        { n: 'Downloads', t: 'folder', go: 'Downloads' }, { n: 'Documents', t: 'folder', go: 'Documents' },
-        { n: 'Pictures', t: 'folder', go: 'Pictures' }, { n: 'Projects', t: 'folder', go: 'Projects' }
+        { n: 'Local Disk (C:)', t: 'drive', go: 'C:', cap: [251, 476], sect: 'Devices and drives', sys: 1 },
+        { n: 'Data (D:)', t: 'drive', go: 'D:', cap: [519, 931], sect: 'Devices and drives', sys: 1 },
+        { n: 'URE DRIVE (E:)', t: 'usb', go: 'E:', cap: [11.7, 14.9], sect: 'Devices and drives', sys: 1 },
+        { n: 'DVD RW Drive (F:)', t: 'disc', sect: 'Devices and drives', sys: 1 },
+        { n: 'Desktop', t: 'folder', go: 'Desktop', sect: 'Folders' }, { n: 'Documents', t: 'folder', go: 'Documents', sect: 'Folders' },
+        { n: 'Downloads', t: 'folder', go: 'Downloads', sect: 'Folders' }, { n: 'Music', t: 'folder', go: 'Music', sect: 'Folders' },
+        { n: 'Pictures', t: 'folder', go: 'Pictures', sect: 'Folders' }, { n: 'Videos', t: 'folder', go: 'Videos', sect: 'Folders' },
+        { n: 'Projects', t: 'folder', go: 'Projects', sect: 'Folders' }
     ] },
     // the Desktop is a real folder — its items ARE the desktop icons
     'Desktop': { items: [
@@ -399,20 +422,491 @@ var FS = {
     ], empty: 'A perfectly clean desktop. Suspicious.' },
     'Downloads': { items: [], empty: 'Nothing downloaded yet. Edge has one (1) idea.' },
     'Documents': { items: [
+        { n: 'Rice', t: 'folder', go: 'Documents/Rice' }, { n: 'FSAE', t: 'folder', go: 'Documents/FSAE' },
+        { n: 'Deep Blue', t: 'folder', go: 'Documents/Deep Blue' }, { n: 'DnD', t: 'folder', go: 'Documents/DnD' },
+        { n: 'My Games', t: 'folder', go: 'Documents/My Games' }, { n: 'essays', t: 'folder', go: 'Documents/essays' },
+        { n: 'car', t: 'folder', go: 'Documents/car' },
         { n: 'about-me.txt', t: 'notepad', app: 'about' }, { n: 'resume.pdf', t: 'notepad', app: 'about' },
         { n: 'readme.txt', t: 'notepad', app: 'notepad' }
     ] },
     'Pictures': { items: [
+        { n: 'Camera Roll', t: 'folder', go: 'Pictures/Camera Roll' }, { n: 'Screenshots', t: 'folder', go: 'Pictures/Screenshots' },
+        { n: 'argent', t: 'folder', go: 'Pictures/argent' }, { n: 'thresher', t: 'folder', go: 'Pictures/thresher' },
+        { n: 'wallpapers', t: 'folder', go: 'Pictures/wallpapers' },
         { n: 'the room.png', t: 'room', app: 'photos', arg: 0 }, { n: 'argent.png', t: 'gti', app: 'photos', arg: 1 },
         { n: 'bloom.png', t: 'photos', app: 'photos', arg: 4 }
     ] },
     'Projects': { items: [
+        { n: 'website', t: 'folder', go: 'Projects/website' },
         { n: 'URE BOY', t: 'ureboy', app: 'ureboy' }, { n: 'the room', t: 'room', app: 'room' },
         { n: 'GTI RUN', t: 'gti', app: 'gti' }, { n: 'isaacure.com', t: 'globe', app: 'chrome' }
-    ] }
+    ] },
+    'Music': { items: [] },
+    'Videos': { items: [] }
 };
-var FS_ICON = { folder: 'ic-folder', pc: 'ic-pc', notepad: 'ic-notepad', room: 'ic-room', gti: 'ic-gti', ureboy: 'ic-ureboy', photos: 'ic-photos', globe: 'ic-globe', chrome: 'ic-chrome', ure: 'ic-ure', steam: 'ic-steam', bin: 'ic-bin' };
-var KIND = { folder: 'File folder', pc: 'Local disk', notepad: 'Text document', room: 'PNG image', gti: 'PNG image', photos: 'PNG image', ureboy: 'Shortcut', globe: 'Internet shortcut', chrome: 'Application', ure: 'Shortcut', steam: 'Shortcut', bin: 'Recycle Bin' };
+var FS_ICON = {
+    folder: 'ic-folder', pc: 'ic-pc', notepad: 'ic-notepad', room: 'ic-room', gti: 'ic-gti', ureboy: 'ic-ureboy',
+    photos: 'ic-photos', globe: 'ic-globe', chrome: 'ic-chrome', ure: 'ic-ure', steam: 'ic-steam', bin: 'ic-bin',
+    file: 'ic-file', txt: 'ic-txt', ini: 'ic-ini', log: 'ic-log', doc: 'ic-doc', xls: 'ic-xls', ppt: 'ic-ppt',
+    pdf: 'ic-pdf', img: 'ic-img', audio: 'ic-audio', video: 'ic-video', exe: 'ic-exe', dll: 'ic-dll', sys: 'ic-sys',
+    zip: 'ic-zip', code: 'ic-code', js: 'ic-js', html: 'ic-html', css: 'ic-css', font: 'ic-font', sav: 'ic-sav',
+    drive: 'ic-drive', usb: 'ic-usb', disc: 'ic-disc', edge: 'ic-edge', terminal: 'ic-terminal', calc: 'ic-calc',
+    cookie: 'ic-cookie', terraria: 'ic-terraria', explorer: 'ic-explorer', settings: 'ic-settings'
+};
+var KIND = {
+    folder: 'File folder', pc: 'Local disk', notepad: 'Text document', room: 'PNG image', gti: 'PNG image',
+    photos: 'PNG image', ureboy: 'Shortcut', globe: 'Internet shortcut', chrome: 'Application', ure: 'Shortcut',
+    steam: 'Shortcut', bin: 'Recycle Bin', file: 'File', txt: 'Text document', ini: 'Configuration settings',
+    log: 'Text document', doc: 'Microsoft Word document', xls: 'Microsoft Excel worksheet', ppt: 'Microsoft PowerPoint presentation',
+    pdf: 'PDF document', img: 'Image', audio: 'Audio', video: 'Video', exe: 'Application', dll: 'Application extension',
+    sys: 'System file', zip: 'Compressed (zipped) folder', code: 'Source file', js: 'JavaScript file', html: 'HTML document',
+    css: 'CSS document', font: 'TrueType font file', sav: 'Save file', drive: 'Local disk', usb: 'USB drive', disc: 'CD Drive',
+    edge: 'Application', terminal: 'Application', calc: 'Application', cookie: 'Application', terraria: 'Application',
+    explorer: 'Application', settings: 'Application'
+};
+// extension → item type. Anything unlisted is a plain 'file'.
+var EXT_T = {
+    txt: 'txt', md: 'txt', nfo: 'txt', ini: 'ini', inf: 'ini', cfg: 'ini', vdf: 'ini', acf: 'ini', reg: 'ini',
+    log: 'log', doc: 'doc', docx: 'doc', xls: 'xls', xlsx: 'xls', csv: 'xls', ppt: 'ppt', pptx: 'ppt', pdf: 'pdf',
+    png: 'img', jpg: 'img', jpeg: 'img', gif: 'img', bmp: 'img', ico: 'img', cur: 'img', ani: 'img',
+    mp3: 'audio', wav: 'audio', m4a: 'audio', mp4: 'video', mov: 'video', mkv: 'video',
+    zip: 'zip', rar: 'zip', '7z': 'zip', ttf: 'font', otf: 'font', fon: 'font',
+    exe: 'exe', dll: 'dll', sys: 'sys', dat: 'sys', mca: 'sys', tmp: 'file', bat: 'code', cmd: 'code', ps1: 'code',
+    js: 'js', json: 'code', xml: 'code', html: 'html', htm: 'html', css: 'css',
+    sav: 'sav', wld: 'sav', plr: 'sav', uqs: 'sav', rbxl: 'sav', bak: 'sav'
+};
+// extension → the string Windows would put in the Type column (falls back to KIND[t])
+var EXT_KIND = {
+    md: 'Markdown document', dll: 'Application extension', sys: 'System file', dat: 'DAT file', mca: 'Region file',
+    png: 'PNG image', jpg: 'JPG image', jpeg: 'JPG image', gif: 'GIF image', ico: 'Icon', cur: 'Cursor', ani: 'Animated cursor',
+    mp3: 'MP3 audio', wav: 'Wave sound', m4a: 'M4A audio', mp4: 'MP4 video', mov: 'QuickTime video',
+    docx: 'Microsoft Word document', xlsx: 'Microsoft Excel worksheet', csv: 'Comma-separated values', pptx: 'Microsoft PowerPoint presentation',
+    vdf: 'Valve data file', acf: 'Steam app manifest', reg: 'Registration entries', bat: 'Windows batch file', ps1: 'PowerShell script',
+    json: 'JSON file', xml: 'XML document', wld: 'Terraria world', plr: 'Terraria player', uqs: 'URE QUEST save',
+    rbxl: 'Roblox place', bak: 'Backup file', tmp: 'Temporary file', inf: 'Setup information'
+};
+// extension → plausible size range in KB (deterministic pick per path)
+var EXT_KB = {
+    txt: [1, 40], md: [1, 30], nfo: [1, 4], ini: [1, 9], inf: [2, 60], cfg: [1, 9], vdf: [1, 14], acf: [1, 6], reg: [1, 8],
+    log: [30, 2200], doc: [13, 90], docx: [13, 260], xls: [9, 90], xlsx: [9, 210], csv: [2, 80], ppt: [900, 9000], pptx: [900, 28000],
+    pdf: [80, 4600], png: [350, 4200], jpg: [900, 7200], jpeg: [900, 7200], gif: [90, 2400], ico: [4, 90], cur: [3, 12], ani: [6, 40],
+    mp3: [2600, 9400], wav: [120, 2400], m4a: [2400, 8800], mp4: [42000, 1600000], mov: [60000, 900000],
+    zip: [240, 120000], rar: [400, 90000], ttf: [38, 720], otf: [60, 900],
+    exe: [180, 140000], dll: [48, 8400], sys: [24, 2900], dat: [16, 90000], mca: [900, 4200], tmp: [1, 900],
+    js: [1, 60], json: [1, 25], xml: [2, 40], html: [2, 38], htm: [2, 38], css: [1, 44], bat: [1, 3], cmd: [1, 3], ps1: [1, 9],
+    sav: [4, 220], wld: [3200, 24000], plr: [3, 9], uqs: [6, 30], rbxl: [220, 3800], bak: [8, 2000]
+};
+function extOf(n) { var d = n.lastIndexOf('.'); return d > 0 ? n.slice(d + 1).toLowerCase() : ''; }
+function fsHash(s) { var h = 2166136261 >>> 0; for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = (h * 16777619) >>> 0; } return h >>> 0; }
+function fmtKb(kb) {
+    if (kb < 1024) return Math.max(1, Math.round(kb)) + ' KB';
+    if (kb < 1048576) { var mb = kb / 1024; return (mb < 10 ? mb.toFixed(1) : Math.round(mb)) + ' MB'; }
+    return (kb / 1048576).toFixed(2) + ' GB';
+}
+
+/* full text for files worth reading — keyed by FS path. Everything
+   else gets believable filler from the per-type generators below. */
+var TXT = {};
+var READS = {};   // pdf bodies for the Reader, keyed by file name
+
+/* ── the factory image: three drives of it ─────────────────────── */
+var TREE_C = {
+    $: { d: '6/5/2021', j: 4 },
+    'Windows': {
+        'System32': {
+            $: { e: 'You should not be able to see this message.' },
+            'Boot': { 'winload.exe': [null, null, 'crit'], 'bootres.dll': 0 },
+            'config': {
+                $: { e: 'The registry lives here. It prefers not to be perceived.' },
+                'SAM': [null, null, 'crit'], 'SECURITY': 0, 'SOFTWARE': ['84 MB'], 'SYSTEM': ['41 MB', null, 'crit'], 'DEFAULT': 0
+            },
+            'drivers': {
+                'etc': { 'hosts': '# Copyright (c) 1993-2009 Microsoft Corp.\n#\n# This is a sample HOSTS file used by Microsoft TCP/IP for Windows.\n\n127.0.0.1       localhost\n127.0.0.1       isaacure.com   # wait. no. how would that even\n::1             localhost', 'networks': 0, 'protocol': 0, 'services': 0 },
+                'acpi.sys': 0, 'disk.sys': [null, null, 'crit'], 'http.sys': 0, 'ndis.sys': 0, 'tcpip.sys': [null, null, 'crit'],
+                'usbhub.sys': 0, 'wdf01000.sys': 0, 'nvlddmkm.sys': ['58 MB'], 'gti_turbo.sys': 0, 'argent.sys': 0
+            },
+            'spool': { 'PRINTERS': { $: { e: 'No printer has ever worked. Not once. Not anywhere.' } } },
+            'ntdll.dll': [null, null, 'crit'], 'kernel32.dll': [null, null, 'crit'], 'kernelbase.dll': 0,
+            'user32.dll': [null, null, 'crit'], 'gdi32.dll': 0, 'shell32.dll': ['21 MB'], 'comctl32.dll': 0, 'comdlg32.dll': 0,
+            'advapi32.dll': 0, 'ole32.dll': 0, 'oleaut32.dll': 0, 'shlwapi.dll': 0, 'ws2_32.dll': 0, 'wininet.dll': 0,
+            'urlmon.dll': 0, 'msvcrt.dll': 0, 'ucrtbase.dll': 0, 'd3d11.dll': 0, 'dxgi.dll': 0, 'opengl32.dll': 0,
+            'dwmapi.dll': 0, 'uxtheme.dll': 0, 'imm32.dll': 0, 'setupapi.dll': 0, 'winmm.dll': 0, 'bcrypt.dll': 0,
+            'crypt32.dll': 0, 'schannel.dll': 0, 'netapi32.dll': 0, 'hal.dll': [null, null, 'crit'], 'ci.dll': 0,
+            'vibes.dll': ['4 KB', null, 'crit'], 'ure32.dll': 0, 'chamomile.sys': 0, 'boulder.sys': 0,
+            'csrss.exe': [null, null, 'crit'], 'winlogon.exe': [null, null, 'crit'], 'lsass.exe': 0, 'svchost.exe': 0,
+            'dwm.exe': 0, 'ctfmon.exe': 0, 'RuntimeBroker.exe': 0,
+            'cmd.exe': '@terminal', 'calc.exe': '@calc', 'notepad.exe': '@notepad', 'mspaint.exe': 0, 'taskmgr.exe': '@!taskview'
+        },
+        'SysWOW64': { $: { e: 'The same thing as System32, but narrower. Do not ask which one is 64.' }, 'ntdll.dll': 0, 'kernel32.dll': 0, 'user32.dll': 0, 'msvcrt.dll': 0 },
+        'Fonts': {
+            'Press Start 2P.ttf': 0, 'VT323.ttf': 0, 'Silkscreen.ttf': 0, 'Segoe UI Pixel.ttf': 0,
+            'consola.ttf': 0, 'arial.ttf': 0, 'times.ttf': 0, 'Comic Sans MS.ttf': 0, 'Papyrus.ttf': 0, 'Wingdings.ttf': 0
+        },
+        'Media': {
+            'Windows Startup.wav': 0, 'Windows Shutdown.wav': 0, 'Windows Error.wav': 0, 'Windows Unlock.wav': 0,
+            'tada.wav': 0, 'chimes.wav': 0, 'chord.wav': 0, 'ding.wav': 0, 'notify.wav': 0
+        },
+        'Web': { 'Wallpaper': { 'bloom.png': [null, null, 'ph:4'], 'bloom_alt.png': [null, null, 'ph:4'], 'img0.jpg': 0, 'img19.jpg': 0 } },
+        'Cursors': { 'aero_arrow.cur': 0, 'aero_busy.ani': 0, 'aero_link.cur': 0, 'possessed.ani': ['9 KB', null, null, ''] },
+        'Logs': { 'CBS': { 'CBS.log': 0 }, 'DISM': { 'dism.log': 0 } },
+        'INF': { 'oem1.inf': 0, 'oem42.inf': 0, 'setupapi.dev.log': 0 },
+        'Temp': { $: { e: 'Windows cleans this folder. Windows has never cleaned this folder.' }, 'MpSigStub.log': 0, '~DF8A31.tmp': 0 },
+        'explorer.exe': '@explorer', 'regedit.exe': 0, 'winhlp32.exe': 0,
+        'win.ini': '; for 16-bit app support\n[fonts]\n[extensions]\n[mci extensions]\n[files]\n[vibes]\nlevel=maximum\nsource=bloom',
+        'system.ini': '; for 16-bit app support\n[386Enh]\nwoafont=dosapp.fon\n[drivers]\nwave=mmdrv.dll\ntimer=timer.drv\n; nobody has read this file since 1998. hi.',
+        'WindowsUpdate.log': 0
+    },
+    'Program Files': {
+        'Google': {
+            $when: 'chrome',
+            'Chrome': { 'Application': {
+                'chrome.exe': '@chrome',
+                '138.0.7204.97': { 'chrome.dll': ['218 MB'], 'icudtl.dat': 0, 'resources.pak': ['24 MB'], 'Locales': { 'en-US.pak': 0 } },
+                'SetupMetrics': { 'setup.log': 0 }
+            } }
+        },
+        'Microsoft': { 'Edge': { 'Application': { 'msedge.exe': '@edge', 'msedge.dll': ['196 MB'], '138.0.3351.65': { 'Locales': { 'en-US.pak': 0 } } } } },
+        'Steam': {
+            'steam.exe': '@steam', 'steamclient64.dll': 0, 'GameOverlayRenderer64.dll': 0,
+            'steamapps': {
+                'appmanifest_105600.acf': '"AppState"\n{\n\t"appid"\t\t"105600"\n\t"name"\t\t"Terraria"\n\t"StateFlags"\t\t"4"\n\t"installdir"\t\t"Terraria"\n\t"LastOwner"\t\t"isaac"\n}',
+                'libraryfolders.vdf': '"libraryfolders"\n{\n\t"0"\n\t{\n\t\t"path"\t\t"C:\\\\Program Files\\\\Steam"\n\t\t"label"\t\t"the one drive that matters"\n\t}\n}',
+                'common': {
+                    'Terraria': { $when: 'inst:terraria', 'Terraria.exe': '@terraria', 'ReLogic.Native.dll': 0, 'Content': { 'Images': { $: { e: 'Every tree you have ever chopped, as .xnb files.' } }, 'Sounds': {} }, 'changelog.txt': 0 },
+                    'Cookie Clicker': { $when: 'inst:cookie', 'Cookie Clicker.exe': '@cookie', 'resources': { 'app.asar': ['142 MB'] }, 'LICENSE.txt': 0 },
+                    'URE QUEST': { $when: 'inst:urequest', 'urequest.exe': '@ureboy', 'quest.pak': 0, 'readme.txt': 'URE QUEST v4 — the party rebuild.\nIf the game asks you to install an intercooler mid-boss, that is not a bug. That is the plot.' }
+                },
+                'workshop': {}
+            },
+            'config': { 'config.vdf': 0, 'loginusers.vdf': 0 },
+            'logs': { 'content_log.txt': 0, 'connection_log.txt': 0 }
+        },
+        'URE Softworks': {
+            'GTI RUN': { 'gtirun.exe': '@gti', 'tracks.dat': 0, 'readme.txt': 'GTI RUN.\nhold A to not die. the sleeping policeman is not sleeping.' },
+            'PIT LANE': { 'pitlane.exe': '@ureboy', 'strategy.dat': 0 },
+            'URE QUEST': { 'quest.exe': '@ureboy', 'party.dat': 0, 'balance.txt': 'nerf the cow? (no. never. the cow stays.)' }
+        },
+        'Windows Defender': { 'MsMpEng.exe': 0, 'mpengine.dll': ['118 MB'], 'MpCmdRun.exe': 0 },
+        '7-Zip': { '7z.exe': 0, '7z.dll': 0, 'History.txt': '9.20 2010-11-18\n- everything since has been vibes.\n\n(this changelog abridged for pixel reasons)' },
+        'Common Files': {}, 'desktop.ini': '[.ShellClassInfo]\nIconResource=%SystemRoot%\\system32\\imageres.dll,-108'
+    },
+    'Program Files (x86)': {
+        $: { e: 'The same programs, but narrower.' },
+        'Internet Explorer': { 'iexplore.exe': '@!ie' },
+        'Microsoft Office (trial)': { 'trial expired.txt': 'The Office trial expired in 2022.\nGoogle Docs won. Everyone knew Google Docs would win.' },
+        'Common Files': {}
+    },
+    'ProgramData': {
+        'Microsoft': { 'Windows': { 'Start Menu': {} }, 'Windows Defender': { 'Scans': {} } },
+        'Steam': {},
+        'Package Cache': { '{4f8a1c2e-77ure-4bo0-y114-argent5ilver}': { 'state.rsm': 0 } }
+    },
+    'Users': {
+        'isaac': '>C:/Users/isaac',
+        'Public': { 'Public Desktop': {}, 'Public Documents': { 'desktop.ini': 0 } },
+        'desktop.ini': 0
+    },
+    'Temp': { $: { e: 'The other Temp. There are always at least two.' }, 'chrome_installer.log': 0, '~DF3A02.tmp': 0, 'wct8F42.tmp': 0 },
+    'pagefile.sys': ['12.0 GB'], 'swapfile.sys': ['2.4 GB'], 'hiberfil.sys': ['9.5 GB'],
+    'autoexec.bat': '@echo off\nrem 2003 called. it can keep it.',
+    'ureos.log': 0
+};
+
+var TREE_USER = {
+    $: { d: '9/2/2025', j: 260 },
+    // the profile's own folders — junctions to the keys that hold them, so
+    // C:\Users\isaac actually contains the folders that claim it as parent
+    // (Up, the 'isaac' breadcrumb, and `cd ..`/`dir` all land here)
+    'Desktop': '>Desktop', 'Documents': '>Documents', 'Downloads': '>Downloads',
+    'Music': '>Music', 'Pictures': '>Pictures', 'Videos': '>Videos', 'Projects': '>Projects',
+    'AppData': {
+        'Local': {
+            'Temp': { $: { e: 'Deleting these does nothing. They respawn. Everyone knows this.' }, '~DFC112.tmp': 0, '~DF99B0.tmp': 0, 'msohtmlclip1.tmp': 0, 'FXSAPIDebugLogFile.txt': 0, 'chrome_installer.log': 0 },
+            'Google': { $when: 'chrome', 'Chrome': { 'User Data': { 'Default': { 'History': 0, 'Cookies': 0, 'Login Data': 0, 'Bookmarks': 0, 'Cache': { 'f_000001': 0, 'f_000002': 0 } } } } },
+            'Steam': { 'htmlcache': { 'Cache': {} } },
+            'URE Softworks': { 'URE QUEST': { 'save_v4.uqs': 0, 'screenshots': { 'heat soak fight.png': 0, 'the silver garage.png': 0 } } },
+            'Packages': {}
+        },
+        'LocalLow': { $: { e: 'Nobody knows what LocalLow is for. It knows what it did.' } },
+        'Roaming': {
+            '.minecraft': {
+                'saves': {
+                    'world': { 'level.dat': 0, 'region': { 'r.0.0.mca': 0, 'r.-1.0.mca': 0 }, 'icon.png': 0 },
+                    'world (1)': { 'level.dat': 0, 'region': { 'r.0.0.mca': 0 } },
+                    'SMP with malachi': { 'level.dat': 0, 'region': { 'r.0.0.mca': 0, 'r.0.-1.mca': 0 }, 'icon.png': 0 },
+                    'creative flat test': { 'level.dat': 0 }
+                },
+                'screenshots': { '2019-06-14_20.41.05.png': 0, '2019-07-02_23.58.11.png': 0, '2020-03-19_01.12.44.png': 0 },
+                'options.txt': 'version:2586\nfov:110\ngamma:1000000.0\nrenderDistance:8\ndifficulty:2\n; gamma cranked because caves are dark and we are brave, not patient',
+                'logs': { 'latest.log': 0 }
+            },
+            'Microsoft': { 'Windows': { 'Recent': {} } }
+        }
+    },
+    'Saved Games': { 'ure': { 'quest_backup.uqs': 0 } },
+    'NTUSER.DAT': ['18 MB']
+};
+
+var TREE_DOCS = {
+    $: { d: '9/8/2025', j: 240 },
+    'Rice': {
+        'Fall 2025': {
+            $: { d: '8/25/2025', j: 100 },
+            'ECON 200': { 'syllabus.pdf': 0, 'pset 1.pdf': 0, 'pset 2.pdf': 0, 'pset 3 (redemption arc).pdf': 0, 'notes.txt': 'week 6: everything is opportunity cost.\nweek 7: including reading week.\nweek 12: the marginal utility of one more practice exam is, ironically, diminishing.' },
+            'MATH 355': { 'syllabus.pdf': 0, 'linear algebra notes.txt': 'a matrix is a spreadsheet with self-esteem.\neigenvectors: directions the matrix refuses to change. respect it.\nproof strategy: assume it works, panic, cite a theorem.', 'pset 4.pdf': 0, 'pset 5.pdf': 0 },
+            'FWIS 100': { 'essay draft.docx': 0, 'essay FINAL.docx': 0, 'essay FINAL final.docx': 0, 'essay FINAL final ACTUALLY SUBMITTED.docx': 0 },
+            'schedule.png': 0
+        },
+        'Spring 2026': {
+            $: { d: '1/12/2026', j: 110 },
+            'ECON 375': { 'syllabus.pdf': 0, 'metrics notes.txt': 'correlation is not causation but it IS a great opener.\ninstrumental variables: an alibi for your regression.' },
+            'MATH 302': { 'real analysis scars.txt': 'epsilon: arbitrarily small.\ndelta: depends on epsilon.\nme: depends on chamomile.' },
+            'STAT 310': { 'pset 2.pdf': 0, 'pset 3.pdf': 0 },
+            'PHIL 104': { 'camus response paper.docx': 0, 'sisyphus notes.txt': 'the boulder is not the punishment.\nthe boulder is the routine. the routine is survivable. the routine can even be good.\none must imagine the problem set finished.' }
+        },
+        'degree plan.xlsx': 0, 'transcript (unofficial).pdf': 0, 'MTEC major requirements.pdf': 0
+    },
+    'FSAE': {
+        $: { d: '10/2/2025', j: 200 },
+        'budget v7 FINAL.xlsx': 0, 'budget v8 (v7 was not final).xlsx': 0, 'sponsor deck.pptx': 0, 'sponsor contacts.xlsx': 0,
+        'rules 2026.pdf': 0, 'chassis quotes.pdf': 0,
+        'kickoff notes.txt': 'first meeting of the first FSAE team Rice has ever had.\nwe have: ambition, a whiteboard, and me doing the money.\nwe need: everything else.\nnote to self: sponsors say yes to "invest in engineers," not "please buy us a car."'
+    },
+    'Deep Blue': {
+        $: { d: '6/2/2026', j: 40 },
+        'water industry update — draft.docx': 0, 'water industry update — sent.pdf': 0, 'produced water 101.pdf': 0,
+        'expense report.xlsx': 0,
+        'jv notes.txt': 'the JV: Diamondback + Five Point, produced water midstream.\nmy job: make the weekly update readable by humans.\nrule 1: nobody has ever complained that a newsletter was too short.'
+    },
+    'DnD': {
+        $: { d: '11/5/2025', j: 220 },
+        'campaign': {
+            'session 0 notes.txt': 'pitch: low-fantasy road campaign. the party shares one (1) enchanted hatchback.\nhouse rule: nat 20 on a persuasion check against me and I legally have to say yes.',
+            'session 1 — the silver garage.txt': 'party met the mechanic-oracle. she speaks only in torque specs.\nsophie talked us OUT of a fight for the first time in table history.\nloot: a coupler of dubious provenance.',
+            'session 2 — hedges road.txt': 'random encounter table came up "sleeping policeman" and no one was ready.\nmalachi cast something he had not prepared. ruled it worked because it was funny.',
+            'session 3 — the depths.txt': 'the boulder puzzle took 90 minutes.\nthe party named the boulder. the party now refuses to leave the boulder.\ni have written a stat block for the boulder. this is my life now.',
+            'the intercooler arc.txt': 'big bad: HEAT SOAK, tyrant of summer.\nthe prophecy is a parts list. the quest is an install.\nfinale: they have to finish the install MID-FIGHT. do not let them know the box has been in the trunk since session 1.',
+            'npc voices.txt': 'mechanic-oracle: gravel, slow.\nferryman: just my normal voice but sadder.\nthe cow: i will not do a cow voice. (i did the cow voice.)',
+            'loot table.xlsx': 0
+        },
+        'maps': { 'hedges road.png': 0, 'the commons.png': 0, 'the depths.png': 0 },
+        'character sheets': { 'SOPHIE — silver ring bard.pdf': 0, 'MALACHI — chaos sorcerer.pdf': 0, 'SAMMY — beast barbarian.pdf': 0, 'THE BOULDER.pdf': 0, 'the cow.pdf': 0 },
+        'DM screen cheatsheet.pdf': 0, 'dice math.xlsx': 0
+    },
+    'My Games': {
+        'Terraria': {
+            'Players': { 'isaac.plr': 0, 'isaac.plr.bak': 0 },
+            'Worlds': { 'the big one.wld': 0, 'hardcore attempt 3 (RIP).wld': 0, 'the big one.wld.bak': 0 }
+        }
+    },
+    'essays': {
+        $: { d: '2/9/2026', j: 90 },
+        'why i wanted to be a cow (age 7, recovered).txt': 'RECOVERED FROM THE OLD LAPTOP. PRESERVED VERBATIM.\n\nwhen i grow up i want to be a cow because cows get to stand in the grass all day and nobody asks them anything.\n\n(editor’s note, age 19: the kid had a point.)',
+        'absurdism and idle games.txt': 'thesis: the idle game is the most honest genre.\nthe numbers go up. it means nothing. you keep going anyway.\ncamus would have played cookie clicker. camus would have ASCENDED.',
+        'college essay final.docx': 0
+    },
+    'car': {
+        $: { d: '3/14/2026', j: 80 },
+        'argent service log.txt': 'ARGENT — silver MK8 GTI. full name Argentina Artemis Ure. she earned it.\n\n- unitronic stage 1+: done. she pulls now.\n- IE intake: done. she breathes now.\n- flex fuel: done. she sips fancy now.\n- intercooler: purchased. boxed. the box is fine. the box is FINE.',
+        'intercooler installation plan.txt': 'step 1: open the box.\nstep 2: (this step intentionally left blank)\n\nstatus: pending since purchase. the box and i have an understanding.',
+        'IE intake receipt.pdf': 0, 'intercooler receipt.pdf': 0, 'dyno day.pdf': 0
+    },
+    'ideas.txt': 'website but it is a game boy\ngame boy but it is a room\nroom but it is first person\nfirst person but there is a computer\ncomputer but it has a website on it (careful)',
+    'karaoke setlist.txt': 'opener: something safe.\nmid-set: the duet. non-negotiable.\ncloser: the one that wrecks the voice. worth it every time.\nrule: never follow sophie. you will not survive following sophie.',
+    'reading list.txt': 'camus — the myth of sisyphus (again)\ncamus — the stranger (again again)\nsomething about water infrastructure that i will absolutely finish\nthe FSAE rulebook (573 pages, riveting, five stars)'
+};
+
+var TREE_PICS = {
+    $: { d: '10/12/2025', j: 260 },
+    'Camera Roll': {
+        'IMG_2041.jpg': 0, 'IMG_2042.jpg': 0, 'IMG_2044.jpg': 0, 'IMG_2049.jpg': 0, 'IMG_2050.jpg': 0, 'IMG_2051.jpg': 0,
+        'IMG_2057.jpg': 0, 'IMG_2063.jpg': 0, 'IMG_2071.jpg': 0, 'IMG_2072.jpg': 0, 'IMG_2088.jpg': 0,
+        'the matching rings.jpg': 0, 'martel at golden hour.jpg': 0, 'the tree branch (memorial).jpg': 0
+    },
+    'Screenshots': {
+        'terraria eye of cthulhu.png': 0, 'cookie clicker 1 trillion.png': 0, 'urequest full party.png': 0,
+        'gti run PB 114.png': 0, 'pit lane photo finish.png': 0, 'Screenshot 2026-03-02 014412.png': 0, 'Screenshot 2026-03-02 014415.png': 0
+    },
+    'argent': {
+        'day one.jpg': [null, null, 'ph:1'], 'first wash.jpg': [null, null, 'ph:1'], 'stage 1 day.jpg': [null, null, 'ph:1'],
+        'intake install.jpg': 0, 'the box the intercooler lives in.jpg': 0, 'golden hour.jpg': [null, null, 'ph:1'], 'car wash receipt (why).jpg': 0
+    },
+    'thresher': { 'fsae reveal shoot.jpg': 0, 'martel sunset.jpg': 0, 'game day 1.jpg': 0, 'game day 2 (better).jpg': 0 },
+    'wallpapers': { 'bloom.png': [null, null, 'ph:4'], 'bloom but red.png': 0, 'dmg green.png': 0, 'the room at night.png': [null, null, 'ph:0'] }
+};
+
+var TREE_MUSIC = {
+    $: { d: '7/20/2025', j: 300 },
+    'car songs': {
+        'boost line.mp3': 0, 'night drive 114.mp3': 0, 'silver.mp3': 0, 'flex fuel anthem.mp3': 0,
+        'sleeping policeman (remix).mp3': 0, 'the on-ramp song.mp3': 0, 'heat soak.mp3': 0, 'stage one and a half.mp3': 0
+    },
+    'study': { 'lofi for psets.mp3': 0, 'rain on martel.mp3': 0, 'library at 1am.mp3': 0, 'chamomile steep timer.mp3': 0, 'proofs and consequences.mp3': 0 },
+    'karaoke night': { 'the one sophie always picks.mp3': 0, 'the one i always pick.mp3': 0, 'the duet (do not distribute).mp3': 0, 'crowd work practice.mp3': 0 },
+    'ure boy theme.mp3': 0,
+    'desktop.ini': 0
+};
+
+var TREE_VIDS = {
+    $: { d: '12/2/2025', j: 200 },
+    'Captures': {
+        'terraria boss kill.mp4': 0, 'gti run 114 PB.mp4': 0, 'cookie ascension.mp4': 0,
+        'urequest heat soak fight.mp4': 0, 'pit lane last lap.mp4': 0
+    },
+    'argent cold start.mp4': 0,
+    'karaoke (deleted scene).mp4': 0
+};
+
+var TREE_PROJ = {
+    $: { d: '5/30/2026', j: 40 },
+    'website': {
+        'index.html': 0, 'comp.js': 'you are reading the file that is, at this exact moment, rendering the window you are reading it in.\nplease do not delete it while you are inside it.',
+        'comp.css': 0, 'quest.js': 0, 'app.js': 0,
+        'todo.txt': 'make the computer feel deeper. folders all the way down.\n(if you are reading this inside the computer: it worked.)'
+    }
+};
+
+var TREE_D = {
+    $: { d: '3/2/2019', j: 900, e: 'Empty. The drive hums anyway.' },
+    'archive': {
+        'old laptop (2016-2019)': {
+            'Documents': {
+                '6th grade': { 'my summer vacation.docx': 0, 'book report - hatchet.docx': 0, 'typing practice results.txt': 'WPM: 34\nWPM after practice: 33\ninstructive.' },
+                '8th grade': { 'science fair - does music help plants grow.pptx': 0, 'science fair data (real).xlsx': 0, 'science fair data (better).xlsx': 0 },
+                'high school': {
+                    'AP notes': { 'apush period 5.txt': 0, 'calc bc series tests.txt': 0 },
+                    'college apps': { 'essay brainstorm.txt': 'ideas:\n- the car thing? too obvious\n- the DM thing? too niche\n- the cow essay?? too honest\n- something about systems. everything is systems.', 'safety schools.xlsx': 0, 'rice supplement FINAL.docx': 0 }
+                }
+            },
+            'games': {
+                'minecraft worlds backup': { 'world2016.zip': 0, 'the good seed.txt': 'seed: 4-1-1-4\nvillage at spawn. do not lose this again.' },
+                'roblox': {
+                    'idle tycoon place v12.rbxl': 0, 'idle tycoon place v13 REAL.rbxl': 0, 'obby draft.rbxl': 0,
+                    'how to script.txt': 'day 1: what is a variable\nday 9: made the button give 2 money instead of 1\nday 30: the tycoon has an economy. i do not fully control it anymore.\nday 31: i understand economics now (i did not, but it planted the flag)'
+                }
+            },
+            'Pictures': { 'phone dump 2017': { 'IMG_0212.jpg': 0, 'IMG_0219.jpg': 0, 'IMG_0244.jpg': 0, 'IMG_0250.jpg': 0, 'IMG_0261.jpg': 0, 'IMG_0299.jpg': 0 } }
+        }
+    },
+    'backups': {
+        'ureboy saves': { 'ub_eggs.bak': 0, 'ub_gti_hs.bak': 0 },
+        'quest save backup.uqs': 0
+    },
+    'DO NOT DELETE.zip': {
+        'DO NOT OPEN': {
+            'final warning.txt': 'you were warned.\n\n— past isaac',
+            'ok fine': { 'the secret.txt': 'there was never anything in here.\nthe folder was the friend we made along the way.\n\n(also the good minecraft seed is 4-1-1-4, in case the other note is gone.)' }
+        }
+    },
+    'movies (legal)': { $: { e: 'Nothing to see here. Legally.' } }
+};
+
+var TREE_E = {
+    $: { d: '4/18/2026', j: 60, e: 'A USB drive with nothing on it? Impossible.' },
+    'for school': { 'MTEC major requirements.pdf': 0, 'print this.pdf': 0, 'print this 2.pdf': 0, 'PRINT THIS ONE.pdf': 0 },
+    'portable': { '7zip portable.exe': 0, 'vlc portable.exe': 0 },
+    'New folder': { 'New folder (2)': { $: { e: 'We have all been here.' } } },
+    'resume v1.docx': 0, 'resume v7.docx': 0, 'resume v8 FINAL (use this one).docx': 0,
+    'autorun.inf': '[autorun]\n; nothing autoruns anymore. this file is a fossil. respect it.'
+};
+
+/* compile a TREE literal into flat FS entries under rootKey.
+   Junction values ('>Key') become links; nothing is duplicated. */
+var PATHIDX = {};   // lowercase display path (and key) → FS key
+function fsIndex(key) {
+    var f = FS[key]; if (!f) return;
+    PATHIDX[key.toLowerCase()] = key;
+    PATHIDX[key.toLowerCase().replace(/\//g, '\\')] = key;   // fsResolve normalizes to backslashes
+    if (f.label) PATHIDX[f.label.toLowerCase()] = key;
+}
+function fsWhen(flag) {
+    if (flag === 'chrome') return function () { try { return !!JSON.parse(recall('chrome', 'null')); } catch (e) { return false; } };
+    var m = /^inst:(\w+)$/.exec(flag);
+    if (m) return function () { return typeof isInst === 'function' && isInst(m[1]); };
+    return null;
+}
+function fsCompile(rootKey, label, node, crumb, meta) {
+    meta = { d: (node.$ && node.$.d) || (meta && meta.d) || '6/5/2021', j: (node.$ && node.$.j) || (meta && meta.j) || 30 };
+    var items = [];
+    FS[rootKey] = { items: items, label: label, crumb: crumb, parent: crumb.length > 1 ? crumb[crumb.length - 2][1] : null, empty: node.$ && node.$.e };
+    fsIndex(rootKey);
+    Object.keys(node).forEach(function (name) {
+        if (name.charAt(0) === '$') return;                              // $ and $when are meta, not files
+        var v = node[name], path = rootKey + '/' + name, it;
+        if (v && typeof v === 'object' && !Array.isArray(v)) {           // subfolder (or zip posing as one)
+            var zip = /\.zip$/i.test(name);
+            it = { n: name, t: zip ? 'zip' : 'folder', go: path };
+            if (zip) it.size = fmtKb(EXT_KB.zip[0] + fsHash(path) % (EXT_KB.zip[1] - EXT_KB.zip[0]));
+            if (v.$when) it.when = fsWhen(v.$when);
+            items.push(it);
+            fsCompile(path, label + '\\' + name, v, crumb.concat([[name, path]]), meta);
+            return;
+        }
+        if (typeof v === 'string' && v.charAt(0) === '>') {              // junction to an existing key
+            items.push({ n: name, t: 'folder', go: v.slice(1) });
+            return;
+        }
+        var ext = extOf(name), t = EXT_T[ext] || 'file';
+        it = { n: name, t: t };
+        if (typeof v === 'string' && v.charAt(0) === '@') {              // app launcher
+            it.t = ext === 'exe' ? 'exe' : t;
+            it.app = v.slice(1);
+        } else if (typeof v === 'string') {                              // authored content
+            TXT[path] = v; it.cid = path;
+        } else if (Array.isArray(v)) {
+            if (v[0]) it.size = v[0];
+            if (v[1]) it.date = v[1];
+            var flags = v[2] ? String(v[2]).split(' ') : [];
+            flags.forEach(function (fl) {
+                if (fl === 'crit') it.crit = 1;
+                else if (fl.indexOf('ph:') === 0) it.ph = +fl.slice(3);
+                else if (fl.indexOf('when:') === 0) it.when = fsWhen(fl.slice(5));
+            });
+        }
+        var h = fsHash(path);
+        if (!it.size) { var r = EXT_KB[ext]; it.size = r ? fmtKb(r[0] + h % Math.max(1, r[1] - r[0])) : ((h % 87 + 9) + ' KB'); }
+        if (!it.date) {
+            var base = meta.d.split('/'), dt = new Date(+base[2], +base[0] - 1, +base[1] + h % Math.max(1, meta.j));
+            var hr = 7 + (h >>> 4) % 16, mn = (h >>> 8) % 60;   // unsigned: a signed >> here makes 3:0-48 AM
+            it.date = (dt.getMonth() + 1) + '/' + dt.getDate() + '/' + dt.getFullYear() + ' ' + (hr % 12 === 0 ? 12 : hr % 12) + ':' + (mn < 10 ? '0' : '') + mn + (hr < 12 ? ' AM' : ' PM');
+        }
+        it.cid = it.cid || path;   // filler content is keyed by path too
+        items.push(it);
+    });
+}
+
+// three drives + the user profile hanging off C:
+fsCompile('C:', 'C:', TREE_C, [['This PC', 'This PC'], ['Local Disk (C:)', 'C:']]);
+fsCompile('D:', 'D:', TREE_D, [['This PC', 'This PC'], ['Data (D:)', 'D:']]);
+fsCompile('E:', 'E:', TREE_E, [['This PC', 'This PC'], ['URE DRIVE (E:)', 'E:']]);
+fsCompile('C:/Users/isaac', 'C:\\Users\\isaac', TREE_USER, [['This PC', 'This PC'], ['Local Disk (C:)', 'C:'], ['Users', 'C:/Users'], ['isaac', 'C:/Users/isaac']]);
+// profile folders keep their legacy keys; junctions from C:\Users\isaac point at them
+[['Documents', TREE_DOCS], ['Pictures', TREE_PICS], ['Music', TREE_MUSIC], ['Videos', TREE_VIDS], ['Projects', TREE_PROJ]].forEach(function (pair) {
+    var key = pair[0], tree = pair[1];
+    var crumb = [['This PC', 'This PC'], ['Local Disk (C:)', 'C:'], ['Users', 'C:/Users'], ['isaac', 'C:/Users/isaac'], [key, key]];
+    var keep = FS[key].items;
+    fsCompile(key, 'C:\\Users\\isaac\\' + key, tree, crumb);
+    // compiled subfolder links replace the hand-authored ones; hand-authored FILES stay
+    var compiled = FS[key].items;
+    keep.forEach(function (it) { if (!compiled.some(function (c) { return c.n === it.n; })) compiled.push(it); });
+});
+['Home', 'This PC', 'Desktop', 'Downloads'].forEach(function (k) {
+    FS[k].label = FS[k].label || (k === 'Desktop' || k === 'Downloads' ? 'C:\\Users\\isaac\\' + k : k);
+    FS[k].crumb = FS[k].crumb || (k === 'Desktop' || k === 'Downloads'
+        ? [['This PC', 'This PC'], ['Local Disk (C:)', 'C:'], ['Users', 'C:/Users'], ['isaac', 'C:/Users/isaac'], [k, k]]
+        : [[k, k]]);
+    FS[k].parent = FS[k].parent || (k === 'Desktop' || k === 'Downloads' ? 'C:/Users/isaac' : null);
+    fsIndex(k);
+});
+// the junctions users will actually type
+PATHIDX['~'] = 'Home'; PATHIDX['c:\\'] = 'C:'; PATHIDX['d:\\'] = 'D:'; PATHIDX['e:\\'] = 'E:';
+PATHIDX['c:\\users\\isaac\\appdata'] = 'C:/Users/isaac/AppData';
+function fsResolve(q) {
+    q = String(q || '').trim().replace(/"/g, '').replace(/\//g, '\\');
+    if (!q) return null;
+    var low = q.toLowerCase().replace(/\\+$/, '') || q.toLowerCase();
+    return PATHIDX[low] || PATHIDX[low + '\\'] || null;
+}
 
 var fsSt = null;
 function fsLoad() {
@@ -424,9 +918,23 @@ function fsLoad() {
 function fsSave() { try { store('fs', JSON.stringify(fsSt)); } catch (e) {} }
 function itemsFor(path) {
     var st = fsLoad(), base = (FS[path] || FS.Home).items;
-    return base.filter(function (it) { return st.gone.indexOf(path + '/' + it.n) < 0; }).concat(st.add[path] || []);
+    return base.filter(function (it) { return (!it.when || it.when()) && st.gone.indexOf(path + '/' + it.n) < 0; }).concat(st.add[path] || []);
 }
 function fsHas(path, name) { return itemsFor(path).some(function (it) { return it.n === name; }); }
+/* Tiles carry both their index and their name. when()-gated items (a Steam
+   game finishing its install, Chrome arriving) can appear in itemsFor()
+   between a draw and the next click, shifting every index under the
+   rendered tiles — so the NAME is the source of truth and the index is
+   only a fast path. Every handler that turns a tile back into an item
+   goes through here. */
+function tileItem(path, tile) {
+    if (!tile) return null;
+    var items = itemsFor(path), n = tile.getAttribute('data-n');
+    var it = items[+tile.getAttribute('data-i')];
+    if (it && (n === null || it.n === n)) return it;
+    for (var i = 0; i < items.length; i++) if (items[i].n === n) return items[i];
+    return null;
+}
 function uniqueName(path, name) {
     if (!fsHas(path, name)) return name;
     var dot = name.lastIndexOf('.'), stem = dot > 0 ? name.slice(0, dot) : name, ext = dot > 0 ? name.slice(dot) : '';
@@ -440,12 +948,12 @@ function fsDelete(path, it) {
     if (path === 'Desktop') { delete deskLoad()[it.n]; deskSave(); }
     fsSave(); refreshFileViews();
 }
-function immovable(it) { return !!(it.sys || it.go || it.t === 'folder' || it.t === 'pc'); }
+function immovable(it) { return !!(it.sys || it.go || it.t === 'folder' || it.t === 'pc' || it.t === 'drive' || it.t === 'usb' || it.t === 'disc'); }
 function fsMove(fromPath, it, toPath, cell) {
     if (fromPath === toPath || !FS[toPath]) return null;
     if (itemsFor(fromPath).indexOf(it) < 0) return null;   // stale reference (view changed mid-drag)
     var st = fsLoad();
-    var moved = { n: uniqueName(toPath, it.n), t: it.t, app: it.app, arg: it.arg, go: it.go, size: it.size, date: it.date };
+    var moved = { n: uniqueName(toPath, it.n), t: it.t, app: it.app, arg: it.arg, go: it.go, size: it.size, date: it.date, crit: it.crit, cid: it.cid, ph: it.ph };
     var dyn = (st.add[fromPath] || []).indexOf(it);
     if (dyn >= 0) st.add[fromPath].splice(dyn, 1);
     else st.gone.push(fromPath + '/' + it.n);
@@ -460,11 +968,13 @@ function fsRestore(i) {
     if (e.base && !fsHas(e.from, e.it.n)) { var k = st.gone.indexOf(e.from + '/' + e.it.n); if (k >= 0) st.gone.splice(k, 1); }
     else {  // dynamic file — or a base file whose name got taken while it sat in the bin.
             // restore a fresh copy (never mutate a base FS object: its tombstone is name-keyed)
-        var copy = { n: uniqueName(e.from, e.it.n), t: e.it.t, app: e.it.app, arg: e.it.arg, go: e.it.go, size: e.it.size, date: e.it.date };
+        var copy = { n: uniqueName(e.from, e.it.n), t: e.it.t, app: e.it.app, arg: e.it.arg, go: e.it.go, size: e.it.size, date: e.it.date, crit: e.it.crit, cid: e.it.cid, ph: e.it.ph };
         (st.add[e.from] = st.add[e.from] || []).push(copy);
     }
-    fsSave(); refreshFileViews();
+    fsSave();
+    // install BEFORE the redraw: it flips when:chrome, and installChrome refreshes too
     if (chromeOnDisk() && PINNED.indexOf('chrome') < 0) installChrome({ shortcut: false });   // a restored shortcut re-registers Chrome
+    refreshFileViews();
 }
 function chromeOnDisk() {   // the install is real wherever the shortcut lives, not just on the Desktop
     var found = false;
@@ -482,7 +992,7 @@ function fsRename(path, it, name) {
     if (dyn >= 0) it.n = name;
     else {  // renaming a factory file: retire the original, add a copy under the new name
         st.gone.push(path + '/' + it.n);
-        (st.add[path] = st.add[path] || []).push({ n: name, t: it.t, app: it.app, arg: it.arg, go: it.go, size: it.size, date: it.date });
+        (st.add[path] = st.add[path] || []).push({ n: name, t: it.t, app: it.app, arg: it.arg, go: it.go, size: it.size, date: it.date, crit: it.crit, cid: it.cid, ph: it.ph });
     }
     if (path === 'Desktop') {   // the icon keeps its spot through a rename
         var dp = deskLoad();
@@ -493,103 +1003,315 @@ function fsRename(path, it, name) {
 function refreshFileViews() {
     closeFctx();   // the menu's captured tile may be about to detach
     if (openWins.explorer && exState.explorer && exState.explorer.draw) {
-        // never yank an in-progress rename out from under the user; the commit redraws anyway
-        if (!openWins.explorer.el.querySelector('.fitem-ren')) exState.explorer.draw();
+        // never yank an in-progress rename OR a half-typed address bar out from
+        // under the user; both redraw themselves when they commit
+        if (!openWins.explorer.el.querySelector('.fitem-ren, .exp-addr')) exState.explorer.draw();
     }
     if (openWins.bin) drawBinList(openWins.bin.el);
     renderDesktop();
 }
 function kindOf(it) {
-    if (it.sys) return 'System';
+    if (it.t === 'zip') return KIND.zip;                        // zips navigate like folders but are files
+    if (it.go || it.t === 'folder') return KIND[it.t] === undefined || it.t === 'folder' ? 'File folder' : KIND[it.t];
+    if (it.sys && !KIND[it.t]) return 'System';
+    var ek = EXT_KIND[extOf(it.n)];
+    if (ek) return ek;
     if (/\.exe$/i.test(it.n)) return 'Application';
-    if (/\.pdf$/i.test(it.n)) return 'PDF document';
-    return KIND[it.t] || (it.go ? 'File folder' : 'File');
+    return KIND[it.t] || 'File';
 }
 function sizeOf(it) {
     if (it.size) return it.size;
-    if (it.t === 'folder' || it.t === 'pc' || it.go || it.sys) return '';
+    if (it.t === 'folder' || it.t === 'pc' || it.t === 'drive' || it.t === 'usb' || it.t === 'disc' || it.go || it.sys) return '';
     var h = 0; for (var i = 0; i < it.n.length; i++) h = (h * 31 + it.n.charCodeAt(i)) % 997;
     return (h % 87 + 9) + ' KB';
 }
 function dateOf(it) { return it.date || 'came with the machine'; }
+// deep item count for folder Properties (junction-safe)
+function fsCount(key, seen) {
+    seen = seen || {};
+    if (!FS[key] || seen[key]) return { files: 0, dirs: 0 };
+    seen[key] = 1;
+    var files = 0, dirs = 0;
+    itemsFor(key).forEach(function (it) {
+        if (it.go && FS[it.go]) { dirs++; var s = fsCount(it.go, seen); files += s.files; dirs += s.dirs; }
+        else files++;
+    });
+    return { files: files, dirs: dirs };
+}
+
+/* —— what's IN the files: authored text, or believable filler —— */
+function lcgFor(seed) { var s = seed >>> 0; return function () { s = (s * 1103515245 + 12345) >>> 0; return s / 4294967296; }; }
+function pick(rnd, arr) { return arr[Math.floor(rnd() * arr.length)]; }
+function genIni(name, rnd) {
+    var keys = ['enabled', 'verbose', 'retries', 'cache', 'legacy_mode', 'dpi_aware', 'telemetry', 'vibes', 'last_run', 'threads'];
+    var out = ['[general]'];
+    for (var i = 0; i < 4 + Math.floor(rnd() * 4); i++) out.push(pick(rnd, keys) + '=' + (rnd() < 0.5 ? (rnd() < 0.5 ? 'true' : 'false') : Math.floor(rnd() * 512)));
+    out.push('', '[advanced]', '; do not edit below this line', '; (someone edited below this line in 2022 and we are still finding out why)');
+    return out.join('\n');
+}
+function genLog(name, rnd) {
+    var lv = ['INFO', 'INFO', 'INFO', 'WARN', 'INFO', 'ERROR', 'INFO'], msg = [
+        'service started', 'heartbeat ok', 'cache warm', 'update check: nothing new', 'handle released',
+        'retrying (attempt 2)', 'retry worked. no notes.', 'config reloaded', 'scheduled task ran early out of enthusiasm',
+        'GPU woke up', 'disk is fine, stop asking', 'session persisted', 'everything nominal'
+    ];
+    var out = [], mm = Math.floor(rnd() * 50);
+    for (var i = 0; i < 9 + Math.floor(rnd() * 8); i++) {
+        mm += Math.floor(rnd() * 90);
+        out.push('[' + (7 + Math.floor(mm / 60)) % 24 + ':' + ((mm % 60) < 10 ? '0' : '') + mm % 60 + ':' + (10 + Math.floor(rnd() * 49)) + '] ' + pick(rnd, lv) + '  ' + pick(rnd, msg));
+    }
+    return out.join('\n');
+}
+function genCode(name, ext, rnd) {
+    if (ext === 'css') return '/* ' + name + ' */\n.thing {\n    display: flex;\n    /* TODO: center it. actually center it. */\n    align-items: center;\n    justify-content: center;\n}\n.thing.is-centered { /* it was not */ }';
+    if (ext === 'html' || ext === 'htm') return '<!doctype html>\n<!-- ' + name + ' -->\n<title>untitled (keeper)</title>\n<p>if you can read this, the css did not load, and honestly it reads fine.</p>';
+    if (ext === 'bat' || ext === 'cmd') return '@echo off\nrem ' + name + '\necho doing the thing...\nrem (there is no thing. there was never a thing.)\npause';
+    if (ext === 'json') return '{\n    "name": "' + name.replace(/\.[^.]+$/, '') + '",\n    "version": "0.0.' + Math.floor(rnd() * 90) + '",\n    "honest": true\n}';
+    return '// ' + name + '\nfunction main() {\n    // it works. do not touch it.\n    // update ' + (2020 + Math.floor(rnd() * 6)) + ': touched it. it no longer works.\n    // update same day: fixed. DO NOT TOUCH.\n    return true;\n}';
+}
+function genTxt(name, rnd) {
+    var lines = [
+        'notes on ' + name.replace(/\.[^.]+$/, '') + ':', '',
+        pick(rnd, ['- started strong.', '- premise solid.', '- draft one exists, which is legally a draft.']),
+        pick(rnd, ['- middle needs work.', '- middle is missing.', '- middle is two bullet points and a promise.']),
+        pick(rnd, ['- ending TBD.', '- ends mid-sen', '- stuck the landing, somehow.'])
+    ];
+    return lines.join('\n');
+}
+function binSoup(name, ext) {
+    var rnd = lcgFor(fsHash(name)), chars = '▓▒░ÐÏÞþÿ×¤¶§■▪ NUL SOH ƒ†‡ˆ‰';
+    var head = '';
+    if (ext === 'exe' || ext === 'dll') head = 'MZ░▓▒....¸.....Í!¸.LÍ!This program cannot be run in DOS mode.\r\r\n$';
+    else if (ext === 'docx' || ext === 'xlsx' || ext === 'pptx' || ext === 'zip') head = 'PK░▒▓....[Content_Types].xml ¤';
+    else if (ext === 'pdf') head = '%PDF-1.7\n%µ¶▓▒\n1 0 obj\n';
+    else if (ext === 'png' || ext === 'jpg') head = '‰PNG\r\n░\n....IHDR';
+    else if (ext === 'wld' || ext === 'plr') head = 'relogic░▒▓';
+    var out = head;
+    for (var i = 0; i < 700; i++) {
+        out += chars.charAt(Math.floor(rnd() * chars.length));
+        if (rnd() < 0.06) out += '\n';
+    }
+    return out + '\n\n[Notepad has done its best. Notepad would like a different job.]';
+}
+function contentFor(it) {
+    if (it.cid && TXT[it.cid]) return TXT[it.cid];
+    var ext = extOf(it.n), rnd = lcgFor(fsHash(it.cid || it.n));
+    // trust the extension over it.t: legacy items carry t:'notepad' but a .txt name
+    var t = EXT_T[ext] || it.t;
+    if (t === 'ini') return genIni(it.n, rnd);
+    if (t === 'log') return genLog(it.n, rnd);
+    if (t === 'js' || t === 'html' || t === 'css' || t === 'code') return genCode(it.n, ext, rnd);
+    if (t === 'txt') return genTxt(it.n, rnd);
+    return binSoup(it.cid || it.n, ext);
+}
 
 var exState = {};
 function renderExplorer(id, arg) {
     return '<div class="exp">' +
         '<div class="exp-nav">' +
-          navItem('Home', 'ic-explorer') + navItem('Desktop', 'ic-folder') + navItem('Downloads', 'ic-download') + navItem('Pictures', 'ic-photos') +
+          navItem('Home', 'ic-explorer') + navItem('Desktop', 'ic-folder') + navItem('Downloads', 'ic-download') +
+          navItem('Documents', 'ic-folder') + navItem('Pictures', 'ic-photos') + navItem('Music', 'ic-audio') +
+          navItem('Videos', 'ic-video') + navItem('Projects', 'ic-folder') +
           '<div class="nav-group">This PC</div>' +
-          navItem('This PC', 'ic-pc') + navItem('Documents', 'ic-folder') + navItem('Projects', 'ic-folder') +
+          navItem('This PC', 'ic-pc') +
+          navItem('Local Disk (C:)', 'ic-drive', 'C:') + navItem('Data (D:)', 'ic-drive', 'D:') + navItem('URE DRIVE (E:)', 'ic-usb', 'E:') +
         '</div>' +
         '<div class="exp-main">' +
           '<div class="exp-bar"><button class="exp-back" data-nav="back" aria-label="Back">‹</button>' +
-            '<button class="exp-up" data-nav="home" aria-label="Home">⌂</button>' +
-            '<div class="exp-crumb" id="expCrumb"></div></div>' +
+            '<button class="exp-up" data-nav="up" aria-label="Up one level">↑</button>' +
+            '<div class="exp-crumb" id="expCrumb"></div>' +
+            '<input class="exp-search" id="expSearch" placeholder="Search" spellcheck="false" autocomplete="off" aria-label="Search this folder">' +
+          '</div>' +
           '<div class="exp-grid" id="expGrid"></div>' +
           '<div class="exp-stat" id="expStat"></div>' +
         '</div></div>';
 }
-function navItem(name, icon) { return '<button class="nav-item" data-folder="' + name + '">' + ic(icon) + ' ' + esc(name) + '</button>'; }
+function navItem(name, icon, key) { return '<button class="nav-item" data-folder="' + esc(key || name) + '">' + ic(icon) + ' ' + esc(name) + '</button>'; }
+function fileTile(it, i) {
+    return '<button class="fitem" data-i="' + i + '" data-n="' + esc(it.n) + '">' + ic(FS_ICON[it.t] || 'ic-folder') + '<span class="fitem-n">' + esc(it.n) + '</span></button>';
+}
+function driveTile(it, i) {
+    var free = it.cap ? it.cap[0] : 0, total = it.cap ? it.cap[1] : 1;
+    var used = Math.round((total - free) / total * 100);
+    return '<button class="fitem fdrive" data-i="' + i + '" data-n="' + esc(it.n) + '">' + ic(FS_ICON[it.t] || 'ic-drive') +
+        '<span class="fd-body"><span class="fitem-n">' + esc(it.n) + '</span>' +
+        (it.cap ? '<span class="fd-bar"><i style="width:' + used + '%"' + (used > 88 ? ' class="hot"' : '') + '></i></span>' +
+        '<span class="fd-free">' + free + ' GB free of ' + total + ' GB</span>' : '<span class="fd-free">No disc inserted</span>') +
+        '</span></button>';
+}
 function initExplorer(el, id, arg) {
-    var state = { path: (arg && FS[arg]) ? arg : 'Home', hist: [] };
+    var state = { path: (arg && FS[arg]) ? arg : 'Home', hist: [], filter: '' };
     exState[id] = state;
-    var grid = el.querySelector('#expGrid'), crumb = el.querySelector('#expCrumb'), stat = el.querySelector('#expStat');
+    var grid = el.querySelector('#expGrid'), crumb = el.querySelector('#expCrumb'), stat = el.querySelector('#expStat'), search = el.querySelector('#expSearch');
+    function crumbDraw() {
+        var f = FS[state.path] || {}, segs = f.crumb || [[state.path, state.path]];
+        crumb.innerHTML = segs.map(function (s, i) {
+            return '<button class="crumb-seg' + (i === segs.length - 1 ? ' cur' : '') + '" data-k="' + esc(s[1]) + '" type="button">' + esc(s[0]) + '</button>';
+        }).join('<span class="crumb-sep">›</span>');
+    }
+    function statCount() {   // "N of M items" whenever a filter is hiding something
+        var items = itemsFor(state.path), q = state.filter.toLowerCase();
+        var shown = !q ? items.length : items.filter(function (it) { return it.n.toLowerCase().indexOf(q) >= 0; }).length;
+        var tail = items.length === 1 ? ' item' : ' items';
+        return q ? shown + ' of ' + items.length + tail : items.length + tail;
+    }
     function draw() {
-        var items = itemsFor(state.path);
-        crumb.textContent = state.path;
+        var items = itemsFor(state.path), q = state.filter.toLowerCase();
+        var view = [];
+        items.forEach(function (it, i) { if (!q || it.n.toLowerCase().indexOf(q) >= 0) view.push({ it: it, i: i }); });
+        crumbDraw();
         el.querySelectorAll('.nav-item').forEach(function (n) { n.classList.toggle('sel', n.getAttribute('data-folder') === state.path); });
-        grid.innerHTML = items.length ? items.map(function (it, i) {
-            return '<button class="fitem" data-i="' + i + '">' + ic(FS_ICON[it.t] || 'ic-folder') + '<span class="fitem-n">' + esc(it.n) + '</span></button>';
-        }).join('') : '<div class="exp-empty">' + esc((FS[state.path] || {}).empty || 'This folder is empty.') + '</div>';
-        stat.textContent = items.length + (items.length === 1 ? ' item' : ' items');
+        search.setAttribute('placeholder', 'Search ' + ((FS[state.path] || {}).crumb || [[state.path]]).slice(-1)[0][0]);
+        var html = '', lastSect = null;
+        view.forEach(function (v) {
+            if (v.it.sect && v.it.sect !== lastSect) { html += '<div class="exp-sect">' + esc(v.it.sect) + '</div>'; lastSect = v.it.sect; }
+            html += (v.it.t === 'drive' || v.it.t === 'usb' || v.it.t === 'disc') ? driveTile(v.it, v.i) : fileTile(v.it, v.i);
+        });
+        grid.innerHTML = view.length ? html
+            : '<div class="exp-empty">' + esc(q ? 'Nothing here matches "' + state.filter + '".' : (FS[state.path] || {}).empty || 'This folder is empty.') + '</div>';
+        stat.textContent = statCount();
     }
     state.draw = draw;
-    function go(p) { if (p === state.path || !FS[p]) return; state.hist.push(state.path); state.path = p; draw(); }
-    state.go = function (p) { if (FS[p] && p !== state.path) { state.hist.push(state.path); state.path = p; } draw(); };
-    function openItem(it) {
-        if (!it) return;
-        if (it.app) openApp(it.app, it.arg);
-        else if (it.go) go(it.go);
+    function go(p) {
+        if (p === state.path || !FS[p]) return;
+        state.hist.push(state.path); state.path = p;
+        state.filter = ''; search.value = '';
+        draw();
     }
+    state.go = function (p) { if (FS[p] && p !== state.path) { state.hist.push(state.path); state.path = p; state.filter = ''; search.value = ''; } draw(); };
+    function openItem(it) { openItemFrom(it, go); }
     el._nav = {                                                   // Alt+Left / Alt+Up
-        back: function () { if (state.hist.length) { state.path = state.hist.pop(); draw(); } },
-        home: function () { if (state.path !== 'Home') { state.hist.push(state.path); state.path = 'Home'; draw(); } }
+        back: function () { if (state.hist.length) { state.path = state.hist.pop(); state.filter = ''; search.value = ''; draw(); } },
+        up: function () { var p = (FS[state.path] || {}).parent; if (p) go(p); else if (state.path !== 'This PC' && state.path !== 'Home') go('This PC'); }
     };
+    function addrMode() {
+        var f = FS[state.path] || {}, done = false;
+        crumb.innerHTML = '<input class="exp-addr" type="text" spellcheck="false" autocomplete="off" aria-label="Address">';
+        var inp = crumb.firstChild; inp.value = f.label || state.path;
+        function commit(navigate) {
+            if (done) return; done = true;
+            var v = inp.value;
+            if (!navigate) { crumbDraw(); return; }
+            var k = fsResolve(v);
+            if (k) { crumbDraw(); go(k); }
+            else {
+                crumbDraw();
+                dlgError('Windows can’t find “' + v + '”', 'Check the spelling and try again. Or type C:\\ and wander. Wandering works.');
+            }
+        }
+        inp.addEventListener('keydown', function (e) {
+            e.stopPropagation();
+            if (e.key === 'Enter') commit(true);
+            else if (e.key === 'Escape') commit(false);
+        });
+        inp.addEventListener('blur', function () { commit(false); });
+        inp.addEventListener('click', function (e) { e.stopPropagation(); });
+        inp.focus(); inp.select();
+    }
     el.querySelector('.exp-nav').addEventListener('click', function (e) { var b = e.target.closest('.nav-item'); if (b) go(b.getAttribute('data-folder')); });
     el.querySelector('.exp-bar').addEventListener('click', function (e) {
+        var seg = e.target.closest('.crumb-seg');
+        if (seg) { if (!seg.classList.contains('cur')) go(seg.getAttribute('data-k')); return; }
+        if (e.target === crumb) { addrMode(); return; }           // the blank strip is the address bar
         var b = e.target.closest('[data-nav]'); if (!b) return;
-        if (b.getAttribute('data-nav') === 'back') { if (state.hist.length) { state.path = state.hist.pop(); draw(); } }
-        else { state.hist = []; state.path = 'Home'; draw(); }
+        if (b.getAttribute('data-nav') === 'back') el._nav.back();
+        else el._nav.up();
     });
+    search.addEventListener('input', function () { state.filter = search.value.trim(); draw(); });
+    search.addEventListener('keydown', function (e) { e.stopPropagation(); if (e.key === 'Escape') { search.value = ''; state.filter = ''; draw(); } });
     grid.addEventListener('dblclick', function (e) {
         var b = e.target.closest('.fitem'); if (!b) return;
-        openItem(itemsFor(state.path)[+b.getAttribute('data-i')]);
+        openItem(tileItem(state.path, b));
     });
     grid.addEventListener('click', function (e) {
-        var items = itemsFor(state.path), count = items.length + (items.length === 1 ? ' item' : ' items');
         var b = e.target.closest('.fitem');
         grid.querySelectorAll('.fitem.sel').forEach(function (x) { x.classList.remove('sel'); });
-        if (!b) { stat.textContent = count; return; }
+        if (!b) { stat.textContent = statCount(); return; }
         b.classList.add('sel');
-        var it = items[+b.getAttribute('data-i')];
-        stat.textContent = it ? count + '  ·  ' + it.n + (sizeOf(it) ? '  ·  ' + sizeOf(it) : '') : count;
+        var it = tileItem(state.path, b);
+        stat.textContent = it ? statCount() + '  ·  ' + it.n + (sizeOf(it) ? '  ·  ' + sizeOf(it) : '') + '  ·  ' + kindOf(it) : statCount();
     });
     grid.addEventListener('contextmenu', function (e) {
         e.preventDefault();
         var b = e.target.closest('.fitem'); if (!b) { closeFctx(); return; }
         grid.querySelectorAll('.fitem.sel').forEach(function (x) { x.classList.remove('sel'); });
         b.classList.add('sel');
-        var it = itemsFor(state.path)[+b.getAttribute('data-i')]; if (!it) return;
+        var it = tileItem(state.path, b); if (!it) return;
         openFctx(e, { path: state.path, it: it, tile: b, open: function () { openItem(it); }, redraw: draw });
     });
     draw();
+}
+
+/* —— opening things: one dispatcher for Explorer, the desktop and the shell ——
+   goFn navigates within an existing Explorer; without one, folders open
+   a fresh Explorer window at that path. */
+function openItemFrom(it, goFn) {
+    if (!it) return;
+    if (it.app) {
+        if (it.app.charAt(0) === '!') { openBang(it.app.slice(1)); return; }
+        openApp(it.app, it.arg); return;
+    }
+    if (it.go) { if (goFn) goFn(it.go); else openApp('explorer', it.go); return; }
+    openFileByType(it);
+}
+function openBang(name) {
+    if (name === 'taskview') openTaskView();
+    else if (name === 'ie') dlgError('Internet Explorer', 'This machine has suffered enough.');
+}
+function openFileByType(it) {
+    var t = it.t;
+    if (t === 'txt' || t === 'ini' || t === 'log' || t === 'js' || t === 'html' || t === 'css' || t === 'code')
+        openApp('notepad', { file: { n: it.n, body: contentFor(it) } });
+    else if (t === 'pdf') openApp('reader', { n: it.n });
+    else if (t === 'img') openApp('photos', it.ph != null ? it.ph : fsHash(it.cid || it.n) % PHOTOS.length);
+    else if (t === 'audio' || t === 'video') openApp('player', { n: it.n, cid: it.cid, video: t === 'video' });
+    else if (t === 'font') dlgFont(it);
+    else if (t === 'exe') dlgError('This app can’t run on your PC', 'To find a version for your PC, check with the software publisher. They will also be confused.');
+    else if (t === 'disc') dlgError('Insert a disc', 'The tray is decorative. It has always been decorative.');
+    else dlgOpenWith(it);                                        // doc/xls/ppt/dll/sys/sav/dat and friends
+}
+function dlgOpenWith(it) {
+    var rows =
+        '<button class="dlg-owrow" data-ow="notepad" type="button">' + ic('ic-notepad') + '<span><b>Notepad</b><i>It will try. It will really try.</i></span></button>' +
+        '<button class="dlg-owrow" data-ow="photos" type="button">' + ic('ic-photos') + '<span><b>Photos</b><i>Optimistic.</i></span></button>' +
+        '<button class="dlg-owrow" data-ow="store" type="button">' + ic('ic-win') + '<span><b>Look for an app in the Microsoft Store</b><i>Do not do this.</i></span></button>';
+    var close = dlgOpen('How do you want to open “' + it.n + '”?', '<div class="dlg-ow">' + rows + '</div>', [['Cancel', '']]);
+    var veil = document.body.lastElementChild;                    // dlgOpen appended it a moment ago
+    if (veil && veil.classList.contains('dlg-veil')) veil.addEventListener('click', function (e) {
+        var b = e.target.closest('[data-ow]'); if (!b) return;
+        var how = b.getAttribute('data-ow'); close();
+        if (how === 'notepad') openApp('notepad', { file: { n: it.n, body: contentFor(it) } });
+        else if (how === 'photos') dlgError('Photos', 'Photos gave it a look. It’s not a picture. It was never a picture.');
+        else dlgError('Microsoft Store', 'The Store has reviewed your request and would prefer not to be involved.');
+    });
+}
+function dlgFont(it) {
+    var stem = it.n.replace(/\.[^.]+$/, '');
+    // single quotes: this goes inside a double-quoted style attribute
+    var fam = /press start/i.test(stem) ? "'Press Start 2P', monospace"
+        : /vt323/i.test(stem) ? "'VT323', monospace"
+        : /silkscreen/i.test(stem) ? "'Silkscreen', monospace" : null;
+    var note = fam ? 'This one actually renders. It’s one of the three fonts this entire website is built from.'
+        : /comic sans/i.test(stem) ? 'Not installed on this machine. Some doors we keep closed.'
+        : /papyrus/i.test(stem) ? 'Not installed. The avatar of fonts.'
+        : /wingdings/i.test(stem) ? 'Installed, allegedly. Every preview renders as a duck, an envelope and a bomb.'
+        : 'The pixels for this font are stored somewhere very safe.';
+    var sample = 'The quick silver GTI jumps the sleeping policeman. 0123456789';
+    var body = '<div class="dlg-font">' +
+        '<p class="df-name">' + esc(stem) + '</p>' +
+        (fam ? '<p class="df-s1" style="font-family:' + fam + '">' + esc(sample) + '</p>' +
+               '<p class="df-s2" style="font-family:' + fam + '">' + esc(sample) + '</p>' +
+               '<p class="df-s3" style="font-family:' + fam + '">AaBbCcDd</p>'
+             : '<p class="df-none">Aa?</p>') +
+        '<p class="df-note">' + esc(note) + '</p></div>';
+    dlgOpen(it.n, body, [['OK', 'primary']]);
 }
 
 /* —— file right-click menu (shared by Explorer windows) —— */
 var fctx = null, fctxT = null;
 function closeFctx() { if (fctx) fctx.hidden = true; fctxT = null; }
 function openFctx(e, t) {
-    setStart(false); closeFlyouts(); closeCtx();
+    setStart(false); closeFlyouts(); closeCtx(); closeBctx();
     if (!fctx) {
         fctx = document.createElement('div');
         fctx.className = 'ctx px-sm lift'; fctx.id = 'fctx'; fctx.setAttribute('role', 'menu');
@@ -616,6 +1338,15 @@ function openFctx(e, t) {
 }
 function deleteItem(t) {
     var it = t.it;
+    if (it.crit) {                                   // Windows needs this one. Windows will PROVE it.
+        dlgConfirm('You need permission from UreOS to delete this file',
+            it.n + ' is currently in use by Windows. By all of Windows. Right now.',
+            'Delete anyway', function () {
+                dlgConfirm('No, really', 'This is a load-bearing file. The operating system is standing on it as we speak.',
+                    'I understand what I’m doing', function () { bsod(it.n); });
+            });
+        return;
+    }
     if (it.sys) {
         dlgError('Can’t delete “' + it.n + '”', 'That one is part of the machine. The machine would notice.');
         return;
@@ -629,6 +1360,7 @@ function deleteItem(t) {
 }
 function startRename(t) {
     if (t.it.sys) { dlgError('Can’t rename “' + t.it.n + '”', 'The machine gets confused when its parts change names.'); return; }
+    if (t.it.crit) { dlgError('File in use', 'This file is open in System. It is always open in System. Renaming it would be a whole thing.'); return; }
     var lab = t.tile.querySelector('.fitem-n'); if (!lab) return;
     var old = t.it.n, done = false;
     lab.innerHTML = '<input class="fitem-ren" type="text" aria-label="New name">';
@@ -702,8 +1434,20 @@ function dlgError(title, msg) { dlgMsg('err', '✕', title, msg, [['OK', 'primar
 function dlgInfo(title, msg) { dlgMsg('info', 'i', title, msg, [['OK', 'primary']]); }
 function dlgConfirm(title, msg, yes, cb) { dlgMsg('warn', '!', title, msg, [[yes, 'primary', cb], ['Cancel', '']]); }
 function dlgProps(path, it) {
-    var loc = path === 'This PC' ? 'This PC' : 'C:\\Users\\isaac' + (path === 'Home' ? '' : '\\' + path);
-    var rows = [['Name', it.n], ['Type', kindOf(it)], ['Location', loc], ['Size', sizeOf(it) || '—'], ['Created', dateOf(it)], ['Owner', 'isaac (obviously)']];
+    // location is a real path, not the display label — Home's label is "Home" but it lives at C:\Users\isaac
+    var loc = path === 'Home' ? 'C:\\Users\\isaac'
+        : path === 'This PC' ? 'This PC'
+        : (FS[path] || {}).label || ('C:\\Users\\isaac\\' + path);
+    var rows = [['Name', it.n], ['Type', kindOf(it)], ['Location', loc]];
+    var h = fsHash(it.cid || it.n);
+    if ((it.t === 'drive' || it.t === 'usb') && it.cap) rows.push(['Free space', it.cap[0] + ' GB of ' + it.cap[1] + ' GB']);
+    else if (it.go && FS[it.go]) { var c = fsCount(it.go); rows.push(['Contains', c.files + ' files, ' + c.dirs + ' folders']); }
+    else rows.push(['Size', sizeOf(it) || '—']);
+    if (it.t === 'audio' || it.t === 'video') rows.push(['Length', plFmt(mediaLen(it))]);   // same source as the player's clock
+    if (it.t === 'img') rows.push(['Dimensions', '160 × 144 (everything here is, if you zoom out enough)']);
+    if (it.t === 'font') rows.push(['Font family', it.n.replace(/\.[^.]+$/, '')]);
+    if (it.crit) rows.push(['Status', 'Protected. Aggressively.']);
+    rows.push(['Created', dateOf(it)], ['Owner', 'isaac (obviously)']);
     dlgOpen(it.n + ' Properties',
         '<div class="dlg-props"><span class="dlg-pic">' + ic(FS_ICON[it.t] || 'ic-folder') + '</span>' +
         '<dl class="specs">' + rows.map(function (r) { return '<dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1]) + '</dd>'; }).join('') + '</dl></div>' +
@@ -763,7 +1507,7 @@ function renderDesktop() {
     if (oldFoc && oldFoc.classList && oldFoc.classList.contains('dicon') && desk.contains(oldFoc))
         focN = (oldFoc.querySelector('.fitem-n') || {}).textContent || null;
     desk.innerHTML = deskLayout().list.map(function (o, i) {
-        return '<button class="dicon" data-i="' + i + '" type="button" style="left:' + (DESK_PAD + o.cell[0] * DESK_CW) + 'px;top:' + (DESK_PAD + o.cell[1] * DESK_CH) + 'px">' +
+        return '<button class="dicon" data-i="' + i + '" data-n="' + esc(o.it.n) + '" type="button" style="left:' + (DESK_PAD + o.cell[0] * DESK_CW) + 'px;top:' + (DESK_PAD + o.cell[1] * DESK_CH) + 'px">' +
             '<span class="dicon-img">' + ic(FS_ICON[o.it.t] || 'ic-folder') + '</span>' +
             '<span class="dicon-label fitem-n">' + esc(o.it.n) + '</span></button>';
     }).join('');
@@ -810,7 +1554,7 @@ document.addEventListener('pointerdown', function (e) {
     var from = tile.classList.contains('dicon') ? 'Desktop' : exPath();
     if (!from) return;
     if (from !== 'Desktop' && e.pointerType === 'touch') return;   // keep touch scrolling inside Explorer
-    var it = itemsFor(from)[+tile.getAttribute('data-i')]; if (!it) return;
+    var it = tileItem(from, tile); if (!it) return;
     dnd.cand = { id: e.pointerId, x: e.clientX, y: e.clientY, tile: tile, it: it, from: from };
 });
 window.addEventListener('pointermove', function (e) {
@@ -861,14 +1605,14 @@ function dndTarget(x, y) {
     var el = document.elementFromPoint(x, y); if (!el) return null;
     var fit = el.closest('.exp-grid .fitem');   // a folder tile inside Explorer
     if (fit) {
-        var fi = itemsFor(exPath())[+fit.getAttribute('data-i')];
+        var fi = tileItem(exPath(), fit);
         if (fi && fi.go && FS[fi.go]) return { kind: 'folder', path: fi.go, el: fit };
     }
     var nav = el.closest('.exp-nav .nav-item');
     if (nav) { var p = nav.getAttribute('data-folder'); if (FS[p]) return { kind: 'folder', path: p, el: nav }; }
     var dic = el.closest('#desktop .dicon');
     if (dic) {
-        var di = itemsFor('Desktop')[+dic.getAttribute('data-i')];
+        var di = tileItem('Desktop', dic);
         if (di && di.app === 'bin' && (!dnd.cand || di !== dnd.cand.it)) return { kind: 'bin', el: dic };   // the bin can't eat itself
         return { kind: 'desk' };   // dropping on a non-bin icon = that spot on the desktop
     }
@@ -913,17 +1657,35 @@ function renderNotepad() {
         '<textarea class="np-text" spellcheck="false" placeholder="Start typing. It saves itself."></textarea></div>' +
         '<div class="np-status"><span class="np-loc">Ln 1, Col 1</span><span class="np-save">UTF-8 · UreOS</span></div></div>';
 }
-function initNotepad(el) {
+function initNotepad(el, id, arg) {
     var ta = el.querySelector('.np-text'), loc = el.querySelector('.np-loc');
     var back = el.querySelector('.np-back'), save = el.querySelector('.np-save');
-    ta.value = recall('notepad', '');
+    var title = el.querySelector('.win-title');
+    el._npFile = null;   // when set, Notepad is viewing a file from the FS, not the scratchpad
     function upd(e) {
-        store('notepad', ta.value);
+        if (!el._npFile) store('notepad', ta.value);   // the scratchpad saves itself; files keep their dignity
         var pre = ta.value.slice(0, ta.selectionStart).split('\n');
         loc.textContent = 'Ln ' + pre.length + ', Col ' + (pre[pre.length - 1].length + 1);
         // only real text changes rebuild highlights, and they keep the current match (no scroll yank)
         if (e && e.type === 'input' && find.appId === 'notepad' && findOpenNow()) runFind(true);
     }
+    el._npOpen = function (a) {
+        if (a && a.file) {
+            el._npFile = a.file;
+            ta.value = a.file.body || '';
+            if (title) title.textContent = a.file.n + ' — Notepad';
+            save.textContent = 'UTF-8 · read from disk';
+        } else {                                       // plain launch: back to the scratchpad
+            el._npFile = null;
+            ta.value = recall('notepad', '');
+            if (title) title.textContent = 'Untitled — Notepad';
+            save.textContent = 'UTF-8 · UreOS';
+        }
+        ta.scrollTop = 0;
+        upd();
+        if (find.appId === 'notepad' && findOpenNow()) runFind(true);
+    };
+    el._npOpen(arg);
     ta.addEventListener('input', upd); ta.addEventListener('keyup', upd); ta.addEventListener('click', upd);
     ta.addEventListener('scroll', function () { back.scrollTop = ta.scrollTop; });
     if (window.ResizeObserver) {                                    // maximize/restore re-pins the mirror
@@ -932,9 +1694,9 @@ function initNotepad(el) {
         }).observe(ta);
     }
     el._flash = function () {                                       // Alt+S: it already saved itself
-        save.textContent = '✓ Saved (it always is)';
+        save.textContent = el._npFile ? '✓ Not saved (edit all you want, the disk isn’t listening)' : '✓ Saved (it always is)';
         clearTimeout(el._flashT);
-        el._flashT = setTimeout(function () { save.textContent = 'UTF-8 · UreOS'; }, 1400);
+        el._flashT = setTimeout(function () { save.textContent = el._npFile ? 'UTF-8 · read from disk' : 'UTF-8 · UreOS'; }, 1400);
     };
     setTimeout(function () { ta.focus(); }, 30);   // focus isn't motion — place it under reduced-motion too
 }
@@ -949,17 +1711,85 @@ function renderTerminal() {
 }
 function initTerminal(el) {
     var term = el.querySelector('.term'), out = el.querySelector('.term-out'), inp = el.querySelector('.term-in');
+    var pathEl = el.querySelector('.term-path'), cwd = 'Home';
     function print(html, cls) { var d = document.createElement('div'); d.className = 'term-row' + (cls ? ' ' + cls : ''); d.innerHTML = html; out.appendChild(d); term.scrollTop = term.scrollHeight; }
+    function pathLabel() { return cwd === 'Home' ? '~' : (FS[cwd] || {}).label || cwd; }
+    function setCwd(k) { cwd = k; if (pathEl) pathEl.textContent = pathLabel(); }
+    function findHere(name) {
+        var low = String(name || '').replace(/^"|"$/g, '').toLowerCase();   // `cd "My Games"` works too
+        var hit = null;
+        itemsFor(cwd).forEach(function (it) { if (!hit && it.n.toLowerCase() === low) hit = it; });
+        return hit;
+    }
+    // a child of the current folder wins over a same-named global key, so
+    // `cd Documents` inside D:\archive\...\ enters the LOCAL Documents
+    function localThenGlobal(a) { var hit = findHere(a); return (hit && hit.go) ? hit.go : fsResolve(a); }
     print(esc(TERM_BANNER), 't-dim');
     var CMDS = {
-        help: function () { print('commands: <b>help about whoami ls open date echo neofetch gti socials keys clear exit</b>'); },
+        help: function () {
+            print('commands: <b>help about whoami date echo neofetch gti socials keys clear exit</b>');
+            print('files:    <b>ls · dir · cd <i>path</i> · type <i>file</i> · tree · pwd · open <i>thing</i></b>');
+            print('paths work like you hope: <b>cd C:\\Windows\\System32</b> · <b>cd ..</b> · <b>cd ~</b>', 't-dim');
+        },
         keys: function () {
             print('<b>Alt is this OS\'s Ctrl.</b> Alt+/ shows the full map. Highlights:');
             print('Alt+F find in app · Alt+E explorer · Alt+T/W chrome tabs · Alt+` cycle windows · Alt+L clears me');
         },
         about: function () { print(esc(ME.bio)); },
         whoami: function () { print('isaac'); },
-        ls: function () { print('about  projects  pictures  ureboy  the-room  gti-run  resume.pdf'); },
+        pwd: function () { print(esc(pathLabel())); },
+        ls: function () { CMDS.dir(); },
+        dir: function (a) {
+            var key = a ? localThenGlobal(a) : cwd;
+            if (!key || !FS[key]) { print('The system cannot find the path specified.', 't-err'); return; }
+            var items = itemsFor(key), rows = [' Directory of ' + ((FS[key] || {}).label || key), ''];
+            items.forEach(function (it) {
+                var isDir = !!(it.go || it.t === 'folder');
+                rows.push((isDir ? '   <DIR>       ' : ('   ' + (sizeOf(it) || '—') + Array(Math.max(1, 12 - String(sizeOf(it) || '—').length)).join(' '))) + ' ' + it.n);
+            });
+            rows.push('', '   ' + items.length + ' item(s). they are all load-bearing.');
+            print('<pre class="t-neo">' + esc(rows.join('\n')) + '</pre>');
+        },
+        cd: function (a) {
+            if (!a || a === '~') { setCwd('Home'); return; }
+            if (a === '..') {
+                var p = (FS[cwd] || {}).parent;
+                if (p) setCwd(p); else print('you are already as up as it gets.', 't-err');
+                return;
+            }
+            var key = localThenGlobal(a);
+            if (key && FS[key]) setCwd(key);
+            else print('The system cannot find the path specified: ' + esc(a), 't-err');
+        },
+        type: function (a) {
+            if (!a) { print('type what? try: type readme.txt', 't-err'); return; }
+            var it = findHere(a);
+            if (!it) { print('The system cannot find the file specified.', 't-err'); return; }
+            if (it.go || it.t === 'folder') { print('Access is denied.', 't-err'); return; }
+            var body = contentFor(it);
+            if (body.length > 1600) body = body.slice(0, 1600) + '\n… (truncated. the file continues. the file always continues.)';
+            print('<pre class="t-neo">' + esc(body) + '</pre>');
+        },
+        cat: function (a) { CMDS.type(a); },
+        tree: function (a) {
+            var key = a ? localThenGlobal(a) : cwd;
+            if (!key || !FS[key]) { print('Invalid path.', 't-err'); return; }
+            var lines = [(FS[key] || {}).label || key], budget = { n: 220 };
+            (function walk(k, prefix, seen) {
+                if (seen[k] || budget.n <= 0) return;
+                seen[k] = 1;
+                var items = itemsFor(k);
+                items.forEach(function (it, i) {
+                    if (budget.n-- <= 0) return;
+                    var last = i === items.length - 1;
+                    lines.push(prefix + (last ? '└── ' : '├── ') + it.n);
+                    if (it.go && FS[it.go]) walk(it.go, prefix + (last ? '    ' : '│   '), seen);
+                });
+            })(key, '', {});
+            if (budget.n <= 0) lines.push('', '… the tree keeps going. pixel budget does not.');
+            print('<pre class="t-neo">' + esc(lines.join('\n')) + '</pre>');
+        },
+        del: function (a) { print(a ? 'use the Recycle Bin like a civilized person.' : 'del what? (no. either way, no.)', 't-err'); },
         date: function () { var n = new Date(); print(DOW[n.getDay()] + ' ' + MON[n.getMonth()] + ' ' + n.getDate() + ' ' + fmtTime(n)); },
         socials: function () { ME.links.forEach(function (l) { print('<b>' + esc(l[0]) + ':</b> ' + esc(l[2])); }); },
         gti: function () { print('silver MK8 VW GTI, callsign "Argent". runs the FSAE money and the back roads.'); },
@@ -972,15 +1802,23 @@ function initTerminal(el) {
             for (var i = 0; i < rows; i++) h += '<span class="t-art">' + esc(art[i] || '       ') + '</span>  ' + esc(info[i] || '') + '\n';
             print('<pre class="t-neo">' + h + '</pre>');
         },
-        open: function (a) { if (a && APPS[a]) { print("opening " + a + "..."); openApp(a); } else print("open what? try: open notepad", 't-err'); }
+        open: function (a) {
+            if (!a) { print("open what? try: open notepad, or open a file that is sitting right here", 't-err'); return; }
+            var it = findHere(a);
+            if (it) { print('opening ' + esc(it.n) + '...'); openItemFrom(it); return; }
+            if (Object.prototype.hasOwnProperty.call(APPS, a)) { print('opening ' + esc(a) + '...'); openApp(a); return; }
+            print("nothing here by that name. 'dir' shows what is.", 't-err');
+        }
     };
     function run(line) {
-        print('<span class="term-prompt">isaac@ure</span>:<span class="term-path">~</span>$ ' + esc(line), 't-cmd');
-        var parts = line.trim().split(/\s+/), cmd = parts.shift();
+        print('<span class="term-prompt">isaac@ure</span>:<span class="term-path">' + esc(pathLabel()) + '</span>$ ' + esc(line), 't-cmd');
+        var parts = line.trim().split(/\s+/), cmd = (parts.shift() || '').toLowerCase();
         if (!cmd) return;
         if (cmd === 'echo') { print(esc(parts.join(' '))); return; }
         if (cmd === 'sudo') { print("nice try. this is a personal machine.", 't-err'); return; }
-        if (CMDS[cmd]) CMDS[cmd](parts[0]);
+        if (cmd === 'rm' || cmd === 'format') { print("absolutely not.", 't-err'); return; }
+        // hasOwnProperty: bare-name lookup would otherwise hit Object.prototype ('constructor', '__proto__') and throw
+        if (Object.prototype.hasOwnProperty.call(CMDS, cmd)) CMDS[cmd](parts.join(' '));
         else print("ure-sh: command not found: " + esc(cmd) + "  (try 'help')", 't-err');
     }
     inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { run(inp.value); inp.value = ''; } });
@@ -1132,9 +1970,9 @@ function clickPing(x, y) {
     document.body.appendChild(p);
     setTimeout(function () { if (p.parentNode) p.remove(); }, 520);
 }
-function toast(msg) {
+function toast(msg, icon) {
     var t = document.createElement('div'); t.className = 'toast px-lg lift';
-    t.innerHTML = ic('ic-chrome') + '<span>' + esc(msg) + '</span>';
+    t.innerHTML = ic(icon || 'ic-chrome') + '<span>' + esc(msg) + '</span>';
     document.body.appendChild(t);
     requestAnimationFrame(function () { t.classList.add('on'); });
     setTimeout(function () { t.classList.remove('on'); setTimeout(function () { if (t.parentNode) t.remove(); }, 320); }, 3400);
@@ -1166,6 +2004,81 @@ function browserShell(brand, placeholder, bodyHtml) {
         '</div></div>';
 }
 
+/* ═════════════ right-click menus (both browsers) ═════════════
+   One open menu at a time, absolutely positioned inside the window it
+   serves — Chrome-light by default, dark for Edge and Incognito.
+   Items are {k, t, hint, dis} objects or the string 'sep'. Picking an
+   item dispatches its k through the fn handed to openBctx.
+   OSCLIP is the machine's clipboard: every sim copy lands there (and
+   is mirrored to the real clipboard where the host browser allows,
+   so sim-copied text pastes outside) — Paste reads OSCLIP only, so
+   the host never prompts for clipboard-read permission. */
+var bctxEl = null, OSCLIP = '';
+function setClip(text) {
+    OSCLIP = String(text || '');
+    try { navigator.clipboard.writeText(OSCLIP).catch(function () {}); } catch (err) {}
+}
+function closeBctx() { if (bctxEl) { bctxEl.remove(); bctxEl = null; } }
+function openBctx(host, e, items, fn, dark) {
+    closeBctx(); closeCtx(); closeFctx(); setStart(false); closeFlyouts();
+    var m = document.createElement('div');
+    m.className = 'bctx' + (dark ? ' dark' : ''); m.setAttribute('role', 'menu'); m.tabIndex = -1;
+    m.innerHTML = items.map(function (it) {
+        if (it === 'sep') return '<div class="bctx-sep"></div>';
+        return '<button class="bctx-i" type="button" role="menuitem" data-bx="' + it.k + '"' + (it.dis ? ' disabled' : '') + '>' +
+            '<span>' + esc(it.t) + '</span>' + (it.hint ? '<span class="bctx-hint">' + esc(it.hint) + '</span>' : '') + '</button>';
+    }).join('');
+    host.appendChild(m);
+    var hr = host.getBoundingClientRect();
+    m.style.left = clamp(e.clientX - hr.left, 4, Math.max(4, hr.width - m.offsetWidth - 4)) + 'px';
+    m.style.top = clamp(e.clientY - hr.top, 4, Math.max(4, hr.height - m.offsetHeight - 4)) + 'px';
+    m.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        var b = ev.target.closest('[data-bx]'); if (!b) return;
+        var act = b.getAttribute('data-bx'); closeBctx(); fn(act);
+    });
+    m.addEventListener('contextmenu', function (ev) { ev.preventDefault(); ev.stopPropagation(); });
+    m.addEventListener('keydown', function (ev) {   // arrows walk the menu, like the real one
+        var all = m.querySelectorAll('.bctx-i:not([disabled])'); if (!all.length) return;
+        var i = Array.prototype.indexOf.call(all, document.activeElement);
+        if (ev.key === 'ArrowDown') { ev.preventDefault(); (all[i + 1] || all[0]).focus(); }
+        else if (ev.key === 'ArrowUp') { ev.preventDefault(); (all[i - 1] || all[all.length - 1]).focus(); }
+        else if (ev.key === 'Home') { ev.preventDefault(); all[0].focus(); }
+        else if (ev.key === 'End') { ev.preventDefault(); all[all.length - 1].focus(); }
+    });
+    m.focus();
+    bctxEl = m;
+}
+/* text-field menu, shared by both browsers. Selection and value are
+   snapshotted at open time — focusing the menu (or Edge's possessed
+   focus handler wiping the bar) must not change what Cut/Copy grab. */
+function bctxInput(host, e, inp, opts, dark) {
+    var s0 = inp.selectionStart || 0, s1 = inp.selectionEnd || 0, v0 = inp.value, hasSel = s1 > s0;
+    var items = [
+        { k: 'cut', t: 'Cut', dis: !hasSel },
+        { k: 'copy', t: 'Copy', dis: !hasSel },
+        { k: 'paste', t: 'Paste', dis: !OSCLIP }
+    ];
+    if (opts && opts.go) items.push({ k: 'pgo', t: 'Paste and go', dis: !OSCLIP });
+    items.push('sep', { k: 'all', t: 'Select all', dis: !v0 });
+    openBctx(host, e, items, function (a) {
+        inp.focus();
+        if (a === 'all') { inp.select(); return; }
+        if (a === 'cut' || a === 'copy') {
+            setClip(v0.slice(s0, s1));
+            if (a === 'cut') { inp.value = v0.slice(0, s0) + v0.slice(s1); inp.setSelectionRange(s0, s0); inp.dispatchEvent(new Event('input', { bubbles: true })); }
+            else inp.setSelectionRange(s0, s1);
+            return;
+        }
+        if (a === 'paste' || a === 'pgo') {
+            inp.value = v0.slice(0, s0) + OSCLIP + v0.slice(s1);
+            var p = s0 + OSCLIP.length; inp.setSelectionRange(p, p);
+            inp.dispatchEvent(new Event('input', { bubbles: true }));
+            if (a === 'pgo') opts.go(inp.value);
+        }
+    }, dark);
+}
+
 /* —— Edge —— */
 function edgeWelcome() {
     return '<div class="ewc">' +
@@ -1192,9 +2105,69 @@ function edgeTitlebar() {
 function renderEdge() {
     return browserShell('edge', 'Search or enter web address', edgeWelcome());
 }
+/* Edge's right-click menu: the full corporate spread, in character.
+   The one real action is closing the only tab (which closes the
+   window, like a real browser) — everything else answers honestly
+   about what this browser is for. */
+function edgeCtxMenu(el, e) {
+    e.preventDefault();
+    if (e.target.closest('.win-caps')) { closeBctx(); return; }
+    var br = el.querySelector('.br'), urlbar = el.querySelector('.br-url');
+    var inp = e.target.closest('input');
+    if (inp && !inp.readOnly && !inp.disabled) { bctxInput(br, e, inp, null, true); return; }
+    if (e.target.closest('.br-tabs')) {
+        openBctx(br, e, [
+            { k: 'nt', t: 'New tab to the right' },
+            { k: 'dp', t: 'Duplicate tab' },
+            'sep',
+            { k: 'cl', t: 'Close tab' }
+        ], function (a) {
+            if (a === 'cl') closeWin('edge');   // the only tab IS the window
+            else if (a === 'nt') toast('Edge considered a second tab. One is already more than it needs.');
+            else toast('Tab not duplicated. Nobody needs to be welcomed twice.');
+        }, true);
+        return;
+    }
+    openBctx(br, e, [
+        { k: 'back', t: 'Back', dis: true },
+        { k: 'fwd', t: 'Forward', dis: true },
+        { k: 'rfr', t: 'Refresh' },
+        'sep',
+        { k: 'sav', t: 'Save as…' },
+        { k: 'prt', t: 'Print…' },
+        { k: 'cst', t: 'Cast media to device' },
+        'sep',
+        { k: 'col', t: 'Add page to Collections' },
+        { k: 'shr', t: 'Share' },
+        { k: 'cap', t: 'Web capture' },
+        'sep',
+        { k: 'src', t: 'View page source' },
+        { k: 'ins', t: 'Inspect' }
+    ], function (a) {
+        if (a === 'rfr') toast('Refreshed. Everything is exactly as Edge left it.');
+        else if (a === 'sav') {
+            var base = (urlbar.value || 'Welcome to Microsoft Edge').replace(/[\\/:*?"<>|]+/g, '-').slice(0, 48);
+            var f = fsAddFile('Downloads', { n: uniqueName('Downloads', base + '.html'), t: 'globe', size: '9 KB', date: dlStamp() });
+            toast('Saved “' + f.n + '” to Downloads. A keepsake.');
+        }
+        else if (a === 'prt') toast('Sent to the printer. The printer was also hoping for Chrome.');
+        else if (a === 'cst') toast('Searched for devices. Even the smart fridge said it was busy.');
+        else if (a === 'col') toast('Added to Collections. The collection is this page, forty times.');
+        else if (a === 'shr') toast('Share sheet opened and closed on its own. It’s for the best.');
+        else if (a === 'cap') toast('Captured. It’s a screenshot of the inevitable.');
+        else if (a === 'src') toast('view-source is a Chrome feature. You know what to do.');
+        else if (a === 'ins') toast('Inspection complete: this browser exists to download another browser.');
+    }, true);
+}
 function initEdge(el) {
     var view = el.querySelector('.br-view'), url = el.querySelector('.br-url');
     var omni = el.querySelector('.br-omni'), suggest = el.querySelector('.br-suggest'), shelf = el.querySelector('.dl-shelf');
+
+    if (!el._ectx) {   // the window element survives restore re-renders; bind its listeners once
+        el._ectx = 1;
+        el.addEventListener('contextmenu', function (e) { edgeCtxMenu(el, e); });
+        el.addEventListener('scroll', closeBctx, true);   // real menus don't scroll along with the page
+    }
     var TYPE = 'chrome install';
     var alive = true, hijack = false, ti = 0;
     var timers = [], intervals = [], idleTimer = 0;
@@ -1715,10 +2688,33 @@ webPage('chrome://downloads', {
     }
 });
 
+/* — view-source: (right-click → View page source) — a real page whose
+   content is the target site's actual render() output, escaped, split
+   onto numbered lines, with tags/attributes/strings tinted like the
+   real thing. The target comes off the active tab's URL directly. */
+webPage('__viewsource', {
+    title: 'view-source', fav: { ch: '</>', c: '#5f6368' },
+    render: function () {
+        var target = String(crTab().url).replace(/^(view-source:)+/i, '');
+        var s = crSite(target);
+        if (s === WEB['__viewsource']) s = WEB.__err;   // never render ourselves — that way lies recursion
+        var html = s === WEB.__err ? s.render(String(target).split('/')[0]) : s.render(crQOf(target));
+        var lines = html.replace(/></g, '>\n<').split('\n');
+        return '<div class="cr-src"><ol>' + lines.map(function (ln) {
+            var h = esc(ln)
+                .replace(/(&quot;[^&]*?&quot;)/g, '<i class="ss">$1</i>')
+                .replace(/([a-z-]+)=(?=<i class="ss">)/gi, '<i class="sa">$1</i>=')
+                .replace(/(&lt;\/?)([a-z][a-z0-9-]*)/gi, '$1<i class="st">$2</i>');
+            return '<li>' + h + '</li>';
+        }).join('') + '</ol></div>';
+    }
+});
+
 /* ═════════════ URL parsing / navigation engine ═════════════ */
 var WEB_LC = null;                                        // lowercase key → real key, built lazily after all webPage() calls
 function crResolveKey(input) {
     var u = String(input || '').trim();
+    if (/^view-source:/i.test(u)) return '__viewsource';
     u = u.replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/+$/, '');
     if (/^chrome:\/\//i.test(input)) u = input.trim().toLowerCase().replace(/\/+$/, '');
     if (!WEB_LC) { WEB_LC = {}; Object.keys(WEB).forEach(function (k) { WEB_LC[k.toLowerCase()] = k; }); }
@@ -1732,6 +2728,7 @@ function crResolveKey(input) {
 function crParse(input) {
     var u = String(input || '').trim();
     if (!u) return null;
+    if (/^view-source:/i.test(u)) return u;   // the prefix IS the URL — resolving it would eat the target
     var key = crResolveKey(u);
     if (key) return key === 'google.com/search' ? u.replace(/^https?:\/\//i, '').replace(/^www\./i, '') : key;
     if (/^[a-z0-9.-]+\.[a-z]{2,}(\/\S*)?$/i.test(u) || /^chrome:\/\//i.test(u)) return u;   // URL-shaped → will 404
@@ -1747,6 +2744,7 @@ function crQOf(url) {
     try { return decodeURIComponent(raw); } catch (e) { return raw; }   // a stray % must not brick the tab strip
 }
 function crTitleOf(url) {
+    if (/^view-source:/i.test(String(url))) return String(url);   // the URL is the tab title, like the real thing
     var s = crSite(url);
     if (s === WEB.__err) return String(url).split('/')[0];
     return typeof s.title === 'function' ? s.title(crQOf(url)) : s.title;
@@ -1996,6 +2994,8 @@ function initChrome(el) {
         var su = e.target.closest('.cr-sg');
         if (su) { suggest.hidden = true; crNav(crParse(su.getAttribute('data-su'))); return; }
     });
+    el.addEventListener('contextmenu', crCtxMenu);
+    el.addEventListener('scroll', closeBctx, true);       // real menus don't scroll along with the page
     el.querySelector('#crPlus').addEventListener('click', function () { crNewTab(); });
     el.querySelector('#crTabs').addEventListener('auxclick', function (e) {   // middle-click closes, like Chrome
         if (e.button !== 1) return;
@@ -2058,6 +3058,15 @@ function crBubble(msg) {
     clearTimeout(CR.bubbleT);
     CR.bubbleT = setTimeout(function () { if (CR) b.hidden = true; }, 1600);
 }
+// swap whole sessions, like a separate window: regular tabs park and return untouched
+function crIncogSwap() {
+    var held = CR.held || null;
+    CR.held = { tabs: CR.tabs, active: CR.active, closed: CR.closed };
+    CR.incog = !CR.incog;
+    if (held) { CR.tabs = held.tabs; CR.active = Math.min(held.active, held.tabs.length - 1); CR.closed = held.closed; crChrome(); crTabs(); crPage(); }
+    else { CR.tabs = []; CR.closed = []; CR.active = 0; crNewTab(); }
+    toast(CR.incog ? 'Incognito: history is off. Your regular tabs are waiting where you left them.' : 'Back to regular browsing. The record resumes.');
+}
 function crMenuOpen() {
     var menu = CR.el.querySelector('#crMenu');
     if (!menu.hidden) { menu.hidden = true; return; }
@@ -2089,15 +3098,7 @@ function crMenuAct(a) {
     }
     menu.hidden = true;
     if (a === 'newtab') crNewTab();
-    else if (a === 'incog') {
-        // swap whole sessions, like a separate window: regular tabs park and return untouched
-        var held = CR.held || null;
-        CR.held = { tabs: CR.tabs, active: CR.active, closed: CR.closed };
-        CR.incog = !CR.incog;
-        if (held) { CR.tabs = held.tabs; CR.active = Math.min(held.active, held.tabs.length - 1); CR.closed = held.closed; crChrome(); crTabs(); crPage(); }
-        else { CR.tabs = []; CR.closed = []; CR.active = 0; crNewTab(); }
-        toast(CR.incog ? 'Incognito: history is off. Your regular tabs are waiting where you left them.' : 'Back to regular browsing. The record resumes.');
-    }
+    else if (a === 'incog') crIncogSwap();
     else if (a === 'history') crNav('chrome://history');
     else if (a === 'downloads') crNav('chrome://downloads');
     else if (a === 'bookmarks') crNav('chrome://bookmarks');
@@ -2106,6 +3107,143 @@ function crMenuAct(a) {
     else if (a === 'settings') crNav('chrome://settings');
     else if (a === 'about') crNav('chrome://settings');
     else if (a === 'exit') closeWin('chrome');
+}
+
+/* ═════════════ Chrome right-click — context-aware, like the real one ═════════════
+   What you clicked decides the menu: a tab, the empty strip, a link,
+   selected text, a text field, or the page itself. Every non-gag item
+   genuinely works — background tab opens, session-swapped incognito,
+   files saved into the real Downloads folder, view-source tabs. */
+function crFullURL(href) { return /^[a-z][a-z0-9+.-]*:/i.test(href) ? href : 'https://' + href; }
+function crBgTab(url, at) {   // insert without switching — "Open link in new tab"
+    CR.tabs.splice(at, 0, { url: url, hist: [url], hi: 0, scroll: 0 });
+    if (at <= CR.active) CR.active++;
+    crTabs();
+}
+function crActivateTab(i) {
+    var cur = CR.tabs[CR.active];                          // may be gone: close-others/right splice first
+    if (cur) cur.scroll = CR.el.querySelector('#crView').scrollTop;
+    CR.active = i; crChrome(); crTabs(); crPage();
+}
+function crSaveFile(title, html) {
+    var name = String(title).replace(/[\\/:*?"<>|]+/g, '-').slice(0, 48) + '.html';
+    var f = fsAddFile('Downloads', { n: uniqueName('Downloads', name), t: 'globe', size: (Math.max(html.length, 512) / 1024).toFixed(1) + ' KB', date: dlStamp() });
+    crBubble('Saved “' + f.n + '” to Downloads');
+}
+function crCtxMenu(e) {
+    e.preventDefault();
+    CR.el.querySelector('#crMenu').hidden = true;
+    CR.el.querySelector('#crSuggest').hidden = true;
+    if (e.target.closest('.win-caps')) { closeBctx(); return; }
+    var host = CR.root, dark = !!CR.incog, t = crTab();
+
+    var inp = e.target.closest('input, textarea');
+    if (inp && !inp.readOnly && !inp.disabled) {
+        var isOmni = inp.id === 'crUrl';
+        bctxInput(host, e, inp, isOmni ? { go: function (v) {
+            CR.el.querySelector('#crSuggest').hidden = true; inp.blur(); crNav(crParse(v));
+        } } : null, dark);
+        return;
+    }
+
+    var tabEl = e.target.closest('.cr-tab');
+    if (tabEl) {
+        var i = +tabEl.getAttribute('data-ti'), n = CR.tabs.length;
+        openBctx(host, e, [
+            { k: 'tnr', t: 'New tab to the right' },
+            'sep',
+            { k: 'trl', t: 'Reload' },
+            { k: 'tdp', t: 'Duplicate' },
+            'sep',
+            { k: 'tcl', t: 'Close tab', hint: i === CR.active ? 'Alt+W' : '' },
+            { k: 'tco', t: 'Close other tabs', dis: n < 2 },
+            { k: 'tcr', t: 'Close tabs to the right', dis: i >= n - 1 }
+        ], function (a) {
+            var T = CR.tabs[i]; if (!T) return;
+            crTab().scroll = CR.el.querySelector('#crView').scrollTop;   // save now: the splices below can strand CR.active
+            if (a === 'tnr') { CR.tabs.splice(i + 1, 0, { url: 'chrome://newtab', hist: ['chrome://newtab'], hi: 0, scroll: 0 }); crActivateTab(i + 1); }
+            else if (a === 'trl') { if (i === CR.active) crPage(); }
+            else if (a === 'tdp') { CR.tabs.splice(i + 1, 0, { url: T.url, hist: T.hist.slice(), hi: T.hi, scroll: T.scroll }); crActivateTab(i + 1); }
+            else if (a === 'tcl') crCloseTab(i);
+            else if (a === 'tco') {
+                CR.tabs.forEach(function (x, xi) { if (xi !== i) CR.closed.push(x.url); });
+                CR.tabs = [T]; crActivateTab(0);
+            }
+            else if (a === 'tcr') {
+                CR.tabs.splice(i + 1).forEach(function (x) { CR.closed.push(x.url); });
+                crActivateTab(Math.min(CR.active, i));
+            }
+        }, dark);
+        return;
+    }
+    if (e.target.closest('.cr-tabstrip')) {
+        openBctx(host, e, [
+            { k: 'snt', t: 'New tab', hint: 'Alt+T' },
+            { k: 'srt', t: 'Reopen closed tab', hint: 'Alt+Shift+T', dis: !CR.closed.length }
+        ], function (a) {
+            if (a === 'snt') crNewTab();
+            else if (CR.closed.length) crNewTab(CR.closed.pop());
+        }, dark);
+        return;
+    }
+
+    var l = e.target.closest('.cr-l[data-href], .cr-sg[data-su]');
+    if (l) {
+        var href = l.getAttribute('data-href') || crParse(l.getAttribute('data-su'));
+        openBctx(host, e, [
+            { k: 'lnt', t: 'Open link in new tab' },
+            { k: 'lni', t: 'Open link in Incognito window' },
+            'sep',
+            { k: 'lcp', t: 'Copy link address' },
+            { k: 'lsv', t: 'Save link as…' }
+        ], function (a) {
+            if (a === 'lnt') crBgTab(href, CR.active + 1);
+            else if (a === 'lni') { if (CR.incog) crNewTab(href); else { crIncogSwap(); crNav(href); } }
+            else if (a === 'lcp') { setClip(crFullURL(href)); crBubble('Link address copied'); }
+            else if (a === 'lsv') {
+                var s = crSite(href);
+                crSaveFile(crTitleOf(href), s === WEB.__err ? s.render(String(href).split('/')[0]) : s.render(crQOf(href)));
+            }
+        }, dark);
+        return;
+    }
+
+    var sel = window.getSelection(), st = sel ? String(sel).trim() : '';
+    if (st && sel.anchorNode && CR.el.contains(sel.anchorNode) && e.target.closest('#crView')) {
+        var short = st.length > 22 ? st.slice(0, 22) + '…' : st;
+        openBctx(host, e, [
+            { k: 'scp', t: 'Copy' },
+            'sep',
+            { k: 'ssr', t: 'Search Google for “' + short + '”' },
+            'sep',
+            { k: 'spr', t: 'Print…' }
+        ], function (a) {
+            if (a === 'scp') { setClip(st); crBubble('Copied'); }
+            else if (a === 'ssr') crNewTab('google.com/search?q=' + encodeURIComponent(st));
+            else toast('Saved as bloom.pdf to a printer that isn’t real.');
+        }, dark);
+        return;
+    }
+
+    openBctx(host, e, [
+        { k: 'back', t: 'Back', hint: 'Alt+←', dis: t.hi <= 0 },
+        { k: 'fwd', t: 'Forward', hint: 'Alt+→', dis: t.hi >= t.hist.length - 1 },
+        { k: 'rld', t: 'Reload', hint: 'Alt+R' },
+        'sep',
+        { k: 'sav', t: 'Save as…' },
+        { k: 'prt', t: 'Print…' },
+        'sep',
+        { k: 'src', t: 'View page source', dis: /^view-source:/i.test(t.url) },
+        { k: 'ins', t: 'Inspect' }
+    ], function (a) {
+        if (a === 'back') crBack();
+        else if (a === 'fwd') crFwd();
+        else if (a === 'rld') crPage();
+        else if (a === 'sav') crSaveFile(crTitleOf(t.url), CR.el.querySelector('#crView').innerHTML);
+        else if (a === 'prt') toast('Saved as bloom.pdf to a printer that isn’t real.');
+        else if (a === 'src') crNewTab('view-source:' + t.url);
+        else toast('Inspected. It’s pixels all the way down.');
+    }, dark);
 }
 
 /* —— Google Chrome Setup: a real wizard you click through yourself ——
@@ -2292,6 +3430,7 @@ function installChrome(opts) {
     // the desktop shortcut is a real file in the Desktop folder now
     if (opts.shortcut && !fsHas('Desktop', 'Google Chrome')) fsAddFile('Desktop', { n: 'Google Chrome', t: 'chrome', app: 'chrome', date: dlStamp() });
     syncTaskbar();
+    refreshFileViews();   // when:chrome just flipped — C:\Program Files\Google exists now
 }
 
 /* —— Photos —— */
@@ -2312,6 +3451,223 @@ function initPhotos(el) {
     el.querySelector('.ph-strip').addEventListener('click', function (e) {
         var b = e.target.closest('.ph-thumb'); if (b) selectPhoto(el, +b.getAttribute('data-i'));
     });
+}
+
+/* —— Reader: every PDF on the machine opens somewhere ——
+   A few documents have real text (READS); the rest get believable
+   filler picked by what the file name claims to be. */
+READS['water industry update — sent.pdf'] =
+    'WATER INDUSTRY UPDATE\nweek of June 22\n\nProduced water volumes keep climbing and the disposal math keeps getting more interesting. The JV is positioned exactly where the barrels have to go.\n\nRecycling percentages are up again. This is the trend to watch, and the reason the word "midstream" keeps appearing next to the word "water" in serious documents.\n\nAs always: this update is short on purpose. Nobody has ever complained that a newsletter was too short.';
+READS['THE BOULDER.pdf'] =
+    'CHARACTER SHEET — THE BOULDER\n\nClass: Boulder. Level: yes.\nSTR 20  DEX 1  CON 20  INT —  WIS 14  CHA 17\n\nSkills: Rolling (expertise). Being Pushed (passive).\nPersonality: content.\nBonds: the hill. the party. the routine.\nFlaw: none found. we looked.\n\nDM note: the party will not leave it behind. stat it or lose the table.';
+READS['the cow.pdf'] =
+    'CHARACTER SHEET — THE COW\n\nRace: cow. Class: cow.\nSpecial ability: STANDS IN GRASS. Nobody asks the cow anything. The cow has achieved what the party seeks.\n\nDM note: added as a joke in session 2. Now load-bearing to party morale. The cow stays.';
+READS['dyno day.pdf'] =
+    'DYNO SHEET — ARGENT (MK8 GTI, Stage 1+, IE intake, flex fuel)\n\nPull 1: strong.\nPull 2: stronger (the fuel got fancier).\nPull 3: operator grinned, data unusable.\n\nNote from tech: "car is healthy. driver keeps saying \'she.\' this is normal."\n\nNext appointment: after the intercooler leaves the box. (rescheduled x4)';
+READS['transcript (unofficial).pdf'] =
+    'RICE UNIVERSITY — UNOFFICIAL TRANSCRIPT\n\nStudent: Ure, Isaac Owen\nProgram: Mathematical Economic Analysis\n\n[grades redacted by the student, who is being modest in a way that tells you everything]\n\nDean’s note: none. Deans only write when something is wrong.';
+READS['DM screen cheatsheet.pdf'] =
+    'BEHIND THE SCREEN — QUICK TABLES\n\n1. If the plan is funny, it works on a 10+.\n2. If sophie rolls persuasion, start writing the new plot.\n3. The boulder is CR 0 and morale +5. Do not touch.\n4. When in doubt: a stranger arrives with a car problem.\n5. HEAT SOAK monologues until interrupted. He wants to be interrupted.';
+function rdBody(name) {
+    if (READS[name]) return READS[name];
+    var stem = name.replace(/\.[^.]+$/, ''), rnd = lcgFor(fsHash(name)), out = [stem.toUpperCase(), ''];
+    function para(bits, n) { for (var i = 0; i < n; i++) out.push(pick(rnd, bits)); }
+    if (/receipt/i.test(name)) {
+        out.push('ITEM                          AMOUNT');
+        para(['performance part ........ a number', 'shipping (freight, heavy) ... more', 'the confidence it brings .... included', 'core charge ................. refundable, allegedly', 'tax ......................... inevitable'], 4);
+        out.push('', 'TOTAL: worth it', 'warranty void if: asked about');
+    } else if (/pset|problem/i.test(name)) {
+        para(['Problem 1. Show that the statement is true. (It is. Showing it is your problem.)',
+            'Problem 2. Consider an agent maximizing utility. The agent is you. The utility is sleep.',
+            'Problem 3. Prove or disprove. Then prove, because it was true the whole time.',
+            'Problem 4 (bonus). Left as an exercise for the grader.'], 4);
+    } else if (/syllabus/i.test(name)) {
+        para(['Week 1–3: hope.', 'Week 4–6: the midterm bends spacetime toward itself.', 'Week 7: reading week (nobody reads. everybody recovers.)',
+            'Week 8–12: the material accelerates. so do you, eventually.', 'Finals: cumulative, like all consequences.', '', 'Office hours: yes. Go. They are free and they work.'], 6);
+    } else if (/rules/i.test(name)) {
+        para(['ARTICLE 4.1.2: the part must exist before it is mounted.', 'ARTICLE 7.3: budgets shall be justified line by line, feeling by feeling.',
+            'ARTICLE 9.9: any team member may say "is it supposed to do that." all work stops.', 'ARTICLE 12: safety wire everything. safety wire the safety wire.'], 4);
+    } else {
+        para(['This document is exactly as long as it needs to be, which is a lie all documents tell.',
+            'The figures referenced herein appear on pages that could not be reached for comment.',
+            'Further detail is available upon request. Please do not request it.',
+            'The author reserves the right to have meant something slightly different.',
+            'This page intentionally left about 80% blank, for gravitas.'], 4);
+    }
+    return out.join('\n');
+}
+function renderReader(id, arg) {
+    return '<div class="rd"><div class="rd-page" id="rdPage"></div>' +
+        '<div class="rd-bar"><span id="rdName"></span><span id="rdPg"></span></div></div>';
+}
+function rdShow(el, a) {
+    a = a || { n: 'document.pdf' };
+    var h = fsHash(a.n), body = rdBody(a.n);
+    el.querySelector('#rdPage').innerHTML = body.split('\n').map(function (ln, i) {
+        return ln.trim() === '' ? '<div class="rd-gap"></div>' : '<p class="rd-ln' + (i === 0 ? ' rd-h' : '') + '">' + esc(ln) + '</p>';
+    }).join('');
+    el.querySelector('#rdName').textContent = a.n;
+    el.querySelector('#rdPg').textContent = 'Page 1 of ' + (1 + h % 13) + '  ·  100%';
+    el.querySelector('.rd-page').scrollTop = 0;
+    var title = el.querySelector('.win-title'); if (title) title.textContent = a.n + ' — Reader';
+}
+function initReader(el, id, arg) { rdShow(el, arg); }
+
+/* —— URE Media: the machine's one media player ——
+   Every mp3/wav/mp4 in the FS is a real "track": a little seeded
+   chiptune (WebAudio, minor pentatonic, can't miss) with a pixel
+   visualizer. Videos additionally get period-correct static, because
+   the codec for pixels this small was never licensed. */
+function renderPlayer(id, arg) {
+    return '<div class="pl">' +
+        '<div class="pl-screen"><canvas class="pl-cv" width="264" height="118"></canvas><div class="pl-title" id="plTitle"></div></div>' +
+        '<div class="pl-ctl">' +
+          '<button class="pl-btn" id="plPlay" type="button" aria-label="Play or pause">▶</button>' +
+          '<div class="pl-track" id="plTrack"><i id="plFill"></i></div>' +
+          '<span class="pl-time" id="plTime">0:00</span>' +
+        '</div></div>';
+}
+function plFmt(s) { s = Math.max(0, Math.floor(s)); return Math.floor(s / 60) + ':' + (s % 60 < 10 ? '0' : '') + s % 60; }
+// one duration per file, so Properties and the player never disagree
+function mediaLen(it) { return 110 + fsHash(it.cid || it.n) % 170; }
+function plStop(el) {
+    var st = el._pl; if (!st) return;
+    st.playing = false;
+    if (st.stepT) { clearInterval(st.stepT); st.stepT = 0; }
+    if (st.drawT) { clearInterval(st.drawT); st.drawT = 0; }
+    if (st.ac) { try { st.ac.close(); } catch (e) {} st.ac = null; }
+}
+function plLoad(el, a) {
+    a = a || { n: 'ure boy theme.mp3' };
+    plStop(el);
+    var seed = fsHash(a.cid || a.n), rnd = lcgFor(seed);
+    var st = el._pl = {
+        n: a.n, video: !!a.video, seed: seed, playing: false, t: 0,
+        len: mediaLen(a), bpm: 96 + seed % 52, step: 0,
+        seq: [], eq: [4, 9, 6, 12, 8, 5, 10, 7]
+    };
+    for (var i = 0; i < 16; i++) st.seq.push(Math.floor(rnd() * 10));
+    el.querySelector('#plTitle').textContent = a.n;
+    plPaint(el);
+    var title = el.querySelector('.win-title'); if (title) title.textContent = a.n + ' — URE Media';
+    plDrawLoop(el);
+    plToggle(el, true);                                    // opening a track means play it
+}
+function plPaint(el) {                                      // the bar and clock, wherever st.t currently is
+    var st = el._pl; if (!st) return;
+    var fill = el.querySelector('#plFill'), tm = el.querySelector('#plTime');
+    if (fill) fill.style.width = (st.t / st.len * 100) + '%';
+    if (tm) tm.textContent = plFmt(st.t) + ' / ' + plFmt(st.len);
+}
+function plToggle(el, on) {
+    var st = el._pl; if (!st) return;
+    st.playing = on == null ? !st.playing : on;
+    el.querySelector('#plPlay').textContent = st.playing ? '❚❚' : '▶';
+    if (st.stepT) { clearInterval(st.stepT); st.stepT = 0; }
+    if (!st.playing) return;
+    if (!st.ac) { try { st.ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { st.ac = null; } }
+    if (st.ac && st.ac.state === 'suspended') { try { st.ac.resume(); } catch (e) {} }
+    var spb = 60 / st.bpm / 2;                             // eighth notes
+    st.stepT = setInterval(function () {
+        if (!st.playing) return;
+        st.t += spb; if (st.t >= st.len) st.t = 0;         // loop; nobody is watching the clock
+        var s = st.seq[st.step % 16];
+        // only a RUNNING context gets tones: while suspended (autoplay policy — the
+        // ?dev hooks open with no user gesture) currentTime is frozen, so every
+        // queued oscillator would stack on one timestamp and fire as one clap on resume
+        if (st.ac && st.ac.state === 'running') {
+            var scale = [0, 3, 5, 7, 10], base = 220 * Math.pow(2, Math.floor(s / 5));
+            var f = base * Math.pow(2, scale[s % 5] / 12);
+            plTone(st, f, spb * 0.86, 'square', 0.035);
+            if (st.step % 4 === 0) plTone(st, base / 2, spb * 1.7, 'triangle', 0.05);
+        }
+        st.step++;
+        plPaint(el);
+    }, spb * 1000);
+}
+function plTone(st, freq, dur, type, vol) {
+    try {
+        var o = st.ac.createOscillator(), g = st.ac.createGain(), now = st.ac.currentTime;
+        o.type = type; o.frequency.value = freq;
+        g.gain.setValueAtTime(vol, now); g.gain.exponentialRampToValueAtTime(0.0004, now + dur);
+        o.connect(g); g.connect(st.ac.destination);
+        o.start(now); o.stop(now + dur + 0.02);
+    } catch (e) {}
+}
+function plDrawLoop(el) {
+    var st = el._pl, cv = el.querySelector('.pl-cv'), cx = cv.getContext('2d');
+    var rnd = lcgFor(st.seed ^ 0x9e3779b9);
+    st.drawT = setInterval(function () {
+        cx.fillStyle = '#101018'; cx.fillRect(0, 0, cv.width, cv.height);
+        if (st.video) {                                     // "video": honest pixel static + timecode
+            for (var y = 0; y < cv.height; y += 6) for (var x = 0; x < cv.width; x += 6) {
+                var v = st.playing ? rnd() : 0.04;
+                cx.fillStyle = 'rgba(190,205,225,' + (v * 0.28).toFixed(3) + ')';
+                cx.fillRect(x, y, 5, 5);
+            }
+            cx.fillStyle = '#9fe0c8'; cx.font = '10px monospace';
+            cx.fillText('NO PIXEL CODEC — AUDIO ONLY', 12, 20);
+            cx.fillText('TC ' + plFmt(st.t) + ':' + Math.floor(rnd() * 24), 12, cv.height - 12);
+        } else {                                            // EQ bars that pretend to listen
+            for (var i = 0; i < st.eq.length; i++) {
+                st.eq[i] = Math.max(3, Math.min(15, st.eq[i] + (st.playing ? Math.floor(rnd() * 7) - 3 : -1)));
+                var bh = st.eq[i] * 6;
+                cx.fillStyle = i % 3 === 0 ? '#d81e05' : '#9fe0c8';
+                cx.fillRect(14 + i * 32, cv.height - 12 - bh, 20, bh);
+                cx.fillStyle = 'rgba(255,255,255,.25)';
+                cx.fillRect(14 + i * 32, cv.height - 12 - bh, 20, 2);
+            }
+        }
+    }, 110);
+}
+function initPlayer(el, id, arg) {
+    plLoad(el, arg);
+    el.querySelector('#plPlay').addEventListener('click', function () { plToggle(el); });
+    el.querySelector('#plTrack').addEventListener('click', function (e) {
+        var st = el._pl, r = e.currentTarget.getBoundingClientRect();
+        if (!st) return;
+        st.t = Math.max(0, Math.min(0.999, (e.clientX - r.left) / r.width)) * st.len;
+        plPaint(el);                                       // seeking while paused still moves the bar
+    });
+}
+
+/* —— the blue screen. you did this. ——
+   Deleting a crit file "succeeds": the machine goes down, collects
+   its feelings, restarts, and quietly restores the file. Windows
+   protects Windows. */
+function bsodStop(f) {
+    if (/hal\.dll/i.test(f)) return 'HAL_INITIALIZATION_FAILED';
+    if (/vibes/i.test(f)) return 'VIBES_NOT_FOUND';
+    if (/SAM|SYSTEM/.test(f)) return 'REGISTRY_ERROR';
+    if (/winlogon|csrss|kernel32|ntdll|user32/i.test(f)) return 'CRITICAL_PROCESS_DIED';
+    if (/tcpip|disk/i.test(f)) return 'DRIVER_IRQL_NOT_LESS_OR_EQUAL';
+    return 'SYSTEM_FILE_MISSED_IMMEDIATELY';
+}
+function bsod(fileName) {
+    try { sessionStorage.setItem('comp_bsod', fileName); } catch (e) {}
+    while (dlgs.length) closeTopDlg();
+    teardownApps();          // the machine is down: nothing keeps bleeping over the blue screen
+    var d = document.createElement('div'); d.className = 'bsod';
+    var rnd = lcgFor(fsHash(fileName)), qr = '';
+    for (var y = 0; y < 11; y++) for (var x = 0; x < 11; x++) {
+        var on = (x < 3 && y < 3) || (x > 7 && y < 3) || (x < 3 && y > 7) || rnd() < 0.46;
+        qr += '<i' + (on ? ' class="on"' : '') + '></i>';
+    }
+    d.innerHTML = '<div class="bsod-in">' +
+        '<p class="bsod-face">:(</p>' +
+        '<p class="bsod-msg">Your PC ran into a problem because someone deleted <b>' + esc(fileName) + '</b> and needs to restart. We’re just collecting some error info, and then we’re going to sit quietly and think about what happened.</p>' +
+        '<p class="bsod-pct"><span id="bsodPct">0</span>% complete</p>' +
+        '<div class="bsod-foot"><span class="bsod-qr">' + qr + '</span>' +
+        '<span class="bsod-stop">For more information about this issue, ask whoever deleted ' + esc(fileName) + '.<br><br>Stop code: ' + bsodStop(fileName) + '<br>What failed: ' + esc(fileName) + '</span></div></div>';
+    document.body.appendChild(d);
+    var p = 0, iv = setInterval(function () {
+        p = Math.min(100, p + 1 + Math.floor(Math.random() * 9));
+        var s = byId('bsodPct'); if (s) s.textContent = p;
+        if (p >= 100) {
+            clearInterval(iv);
+            setTimeout(function () { if (!window.__noReboot) location.reload(); }, 1100);
+        }
+    }, 240);
 }
 
 /* —— Recycle Bin: the other half of the file system —— */
@@ -2889,7 +4245,12 @@ function bankPlaytime(id, hrs) {   // real desktop-app sessions land on the libr
     }
 }
 function stGrant(id) { var o = stOwned(); if (o.indexOf(id) < 0) { o.push(id); sjSet('owned', o); } }
-function stMarkInst(id) { var s = stInst(); if (s.indexOf(id) < 0) { s.push(id); sjSet('inst', s); } }
+function stMarkInst(id) {
+    var s = stInst();
+    // a finished install flips when:inst:<id> — the game's folder appears under
+    // C:\Program Files\Steam\steamapps\common, so any open Explorer must redraw
+    if (s.indexOf(id) < 0) { s.push(id); sjSet('inst', s); refreshFileViews(); }
+}
 
 /* ═══════ procedural "screenshots" — painted crisp on a small canvas ═══════ */
 function stRng(s) { s = s >>> 0; return function () { s = (s + 0x6D2B79F5) | 0; var t = Math.imul(s ^ (s >>> 15), 1 | s); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
@@ -3988,7 +5349,11 @@ function stClick(e) {
 var APPS = {
     explorer: { title: 'File Explorer', icon: 'ic-explorer', w: 720, h: 460, render: renderExplorer, init: initExplorer, focusArg: function (el, arg) { if (arg && exState.explorer && exState.explorer.go) exState.explorer.go(arg); } },
     about:    { title: 'About Isaac', icon: 'ic-ure', w: 540, h: 480, render: renderAbout },
-    notepad:  { title: 'Untitled — Notepad', icon: 'ic-notepad', w: 520, h: 420, render: renderNotepad, init: initNotepad },
+    notepad:  { title: 'Untitled — Notepad', icon: 'ic-notepad', w: 520, h: 420, render: renderNotepad, init: initNotepad, focusArg: function (el, arg) { if (el._npOpen) el._npOpen(arg); } },
+    reader:   { title: 'Reader', icon: 'ic-pdf', w: 560, h: 520, render: renderReader, init: initReader, focusArg: function (el, arg) { if (arg) rdShow(el, arg); } },
+    player:   { title: 'URE Media', icon: 'ic-audio', w: 320, h: 240, render: renderPlayer, init: initPlayer,
+                focusArg: function (el, arg) { if (arg) plLoad(el, arg); },
+                onClose: function (el) { plStop(el); }, onMinimize: function (el) { var st = el._pl; if (st && st.playing) plToggle(el, false); } },
     terminal: { title: 'URE Shell', icon: 'ic-terminal', w: 620, h: 400, render: renderTerminal, init: initTerminal },
     settings: { title: 'Settings', icon: 'ic-settings', w: 660, h: 480, render: renderSettings, init: initSettings },
     photos:   { title: 'Photos', icon: 'ic-photos', w: 560, h: 440, render: renderPhotos, init: initPhotos, focusArg: function (el, arg) { if (arg != null) selectPhoto(el, arg | 0); } },
@@ -4027,7 +5392,7 @@ function setStart(open) {
     // queued rAF could land AFTER a close and corrupt the state)
     startMenu.classList.toggle('open', open);
     startBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
-    if (open) { closeFlyouts(); closeCtx(); closeTaskView(); setTimeout(function () { startSearch.focus(); }, 40); }
+    if (open) { closeFlyouts(); closeCtx(); closeBctx(); closeTaskView(); setTimeout(function () { startSearch.focus(); }, 40); }
     else { startSearch.value = ''; filterStart(''); }
 }
 startBtn.addEventListener('click', function (e) { e.stopPropagation(); setStart(!startMenu.classList.contains('open')); });
@@ -4066,9 +5431,8 @@ desktop.addEventListener('click', function (e) {
 });
 desktop.addEventListener('dblclick', function (e) {
     var d = e.target.closest('.dicon'); if (!d) return;
-    var it = itemsFor('Desktop')[+d.getAttribute('data-i')]; if (!it) return;
-    if (it.app) openApp(it.app, it.arg);
-    else if (it.go) openApp('explorer', it.go);
+    var it = tileItem('Desktop', d); if (!it) return;
+    openItemFrom(it);                             // files dropped on the desktop open like anywhere else
 });
 
 byId('searchBtn').addEventListener('click', function (e) { e.stopPropagation(); setStart(true); });
@@ -4079,7 +5443,7 @@ function closeFlyouts() { quickPanel.hidden = true; calPanel.hidden = true; }
 
 function toggleFlyout(panel, build) {
     var opening = panel.hidden;
-    closeFlyouts(); setStart(false); closeCtx();
+    closeFlyouts(); setStart(false); closeCtx(); closeBctx();
     if (opening) { build(); panel.hidden = false; }
 }
 byId('quickBtn').addEventListener('click', function (e) { e.stopPropagation(); toggleFlyout(quickPanel, buildQuick); });
@@ -4129,14 +5493,14 @@ function buildCal() {
 var ctx = byId('ctx');
 function closeCtx() { ctx.hidden = true; }
 desktop.addEventListener('contextmenu', function (e) {
-    e.preventDefault(); setStart(false); closeFlyouts(); closeFctx();
+    e.preventDefault(); setStart(false); closeFlyouts(); closeFctx(); closeBctx();
     var d = e.target.closest('.dicon');
     if (d) {   // icons get the file menu; empty desktop gets the desktop menu
         closeCtx();
         desktop.querySelectorAll('.dicon.sel').forEach(function (x) { x.classList.remove('sel'); });
         d.classList.add('sel');
-        var it = itemsFor('Desktop')[+d.getAttribute('data-i')]; if (!it) return;
-        openFctx(e, { path: 'Desktop', it: it, tile: d, open: function () { if (it.app) openApp(it.app, it.arg); else if (it.go) openApp('explorer', it.go); }, redraw: renderDesktop });
+        var it = tileItem('Desktop', d); if (!it) return;
+        openFctx(e, { path: 'Desktop', it: it, tile: d, open: function () { openItemFrom(it); }, redraw: renderDesktop });
         return;
     }
     ctx.hidden = false;
@@ -4374,7 +5738,7 @@ var APP_KEYS = {
     },
     explorer: {
         'arrowleft': function () { expCtl('back'); },
-        'arrowup': function () { expCtl('home'); }
+        'arrowup': function () { expCtl('up'); }               // Alt+Up = up one level, like the real one
     },
     terminal: { 'l': function () { var w = openWins.terminal; if (w && w.el._clear) w.el._clear(); } },
     notepad:  { 's': function () { var w = openWins.notepad; if (w && w.el._flash) w.el._flash(); } }
@@ -4439,7 +5803,7 @@ var CHEATS = [
 ];
 function closeCheat() { var c = byId('cheatsheet'); if (c) c.remove(); }
 function openCheat() {
-    closeCheat(); setStart(false); closeFlyouts(); closeCtx(); closeTaskView();
+    closeCheat(); setStart(false); closeFlyouts(); closeCtx(); closeBctx(); closeTaskView();
     var ov = document.createElement('div'); ov.className = 'cheat-overlay'; ov.id = 'cheatsheet';
     ov.innerHTML = '<div class="cheat px-lg lift"><div class="cheat-head">' + ic('ic-win') + '<b>Keyboard shortcuts</b>' +
         '<span class="cheat-sub">Alt is this machine’s Ctrl — the real one belongs to your browser</span></div>' +
@@ -4454,11 +5818,12 @@ function openCheat() {
 function toggleCheat() { if (byId('cheatsheet')) closeCheat(); else openCheat(); }
 
 /* ═══════════════════ global dismiss + init ═════════════════ */
-document.addEventListener('click', function () { setStart(false); closeFlyouts(); closeCtx(); closeFctx(); });
+document.addEventListener('click', function () { setStart(false); closeFlyouts(); closeCtx(); closeFctx(); closeBctx(); });
+document.addEventListener('auxclick', closeBctx);   // middle-click closes tabs behind an open menu — don't leave it stale
 document.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape') return;
     if (closeTopDlg()) return;   // dialogs eat the first Escape
-    setStart(false); closeFlyouts(); closeCtx(); closeFctx(); closeTaskView();
+    setStart(false); closeFlyouts(); closeCtx(); closeFctx(); closeBctx(); closeTaskView();
 });
 
 applyAccent(recall('accent', ACCENTS[0].hex));
@@ -4469,6 +5834,14 @@ renderDesktop();
 // the Chrome shortcut persists as a real file — if it exists anywhere, the install is real too
 if (chromeOnDisk()) installChrome({ shortcut: false });
 tick(); setInterval(tick, 15000);
+// coming back from the blue screen: the file is fine. the file was always going to be fine.
+try {
+    var __bsodF = sessionStorage.getItem('comp_bsod');
+    if (__bsodF) {
+        sessionStorage.removeItem('comp_bsod');
+        setTimeout(function () { toast('System restored to a moment before you deleted ' + __bsodF + '. You’re welcome.', 'ic-pc'); }, 1400);
+    }
+} catch (e) {}
 
 // headless-screenshot hooks (like the room pages' ?dev): populate a state for a one-shot capture
 if (location.search.indexOf('dev=tv') >= 0) { ['terminal', 'about', 'calc', 'explorer'].forEach(function (a) { openApp(a); }); setTimeout(openTaskView, 60); }
@@ -4529,6 +5902,16 @@ if (location.search.indexOf('dev=findnp') >= 0) {
     find.q = 'the'; findBar('notepad').querySelector('.find-in').value = 'the'; runFind();
 }
 if (location.search.indexOf('dev=keys') >= 0) openCheat();
+var devFs = location.search.match(/dev=fs:([^&]+)/);        // ?dev=fs:<path> — Explorer parked somewhere deep
+if (devFs) { var fsK; try { fsK = decodeURIComponent(devFs[1]); } catch (e) { fsK = devFs[1]; } openApp('explorer', fsResolve(fsK) || fsK); }
+var devOpen = location.search.match(/dev=open:([^&]+)/);    // ?dev=open:<folder>!<file> — open one file by name
+if (devOpen) {
+    var devOp; try { devOp = decodeURIComponent(devOpen[1]); } catch (e) { devOp = devOpen[1]; }
+    var devPair = devOp.split('!'), devKey = fsResolve(devPair[0]) || devPair[0];
+    itemsFor(devKey).forEach(function (it) { if (it.n.toLowerCase() === String(devPair[1] || '').toLowerCase()) openItemFrom(it); });
+}
+if (location.search.indexOf('dev=bsod') >= 0) { window.__noReboot = true; bsod('kernel32.dll'); }
+if (location.search.indexOf('dev=player') >= 0) openApp('player', { n: 'ure boy theme.mp3' });
 if (location.search.indexOf('dev=tabs') >= 0) {
     installChrome({ shortcut: true }); openApp('chrome');
     var devBr = openWins.chrome.el._br;
