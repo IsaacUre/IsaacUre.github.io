@@ -416,6 +416,7 @@ var FS = {
         { n: 'This PC', t: 'pc', app: 'explorer', arg: 'This PC', sys: 1 },
         { n: 'About Isaac', t: 'ure', app: 'about' },
         { n: 'Steam', t: 'steam', app: 'steam' },
+        { n: 'Minecraft Launcher', t: 'mclauncher', app: 'mclauncher' },
         { n: 'URE BOY', t: 'ureboy', app: 'ureboy' },
         { n: 'the room', t: 'room', app: 'room' },
         { n: 'Recycle Bin', t: 'bin', app: 'bin', sys: 1 }
@@ -451,7 +452,8 @@ var FS_ICON = {
     pdf: 'ic-pdf', img: 'ic-img', audio: 'ic-audio', video: 'ic-video', exe: 'ic-exe', dll: 'ic-dll', sys: 'ic-sys',
     zip: 'ic-zip', code: 'ic-code', js: 'ic-js', html: 'ic-html', css: 'ic-css', font: 'ic-font', sav: 'ic-sav',
     drive: 'ic-drive', usb: 'ic-usb', disc: 'ic-disc', edge: 'ic-edge', terminal: 'ic-terminal', calc: 'ic-calc',
-    cookie: 'ic-cookie', terraria: 'ic-terraria', explorer: 'ic-explorer', settings: 'ic-settings'
+    cookie: 'ic-cookie', terraria: 'ic-terraria', explorer: 'ic-explorer', settings: 'ic-settings',
+    mclauncher: 'ic-mc', mcjar: 'ic-mc'
 };
 var KIND = {
     folder: 'File folder', pc: 'Local disk', notepad: 'Text document', room: 'PNG image', gti: 'PNG image',
@@ -462,7 +464,8 @@ var KIND = {
     sys: 'System file', zip: 'Compressed (zipped) folder', code: 'Source file', js: 'JavaScript file', html: 'HTML document',
     css: 'CSS document', font: 'TrueType font file', sav: 'Save file', drive: 'Local disk', usb: 'USB drive', disc: 'CD Drive',
     edge: 'Application', terminal: 'Application', calc: 'Application', cookie: 'Application', terraria: 'Application',
-    explorer: 'Application', settings: 'Application'
+    explorer: 'Application', settings: 'Application',
+    mclauncher: 'Application', mcjar: 'Executable Jar File'
 };
 // extension → item type. Anything unlisted is a plain 'file'.
 var EXT_T = {
@@ -629,17 +632,7 @@ var TREE_USER = {
         },
         'LocalLow': { $: { e: 'Nobody knows what LocalLow is for. It knows what it did.' } },
         'Roaming': {
-            '.minecraft': {
-                'saves': {
-                    'world': { 'level.dat': 0, 'region': { 'r.0.0.mca': 0, 'r.-1.0.mca': 0 }, 'icon.png': 0 },
-                    'world (1)': { 'level.dat': 0, 'region': { 'r.0.0.mca': 0 } },
-                    'SMP with malachi': { 'level.dat': 0, 'region': { 'r.0.0.mca': 0, 'r.0.-1.mca': 0 }, 'icon.png': 0 },
-                    'creative flat test': { 'level.dat': 0 }
-                },
-                'screenshots': { '2019-06-14_20.41.05.png': 0, '2019-07-02_23.58.11.png': 0, '2020-03-19_01.12.44.png': 0 },
-                'options.txt': 'version:2586\nfov:110\ngamma:1000000.0\nrenderDistance:8\ndifficulty:2\n; gamma cranked because caves are dark and we are brave, not patient',
-                'logs': { 'latest.log': 0 }
-            },
+            '.minecraft': '>.minecraft',   // the real, LIVE folder — the Minecraft Launcher owns it (mcSyncFS)
             'Microsoft': { 'Windows': { 'Recent': {} } }
         }
     },
@@ -2352,7 +2345,7 @@ function initEdge(el) {
 var CR = null;                                   // live window state (single-instance, like ST)
 function crj(k, d) { try { var v = JSON.parse(recall('chrome_' + k, 'null')); return v == null ? d : v; } catch (e) { return d; } }
 function crjSet(k, v) { store('chrome_' + k, JSON.stringify(v)); }
-function crBM() { return crj('bm', [['isaacure.com', 'isaacure.com'], ['GitHub', 'github.com/IsaacUre'], ['Golf GTI — Wikipedia', 'en.wikipedia.org/wiki/Volkswagen_Golf_GTI'], ['The Thresher', 'thresher.rice.edu'], ['Rice FSAE', 'fsae.rice.edu'], ['Steam', 'store.steampowered.com'], ['dino', 'chrome://dino']]); }
+function crBM() { return crj('bm', [['isaacure.com', 'isaacure.com'], ['GitHub', 'github.com/IsaacUre'], ['Golf GTI — Wikipedia', 'en.wikipedia.org/wiki/Volkswagen_Golf_GTI'], ['The Thresher', 'thresher.rice.edu'], ['Rice FSAE', 'fsae.rice.edu'], ['Steam', 'store.steampowered.com'], ['dino', 'chrome://dino'], ['Minecraft', 'minecraft.net']]); }
 function crHist() { return crj('hist', []); }
 function crSet() { return crj('set', { bmbar: 1, engine: 'google' }); }
 function crEngine() { return crSet().engine === 'ure' ? 'URE Search' : 'Google'; }
@@ -2551,6 +2544,23 @@ webPage('store.steampowered.com', {
         return '<div class="cr-site cr-center">' + ic('ic-steam', 'cr-bigic') + '<h2>You have Steam installed.</h2><p>The website is just the app with more cookies. Opening the real thing:</p><button class="cr-btn" id="crSteam">Open the Steam app</button></div>';
     },
     init: function (view) { var b = view.querySelector('#crSteam'); if (b) b.addEventListener('click', function () { openApp('steam'); }); }
+});
+
+/* — minecraft.net (the website → the launcher) — */
+webPage('minecraft.net', {
+    title: 'Minecraft | Official Site', fav: { ic: 'ic-mc' }, searchable: true,
+    stitle: 'Minecraft — official site', sdesc: 'Explore your own unique world, survive the night, and create anything you can imagine. The launcher is already on this machine.', skey: 'minecraft mc java mojang launcher grass creeper blocks',
+    render: function () {
+        return '<div class="cr-site cr-mcnet"><nav class="cr-mcnav"><b>MINECRAFT</b><span>Games</span><span>Community</span><span>Merch</span><span>Support</span></nav>' +
+            '<div class="cr-mchero">' + mcHero() + '<div class="cr-mchero-tx"><span class="mcl-logotype sm">MINECRAFT</span>' +
+            '<p>Dig. Build. Survive the night. This machine already has the launcher — the button below knows that.</p>' +
+            '<button class="cr-btn cr-mcget" id="crMcGet">GET MINECRAFT</button></div></div>' +
+            '<div class="cr-mcfoot">© Mojang, in spirit. This is a loving pixel parody living on isaacure.com.</div></div>';
+    },
+    init: function (view) {
+        var b = view.querySelector('#crMcGet');
+        if (b) b.addEventListener('click', function () { openApp('mclauncher'); toast('Minecraft Launcher is already installed.'); });
+    }
 });
 
 /* — Gmail gag — */
@@ -5346,6 +5356,1384 @@ function stClick(e) {
     if (act === 'hub') return stToast('The Community Hub is just the friends list with extra steps.');
 }
 
+/* ═════════════ Minecraft Launcher — the real thing, in pixels ═════════════
+   A full replica of the unified Minecraft Launcher: rail of games on the left,
+   Play / Installations / Skins / Patch Notes tabs for Java Edition, a working
+   skin editor, and a launch pipeline that actually downloads versions into a
+   real .minecraft tree in the sim file system (saves/, versions/, logs/,
+   crash-reports/, launcher_profiles.json regenerated from live state).
+
+   THE SEAM (for the chat building the game itself): when PLAY finishes, the
+   launcher checks APPS.minecraft. If the game app is registered, it calls
+   openApp('minecraft', { version, installation, skin }) — skin is
+   { name, model: 'classic'|'slim', pal: [colors], rows: [16-char strings] }
+   (front view, 16×32, '.' = transparent, chars index into pal). Until then a
+   launch dies honestly: java.lang.ClassNotFoundException, with a crash report
+   written to .minecraft/crash-reports. The game may also claim
+   FS['.minecraft/saves'] — mcSyncFS only assigns that key if it is undefined.
+
+   State lives in comp_mc_* keys: inst (installations), skins, skin (active id),
+   sel (selected installation id), set (toggles), dl (downloaded version ids),
+   log (last launch log), crash (last 3 crash reports). */
+
+var MC = null;   // live view state while the window is open
+function mcj(k, d) { try { var v = JSON.parse(recall('mc_' + k, 'null')); return v == null ? d : v; } catch (e) { return d; } }
+function mcjSet(k, v) { store('mc_' + k, JSON.stringify(v)); }
+
+/* —— tiny pixel-art engine: rows of chars → crisp SVG (rows share a palette) —— */
+var MC_CHARS = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+function pxSvg(rows, pal, cls, slice) {
+    var w = rows[0].length, h = rows.length, out = [], y, x, x0, c;
+    for (y = 0; y < h; y++) {
+        var row = rows[y];
+        for (x = 0; x < w;) {
+            c = row.charAt(x);
+            if (c === '.' || c === ' ' || !pal[c]) { x++; continue; }
+            x0 = x;
+            while (x < w && row.charAt(x) === c) x++;
+            out.push('<rect x="' + x0 + '" y="' + y + '" width="' + (x - x0) + '" height="1" fill="' + pal[c] + '"/>');
+        }
+    }
+    return '<svg class="mcl-px' + (cls ? ' ' + cls : '') + '" viewBox="0 0 ' + w + ' ' + h + '"' +
+        (slice ? ' preserveAspectRatio="xMidYMid slice"' : '') + ' shape-rendering="crispEdges" aria-hidden="true">' + out.join('') + '</svg>';
+}
+function mcPalMap(arr) { var m = {}, i; for (i = 0; i < arr.length; i++) m[MC_CHARS.charAt(i)] = arr[i]; return m; }
+
+/* —— every version the dropdown knows (t: release | snapshot | beta | alpha | fools) —— */
+var MC_VERS = [
+    // Mojang went year.drop in Dec 2025, so snapshots are 26.3-snapshot-N now, not 26w29a
+    { id: '26.3-snapshot-4', t: 'snapshot', d: '7/16/2026' },
+    { id: '26.3-snapshot-3', t: 'snapshot', d: '7/7/2026' },
+    { id: '26.3-snapshot-2', t: 'snapshot', d: '6/30/2026' },
+    { id: '26.3-snapshot-1', t: 'snapshot', d: '6/23/2026' },
+    { id: '26.2', t: 'release', d: '6/16/2026', n: 'Chaos Cubed' },
+    { id: '26.1.2', t: 'release', d: '4/9/2026' },
+    { id: '26.1.1', t: 'release', d: '4/1/2026' },
+    { id: '26.1', t: 'release', d: '3/24/2026', n: 'Tiny Takeover' },
+    { id: '1.21.11', t: 'release', d: '12/9/2025' },
+    { id: '1.21.10', t: 'release', d: '10/7/2025' },
+    { id: '25w46a', t: 'snapshot', d: '11/11/2025' },
+    { id: '1.21.9', t: 'release', d: '9/30/2025', n: 'The Copper Age' },
+    { id: '1.21.8', t: 'release', d: '7/17/2025' },
+    { id: '1.21.7', t: 'release', d: '6/30/2025' },
+    { id: '1.21.6', t: 'release', d: '6/17/2025', n: 'Chase the Skies' },
+    { id: '1.21.5', t: 'release', d: '3/25/2025', n: 'Spring to Life' },
+    { id: '1.21.4', t: 'release', d: '12/3/2024', n: 'The Garden Awakens' },
+    { id: '1.21.3', t: 'release', d: '10/23/2024' },
+    { id: '1.21.2', t: 'release', d: '10/22/2024', n: 'Bundles of Bravery' },
+    { id: '1.21.1', t: 'release', d: '8/8/2024' },
+    { id: '1.21', t: 'release', d: '6/13/2024', n: 'Tricky Trials' },
+    { id: '1.20.6', t: 'release', d: '4/29/2024' },
+    { id: '1.20.4', t: 'release', d: '12/7/2023' },
+    { id: '1.20.1', t: 'release', d: '6/12/2023' },
+    { id: '1.20', t: 'release', d: '6/7/2023', n: 'Trails & Tales' },
+    { id: '1.19.4', t: 'release', d: '3/14/2023' },
+    { id: '1.19.2', t: 'release', d: '8/5/2022' },
+    { id: '1.19', t: 'release', d: '6/7/2022', n: 'The Wild Update' },
+    { id: '1.18.2', t: 'release', d: '2/28/2022' },
+    { id: '1.18', t: 'release', d: '11/30/2021', n: 'Caves & Cliffs II' },
+    { id: '1.17.1', t: 'release', d: '7/6/2021' },
+    { id: '1.17', t: 'release', d: '6/8/2021', n: 'Caves & Cliffs I' },
+    { id: '1.16.5', t: 'release', d: '1/15/2021' },
+    { id: '1.16', t: 'release', d: '6/23/2020', n: 'Nether Update' },
+    { id: '1.15.2', t: 'release', d: '1/21/2020' },
+    { id: '1.14.4', t: 'release', d: '7/19/2019' },
+    { id: '1.13.2', t: 'release', d: '10/22/2018' },
+    { id: '1.12.2', t: 'release', d: '9/18/2017' },
+    { id: '1.11.2', t: 'release', d: '12/21/2016' },
+    { id: '1.10.2', t: 'release', d: '6/23/2016' },
+    { id: '1.9.4', t: 'release', d: '5/10/2016' },
+    { id: '1.8.9', t: 'release', d: '12/9/2015' },
+    { id: '1.8', t: 'release', d: '9/2/2014', n: 'Bountiful Update' },
+    { id: '1.7.10', t: 'release', d: '6/26/2014' },
+    { id: '1.6.4', t: 'release', d: '9/19/2013' },
+    { id: '1.5.2', t: 'release', d: '5/2/2013' },
+    { id: '1.4.7', t: 'release', d: '1/9/2013' },
+    { id: '1.3.2', t: 'release', d: '8/16/2012' },
+    { id: '1.2.5', t: 'release', d: '4/4/2012' },
+    { id: '1.1', t: 'release', d: '1/12/2012' },
+    { id: '1.0', t: 'release', d: '11/18/2011', n: 'Adventure Update (Part 2)' },
+    { id: '26w14a', t: 'fools', d: '4/1/2026', n: 'Herdcraft Update' },
+    { id: '25w14craftmine', t: 'fools', d: '4/1/2025', n: 'The Craftmine Update' },
+    { id: '24w14potato', t: 'fools', d: '4/1/2024', n: 'Poisonous Potato Update' },
+    { id: '23w13a_or_b', t: 'fools', d: '4/1/2023', n: 'The Vote Update' },
+    { id: '22w13oneblockatatime', t: 'fools', d: '4/1/2022' },
+    { id: '20w14infinite', t: 'fools', d: '4/1/2020', n: 'Ultimate Content' },
+    { id: '3D Shareware v1.34', t: 'fools', d: '4/1/2019' },
+    { id: '1.RV-Pre1', t: 'fools', d: '3/31/2016', n: 'Trendy Update' },
+    { id: '15w14a', t: 'fools', d: '4/1/2015', n: 'Love and Hugs' },
+    { id: 'b1.8.1', t: 'beta', d: '9/15/2011', n: 'Adventure Update (Part 1)' },
+    { id: 'b1.7.3', t: 'beta', d: '7/8/2011' },
+    { id: 'b1.6.6', t: 'beta', d: '5/31/2011' },
+    { id: 'b1.5_01', t: 'beta', d: '4/20/2011' },
+    { id: 'b1.4_01', t: 'beta', d: '4/5/2011' },
+    { id: 'b1.3_01', t: 'beta', d: '2/23/2011' },
+    { id: 'b1.2_02', t: 'beta', d: '1/21/2011' },
+    { id: 'b1.1_02', t: 'beta', d: '12/22/2010' },
+    { id: 'b1.0.2', t: 'beta', d: '12/21/2010' },
+    { id: 'a1.2.6', t: 'alpha', d: '12/3/2010' },
+    { id: 'a1.2.2b', t: 'alpha', d: '11/10/2010' },
+    { id: 'a1.1.2_01', t: 'alpha', d: '9/23/2010' },
+    { id: 'a1.0.17_04', t: 'alpha', d: '8/23/2010' },
+    { id: 'a1.0.11', t: 'alpha', d: '7/23/2010' },
+    { id: 'a1.0.5_01', t: 'alpha', d: '7/14/2010' },
+    { id: 'a1.0.4', t: 'alpha', d: '7/9/2010' },
+    { id: 'inf-20100618', t: 'alpha', d: '6/18/2010' },
+    { id: 'c0.30_01c', t: 'alpha', d: '11/10/2009' },
+    { id: 'c0.0.13a', t: 'alpha', d: '5/22/2009' },
+    { id: 'c0.0.11a', t: 'alpha', d: '5/17/2009' },
+    { id: 'rd-132328', t: 'alpha', d: '5/13/2009' },
+    { id: 'rd-132211', t: 'alpha', d: '5/13/2009' }
+];
+function mcVer(id) { var i; for (i = 0; i < MC_VERS.length; i++) if (MC_VERS[i].id === id) return MC_VERS[i]; return null; }
+function mcLatest(t) { var i; for (i = 0; i < MC_VERS.length; i++) if (MC_VERS[i].t === t) return MC_VERS[i].id; return '26.2'; }
+function mcResolveVer(v) {
+    if (v === 'latest-release') return mcLatest('release');
+    if (v === 'latest-snapshot') return mcLatest('snapshot');
+    return v;
+}
+function mcJarSize(id) {
+    var v = mcVer(id) || { t: 'release' };
+    if (v.t === 'alpha') return /^rd|^c0/.test(id) ? '292 KB' : '1.1 MB';
+    if (v.t === 'beta') return '2.3 MB';
+    if (v.t === 'snapshot' || v.t === 'fools') return '26.8 MB';   // these branch off the modern client
+    return /^(1\.(1[6-9]|2\d)|2\d\.)/.test(id) ? '26.8 MB' : '9.4 MB';   // 26.x is the year.drop scheme
+}
+// the manifest's own vocabulary, and the class that era actually booted
+function mcVerJson(v) {
+    var t = (mcVer(v) || {}).t || 'release';
+    var type = t === 'beta' ? 'old_beta' : t === 'alpha' ? 'old_alpha' : t === 'fools' ? 'snapshot' : t;
+    var main = /^rd-/.test(v) ? 'com.mojang.rubydung.RubyDung'
+        : (t === 'alpha' || t === 'beta') ? 'net.minecraft.client.Minecraft'
+        : 'net.minecraft.client.main.Main';
+    // Java 21 from 1.20.5 on; 17 across the 1.17–1.20 era (incl. its 22w/23w snapshots); 8 before
+    var java = /^(1\.2[1-9]|1\.20\.[5-9]|2\d\.|2[4-9]w)/.test(v) ? 21 : /^(1\.(1[7-9]|20)|2[23]w)/.test(v) ? 17 : 8;
+    return '{\n  "id": "' + v + '",\n  "type": "' + type + '",\n  "mainClass": "' + main +
+        '",\n  "assets": "pixels",\n  "javaVersion": { "majorVersion": ' + java + ' }\n}';
+}
+
+/* —— installation icons: 8×8 block faces, launcher-picker style —— */
+var MC_ICON_PAL = {
+    g: '#7cbd4b', G: '#5da03a', h: '#8fd05a',
+    d: '#8a5f3c', D: '#6e4a2c', e: '#9b7048',
+    s: '#7a7a82', S: '#5f5f66', t: '#8f8f96',
+    o: '#a07040', O: '#7e5830', p: '#b8894e',
+    k: '#3a3a40', K: '#26262b',
+    r: '#c93a2e', R: '#8f261e', w: '#e8e4dc',
+    b: '#5a3d24', B: '#3e2a18', i: '#e0e5e8',
+    c: '#3ab3da', y: '#f0c93a', Y: '#c9a02e',
+    m: '#8a3fb0', v: '#4a3fb0', f: '#d87a3a',
+    l: '#f0e6c8', L: '#d8c9a0', x: '#2f2f35',
+    u: '#c77f56', U: '#a5623c'
+};
+var MC_ICONS = {
+    grass: ['hghghggh', 'gGghgGgg', 'GdGgGdGe', 'dDdedDde', 'eddDeddD', 'dDeddDed', 'ddDeddDe', 'DedDeddD'],
+    dirt: ['eddDeddD', 'dDeddDed', 'ddDeedDe', 'DeddDedd', 'edDeddDe', 'dDeddedD', 'deDdeddD', 'DdeDdedd'],
+    stone: ['tsstssts', 'sStsstss', 'ssStssSt', 'tssStsss', 'sstssSts', 'Stssstss', 'ssStssSt', 'tsstsSts'],
+    cobble: ['sSttSsts', 'StsStsSt', 'tsStssts', 'sStsStsS', 'tssStstS', 'StsstsSt', 'sStSsSts', 'tstsStsS'],
+    planks: ['oooopooo', 'OOOOOOOO', 'opoooooo', 'oooopooo', 'OOOOOOOO', 'ooooooop', 'opoooooo', 'OOOOOOOO'],
+    crafting: ['loollool', 'oLLLLLLo', 'oLoLLoLo', 'oLLLLLLo', 'oLoLLoLo', 'oLLLLLLo', 'oLLooLLo', 'looLLool'],
+    furnace: ['ssssssss', 'sSSSSSSs', 'sSttttSs', 'ssssssss', 'sskrrkss', 'sskryrks', 'sskrrkss', 'ssssssss'],
+    chest: ['oooooooo', 'oOOOOOOo', 'oOooooOo', 'ooooyooo', 'oOooyoOo', 'oOooooOo', 'oOOOOOOo', 'oooooooo'],
+    tnt: ['rwrrwrrw', 'rrwrrwrr', 'wwwwwwww', 'wxwxxwxw', 'wxwxxwxw', 'wwwwwwww', 'rwrrwrrw', 'rrwrrwrr'],
+    bookshelf: ['oooooooo', 'orgcvyro', 'orgcvyro', 'oooooooo', 'ovyrgcvo', 'ovyrgcvo', 'oooooooo', 'oooopooo'],
+    bricks: ['rRrrRrrR', 'wwwwwwww', 'rrRrrRrr', 'wwwwwwww', 'RrrRrrRr', 'wwwwwwww', 'rRrrRrrR', 'wwwwwwww'],
+    obsidian: ['kKkkKkkK', 'KkmKkKkk', 'kKkkKkmK', 'KkKmkKkK', 'kkKkKkkK', 'KmkKkKkK', 'kKkKkmKk', 'KkKkKkKK'],
+    diamond: ['tsstssts', 'sScisstS', 'sciicsss', 'ssciSsts', 'tssssSts', 'stsciSss', 'ssciicst', 'tssciSts'],
+    gold: ['yYyyyYyy', 'YyyYyyYy', 'yyYyyyyY', 'yYyyYyyy', 'yyyYyyYy', 'Yyyyyyyy', 'yyYyyYyy', 'YyyyYyyY'],
+    bedrock: ['kKssKkKs', 'KskKsKsk', 'sKkKkskK', 'kKsksKkK', 'KksKkKsk', 'skKkKskK', 'KkskKkKs', 'kKsKskKk'],
+    pumpkin: ['ffffffff', 'fOffffOf', 'fkffffkf', 'ffffffff', 'ffkffkff', 'fkkfkkkf', 'ffffffff', 'OfOffOfO']
+};
+var MC_ICON_ORDER = ['grass', 'dirt', 'stone', 'cobble', 'planks', 'crafting', 'furnace', 'chest', 'tnt', 'bookshelf', 'bricks', 'obsidian', 'diamond', 'gold', 'bedrock', 'pumpkin'];
+function mcBlockIcon(key, cls) { return pxSvg(MC_ICONS[key] || MC_ICONS.grass, MC_ICON_PAL, cls || 'mcl-block'); }
+
+/* —— patch-note cards: art motifs (each ≤ 12×11) + heavily condensed notes —— */
+var MC_ART = {
+    copper: { p: { c: '#c9713a', C: '#a5522a', o: '#7fb069', k: '#26262b', e: '#3ab3da' },
+        r: ['....cc......', '...cccc.....', '...ceec.....', '...cccc.....', '.cccCCccc...', '.c.cCCc.c...', '...cCCc.....', '...cccc.....', '..cc..cc....', '..cc..cc....', '..oo..oo....'] },
+    ghast: { p: { w: '#f0f0ea', W: '#d8d8cc', k: '#26262b', p: '#e8a0b0', b: '#78a7ff' },
+        r: ['..wwwwwwww..', '.wwwwwwwwww.', '.wwkwwwwkww.', '.wwkwwwwkww.', '.wwwwkkwwww.', '.wwwwkkwwww.', '.wwwwwwwwww.', '..wwwwwwww..', '..w.w.ww.w..', '..w.w..w.w..', '............'] },
+    spring: { p: { g: '#5da03a', G: '#3a8a30', y: '#f0e68a', f: '#d81e05', w: '#e8e4dc' },
+        r: ['............', '.....g......', '..g.ggg..y..', '.ggggggg....', 'gggGgggGg.y.', 'gGgggGggg...', '.gggggggg...', '..y..gg.....', '......g..f..', '.f....g..f..', 'GGGGGGGGGGGG'] },
+    pale: { p: { t: '#8a8f8a', T: '#6e736e', w: '#d8dcd2', k: '#26262b', o: '#c9713a' },
+        r: ['..wwwwww....', '.wwwwwwww...', 'wwwwwwwwww..', 'wwwokwwwww..', '.wwwwwwww...', '....tt......', '....tt......', '....tt......', '....tt......', '...ttto.....', 'TTTTTTTTTTTT'] },
+    bundle: { p: { b: '#a5623c', B: '#7e4a2c', s: '#d8c9a0', r: '#c93a2e', c: '#3ab3da' },
+        r: ['....ss......', '...s..s.....', '...rcbs.....', '..bbbbbb....', '.bBbbbbBb...', '.bbbbBbbb...', '.bBbbbbbb...', '.bbbBbbBb...', '..bbbbbb....', '...bbbb.....', '............'] },
+    trial: { p: { c: '#c9713a', C: '#a5522a', t: '#7a7a82', T: '#5f5f66', k: '#26262b', o: '#f0a02a' },
+        r: ['tTttTttTtTtt', 'tcccccccccct', 'tcCccccccCct', 'tcckkkkkkcct', 'tcck.oo.kcct', 'tcck.oo.kcct', 'tcckkkkkkcct', 'tcCccccccCct', 'tcccccccccct', 'tTtTtttTttTt', '............'] },
+    cherry: { p: { p: '#f3a5c0', P: '#e07fa8', t: '#5a3d24', g: '#5da03a' },
+        r: ['..pppppp....', '.pppPpppp...', 'ppPpppppPp..', 'pppppPpppp..', '.ppPppppp...', '....tt..p...', '....tt......', '....tt......', '....tt......', 'g.g.gtg.g.g.', 'gggggggggggg'] },
+    warden: { p: { b: '#0f3038', B: '#1a4a52', c: '#3ab3da', k: '#06181c', w: '#7adfd0' },
+        r: ['..bbbbbbbb..', '.bBbbbbbbBb.', '.bwwbbbbwwb.', '.bwwbbbbwwb.', '.bbbbBBbbbb.', '.bbkkkkkkbb.', '..bkkkkkkb..', '..bbbbbbbb..', '...cbbbbc...', '...c.bb.c...', '............'] },
+    mount: { p: { s: '#7a7a82', S: '#5f5f66', w: '#e8ecf0', g: '#5da03a', G: '#3a8a30', b: '#78a7ff' },
+        r: ['bbbbbwwbbbbb', 'bbbbwwwwbbbb', 'bbbwwswwwbbb', 'bbwwsssswbbb', 'bbssSssssbbb', 'bssssSssssbb', 'ssSssssSssss', 'sssgsssssgss', 'ggggggggggGg', 'gggggggggggg', '............'] },
+    axolotl: { p: { p: '#f3a5c0', P: '#e07fa8', k: '#26262b', f: '#d87ab0', w: '#f9fffe' },
+        r: ['.f..........', 'pf.pppppp.f.', '.ppppppppf..', '.pkppppkp...', '.pppPPppp...', '.ppp..ppp...', '.pppppppppp.', '..pppppp..p.', '...p..p.....', '............', '............'] },
+    nether: { p: { n: '#6e2c2c', N: '#521f1f', l: '#f0a02a', L: '#d87a1d', k: '#26262b', v: '#8932b8' },
+        r: ['nNnnNnnvvnnn', 'nnNnnnnvvnNn', 'NnnNnnnvvnnn', 'nnnnNnnvvnnN', 'nNnnnnnvvnnn', 'lLllnNnnnnNn', 'lllLlnnnNnnn', 'LllllLnnnnnN', 'lLlllllnNnnn', 'llllLlllnnnn', '............'] },
+    village: { p: { o: '#a07040', O: '#7e5830', y: '#f0c93a', k: '#26262b', r: '#8f4a2e', g: '#5da03a' },
+        r: ['.....rr.....', '....rrrr....', '...rrrrrr...', '..rrrrrrrr..', '.rrrrrrrrrr.', '...oo..oo...', '...o.yy.o...', '...o.yy.o...', '...o....o...', '...oooooo...', 'gggggggggggg'] },
+    sulfur: { p: { y: '#e8d44a', Y: '#b8a52e', s: '#7a7a82', S: '#5f5f66', k: '#26262b', o: '#f0a02a' },
+        r: ['sSssSssSsSss', 'ssSssSsssSsS', 'sysysssyyyss', 'syyyssoyyyos', 'sYyYssyyyyys', 'ssyssskyykss', 'ssossyyyyyss', 'sooosyYyyYys', 'soooosyyyyss', 'SsooossYyYss', 'sSsssSssSsSs'] },
+    tiny: { p: { p: '#f3a5c0', P: '#e07fa8', k: '#26262b', y: '#f0c93a', g: '#5da03a', G: '#3a8a30', w: '#f9fffe' },
+        r: ['......y.....', '.....yyy....', '......y.....', '..pppp.pppp.', '.pkppp.pkppp', '.pppppppppp.', '.pPppp.pPppp', '.pppppppppp.', '..pp.p..pp.p', 'gggggggggggg', 'GGGGGGGGGGGG'] },
+    snap: { p: { g: '#7cbd4b', G: '#5da03a', d: '#8a5f3c', D: '#6e4a2c', q: '#e8e4dc', k: '#26262b' },
+        r: ['........q...', '.......qqq..', '......qqq...', 'ggGg.qqq.gGg', 'GggGqqqgggGG', 'dDddqqdddDdd', 'ddDdd.ddDddd', 'DddDdddDdddD', 'ddddDdddDddd', 'dDddddDddddd', '............'] }
+};
+var MC_NOTES = [
+    { v: '26.3-snapshot-4', name: 'Snapshot 26.3-snapshot-4', d: 'July 16, 2026', art: 'snap', b: [
+        'Experimental features hide behind a toggle, as is tradition.',
+        'Four bugs fixed. At least two of them were real.',
+        'The launcher is done; the game is being built in another window. You are looking at the seam.'] },
+    { v: '26.2', name: 'Chaos Cubed', d: 'June 16, 2026', art: 'sulfur', b: [
+        'Sulfur caves: a new biome built out of sulfur and cinnabar, and it smells accordingly.',
+        'The sulfur cube, a mob that picks a physics archetype and commits to it.',
+        'Potent sulfur blocks erupt into geysers. Do not stand there. You will stand there.',
+        'An experimental Vulkan renderer, and a friends list to watch you fail in real time.'] },
+    { v: '26.1', name: 'Tiny Takeover', d: 'March 24, 2026', art: 'tiny', b: [
+        'The golden dandelion pauses a baby mob’s aging. Time stops. Only for the piglets.',
+        'Nearly every baby mob got new models, textures and sounds. The nautiluses and ghastlings were left out and know it.',
+        'Name tags are craftable now: paper plus any nugget. Thirteen years of fishing for them, over.',
+        'Villager trades moved into datapacks, so the emerald economy is finally yours to ruin.'] },
+    { v: '1.21.9', name: 'The Copper Age', d: 'September 30, 2025', art: 'copper', b: [
+        'Copper golems wake up, wander off, and start organizing your chests.',
+        'A full copper tool and armor set, plus copper chests, bars, chains and lanterns.',
+        'Shelves, for displaying the gear you never actually use.',
+        'Everything oxidizes. Even the golems. Wax them, or learn acceptance.'] },
+    { v: '1.21.6', name: 'Chase the Skies', d: 'June 17, 2025', art: 'ghast', b: [
+        'The happy ghast: strap on a harness and fly it with three friends aboard. No taming, just trust.',
+        'A locator bar points at your friends, so you can pretend you were never lost.',
+        'Dried ghasts rehydrate into ghastlings. That is simply how science works now.',
+        'New music disc: Tears.'] },
+    { v: '1.21.5', name: 'Spring to Life', d: 'March 25, 2025', art: 'spring', b: [
+        'Warm and cold variants for pigs, cows and chickens.',
+        'Firefly bushes, wildflowers, leaf litter, and leaves that actually fall.',
+        'Cacti flower now. Eggs come in brown and blue. The chickens know why.'] },
+    { v: '1.21.4', name: 'The Garden Awakens', d: 'December 3, 2024', art: 'pale', b: [
+        'The pale garden: a grey, silent forest that is definitely fine to sleep in.',
+        'The creaking: a mob you cannot hurt, only outrun. Break its heart block instead.',
+        'Pale oak wood and resin, for all your haunted-cabin construction needs.'] },
+    { v: '1.21.2', name: 'Bundles of Bravery', d: 'October 22, 2024', art: 'bundle', b: [
+        'Bundles are finally, actually in the game. Thirteen years of inventory pain, addressed by a small bag.',
+        'Hardcore mode arrives on Realms.'] },
+    { v: '1.21', name: 'Tricky Trials', d: 'June 13, 2024', art: 'trial', b: [
+        'Trial chambers: copper-and-tuff dungeons whose spawners scale to your party size.',
+        'The mace. Fall from higher, hit harder. Gravity is a weapon now.',
+        'The breeze and the bogged join the mob roster.',
+        'The crafter: redstone that crafts. Factories, basically.',
+        'Ominous trials, for people who read the fine print on bad omens.'] },
+    { v: '1.20', name: 'Trails & Tales', d: 'June 7, 2023', art: 'cherry', b: [
+        'Archaeology: brush suspicious sand, find pottery sherds, reassemble history.',
+        'The sniffer digs up seeds from before your world existed.',
+        'Cherry groves. Pink. Extremely pink.',
+        'Camels seat two, bamboo builds rafts, hanging signs say more.',
+        'Armor trims and smithing templates, for professional drip management.'] },
+    { v: '1.19', name: 'The Wild Update', d: 'June 7, 2022', art: 'warden', b: [
+        'The deep dark and its ancient cities. Quietly. QUIETLY.',
+        'The warden: the reason you finally learned to crouch-walk.',
+        'Mangrove swamps, mud, frogs, and the allay, who just wants to help.'] },
+    { v: '1.18', name: 'Caves & Cliffs: Part II', d: 'November 30, 2021', art: 'mount', b: [
+        'World height blown open: build from Y -64 up to 319.',
+        'Terrain generation rebuilt from scratch. Mountains that earn the name.',
+        'Caves you can get genuinely, satisfyingly lost in.'] },
+    { v: '1.17', name: 'Caves & Cliffs: Part I', d: 'June 8, 2021', art: 'axolotl', b: [
+        'Axolotls. The bucket is mandatory.',
+        'Copper, amethyst, spyglasses and lightning rods.',
+        'Goats: they will ram you off a cliff. It is not personal.'] },
+    { v: '1.16', name: 'Nether Update', d: 'June 23, 2020', art: 'nether', b: [
+        'The nether becomes a place to live, not just a place to sprint through.',
+        'Four new biomes, piglins to barter with, striders to ride across lava.',
+        'Netherite: beyond diamond, forged in fire, does not burn.',
+        'Respawn anchors, because dying there was getting too easy.'] },
+    { v: '1.14', name: 'Village & Pillage', d: 'April 23, 2019', art: 'village', b: [
+        'Villagers get jobs, schedules, and strong opinions about your trades.',
+        'Pillagers get crossbows and a grudge. Raids follow.',
+        'Foxes, pandas and cats arrive. Ocelots finally relax.'] }
+];
+
+/* —— skins: front view, 16×32; head cols 4-11 rows 0-7, arms 4 wide (3 if slim),
+      torso cols 4-11 rows 8-19, legs rows 20-31. Stored palette-indexed. —— */
+function mcSkinDef(name, model, pal, rows, builtin) {
+    var used = {}, arr = [], out = [], i, j, c;
+    for (i = 0; i < rows.length; i++) {
+        var row = '', src = rows[i];
+        for (j = 0; j < 16; j++) {
+            c = src.charAt(j);
+            if (c === '.' || !pal[c]) { row += '.'; continue; }
+            if (!(c in used)) { used[c] = MC_CHARS.charAt(arr.length); arr.push(pal[c]); }
+            row += used[c];
+        }
+        out.push(row);
+    }
+    return { id: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'), n: name, model: model, pal: arr, rows: out, builtin: !!builtin };
+}
+function mcDefaultSkins() {
+    var steve = { h: '#2b1c10', s: '#bd8b72', S: '#a5735c', e: '#ffffff', i: '#4a3fb0', m: '#8a5a45',
+        t: '#00a8a8', T: '#008a8a', p: '#4234a0', P: '#362a86', o: '#5f5f5f', O: '#4a4a4a' };
+    var alex = { h: '#c17a3f', H: '#a5622e', s: '#e3b18a', S: '#c99a74', e: '#ffffff', i: '#6a8f3f', m: '#b07a5a',
+        t: '#87a556', T: '#6e8a42', b: '#6e5030', p: '#5d473a', P: '#4a382e', o: '#8a8f96', O: '#6e737a' };
+    var ure = { h: '#5a3d24', s: '#d9a877', S: '#c2915f', e: '#ffffff', i: '#8a8f96', m: '#a5744e',
+        r: '#d81e05', R: '#a01604', k: '#2a3038', K: '#1e242a', w: '#e8e8e8', W: '#c7c7c7' };
+    var moo = { w: '#e8e4dc', W: '#d0ccc2', k: '#1d1d21', p: '#d88a9a', P: '#b76a7c', g: '#b5b5ad', h: '#8a8a82' };
+    return [
+        mcSkinDef('Steve', 'classic', steve, [
+            '....hhhhhhhh....', '....hhhhhhhh....', '....hssssssh....', '....ssssssss....',
+            '....seissies....', '....sssSSsss....', '....ssmmmmss....', '....ssssssss....',
+            'ssssttttttttssss', 'ssssttttttttssss', 'sssstttttttTssss', 'ssssttttttttssss',
+            'ssssttttttttssss', 'sSsstttttttTssSs', 'ssssttttttttssss', 'ssssttttttttssss',
+            'ssssttTtttttssss', 'sSsstttttttTssss', 'ssssttttttttsSss', 'ssssttttttttssss',
+            '....pppppppp....', '....pppPPppp....', '....pppppppp....', '....pPpppppp....',
+            '....pppppPpp....', '....pppppppp....', '....pPpppppp....', '....pppppppp....',
+            '....pppppppp....', '....oooooooo....', '....oooOOooo....', '....oooooooo....'], true),
+        mcSkinDef('Alex', 'slim', alex, [
+            '....hhhhhhhh....', '....hhhhhhhh....', '....hhhhhhhh....', '....hssssssh....',
+            '....seissies....', '....sssSSsss....', '....ssmmssss....', '....hssssssh....',
+            '.hssttttttttssh.', '.sssttttttttsss.', '.sssttttttttsss.', '.ssstttttttTsss.',
+            '.sssttttttttsss.', '.sSsttTtttttssS.', '.sssttttttttsss.', '.sssbbbbbbbbsss.',
+            '.sssttttttttsss.', '.sssttttttttsss.', '.sSstttttttTsss.', '.sssttttttttsss.',
+            '....pppppppp....', '....pppPPppp....', '....pppppppp....', '....pPpppppp....',
+            '....pppppPpp....', '....pppppppp....', '....pppppppp....', '....pPpppppp....',
+            '....oooooooo....', '....oooOOooo....', '....oooooooo....', '....oooooooo....'], true),
+        mcSkinDef('URE BOY', 'classic', ure, [
+            '....hhhhhhhh....', '....hhhhhhhh....', '....hhsssshh....', '....ssssssss....',
+            '....seissies....', '....sssSSsss....', '....ssmmmmss....', '....ssssssss....',
+            'rrrrrrrrrrrrrrrr', 'rrrrrRrrrrRrrrrr', 'rrrrrrRRRRrrrrrr', 'rrrrRrrrrrrRrrrr',
+            'rrrrrrrrrrrrrrrr', 'rRrrrrrrrrrrrrRr', 'rrrrRRRRRRRRrrrr', 'rrrrRrrrrrrRrrrr',
+            'ssssRrrrrrrRssss', 'sSssRRRRRRRRssss', 'ssssrrrrrrrrsSss', 'ssssrrrrrrrrssss',
+            '....kkkkkkkk....', '....kkkKKkkk....', '....kkkkkkkk....', '....kKkkkkkk....',
+            '....kkkkkKkk....', '....kkkkkkkk....', '....kKkkkkkk....', '....kkkkkkkk....',
+            '....kkkkkkkk....', '....wwwwwwww....', '....wwwWWwww....', '....wwwwwwww....'], true),
+        mcSkinDef('Moo', 'classic', moo, [
+            '....g......g....', '....gg....gg....', '....wwwwkkww....', '....wwwwkkww....',
+            '....wkwwwwkw....', '....wwwwwwww....', '....pppppppp....', '....pkppppkp....',
+            'wwwwwwwwkkkkwwww', 'wwkkwwwwkkkkwwww', 'wwkkwwwwwkkwwwww', 'wwwwwkkwwwwwwwkk',
+            'wwwwwkkwwwwwwwkk', 'wWwwwwwwwkkwwwww', 'wwwwkkwwwkkwwWww', 'wwwwkkwwwwwwwwww',
+            'wWwwwwwwwwwwkkww', 'wwwwwwkkwwwwkkww', 'wwwwwwkkwwwwwwWw', 'wwwwwwwwwwwwwwww',
+            '....wwwwwwww....', '....wwkkwwww....', '....wwkkwwww....', '....wwwwwkkw....',
+            '....wWwwwkkw....', '....wwwwwwww....', '....kkwwwwWw....', '....kkwwwwww....',
+            '....wwwwwwww....', '....wwwwwwww....', '....hhhhhhhh....', '....hhhhhhhh....'], true)
+    ];
+}
+// read-only until the launcher is actually opened: merely loading the desktop
+// must not write launcher keys for someone who never touched Minecraft
+function mcSkins(seed) {
+    var s = mcj('skins', null);
+    if (!s) { s = mcDefaultSkins(); if (seed) mcjSet('skins', s); }
+    return s;
+}
+function mcSkin() {
+    var id = mcj('skin', 'ure-boy'), all = mcSkins(), i;
+    for (i = 0; i < all.length; i++) if (all[i].id === id) return all[i];
+    return all[0];
+}
+function mcSkinSvg(sk, cls) {
+    var pal = mcPalMap(sk.pal), rows = sk.rows;
+    if (sk.model === 'slim') rows = rows.map(function (r, y) {
+        return (y >= 8 && y < 20) ? '.' + r.slice(1, 15) + '.' : r;
+    });
+    return pxSvg(rows, pal, cls || 'mcl-skin');
+}
+function mcFaceSvg(sk, cls) {
+    var pal = mcPalMap(sk.pal);
+    var head = sk.rows.slice(0, 8).map(function (r) { return r.slice(4, 12); });
+    return pxSvg(head, pal, cls || 'mcl-face');
+}
+function mcRegion(x, y) {
+    if (y < 8) return (x >= 4 && x < 12) ? 'head' : null;
+    if (y < 20) { if (x < 4) return 'armL'; if (x >= 12) return 'armR'; return 'body'; }
+    return (x >= 4 && x < 12) ? (x < 8 ? 'legL' : 'legR') : null;
+}
+
+/* —— the Play-tab hero panorama, generated + hand-stamped —— */
+function mcHero() {
+    var W = 112, H = 44, y, x;
+    var pal = {
+        a: '#6f9fe8', A: '#82b0f0', b: '#95bef5', c: '#f4f7fb', s: '#f7ecb0',
+        g: '#7cbd4b', G: '#5da03a', d: '#8a5f3c', D: '#6e4a2c', t: '#7a7a82', T: '#5f5f66',
+        w: '#3b6ed8', W: '#4a82f0', o: '#6b4a2a', l: '#4a9c3a', L: '#5fb54a', p: '#2f6428',
+        r: '#c93a2e', y: '#f0c93a', k: '#4db347', K: '#2f7a2c', E: '#1d1d21',
+        m: '#e8e4dc', M: '#1d1d21', u: '#d88a9a'
+    };
+    var grid = [];
+    for (y = 0; y < H; y++) { grid.push([]); for (x = 0; x < W; x++) grid[y].push(y < 10 ? 'a' : y < 20 ? 'A' : 'b'); }
+    // sun + clouds
+    var stamp = function (sx, sy, rows) {
+        for (var i = 0; i < rows.length; i++) for (var j = 0; j < rows[i].length; j++) {
+            var ch = rows[i].charAt(j);
+            if (ch !== '.' && sy + i >= 0 && sy + i < H && sx + j >= 0 && sx + j < W) grid[sy + i][sx + j] = ch;
+        }
+    };
+    stamp(94, 3, ['ssssss', 'ssssss', 'ssssss', 'ssssss', 'ssssss']);
+    stamp(8, 6, ['..cccccccc..', 'cccccccccccc', 'cccccccccccc']);
+    stamp(46, 4, ['....cccccc', 'cccccccccc', 'ccccccc...']);
+    stamp(74, 9, ['ccccccc', 'ccccccccc']);
+    // terrain: hand-tuned surface heights across 14 control columns, stepped like real chunks
+    var pts = [30, 30, 29, 28, 28, 27, 28, 29, 30, 31, 31, 30, 29, 29];
+    for (x = 0; x < W; x++) {
+        var seg = Math.min(12, Math.floor(x / 8)), h0 = pts[seg], h1 = pts[seg + 1];
+        var top = Math.round(h0 + (h1 - h0) * ((x % 8) / 8));
+        for (y = top; y < H; y++) grid[y][x] = y === top ? 'g' : (y === top + 1 ? 'G' : (y < top + 6 ? (((x * 7 + y * 13) % 5) ? 'd' : 'D') : (((x * 5 + y * 11) % 7) ? 't' : 'T')));
+    }
+    // pond carved into the flat stretch
+    for (x = 84; x < 98; x++) for (y = 31; y < 34; y++) grid[y][x] = (y === 31 && (x % 3 === 0)) ? 'W' : 'w';
+    for (x = 83; x < 99; x++) grid[34][x] = 'd';
+    // oak tree
+    stamp(14, 21, ['..lllll.', '.lllllll', 'lllLllll', 'llllllll', '.llllll.', '...oo...', '...oo...', '...oo...', '...oo...']);
+    // spruce
+    stamp(56, 20, ['....pp....', '...pppp...', '..pppppp..', '...pppp...', '..pppppp..', '.pppppppp.', '....oo....', '....oo....']);
+    // creeper, politely waiting
+    stamp(68, 20, ['kKkkkkKk', 'kEEkkEEk', 'kEEkkEEk', 'kkkEEkkk', 'kkEEEEkk', 'kkEEEEkk', 'kkEkkEkk', 'kKkkkkKk', 'kkkkkkkk', 'kKkkkkKk']);
+    // a cow (of course there is a cow)
+    stamp(34, 23, ['mmmmmm', 'mMMmmm', 'mmmMMm', 'ummmmm', '.m..m.']);
+    // flowers
+    [[6, 'r'], [25, 'y'], [48, 'r'], [52, 'y'], [102, 'y'], [107, 'r']].forEach(function (f) {
+        var fx = f[0], top = 0;
+        for (y = 0; y < H; y++) if (grid[y][fx] === 'g') { top = y; break; }
+        if (top > 1) { grid[top - 1][fx] = f[1]; }
+    });
+    return pxSvg(grid.map(function (row) { return row.join(''); }), pal, 'mcl-hero-art', true);
+}
+
+/* —— rail mini-icons (12×12) —— */
+var MC_RAIL_ART = {
+    java: { p: MC_ICON_PAL, r: ['hghghggghggh', 'gGghgGgghGgg', 'GdGgGdGegGdG', 'dDdedDdedDde', 'eddDeddDeddD', 'dDeddDeddDed', 'ddDeddDeddDe', 'DedDeddDedDd', 'eddDeddDeddD', 'dDeddDeddDed', 'ddDeddDeddDe', 'DedDeddDeddD'] },
+    bedrock: { p: MC_ICON_PAL, r: ['kKssKkKskKsk', 'KskKsKskKsKk', 'sKkKkskKkKks', 'kKsksKkKsKsk', 'KksKkKskKkKs', 'skKkKskKsKkK', 'KkskKkKskKsk', 'kKsKskKkKsKs', 'KskKkKskKksk', 'sKkKskKsKkKs', 'kKskKkKskKsk', 'KsKkskKkKsKk'] },
+    dungeons: { p: { o: '#f0a02a', O: '#d87a1d', k: '#3e2a18', f: '#f4d03a' }, r: ['.....f......', '....ff......', '....ffo.....', '....oo......', '....oo......', '....kk......', '....kk......', '....kk......', '....kk......', '....kk......', '...kkkk.....', '............'] },
+    legends: { p: { b: '#3ab3da', B: '#2a86a5', y: '#f0c93a', k: '#26262b', o: '#a07040' }, r: ['.obbbbbb....', '.obBbbBb....', '.obbyybb....', '.obyyyyb....', '.obbyybb....', '.obBbbBb....', '.obbbbbb....', '.obbbbB.....', '.obbbB......', '.o..........', '.o..........', '.o..........'] },
+    education: { p: { r: '#c93a2e', R: '#a02620', g: '#5da03a', o: '#6b4a2a' }, r: ['......g.....', '.....gg.....', '....o.......', '..rrrrrr....', '.rrrrrrrr...', '.rrRrrrrr...', '.rrrrrrRr...', '.rrrrrrrr...', '..rrrrrr....', '...rrrr.....', '............', '............'] }
+};
+var MC_GAMES = [
+    { id: 'java', top: 'MINECRAFT:', sub: 'Java Edition' },
+    { id: 'bedrock', top: 'MINECRAFT', sub: 'for Windows' },
+    { id: 'dungeons', top: 'MINECRAFT', sub: 'Dungeons' },
+    { id: 'legends', top: 'MINECRAFT', sub: 'Legends' },
+    { id: 'education', top: 'MINECRAFT', sub: 'Education' }
+];
+
+/* —— installations + settings state —— */
+function mcSeedInst() {
+    return [
+        { id: 'latest-release', n: 'Latest release', icon: 'grass', v: 'latest-release', builtin: 1 },
+        { id: 'latest-snapshot', n: 'Latest snapshot', icon: 'crafting', v: 'latest-snapshot', builtin: 1 }
+    ];
+}
+function mcInst(seed) { var s = mcj('inst', null); if (!s) { s = mcSeedInst(); if (seed) mcjSet('inst', s); } return s; }
+function mcSet() { return mcj('set', { keepOpen: true, openLog: false, snapshots: false, animArt: true }); }
+function mcVisibleInst() {
+    var snaps = mcSet().snapshots;
+    return mcInst().filter(function (i) { return snaps || i.id !== 'latest-snapshot'; });
+}
+function mcSelInst() {
+    var id = mcj('sel', 'latest-release'), list = mcVisibleInst(), i;
+    for (i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
+    return list[0];
+}
+
+/* —— .minecraft in the real (sim) file system —— */
+// a launcher-owned text file, wired into the machine's own content store (TXT) so it
+// opens through the real Explorer→Notepad path like any other file. Content is live:
+// mcSyncFS rewrites TXT[cid] each time, so the file always shows current launcher state.
+function mcDoc(name, text, size) {
+    var cid = 'mc:' + name;
+    TXT[cid] = text;
+    var ext = extOf(name), t = EXT_T[ext] || 'file';
+    return { n: name, t: t, cid: cid, size: size || fmtKb(Math.max(1, text.length / 1024)), date: mcj('installed', '7/9/2026 1:04 PM') };
+}
+function mcProfilesText() {
+    var out = { profiles: {}, settings: { crashAssistance: false, enableSnapshots: mcSet().snapshots, keepLauncherOpen: mcSet().keepOpen, showGameLog: mcSet().openLog }, version: 3 };
+    mcInst().forEach(function (i) {
+        out.profiles[i.id] = { name: i.n, type: i.builtin ? i.id : 'custom', icon: i.icon, lastVersionId: i.v, created: i.created || '2026-07-09T13:04:00Z', lastUsed: i.lastUsed || '' };
+    });
+    return JSON.stringify(out, null, 2);
+}
+function mcOptionsText() {
+    return ['version:4189', 'lang:en_us', 'fov:0.0', 'gamma:0.5', 'guiScale:0', 'renderDistance:12',
+        'soundCategory_master:1.0', 'soundCategory_music:0.6', 'fullscreen:false', 'enableVsync:true',
+        'difficulty:2', 'skin:' + mcSkin().id, 'pixelsAlreadyPerfect:true'].join('\n');
+}
+var MC_MCDIR = 'C:\\Users\\isaac\\AppData\\Roaming\\.minecraft';
+// worlds + screenshots inherited from the machine's past (the lore #73 authored here).
+// Seeded once into the live saves/screenshots; the game may add to or replace them.
+function mcSeedSaves() {
+    var worlds = [
+        { n: 'world', region: ['r.0.0.mca', 'r.-1.0.mca'], icon: 1 },
+        { n: 'world (1)', region: ['r.0.0.mca'], icon: 0 },
+        { n: 'SMP with malachi', region: ['r.0.0.mca', 'r.0.-1.mca'], icon: 1 },
+        { n: 'creative flat test', region: [], icon: 0 }
+    ];
+    FS['.minecraft/saves'] = { items: worlds.map(function (w) { return { n: w.n, t: 'folder', go: '.minecraft/saves/' + w.n }; }),
+        empty: 'No worlds yet.' };
+    worlds.forEach(function (w) {
+        var it = [{ n: 'level.dat', t: 'sys', size: '92 KB' }];
+        if (w.region.length) it.push({ n: 'region', t: 'folder', go: '.minecraft/saves/' + w.n + '/region' });
+        if (w.icon) it.push({ n: 'icon.png', t: 'img', size: '3 KB' });
+        FS['.minecraft/saves/' + w.n] = { items: it, empty: '' };
+        if (w.region.length) FS['.minecraft/saves/' + w.n + '/region'] = {
+            items: w.region.map(function (r) { return { n: r, t: 'sys', size: fmtKb(900 + fsHash(w.n + r) % 3300) }; }), empty: '' };
+    });
+}
+function mcSeedShots() {
+    FS['.minecraft/screenshots'] = { items: ['2019-06-14_20.41.05.png', '2019-07-02_23.58.11.png', '2020-03-19_01.12.44.png']
+        .map(function (n) { return { n: n, t: 'img', size: fmtKb(600 + fsHash(n) % 3200) }; }), empty: 'F2 in game takes a screenshot. These are from the before times.' };
+}
+function mcSyncFS() {
+    var dl = mcj('dl', []), crashes = mcj('crash', []), log = mcj('log', null);
+    var items = [
+        { n: 'saves', t: 'folder', go: '.minecraft/saves' },
+        { n: 'resourcepacks', t: 'folder', go: '.minecraft/resourcepacks' },
+        { n: 'screenshots', t: 'folder', go: '.minecraft/screenshots' },
+        { n: 'versions', t: 'folder', go: '.minecraft/versions' },
+        { n: 'logs', t: 'folder', go: '.minecraft/logs' }
+    ];
+    if (crashes.length) items.push({ n: 'crash-reports', t: 'folder', go: '.minecraft/crash-reports' });
+    items.push(mcDoc('launcher_profiles.json', mcProfilesText(), '2 KB'));
+    items.push(mcDoc('options.txt', mcOptionsText(), '1 KB'));
+    // this IS the canonical .minecraft — junctioned from C:\Users\isaac\AppData\Roaming
+    FS['.minecraft'] = { items: items, empty: '', label: MC_MCDIR,
+        crumb: [['This PC', 'This PC'], ['Local Disk (C:)', 'C:'], ['Users', 'C:/Users'], ['isaac', 'C:/Users/isaac'],
+            ['AppData', 'C:/Users/isaac/AppData'], ['Roaming', 'C:/Users/isaac/AppData/Roaming'], ['.minecraft', '.minecraft']],
+        parent: 'C:/Users/isaac/AppData/Roaming' };
+    if (!FS['.minecraft/saves']) mcSeedSaves();      // worlds carried over from the machine's history (honoring #73's lore)
+    if (!FS['.minecraft/resourcepacks']) FS['.minecraft/resourcepacks'] = { items: [], empty: 'Drop resource packs here. These pixels are already pretty packed, though.' };
+    if (!FS['.minecraft/screenshots']) mcSeedShots();
+    FS['.minecraft/versions'] = {
+        items: dl.map(function (v) { return { n: v, t: 'folder', go: '.minecraft/versions/' + v }; }),
+        empty: 'Versions download themselves the first time you press PLAY.'
+    };
+    // drop folder keys for versions no longer downloaded, so a parked Explorer
+    // doesn't keep showing a version the launcher just wiped
+    Object.keys(FS).forEach(function (k) {
+        if (k.indexOf('.minecraft/versions/') === 0 && dl.indexOf(k.slice(20)) < 0) delete FS[k];
+    });
+    dl.forEach(function (v) {
+        FS['.minecraft/versions/' + v] = { items: [
+            { n: v + '.jar', t: 'mcjar', size: mcJarSize(v), date: mcj('dld_' + v, dlStamp()) },
+            mcDoc(v + '.json', mcVerJson(v), '38 KB')
+        ], empty: '' };
+    });
+    FS['.minecraft/logs'] = {
+        items: log ? [mcDoc('latest.log', log.text, '4 KB')] : [],
+        empty: 'Logs show up after a launch. So far: silence.'
+    };
+    FS['.minecraft/crash-reports'] = {
+        items: crashes.map(function (c) { return mcDoc(c.n, c.text, '6 KB'); }),
+        empty: 'No crashes. Suspicious.'
+    };
+    // every .minecraft subfolder points up at its parent key, so Explorer's ↑ climbs the tree
+    Object.keys(FS).forEach(function (k) {
+        if (k.indexOf('.minecraft/') === 0) FS[k].parent = k.slice(0, k.lastIndexOf('/'));
+    });
+    fsIndex('.minecraft');   // register the canonical path so it resolves in the address bar / dev hooks
+    refreshFileViews();
+}
+function mcUntomb(path, name) {
+    var st = fsLoad(), k = path + '/' + name, i = st.gone.indexOf(k);
+    if (i >= 0) { st.gone.splice(i, 1); fsSave(); }
+}
+// Deleting a launcher-owned file tombstones it by name, and mcSyncFS regenerates
+// the same names — so anything the launcher REWRITES must lift its tombstone or
+// the file is gone for good while the launcher swears it wrote it. Only on real
+// writes, never at boot: a reload must not undo a delete still sitting in the bin.
+function mcUntombAll(path) {
+    var f = FS[path]; if (!f) return;
+    f.items.forEach(function (it) { if (!it.go) mcUntomb(path, it.n); });
+}
+function mcIsMcPath(k) { return k === '.minecraft' || k.indexOf('.minecraft/') === 0; }
+function mcClearTombs() {
+    // "rebuilt" means the folder's own contents: lift launcher tombstones, drop files
+    // dragged in, and forget bin entries from it. The Home LISTING row (which the user
+    // may have renamed) is left alone — that's their layout choice, not launcher data.
+    var st = fsLoad();
+    st.gone = st.gone.filter(function (k) { return !mcIsMcPath(k); });
+    st.bin = st.bin.filter(function (e) { return !mcIsMcPath(String(e.from)); });
+    Object.keys(st.add).forEach(function (p) { if (mcIsMcPath(p)) delete st.add[p]; });
+    fsSave();
+}
+// "verify" earns its name: if you deleted the jar, the launcher notices and re-fetches it
+function mcJarOnDisk(v) { return !!FS['.minecraft/versions/' + v] && fsHas('.minecraft/versions/' + v, v + '.jar'); }
+function mcStopRun() {
+    if (!MC || !MC.run) return;
+    if (MC.run.timer) clearInterval(MC.run.timer);
+    MC.run = null;   // also disarms the pending launch timeout, which checks MC.run === r
+}
+
+/* —— the launch pipeline: download → launch → hand off to the game (or crash honestly) —— */
+function mcLogText(v, ok) {
+    var n = new Date();
+    // offsets roll through minutes AND hours — a launch at 10:59:58 logged 10:00:02 before
+    function t(off) {
+        var d = new Date(n.getTime() + off * 1000), p = function (x) { return ('0' + x).slice(-2); };
+        return '[' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()) + '] ';
+    }
+    var lines = [
+        t(0) + '[main/INFO]: Setting user: isaacure',
+        t(0) + '[main/INFO]: Loading Minecraft ' + v + ' with URE Launcher 2.29.1',
+        t(1) + '[main/INFO]: Environment: UreOS 11 (Pixel Edition), Java 21.0.3',
+        t(1) + '[Render thread/INFO]: Backend library: LWJGL version 3.3.3',
+        t(2) + '[Render thread/INFO]: Reticulating pixel splines',
+        t(2) + '[Render thread/INFO]: Found 512 assets, all of them square'
+    ];
+    if (ok) {
+        lines.push(t(3) + '[Render thread/INFO]: Sound engine started');
+        lines.push(t(3) + '[Render thread/INFO]: Created: 1024x512 textures-atlas');
+        lines.push(t(4) + '[Render thread/INFO]: Setting screen: title. Have fun.');
+    } else {
+        lines.push(t(3) + '[Render thread/ERROR]: Unable to locate net.minecraft.client.main.Main');
+        lines.push(t(3) + '[Render thread/ERROR]: java.lang.ClassNotFoundException: net.minecraft.client.main.Main');
+        lines.push(t(4) + '[Render thread/FATAL]: The game quit before it existed. Crash report saved.');
+    }
+    return lines.join('\n');
+}
+function mcCrashText(v, when) {
+    return ['---- Minecraft Crash Report ----',
+        '// I just don\'t know what went wrong :(', '',
+        'Time: ' + when,
+        'Description: Initializing game', '',
+        'java.lang.ClassNotFoundException: net.minecraft.client.main.Main',
+        '\tat java.base/jdk.internal.loader.BuiltinClassLoader.loadClass(BuiltinClassLoader.java:641)',
+        '\tat ureos.launcher.GameLoader.boot(GameLoader.java:52)',
+        '\tat ureos.launcher.Main.run(Main.java:29)', '',
+        '// The launcher is finished. The game is being built in another window.',
+        '// Until it ships, this crash is the most honest thing on the machine.', '',
+        '-- System Details --',
+        '\tMinecraft Version: ' + v,
+        '\tOperating System: UreOS 11 (Pixel Edition)',
+        '\tJava Version: 21.0.3',
+        '\tMemory: 2048 MB allocated, most of it pixels',
+        '\tLauncher: URE Launcher 2.29.1',
+        '\tGPU: Integrated Bloom Renderer (wallpaper-class)'].join('\n');
+}
+function mcPlay() {
+    if (!MC || MC.run || MC.signedOut) return;   // Alt+P must respect the sign-in gate the UI enforces
+    var inst = mcSelInst(); if (!inst) return;
+    var v = mcResolveVer(inst.v);
+    var dl = mcj('dl', []), need = dl.indexOf(v) < 0 || !mcJarOnDisk(v);   // a deleted jar is a missing jar
+    var size = mcJarSize(v);
+    MC.crashed = null;
+    MC.run = { phase: need ? 'fetch' : 'verify', pct: 0, v: v, inst: inst,
+        mb: (parseFloat(size) || 26.8), unit: /KB/.test(size) ? 'KB' : 'MB' };
+    inst.lastUsed = dlStamp();
+    mcjSet('inst', mcInst().map(function (i) { return i.id === inst.id ? inst : i; }));
+    var step = reduce ? 22 : (need ? 4.5 : 16);
+    MC.run.timer = setInterval(function () {
+        var r = MC.run; if (!r) return;
+        r.pct += step * (0.6 + Math.random() * 0.8);
+        if (r.pct >= 100) {
+            r.pct = 100;
+            if (r.phase === 'fetch' || r.phase === 'verify') {
+                if (r.phase === 'fetch') {
+                    var list = mcj('dl', []);
+                    if (list.indexOf(r.v) < 0) { list.push(r.v); mcjSet('dl', list); }
+                    store('mc_dld_' + r.v, JSON.stringify(dlStamp()));
+                    mcSyncFS();
+                    mcUntombAll('.minecraft/versions/' + r.v);   // a re-download really does put the jar back
+                    mcUntomb('.minecraft', 'versions');
+                    refreshFileViews();
+                }
+                r.phase = 'launch'; r.pct = 0;
+                setTimeout(function () { if (MC && MC.run === r) mcLaunchDone(r); }, reduce ? 120 : 1300);
+                clearInterval(r.timer); r.timer = null;
+                mcPaintPlay();
+                return;
+            }
+        }
+        mcPaintPlay();
+    }, reduce ? 40 : 90);
+    mcPaintPlay();
+}
+function mcLaunchDone(r) {
+    var ok = !!APPS.minecraft;
+    mcjSet('log', { text: mcLogText(r.v, ok), v: r.v });
+    mcSyncFS();
+    mcUntomb('.minecraft/logs', 'latest.log'); mcUntomb('.minecraft', 'logs');
+    mcUntomb('.minecraft', 'launcher_profiles.json');   // lastUsed just changed, so the file was rewritten
+    refreshFileViews();
+    MC.run = null;
+    if (mcSet().openLog) openApp('notepad', { file: { n: 'latest.log', body: mcj('log', { text: '' }).text } });
+    if (ok) {
+        // THE SEAM — the game chat's app takes it from here
+        openApp('minecraft', { version: r.v, installation: r.inst.n, skin: mcSkin() });
+        toast('Launching Minecraft ' + r.v + '…');
+        if (!mcSet().keepOpen && openWins.mclauncher) minWin('mclauncher');
+        mcPaintPlay();
+        return;
+    }
+    var when = dlStamp(), n = new Date();
+    var stem = 'crash-' + n.getFullYear() + '-' + ('0' + (n.getMonth() + 1)).slice(-2) + '-' + ('0' + n.getDate()).slice(-2) +
+        '_' + ('0' + n.getHours()).slice(-2) + '.' + ('0' + n.getMinutes()).slice(-2) + '.' + ('0' + n.getSeconds()).slice(-2) + '-client';
+    var crashes = mcj('crash', []), fname = stem + '.txt';
+    for (var ci = 2; crashes.some(function (c) { return c.n === fname; }); ci++) fname = stem + ' (' + ci + ').txt';   // two crashes can share a second
+    crashes.unshift({ n: fname, text: mcCrashText(r.v, when) });
+    if (crashes.length > 3) crashes.length = 3;
+    mcjSet('crash', crashes);
+    mcSyncFS();
+    mcUntomb('.minecraft', 'crash-reports');
+    refreshFileViews();
+    MC.crashed = fname;
+    // the crash strip lives outside the play slot, so this needs the full page back
+    if (MC.tab === 'play' && MC.game === 'java' && !MC.signedOut) mcPage(); else mcPaintPlay();
+    dlgOpen('Minecraft: Java Edition', '<p class="dlg-msg"><b>The game crashed!</b></p>' +
+        '<p class="dlg-msg">Exit code: 1</p>' +
+        '<p class="dlg-msg" style="opacity:.75">java.lang.ClassNotFoundException: net.minecraft.client.main.Main<br>' +
+        'A crash report was saved to ' + MC_MCDIR + '\\crash-reports\\' + esc(fname) + '</p>', [
+        ['Open crash report', 'primary', function () { openApp('notepad', { file: { n: fname, body: mcCrashText(r.v, when) } }); }],
+        ['Close', '', null]
+    ]);
+}
+
+/* —— rendering: shell, then one page at a time into .mcl-main —— */
+function renderMC(id, arg) {
+    return '<div class="mcl"><aside class="mcl-rail">' +
+        '<button class="mcl-acct" type="button" data-mca="acct" aria-haspopup="menu">' + mcFaceSvg(mcSkin()) +
+            '<span class="mcl-acct-name">isaacure</span><b class="mcl-caret">▾</b></button>' +
+        '<nav class="mcl-games" aria-label="Games">' + MC_GAMES.map(function (g) {
+            return '<button class="mcl-game" type="button" data-mcg="' + g.id + '">' +
+                pxSvg(MC_RAIL_ART[g.id].r, MC_RAIL_ART[g.id].p, 'mcl-rail-ic') +
+                '<span><b>' + g.top + '</b><i>' + g.sub + '</i></span></button>';
+        }).join('') + '</nav>' +
+        '<button class="mcl-game mcl-rail-set" type="button" data-mcg="lsettings">' + ic('ic-settings') + '<span><b>Settings</b></span></button>' +
+        '</aside><div class="mcl-main"></div></div>';
+}
+/* Dialogs outlive the window that opened them: the user can close the launcher
+   while a confirm is up, and the callback still fires. Every launcher dialog
+   callback goes through this, so a dead MC means the answer is simply dropped —
+   and a REOPENED launcher is a different instance, so its stale confirm is dropped
+   too (else a "Delete?" from the closed session would hit the fresh one). */
+function mcLive(fn) { var owner = MC; return function () { if (MC && MC === owner) fn(); }; }
+
+function mcGo(tab) {
+    if (!MC) return;
+    if (MC.skinEdit && MC.skinEdit.dirty && tab !== 'skins') {
+        var t2 = tab;
+        dlgConfirm('Discard skin?', 'The skin editor has unsaved pixels.', 'Discard', mcLive(function () { MC.skinEdit = null; mcGo(t2); }));
+        return;
+    }
+    if (tab !== 'skins') MC.skinEdit = null;
+    MC.tab = tab; mcPage();
+}
+function mcGame(g) {
+    if (!MC) return;
+    MC.game = g; MC.pop = null;
+    if (g === 'java' && !MC.tab) MC.tab = 'play';
+    mcPage();
+}
+function mcPage() {
+    if (!MC) return;
+    mcCloseMenu();                               // a menu must never outlive the page it was opened from
+    var main = MC.el.querySelector('.mcl-main'); if (!main) return;
+    var fresh = main.cloneNode(false);           // listeners never stack — lesson learned in Chrome (#62)
+    main.replaceWith(fresh); main = fresh;
+    MC.el.querySelectorAll('.mcl-game').forEach(function (b) {
+        b.classList.toggle('sel', b.getAttribute('data-mcg') === (MC.game === 'lsettings' ? 'lsettings' : MC.game));
+    });
+    if (MC.signedOut) main.innerHTML = mcSignIn();
+    else if (MC.game === 'java') main.innerHTML = mcJavaPage();
+    else if (MC.game === 'lsettings') main.innerHTML = mcSettingsPage();
+    else main.innerHTML = mcOtherGame(MC.game);
+    if (MC.skinEdit) mcWireEditor(main);
+    var body = main.querySelector('.mcl-body');
+    if (body && MC.scroll && MC.scroll[MC.game + ':' + MC.tab]) body.scrollTop = MC.scroll[MC.game + ':' + MC.tab];
+    if (find.appId === 'mclauncher' && findOpenNow()) runFind();
+}
+function mcTabsBar() {
+    var tabs = [['play', 'Play'], ['installations', 'Installations'], ['skins', 'Skins'], ['notes', 'Patch Notes']];
+    return '<div class="mcl-tabs" role="tablist">' + tabs.map(function (t) {
+        return '<button class="mcl-tab' + (MC.tab === t[0] ? ' sel' : '') + '" type="button" role="tab" data-mct="' + t[0] + '" aria-selected="' + (MC.tab === t[0]) + '">' + t[1] + '</button>';
+    }).join('') + '</div>';
+}
+function mcJavaPage() {
+    var head = '<header class="mcl-head"><span class="mcl-head-title">Minecraft: Java Edition</span>' + mcTabsBar() + '</header>';
+    if (MC.tab === 'installations') return head + mcInstPage();
+    if (MC.tab === 'skins') return head + mcSkinsPage();
+    if (MC.tab === 'notes') return head + mcNotesPage();
+    return head + mcPlayPage();
+}
+
+/* —— Play tab —— */
+function mcPlayPage() {
+    var inst = mcSelInst(), v = mcResolveVer(inst.v), vi = mcVer(v);
+    var crash = MC.crashed ? '<div class="mcl-crashbar"><span>Minecraft: Java Edition just crashed. It left a note.</span>' +
+        '<button class="mcl-linkbtn" type="button" data-mca="crashlog">View crash report</button>' +
+        '<button class="mcl-crashx" type="button" data-mca="crashx" aria-label="Dismiss">✕</button></div>' : '';
+    return '<div class="mcl-body mcl-playwrap">' +
+        '<div class="mcl-hero' + (mcSet().animArt && !reduce ? ' anim' : '') + '">' + mcHero() +
+            '<div class="mcl-logo"><span class="mcl-logotype">MINECRAFT</span><span class="mcl-edition">JAVA EDITION</span></div>' +
+        '</div>' + crash +
+        '<div class="mcl-playbar">' +
+            '<button class="mcl-instsel" type="button" data-mca="instpick" aria-haspopup="listbox">' +
+                mcBlockIcon(inst.icon) + '<span class="mcl-instsel-tx"><b>' + esc(inst.n) + '</b>' +
+                '<i>' + esc(v + (vi && vi.n ? ' · ' + vi.n : '')) + '</i></span><b class="mcl-caret">▾</b></button>' +
+            '<div class="mcl-playslot">' + mcPlayBtnHtml() + '</div>' +
+            '<div class="mcl-playwho">' + mcFaceSvg(mcSkin()) + '<span>isaacure</span></div>' +
+        '</div></div>';
+}
+function mcPlayBtnHtml() {
+    var r = MC.run;
+    if (!r) return '<button class="mcl-play" type="button" data-mca="play">PLAY</button>';
+    var label = r.phase === 'launch' ? 'LAUNCHING…' :
+        (r.phase === 'verify' ? 'VERIFYING… ' + Math.floor(r.pct) + '%' :
+        'DOWNLOADING ' + Math.floor(r.pct) + '%');
+    var u = r.unit || 'MB';
+    var sub = r.phase === 'fetch' ? '<i>' + (r.mb * r.pct / 100).toFixed(1) + ' ' + u + ' / ' + r.mb.toFixed(1) + ' ' + u + '</i>' : '';
+    return '<div class="mcl-play dl"><span class="mcl-playfill" style="width:' + (r.phase === 'launch' ? 100 : r.pct) + '%"></span><span class="mcl-playtx">' + label + sub + '</span></div>';
+}
+function mcPaintPlay() {
+    if (!MC || MC.signedOut) return;   // no play slot behind the sign-in page: the fallback would re-render every tick
+    var slot = MC.el.querySelector('.mcl-playslot');
+    if (slot) slot.innerHTML = mcPlayBtnHtml();
+    else if (MC.tab === 'play' && MC.game === 'java') mcPage();
+}
+
+/* —— Installations tab —— */
+function mcInstPage() {
+    if (MC.edit) return mcInstForm();
+    var q = (MC.instQ || '').toLowerCase();
+    var list = mcVisibleInst().filter(function (i) { return !q || i.n.toLowerCase().indexOf(q) >= 0; });
+    return '<div class="mcl-body"><div class="mcl-toolbar">' +
+        '<input class="mcl-search" type="text" data-mcin="instq" placeholder="Search installations" value="' + esc(MC.instQ || '') + '" spellcheck="false">' +
+        '<button class="mcl-btn" type="button" data-mca="openmc" title="Open .minecraft">' + ic('ic-folder') + '</button>' +
+        '<button class="mcl-btn green" type="button" data-mca="newinst">New installation</button></div>' +
+        // the list host is ALWAYS present so live filtering can hide/show rows in place
+        // (a full re-render would steal focus from the search box the user is typing in)
+        '<div class="mcl-instlist">' + list.map(function (i) {
+            var v = mcResolveVer(i.v), dl = mcj('dl', []).indexOf(v) >= 0;
+            return '<div class="mcl-inst" data-inst="' + esc(i.id) + '">' + mcBlockIcon(i.icon) +
+                '<span class="mcl-inst-tx"><b>' + esc(i.n) + '</b><i>' + esc(v) + (dl ? '' : ' · not downloaded') + (i.lastUsed ? ' · played ' + esc(i.lastUsed) : '') + '</i></span>' +
+                '<span class="mcl-inst-acts">' +
+                '<button class="mcl-btn sm" type="button" data-mca="instdir" data-id="' + esc(i.id) + '" title="Open folder">' + ic('ic-folder') + '</button>' +
+                '<button class="mcl-btn sm green" type="button" data-mca="instplay" data-id="' + esc(i.id) + '">Play</button>' +
+                '<button class="mcl-btn sm" type="button" data-mca="instmenu" data-id="' + esc(i.id) + '" aria-haspopup="menu">⋮</button>' +
+                '</span></div>';
+        }).join('') + '</div>' +
+        '<p class="mcl-emptymsg"' + (list.length ? ' hidden' : '') + '>Nothing matches. The versions are all still there, promise.</p>' +
+        '</div>';
+}
+function mcInstForm() {
+    var e = MC.edit, isNew = !e.id;
+    var vers = MC_VERS.filter(function (v) {
+        if (v.t === 'snapshot' && !mcSet().snapshots && e.v !== v.id) return false;
+        return true;
+    });
+    var groups = [['release', 'Releases'], ['snapshot', 'Snapshots'], ['beta', 'Old Beta'], ['alpha', 'Old Alpha'], ['fools', 'April Fools']];
+    return '<div class="mcl-body mcl-form"><h2>' + (isNew ? 'Create new installation' : 'Edit installation') + '</h2>' +
+        '<label class="mcl-field"><span>Name</span><input class="mcl-input" type="text" data-mcin="instname" maxlength="40" placeholder="unnamed installation" value="' + esc(e.n || '') + '" spellcheck="false"></label>' +
+        '<div class="mcl-field"><span>Icon</span><div class="mcl-iconrow">' +
+            '<button class="mcl-iconcur" type="button" data-mca="iconpick">' + mcBlockIcon(e.icon) + '<b class="mcl-caret">▾</b></button>' +
+            (MC.pop === 'icons' ? '<div class="mcl-icongrid">' + MC_ICON_ORDER.map(function (k) {
+                return '<button class="mcl-iconopt' + (k === e.icon ? ' sel' : '') + '" type="button" data-mca="iconset" data-id="' + k + '">' + mcBlockIcon(k) + '</button>';
+            }).join('') + '</div>' : '') + '</div></div>' +
+        '<div class="mcl-field"><span>Version</span><div class="mcl-iconrow">' +
+            '<button class="mcl-versel" type="button" data-mca="verpick">' + esc(mcVerLabel(e.v)) + '<b class="mcl-caret">▾</b></button>' +
+            (MC.pop === 'vers' ? '<div class="mcl-verlist" role="listbox">' +
+                '<button class="mcl-veropt' + (e.v === 'latest-release' ? ' sel' : '') + '" type="button" data-mca="verset" data-id="latest-release">Latest release (' + esc(mcLatest('release')) + ')</button>' +
+                (mcSet().snapshots ? '<button class="mcl-veropt' + (e.v === 'latest-snapshot' ? ' sel' : '') + '" type="button" data-mca="verset" data-id="latest-snapshot">Latest snapshot (' + esc(mcLatest('snapshot')) + ')</button>' : '') +
+                groups.map(function (g) {
+                    var vs = vers.filter(function (v) { return v.t === g[0]; });
+                    if (!vs.length) return '';
+                    return '<div class="mcl-vergroup">' + g[1] + '</div>' + vs.map(function (v) {
+                        return '<button class="mcl-veropt' + (e.v === v.id ? ' sel' : '') + '" type="button" data-mca="verset" data-id="' + esc(v.id) + '">' + esc(v.id) + '<i>' + esc(v.d) + '</i></button>';
+                    }).join('');
+                }).join('') + '</div>' : '') + '</div></div>' +
+        '<details class="mcl-more"><summary>More options</summary>' +
+            '<label class="mcl-field"><span>Game directory</span><input class="mcl-input" type="text" data-mcin="instdir" value="' + esc(e.dir || MC_MCDIR) + '" spellcheck="false"></label>' +
+            '<label class="mcl-field"><span>JVM arguments</span><input class="mcl-input" type="text" data-mcin="instjvm" value="' + esc(e.jvm || '-Xmx2G -XX:+UseG1GC') + '" spellcheck="false"></label>' +
+        '</details>' +
+        '<div class="mcl-formbtns"><button class="mcl-btn" type="button" data-mca="instcancel">Cancel</button>' +
+        '<button class="mcl-btn green" type="button" data-mca="instsave">' + (isNew ? 'Create' : 'Save') + '</button></div></div>';
+}
+function mcVerLabel(v) {
+    if (v === 'latest-release') return 'Latest release (' + mcLatest('release') + ')';
+    if (v === 'latest-snapshot') return 'Latest snapshot (' + mcLatest('snapshot') + ')';
+    return v;
+}
+
+/* —— Skins tab + editor —— */
+var MC_PALETTE = ['#f9fffe', '#c7c7c7', '#9d9d97', '#6e6e6e', '#474f52', '#1d1d21',
+    '#b02e26', '#d81e05', '#f9801d', '#ffd83d', '#80c71f', '#5e7c16', '#3a8a30',
+    '#169c9c', '#3ab3da', '#3c44aa', '#4a3fb0', '#8932b8', '#c74ebd', '#f38baa',
+    '#835432', '#5a3d24', '#2b1c10', '#bd8b72', '#e3b18a', '#d9a877', '#a5735c', '#00a8a8'];
+function mcSkinsPage() {
+    if (MC.skinEdit) return mcEditorPage();
+    var active = mcSkin().id;
+    return '<div class="mcl-body"><div class="mcl-toolbar"><span class="mcl-tbtitle">Skin library</span>' +
+        '<button class="mcl-btn green" type="button" data-mca="newskin">New skin</button></div>' +
+        '<div class="mcl-skingrid">' + mcSkins().map(function (s) {
+            return '<div class="mcl-skincard' + (s.id === active ? ' active' : '') + '" data-skin="' + esc(s.id) + '">' +
+                '<div class="mcl-skinstage">' + mcSkinSvg(s) + (s.id === active ? '<span class="mcl-skinuse-on">ACTIVE</span>' : '') + '</div>' +
+                '<div class="mcl-skinmeta"><b>' + esc(s.n) + '</b><i>' + (s.model === 'slim' ? 'Slim' : 'Classic') + '</i></div>' +
+                '<div class="mcl-skinacts">' +
+                (s.id === active ? '' : '<button class="mcl-btn sm green" type="button" data-mca="skinuse" data-id="' + esc(s.id) + '">Use</button>') +
+                '<button class="mcl-btn sm" type="button" data-mca="skinmenu" data-id="' + esc(s.id) + '" aria-haspopup="menu">⋮</button>' +
+                '</div></div>';
+        }).join('') + '</div></div>';
+}
+function mcNewSkinData(from) {
+    var base = from || mcSkins()[0];
+    return { id: null, n: from ? 'Copy of ' + from.n : 'New skin', model: base.model,
+        pal: base.pal.slice(), rows: base.rows.slice(), dirty: false,
+        tool: 'pencil', color: '#d81e05', mirror: true, undo: [] };
+}
+function mcEditorPage() {
+    var e = MC.skinEdit;
+    return '<div class="mcl-body mcl-editor">' +
+        '<div class="mcl-edtop">' +
+            '<input class="mcl-input mcl-edname" type="text" data-mcin="skinname" maxlength="32" value="' + esc(e.n) + '" spellcheck="false">' +
+            '<div class="mcl-edmodel"><button class="mcl-btn sm' + (e.model === 'classic' ? ' green' : '') + '" type="button" data-mca="model" data-id="classic">Classic</button>' +
+            '<button class="mcl-btn sm' + (e.model === 'slim' ? ' green' : '') + '" type="button" data-mca="model" data-id="slim">Slim</button></div>' +
+            '<span class="mcl-edsp"></span>' +
+            '<button class="mcl-btn" type="button" data-mca="edcancel">Cancel</button>' +
+            '<button class="mcl-btn green" type="button" data-mca="edsave">Save skin</button></div>' +
+        '<div class="mcl-edwrap">' +
+            '<div class="mcl-edcanvas"><canvas class="mcl-edc" width="224" height="448"></canvas></div>' +
+            '<div class="mcl-edside">' +
+                '<div class="mcl-edtools">' + [['pencil', '✏'], ['eraser', '⬜'], ['fill', '🪣'], ['pick', '💉']].map(function (t) {
+                    return '<button class="mcl-tool' + (e.tool === t[0] ? ' sel' : '') + '" type="button" data-mca="tool" data-id="' + t[0] + '" title="' + t[0] + '">' + t[1] + '</button>';
+                }).join('') +
+                '<button class="mcl-tool' + (e.mirror ? ' sel' : '') + '" type="button" data-mca="mirror" title="Mirror painting">⇄</button>' +
+                '<button class="mcl-tool" type="button" data-mca="edundo" title="Undo">↶</button></div>' +
+                '<div class="mcl-edpal">' + MC_PALETTE.map(function (c) {
+                    return '<button class="mcl-swatch' + (e.color === c ? ' sel' : '') + '" type="button" data-mca="swatch" data-id="' + c + '" style="background:' + c + '" aria-label="' + c + '"></button>';
+                }).join('') + '</div>' +
+                '<div class="mcl-edprev">' + mcSkinSvg({ pal: e.pal, rows: e.rows, model: e.model }) + '</div>' +
+            '</div></div></div>';
+}
+function mcEdColorAt(e, x, y) {
+    var ch = e.rows[y].charAt(x);
+    return ch === '.' ? null : e.pal[MC_CHARS.indexOf(ch)] || null;
+}
+function mcEdSetPx(e, x, y, color) {
+    if (!mcRegion(x, y)) return false;
+    if (e.model === 'slim' && y >= 8 && y < 20 && (x === 0 || x === 15)) return false;
+    var ch = '.';
+    if (color) {
+        var i = e.pal.indexOf(color);
+        if (i < 0) {
+            if (e.pal.length >= MC_CHARS.length) { toast('This skin has hit ' + MC_CHARS.length + ' colors. Even wool stops at 16.'); return false; }
+            e.pal.push(color); i = e.pal.length - 1;
+        }
+        ch = MC_CHARS.charAt(i);
+    }
+    if (e.rows[y].charAt(x) === ch) return false;
+    e.rows[y] = e.rows[y].slice(0, x) + ch + e.rows[y].slice(x + 1);
+    return true;
+}
+function mcEdFill(e, x, y, color) {
+    var target = mcEdColorAt(e, x, y), region = mcRegion(x, y);
+    if (!region || target === color) return false;
+    var q = [[x, y]], seen = {}, n = 0, changed = false;
+    while (q.length && n++ < 600) {
+        var c = q.pop(), cx = c[0], cy = c[1], k = cx + ',' + cy;
+        if (seen[k] || cx < 0 || cx > 15 || cy < 0 || cy > 31) continue;
+        seen[k] = 1;
+        if (mcRegion(cx, cy) !== region || mcEdColorAt(e, cx, cy) !== target) continue;
+        if (mcEdSetPx(e, cx, cy, color)) changed = true;
+        q.push([cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]);
+    }
+    return changed;
+}
+function mcEdPaint(cv) {
+    var e = MC.skinEdit, ctx = cv.getContext('2d'), s = 14, x, y;
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    for (y = 0; y < 32; y++) for (x = 0; x < 16; x++) {
+        var reg = mcRegion(x, y);
+        var dead = !reg || (e.model === 'slim' && y >= 8 && y < 20 && (x === 0 || x === 15));
+        if (dead) { ctx.fillStyle = '#1b1b1f'; ctx.fillRect(x * s, y * s, s, s); continue; }
+        var col = mcEdColorAt(e, x, y);
+        ctx.fillStyle = ((x + y) % 2) ? '#33333a' : '#3c3c44';
+        ctx.fillRect(x * s, y * s, s, s);
+        if (col) { ctx.fillStyle = col; ctx.fillRect(x * s, y * s, s, s); }
+    }
+    ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth = 1;
+    for (x = 0; x <= 16; x++) { ctx.beginPath(); ctx.moveTo(x * s + .5, 0); ctx.lineTo(x * s + .5, 448); ctx.stroke(); }
+    for (y = 0; y <= 32; y++) { ctx.beginPath(); ctx.moveTo(0, y * s + .5); ctx.lineTo(224, y * s + .5); ctx.stroke(); }
+    // region seams: head / torso / legs
+    ctx.strokeStyle = 'rgba(255,255,255,.25)';
+    [[0, 8 * s, 224, 0], [0, 20 * s, 224, 0], [4 * s, 0, 0, 448], [12 * s, 0, 0, 448]].forEach(function (l) {
+        ctx.beginPath(); ctx.moveTo(l[0] + .5, l[1] + .5); ctx.lineTo(l[0] + l[2] + .5, l[1] + l[3] + .5); ctx.stroke();
+    });
+}
+function mcWireEditor(main) {
+    var cv = main.querySelector('.mcl-edc'); if (!cv) return;
+    var e = MC.skinEdit;
+    mcEdPaint(cv);
+    function cellOf(ev) {
+        var r = cv.getBoundingClientRect();
+        var x = Math.floor((ev.clientX - r.left) / (r.width / 16));
+        var y = Math.floor((ev.clientY - r.top) / (r.height / 32));
+        return (x >= 0 && x < 16 && y >= 0 && y < 32) ? [x, y] : null;
+    }
+    var stroke = null;   // { snap, pushed } for the drag in flight
+    function apply(ev) {
+        var c = cellOf(ev); if (!c) return;
+        var x = c[0], y = c[1], changed = false;
+        if (e.tool === 'pick') { var got = mcEdColorAt(e, x, y); if (got) { e.color = got; MC.pop = null; mcPage(); } return; }
+        if (e.tool === 'fill') {
+            changed = mcEdFill(e, x, y, e.color);
+            if (e.mirror && mcEdFill(e, 15 - x, y, e.color)) changed = true;
+        } else {
+            var col = e.tool === 'eraser' ? null : e.color;
+            changed = mcEdSetPx(e, x, y, col);
+            if (e.mirror && mcEdSetPx(e, 15 - x, y, col)) changed = true;
+        }
+        if (!changed) return;
+        // the undo entry lands only once per stroke, and only if the stroke did anything
+        if (stroke && !stroke.pushed) { e.undo.push(stroke.snap); if (e.undo.length > 40) e.undo.shift(); stroke.pushed = true; }
+        e.dirty = true;
+        mcEdPaint(cv);
+        var prev = main.querySelector('.mcl-edprev');
+        if (prev) prev.innerHTML = mcSkinSvg({ pal: e.pal, rows: e.rows, model: e.model });
+    }
+    cv.addEventListener('pointerdown', function (ev) {
+        if (ev.button !== 0) return;
+        stroke = { snap: { rows: e.rows.slice(), pal: e.pal.slice() }, pushed: false };
+        cv.setPointerCapture(ev.pointerId);
+        apply(ev);
+        function mv(ev2) {
+            if (!ev2.buttons) return up();   // the button went up somewhere we couldn't hear it
+            if (e.tool === 'pencil' || e.tool === 'eraser') apply(ev2);
+        }
+        function up() {
+            stroke = null;
+            cv.removeEventListener('pointermove', mv); cv.removeEventListener('pointerup', up); cv.removeEventListener('pointercancel', up);
+        }
+        cv.addEventListener('pointermove', mv); cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+    });
+}
+
+/* —— Patch Notes tab —— */
+function mcNotesPage() {
+    if (MC.note != null) {
+        var n = MC_NOTES[MC.note];
+        return '<div class="mcl-body mcl-noteview">' +
+            '<button class="mcl-btn" type="button" data-mca="notesback">← All patch notes</button>' +
+            '<div class="mcl-notehero">' + pxSvg(MC_ART[n.art].r, MC_ART[n.art].p, 'mcl-noteart-big') + '</div>' +
+            '<h2>' + esc(n.name) + '</h2><p class="mcl-notedate">' + esc(n.v) + ' · ' + esc(n.d) + '</p>' +
+            '<ul class="mcl-notelist">' + n.b.map(function (b) { return '<li>' + esc(b) + '</li>'; }).join('') + '</ul></div>';
+    }
+    return '<div class="mcl-body"><div class="mcl-notegrid">' + MC_NOTES.map(function (n, i) {
+        return '<button class="mcl-notecard" type="button" data-mca="note" data-id="' + i + '">' +
+            '<span class="mcl-noteart">' + pxSvg(MC_ART[n.art].r, MC_ART[n.art].p) + '</span>' +
+            '<span class="mcl-notemeta"><b>' + esc(n.name) + '</b><i>' + esc(n.v) + ' · ' + esc(n.d) + '</i></span></button>';
+    }).join('') + '</div></div>';
+}
+
+/* —— Settings + other games + sign-in —— */
+function mcToggle(key, label, hint) {
+    var on = !!mcSet()[key];
+    return '<div class="mcl-setrow"><span class="mcl-set-tx"><b>' + label + '</b>' + (hint ? '<i>' + hint + '</i>' : '') + '</span>' +
+        '<button class="mcl-switch' + (on ? ' on' : '') + '" type="button" role="switch" aria-checked="' + on + '" data-mca="settoggle" data-id="' + key + '"><span></span></button></div>';
+}
+function mcSettingsPage() {
+    var sub = MC.setTab || 'general';
+    var head = '<header class="mcl-head"><span class="mcl-head-title">Settings</span><div class="mcl-tabs">' +
+        '<button class="mcl-tab' + (sub === 'general' ? ' sel' : '') + '" type="button" data-mcs="general">General</button>' +
+        '<button class="mcl-tab' + (sub === 'about' ? ' sel' : '') + '" type="button" data-mcs="about">About</button></div></header>';
+    if (sub === 'about') {
+        return head + '<div class="mcl-body mcl-setbody"><div class="mcl-aboutcard">' + mcBlockIcon('grass', 'mcl-block lg') +
+            '<div><b>URE Launcher 2.29.1</b><i>Runs on UreOS 11 (Pixel Edition)</i><i>Blocks by Mojang, in spirit. Pixels by this machine.</i></div></div>' +
+            '<div class="mcl-setrow"><span class="mcl-set-tx"><b>Third-party licenses</b><i>Legally fascinating</i></span>' +
+            '<button class="mcl-btn sm" type="button" data-mca="licenses">View</button></div>' +
+            '<div class="mcl-setrow"><span class="mcl-set-tx"><b>The game itself</b><i>Being built in another window. The launcher holds the door.</i></span></div></div>';
+    }
+    return head + '<div class="mcl-body mcl-setbody">' +
+        mcToggle('keepOpen', 'Keep the launcher open while the game is running', 'Off hides it into the taskbar on launch') +
+        mcToggle('openLog', 'Open the output log when the game starts', 'latest.log, in Notepad, like it is 2012') +
+        mcToggle('snapshots', 'Show snapshot versions', 'Enables snapshots in installations and version lists') +
+        mcToggle('animArt', 'Animate the Play screen art', 'The panorama drifts. Slowly. Like clouds.') +
+        '<div class="mcl-setrow"><span class="mcl-set-tx"><b>Storage directory</b><i>' + MC_MCDIR + '</i></span>' +
+        '<button class="mcl-btn sm" type="button" data-mca="openmc">Open folder</button></div>' +
+        '<div class="mcl-setrow"><span class="mcl-set-tx"><b>Reset launcher data</b><i>Installations, skins, downloads, crashes. All of it.</i></span>' +
+        '<button class="mcl-btn sm danger" type="button" data-mca="mcreset">Reset</button></div></div>';
+}
+var MC_OTHER = {
+    bedrock: { blurb: 'The one written in C++. This machine runs UreOS 11 (Pixel Edition), which Windows insists is not Windows.', btn: 'UNAVAILABLE', dis: 1 },
+    dungeons: { blurb: 'Four-player dungeon crawling. Needs 2.4 GB of pixels; the wallpaper is currently using them.', btn: 'INSTALL' },
+    legends: { blurb: 'Lead the overworld against the piglin invasion. The overworld here is 44 pixels tall.', btn: 'INSTALL' },
+    education: { blurb: 'Minecraft for classrooms. Your school IT admin has not approved this request. His name is also Isaac.', btn: 'REQUEST ACCESS' }
+};
+function mcOtherGame(g) {
+    var game = null, i;
+    for (i = 0; i < MC_GAMES.length; i++) if (MC_GAMES[i].id === g) game = MC_GAMES[i];
+    var o = MC_OTHER[g] || { blurb: '', btn: 'OK' };
+    return '<header class="mcl-head solo"><span class="mcl-head-title">' + (game ? esc(game.top + ' ' + game.sub) : '') + '</span></header>' +
+        '<div class="mcl-body mcl-otherwrap"><div class="mcl-otherart">' + pxSvg(MC_RAIL_ART[g].r, MC_RAIL_ART[g].p, 'mcl-otherart-px') + '</div>' +
+        '<h2>' + (game ? game.top + ' ' + game.sub : '') + '</h2>' +
+        '<p class="mcl-otherblurb">' + esc(o.blurb) + '</p>' +
+        '<button class="mcl-play sm' + (o.dis ? ' dis' : '') + '" type="button" ' + (o.dis ? 'disabled' : 'data-mca="otherbtn" data-id="' + g + '"') + '>' + o.btn + '</button></div>';
+}
+function mcSignIn() {
+    return '<div class="mcl-body mcl-signin"><div class="mcl-signbox">' +
+        '<span class="mcl-logotype sm">MINECRAFT</span>' +
+        '<p>Sign in with your Microsoft account to play.</p>' +
+        '<button class="mcl-play sm" type="button" data-mca="signin">SIGN IN</button>' +
+        '<i>Forgot which of the two buttons on this machine you are? It happens.</i></div></div>';
+}
+
+/* —— init: one delegated handler; no listener ever stacks —— */
+function initMC(el, id, arg) {
+    MC = { el: el, game: 'java', tab: 'play', run: null, crashed: null, edit: null, skinEdit: null,
+        note: null, pop: null, instQ: '', scroll: {}, setTab: 'general', signedOut: false, menuEl: null, menuFor: null };
+    mcSkins(1); mcInst(1);   // seed on first open — this is that moment
+    el._mc = {
+        go: function (t) { mcGame('java'); mcGo(t); },
+        // Alt+P is "press the big green button", so it has to land you where the button is
+        play: function () {
+            if (MC.run) { toast('Already working on ' + MC.run.v + '…'); return; }
+            mcGame('java'); mcGo('play');
+            if (MC.tab === 'play' && !MC.skinEdit) mcPlay();   // a dirty-editor confirm gets the last word
+        },
+        newInstall: function () { mcGame('java'); MC.tab = 'installations'; MC.edit = { n: '', icon: 'grass', v: 'latest-release' }; mcPage(); },
+        settings: function () { mcGame('lsettings'); }
+    };
+    el.addEventListener('click', function (ev) { mcClick(ev); });
+    el.addEventListener('input', function (ev) { mcInput(ev); });
+    var body = el.querySelector('.mcl-main');
+    el.addEventListener('scroll', function (ev) {
+        var b = ev.target;
+        if (b && b.classList && b.classList.contains('mcl-body') && MC) MC.scroll[MC.game + ':' + MC.tab] = b.scrollTop;
+    }, true);
+    if (arg && arg.tab) { MC.tab = arg.tab; }
+    if (arg && arg.game) { MC.game = arg.game; }
+    mcPage();
+}
+var mcMenuDoc = null;   // the outside-click dismissal, alive only while a menu is
+function mcCloseMenu() {
+    if (mcMenuDoc) { document.removeEventListener('click', mcMenuDoc, true); mcMenuDoc = null; }
+    if (MC && MC.menuEl) { MC.menuEl.remove(); MC.menuEl = null; MC.menuFor = null; }
+}
+function mcMenu(anchor, items, fn) {
+    if (MC.menuEl && MC.menuFor === anchor) { mcCloseMenu(); return; }   // its own button toggles it shut
+    mcCloseMenu();
+    var m = document.createElement('div');
+    m.className = 'mcl-menu'; m.setAttribute('role', 'menu');
+    m.innerHTML = items.map(function (it) {
+        return '<button class="mcl-menu-i' + (it.danger ? ' danger' : '') + '" type="button" role="menuitem" data-mk="' + it.k + '">' + esc(it.t) + '</button>';
+    }).join('');
+    MC.el.appendChild(m);
+    // the window clips its overflow, so a menu that would hang past the bottom
+    // opens UPWARD instead — the play bar's picker lives on the last row
+    var wr = MC.el.getBoundingClientRect(), ar = anchor.getBoundingClientRect();
+    var mh = m.offsetHeight, mw = m.offsetWidth;
+    var top = ar.bottom - wr.top + 4;
+    if (top + mh > wr.height - 4) top = ar.top - wr.top - mh - 4;
+    m.style.top = clamp(top, 4, Math.max(4, wr.height - mh - 4)) + 'px';
+    m.style.left = clamp(ar.left - wr.left, 4, Math.max(4, wr.width - mw - 4)) + 'px';
+    m.addEventListener('click', function (ev) {
+        var b = ev.target.closest('.mcl-menu-i'); if (!b) return;
+        ev.stopPropagation(); mcCloseMenu(); fn(b.getAttribute('data-mk'));
+    });
+    MC.menuEl = m; MC.menuFor = anchor;
+    // dismiss on any outside click, like every other menu on this machine
+    mcMenuDoc = function (ev) {
+        if (ev.target.closest('.mcl-menu')) return;
+        if (MC && MC.menuFor && ev.target.closest('[data-mca]') === MC.menuFor) return;   // let the anchor toggle
+        mcCloseMenu();
+    };
+    setTimeout(function () { if (mcMenuDoc) document.addEventListener('click', mcMenuDoc, true); }, 0);
+}
+function mcInstById(id) { var l = mcInst(), i; for (i = 0; i < l.length; i++) if (l[i].id === id) return l[i]; return null; }
+function mcSkinById(id) { var l = mcSkins(), i; for (i = 0; i < l.length; i++) if (l[i].id === id) return l[i]; return null; }
+function mcInput(ev) {
+    var t = ev.target, k = t.getAttribute && t.getAttribute('data-mcin');
+    if (!k || !MC) return;
+    if (k === 'instq') { MC.instQ = t.value; mcPatchInstList(); }
+    else if (k === 'instname') MC.edit.n = t.value;
+    else if (k === 'instdir') MC.edit.dir = t.value;
+    else if (k === 'instjvm') MC.edit.jvm = t.value;
+    else if (k === 'skinname') { MC.skinEdit.n = t.value; MC.skinEdit.dirty = true; }
+}
+function mcPatchInstList() {
+    // live-filter in place — never a full re-render, so the search box keeps focus/caret
+    var body = MC.el.querySelector('.mcl-body'); if (!body) return;
+    var host = body.querySelector('.mcl-instlist'); if (!host) return;
+    var q = (MC.instQ || '').toLowerCase();
+    var list = mcVisibleInst().filter(function (i) { return !q || i.n.toLowerCase().indexOf(q) >= 0; });
+    host.querySelectorAll('.mcl-inst').forEach(function (row) {
+        var id = row.getAttribute('data-inst'), keep = list.some(function (i) { return i.id === id; });
+        row.style.display = keep ? '' : 'none';
+    });
+    var empty = body.querySelector('.mcl-emptymsg'); if (empty) empty.hidden = list.length > 0;
+}
+function mcClick(ev) {
+    if (!MC) return;
+    var b = ev.target.closest('[data-mca],[data-mcg],[data-mct],[data-mcs]');
+    // clicking the button that opened a menu is a toggle, so leave that one to mcMenu
+    if (!ev.target.closest('.mcl-menu') && !(MC.menuFor && b === MC.menuFor)) mcCloseMenu();
+    if (!b || !MC.el.contains(b)) {
+        if (MC.pop && !ev.target.closest('.mcl-icongrid,.mcl-verlist')) { MC.pop = null; mcPage(); }
+        return;
+    }
+    var g = b.getAttribute('data-mcg'), t = b.getAttribute('data-mct'), s = b.getAttribute('data-mcs'), a = b.getAttribute('data-mca');
+    if (g) { if (MC.signedOut) return; mcGame(g); return; }
+    if (t) { mcGo(t); return; }
+    if (s) { MC.setTab = s; mcPage(); return; }
+    if (!a) return;
+    var id = b.getAttribute('data-id');
+    switch (a) {
+        case 'acct':
+            if (MC.signedOut) return;
+            mcMenu(b, [{ k: 'manage', t: 'Manage account' }, { k: 'logout', t: 'Log out' }], function (k) {
+                if (k === 'manage') dlgInfo('Microsoft account', 'isaacure is already the most managed account on this machine.');
+                else { mcStopRun(); MC.signedOut = true; mcPage(); }   // signing out cancels the launch it was for
+            });
+            break;
+        case 'signin': MC.signedOut = false; toast('Welcome back, isaacure.'); mcPage(); break;
+        case 'play': case 'instplay':
+            // a second Play must not re-point the selection at a download already in flight
+            if (MC.run) { toast('Already working on ' + MC.run.v + '…'); break; }
+            if (a === 'instplay' && id) { mcjSet('sel', id); }
+            if (MC.tab !== 'play') { MC.tab = 'play'; mcPage(); }
+            mcPlay(); break;
+        case 'instpick':
+            mcMenu(b, mcVisibleInst().map(function (i) {
+                return { k: i.id, t: i.n + ' · ' + mcResolveVer(i.v) };
+            }).concat([{ k: '__manage', t: 'Manage installations…' }]), function (k) {
+                if (k === '__manage') { mcGo('installations'); return; }
+                mcjSet('sel', k); mcPage();
+            });
+            break;
+        case 'crashlog': var c = mcj('crash', [])[0]; if (c) openApp('notepad', { file: { n: c.n, body: c.text } }); break;
+        case 'crashx': MC.crashed = null; mcPage(); break;
+        case 'openmc': openApp('explorer', '.minecraft'); break;
+        case 'newinst': MC.edit = { n: '', icon: 'grass', v: 'latest-release' }; MC.pop = null; mcPage(); break;
+        case 'instdir':
+            var ii = mcInstById(id), vv = ii ? mcResolveVer(ii.v) : null;
+            openApp('explorer', vv && mcj('dl', []).indexOf(vv) >= 0 ? '.minecraft/versions/' + vv : '.minecraft');
+            break;
+        case 'instmenu':
+            (function () {
+                var inst = mcInstById(id); if (!inst) return;
+                var items = [{ k: 'edit', t: 'Edit' }, { k: 'dup', t: 'Duplicate' }];
+                if (!inst.builtin) items.push({ k: 'del', t: 'Delete', danger: 1 });
+                mcMenu(b, items, function (k) {
+                    if (k === 'edit') { MC.edit = { id: inst.id, n: inst.n, icon: inst.icon, v: inst.v, dir: inst.dir, jvm: inst.jvm, builtin: inst.builtin }; MC.pop = null; mcPage(); }
+                    else if (k === 'dup') {
+                        var copy = { id: 'inst-' + Date.now().toString(36), n: 'Copy of ' + inst.n, icon: inst.icon, v: mcResolveVer(inst.v), created: dlStamp() };
+                        var l = mcInst(); l.push(copy); mcjSet('inst', l);
+                        mcUntomb('.minecraft', 'launcher_profiles.json'); mcSyncFS(); mcPage();
+                    } else if (k === 'del') {
+                        dlgConfirm('Delete installation?', '“' + inst.n + '” will be removed. Downloaded versions stay in .minecraft.', 'Delete', mcLive(function () {
+                            mcjSet('inst', mcInst().filter(function (i) { return i.id !== inst.id; }));
+                            if (mcj('sel', '') === inst.id) mcjSet('sel', 'latest-release');
+                            mcUntomb('.minecraft', 'launcher_profiles.json');
+                            mcSyncFS(); mcPage();
+                        }));
+                    }
+                });
+            })(); break;
+        case 'iconpick': MC.pop = MC.pop === 'icons' ? null : 'icons'; mcPage(); break;
+        case 'iconset': MC.edit.icon = id; MC.pop = null; mcPage(); break;
+        case 'verpick': MC.pop = MC.pop === 'vers' ? null : 'vers'; mcPage(); break;
+        case 'verset': MC.edit.v = id; MC.pop = null; mcPage(); break;
+        case 'instcancel': MC.edit = null; MC.pop = null; mcPage(); break;
+        case 'instsave':
+            (function () {
+                var e = MC.edit, list = mcInst();
+                e.n = (e.n || '').trim() || 'unnamed installation';
+                if (e.id) {
+                    list = list.map(function (i) { return i.id === e.id ? { id: i.id, n: e.n, icon: e.icon, v: e.v, dir: e.dir, jvm: e.jvm, builtin: i.builtin, created: i.created, lastUsed: i.lastUsed } : i; });
+                } else {
+                    list.push({ id: 'inst-' + Date.now().toString(36), n: e.n, icon: e.icon, v: e.v, dir: e.dir, jvm: e.jvm, created: dlStamp() });
+                }
+                mcjSet('inst', list);
+                mcUntomb('.minecraft', 'launcher_profiles.json');
+                MC.edit = null; MC.pop = null; mcSyncFS(); mcPage();
+            })(); break;
+        case 'newskin': MC.skinEdit = mcNewSkinData(null); mcPage(); break;
+        case 'skinuse': mcjSet('skin', id); mcUntomb('.minecraft', 'options.txt'); mcSyncFS(); mcRefreshFaces(); mcPage(); break;   // options.txt names the active skin
+        case 'skinmenu':
+            (function () {
+                var sk = mcSkinById(id); if (!sk) return;
+                var items = [{ k: 'dup', t: 'Duplicate' }];
+                if (!sk.builtin) { items.unshift({ k: 'edit', t: 'Edit' }); items.push({ k: 'del', t: 'Delete', danger: 1 }); }
+                mcMenu(b, items, function (k) {
+                    if (k === 'edit') { MC.skinEdit = { id: sk.id, n: sk.n, model: sk.model, pal: sk.pal.slice(), rows: sk.rows.slice(), tool: 'pencil', color: '#d81e05', mirror: true, undo: [], dirty: false }; mcPage(); }
+                    else if (k === 'dup') { MC.skinEdit = mcNewSkinData(sk); mcPage(); }
+                    else if (k === 'del') {
+                        dlgConfirm('Delete skin?', '“' + sk.n + '” goes back to the void.', 'Delete', mcLive(function () {
+                            var wasActive = mcj('skin', '') === sk.id;
+                            mcjSet('skins', mcSkins().filter(function (x) { return x.id !== sk.id; }));
+                            if (wasActive) { mcjSet('skin', mcSkins()[0].id); mcUntomb('.minecraft', 'options.txt'); }   // active id changed → options.txt rewritten
+                            mcSyncFS(); mcRefreshFaces(); mcPage();
+                        }));
+                    }
+                });
+            })(); break;
+        case 'model': MC.skinEdit.model = id; MC.skinEdit.dirty = true; mcPage(); break;
+        case 'tool': MC.skinEdit.tool = id; mcPage(); break;
+        case 'mirror': MC.skinEdit.mirror = !MC.skinEdit.mirror; mcPage(); break;
+        case 'edundo':
+            (function () {
+                var e = MC.skinEdit;
+                if (e.undo.length) { var u = e.undo.pop(); e.rows = u.rows; e.pal = u.pal; mcPage(); }
+            })(); break;
+        case 'swatch': MC.skinEdit.color = id; MC.skinEdit.tool = MC.skinEdit.tool === 'eraser' ? 'pencil' : MC.skinEdit.tool; mcPage(); break;
+        case 'edcancel':
+            if (MC.skinEdit.dirty) dlgConfirm('Discard skin?', 'The editor has unsaved pixels.', 'Discard', mcLive(function () { MC.skinEdit = null; mcPage(); }));
+            else { MC.skinEdit = null; mcPage(); }
+            break;
+        case 'edsave':
+            (function () {
+                var e = MC.skinEdit, list = mcSkins();
+                e.n = (e.n || '').trim() || 'Unnamed skin';
+                if (e.id) {
+                    list = list.map(function (s) { return s.id === e.id ? { id: s.id, n: e.n, model: e.model, pal: e.pal, rows: e.rows, builtin: s.builtin } : s; });
+                } else {
+                    var nid = 'skin-' + Date.now().toString(36);
+                    list.push({ id: nid, n: e.n, model: e.model, pal: e.pal, rows: e.rows });
+                    mcjSet('skin', nid);
+                    mcUntomb('.minecraft', 'options.txt');   // a new skin becomes active, so options.txt is rewritten
+                }
+                mcjSet('skins', list);
+                MC.skinEdit = null; mcSyncFS(); mcRefreshFaces(); mcPage();
+            })(); break;
+        case 'note': MC.note = +id; mcPage(); break;
+        case 'notesback': MC.note = null; mcPage(); break;
+        case 'settoggle':
+            (function () {
+                var s2 = mcSet(); s2[id] = !s2[id]; mcjSet('set', s2);
+                if (id === 'snapshots') {
+                    var sel = mcSelInst();
+                    if (!sel || (!s2.snapshots && mcj('sel', '') === 'latest-snapshot')) mcjSet('sel', 'latest-release');
+                }
+                mcUntomb('.minecraft', 'launcher_profiles.json');
+                mcSyncFS(); mcPage();
+            })(); break;
+        case 'mcreset':
+            dlgConfirm('Reset launcher data?', 'Installations, skins, downloads and crash reports all go back to factory. The .minecraft folder is rebuilt.', 'Reset', mcLive(function () {
+                mcStopRun();                                  // a run in flight would re-write everything we just wiped
+                mcj('dl', []).forEach(function (v) { try { localStorage.removeItem(PREFIX + 'mc_dld_' + v); } catch (e2) {} });
+                ['inst', 'skins', 'skin', 'sel', 'set', 'dl', 'log', 'crash'].forEach(function (k) { try { localStorage.removeItem(PREFIX + 'mc_' + k); } catch (e2) {} });
+                mcClearTombs();                               // "the .minecraft folder is rebuilt" has to mean it
+                MC.edit = null; MC.skinEdit = null; MC.crashed = null;
+                mcSkins(1); mcInst(1); mcSyncFS(); mcRefreshFaces(); mcPage(); toast('The launcher forgot everything. Fresh grass.');
+            }));
+            break;
+        case 'licenses': openApp('notepad', { file: { n: 'licenses.txt', body: 'URE LAUNCHER THIRD-PARTY NOTICES\n\n1. The pixels are free-range and locally sourced.\n2. The creeper on the Play screen has signed a waiver.\n3. Any resemblance to launchers living or dead is loving parody.\n4. LWJGL is real and deserves better than this file.' } }); break;
+        case 'otherbtn':
+            if (id === 'dungeons') toast('Dungeons needs 2.4 GB of pixels. The wallpaper is using them.');
+            else if (id === 'legends') toast('Legends requires a marketing budget this machine does not have.');
+            else toast('Request filed with the IT admin. He says no.');
+            break;
+    }
+}
+function mcRefreshFaces() {
+    if (!MC) return;
+    var acct = MC.el.querySelector('.mcl-acct');
+    if (acct) acct.innerHTML = mcFaceSvg(mcSkin()) + '<span class="mcl-acct-name">isaacure</span><b class="mcl-caret">▾</b>';
+}
+function closeMC() {
+    if (MC && MC.run && MC.run.timer) clearInterval(MC.run.timer);
+    mcCloseMenu();
+    MC = null;
+}
+function mclFocus(el, arg) {
+    if (!arg || !MC) return;
+    if (arg.game) mcGame(arg.game);
+    if (arg.tab) { mcGame('java'); mcGo(arg.tab); }
+}
+
+/* ═══════════════════ the app registry ═════════════ */
 var APPS = {
     explorer: { title: 'File Explorer', icon: 'ic-explorer', w: 720, h: 460, render: renderExplorer, init: initExplorer, focusArg: function (el, arg) { if (arg && exState.explorer && exState.explorer.go) exState.explorer.go(arg); } },
     about:    { title: 'About Isaac', icon: 'ic-ure', w: 540, h: 480, render: renderAbout },
@@ -5378,6 +6766,7 @@ var APPS = {
         init: function (el) { if (window.MC) window.MC.init(el); },
         onFocus: function (el) { var r = el.querySelector('.mc'); if (r) r.focus(); },
         onClose: function () { if (window.MC) bankPlaytime('minecraft', window.MC.close() || 0); } },
+    mclauncher: { title: 'Minecraft Launcher', icon: 'ic-mc', w: 980, h: 620, render: renderMC, init: initMC, onClose: closeMC, focusArg: mclFocus },
     ureboy:   { launch: '/ureboy/' },
     room:     { launch: '/1p/' },
     gti:      { launch: '/ureboy/' }
@@ -5741,10 +7130,21 @@ var APP_KEYS = {
         'arrowup': function () { expCtl('up'); }               // Alt+Up = up one level, like the real one
     },
     terminal: { 'l': function () { var w = openWins.terminal; if (w && w.el._clear) w.el._clear(); } },
-    notepad:  { 's': function () { var w = openWins.notepad; if (w && w.el._flash) w.el._flash(); } }
+    notepad:  { 's': function () { var w = openWins.notepad; if (w && w.el._flash) w.el._flash(); } },
+    mclauncher: {
+        '1': function () { mcCtl('go', 'play'); },
+        '2': function () { mcCtl('go', 'installations'); },
+        '3': function () { mcCtl('go', 'skins'); },
+        '4': function () { mcCtl('go', 'notes'); },
+        '5': function () { mcCtl('settings'); },
+        'p': function () { mcCtl('play'); },
+        'n': function () { mcCtl('newInstall'); }
+    }
 };
 function chromeCtl(fn, arg) { var w = openWins.chrome; if (w && w.el._br && w.el._br[fn]) w.el._br[fn](arg); }
 function expCtl(fn) { var w = openWins.explorer; if (w && w.el._nav && w.el._nav[fn]) w.el._nav[fn](); }
+// signed out, the whole launcher is the sign-in page — its shortcuts are inert too, not just its clicks
+function mcCtl(fn, arg) { var w = openWins.mclauncher; if (MC && MC.signedOut) return; if (w && w.el._mc && w.el._mc[fn]) w.el._mc[fn](arg); }
 
 document.addEventListener('keydown', function (e) {
     if (document.body.classList.contains('gagging')) {          // the Edge gag owns the keyboard…
@@ -5777,6 +7177,7 @@ document.addEventListener('keydown', function (e) {
         return;
     }
     if (!e.altKey || e.ctrlKey || e.metaKey) return;
+    if (dlgs.length) return;                             // a modal dialog owns the Alt shortcuts too, not just plain keys
 
     // dispatch on e.code for letters/digits: on macOS, Option composes
     // characters (Alt+F arrives as "ƒ"), and layouts move symbols around
@@ -5799,6 +7200,7 @@ var CHEATS = [
     ['System', [['Alt+F', 'Find in app'], ['Alt+S', 'Start'], ['Alt+E', 'File Explorer'], ['Alt+I', 'Settings'], ['Alt+A', 'Quick settings'], ['Alt+N', 'Calendar'], ['Alt+V', 'Task view'], ['Alt+D', 'Show desktop'], ['Alt+1…9', 'Taskbar apps'], ['Alt+/', 'This card']]],
     ['Windows', [['Alt+W', 'Close window'], ['Alt+M', 'Minimize'], ['Alt+↑', 'Maximize'], ['Alt+↓', 'Restore / minimize'], ['Alt+`', 'Cycle windows']]],
     ['Chrome', [['Alt+T', 'New tab'], ['Alt+W', 'Close tab'], ['Alt+Shift+T', 'Reopen closed tab'], ['Alt+1…9', 'Go to tab'], ['Alt+L', 'Address bar'], ['Alt+R', 'Reload'], ['Alt+←/→', 'Back / forward']]],
+    ['Minecraft Launcher', [['Alt+1…4', 'Play / Installations / Skins / Notes'], ['Alt+5', 'Launcher settings'], ['Alt+P', 'Press the big green button'], ['Alt+N', 'New installation']]],
     ['In apps', [['Alt+←/↑', 'Explorer: back / home'], ['Enter', 'Explorer: open selected'], ['Alt+L', 'Terminal: clear'], ['←/→', 'Photos: browse'], ['F3', 'Find: next match'], ['Esc', 'Close find / this card']]]
 ];
 function closeCheat() { var c = byId('cheatsheet'); if (c) c.remove(); }
@@ -5823,7 +7225,7 @@ document.addEventListener('auxclick', closeBctx);   // middle-click closes tabs 
 document.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape') return;
     if (closeTopDlg()) return;   // dialogs eat the first Escape
-    setStart(false); closeFlyouts(); closeCtx(); closeFctx(); closeBctx(); closeTaskView();
+    setStart(false); closeFlyouts(); closeCtx(); closeFctx(); closeBctx(); mcCloseMenu(); closeTaskView();
 });
 
 applyAccent(recall('accent', ACCENTS[0].hex));
@@ -5833,6 +7235,7 @@ renderWall();
 renderDesktop();
 // the Chrome shortcut persists as a real file — if it exists anywhere, the install is real too
 if (chromeOnDisk()) installChrome({ shortcut: false });
+mcSyncFS();   // .minecraft is real: registers its folder keys from persisted launcher state
 tick(); setInterval(tick, 15000);
 // coming back from the blue screen: the file is fine. the file was always going to be fine.
 try {
@@ -5912,6 +7315,24 @@ if (devOpen) {
 }
 if (location.search.indexOf('dev=bsod') >= 0) { window.__noReboot = true; bsod('kernel32.dll'); }
 if (location.search.indexOf('dev=player') >= 0) openApp('player', { n: 'ure boy theme.mp3' });
+// ?dev=launcher (NOT dev=mc — that opens the #74 game, whose hook is a substring match)
+var devMcl = location.search.match(/[?&]dev=launcher(?::([a-z]+))?(?:&|$)/);   // [:installs|skins|editor|notes|settings|crash]
+if (devMcl) {
+    openApp('mclauncher');
+    var mclSec = devMcl[1];
+    if (mclSec === 'installs') mcCtl('go', 'installations');
+    else if (mclSec === 'skins') mcCtl('go', 'skins');
+    else if (mclSec === 'notes') mcCtl('go', 'notes');
+    else if (mclSec === 'settings') mcCtl('settings');
+    else if (mclSec === 'editor') { mcCtl('go', 'skins'); if (MC) { MC.skinEdit = mcNewSkinData(null); mcPage(); } }
+    else if (mclSec === 'crash') mcCtl('play');
+}
+if (location.search.indexOf('dev') >= 0) window.__mcl = {
+    open: function () { openApp('mclauncher'); },
+    go: function (t) { mcCtl('go', t); },
+    play: function () { mcCtl('play'); },
+    state: function () { return MC; }
+};
 if (location.search.indexOf('dev=tabs') >= 0) {
     installChrome({ shortcut: true }); openApp('chrome');
     var devBr = openWins.chrome.el._br;
