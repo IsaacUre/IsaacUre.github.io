@@ -112,29 +112,54 @@ function setWall(c0, r0, c1, r1, id) {
     for (var r = r0; r <= r1; r++) for (var c = c0; c <= c1; c++) MAP[r][c] = id;
 }
 function buildMap() {
+    /* rebuilt against the real floor plan (layout screenshot, 2026-07-19):
+       bedroom NW + living NE split by the desk/TV divider; a center core of
+       tiled dressing corridor, reach-in closet, and the PENTAGON walk-in
+       whose SE corner is a 45° slant (stair-stepped here — the DDA only
+       knows grid cells); windowless bathroom SW; a built-in desk nook and
+       an entry closet off the hall; open kitchen SE with a peninsula and a
+       structural notch in the east wall. Windows on the north wall only. */
     for (var r = 0; r < MH; r++) { MAP[r] = []; for (var c = 0; c < MW; c++) MAP[r][c] = 0; }
     setWall(0, 0, 39, 0, 1);                     // north
     setWall(0, 51, 39, 51, 1);                   // south
     setWall(0, 0, 0, 51, 1);                     // west
     setWall(39, 0, 39, 51, 1);                   // east
-    setWall(4, 0, 10, 0, 2);                     // bedroom window
-    setWall(31, 0, 37, 0, 2);                    // living window
-    /* (the tv is a wall-mounted sprite, not a texture: cells repeat too small) */
-    setWall(39, 5, 39, 11, 2);                   // living east window
-    setWall(39, 38, 39, 43, 2);                  // kitchen window
-    setWall(0, 37, 0, 42, 2);                    // bath window
-    setWall(16, 51, 20, 51, 4);                  // front door
-    setWall(15, 1, 15, 50, 1);                   // V1 spine
-    setWall(15, 17, 15, 19, 0);                  // bedroom door
-    setWall(15, 25, 15, 27, 0);                  // closet opening
-    setWall(15, 34, 15, 36, 0);                  // bathroom door
-    setWall(1, 20, 14, 20, 1);                   // H1 bed/closet
-    setWall(1, 29, 14, 29, 3);                   // H2 closet/bath
-    setWall(21, 24, 21, 50, 1);                  // V2 hall/kitchen
-    /* bath walls in tile (exterior sides only: V1's hall face stays drywall) */
-    setWall(0, 30, 0, 51, 3);
-    setWall(0, 37, 0, 42, 2);                    // keep the window
-    setWall(1, 51, 14, 51, 3);
+    setWall(5, 0, 15, 0, 2);                     // bedroom window band
+    setWall(21, 0, 31, 0, 2);                    // living window band
+    setWall(15, 51, 19, 51, 4);                  // front door
+
+    setWall(18, 1, 18, 19, 1);                   // bedroom/living divider (the desk+TV wall)
+    setWall(1, 19, 8, 19, 1);                    // bedroom south wall, west of the door
+    setWall(12, 19, 17, 19, 1);                  // ...and east of it (door gap x 9-11)
+
+    /* the walk-in closet: interior x14-17, west door gap z23-25, and the
+       slant stepping (18,25)→(14,29) so the room narrows toward the hall.
+       the corridor west of it runs 4 cells wide (x9-12) so the body AABB
+       can make the dogleg south past the bathroom corner. */
+    setWall(13, 20, 13, 22, 1);
+    setWall(13, 26, 13, 30, 1);
+    setWall(18, 20, 18, 24, 1);
+    setWall(18, 25, 18, 25, 1);                  // the slanted wall, stair-stepped
+    setWall(17, 26, 17, 26, 1);
+    setWall(16, 27, 16, 27, 1);
+    setWall(15, 28, 15, 28, 1);
+    setWall(14, 29, 14, 29, 1);
+
+    /* bathroom SW: interior x1-8 z31-50; door = the 3-cell gap x6-8 in
+       row 30. tiled faces on its exterior walls, like the old map did. */
+    setWall(1, 30, 5, 30, 3);                    // bath north wall
+    setWall(9, 31, 9, 50, 1);                    // bath east wall (nook's back)
+    setWall(0, 30, 0, 51, 3);                    // west outer, tiled
+    setWall(1, 51, 8, 51, 3);                    // south outer behind the tub, tiled
+
+    /* the built-in desk nook + entry closet, both opening east onto the hall */
+    setWall(10, 35, 13, 35, 1);
+    setWall(10, 43, 13, 43, 1);
+    setWall(10, 44, 13, 44, 1);
+    setWall(10, 50, 13, 50, 1);
+
+    /* the kitchen's structural notch in the east wall */
+    setWall(31, 32, 38, 34, 1);
 }
 
 /* ─────────────────────── textures ─────────────────────────── */
@@ -270,34 +295,36 @@ function mix(hex, t) {
    the WEST wall, so the screens face east (+x) and you meet them from the
    room side — see the PL.x guard in the glow loop and checkPrompt. */
 var HOTS = [
-    { x: 17.85, z: 4.5, y: 4.6, href: '/ureboy/', html: 'boot the <b>URE BOY</b>',
+    { x: 21.0, z: 4.5, y: 4.6, href: '/ureboy/', html: 'boot the <b>URE BOY</b>',
       rgb: '255,84,54', base: 11, amp: 5, spd: 2.4, a0: 0.28, a1: 0.22 },
-    { x: 17.4, z: 9.0, y: 5.3, href: '/comp/', html: 'sit down at the <b>PC</b>',
+    { x: 20.5, z: 9.0, y: 5.3, href: '/comp/', html: 'sit down at the <b>PC</b>',
       rgb: '150,120,255', base: 14, amp: 4, spd: 1.5, a0: 0.26, a1: 0.2 }
 ];
 
 function buildFurniture() {
     FURN.length = 0; RUGS.length = 0; CIRC.length = 0; RECTS.length = 0;
 
-    /* the apartment is all cherry hardwood; the bedroom is the one carpeted
-       room, laid as a floor quad over the boards. */
-    rug(6, 6, 118, 158, P.carp);
-    rug(10, 10, 114, 154, P.carp2);
+    /* floors that aren't the hardwood bands: the bedroom's carpet, and the
+       tile that runs through the dressing corridor, the bathroom, and the
+       two hall alcoves. (the walk-in closet stays wood, like the plan.) */
+    rug(8, 8, 144, 152, P.carp);                               // bedroom carpet
+    rug(12, 12, 140, 148, P.carp2);
+    rug(72, 152, 104, 248, P.tile);                            // dressing corridor
+    rug(6, 240, 72, 407, P.tile);                              // bathroom
+    rug(10, 246, 68, 403, P.tile2);
+    rug(74, 248, 118, 407, P.tile);                            // passage + nook + entry closet
 
     /* ============ LIVING ROOM ============
-       rebuilt from Isaac's photos. the desk runs down the WEST spine wall
-       (same wall as the bedroom door, as in the floor plan); the sectional,
-       cowhide chaise, and floor lamp fill the room. plan px: 8 px = one cell.
-
-       Isaac's desk rig was authored against the NORTH wall (screens facing
-       +z); dbox rotates it 90° onto the spine so the screens face EAST (+x)
-       into the room. new_x = z + 126 seats the desk back against the spine's
-       east face (x=128px); new_z = 268 - x runs it along the wall. every
-       layer (screen, crescent, taskbar) survives the rotation untouched. */
+       the desk runs down the bedroom/living divider (its east face, x=152px);
+       the window band is on the north wall with the glowing tower in the
+       corner beneath it; the sectional sits against the east wall with the
+       cowhide chaise + floor lamp in the northeast corner. Isaac's desk rig
+       is authored in a north-wall frame and rotated 90° into place by dbox
+       (new_x = z + 150, new_z = 268 - x) so the screens face east. */
     function dbox(x0, z0, x1, z1, y0, y1, c, glow) {
-        fbox(z0 + 126, 268 - x1, z1 + 126, 268 - x0, y0, y1, c, glow);
+        fbox(z0 + 150, 268 - x1, z1 + 150, 268 - x0, y0, y1, c, glow);
     }
-    function drectC(x0, z0, x1, z1) { rectC(z0 + 126, 268 - x1, z1 + 126, 268 - x0); }
+    function drectC(x0, z0, x1, z1) { rectC(z0 + 150, 268 - x1, z1 + 150, 268 - x0); }
 
     /* ── the desk: a long dark-espresso writing desk, twin pedestals ── */
     dbox(158, 2, 252, 26, 3.6, 3.85, P.esp);                      // top slab
@@ -370,202 +397,225 @@ function buildFurniture() {
     dbox(199, 37.6, 201, 38.4, 3.0, 3.3, P.red);                  // the red adjustment knob
     drectC(186, 28, 214, 40);
 
-    /* ── the glowing PC tower: glass side, three blue ring fans, on a clear
-          acrylic riser, on the floor at the desk's north end ── */
-    dbox(255, 3, 267, 22, 0, 0.25, '#cfd8e0');                    // acrylic riser
-    dbox(256, 4, 266, 21, 0.25, 3.0, '#0e0f12');                  // black chassis
-    dbox(256.5, 20.6, 265.5, 21.0, 0.4, 2.9, P.ledDk, true);      // the tinted glass panel
-    dbox(257, 21.0, 264, 21.2, 0.7, 1.05, P.led, true);           // fan ring 1, proud of the glass
-    dbox(257, 21.0, 264, 21.2, 1.25, 1.6, P.led, true);           // fan ring 2
-    dbox(257, 21.0, 264, 21.2, 1.8, 2.15, P.led, true);           // fan ring 3
-    dbox(258, 21.2, 263, 21.35, 0.78, 0.97, P.led2, true);        // brighter ring cores
-    dbox(258, 21.2, 263, 21.35, 1.33, 1.52, P.led2, true);
-    dbox(258, 21.2, 263, 21.35, 1.88, 2.07, P.led2, true);
-    dbox(263, 4, 264, 5, 2.9, 3.05, P.led2, true);                // power dot on top
-    drectC(254, 2, 268, 24);
+    /* ── the glowing PC tower: on the floor in the corner under the window's
+          west end, beside the desk. glass + fans on its east face. ── */
+    fbox(153, 11, 171, 30, 0, 0.25, '#cfd8e0');                   // acrylic riser
+    fbox(154, 12, 170, 29, 0.25, 3.0, '#0e0f12');                 // black chassis
+    fbox(169.6, 13, 170.0, 28, 0.4, 2.9, P.ledDk, true);          // the tinted glass panel
+    fbox(170.0, 14, 170.2, 27, 0.7, 1.05, P.led, true);           // fan ring 1, proud
+    fbox(170.0, 14, 170.2, 27, 1.25, 1.6, P.led, true);           // fan ring 2
+    fbox(170.0, 14, 170.2, 27, 1.8, 2.15, P.led, true);           // fan ring 3
+    fbox(170.2, 15, 170.35, 26, 0.78, 0.97, P.led2, true);        // brighter ring cores
+    fbox(170.2, 15, 170.35, 26, 1.33, 1.52, P.led2, true);
+    fbox(170.2, 15, 170.35, 26, 1.88, 2.07, P.led2, true);
+    fbox(163, 12.5, 164, 13.5, 2.9, 3.05, P.led2, true);          // power dot on top
+    rectC(151, 9, 173, 31);
 
-    /* ── the cream sectional, chaise on the near end ── */
-    fbox(180, 150, 262, 178, 0, 2.1, P.cream);                   // seat block
-    fbox(180, 172, 262, 178, 0, 4.2, P.cream2);                  // backrest
-    fbox(180, 150, 187, 178, 0, 3.2, P.cream2);                  // left arm
-    fbox(255, 150, 262, 178, 0, 3.2, P.cream2);                  // right arm
-    fbox(156, 128, 187, 178, 0, 2.0, P.cream);                   // the chaise, projecting north
-    fbox(156, 128, 187, 134, 0, 2.6, P.cream2);                  // chaise back-cushion end
-    fbox(190, 152, 220, 170, 2.1, 3.0, '#e6ddc9');              // loose seat cushions
-    fbox(222, 152, 252, 170, 2.1, 3.0, '#e6ddc9');
-    fbox(196, 168, 214, 172, 3.0, 4.3, P.char);                 // charcoal pillow
-    fbox(230, 168, 248, 172, 3.0, 4.3, P.char);                 // charcoal pillow
-    fbox(160, 150, 178, 156, 2.0, 3.4, P.cream2);              // a cream cushion on the chaise
-    fbox(214, 165, 230, 169, 2.9, 4.1, P.cream2);              // cream + stripe lumbar
-    fbox(216, 166, 228, 168.4, 3.1, 3.9, '#1a1613');           // its dark stripes
-    rectC(154, 126, 264, 180);
+    /* ── the cream sectional against the east wall, chaise at the south
+          (kitchen) end, exactly as the photos have it ── */
+    fbox(276, 52, 312, 156, 0, 2.1, P.cream);                    // seat block
+    fbox(304, 52, 312, 156, 0, 4.2, P.cream2);                   // backrest against the wall
+    fbox(276, 48, 312, 56, 0, 3.2, P.cream2);                    // north arm
+    fbox(276, 152, 312, 160, 0, 3.2, P.cream2);                  // south arm
+    fbox(236, 128, 276, 160, 0, 2.0, P.cream);                   // the chaise, projecting west
+    fbox(236, 128, 244, 160, 0, 2.6, P.cream2);                  // chaise end cushion
+    fbox(280, 60, 302, 100, 2.1, 3.0, '#e6ddc9');               // loose seat cushions
+    fbox(280, 104, 302, 148, 2.1, 3.0, '#e6ddc9');
+    fbox(300, 66, 304, 84, 3.0, 4.3, P.char);                    // charcoal pillow
+    fbox(300, 116, 304, 134, 3.0, 4.3, P.char);                  // charcoal pillow
+    fbox(299, 92, 303, 110, 2.9, 4.1, P.cream2);                 // cream + stripe lumbar
+    fbox(299.5, 94, 302.5, 108, 3.1, 3.9, '#1a1613');            // its dark stripes
+    fbox(244, 132, 262, 150, 2.0, 3.4, P.cream2);                // a cream cushion on the chaise
+    rectC(234, 44, 314, 162);
 
-    /* ── the round side table: stone top, dark pedestal, magnolias ── */
-    fbox(158, 190, 178, 210, 0, 2.6, '#3a2818');               // walnut pedestal
-    fbox(155, 187, 181, 213, 2.6, 2.85, P.trav);               // travertine top
-    fbox(165, 196, 171, 202, 2.85, 3.7, '#cfe0e4');            // glass bulb vase
-    fbox(167, 198, 169, 199, 3.7, 4.9, '#5d6a4a');            // magnolia stem
-    fbox(165, 196, 171, 202, 4.6, 5.1, P.porc, true);         // the white blooms
-    circ(168, 199, 1.6);
+    /* ── the cowhide LC4-style chaise longue in the northeast corner,
+          bolstered head end by the wall, foot toward the room ── */
+    fbox(258, 20, 306, 32, 1.1, 1.5, P.cow);                     // cowhide pad
+    fbox(262, 21, 274, 31, 1.5, 1.52, P.cowDk);                  // black blotches
+    fbox(280, 22, 292, 30, 1.5, 1.52, P.cowDk);
+    fbox(296, 21, 304, 29, 1.5, 1.52, P.cowDk);
+    fbox(294, 20, 306, 32, 1.5, 2.6, P.cow);                     // the raised head end
+    fbox(296, 21, 304, 31, 2.6, 2.62, P.cowDk);
+    fbox(300, 18, 306, 34, 2.4, 3.0, P.cowDk);                   // black leather bolster
+    fbox(260, 22, 304, 23, 0.4, 1.1, P.chrome);                  // chrome side rails
+    fbox(260, 29, 304, 30, 0.4, 1.1, P.chrome);
+    fbox(268, 22, 269, 30, 0, 0.5, P.k);                         // black H-base
+    fbox(296, 22, 297, 30, 0, 0.5, P.k);
+    rectC(254, 16, 310, 36);
 
-    /* ── the cowhide LC4-style chaise longue in the far corner ── */
-    fbox(286, 60, 300, 120, 1.1, 1.5, P.cow);                  // cowhide seat pad
-    fbox(287, 66, 297, 74, 1.5, 1.52, P.cowDk);               // black blotches
-    fbox(289, 92, 298, 104, 1.5, 1.52, P.cowDk);
-    fbox(288, 110, 296, 118, 1.5, 1.52, P.cowDk);
-    fbox(286, 60, 300, 68, 1.5, 2.6, P.cow);                  // the raised knee end
-    fbox(287, 61, 297, 66, 2.6, 2.62, P.cowDk);
-    fbox(286, 112, 302, 120, 2.4, 3.0, P.cowDk);              // black leather headrest bolster
-    fbox(288, 62, 289, 118, 0.4, 1.1, P.chrome);             // chrome side rail
-    fbox(297, 62, 298, 118, 0.4, 1.1, P.chrome);
-    fbox(288, 70, 298, 71, 0, 0.5, P.k);                     // black H-base
-    fbox(288, 108, 298, 109, 0, 0.5, P.k);
-    rectC(284, 58, 304, 122);
+    /* ── the floor lamp in the corner behind the chaise ── */
+    fbox(304, 14, 307, 17, 0, 0.4, '#23211e');                   // foot hub
+    fbox(304.5, 14.5, 306.5, 16.5, 0.4, 6.6, '#2a2a26');         // pole
+    fbox(300, 10, 311, 21, 6.6, 8.1, P.amber, true);             // the lit drum shade
+    fbox(301, 11, 310, 20, 7.9, 8.2, shade(P.amber, 0.8));       // top rim
+    circ(305.5, 15.5, 1.3);
 
-    /* ── the floor lamp behind the chaise's head: cream drum, black quadpod ── */
-    fbox(304, 120, 307, 123, 0, 0.4, '#23211e');             // foot hub
-    fbox(304.5, 120.5, 306.5, 122.5, 0.4, 6.6, '#2a2a26');   // pole
-    fbox(300, 116, 311, 127, 6.6, 8.1, P.amber, true);       // the lit drum shade
-    fbox(301, 117, 310, 126, 7.9, 8.2, shade(P.amber, 0.8)); // top rim
-    circ(305.5, 121.5, 1.3);
+    /* ── the round side table + scooter at the couch's kitchen end ── */
+    fbox(292, 168, 306, 182, 0, 2.6, '#3a2818');                 // walnut pedestal
+    fbox(288, 164, 310, 186, 2.6, 2.85, P.trav);                 // travertine top
+    fbox(295, 171, 301, 177, 2.85, 3.7, '#cfe0e4');              // glass bulb vase
+    fbox(297, 173, 299, 174, 3.7, 4.9, '#5d6a4a');               // magnolia stem
+    fbox(295, 171, 301, 177, 4.6, 5.1, P.porc, true);            // the white blooms
+    circ(298, 174, 1.7);
+    fbox(262, 176, 268, 198, 0, 0.5, '#1c1c1e');                 // scooter deck
+    fbox(262, 176, 266, 180, 0.5, 5.6, '#17171a');               // stem
+    fbox(256, 174, 274, 178, 5.6, 5.9, '#3a3a3e');               // handlebar
+    fbox(263, 194, 267, 198, 0, 1.0, '#101012');                 // rear wheel
+    circ(264, 186, 1.6);
 
-    /* ── track lighting: two black rails on the ceiling, three warm heads each ── */
+    /* ── track lighting: two rails running down the living room ── */
     var th;
     for (th = 0; th < 3; th++) {
-        fbox(150 + th * 34, 60, 158 + th * 34, 64, 12.2, 12.55, '#1e1e20');
-        fbox(151 + th * 34, 60.5, 157 + th * 34, 63.5, 12.0, 12.2, P.amber, true);
-        fbox(150 + th * 34, 120, 158 + th * 34, 124, 12.2, 12.55, '#1e1e20');
-        fbox(151 + th * 34, 120.5, 157 + th * 34, 123.5, 12.0, 12.2, P.amber, true);
+        fbox(180, 48 + th * 40, 188, 56 + th * 40, 12.2, 12.55, '#1e1e20');
+        fbox(181, 49 + th * 40, 187, 55 + th * 40, 12.0, 12.2, P.amber, true);
+        fbox(228, 48 + th * 40, 236, 56 + th * 40, 12.2, 12.55, '#1e1e20');
+        fbox(229, 49 + th * 40, 235, 55 + th * 40, 12.0, 12.2, P.amber, true);
     }
-    fbox(150, 61.5, 252, 62.5, 12.55, 12.7, '#1c1c1c');
-    fbox(150, 121.5, 252, 122.5, 12.55, 12.7, '#1c1c1c');
-
-    /* ── flex zone ── */
-    /* bookshelf against the hall wall, spines facing east */
-    fbox(176, 204, 193, 248, 0, 6, P.wd2);
-    var spines = [P.red2, P.teal, P.gold, P.purp, P.grn, P.blank];
-    for (var s = 0; s < 3; s++) {
-        for (var i = 0; i < 5; i++) {
-            fbox(193, 208 + i * 7.4, 194.2, 214 + i * 7.4, 0.7 + s * 2, 2.3 + s * 2, spines[(s * 2 + i) % 6]);
-        }
-    }
-    rectC(174, 202, 196, 250);
-    /* record console + platter */
-    fbox(284, 204, 310, 246, 0, 3.0, P.wd1);
-    fbox(288, 210, 306, 228, 3.0, 3.25, '#17171a');
-    fbox(296, 218, 298, 220, 3.25, 3.4, P.red);
-    rectC(282, 202, 310, 248);
+    fbox(183, 44, 185, 140, 12.55, 12.7, '#1c1c1c');
+    fbox(231, 44, 233, 140, 12.55, 12.7, '#1c1c1c');
 
     /* ============ BEDROOM ============
-       a low platform bed with a cream rolled headboard against the west wall,
-       a charcoal waffle duvet, the mid-century oak nightstand with its black
-       arc lamp, and the dark-cherry ceiling fan. carpet underfoot. */
-    fbox(4, 30, 13, 96, 0, 6.15, P.hbd);                       // cream headboard against west wall
-    fbox(4, 30, 13, 33, 5.7, 6.35, shade(P.hbd, 1.05));        // its rolled top
-    fbox(13, 32, 90, 94, 0, 1.0, P.esp2);                      // platform frame
-    fbox(12, 30, 92, 96, 1.0, 2.55, P.duv);                    // the charcoal duvet, overhanging
-    fbox(12, 30, 14, 96, 2.55, 2.7, P.duv2);                   // top fold shadow at the head
-    fbox(14, 33, 16, 37, 0, 1.0, P.k);                         // black wedge legs
-    fbox(86, 33, 88, 37, 0, 1.0, P.k);
-    fbox(14, 89, 16, 93, 0, 1.0, P.k);
-    fbox(86, 89, 88, 93, 0, 1.0, P.k);
+       headboard on the west wall, window band north, door in the south wall;
+       nightstand + arc lamp on the bed's south (door) side, away from the
+       window, matching the photo. */
+    fbox(8.5, 44, 15, 108, 0, 6.15, P.hbd);                      // cream headboard
+    fbox(8.5, 44, 15, 47, 5.7, 6.35, shade(P.hbd, 1.05));        // its rolled top
+    fbox(15, 46, 92, 106, 0, 1.0, P.esp2);                       // platform frame
+    fbox(14, 44, 94, 108, 1.0, 2.55, P.duv);                     // the charcoal duvet
+    fbox(14, 44, 16, 108, 2.55, 2.7, P.duv2);                    // top fold shadow at the head
+    fbox(16, 47, 18, 51, 0, 1.0, P.k);                           // black wedge legs
+    fbox(88, 47, 90, 51, 0, 1.0, P.k);
+    fbox(16, 101, 18, 105, 0, 1.0, P.k);
+    fbox(88, 101, 90, 105, 0, 1.0, P.k);
     /* the pillow row against the headboard */
-    fbox(14, 36, 20, 82, 2.55, 3.6, P.porc);                   // white sleepers behind
-    fbox(15, 34, 30, 50, 2.55, 4.0, P.char);                   // charcoal lumbar (near end)
-    fbox(15, 54, 29, 68, 2.55, 3.75, P.cream2);                // cream + camel squiggle (centre)
-    fbox(17, 56, 27, 66, 3.0, 3.7, P.oak);                     // its squiggle
-    fbox(15, 72, 29, 88, 2.55, 3.85, P.slateB);                // slate-blue lumbar (far end)
-    rectC(2, 28, 94, 98);
-    /* the mid-century oak nightstand, head-left, with the black arc lamp */
-    fbox(6, 8, 30, 26, 0, 2.75, P.oak);                        // body
-    fbox(7, 9, 29, 12, 0, 2.7, P.oak2);                        // paler drawer fronts
-    fbox(7, 17, 29, 20, 0, 2.7, P.oak2);
-    fbox(16, 10, 20, 11, 1.0, 1.3, '#2a2622');                 // recessed pulls
-    fbox(16, 18, 20, 19, 1.0, 1.3, '#2a2622');
-    fbox(7, 24, 9, 26, 0, 0.4, P.k);                           // splayed black leg tips
-    fbox(27, 24, 29, 26, 0, 0.4, P.k);
-    fbox(10, 14, 18, 22, 2.75, 2.9, '#1e1b1a');               // lamp disc base
-    fbox(13, 17, 15, 19, 2.9, 4.5, '#1e1b1a');                // lamp rod
-    fbox(13, 12, 15, 17, 4.3, 4.5, '#1e1b1a');                // arm cantilever
-    fbox(11.5, 10.5, 16.5, 15.5, 3.9, 4.9, P.amber, true);    // the ribbed glass shade, lit
-    circ(14, 18, 1.4);
-    /* the ceiling fan: dark-cherry blades, brass body, amber bowl */
-    var fbx = 52, fbz = 66;
-    fbox(fbx - 22, fbz - 3, fbx + 22, fbz + 3, 11.3, 11.45, P.esp);     // blade E-W
-    fbox(fbx - 3, fbz - 22, fbx + 3, fbz + 22, 11.3, 11.45, P.esp2);    // blade N-S
-    fbox(fbx - 18, fbz + 8, fbx + 2, fbz + 20, 11.3, 11.42, P.esp);     // a diagonal blade
-    fbox(fbx - 6, fbz - 6, fbx + 6, fbz + 6, 11.2, 11.7, '#a88a52');    // brass motor housing
-    fbox(fbx - 4, fbz - 4, fbx + 4, fbz + 4, 11.7, 12.1, P.amber, true);// the amber bowl light
-    /* the dresser stays, restained to match */
-    fbox(12, 112, 32, 156, 0, 3.4, P.oak);                     // dresser
-    fbox(31.6, 118, 32.4, 124, 1.5, 2.1, '#2a2622');           // pulls
-    fbox(31.6, 133, 32.4, 139, 1.5, 2.1, '#2a2622');
-    fbox(31.6, 148, 32.4, 154, 1.5, 2.1, '#2a2622');
-    rectC(10, 110, 34, 158);
+    fbox(16, 50, 22, 96, 2.55, 3.6, P.porc);                     // white sleepers behind
+    fbox(17, 48, 32, 64, 2.55, 4.0, P.char);                     // charcoal lumbar
+    fbox(17, 68, 31, 82, 2.55, 3.75, P.cream2);                  // cream + camel squiggle
+    fbox(19, 70, 29, 80, 3.0, 3.7, P.oak);                       // its squiggle
+    fbox(17, 86, 31, 102, 2.55, 3.85, P.slateB);                 // slate-blue lumbar
+    rectC(6, 42, 96, 110);
+    /* the mid-century oak nightstand + black arc lamp, south of the bed */
+    fbox(10, 114, 34, 132, 0, 2.75, P.oak);                      // body
+    fbox(11, 129, 33, 132, 0, 2.7, P.oak2);                      // paler drawer fronts
+    fbox(11, 121, 33, 124, 0, 2.7, P.oak2);
+    fbox(20, 130, 24, 131, 1.0, 1.3, '#2a2622');                 // recessed pulls
+    fbox(20, 122, 24, 123, 1.0, 1.3, '#2a2622');
+    fbox(11, 114, 13, 116, 0, 0.4, P.k);                         // splayed leg tips
+    fbox(31, 114, 33, 116, 0, 0.4, P.k);
+    fbox(14, 118, 22, 126, 2.75, 2.9, '#1e1b1a');                // lamp disc base
+    fbox(17, 121, 19, 123, 2.9, 4.5, '#1e1b1a');                 // lamp rod
+    fbox(17, 116, 19, 121, 4.3, 4.5, '#1e1b1a');                 // arm cantilever
+    fbox(15.5, 114.5, 20.5, 119.5, 3.9, 4.9, P.amber, true);     // ribbed glass shade, lit
+    circ(18, 122, 1.5);
+    /* the ceiling fan, centered over the bed */
+    var fbx = 60, fbz = 76;
+    fbox(fbx - 22, fbz - 3, fbx + 22, fbz + 3, 11.3, 11.45, P.esp);
+    fbox(fbx - 3, fbz - 22, fbx + 3, fbz + 22, 11.3, 11.45, P.esp2);
+    fbox(fbx - 18, fbz + 8, fbx + 2, fbz + 20, 11.3, 11.42, P.esp);
+    fbox(fbx - 6, fbz - 6, fbx + 6, fbz + 6, 11.2, 11.7, '#a88a52');
+    fbox(fbx - 4, fbz - 4, fbx + 4, fbz + 4, 11.7, 12.1, P.amber, true);
+    /* the dresser on the south wall, east of the door */
+    fbox(100, 138, 140, 150, 0, 3.4, P.oak);
+    fbox(104, 137.4, 112, 138, 1.5, 2.1, '#2a2622');             // pulls face the room
+    fbox(118, 137.4, 126, 138, 1.5, 2.1, '#2a2622');
+    fbox(130, 137.4, 138, 138, 1.5, 2.1, '#2a2622');
+    rectC(98, 136, 142, 152);
 
-    /* ── closet + laundry ── */
-    fbox(84, 170, 118, 230, 0, 6.0, P.porc);                   // washer/dryer stack
-    fbox(118, 176, 118.8, 196, 1.2, 3.6, P.slate);             // drums face the hall
-    fbox(118, 205, 118.8, 225, 1.2, 3.6, P.slate);
-    rectC(82, 168, 120, 232);
-    fbox(16, 196, 38, 210, 0, 1.8, P.teal);                    // bins + suitcase
-    fbox(18, 212, 40, 226, 0, 1.6, P.slate);
-    fbox(46, 214, 72, 228, 0, 1.6, P.red2);
-    circ(30, 210, 2.4);
+    /* ============ THE CORE ============ */
+    /* walk-in closet: rail + hanging clothes along the north wall, shoes
+       on the wood floor */
+    fbox(114, 162, 140, 163, 5.2, 5.4, P.steel);                 // the rail
+    fbox(115, 161, 120, 168, 2.8, 5.2, P.slateB);                // hanging clothes
+    fbox(121, 161, 126, 168, 3.0, 5.2, P.char);
+    fbox(127, 161, 132, 168, 2.7, 5.2, P.cream2);
+    fbox(133, 161, 138, 168, 3.1, 5.2, '#5d6a4a');
+    fbox(115, 176, 125, 184, 0, 1.2, P.porc);                    // shoes on the floor
+    fbox(128, 176, 136, 183, 0, 1.1, P.slate);
 
-    /* ── bathroom ── */
-    fbox(14, 348, 110, 400, 0, 2.4, P.porc);                   // tub
-    fbox(20, 354, 104, 394, 1.7, 1.9, P.water);
-    fbox(103, 370, 107, 374, 2.4, 3.3, P.steel);               // faucet
-    rectC(12, 346, 112, 402);
-    fbox(14, 296, 32, 301, 1.0, 3.4, P.porc);                  // toilet tank
-    fbox(15, 301, 31, 322, 0, 1.8, P.porc);                    // bowl
-    circ(23, 309, 1.6);
-    fbox(14, 256, 52, 278, 0, 3.0, P.kcab);                    // vanity
-    fbox(12.5, 254.5, 53.5, 279.5, 3.0, 3.3, P.ktop);
-    fbox(22, 261, 42, 273, 3.3, 3.45, P.steel);                // basin
-    fbox(8.2, 259, 9, 276, 4.3, 7.0, '#a8c4d4');               // mirror on the wall
-    rectC(12, 254, 54, 280);
+    /* reach-in closet west of the corridor: the washer/dryer stack up top,
+       linen shelves below */
+    fbox(20, 162, 46, 188, 0, 6.0, P.porc);                      // W/D stack
+    fbox(46, 166, 46.8, 178, 1.2, 2.8, P.slate);                 // dryer drum faces the corridor
+    fbox(46, 166, 46.8, 178, 3.4, 5.0, P.slate);                 // washer drum above
+    fbox(20, 196, 46, 232, 0, 5.6, '#cbb89a');                   // shelf tower
+    fbox(46, 200, 46.6, 228, 1.6, 1.8, P.trim);                  // shelf lips
+    fbox(46, 200, 46.6, 228, 3.2, 3.4, P.trim);
+    fbox(46, 200, 46.6, 228, 4.8, 5.0, P.trim);
+    rectC(18, 160, 48, 234);
 
-    /* ── kitchen ── */
-    fbox(284, 288, 310, 406, 0, 4.2, P.kcab);                  // east counter
-    fbox(282, 286, 310, 406, 4.2, 4.6, P.ktop);
-    fbox(289, 310, 306, 340, 4.6, 4.7, P.steel2);              // sink
-    fbox(305, 322, 307, 326, 4.7, 5.6, P.steel);
-    rectC(280, 284, 310, 406);
-    fbox(176, 384, 208, 406, 0, 4.2, P.kcab);                  // south counter, left of stove
-    fbox(174, 384, 208, 406, 4.2, 4.6, P.ktop);
-    fbox(244, 384, 310, 406, 0, 4.2, P.kcab);                  // right of stove
-    fbox(244, 384, 310, 406, 4.2, 4.6, P.ktop);
-    rectC(174, 382, 310, 406);
-    fbox(208, 384, 244, 406, 0, 4.4, P.porc);                  // stove
-    fbox(208, 384, 244, 406, 4.4, 4.6, '#31363e');
-    fbox(212, 386, 222, 396, 4.6, 4.72, P.k);                  // burners
-    fbox(228, 386, 238, 396, 4.6, 4.72, P.k);
-    fbox(212, 383.4, 240, 384, 1.4, 3.0, '#3d3020');           // oven window
-    fbox(252, 387, 276, 402, 4.6, 6.0, '#2a2a30');             // microwave
-    fbox(254, 386.4, 270, 387, 4.9, 5.7, P.glass);
-    fbox(282, 248, 310, 284, 0, 9.0, P.steel);                 // fridge
-    fbox(281.4, 254, 282, 262, 3.4, 5.6, P.steel2);            // handles
-    fbox(281.4, 268, 282, 276, 4.2, 5.2, P.steel2);
-    rectC(280, 246, 310, 286);
-    fbox(200, 296, 244, 356, 0, 4.2, P.kcab);                  // island
-    fbox(198, 294, 246, 358, 4.2, 4.6, P.ktop);
-    fbox(208, 306, 215, 313, 4.6, 5.5, P.water);               // cookie jar
-    fbox(209.5, 307.5, 213.5, 311.5, 5.5, 5.8, P.wd2);
-    rectC(196, 292, 248, 360);
-    fbox(184, 306, 196, 318, 3.0, 3.5, P.slate);               // stools
-    fbox(188.5, 310.5, 191.5, 314.5, 0, 3.0, P.wd2);
-    fbox(184, 334, 196, 346, 3.0, 3.5, P.slate);
-    fbox(188.5, 338.5, 191.5, 342.5, 0, 3.0, P.wd2);
-    circ(190, 312, 1.2); circ(190, 340, 1.2);
+    /* ============ BATHROOM ============
+       vanity north on the west wall, toilet mid, tub along the south. */
+    fbox(8, 254, 24, 314, 0, 3.0, '#e8e4dc');                    // vanity cabinet
+    fbox(6.5, 252, 26, 316, 3.0, 3.3, '#6a4a34');                // brown granite top
+    fbox(10, 268, 22, 298, 3.3, 3.45, P.porc);                   // basin
+    fbox(22, 278, 25, 284, 3.45, 4.1, P.steel);                  // faucet
+    fbox(8.2, 262, 9, 306, 4.3, 7.0, '#a8c4d4');                 // mirror on the wall
+    rectC(6, 250, 27, 318);
+    fbox(8, 324, 14, 346, 1.0, 3.4, P.porc);                     // toilet tank
+    fbox(14, 328, 28, 344, 0, 1.8, P.porc);                      // bowl
+    circ(20, 336, 1.7);
+    fbox(10, 352, 70, 402, 0, 2.4, P.porc);                      // the tub
+    fbox(14, 356, 66, 398, 1.7, 1.9, P.water);
+    fbox(12, 372, 16, 378, 2.4, 3.3, P.steel);                   // faucet, west end
+    rectC(8, 350, 72, 404);
 
-    /* ── entry ── */
-    fbox(150, 352, 166, 378, 0, 2.6, P.wd1);                   // entry table
-    fbox(153, 356, 163, 372, 2.6, 3.1, P.slate);               // key bowl
-    circ(158, 365, 1.6);
-    fbox(134, 368, 145, 378, 0, 0.8, P.porc);                  // shoes
-    fbox(148, 370, 157, 379, 0, 0.7, P.slate);
+    /* ============ HALL: desk nook + entry closet ============ */
+    fbox(76, 292, 104, 340, 3.3, 3.6, P.porc);                   // the built-in white counter
+    fbox(78, 296, 82, 336, 0, 3.3, '#ddd9cf');                   // its support panels
+    fbox(98, 296, 102, 336, 0, 3.3, '#ddd9cf');
+    fbox(80, 310, 88, 318, 3.6, 3.75, P.alu);                    // a laptop on it
+    fbox(80.5, 311, 81.5, 317, 3.75, 4.6, '#16181a');            // its raised lid
+    fbox(88, 306, 100, 322, 2.2, 2.7, '#1e1f21');                // a simple task chair
+    fbox(98, 308, 101, 320, 2.7, 4.4, '#2a2c31');
+    rectC(74, 290, 106, 342);
+    fbox(76, 362, 102, 398, 1.6, 1.8, '#cbb89a');                // entry closet shelves
+    fbox(76, 362, 102, 398, 3.2, 3.4, '#cbb89a');
+    fbox(76, 362, 102, 398, 4.8, 5.0, '#cbb89a');
+    fbox(80, 366, 88, 374, 1.8, 3.0, P.teal);                    // bins + bottles on them
+    fbox(92, 380, 98, 388, 3.4, 4.4, P.gold);
+    fbox(82, 384, 90, 392, 0, 1.4, P.slate);                     // floor basket
+    rectC(74, 360, 104, 400);
+    fbox(122, 396, 134, 404, 0, 0.8, P.porc);                    // shoes by the door
+    fbox(138, 398, 148, 405, 0, 0.7, P.slate);
+
+    /* ============ KITCHEN ============
+       open to the hall + living room. peninsula with the double sink and
+       three stools, tall fridge block joining it to the east notch, stove
+       in the south counter run, short return counter on the east wall. */
+    fbox(170, 290, 246, 320, 0, 4.2, P.esp2);                    // peninsula cabinets
+    fbox(166, 286, 250, 324, 4.2, 4.6, '#c9b88f');               // granite top
+    fbox(184, 296, 216, 314, 4.6, 4.72, P.steel2);               // double sink
+    fbox(198, 302, 200, 308, 4.72, 5.0, P.steel2);               // its divider
+    fbox(216, 300, 219, 306, 4.72, 5.5, P.steel);                // faucet
+    rectC(164, 284, 252, 326);
+    var st;
+    for (st = 0; st < 3; st++) {
+        fbox(176 + st * 24, 272, 188 + st * 24, 282, 3.0, 3.5, P.wd1);    // stool seats
+        fbox(180 + st * 24, 275, 184 + st * 24, 279, 0, 3.0, '#2a2622');  // legs
+        circ(182 + st * 24, 277, 1.4);
+    }
+    fbox(250, 270, 276, 322, 0, 7.5, P.esp2);                    // the tall fridge block
+    fbox(248.5, 276, 250, 316, 0.4, 6.8, P.steel);               // fridge doors face the aisle
+    fbox(248, 282, 248.5, 290, 3.4, 5.4, P.steel2);              // handles
+    fbox(248, 296, 248.5, 304, 3.4, 5.4, P.steel2);
+    rectC(246, 268, 278, 324);
+    fbox(162, 386, 310, 407, 0, 4.2, P.esp2);                    // south counter run
+    fbox(160, 384, 312, 407, 4.2, 4.6, '#c9b88f');
+    fbox(224, 384, 256, 407, 0, 4.4, P.porc);                    // the range
+    fbox(226, 386, 254, 405, 4.4, 4.62, '#31363e');              // cooktop
+    fbox(229, 389, 237, 397, 4.62, 4.72, P.k);                   // burners
+    fbox(243, 389, 251, 397, 4.62, 4.72, P.k);
+    fbox(228, 383.4, 252, 384, 1.4, 3.0, '#3d3020');             // oven window
+    fbox(286, 350, 312, 386, 0, 4.2, P.esp2);                    // east return counter
+    fbox(284, 348, 312, 386, 4.2, 4.6, '#c9b88f');
+    fbox(290, 356, 306, 374, 4.6, 5.8, '#2a2a30');               // microwave
+    fbox(289.4, 360, 290, 372, 4.9, 5.6, P.glass);
+    rectC(158, 382, 314, 408);
+    rectC(282, 346, 314, 388);
+    /* pendant over the peninsula */
+    fbox(199, 299, 201, 301, 9.2, 12.7, '#4e4d48');              // stem
+    fbox(193, 293, 207, 307, 7.6, 9.2, P.amber, true);           // the lit cone shade
+    fbox(194, 294, 206, 306, 9.0, 9.25, shade(P.amber, 0.8));
 }
 
 /* ============================================================
@@ -573,8 +623,8 @@ function buildFurniture() {
    ============================================================ */
 var PLANE = 1.02;                                  // ~91° horizontal fov: room-scale needs wide
 var PL = {
-    x: 18.5, z: 47.0,
-    dirX: 0, dirZ: -1,                             // facing north, up the hall
+    x: 17.0, z: 47.5,
+    dirX: 0, dirZ: -1,                             // facing north, up the hall past the slant
     planeX: PLANE, planeZ: 0,
     pitch: 0, bobT: 0
 };
@@ -915,9 +965,11 @@ var hideMini = false;
 function buildMinimap() {
     var g = minig, i, o, r, c;
     R(g, 0, 0, MW + 4, MH + 4, '#101014');
-    /* floors: wood inside the wall ring, tile in the bathroom */
+    /* floors: wood inside the wall ring, tile in the bathroom + corridor */
     R(g, 3, 3, MW - 2, MH - 2, M3.fl);
-    R(g, 3, 32, 14, 21, M3.tile);
+    R(g, 3, 33, 9, 19, M3.tile);                   // bathroom
+    R(g, 11, 22, 3, 11, M3.tile);                  // dressing corridor
+    R(g, 13, 33, 3, 18, M3.tile);                  // nook + entry closet strip
     for (i = 0; i < RUGS.length; i++) {
         o = RUGS[i];
         g.fillStyle = o.c;
@@ -992,9 +1044,11 @@ function buildMapScene() {
     /* floors, inset from the wall ring like /room3d/ */
     mflat(8, 8, 304, 400, M3.fl);
     for (zz = 24; zz < 408; zz += 16) mflat(8, zz, 304, 1.2, M3.flSeam, 0.5);
-    mflat(8, 240, 112, 168, M3.tile);
-    for (cz = 240; cz < 408; cz += 12) for (cx = 8; cx < 120; cx += 12) {
-        if ((((cx - 8) / 12) + ((cz - 240) / 12)) % 2 < 1) mflat(cx, cz, Math.min(12, 120 - cx), Math.min(12, 408 - cz), M3.tile2);
+    mflat(8, 248, 74, 158, M3.tile);               // bathroom
+    mflat(72, 160, 24, 88, M3.tile);               // dressing corridor
+    mflat(82, 248, 32, 158, M3.tile);              // nook + entry closet strip
+    for (cz = 248; cz < 406; cz += 12) for (cx = 8; cx < 82; cx += 12) {
+        if ((((cx - 8) / 12) + ((cz - 248) / 12)) % 2 < 1) mflat(cx, cz, Math.min(12, 82 - cx), Math.min(12, 406 - cz), M3.tile2);
     }
     for (i = 0; i < RUGS.length; i++) {
         o = RUGS[i];
@@ -1561,7 +1615,7 @@ function boot() {
             if (kv[0] === 'mzoom') MAPV.zoom = clamp(qv, 0.7, 1.8);
         }
         /* a spawn inside a wall would hard-lock movement: fall back home */
-        if (hitsWall(PL.x, PL.z) || solidCell(Math.floor(PL.x), Math.floor(PL.z))) { PL.x = 18.5; PL.z = 47.0; }
+        if (hitsWall(PL.x, PL.z) || solidCell(Math.floor(PL.x), Math.floor(PL.z))) { PL.x = 17.0; PL.z = 47.5; }
         if (a0 !== null) { PL.dirX = Math.cos(a0); PL.dirZ = Math.sin(a0); PL.planeX = -PL.dirZ * PLANE; PL.planeZ = PL.dirX * PLANE; }
         if (window.location.search.indexOf('dev') >= 0) {
             window.__room1p = {
@@ -1576,6 +1630,7 @@ function boot() {
                 renderMs: function (n) { var t = performance.now(); for (var i = 0; i < (n || 100); i++) render(); return (performance.now() - t) / (n || 100); },
                 mapMs: function (n) { var t = performance.now(); for (var i = 0; i < (n || 100); i++) renderMap(); return (performance.now() - t) / (n || 100); },
                 prompt: function () { checkPrompt(); return promptTgt ? promptTgt.href : null; },
+                walk: function (x, z) { return !hitsWall(x, z); },
                 map: {
                     open: openMap, close: closeMap,
                     set: function (y, p, z) {
