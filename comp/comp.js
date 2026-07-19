@@ -166,7 +166,9 @@ function openApp(id, arg) {
 }
 function createWindow(id, a, arg) {
     var w = a.w || 560, h = a.h || 420;
-    w = Math.min(w, window.innerWidth - 16); h = Math.min(h, window.innerHeight - BAR - 16);
+    // floor the clamp: boot-time dev hooks can fire before the viewport has laid out,
+    // and Math.min against a negative viewport writes an invalid width the parser drops
+    w = Math.max(320, Math.min(w, window.innerWidth - 16)); h = Math.max(240, Math.min(h, window.innerHeight - BAR - 16));
     var n = Object.keys(openWins).length;
     var left = clamp(Math.round((window.innerWidth - w) / 2) + (n % 5) * 26 - 52, 8, window.innerWidth - w - 8);
     var top = clamp(Math.round((window.innerHeight - BAR - h) / 2) + (n % 5) * 22 - 40, 8, window.innerHeight - BAR - h - 8);
@@ -577,7 +579,8 @@ var TREE_C = {
                 'common': {
                     'Terraria': { $when: 'inst:terraria', 'Terraria.exe': '@terraria', 'ReLogic.Native.dll': 0, 'Content': { 'Images': { $: { e: 'Every tree you have ever chopped, as .xnb files.' } }, 'Sounds': {} }, 'changelog.txt': 0 },
                     'Cookie Clicker': { $when: 'inst:cookie', 'Cookie Clicker.exe': '@cookie', 'resources': { 'app.asar': ['142 MB'] }, 'LICENSE.txt': 0 },
-                    'URE QUEST': { $when: 'inst:urequest', 'urequest.exe': '@ureboy', 'quest.pak': 0, 'readme.txt': 'URE QUEST v4 — the party rebuild.\nIf the game asks you to install an intercooler mid-boss, that is not a bug. That is the plot.' }
+                    'URE QUEST': { $when: 'inst:urequest', 'urequest.exe': '@ureboy', 'quest.pak': 0, 'readme.txt': 'URE QUEST v4 — the party rebuild.\nIf the game asks you to install an intercooler mid-boss, that is not a bug. That is the plot.' },
+                    'VEILFALL': { $when: 'inst:veilfall', 'veilfall.exe': '@arpg', 'Content': { 'spells.pak': 0, 'arena.pak': 0 }, 'story.txt': '[this file intentionally left blank]\n\n(the writer says it is coming. the writer says it will be short but sweet. the dummy waits.)' }
                 },
                 'workshop': {}
             },
@@ -3771,6 +3774,17 @@ var STG = [
     rev: ['Very Positive', 90, 512], art: ['#2d1e3a', SC.gb, 'URE'], sc: 'dungeon', launch: '/ureboy/',
     ach: [11, 16], achx: [['First Blood', 'Win a battle', 1], ['Lorekeeper', 'Read every codex', 1], ['Pacifist', 'Clear a floor unhurt', 0], ['Nat 20', 'Land a crit', 1]] },
 
+  // runs IN the desktop — window.ARPG, comp/arpg.js
+  { id: 'veilfall', t: 'VEILFALL', dev: 'URE Softworks', pub: 'URE Softworks', yr: 2026,
+    tags: ['Action RPG', 'Early Access', 'Isometric', 'Dark Fantasy', 'Loot'],
+    s: "An isometric ARPG in Early Access. One arena, nine spells, one very patient dummy. The story isn't written yet. The violence is.",
+    d: "The proving grounds open before the campaign does: liquid life and mana globes, a passive web, flasks that refill on violence, crits, ignites, freezes, shocks, a curse, a meteor with a travel time, and a training dummy with configurable resistances and infinite forgiveness. Bring opinions about cast speed. Early Access roadmap: 'a short but sweet intriguing story' — the writer has been informed.",
+    price: 0, disc: 0, free: true, owned: true, inst: false, hrs: 0, hrs2w: 0, ea: true,
+    rev: ['Very Positive', 91, 328], art: ['#160a20', '#8a4ae0', 'VF'], sc: 'dungeon', trend: true,
+    app: 'arpg', live: 'ARPG',
+    ach: [0, 14],
+    news: [['v0.1 — the proving grounds', "VEILFALL enters Early Access with a test arena, nine spells and a dummy that respawns with fresh optimism. The story arrives when it arrives. The meteor arrives in 1.1 seconds.", 'Jul 17']] },
+
   // runs IN the desktop (like Terraria below) — window.COOKIE, comp/cookie.js.
   // installed = playable on this Steam: only games with a real build (app: in a
   // window, launch: on the URE BOY) ship installed; the shelf games are library-only
@@ -6799,6 +6813,11 @@ var APPS = {
         render: function () { return window.COOKIE ? window.COOKIE.render() : '<p style="padding:24px">The oven never preheated (cookie.js missing).</p>'; },
         init: function (el) { if (window.COOKIE) window.COOKIE.init(el); },
         onClose: function () { if (window.COOKIE) bankPlaytime('cookie', window.COOKIE.close() || 0); } },
+    arpg: { title: 'VEILFALL', icon: 'ic-arpg', w: 1120, h: 700,
+        render: function () { return window.ARPG ? window.ARPG.render() : '<p style="padding:24px">The veil failed to fall (arpg.js missing).</p>'; },
+        init: function (el) { if (window.ARPG) window.ARPG.init(el); },
+        onFocus: function (el) { var r = el.querySelector('.ar'); if (r) r.focus(); },   // keys follow the window
+        onClose: function () { if (window.ARPG) bankPlaytime('veilfall', window.ARPG.close() || 0); } },
     terraria: { title: 'Terraria', icon: 'ic-terraria', w: 1040, h: 640,
         render: function () { return window.TERRA ? window.TERRA.render() : '<p style="padding:24px">World generation failed to start (terraria.js missing).</p>'; },
         init: function (el) { if (window.TERRA) window.TERRA.init(el); },
@@ -7308,6 +7327,7 @@ if (location.search.indexOf('dev=bin') >= 0) {
 }
 if (location.search.indexOf('dev=cookie') >= 0) openApp('cookie');   // + &ckdev seeds a mature bakery
 if (location.search.indexOf('dev=terra') >= 0) openApp('terraria');   // + &tdev=night|cave|boss|kit
+if (location.search.indexOf('dev=arpg') >= 0) openApp('arpg');        // VEILFALL proving grounds (window.__arpg test handle)
 if (location.search.indexOf('dev=mc') >= 0) openApp('minecraft');   // + &mcdev=kit,night,dusk,cave,mobs (&mcseed=N)
 if (location.search.indexOf('dev=dnd') >= 0) {   // a file moved Downloads→Desktop + a repositioned icon, in Explorer's Desktop view
     var __d = fsAddFile('Downloads', chromeSetupItem());
