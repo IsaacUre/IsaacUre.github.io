@@ -43,21 +43,45 @@ function mk(w, h) { var c = document.createElement('canvas'); c.width = w; c.hei
 function R(g, x, y, w, h, c) { g.fillStyle = c; g.fillRect(x, y, w, h); }
 function box1(g, x, y, w, h, c) { R(g, x, y, w, 1, c); R(g, x, y + h - 1, w, 1, c); R(g, x, y, 1, h, c); R(g, x + w - 1, y, 1, h, c); }
 
-/* ───────────────────────── palette ────────────────────────── */
+/* ───────────────────────── palette ─────────────────────────
+   sampled off Isaac's apartment photos, then walked back toward true color:
+   every shot is lit by tungsten at night, so the raw pixels run amber. the
+   values kept as measured are the light sources themselves. */
 var P = {
     k: '#15151a',
     red: '#d81e05', red2: '#8f1305',
-    wall: '#ded8c6', wallDk: '#c9c3b0',
-    fl: '#8a6240', ceil: '#cfc9b8',
+    wall: '#d6ccb6', wallDk: '#bdb39c',           // warm greige, not white
+    trim: '#8f8778', trimLt: '#a49c8c',           // door casing + baseboards
+    fl: '#96552a', flLt: '#b8703c',               // cherry hardwood
+    ceil: '#cfc9b8',
+    carp: '#b3a082', carp2: '#9c8a6c',            // bedroom carpet
     tile: '#dfe4e5', tile2: '#b7bfc2',
     wd1: '#a8794e', wd2: '#7c5636', wd3: '#573b26',
-    cream: '#e6e1d1', cream2: '#c8c2af',
-    cow: '#f4f2e6', cowDk: '#26262b',
-    duv: '#dcd6c4', blank: '#5e93cf',
+    esp: '#4a2c1e', esp2: '#341e14', espLit: '#6a4030',   // the desk: dark espresso
+    espMag: '#7a4a68',                            // desk wood where the monitors hit it
+    cream: '#ded5c0', cream2: '#c2b8a1',          // the sectional
+    char: '#3a342e',                              // its charcoal throw pillows
+    cow: '#f2efe4', cowDk: '#1e1c1c',
+    duv: '#2f2c31', duv2: '#242227',              // the charcoal duvet
+    hbd: '#ddd6cb',                               // cream headboard
+    oak: '#b5834a', oak2: '#cbae7e',              // the mid-century nightstand
+    slateB: '#59617a',                            // the slate-blue bed pillow
+    trav: '#ded5c0', champ: '#b8b4ac',            // side-table stone; track-head metal
+    leop: '#b08d63',
+    blank: '#5e93cf',
     slate: '#454c57', kcab: '#4a4f58', ktop: '#d9d5c7',
     steel: '#9aa3ad', steel2: '#6f7883', porc: '#eff0ec', water: '#cfe0e4',
+    chrome: '#c2c7ce', alu: '#9ba0a6',
     grn: '#5d8544', grn2: '#42663a', pot: '#b06a4a',
     teal: '#1f9e98', purp: '#7b53c9', gold: '#e8c04a', yell: '#f4dd7c',
+    amber: '#fae692',                             // measured: the bedside lamp
+    lime: '#a4d922',                              // the deskmat's edge
+    mat: '#1d1821',                               // measured: the deskmat
+    led: '#2f7bff', led2: '#8ab6ff', ledDk: '#0a1a4a',   // the tower's ring fans
+    wp: '#4636d8', wp2: '#7a5cff', wpMag: '#e85ab8', wpOrg: '#ec6a38',  // that wallpaper
+    fire: '#1a3a64', fire2: '#4d7bb0',            // the TV's home screen
+    brick: '#9c5a48', brickDk: '#7c4234', brickW: '#d8dcdc',  // the building across the way
+    blind: '#e4e2d8', blindDk: '#b4b2a6',
     glass: '#39434d', shell: '#d9d8cf', dmg: '#9bbc0f'
 };
 
@@ -124,32 +148,46 @@ function texDrywall() {
         if (hx > 0.6) R(g, Math.floor(thash(i, 3) * TW), Math.floor(hx * (TH - 12)), 2, 1, hx > 0.82 ? '#e8e2d0' : P.wallDk);
     }
     R(g, 0, 0, TW, 2, P.wallDk);
-    R(g, 0, TH - 8, TW, 6, P.wd3);               // baseboard
-    R(g, 0, TH - 8, TW, 1, shade(P.wd3, 1.4));
+    /* the baseboards and casings here are painted greige, not stained wood */
+    R(g, 0, TH - 9, TW, 7, P.trim);              // baseboard
+    R(g, 0, TH - 9, TW, 1, P.trimLt);
     R(g, 0, TH - 2, TW, 2, P.k);
     return c;
 }
 function texWindow() {
-    /* seamless window band: glass full-width with a mullion at the seam, so
-       per-cell repetition reads as one long window wall, not prison bars */
+    /* seamless window band. what is out there is not sky — it is the red brick
+       building across the way, close enough to fill the glass, with the blinds
+       half down over it. */
     var c = mk(TW, TH), g = c.getContext('2d');
     g.drawImage(TEX[1], 0, 0);
     var sky = skyColors();
-    R(g, 0, 10, TW, 30, sky[0]);
-    R(g, 0, 26, TW, 14, sky[1]);
-    if (curPhase === 'night') {
-        for (var i = 0; i < 8; i++) {
-            var hx = thash(i * 11, i * 5);
-            if (hx > 0.35) R(g, Math.floor(thash(i, 7) * (TW - 2)), 12 + Math.floor(hx * 22), 1, 1, P.yell);
+    var i, bx;
+    R(g, 0, 10, TW, 30, sky[0]);                 // a sliver of sky up top
+
+    /* the building: brick field, mortar courses, white sashes four lights each */
+    R(g, 0, 17, TW, 23, P.brick);
+    for (i = 18; i < 40; i += 3) R(g, 0, i, TW, 1, P.brickDk);
+    for (bx = 1; bx < TW; bx += 11) {
+        for (var by = 19; by < 38; by += 11) {
+            R(g, bx, by, 8, 9, P.brickW);        // sash
+            R(g, bx + 1, by + 1, 6, 3, curPhase === 'night' ? '#3b4048' : '#a8bcc8');
+            R(g, bx + 1, by + 5, 6, 3, curPhase === 'night' ? '#3b4048' : '#9fb4c2');
+            if (curPhase === 'night' && thash(bx, by) > 0.62) {
+                R(g, bx + 1, by + 1, 6, 3, P.yell);   // somebody is up
+            }
         }
-    } else if (curPhase === 'day') {
-        R(g, 7, 15, 8, 2, '#e8f0f8'); R(g, 9, 14, 4, 4, '#e8f0f8');
     }
-    R(g, 0, 8, TW, 2, P.wd3);                    // head frame
-    R(g, 0, 40, TW, 2, P.wd3);
-    R(g, 0, 10, 1, 30, P.wd3);                   // slim mullion at the seam
-    R(g, 0, 24, TW, 1, 'rgba(21,21,26,0.55)');   // transom line
-    R(g, 0, 42, TW, 3, P.wallDk);                // sill
+    /* blinds: slats down over the top of the glass, the way they always are */
+    for (i = 10; i < 27; i += 2) {
+        R(g, 0, i, TW, 1, P.blind);
+        R(g, 0, i + 1, TW, 1, P.blindDk);
+    }
+    R(g, 0, 26, TW, 1, shade(P.blindDk, 0.7));   // the bottom rail's shadow
+
+    R(g, 0, 8, TW, 2, P.trim);                   // head frame
+    R(g, 0, 40, TW, 2, P.trim);
+    R(g, 0, 10, 1, 30, P.trimLt);                // slim mullion at the seam
+    R(g, 0, 42, TW, 3, P.trimLt);                // the deep white sill
     return c;
 }
 function texTile() {
@@ -232,103 +270,175 @@ function mix(hex, t) {
    the WEST wall, so the screens face east (+x) and you meet them from the
    room side — see the PL.x guard in the glow loop and checkPrompt. */
 var HOTS = [
-    { x: 17.19, z: 7.2, y: 4.9, href: '/ureboy/', html: 'boot the <b>URE BOY</b>',
-      rgb: '255,84,54', base: 14, amp: 6, spd: 2.4, a0: 0.3, a1: 0.25 },
-    { x: 16.45, z: 9.0, y: 5.4, href: '/comp/', html: 'sit down at the <b>PC</b>',
-      rgb: '116,176,255', base: 12, amp: 3, spd: 1.6, a0: 0.22, a1: 0.16 }
+    { x: 17.85, z: 4.5, y: 4.6, href: '/ureboy/', html: 'boot the <b>URE BOY</b>',
+      rgb: '255,84,54', base: 11, amp: 5, spd: 2.4, a0: 0.28, a1: 0.22 },
+    { x: 17.4, z: 9.0, y: 5.3, href: '/comp/', html: 'sit down at the <b>PC</b>',
+      rgb: '150,120,255', base: 14, amp: 4, spd: 1.5, a0: 0.26, a1: 0.2 }
 ];
 
 function buildFurniture() {
     FURN.length = 0; RUGS.length = 0; CIRC.length = 0; RECTS.length = 0;
 
-    /* rugs are floor quads */
-    rug(186, 66, 282, 162, P.red2);
-    rug(194, 74, 274, 154, '#7c1004');
-    rug(40, 112, 88, 152, P.teal);
-    rug(134, 252, 162, 344, P.red2);
+    /* the apartment is all cherry hardwood; the bedroom is the one carpeted
+       room, laid as a floor quad over the boards. */
+    rug(6, 6, 118, 158, P.carp);
+    rug(10, 10, 114, 154, P.carp2);
 
-    /* ── living room ── */
-    /* couch: base, back, arms, cushions, pillows */
-    fbox(192, 128, 260, 158, 0, 2.2, P.cream);
-    fbox(192, 150, 260, 158, 0, 4.2, P.cream2);
-    fbox(192, 128, 199, 158, 0, 3.1, P.cream2);
-    fbox(253, 128, 260, 158, 0, 3.1, P.cream2);
-    fbox(200, 130, 225, 149, 2.2, 2.9, '#f2eee0');
-    fbox(228, 130, 253, 149, 2.2, 2.9, '#f2eee0');
-    fbox(203, 147, 213, 151, 2.9, 4.0, P.blank);
-    fbox(240, 147, 250, 151, 2.9, 4.0, P.gold);
-    rectC(190, 126, 262, 160);
-    /* cow chair: seat, back, arms, ears, patches */
-    fbox(272, 118, 302, 150, 0, 2.4, P.cow);
-    fbox(272, 142, 302, 150, 0, 4.4, P.cow);
-    fbox(272, 118, 277, 146, 0, 3.0, P.cow);
-    fbox(297, 118, 302, 146, 0, 3.0, P.cow);
-    fbox(274, 145, 279, 150, 4.4, 5.0, P.cow);
-    fbox(295, 145, 300, 150, 4.4, 5.0, P.cowDk);
-    fbox(278, 117.4, 288, 118.2, 0.6, 1.8, P.cowDk);
-    fbox(271.4, 124, 272.2, 134, 0.8, 2.2, P.cowDk);
-    fbox(282, 141.4, 292, 142.2, 2.6, 3.8, P.cowDk);
-    circ(287, 134, 2.2);
-    /* coffee table + the d20s */
-    fbox(204, 88, 248, 114, 2.0, 2.4, P.wd1);
-    fbox(206, 90, 209, 93, 0, 2.0, P.wd2);
-    fbox(243, 90, 246, 93, 0, 2.0, P.wd2);
-    fbox(206, 109, 209, 112, 0, 2.0, P.wd2);
-    fbox(243, 109, 246, 112, 0, 2.0, P.wd2);
-    fbox(212, 95, 216, 99, 2.4, 2.9, P.red);
-    fbox(222, 100, 226, 104, 2.4, 2.9, P.purp);
-    circ(226, 101, 2.6);
-    /* desk with pedestal, and on it: the PC, THE URE BOY, mug, camera. it used
-       to stand along the NORTH wall; now it runs down the WEST wall. every
-       piece is authored in its old north-wall frame and rotated 90° into place
-       by dbox — new_x = z + 98, new_z = 268 - x — so the intricate layering
-       (screen, eye, taskbar icons) survives untouched. the faces that looked
-       south into the room (+z) become the faces that look east into it (+x). */
+    /* ============ LIVING ROOM ============
+       rebuilt from Isaac's photos. the desk runs down the WEST spine wall
+       (same wall as the bedroom door, as in the floor plan); the sectional,
+       cowhide chaise, and floor lamp fill the room. plan px: 8 px = one cell.
+
+       Isaac's desk rig was authored against the NORTH wall (screens facing
+       +z); dbox rotates it 90° onto the spine so the screens face EAST (+x)
+       into the room. new_x = z + 126 seats the desk back against the spine's
+       east face (x=128px); new_z = 268 - x runs it along the wall. every
+       layer (screen, crescent, taskbar) survives the rotation untouched. */
     function dbox(x0, z0, x1, z1, y0, y1, c, glow) {
-        fbox(z0 + 98, 268 - x1, z1 + 98, 268 - x0, y0, y1, c, glow);
+        fbox(z0 + 126, 268 - x1, z1 + 126, 268 - x0, y0, y1, c, glow);
     }
-    dbox(182, 30, 246, 52, 3.4, 3.8, P.wd1);
-    dbox(184, 32, 187, 50, 0, 3.4, P.wd2);
-    dbox(227, 31, 244, 51, 0, 3.4, P.wd2);
-    dbox(226.4, 30.4, 226.9, 51, 2.0, 2.2, P.wd3);
-    /* the PC: a monitor running UreOS (bloom wallpaper, taskbar), keyboard,
-       mouse, tower under the desk. walk up and it goes to /comp/ */
-    dbox(191, 32, 201, 35, 3.8, 3.95, '#26262b');                 // stand base
-    dbox(194.5, 32.5, 197.5, 34, 3.95, 4.4, '#1d1d22');           // stand neck
-    dbox(186, 31.5, 206, 33.2, 4.25, 6.55, '#1b1b20');            // bezel
-    dbox(187, 33.2, 205, 33.6, 4.45, 6.35, '#1e4da8', true);      // screen: bloom sky
-    dbox(195, 33.6, 204, 33.7, 4.95, 5.85, '#4a86dd', true);      // the bloom
-    dbox(197, 33.7, 202, 33.78, 5.15, 5.65, '#78b0f4', true);
-    dbox(187, 33.6, 205, 33.7, 4.45, 4.68, '#10101a', true);      // taskbar
-    dbox(194.6, 33.7, 195.4, 33.78, 4.5, 4.62, P.red, true);      // its icons
-    dbox(196.2, 33.7, 197, 33.78, 4.5, 4.62, P.gold, true);
-    dbox(197.8, 33.7, 198.6, 33.78, 4.5, 4.62, P.teal, true);
-    dbox(187, 44.5, 203, 49, 3.8, 4.02, '#26262b');               // keyboard
-    dbox(188, 45, 202, 48.4, 4.02, 4.1, P.slate);
-    dbox(216, 45, 219.5, 48.6, 3.8, 4.12, P.porc);                // mouse
-    dbox(190, 35, 201, 49, 0, 3.15, '#1d1d22');                   // tower below
-    dbox(194.8, 49, 196.2, 49.6, 2.5, 2.75, P.teal, true);        // power light
-    dbox(219, 37, 224, 42, 3.8, 4.5, P.porc);                     // mug
-    dbox(207, 37, 214, 42, 3.8, 5.3, P.shell, true);
-    dbox(207.8, 41.95, 213.2, 42.6, 4.3, 5.05, P.dmg, true);      // screen faces the room
-    dbox(209, 42.6, 212, 42.72, 4.5, 4.85, '#0f380f', true);      // the eye on screen
-    dbox(208, 36.6, 213, 37.05, 5.3, 5.55, P.red, true);          // cartridge up top
-    dbox(229, 36, 237, 42, 3.8, 4.4, '#2a2a30');                  // camera
-    dbox(230, 35.4, 233, 36, 3.95, 4.25, P.glass);                // its lens
-    rectC(126, 20, 152, 88);
-    /* tv on the north wall + glass panel */
-    fbox(187, 8.2, 242, 10.4, 4.6, 8.0, '#26262b');
-    fbox(190, 10.4, 239, 10.9, 4.85, 7.75, P.glass, true);
-    /* plant — the desk took its old west-wall spot, so it moved to the north
-       wall corner, tucked between the desk's north end and the TV */
-    fbox(158, 12, 168, 22, 0, 1.5, P.pot);
-    fbox(156, 10, 170, 24, 1.5, 3.6, P.grn);
-    fbox(159, 13, 167, 21, 3.6, 4.6, P.grn2);
-    circ(163, 17, 1.2);
-    /* floor lamp */
-    fbox(299, 40, 301.5, 42.5, 0, 6.5, '#2a2a30');
-    fbox(295, 36.5, 305.5, 46, 6.5, 8.2, P.yell, true);
-    circ(301, 44, 1.2);
+    function drectC(x0, z0, x1, z1) { rectC(z0 + 126, 268 - x1, z1 + 126, 268 - x0); }
+
+    /* ── the desk: a long dark-espresso writing desk, twin pedestals ── */
+    dbox(158, 2, 252, 26, 3.6, 3.85, P.esp);                      // top slab
+    dbox(158, 3, 252, 5, 3.4, 3.6, P.espLit);                     // lit front lip
+    dbox(160, 4, 182, 26, 0, 3.6, P.esp2);                        // left pedestal
+    dbox(228, 4, 250, 26, 0, 3.6, P.esp2);                        // right pedestal
+    dbox(160, 24, 250, 26, 0, 0.6, P.esp2);                       // toe stretcher
+    dbox(181.4, 8, 182, 20, 1.6, 2.0, P.champ);                   // bar pulls
+    dbox(228, 8, 228.6, 20, 1.6, 2.0, P.champ);
+    dbox(163, 9, 179, 22, 2.4, 3.4, P.esp2);                      // left cubby shadow
+    dbox(165, 12, 177, 20, 2.6, 3.3, P.porc);                     // white router on its shelf
+    dbox(166, 13, 176, 14, 2.8, 3.2, '#ddd9cf');                  // its mesh face
+    drectC(156, 0, 252, 28);
+
+    /* ── the TV, wall-mounted above the desk, on Fire TV's home screen ── */
+    dbox(140, 8.0, 206, 8.2, 6.4, 10.4, shade(P.wall, 0.8));      // its shadow patch on the wall
+    dbox(150, 8.8, 214, 9.4, 7.25, 11.0, '#141414');             // bezel, off the wall
+    dbox(152, 9.4, 212, 9.5, 7.4, 10.85, P.fire, true);          // navy screen field
+    dbox(152, 9.5, 212, 9.52, 8.7, 9.7, P.fire2, true);          // a bright poster row
+    dbox(158, 9.5, 170, 9.52, 8.8, 9.5, '#b8322e', true);        // poster tiles
+    dbox(174, 9.5, 186, 9.52, 8.8, 9.5, '#2f8fb0', true);
+    dbox(190, 9.5, 202, 9.52, 8.8, 9.5, '#d9cba8', true);
+    dbox(179, 8.05, 180, 8.25, 3.85, 7.25, '#0c0c0c');           // the cable drop, on the wall
+
+    /* ── LEFT monitor: LG ultrawide on a white curved arc stand ── */
+    dbox(174, 12, 202, 16, 3.85, 4.0, P.champ);                   // arc stand foot
+    dbox(184, 12.5, 192, 14.5, 4.0, 4.15, P.alu);                 // neck
+    dbox(170, 10, 204, 13, 4.05, 6.5, '#16181a');                 // bezel
+    dbox(172, 13, 202, 13.6, 4.2, 6.35, P.wp, true);              // the screen, proud face
+    dbox(176, 13.6, 198, 14.0, 4.35, 6.0, P.wp2, true);           // its glowing crescent
+    dbox(180, 14.0, 195, 14.3, 4.45, 5.7, P.wpMag, true);         // magenta core
+
+    /* ── RIGHT monitor: ASUS on a black stand, higher and set a touch back ── */
+    dbox(206, 11, 226, 16, 3.85, 4.0, P.mat);                     // base plate
+    dbox(213, 15.6, 219, 16, 3.88, 4.05, '#7ac142', true);        // the green nvidia sticker
+    dbox(214, 12, 218, 14.5, 4.0, 4.6, '#232629');                // neck pillar
+    dbox(213.5, 14, 218.5, 14.5, 4.55, 4.72, P.red);             // red ring at the joint
+    dbox(204, 9, 230, 12, 4.5, 6.9, '#16181a');                  // bezel
+    dbox(206, 12, 228, 12.6, 4.62, 6.75, P.wp, true);            // the screen
+    dbox(210, 12.6, 226, 13.0, 4.75, 6.5, P.wp2, true);          // crescent
+    dbox(213, 13.0, 224, 13.3, 4.85, 6.2, P.wpMag, true);        // magenta core
+    dbox(206.4, 12, 208.5, 12.6, 4.7, 6.6, '#2a3550', true);     // the desktop icon column
+
+    /* ── deskmat with its lime edge, keyboard, mouse ── */
+    dbox(168, 14, 216, 25, 3.85, 3.9, P.lime);                    // the lime edge stitch
+    dbox(169.5, 15, 214.5, 24, 3.87, 3.92, P.mat);                // the mat itself
+    dbox(174, 16, 205, 22, 3.9, 4.06, '#19161f');                 // keyboard body
+    dbox(175, 16.5, 204, 17.2, 4.02, 4.1, P.alu);                 // its exposed switch plate
+    dbox(175, 17.2, 204, 21.5, 4.06, 4.12, '#f4f3ee', true);      // the white backlight bleed
+    dbox(174, 17.4, 203, 21.4, 4.08, 4.1, '#25222a');             // keycaps over it
+    dbox(209, 17, 214, 21, 3.9, 4.1, '#1a1a1e');                  // mouse
+
+    /* ── the condenser mic on a tripod, on the bare wood right of the ASUS ── */
+    dbox(234, 13, 238, 17, 3.85, 3.95, '#16181a');                // tripod foot
+    dbox(235, 14, 237, 16, 3.95, 5.2, '#232529');                 // body
+    dbox(234.6, 13.6, 237.4, 15.6, 5.2, 5.55, '#3c4046');         // grille head
+
+    /* ── THE URE BOY, sitting on the desk to the right ── */
+    dbox(228, 14, 236, 20, 3.85, 5.05, P.shell, true);            // shell
+    dbox(228.6, 19.4, 235.4, 20, 4.3, 4.85, P.dmg, true);         // DMG screen, facing the room
+    dbox(230, 20, 233, 20.12, 4.45, 4.75, '#0f380f', true);       // the eye on it
+    dbox(229, 14, 235, 14.5, 5.05, 5.28, P.red, true);            // cartridge up top
+
+    /* ── the office chair: black mesh, red knob, tucked under the desk ── */
+    dbox(186, 30, 214, 40, 0, 0.4, P.k);                          // 5-star base
+    dbox(197, 32, 203, 36, 0.4, 2.2, '#1b1d21');                  // gas column
+    dbox(188, 28, 212, 38, 2.2, 2.7, '#1e1f21');                  // seat pan
+    dbox(190, 34, 210, 38, 2.7, 5.05, '#2a2c31');                 // mesh back
+    dbox(190, 33.6, 210, 34, 2.9, 4.85, '#3c3f45');               // back frame edge
+    dbox(199, 37.6, 201, 38.4, 3.0, 3.3, P.red);                  // the red adjustment knob
+    drectC(186, 28, 214, 40);
+
+    /* ── the glowing PC tower: glass side, three blue ring fans, on a clear
+          acrylic riser, on the floor at the desk's north end ── */
+    dbox(255, 3, 267, 22, 0, 0.25, '#cfd8e0');                    // acrylic riser
+    dbox(256, 4, 266, 21, 0.25, 3.0, '#0e0f12');                  // black chassis
+    dbox(256.5, 20.6, 265.5, 21.0, 0.4, 2.9, P.ledDk, true);      // the tinted glass panel
+    dbox(257, 21.0, 264, 21.2, 0.7, 1.05, P.led, true);           // fan ring 1, proud of the glass
+    dbox(257, 21.0, 264, 21.2, 1.25, 1.6, P.led, true);           // fan ring 2
+    dbox(257, 21.0, 264, 21.2, 1.8, 2.15, P.led, true);           // fan ring 3
+    dbox(258, 21.2, 263, 21.35, 0.78, 0.97, P.led2, true);        // brighter ring cores
+    dbox(258, 21.2, 263, 21.35, 1.33, 1.52, P.led2, true);
+    dbox(258, 21.2, 263, 21.35, 1.88, 2.07, P.led2, true);
+    dbox(263, 4, 264, 5, 2.9, 3.05, P.led2, true);                // power dot on top
+    drectC(254, 2, 268, 24);
+
+    /* ── the cream sectional, chaise on the near end ── */
+    fbox(180, 150, 262, 178, 0, 2.1, P.cream);                   // seat block
+    fbox(180, 172, 262, 178, 0, 4.2, P.cream2);                  // backrest
+    fbox(180, 150, 187, 178, 0, 3.2, P.cream2);                  // left arm
+    fbox(255, 150, 262, 178, 0, 3.2, P.cream2);                  // right arm
+    fbox(156, 128, 187, 178, 0, 2.0, P.cream);                   // the chaise, projecting north
+    fbox(156, 128, 187, 134, 0, 2.6, P.cream2);                  // chaise back-cushion end
+    fbox(190, 152, 220, 170, 2.1, 3.0, '#e6ddc9');              // loose seat cushions
+    fbox(222, 152, 252, 170, 2.1, 3.0, '#e6ddc9');
+    fbox(196, 168, 214, 172, 3.0, 4.3, P.char);                 // charcoal pillow
+    fbox(230, 168, 248, 172, 3.0, 4.3, P.char);                 // charcoal pillow
+    fbox(160, 150, 178, 156, 2.0, 3.4, P.cream2);              // a cream cushion on the chaise
+    fbox(214, 165, 230, 169, 2.9, 4.1, P.cream2);              // cream + stripe lumbar
+    fbox(216, 166, 228, 168.4, 3.1, 3.9, '#1a1613');           // its dark stripes
+    rectC(154, 126, 264, 180);
+
+    /* ── the round side table: stone top, dark pedestal, magnolias ── */
+    fbox(158, 190, 178, 210, 0, 2.6, '#3a2818');               // walnut pedestal
+    fbox(155, 187, 181, 213, 2.6, 2.85, P.trav);               // travertine top
+    fbox(165, 196, 171, 202, 2.85, 3.7, '#cfe0e4');            // glass bulb vase
+    fbox(167, 198, 169, 199, 3.7, 4.9, '#5d6a4a');            // magnolia stem
+    fbox(165, 196, 171, 202, 4.6, 5.1, P.porc, true);         // the white blooms
+    circ(168, 199, 1.6);
+
+    /* ── the cowhide LC4-style chaise longue in the far corner ── */
+    fbox(286, 60, 300, 120, 1.1, 1.5, P.cow);                  // cowhide seat pad
+    fbox(287, 66, 297, 74, 1.5, 1.52, P.cowDk);               // black blotches
+    fbox(289, 92, 298, 104, 1.5, 1.52, P.cowDk);
+    fbox(288, 110, 296, 118, 1.5, 1.52, P.cowDk);
+    fbox(286, 60, 300, 68, 1.5, 2.6, P.cow);                  // the raised knee end
+    fbox(287, 61, 297, 66, 2.6, 2.62, P.cowDk);
+    fbox(286, 112, 302, 120, 2.4, 3.0, P.cowDk);              // black leather headrest bolster
+    fbox(288, 62, 289, 118, 0.4, 1.1, P.chrome);             // chrome side rail
+    fbox(297, 62, 298, 118, 0.4, 1.1, P.chrome);
+    fbox(288, 70, 298, 71, 0, 0.5, P.k);                     // black H-base
+    fbox(288, 108, 298, 109, 0, 0.5, P.k);
+    rectC(284, 58, 304, 122);
+
+    /* ── the floor lamp behind the chaise's head: cream drum, black quadpod ── */
+    fbox(304, 120, 307, 123, 0, 0.4, '#23211e');             // foot hub
+    fbox(304.5, 120.5, 306.5, 122.5, 0.4, 6.6, '#2a2a26');   // pole
+    fbox(300, 116, 311, 127, 6.6, 8.1, P.amber, true);       // the lit drum shade
+    fbox(301, 117, 310, 126, 7.9, 8.2, shade(P.amber, 0.8)); // top rim
+    circ(305.5, 121.5, 1.3);
+
+    /* ── track lighting: two black rails on the ceiling, three warm heads each ── */
+    var th;
+    for (th = 0; th < 3; th++) {
+        fbox(150 + th * 34, 60, 158 + th * 34, 64, 12.2, 12.55, '#1e1e20');
+        fbox(151 + th * 34, 60.5, 157 + th * 34, 63.5, 12.0, 12.2, P.amber, true);
+        fbox(150 + th * 34, 120, 158 + th * 34, 124, 12.2, 12.55, '#1e1e20');
+        fbox(151 + th * 34, 120.5, 157 + th * 34, 123.5, 12.0, 12.2, P.amber, true);
+    }
+    fbox(150, 61.5, 252, 62.5, 12.55, 12.7, '#1c1c1c');
+    fbox(150, 121.5, 252, 122.5, 12.55, 12.7, '#1c1c1c');
 
     /* ── flex zone ── */
     /* bookshelf against the hall wall, spines facing east */
@@ -346,22 +456,51 @@ function buildFurniture() {
     fbox(296, 218, 298, 220, 3.25, 3.4, P.red);
     rectC(282, 202, 310, 248);
 
-    /* ── bedroom ── */
-    fbox(28, 30, 88, 33.5, 0, 3.4, P.wd2);                     // headboard
-    fbox(28, 33.5, 88, 104, 0, 1.0, P.wd2);                    // frame
-    fbox(29, 33.5, 87, 103, 1.0, 2.2, P.duv);                  // mattress
-    fbox(32, 35, 55, 48, 2.2, 2.9, P.porc);                    // pillows
-    fbox(58, 35, 81, 48, 2.2, 2.9, P.porc);
-    fbox(29, 72, 87, 103, 2.2, 2.5, P.blank);                  // blanket
-    rectC(26, 28, 90, 106);
-    fbox(94, 32, 114, 50, 0, 2.0, P.wd1);                      // nightstand
-    fbox(102, 39, 106, 43, 2.0, 2.7, '#2a2a30');               // little lamp
-    fbox(99, 36, 109, 46, 2.7, 3.5, P.yell, true);
-    circ(104, 41, 1.5);
-    fbox(12, 112, 32, 156, 0, 3.4, P.wd1);                     // dresser
-    fbox(31.6, 118, 32.4, 124, 1.5, 2.1, P.gold);              // knobs
-    fbox(31.6, 133, 32.4, 139, 1.5, 2.1, P.gold);
-    fbox(31.6, 148, 32.4, 154, 1.5, 2.1, P.gold);
+    /* ============ BEDROOM ============
+       a low platform bed with a cream rolled headboard against the west wall,
+       a charcoal waffle duvet, the mid-century oak nightstand with its black
+       arc lamp, and the dark-cherry ceiling fan. carpet underfoot. */
+    fbox(4, 30, 13, 96, 0, 6.15, P.hbd);                       // cream headboard against west wall
+    fbox(4, 30, 13, 33, 5.7, 6.35, shade(P.hbd, 1.05));        // its rolled top
+    fbox(13, 32, 90, 94, 0, 1.0, P.esp2);                      // platform frame
+    fbox(12, 30, 92, 96, 1.0, 2.55, P.duv);                    // the charcoal duvet, overhanging
+    fbox(12, 30, 14, 96, 2.55, 2.7, P.duv2);                   // top fold shadow at the head
+    fbox(14, 33, 16, 37, 0, 1.0, P.k);                         // black wedge legs
+    fbox(86, 33, 88, 37, 0, 1.0, P.k);
+    fbox(14, 89, 16, 93, 0, 1.0, P.k);
+    fbox(86, 89, 88, 93, 0, 1.0, P.k);
+    /* the pillow row against the headboard */
+    fbox(14, 36, 20, 82, 2.55, 3.6, P.porc);                   // white sleepers behind
+    fbox(15, 34, 30, 50, 2.55, 4.0, P.char);                   // charcoal lumbar (near end)
+    fbox(15, 54, 29, 68, 2.55, 3.75, P.cream2);                // cream + camel squiggle (centre)
+    fbox(17, 56, 27, 66, 3.0, 3.7, P.oak);                     // its squiggle
+    fbox(15, 72, 29, 88, 2.55, 3.85, P.slateB);                // slate-blue lumbar (far end)
+    rectC(2, 28, 94, 98);
+    /* the mid-century oak nightstand, head-left, with the black arc lamp */
+    fbox(6, 8, 30, 26, 0, 2.75, P.oak);                        // body
+    fbox(7, 9, 29, 12, 0, 2.7, P.oak2);                        // paler drawer fronts
+    fbox(7, 17, 29, 20, 0, 2.7, P.oak2);
+    fbox(16, 10, 20, 11, 1.0, 1.3, '#2a2622');                 // recessed pulls
+    fbox(16, 18, 20, 19, 1.0, 1.3, '#2a2622');
+    fbox(7, 24, 9, 26, 0, 0.4, P.k);                           // splayed black leg tips
+    fbox(27, 24, 29, 26, 0, 0.4, P.k);
+    fbox(10, 14, 18, 22, 2.75, 2.9, '#1e1b1a');               // lamp disc base
+    fbox(13, 17, 15, 19, 2.9, 4.5, '#1e1b1a');                // lamp rod
+    fbox(13, 12, 15, 17, 4.3, 4.5, '#1e1b1a');                // arm cantilever
+    fbox(11.5, 10.5, 16.5, 15.5, 3.9, 4.9, P.amber, true);    // the ribbed glass shade, lit
+    circ(14, 18, 1.4);
+    /* the ceiling fan: dark-cherry blades, brass body, amber bowl */
+    var fbx = 52, fbz = 66;
+    fbox(fbx - 22, fbz - 3, fbx + 22, fbz + 3, 11.3, 11.45, P.esp);     // blade E-W
+    fbox(fbx - 3, fbz - 22, fbx + 3, fbz + 22, 11.3, 11.45, P.esp2);    // blade N-S
+    fbox(fbx - 18, fbz + 8, fbx + 2, fbz + 20, 11.3, 11.42, P.esp);     // a diagonal blade
+    fbox(fbx - 6, fbz - 6, fbx + 6, fbz + 6, 11.2, 11.7, '#a88a52');    // brass motor housing
+    fbox(fbx - 4, fbz - 4, fbx + 4, fbz + 4, 11.7, 12.1, P.amber, true);// the amber bowl light
+    /* the dresser stays, restained to match */
+    fbox(12, 112, 32, 156, 0, 3.4, P.oak);                     // dresser
+    fbox(31.6, 118, 32.4, 124, 1.5, 2.1, '#2a2622');           // pulls
+    fbox(31.6, 133, 32.4, 139, 1.5, 2.1, '#2a2622');
+    fbox(31.6, 148, 32.4, 154, 1.5, 2.1, '#2a2622');
     rectC(10, 110, 34, 158);
 
     /* ── closet + laundry ── */
@@ -446,8 +585,9 @@ function rotate(a) {
     var px = PL.planeX * c - PL.planeZ * s;
     PL.planeZ = PL.planeX * s + PL.planeZ * c; PL.planeX = px;
 }
-/* the retro cheat: camera a touch low + wide fov, so furniture stays in view */
-var EYE = 5.5, WALLH = 13, FOCAL = (W / 2) / PLANE;
+/* a standing-eye camera + wide fov, so you look down over the pushed-in chair
+   onto the desk, the way Isaac's photos are shot */
+var EYE = 5.9, WALLH = 13, FOCAL = (W / 2) / PLANE;
 var PR = 1.25;                                     // player collision radius; doors are 3 cells wide
 
 function solidCell(c, r) {
