@@ -4195,6 +4195,7 @@ function stRevClass(pct) { return pct >= 80 ? 'pos' : pct >= 40 ? 'mix' : 'neg';
 function sjGet(k, d) { try { var v = JSON.parse(recall('steam_' + k, 'null')); return v == null ? d : v; } catch (e) { return d; } }
 function sjSet(k, v) { store('steam_' + k, JSON.stringify(v)); }
 function stSeed() {
+    var fsDirty = false;                  // any 'inst' write here changes steamapps/common: redraw Explorer once at the end
     if (recall('steam_owned', null) == null) {
         sjSet('owned', STG.filter(function (g) { return g.owned; }).map(function (g) { return g.id; }));
         sjSet('inst', STG.filter(function (g) { return g.owned && g.inst; }).map(function (g) { return g.id; }));
@@ -4203,6 +4204,7 @@ function stSeed() {
         sjSet('hrs', sjGet('hrs', {}));   // don't wipe hours a desktop game banked before Steam first opened
         store('steam_wishv2', '1');
         store('steam_instv2', '1');       // fresh seeds are already installed=playable
+        fsDirty = true;
     } else {
         // catalogue grew: fold any new default-owned games into an existing save
         var o = stOwned(), n = stInst(), ch = false;
@@ -4210,7 +4212,7 @@ function stSeed() {
             if (g.owned && o.indexOf(g.id) < 0) { o.push(g.id); ch = true; }
             if (g.owned && g.inst && n.indexOf(g.id) < 0) { n.push(g.id); ch = true; }
         });
-        if (ch) { sjSet('owned', o); sjSet('inst', n); }
+        if (ch) { sjSet('owned', o); sjSet('inst', n); fsDirty = true; }
         if (recall('steam_wishv2', null) == null) {                       // one-shot: v2's new wishlist seeds, unless already bought
             var w = stWish();
             ['obradinn', 'dysonsphere', 'rimworld'].forEach(function (id) { if (w.indexOf(id) < 0 && o.indexOf(id) < 0) w.push(id); });
@@ -4229,11 +4231,16 @@ function stSeed() {
                 if (n2.indexOf(id) < 0) n2.push(id);
             });
             sjSet('owned', o2); sjSet('inst', n2);
+            // owned games don't sit on wishlists (stCheckout's rule): the grant
+            // above can land on a wished game, and owned store pages hide the
+            // wishlist toggle, so a stale row would be stuck there forever
+            sjSet('wish', stWish().filter(function (id) { return o2.indexOf(id) < 0; }));
             store('steam_instv2', '1');
-            refreshFileViews();           // steamapps/common gains the real game folders
+            fsDirty = true;
         }
     }
     if (recall('steam_points', null) == null) store('steam_points', '4120');
+    if (fsDirty) refreshFileViews();      // an Explorer opened before Steam sees the folders appear
 }
 function stPts() { return +recall('steam_points', '4120') || 0; }
 function stPtsOwned() { return sjGet('pshop', []); }
@@ -4653,8 +4660,10 @@ function stStorePage(g) {
     var owned = isOwned(g.id), inst = isInst(g.id);
     var main = '<div class="st-sp-gal"><canvas class="st-sp-main" id="stGalMain" data-g="' + g.id + '" data-seed="' + (ST.gal + 1) + '"></canvas>' +
         '<div class="st-sp-thumbs">' + [0, 1, 2, 3, 4].map(function (i) { return '<canvas class="st-sp-th' + (i === ST.gal ? ' sel' : '') + '" data-st="shot" data-i="' + i + '" data-g="' + g.id + '" data-seed="' + (i + 1) + '"></canvas>'; }).join('') + '</div></div>';
+    var dl = stInQueue(g.id);
     var buyBtn;
-    if (owned) buyBtn = inst ? '<button class="st-play" data-st="play" data-id="' + g.id + '">' + gPlay() + ' Play</button>' : '<button class="st-play" data-st="install" data-id="' + g.id + '">' + gDl() + ' Install</button>';
+    if (dl) buyBtn = '<button class="st-play dis">' + gDl() + ' Installing… ' + Math.floor(dl.pct) + '%</button>';
+    else if (owned) buyBtn = inst ? '<button class="st-play" data-st="play" data-id="' + g.id + '">' + gPlay() + ' Play</button>' : '<button class="st-play" data-st="install" data-id="' + g.id + '">' + gDl() + ' Install</button>';
     else if (g.free) buyBtn = '<button class="st-play" data-st="install" data-id="' + g.id + '">' + gDl() + ' Install Game</button>';
     else if (inCart(g.id)) buyBtn = '<button class="st-buy incart" data-st="nav" data-id="cart">' + gCart() + ' In Cart — View</button>';
     else buyBtn = '<button class="st-buy" data-st="addcart" data-id="' + g.id + '">' + gCart() + ' Add to Cart</button>';
@@ -4781,7 +4790,14 @@ function stLibSidebar() {
 }
 function stLibHome() {
     var owned = STG.filter(function (g) { return isOwned(g.id); });
-    var recent = owned.slice().sort(function (a, b) { return (b.hrs2w || 0) - (a.hrs2w || 0); }).slice(0, 5);
+    /* recent = actually recent: a real session banked by bankPlaytime (cookie,
+       terraria) outranks every static shelf figure, newest first; the shelf
+       hours only order the games you haven't touched on THIS machine */
+    var w2 = sjGet('hrs2w', {});
+    function lastPlayed(id) { var s = w2[id] || [], m = 0; for (var i = 0; i < s.length; i++) if (s[i].t > m) m = s[i].t; return m; }
+    var recent = owned.slice().sort(function (a, b) {
+        return (lastPlayed(b.id) - lastPlayed(a.id)) || ((b.hrs2w || 0) - (a.hrs2w || 0));
+    }).slice(0, 5);
     var acts = [
         ['throttle_body', 'earned an achievement in', 'GTI RUN', 'gtirun'],
         ['you', 'reached ' + stHrs('factorio').toFixed(0) + ' hours in', 'Factorio', 'factorio'],
@@ -5193,7 +5209,9 @@ function stInstall(id) {
     stToast(SG[id].t + ' — added to downloads.');
     stStartDl();
     stDock(); stSyncBadges();
-    if (ST.section === 'downloads') stRender();
+    /* whatever page the click came from shows the state flip right away:
+       downloads gets the queue row, a game page gets its Installing… button */
+    if (ST.section === 'downloads' || ST.view === 'game') stRender();
 }
 function stStartDl() {
     if (ST.dlT) return;
@@ -5215,6 +5233,12 @@ function stStartDl() {
             var dl2 = stInQueue(ST.gid), bar = ST.body.querySelector('.st-play.dis');
             if (bar && dl2) bar.innerHTML = gDl() + ' Installing… ' + Math.floor(dl2.pct) + '%';
             else if (!!bar !== !!dl2) { ST.body.innerHTML = stLibGame(SG[ST.gid]); stPaintAll(); }
+        }
+        else if (ST.section === 'store' && ST.view === 'game') {
+            // the store page has the same Install button; give it the same live treatment
+            var dl3 = stInQueue(ST.gid), bar2 = ST.body.querySelector('.st-play.dis');
+            if (bar2 && dl3) bar2.innerHTML = gDl() + ' Installing… ' + Math.floor(dl3.pct) + '%';
+            else if (!!bar2 !== !!dl3) { ST.body.innerHTML = stStorePage(SG[ST.gid]); stPaintAll(); }
         }
     }, reduce ? 120 : 420);
 }
