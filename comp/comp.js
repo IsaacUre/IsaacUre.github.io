@@ -3771,12 +3771,14 @@ var STG = [
     rev: ['Very Positive', 90, 512], art: ['#2d1e3a', SC.gb, 'URE'], sc: 'dungeon', launch: '/ureboy/',
     ach: [11, 16], achx: [['First Blood', 'Win a battle', 1], ['Lorekeeper', 'Read every codex', 1], ['Pacifist', 'Clear a floor unhurt', 0], ['Nat 20', 'Land a crit', 1]] },
 
-  // the only game on this Steam that actually runs IN the desktop — window.COOKIE, comp/cookie.js
+  // runs IN the desktop (like Terraria below) — window.COOKIE, comp/cookie.js.
+  // installed = playable on this Steam: only games with a real build (app: in a
+  // window, launch: on the URE BOY) ship installed; the shelf games are library-only
   { id: 'cookie', t: 'Cookie Clicker', dev: 'Orteil', pub: 'DashNet', yr: 2013,
     tags: ['Clicker', 'Idle', 'Free to Play', 'Casual', 'Singleplayer'],
     s: "An idle game about baking cookies. Click the cookie. Employ grandmas. Question nothing.",
     d: "The one that started it all, ported to UreOS as a real desktop app. The numbers are the real numbers: 1.15× price curves, ×7 Frenzies, kittens that scale with milk, and an ascension formula you will do actual math about. Your grandmas keep the ovens on while the window is open.",
-    price: 0, disc: 0, free: true, owned: false, inst: false, hrs: 0, hrs2w: 0,
+    price: 0, disc: 0, free: true, owned: true, inst: true, hrs: 0, hrs2w: 0,
     rev: ['Overwhelmingly Positive', 97, 214883], art: ['#3a2210', '#d9973a', 'CC'], sc: 'cookie', trend: true, spec: true,
     app: 'cookie', live: 'COOKIE',
     ach: [0, 40], achx: [],
@@ -3786,7 +3788,7 @@ var STG = [
     tags: ['RPG', 'Dungeons & Dragons', 'Story Rich', 'Turn-Based', 'Co-op'],
     s: "Gather your party and venture forth. A cinematic take on the world's greatest role-playing game.",
     d: "Mind flayers, moral rot, and a thousand ways to fail forward. The DM in Isaac never stood a chance against this one.",
-    price: 5999, disc: 0, owned: true, inst: true, hrs: 214.6, hrs2w: 18.3,
+    price: 5999, disc: 0, owned: true, inst: false, hrs: 214.6, hrs2w: 18.3,
     rev: ['Overwhelmingly Positive', 96, 728104], art: ['#3a1c12', '#c58b3a', 'BG3'], sc: 'dungeon',
     feat: true, ach: [41, 54],
     achx: [['The Plot Thickens', 'Complete Act One', 1], ['Fear Itself', 'Defeat the Absolute', 0], ['Rest & Relaxation', 'Take a long rest', 1], ['A Grand Old Time', 'Recruit a companion', 1], ['Escapologist', 'Escape the Nautiloid', 1]],
@@ -3797,7 +3799,7 @@ var STG = [
     tags: ['Automation', 'Base Building', 'Strategy', 'Optimization', 'Singleplayer'],
     s: "The factory must grow. Build, automate, and defend a sprawling production line on an alien world.",
     d: "A game about spaghetti becoming a cathedral. Made for a systems-and-optimization brain that cannot leave a bottleneck alone.",
-    price: 3500, disc: 0, owned: true, inst: true, hrs: 341.9, hrs2w: 22.0,
+    price: 3500, disc: 0, owned: true, inst: false, hrs: 341.9, hrs2w: 22.0,
     rev: ['Overwhelmingly Positive', 97, 201338], art: ['#3a2a12', '#d99b2a', 'FAC'], sc: 'factory',
     feat: true, ach: [72, 100],
     achx: [['Automated', 'Craft with an assembler', 1], ['It stinks and they do not like it', 'Get attacked by pollution', 1], ['Lazy Bastard', 'Hand-craft ≤111 items', 0], ['There is no spoon', 'Win under 8 hours', 0], ['Mass Production 3', 'Produce 20k circuits', 1]],
@@ -3815,7 +3817,7 @@ var STG = [
     tags: ['Racing', 'Simulation', 'Automobile Sim', 'Moddable'],
     s: "Laser-scanned tracks, physics that punish and reward. The sim racer's sim racer.",
     d: "Trail-brake into Eau Rouge and find out who you really are. Endlessly moddable, endlessly humbling.",
-    price: 1999, disc: 75, owned: true, inst: true, hrs: 63.1, hrs2w: 2.2,
+    price: 1999, disc: 75, owned: true, inst: false, hrs: 63.1, hrs2w: 2.2,
     rev: ['Very Positive', 89, 91004], art: ['#1a1f26', '#b2151d', 'AC'], sc: 'road', spec: true,
     ach: [22, 47] },
 
@@ -3823,7 +3825,7 @@ var STG = [
     tags: ['RPG', 'Story Rich', 'Detective', 'Absurdist', 'Choices Matter'],
     s: "A groundbreaking role-playing game. You're a detective with a unique skill system and a whole city to carve your path across.",
     d: "Argue with the reactionary lodged inside your own skull. Absurdist philosophy with a badge and a hangover.",
-    price: 3999, disc: 60, owned: true, inst: true, hrs: 38.4, hrs2w: 0,
+    price: 3999, disc: 60, owned: true, inst: false, hrs: 38.4, hrs2w: 0,
     rev: ['Overwhelmingly Positive', 96, 152770], art: ['#241a2e', '#b5462e', 'DE'], sc: 'city', spec: true,
     ach: [19, 40], achx: [['Detective', 'Solve the case', 0], ['Hardcore', 'Reach Level 20', 1], ['Rond-dubois', 'Find the phasmid', 0]] },
 
@@ -3831,7 +3833,7 @@ var STG = [
     tags: ['Exploration', 'Mystery', 'Space', 'Open World', 'Time Loop'],
     s: "A open-world mystery about a solar system trapped in an endless time loop.",
     d: "Twenty-two minutes to the end of everything, on repeat, until you understand. Do not read a word about it. Just go.",
-    price: 2499, disc: 40, owned: true, inst: true, hrs: 27.5, hrs2w: 0,
+    price: 2499, disc: 40, owned: true, inst: false, hrs: 27.5, hrs2w: 0,
     rev: ['Overwhelmingly Positive', 97, 61402], art: ['#10131f', '#d98a2b', 'OW'], sc: 'space', spec: true,
     ach: [9, 12] },
 
@@ -3839,7 +3841,7 @@ var STG = [
     tags: ['Roguelike', 'Action', 'Story Rich', 'Great Soundtrack', 'Hack and Slash'],
     s: "Defy the god of the dead as you hack and slash out of the Underworld in this rogue-like dungeon crawler.",
     d: "Death is a mechanic and the writing is the reward. One more escape attempt, forever.",
-    price: 2499, disc: 50, owned: true, inst: true, hrs: 54.8, hrs2w: 6.0,
+    price: 2499, disc: 50, owned: true, inst: false, hrs: 54.8, hrs2w: 6.0,
     rev: ['Overwhelmingly Positive', 98, 315880], art: ['#2a0f1a', '#b5122e', 'HAD'], sc: 'dungeon', spec: true,
     ach: [31, 49] },
 
@@ -3855,7 +3857,7 @@ var STG = [
     tags: ['FPS', 'Shooter', 'Competitive', 'Free to Play', 'Multiplayer'],
     s: "For over two decades, Counter-Strike has offered an elite competitive experience. Now in the Source 2 engine.",
     d: "Rush B, get humbled, queue again. The eternal LAN party.",
-    price: 0, disc: 0, free: true, owned: true, inst: true, hrs: 128.3, hrs2w: 5.5,
+    price: 0, disc: 0, free: true, owned: true, inst: false, hrs: 128.3, hrs2w: 5.5,
     rev: ['Mixed', 62, 1904772], art: ['#20262e', '#d99b2a', 'CS2'], sc: 'city',
     ach: [1, 1], achx: [['A Counter-Strike', 'Win a match', 1]] },
 
@@ -3903,7 +3905,7 @@ var STG = [
     tags: ['Automation', 'Base Building', 'Open World', 'First-Person', 'Optimization'],
     s: "Conquer an alien planet by building massive factories — in first person, at conveyor level.",
     d: "Factorio's philosophy at eye height. Isaac walks his own main bus here and calls it cardio.",
-    price: 3999, disc: 0, owned: true, inst: true, hrs: 89.3, hrs2w: 8.4,
+    price: 3999, disc: 0, owned: true, inst: false, hrs: 89.3, hrs2w: 8.4,
     rev: ['Overwhelmingly Positive', 97, 190441], art: ['#2a1a10', '#e8842a', 'SAT'], sc: 'factory', feat: true,
     ach: [28, 48], news: [['1.1 — vertical logistics', "Lifts got smarter, splitters got vertical, the sky got more crowded.", 'Jun 28']] },
 
@@ -3911,7 +3913,7 @@ var STG = [
     tags: ['Puzzle', 'Co-op', 'Comedy', 'First-Person', 'Sci-fi'],
     s: "Think with portals. The best comedy duo in games is a rogue AI and a potato battery.",
     d: "Still the gold standard for a punchline landing at the exact moment a physics puzzle clicks.",
-    price: 999, disc: 80, owned: true, inst: true, hrs: 18.2, hrs2w: 0,
+    price: 999, disc: 80, owned: true, inst: false, hrs: 18.2, hrs2w: 0,
     rev: ['Overwhelmingly Positive', 98, 435019], art: ['#101820', '#3fa8d8', 'P2'], sc: 'abstract',
     ach: [34, 51] },
 
@@ -3927,7 +3929,7 @@ var STG = [
     tags: ['Strategy', 'Turn-Based', '4X', 'Multiplayer', 'Addictive'],
     s: "Build an empire to stand the test of time. One. More. Turn.",
     d: "The clock says 2 AM. Gandhi says otherwise. An optimizer's slow-motion chess match against history.",
-    price: 5999, disc: 90, owned: true, inst: true, hrs: 76.8, hrs2w: 0,
+    price: 5999, disc: 90, owned: true, inst: false, hrs: 76.8, hrs2w: 0,
     rev: ['Very Positive', 87, 254120], art: ['#1e2a1a', '#d8b13a', 'CIV'], sc: 'nature', spec: true,
     ach: [31, 80] },
 
@@ -3935,7 +3937,7 @@ var STG = [
     tags: ['Roguelike', 'Card Game', 'Deckbuilding', 'Strategy', 'Turn-Based'],
     s: "Fuse card games and roguelikes. Craft a unique deck, climb the Spire, die, learn, climb again.",
     d: "Every run is a math problem wearing a fantasy costume. Isaac's kind of costume party.",
-    price: 2499, disc: 66, owned: true, inst: true, hrs: 61.4, hrs2w: 2.1,
+    price: 2499, disc: 66, owned: true, inst: false, hrs: 61.4, hrs2w: 2.1,
     rev: ['Overwhelmingly Positive', 97, 191230], art: ['#241418', '#c23a2a', 'STS'], sc: 'cards', spec: true,
     ach: [24, 46] },
 
@@ -3943,7 +3945,7 @@ var STG = [
     tags: ['Tabletop', 'Board Game', 'Multiplayer', 'Sandbox', 'RPG'],
     s: "Physics-driven tabletop sandbox. Flip the table. It's allowed here.",
     d: "The DM's remote toolkit. Isaac's dice tower is modded, his battle maps are labeled, his players still ignore the plot hooks.",
-    price: 1999, disc: 50, owned: true, inst: true, hrs: 33.7, hrs2w: 1.2,
+    price: 1999, disc: 50, owned: true, inst: false, hrs: 33.7, hrs2w: 1.2,
     rev: ['Very Positive', 89, 91340], art: ['#0d2318', '#d8b13a', 'TTS'], sc: 'cards',
     ach: [8, 15] },
 
@@ -3951,7 +3953,7 @@ var STG = [
     tags: ['Absurdist', 'Comedy', 'Walking Simulator', 'Choices Matter', 'Meta'],
     s: "Stanley pressed a button. Or did he? A narrator disagrees. Repeatedly.",
     d: "Absurdist philosophy with a door budget. The closest a game has come to reading Camus in an office chair.",
-    price: 2499, disc: 40, owned: true, inst: true, hrs: 6.6, hrs2w: 0,
+    price: 2499, disc: 40, owned: true, inst: false, hrs: 6.6, hrs2w: 0,
     rev: ['Overwhelmingly Positive', 96, 44210], art: ['#2a2418', '#d8d0b0', 'TSP'], sc: 'abstract',
     ach: [7, 12], achx: [['Click 430,000 times', 'You did not do this', 0], ['Go outside', "Don't play for 5 years", 0], ['Commitment', 'Play all day Tuesday', 1]] },
 
@@ -3959,7 +3961,7 @@ var STG = [
     tags: ['Absurdist', 'Simulation', 'Story Rich', 'Dystopian', 'Indie'],
     s: "Glory to Arstotzka. A border checkpoint, a stamp, and your slowly compressing soul.",
     d: "Bureaucracy as tragedy, tragedy as gameplay. Cause no trouble.",
-    price: 999, disc: 66, owned: true, inst: true, hrs: 11.2, hrs2w: 0,
+    price: 999, disc: 66, owned: true, inst: false, hrs: 11.2, hrs2w: 0,
     rev: ['Overwhelmingly Positive', 97, 88450], art: ['#1c1a14', '#a03a2a', 'PP'], sc: 'city',
     ach: [9, 13] },
 
@@ -3967,7 +3969,7 @@ var STG = [
     tags: ['Metroidvania', 'Difficult', 'Atmospheric', 'Great Soundtrack', 'Indie'],
     s: "Forge your own path through a vast, ruined kingdom of insects and heroes.",
     d: "A kingdom of bugs with better worldbuilding than most trilogies. The map seller is doing his best.",
-    price: 1499, disc: 50, owned: true, inst: true, hrs: 39.5, hrs2w: 0,
+    price: 1499, disc: 50, owned: true, inst: false, hrs: 39.5, hrs2w: 0,
     rev: ['Overwhelmingly Positive', 97, 302110], art: ['#101622', '#7fd4e0', 'HK'], sc: 'cave',
     ach: [28, 63] },
 
@@ -3975,7 +3977,7 @@ var STG = [
     tags: ['Platformer', 'Difficult', 'Pixel Graphics', 'Story Rich', 'Great Soundtrack'],
     s: "Help Madeline survive her inner demons on her journey to the top of Celeste Mountain.",
     d: "A pixel-perfect platformer about anxiety that is somehow gentle about being brutally hard.",
-    price: 1999, disc: 75, owned: true, inst: true, hrs: 21.3, hrs2w: 0,
+    price: 1999, disc: 75, owned: true, inst: false, hrs: 21.3, hrs2w: 0,
     rev: ['Overwhelmingly Positive', 98, 122480], art: ['#1a2232', '#e07ba0', 'CEL'], sc: 'snow', spec: true,
     ach: [18, 32] },
 
@@ -3983,7 +3985,7 @@ var STG = [
     tags: ['Sandbox', 'Survival', 'Pixel Graphics', 'Crafting', 'Multiplayer'],
     s: "Dig, fight, explore, build! Nothing is impossible in this action-packed adventure.",
     d: "2D Minecraft's cooler older sibling, ported to run IN a window on this desktop: a real generated world with caves, four ore tiers, flood-fill torchlight, a day/night cycle, slimes, zombies, demon eyes, proximity crafting, and the Eye of Cthulhu if you craft something you shouldn't. Isaac's 94 hours came with the shelf copy; yours count from here.",
-    price: 999, disc: 50, owned: true, inst: false, hrs: 94.6, hrs2w: 0,
+    price: 999, disc: 50, owned: true, inst: true, hrs: 94.6, hrs2w: 0,
     rev: ['Overwhelmingly Positive', 98, 1121300], art: ['#12241a', '#5db04a', 'TER'], sc: 'cave',
     app: 'terraria', live: 'TERRA',
     ach: [0, 16],
@@ -3993,7 +3995,7 @@ var STG = [
     tags: ['Driving', 'Simulation', 'Relaxing', 'Open World', 'Automobile Sim'],
     s: "Travel across Europe as king of the road, a trucker who delivers important cargo.",
     d: "Chamomile in game form. Set cruise control on the A8, put on a podcast, feel your heart rate drop.",
-    price: 1999, disc: 75, owned: true, inst: true, hrs: 28.4, hrs2w: 1.8,
+    price: 1999, disc: 75, owned: true, inst: false, hrs: 28.4, hrs2w: 1.8,
     rev: ['Overwhelmingly Positive', 97, 288420], art: ['#16202a', '#3a7db0', 'ETS'], sc: 'road', spec: true,
     ach: [21, 71] },
 
@@ -4001,7 +4003,7 @@ var STG = [
     tags: ['Co-op', 'FPS', 'Mining', 'Class-Based', 'Multiplayer'],
     s: "Danger. Darkness. Dwarves. A 1-4 player co-op FPS with 100% destructible caves.",
     d: "ROCK AND STONE. The only shooter where the real boss is cave geometry and nobody minds.",
-    price: 2999, disc: 67, owned: true, inst: true, hrs: 47.9, hrs2w: 3.3,
+    price: 2999, disc: 67, owned: true, inst: false, hrs: 47.9, hrs2w: 3.3,
     rev: ['Overwhelmingly Positive', 97, 265110], art: ['#1c1208', '#e8a42a', 'DRG'], sc: 'cave', spec: true,
     ach: [37, 69] },
 
@@ -4009,7 +4011,7 @@ var STG = [
     tags: ['Roguelike', 'Bullet Hell', 'Pixel Graphics', 'Addictive', 'Casual'],
     s: "Mow down thousands of night creatures and survive until dawn. Cheap as chips, sharp as garlic.",
     d: "Five dollars. Five hundred enemies on screen. Five hours gone. The math never favored you.",
-    price: 499, disc: 20, owned: true, inst: true, hrs: 30.1, hrs2w: 2.6,
+    price: 499, disc: 20, owned: true, inst: false, hrs: 30.1, hrs2w: 2.6,
     rev: ['Overwhelmingly Positive', 98, 231240], art: ['#170f1c', '#c2a03a', 'VS'], sc: 'dungeon',
     ach: [88, 202] },
 
@@ -4200,6 +4202,7 @@ function stSeed() {
         sjSet('cart', []);
         sjSet('hrs', sjGet('hrs', {}));   // don't wipe hours a desktop game banked before Steam first opened
         store('steam_wishv2', '1');
+        store('steam_instv2', '1');       // fresh seeds are already installed=playable
     } else {
         // catalogue grew: fold any new default-owned games into an existing save
         var o = stOwned(), n = stInst(), ch = false;
@@ -4212,6 +4215,22 @@ function stSeed() {
             var w = stWish();
             ['obradinn', 'dysonsphere', 'rimworld'].forEach(function (id) { if (w.indexOf(id) < 0 && o.indexOf(id) < 0) w.push(id); });
             sjSet('wish', w); store('steam_wishv2', '1');
+        }
+        if (recall('steam_instv2', null) == null) {
+            // one-shot: installed now means PLAYABLE. games with a real build
+            // (app: runs in a window, launch: runs on the URE BOY) land on the
+            // disk; the shelf games keep their hours and achievements in the
+            // library but lose their pretend installs. installs the user makes
+            // afterward stick — this runs once.
+            var play = STG.filter(function (g) { return g.app || g.launch; }).map(function (g) { return g.id; });
+            var o2 = stOwned(), n2 = stInst().filter(function (id) { return play.indexOf(id) >= 0; });
+            play.forEach(function (id) {
+                if (o2.indexOf(id) < 0) o2.push(id);
+                if (n2.indexOf(id) < 0) n2.push(id);
+            });
+            sjSet('owned', o2); sjSet('inst', n2);
+            store('steam_instv2', '1');
+            refreshFileViews();           // steamapps/common gains the real game folders
         }
     }
     if (recall('steam_points', null) == null) store('steam_points', '4120');
