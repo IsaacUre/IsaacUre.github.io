@@ -515,6 +515,12 @@ function wireInput(root, cv) {
         e.preventDefault(); e.stopPropagation();
     });
     root.addEventListener('keyup', function (e) { RT.keys[e.key.toLowerCase()] = false; });
+    root.addEventListener('blur', function () {
+        // focus left the arena: forget every held key so channels and walks
+        // don't run forever on a keyup we will never receive
+        RT.keys = {}; RT.mouse.down = false; RT.mouse.rdown = false;
+        endChannel();
+    });
     wireHud(root);
 }
 
@@ -1017,7 +1023,10 @@ function dummyDeath() {
     logLine('<b>The dummy is destroyed.</b> +' + '<b style="color:#ffe66e">shards</b>. It will be back. It is always back.', 'kill');
     if (Math.random() < 0.65 || !S.stash.length) {
         var it = rollItem();
-        if (S.stash.length >= 8) S.stash.shift();
+        if (S.stash.length >= 8) {   // evict the oldest NON-unique; The Box is never compost
+            var evict = 0; while (evict < S.stash.length && S.stash[evict].rarity === 'unique') evict++;
+            S.stash.splice(Math.min(evict, S.stash.length - 1), 1);
+        }
         S.stash.push(it);
         if (it.rarity === 'unique') { ach('unique'); logLine('<b style="color:#af6025">THE BOX DROPS.</b> It has been in the trunk since session one.', 'loot'); }
         else logLine('the dummy drops <b style="color:' + RARITY[it.rarity] + '">' + esc(it.n) + '</b> — check your Character panel.', 'loot');
