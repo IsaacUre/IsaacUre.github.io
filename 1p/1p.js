@@ -328,26 +328,31 @@ function buildFurniture() {
 
     /* ── the desk: a long dark-espresso writing desk, twin pedestals ── */
     dbox(158, 2, 252, 26, 3.6, 3.85, P.esp);                      // top slab
-    dbox(158, 3, 252, 5, 3.4, 3.6, P.espLit);                     // lit front lip
-    dbox(160, 4, 182, 26, 0, 3.6, P.esp2);                        // left pedestal
+    dbox(158, 24, 252, 26, 3.4, 3.6, P.espLit);                   // lit lip under the front edge
+    dbox(160, 4, 182, 26, 0, 2.3, P.esp2);                        // left pedestal, cubby above
+    dbox(160, 4, 182, 10, 2.3, 3.6, P.esp2);                      // the cubby's back
+    dbox(160, 4, 163, 26, 2.3, 3.6, P.esp2);                      // ...and cheeks
+    dbox(179, 4, 182, 26, 2.3, 3.6, P.esp2);
+    dbox(163, 4, 179, 10.5, 2.3, 2.4, P.esp2);                    // shelf lip
     dbox(228, 4, 250, 26, 0, 3.6, P.esp2);                        // right pedestal
     dbox(160, 24, 250, 26, 0, 0.6, P.esp2);                       // toe stretcher
     dbox(181.4, 8, 182, 20, 1.6, 2.0, P.champ);                   // bar pulls
     dbox(228, 8, 228.6, 20, 1.6, 2.0, P.champ);
-    dbox(163, 9, 179, 22, 2.4, 3.4, P.esp2);                      // left cubby shadow
-    dbox(165, 12, 177, 20, 2.6, 3.3, P.porc);                     // white router on its shelf
-    dbox(166, 13, 176, 14, 2.8, 3.2, '#ddd9cf');                  // its mesh face
+    dbox(165, 10, 177, 20, 2.4, 3.1, P.porc);                     // white router in the open cubby
+    dbox(166, 20, 176, 20.4, 2.5, 3.0, '#ddd9cf');                // its mesh face, room side
     drectC(156, 0, 252, 28);
 
-    /* ── the TV, wall-mounted above the desk, on Fire TV's home screen ── */
-    dbox(140, 8.0, 206, 8.2, 6.4, 10.4, shade(P.wall, 0.8));      // its shadow patch on the wall
-    dbox(150, 8.8, 214, 9.4, 7.25, 11.0, '#141414');             // bezel, off the wall
-    dbox(152, 9.4, 212, 9.5, 7.4, 10.85, P.fire, true);          // navy screen field
-    dbox(152, 9.5, 212, 9.52, 8.7, 9.7, P.fire2, true);          // a bright poster row
-    dbox(158, 9.5, 170, 9.52, 8.8, 9.5, '#b8322e', true);        // poster tiles
-    dbox(174, 9.5, 186, 9.52, 8.8, 9.5, '#2f8fb0', true);
-    dbox(190, 9.5, 202, 9.52, 8.8, 9.5, '#d9cba8', true);
-    dbox(179, 8.05, 180, 8.25, 3.85, 7.25, '#0c0c0c');           // the cable drop, on the wall
+    /* ── the TV, wall-mounted above the desk, on Fire TV's home screen.
+          in the dbox frame the divider's face is authored z=2 (z+150=152),
+          so everything here hangs off z=2, not the old z=8 convention. ── */
+    dbox(140, 2.0, 206, 2.2, 6.4, 10.4, shade(P.wall, 0.8));      // its shadow patch on the wall
+    dbox(150, 2.8, 214, 3.4, 7.25, 11.0, '#141414');             // bezel, off the wall
+    dbox(152, 3.4, 212, 3.5, 7.4, 10.85, P.fire, true);          // navy screen field
+    dbox(152, 3.5, 212, 3.52, 8.7, 9.7, P.fire2, true);          // a bright poster row
+    dbox(158, 3.5, 170, 3.52, 8.8, 9.5, '#b8322e', true);        // poster tiles
+    dbox(174, 3.5, 186, 3.52, 8.8, 9.5, '#2f8fb0', true);
+    dbox(190, 3.5, 202, 3.52, 8.8, 9.5, '#d9cba8', true);
+    dbox(179, 2.05, 180, 2.25, 3.85, 7.25, '#0c0c0c');           // the cable drop, on the wall
 
     /* ── LEFT monitor: LG ultrawide on a white curved arc stand ── */
     dbox(174, 12, 202, 16, 3.85, 4.0, P.champ);                   // arc stand foot
@@ -373,8 +378,8 @@ function buildFurniture() {
     dbox(169.5, 15, 214.5, 24, 3.87, 3.92, P.mat);                // the mat itself
     dbox(174, 16, 205, 22, 3.9, 4.06, '#19161f');                 // keyboard body
     dbox(175, 16.5, 204, 17.2, 4.02, 4.1, P.alu);                 // its exposed switch plate
-    dbox(175, 17.2, 204, 21.5, 4.06, 4.12, '#f4f3ee', true);      // the white backlight bleed
-    dbox(174, 17.4, 203, 21.4, 4.08, 4.1, '#25222a');             // keycaps over it
+    dbox(175, 17.2, 204, 21.5, 4.06, 4.08, '#f4f3ee', true);      // the white backlight bleed
+    dbox(176, 17.6, 202, 21.1, 4.08, 4.12, '#25222a');            // keycaps ON it, bleed rims out
     dbox(209, 17, 214, 21, 3.9, 4.1, '#1a1a1e');                  // mouse
 
     /* ── the condenser mic on a tripod, on the bare wood right of the ASUS ── */
@@ -397,19 +402,20 @@ function buildFurniture() {
     dbox(199, 37.6, 201, 38.4, 3.0, 3.3, P.red);                  // the red adjustment knob
     drectC(186, 28, 214, 40);
 
-    /* ── the glowing PC tower: on the floor in the corner under the window's
-          west end, beside the desk. glass + fans on its east face. ── */
-    fbox(153, 11, 171, 30, 0, 0.25, '#cfd8e0');                   // acrylic riser
-    fbox(154, 12, 170, 29, 0.25, 3.0, '#0e0f12');                 // black chassis
-    fbox(169.6, 13, 170.0, 28, 0.4, 2.9, P.ledDk, true);          // the tinted glass panel
-    fbox(170.0, 14, 170.2, 27, 0.7, 1.05, P.led, true);           // fan ring 1, proud
-    fbox(170.0, 14, 170.2, 27, 1.25, 1.6, P.led, true);           // fan ring 2
-    fbox(170.0, 14, 170.2, 27, 1.8, 2.15, P.led, true);           // fan ring 3
-    fbox(170.2, 15, 170.35, 26, 0.78, 0.97, P.led2, true);        // brighter ring cores
-    fbox(170.2, 15, 170.35, 26, 1.33, 1.52, P.led2, true);
-    fbox(170.2, 15, 170.35, 26, 1.88, 2.07, P.led2, true);
-    fbox(163, 12.5, 164, 13.5, 2.9, 3.05, P.led2, true);          // power dot on top
-    rectC(151, 9, 173, 31);
+    /* ── the glowing PC tower: on the floor against the north wall just past
+          the desk's end, directly under the window like the photos. glass +
+          fans on its SOUTH face, toward the room. ── */
+    fbox(178, 10, 196, 29, 0, 0.25, '#cfd8e0');                   // acrylic riser
+    fbox(179, 11, 195, 28, 0.25, 3.0, '#0e0f12');                 // black chassis
+    fbox(180, 27.6, 194, 28.0, 0.4, 2.9, P.ledDk, true);          // the tinted glass panel
+    fbox(181, 28.0, 193, 28.2, 0.7, 1.05, P.led, true);           // fan ring 1, proud
+    fbox(181, 28.0, 193, 28.2, 1.25, 1.6, P.led, true);           // fan ring 2
+    fbox(181, 28.0, 193, 28.2, 1.8, 2.15, P.led, true);           // fan ring 3
+    fbox(182, 28.2, 192, 28.35, 0.78, 0.97, P.led2, true);        // brighter ring cores
+    fbox(182, 28.2, 192, 28.35, 1.33, 1.52, P.led2, true);
+    fbox(182, 28.2, 192, 28.35, 1.88, 2.07, P.led2, true);
+    fbox(188, 11.5, 189, 12.5, 2.9, 3.05, P.led2, true);          // power dot on top
+    rectC(176, 8, 198, 31);
 
     /* ── the cream sectional against the east wall, chaise at the south
           (kitchen) end, exactly as the photos have it ── */
@@ -424,7 +430,7 @@ function buildFurniture() {
     fbox(300, 66, 304, 84, 3.0, 4.3, P.char);                    // charcoal pillow
     fbox(300, 116, 304, 134, 3.0, 4.3, P.char);                  // charcoal pillow
     fbox(299, 92, 303, 110, 2.9, 4.1, P.cream2);                 // cream + stripe lumbar
-    fbox(299.5, 94, 302.5, 108, 3.1, 3.9, '#1a1613');            // its dark stripes
+    fbox(298.6, 94, 299, 108, 3.1, 3.9, '#1a1613');              // stripes proud of its west face
     fbox(244, 132, 262, 150, 2.0, 3.4, P.cream2);                // a cream cushion on the chaise
     rectC(234, 44, 314, 162);
 
@@ -491,15 +497,15 @@ function buildFurniture() {
     fbox(16, 50, 22, 96, 2.55, 3.6, P.porc);                     // white sleepers behind
     fbox(17, 48, 32, 64, 2.55, 4.0, P.char);                     // charcoal lumbar
     fbox(17, 68, 31, 82, 2.55, 3.75, P.cream2);                  // cream + camel squiggle
-    fbox(19, 70, 29, 80, 3.0, 3.7, P.oak);                       // its squiggle
+    fbox(31, 70, 31.4, 80, 2.8, 3.5, P.oak);                     // squiggle proud of its face
     fbox(17, 86, 31, 102, 2.55, 3.85, P.slateB);                 // slate-blue lumbar
     rectC(6, 42, 96, 110);
     /* the mid-century oak nightstand + black arc lamp, south of the bed */
     fbox(10, 114, 34, 132, 0, 2.75, P.oak);                      // body
-    fbox(11, 129, 33, 132, 0, 2.7, P.oak2);                      // paler drawer fronts
-    fbox(11, 121, 33, 124, 0, 2.7, P.oak2);
-    fbox(20, 130, 24, 131, 1.0, 1.3, '#2a2622');                 // recessed pulls
-    fbox(20, 122, 24, 123, 1.0, 1.3, '#2a2622');
+    fbox(34, 116, 34.5, 130, 0.25, 1.3, P.oak2);                 // drawer fronts, proud of the
+    fbox(34, 116, 34.5, 130, 1.5, 2.55, P.oak2);                 // east face toward the room
+    fbox(34.5, 121, 35, 125, 0.6, 0.95, '#2a2622');              // recessed pulls
+    fbox(34.5, 121, 35, 125, 1.85, 2.2, '#2a2622');
     fbox(11, 114, 13, 116, 0, 0.4, P.k);                         // splayed leg tips
     fbox(31, 114, 33, 116, 0, 0.4, P.k);
     fbox(14, 118, 22, 126, 2.75, 2.9, '#1e1b1a');                // lamp disc base
@@ -513,7 +519,7 @@ function buildFurniture() {
     fbox(fbx - 3, fbz - 22, fbx + 3, fbz + 22, 11.3, 11.45, P.esp2);
     fbox(fbx - 18, fbz + 8, fbx + 2, fbz + 20, 11.3, 11.42, P.esp);
     fbox(fbx - 6, fbz - 6, fbx + 6, fbz + 6, 11.2, 11.7, '#a88a52');
-    fbox(fbx - 4, fbz - 4, fbx + 4, fbz + 4, 11.7, 12.1, P.amber, true);
+    fbox(fbx - 4, fbz - 4, fbx + 4, fbz + 4, 10.9, 11.2, P.amber, true);   // bowl light BELOW the motor
     /* the dresser on the south wall, east of the door */
     fbox(100, 138, 140, 150, 0, 3.4, P.oak);
     fbox(104, 137.4, 112, 138, 1.5, 2.1, '#2a2622');             // pulls face the room
@@ -554,8 +560,12 @@ function buildFurniture() {
     fbox(8, 324, 14, 346, 1.0, 3.4, P.porc);                     // toilet tank
     fbox(14, 328, 28, 344, 0, 1.8, P.porc);                      // bowl
     circ(20, 336, 1.7);
-    fbox(10, 352, 70, 402, 0, 2.4, P.porc);                      // the tub
-    fbox(14, 356, 66, 398, 1.7, 1.9, P.water);
+    fbox(10, 352, 70, 402, 0, 1.6, P.porc);                      // the tub: base...
+    fbox(10, 352, 70, 356, 1.6, 2.4, P.porc);                    // ...and four rims, so the
+    fbox(10, 398, 70, 402, 1.6, 2.4, P.porc);                    // water is visible from above
+    fbox(10, 356, 14, 398, 1.6, 2.4, P.porc);
+    fbox(66, 356, 70, 398, 1.6, 2.4, P.porc);
+    fbox(14, 356, 66, 398, 1.6, 1.75, P.water);
     fbox(12, 372, 16, 378, 2.4, 3.3, P.steel);                   // faucet, west end
     rectC(8, 350, 72, 404);
 
@@ -594,11 +604,11 @@ function buildFurniture() {
         fbox(180 + st * 24, 275, 184 + st * 24, 279, 0, 3.0, '#2a2622');  // legs
         circ(182 + st * 24, 277, 1.4);
     }
-    fbox(250, 270, 276, 322, 0, 7.5, P.esp2);                    // the tall fridge block
-    fbox(248.5, 276, 250, 316, 0.4, 6.8, P.steel);               // fridge doors face the aisle
-    fbox(248, 282, 248.5, 290, 3.4, 5.4, P.steel2);              // handles
+    fbox(250, 270, 311, 322, 0, 7.5, P.esp2);                    // the tall fridge + pantry block,
+    fbox(248.5, 276, 250, 316, 0.4, 6.8, P.steel);               // flush to the east wall like the
+    fbox(248, 282, 248.5, 290, 3.4, 5.4, P.steel2);              // plan; doors face the aisle
     fbox(248, 296, 248.5, 304, 3.4, 5.4, P.steel2);
-    rectC(246, 268, 278, 324);
+    rectC(246, 268, 314, 324);
     fbox(162, 386, 310, 407, 0, 4.2, P.esp2);                    // south counter run
     fbox(160, 384, 312, 407, 4.2, 4.6, '#c9b88f');
     fbox(224, 384, 256, 407, 0, 4.4, P.porc);                    // the range
@@ -1047,12 +1057,13 @@ function buildMapScene() {
     mflat(8, 248, 74, 158, M3.tile);               // bathroom
     mflat(72, 160, 24, 88, M3.tile);               // dressing corridor
     mflat(82, 248, 32, 158, M3.tile);              // nook + entry closet strip
-    for (cz = 248; cz < 406; cz += 12) for (cx = 8; cx < 82; cx += 12) {
-        if ((((cx - 8) / 12) + ((cz - 248) / 12)) % 2 < 1) mflat(cx, cz, Math.min(12, 82 - cx), Math.min(12, 406 - cz), M3.tile2);
-    }
     for (i = 0; i < RUGS.length; i++) {
         o = RUGS[i];
         mflat(o.x0 * 8, o.z0 * 8, (o.x1 - o.x0) * 8, (o.z1 - o.z0) * 8, o.c);
+    }
+    /* the bath checkerboard AFTER the rugs, or the tile rugs flatten it */
+    for (cz = 248; cz < 406; cz += 12) for (cx = 8; cx < 70; cx += 12) {
+        if ((((cx - 8) / 12) + ((cz - 248) / 12)) % 2 < 1) mflat(cx, cz, Math.min(12, 70 - cx), Math.min(12, 406 - cz), M3.tile2);
     }
     /* soft shadows under the floor-standing furniture. dedupe by containment:
        a couch arm's shadow lives inside the base's, drawing both would
@@ -1631,6 +1642,7 @@ function boot() {
                 mapMs: function (n) { var t = performance.now(); for (var i = 0; i < (n || 100); i++) renderMap(); return (performance.now() - t) / (n || 100); },
                 prompt: function () { checkPrompt(); return promptTgt ? promptTgt.href : null; },
                 walk: function (x, z) { return !hitsWall(x, z); },
+                cell: function (c, r) { return solidCell(c, r) ? MAP[r][c] : 0; },
                 map: {
                     open: openMap, close: closeMap,
                     set: function (y, p, z) {
