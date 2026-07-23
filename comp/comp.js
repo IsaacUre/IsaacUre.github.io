@@ -3783,7 +3783,7 @@ var STG = [
     tags: ['Action RPG', 'Early Access', 'Isometric', 'Dark Fantasy', 'Loot'],
     s: "An isometric ARPG in Early Access. One arena, nine spells, one very patient dummy. The story isn't written yet. The violence is.",
     d: "The proving grounds open before the campaign does: liquid life and mana globes, a passive web, flasks that refill on violence, crits, ignites, freezes, shocks, a curse, a meteor with a travel time, and a training dummy with configurable resistances and infinite forgiveness. Bring opinions about cast speed. Early Access roadmap: 'a short but sweet intriguing story' — the writer has been informed.",
-    price: 0, disc: 0, free: true, owned: true, inst: false, hrs: 0, hrs2w: 0, ea: true,
+    price: 0, disc: 0, free: true, owned: true, inst: true, hrs: 0, hrs2w: 0, ea: true,   // real build => ships installed (#78)
     rev: ['Very Positive', 91, 328], art: ['#160a20', '#8a4ae0', 'VF'], sc: 'dungeon', trend: true,
     app: 'arpg', live: 'ARPG',
     ach: [0, 14],
