@@ -2738,6 +2738,11 @@ function liveCachePut(u, v) {
     if (ks.length > 48) delete LIVE_CACHE[ks[0]];         // insertion order: oldest goes first
     LIVE_CACHE[u] = { t: Date.now(), v: v };
 }
+/* a wire field the renderer treats as a number gets coerced to one, so the
+   "nothing from the wire touches innerHTML unguarded" invariant holds even for
+   the counts and temperatures — a string (schema change, MITM) becomes 0, not
+   markup. esc() guards the text fields; nnum() guards the numeric ones. */
+function nnum(n) { n = +n; return isFinite(n) ? n : 0; }
 /* fetch JSON with a timeout, an offline check, and the cache in front */
 function liveGet(url, cb) {
     var hit = liveCacheGet(url);
@@ -2960,7 +2965,7 @@ webPage('news.ycombinator.com', {
                 var dom = hnHostOf(j.url);
                 var html = '<div class="cr-lv cr-hn">' + head() +
                     '<div class="cr-hnstory"><h2>' + (j.url ? crLink(j.url.replace(/^https?:\/\//i, ''), esc(j.title), 'cr-hntitle') : esc(j.title || '(untitled)')) + (dom ? ' <i class="cr-hndom">(' + esc(dom) + ')</i>' : '') + '</h2>' +
-                    '<p class="cr-hnsub">' + (j.points || 0) + ' points · ' + esc(j.author || '?') + ' · ' + hnAgo(j.created_at_i) + '</p>' +
+                    '<p class="cr-hnsub">' + nnum(j.points) + ' points · ' + esc(j.author || '?') + ' · ' + hnAgo(j.created_at_i) + '</p>' +
                     (j.text ? '<div class="cr-hncb op">' + liveSanitize(j.text, function (href) { return /^https?:\/\//i.test(href) ? href.replace(/^https?:\/\//i, '') : null; }) + '</div>' : '') + '</div>' +
                     cmts(j.children, 0) +
                     (n > 150 ? '<p class="cr-lvfoot">Trimmed at 150 comments — the rest live on the real orange site.</p>' : '') + '</div>';
@@ -2974,7 +2979,7 @@ webPage('news.ycombinator.com', {
                 var dom = hnHostOf(h.url);
                 var tl = h.url ? crLink(h.url.replace(/^https?:\/\//i, ''), esc(h.title), 'cr-hntitle') : crLink('news.ycombinator.com/item?id=' + h.objectID, esc(h.title), 'cr-hntitle');
                 return '<div class="cr-hnrow"><span class="cr-hnrank">' + (i + 1) + '.</span><div class="cr-hnmain"><span>' + tl + (dom ? ' <i class="cr-hndom">(' + esc(dom) + ')</i>' : '') + '</span>' +
-                    '<span class="cr-hnsub">' + (h.points || 0) + ' points · ' + esc(h.author) + ' · ' + hnAgo(h.created_at_i) + ' · ' + crLink('news.ycombinator.com/item?id=' + h.objectID, (h.num_comments || 0) + ' comments', 'cr-hncl') + '</span></div></div>';
+                    '<span class="cr-hnsub">' + nnum(h.points) + ' points · ' + esc(h.author) + ' · ' + hnAgo(h.created_at_i) + ' · ' + crLink('news.ycombinator.com/item?id=' + h.objectID, nnum(h.num_comments) + ' comments', 'cr-hncl') + '</span></div></div>';
             }).join('');
             liveFill(view, url, '<div class="cr-lv cr-hn">' + head() + rows +
                 '<p class="cr-lvfoot">The real front page, via the Algolia HN API. Story links go where they really go — most will open in a framed window.</p></div>',
@@ -3015,7 +3020,7 @@ function ghInline(s) {
 function ghRepoCard(rp) {
     return '<div class="cr-lgrepo">' + crLink('github.com/' + rp.full_name, esc(rp.name), 'cr-lgrname') +
         (rp.description ? '<p>' + esc(rp.description) + '</p>' : '') +
-        '<span class="cr-lgmeta">' + (rp.language ? '<i class="cr-lgdot" style="background:' + (GH_LANG[rp.language] || '#8b949e') + '"></i>' + esc(rp.language) + ' · ' : '') + '★ ' + rp.stargazers_count + (rp.fork ? ' · fork' : '') + '</span></div>';
+        '<span class="cr-lgmeta">' + (rp.language ? '<i class="cr-lgdot" style="background:' + (GH_LANG[rp.language] || '#8b949e') + '"></i>' + esc(rp.language) + ' · ' : '') + '★ ' + nnum(rp.stargazers_count) + (rp.fork ? ' · fork' : '') + '</span></div>';
 }
 webPage('github.com', {
     live: true,
@@ -3050,7 +3055,7 @@ webPage('github.com', {
                 var html = '<div class="cr-lv cr-lg"><div class="cr-lgbar">' + crLink('github.com', '🐙 GitHub', 'cr-lghome') + liveChip() + '</div>' +
                     '<h2 class="cr-lgtitle">' + crLink('github.com/' + j.owner.login, esc(j.owner.login), 'cr-lgowner') + ' / <b>' + esc(j.name) + '</b></h2>' +
                     (j.description ? '<p class="cr-lgdesc">' + esc(j.description) + '</p>' : '') +
-                    '<div class="cr-lgstats"><span>★ ' + j.stargazers_count.toLocaleString() + '</span><span>⑂ ' + j.forks_count.toLocaleString() + '</span>' +
+                    '<div class="cr-lgstats"><span>★ ' + nnum(j.stargazers_count).toLocaleString() + '</span><span>⑂ ' + nnum(j.forks_count).toLocaleString() + '</span>' +
                     (j.language ? '<span><i class="cr-lgdot" style="background:' + (GH_LANG[j.language] || '#8b949e') + '"></i>' + esc(j.language) + '</span>' : '') +
                     '<span>◷ updated ' + esc(String(j.pushed_at || '').slice(0, 10)) + '</span></div>' +
                     '<div class="cr-lgreadme" id="crGhReadme"><p class="cr-empty">Fetching the README…</p></div>' +
@@ -3074,7 +3079,7 @@ webPage('github.com', {
                 (/^https:\/\/avatars\.githubusercontent\.com\//.test(j.avatar_url || '') ? '<img class="cr-lgav" alt="" referrerpolicy="no-referrer" src="' + esc(j.avatar_url) + '">' : '') +
                 '<div><h2 class="cr-lgtitle">' + esc(j.name || j.login) + '</h2><span class="cr-lglogin">' + esc(j.login) + '</span>' +
                 (j.bio ? '<p class="cr-lgdesc">' + esc(j.bio) + '</p>' : '') +
-                '<div class="cr-lgstats"><span>' + (j.followers || 0).toLocaleString() + ' followers</span><span>' + (j.public_repos || 0).toLocaleString() + ' repos</span>' + (j.location ? '<span>📍 ' + esc(j.location) + '</span>' : '') + '</div></div></div>' +
+                '<div class="cr-lgstats"><span>' + nnum(j.followers).toLocaleString() + ' followers</span><span>' + nnum(j.public_repos).toLocaleString() + ' repos</span>' + (j.location ? '<span>📍 ' + esc(j.location) + '</span>' : '') + '</div></div></div>' +
                 '<div class="cr-lgrepos" id="crGhRepos"></div>' +
                 '<p class="cr-lvfoot">Live from <b>api.github.com</b>.</p></div>';
             liveFill(view, url, html, (j.name || j.login) + ' — GitHub');
@@ -3110,7 +3115,7 @@ webPage('open-meteo.com', {
                 }).join('');
                 liveFill(view, url, '<div class="cr-lv cr-wx"><div class="cr-wxbar">' + crLink('open-meteo.com', '☀ Open-Meteo', 'cr-wxhome') +
                     '<label class="cr-lvsearch sm">' + ic('ic-search') + '<input class="cr-wxq" placeholder="Another city" spellcheck="false"></label>' + liveChip() + '</div>' +
-                    '<div class="cr-wxnow"><span class="cr-wxbig">' + w[0] + '</span><div><h2>' + Math.round(c.temperature_2m) + '°F</h2><p>' + w[1] + ' · feels ' + Math.round(c.apparent_temperature) + '° · wind ' + Math.round(c.wind_speed_10m) + ' mph · humidity ' + c.relative_humidity_2m + '%</p><i>' + esc(name) + ', right now, for real</i></div></div>' +
+                    '<div class="cr-wxnow"><span class="cr-wxbig">' + w[0] + '</span><div><h2>' + Math.round(c.temperature_2m) + '°F</h2><p>' + w[1] + ' · feels ' + Math.round(c.apparent_temperature) + '° · wind ' + Math.round(c.wind_speed_10m) + ' mph · humidity ' + nnum(c.relative_humidity_2m) + '%</p><i>' + esc(name) + ', right now, for real</i></div></div>' +
                     '<div class="cr-wxdays">' + days + '</div>' +
                     '<p class="cr-lvfoot">Live from <b>api.open-meteo.com</b>. If it says rain, blame the sky, not the pixels.</p></div>',
                     name + ' weather — Open-Meteo');
