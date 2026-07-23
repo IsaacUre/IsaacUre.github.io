@@ -166,12 +166,16 @@ function openApp(id, arg) {
 }
 function createWindow(id, a, arg) {
     var w = a.w || 560, h = a.h || 420;
-    // floor the clamp: boot-time dev hooks can fire before the viewport has laid out,
-    // and Math.min against a negative viewport writes an invalid width the parser drops
-    w = Math.max(320, Math.min(w, window.innerWidth - 16)); h = Math.max(240, Math.min(h, window.innerHeight - BAR - 16));
+    // boot-time dev hooks can fire before the viewport has laid out; an unlaid
+    // (zero) viewport would write an invalid negative width the CSS parser drops.
+    // Only substitute defaults in that degenerate case — real narrow phones keep
+    // getting windows clamped to their true width.
+    var vw = window.innerWidth > 40 ? window.innerWidth : 1280;
+    var vh = window.innerHeight > 40 ? window.innerHeight : 800;
+    w = Math.min(w, vw - 16); h = Math.min(h, vh - BAR - 16);
     var n = Object.keys(openWins).length;
-    var left = clamp(Math.round((window.innerWidth - w) / 2) + (n % 5) * 26 - 52, 8, window.innerWidth - w - 8);
-    var top = clamp(Math.round((window.innerHeight - BAR - h) / 2) + (n % 5) * 22 - 40, 8, window.innerHeight - BAR - h - 8);
+    var left = clamp(Math.round((vw - w) / 2) + (n % 5) * 26 - 52, 8, Math.max(8, vw - w - 8));
+    var top = clamp(Math.round((vh - BAR - h) / 2) + (n % 5) * 22 - 40, 8, Math.max(8, vh - BAR - h - 8));
     var el = document.createElement('section');
     el.className = 'win px-lg lift' + (a.titlebar ? ' win-tabbar' : ''); el.setAttribute('data-app', id); el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', a.title);
     el.style.cssText = 'left:' + left + 'px;top:' + top + 'px;width:' + w + 'px;height:' + h + 'px';

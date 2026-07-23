@@ -2413,7 +2413,7 @@ span.st-newsart .ic { width: 40px; height: 40px; }
 
 /* ═══════════════ VEILFALL — the proving grounds ═══════════════ */
 .ar { position: relative; width: 100%; height: 100%; background: #07060c; overflow: hidden; outline: none; font-family: "Pixelify Sans", sans-serif; user-select: none; }
-.ar-cv { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; image-rendering: auto; cursor: crosshair; }
+.ar-cv { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; image-rendering: auto; cursor: crosshair; }   /* contain: letterboxes into the void colour; toWorld() does the same math */
 .ar-vig { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 50% 42%, transparent 46%, rgba(2,1,6,.55) 82%, rgba(2,1,6,.9) 100%); }
 
 /* zone title + boss bar */

@@ -91,11 +91,17 @@ var SPELLS = {
         n: 'Sigil of Ruin', el: 'chaos', tags: ['Spell', 'Curse', 'Mark', 'Duration'],
         mana: 26, cd: 6, castT: 0.35, dmg: [0, 0], curseT: 9,
         d: 'Brand the target with a slow-turning ring of bad decisions. Cursed targets take 25% increased damage from everything, including opinions.'
+    },
+    basalt: {
+        n: 'Basalt Spear', el: 'phys', tags: ['Spell', 'Projectile', 'Physical'],
+        mana: 11, cd: 0, castT: 0.38, dmg: [58, 86], speed: 11,
+        d: 'A spear of honest rock. No element, no tricks — the one thing on this list the dummy’s armour actually argues with.'
     }
 };
 var SPELL_IDS = Object.keys(SPELLS);
-var SLOT_KEYS = ['LMB', 'RMB', 'Q', 'W', 'E', 'R'];
-var DEFAULT_BINDS = { LMB: 'emberbolt', RMB: 'frostnova', Q: 'glacialray', W: 'arc', E: 'umbralcoil', R: 'meteor' };
+// slot keys deliberately avoid WASD: W is for walking, not for machine-gunning Arc
+var SLOT_KEYS = ['LMB', 'RMB', 'Q', 'E', 'R', 'T'];
+var DEFAULT_BINDS = { LMB: 'emberbolt', RMB: 'frostnova', Q: 'glacialray', E: 'arc', R: 'meteor', T: 'umbralcoil' };
 
 /* ─────────────── the passive web ───────────────
    Three branches out of a core: PYRE (fire/crit), RIME
@@ -216,6 +222,10 @@ function sLoad() {
     S.lv = S.lv || 1; S.xp = S.xp || 0; S.pts = S.pts == null ? 2 : S.pts;
     S.alloc = S.alloc || { core: 1 };
     S.binds = S.binds || JSON.parse(JSON.stringify(DEFAULT_BINDS));
+    // migrate/sanitize binds: old saves used W as a slot key, and a bind may
+    // point at a spell id that no longer exists — either would brick init
+    if (S.binds.W !== undefined) S.binds = JSON.parse(JSON.stringify(DEFAULT_BINDS));
+    SLOT_KEYS.forEach(function (k) { if (S.binds[k] && !SPELLS[S.binds[k]]) S.binds[k] = null; });
     S.gear = S.gear || {};             // slot -> item
     S.stash = S.stash || [];           // unequipped items (cap 8)
     S.shards = S.shards || 0;
@@ -364,7 +374,7 @@ function render() {
               '<button class="ar-pbtn" data-ar="char" type="button" title="Character (C)">C</button>' +
               '<button class="ar-pbtn" data-ar="book" type="button" title="Spellbook (B)">B</button>' +
               '<button class="ar-pbtn" data-ar="tree" type="button" title="Passives (P)">P</button>' +
-              '<button class="ar-pbtn" data-ar="dummy" type="button" title="Dummy config (T)">T</button>' +
+              '<button class="ar-pbtn" data-ar="dummy" type="button" title="Dummy config (O)">O</button>' +
               '<button class="ar-pbtn" data-ar="snd" type="button" title="Sound">♪</button>' +
             '</div>' +
           '</div>' +
@@ -424,7 +434,7 @@ function init(el) {
     paintSlots();
     updateHud(0);
     logLine('<b>Welcome to the proving grounds.</b> The dummy has been informed.', 'sys');
-    logLine('WASD or click to move · LMB/RMB/Q/W/E/R to cast · Space to dash · C B P T for panels', 'dim');
+    logLine('WASD or click to move · LMB/RMB + Q/E/R/T to cast · Space to dash · C B P O for panels', 'dim');
     RT.last = performance.now();
     RT.raf = requestAnimationFrame(frame);
     // test handle for headless driving (rAF is frozen there — tick() advances manually)
@@ -465,18 +475,24 @@ function mkDummy() {
 /* ─────────────── input ─────────────── */
 function wireInput(root, cv) {
     function toWorld(e) {
+        // the canvas letterboxes (object-fit: contain) — undo that mapping
+        // exactly or every cast aims a little to the side of the cursor
         var r = cv.getBoundingClientRect();
-        var mx = (e.clientX - r.left) * (VW / r.width), my = (e.clientY - r.top) * (VH / r.height);
+        var scale = Math.min(r.width / VW, r.height / VH) || 1;
+        var offX = (r.width - VW * scale) / 2, offY = (r.height - VH * scale) / 2;
+        var mx = (e.clientX - r.left - offX) / scale, my = (e.clientY - r.top - offY) / scale;
         // invert iso: x-y = (mx-ORX)/(TW/2) ; x+y = (my-ORY)/(TH/2)
         var a = (mx - ORX) / (TILE_W / 2), b = (my - ORY) / (TILE_H / 2);
         return { x: mx, y: my, wx: (a + b) / 2, wy: (b - a) / 2 };
     }
     root.addEventListener('contextmenu', function (e) { e.preventDefault(); });
     cv.addEventListener('pointermove', function (e) {
+        if (!RT) return;                          // bfcache can revive dead DOM
         var p = toWorld(e);
         RT.mouse.x = p.x; RT.mouse.y = p.y; RT.mouse.wx = p.wx; RT.mouse.wy = p.wy;
     });
     cv.addEventListener('pointerdown', function (e) {
+        if (!RT) return;
         root.focus();
         var p = toWorld(e);
         RT.mouse.x = p.x; RT.mouse.y = p.y; RT.mouse.wx = p.wx; RT.mouse.wy = p.wy;
@@ -490,18 +506,21 @@ function wireInput(root, cv) {
         }
     });
     window.addEventListener('pointerup', RT.mup = function (e) {
+        if (!RT) return;
         if (e.button === 2) RT.mouse.rdown = false;
         if (e.button === 0) RT.mouse.down = false;
     });
     root.addEventListener('keydown', function (e) {
+        if (!RT) return;
         if (e.altKey) return;                     // Alt belongs to the OS
         var k = e.key.toLowerCase();
         if (k === 'escape') { if (RT.panel) { togglePanel(null); e.stopPropagation(); } return; }
         RT.keys[k] = true;
+        if (e.repeat && 'qert'.indexOf(k) >= 0) { e.preventDefault(); return; }   // holds walk, taps cast
         if (k === 'q') slotCast('Q');
-        else if (k === 'w') slotCast('W');
         else if (k === 'e') slotCast('E');
         else if (k === 'r') slotCast('R');
+        else if (k === 't') slotCast('T');
         else if (k === ' ') { e.preventDefault(); doDash(); }
         else if (k === '1') useFlask(0);
         else if (k === '2') useFlask(1);
@@ -509,15 +528,16 @@ function wireInput(root, cv) {
         else if (k === 'c') togglePanel('char');
         else if (k === 'b') togglePanel('book');
         else if (k === 'p') togglePanel('tree');
-        else if (k === 't') togglePanel('dummy');
+        else if (k === 'o') togglePanel('dummy');
         else if (k === 'h') RT.root.querySelector('.ar-log').classList.toggle('open');
         else return;
         e.preventDefault(); e.stopPropagation();
     });
-    root.addEventListener('keyup', function (e) { RT.keys[e.key.toLowerCase()] = false; });
-    root.addEventListener('blur', function () {
-        // focus left the arena: forget every held key so channels and walks
-        // don't run forever on a keyup we will never receive
+    root.addEventListener('keyup', function (e) { if (RT) RT.keys[e.key.toLowerCase()] = false; });
+    root.addEventListener('focusout', function (e) {
+        // focus left the arena ENTIRELY (blur doesn't bubble; focusout does):
+        // forget held keys so channels and walks don't run on keyups we'll never get
+        if (!RT || (e.relatedTarget && root.contains(e.relatedTarget))) return;
         RT.keys = {}; RT.mouse.down = false; RT.mouse.rdown = false;
         endChannel();
     });
@@ -707,6 +727,16 @@ function drawNums(cx, dt) {
 /* ─────────────── the exile ─────────────── */
 function stepPlayer(dt) {
     var st = stats();
+    // channelling ROOTS you — the beam is a commitment, not a suggestion
+    if (RT.channel) {
+        RT.walking = false; RT.moveTo = null;
+        if (RT.dashCharges < (SPELLS.flamedash.charges || 2)) {
+            RT.dashCd -= dt;
+            if (RT.dashCd <= 0) { RT.dashCharges++; RT.dashCd = SPELLS.flamedash.cd; }
+        }
+        for (var j = RT.dashTrail.length - 1; j >= 0; j--) { RT.dashTrail[j].t -= dt; if (RT.dashTrail[j].t <= 0) RT.dashTrail.splice(j, 1); }
+        return;
+    }
     var spd = st.move * (RT.buffs.quick > 0 ? 1.4 : 1);
     var mx = 0, my = 0;
     // WASD maps to screen directions; convert to iso axes
@@ -729,8 +759,6 @@ function stepPlayer(dt) {
             RT.face = Math.atan2(dy, dx); RT.walking = true;
         }
     } else RT.walking = false;
-    // channelling roots you gently (arpg law)
-    if (RT.channel) RT.walking = false;
     RT.px = clamp(RT.px, 0.8, GRID - 0.8); RT.py = clamp(RT.py, 0.8, GRID - 0.8);
     // dash charge regen
     if (RT.dashCharges < (SPELLS.flamedash.charges || 2)) {
@@ -742,6 +770,7 @@ function stepPlayer(dt) {
 }
 function doDash() {
     if (RT.dashCharges <= 0 || RT.mana < SPELLS.flamedash.mana) return;
+    endChannel();                                  // you cannot be a beam and a blur at once
     var tx = RT.mouse.wx, ty = RT.mouse.wy;
     var dx = tx - RT.px, dy = ty - RT.py, d = Math.hypot(dx, dy) || 1;
     var dist = Math.min(d, 3.4);
@@ -940,11 +969,11 @@ function dealHit(base, el, opt) {
     var d = RT.dummy; if (d.dead) return 0;
     var st = opt.st || stats();
     var crit = Math.random() * 100 < st.critCh;
-    var dmg = base * (crit ? st.critMul : 1);
-    dmg = dealRaw(dmg, el, { crit: crit, tag: opt.tag, quiet: opt.quiet, spell: opt.spell });
+    var pre = base * (crit ? st.critMul : 1);   // pre-mitigation: statuses scale off THIS,
+    var dmg = dealRaw(pre, el, { crit: crit, tag: opt.tag, quiet: opt.quiet, spell: opt.spell, shatterMul: opt.shatterMul });
     if (crit) { S.crits++; if (S.crits >= 10) ach('crit10'); }
-    // status application
-    if (dmg > 0 && !d.dead) applyStatus(el, dmg, st, opt);
+    // ...because the tick path mitigates again on its own — no double-dipping resists
+    if (dmg > 0 && !d.dead) applyStatus(el, pre, st, opt);
     return dmg;
 }
 function dealRaw(dmg, el, opt) {
@@ -1018,9 +1047,10 @@ function dummyDeath() {
     burst(d.x, d.y, 26, 22, { col: '255,200,120', sp0: 0.5, sp1: 2, l0: 0.3, l1: 0.8 });
     RT.shake = Math.min(10, RT.shake + 6);
     sfx('death');
-    S.shards += irnd(2, 5);
+    var shGain = irnd(2, 5);
+    S.shards += shGain;
     flaskGain(3);                                       // a kill refills the belt. tradition.
-    logLine('<b>The dummy is destroyed.</b> +' + '<b style="color:#ffe66e">shards</b>. It will be back. It is always back.', 'kill');
+    logLine('<b>The dummy is destroyed.</b> +' + shGain + ' <b style="color:#ffe66e">void shards</b>. It will be back. It is always back.', 'kill');
     if (Math.random() < 0.65 || !S.stash.length) {
         var it = rollItem();
         if (S.stash.length >= 8) {   // evict the oldest NON-unique; The Box is never compost
@@ -1076,6 +1106,7 @@ function slotCast(slot) {
 }
 function tryCast(id, tx, ty) {
     var sp = SPELLS[id]; if (!sp || !RT || RT.casting) return;
+    if (RT.channel) { if (RT.channel.id === id) return; endChannel(); }   // a new intent breaks the beam
     if (id === 'flamedash') { doDash(); return; }
     if (id === 'glacialray') { startChannel(id, tx, ty); return; }
     if ((RT.cds[id] || 0) > 0) { hudNudge(id); return; }
@@ -1093,6 +1124,7 @@ function tryCast(id, tx, ty) {
 function finishCast(id, tx, ty) {
     var sp = SPELLS[id];
     if (id === 'emberbolt') castEmberbolt(tx, ty);
+    else if (id === 'basalt') castBasalt(tx, ty);
     else if (id === 'arc') castArc(tx, ty);
     else if (id === 'meteor') castMeteor(tx, ty);
     else if (id === 'frostnova') castFrostNova();
@@ -1175,6 +1207,13 @@ function castEmberbolt(tx, ty) {
     RT.projs.push({ kind: 'ember', x: RT.px + Math.cos(a) * 0.5, y: RT.py + Math.sin(a) * 0.5, z: 26, vx: Math.cos(a) * SPELLS.emberbolt.speed, vy: Math.sin(a) * SPELLS.emberbolt.speed, life: 2.4 });
     sfx('fire');
 }
+
+/* BASALT SPEAR — the honest one; the only spell armour argues with */
+function castBasalt(tx, ty) {
+    var a = Math.atan2(ty - RT.py, tx - RT.px);
+    RT.projs.push({ kind: 'stone', x: RT.px + Math.cos(a) * 0.5, y: RT.py + Math.sin(a) * 0.5, z: 28, vx: Math.cos(a) * SPELLS.basalt.speed, vy: Math.sin(a) * SPELLS.basalt.speed, life: 2 });
+    sfx('stone');
+}
 function stepProjs(dt) {
     for (var i = RT.projs.length - 1; i >= 0; i--) {
         var p = RT.projs[i];
@@ -1186,8 +1225,20 @@ function stepProjs(dt) {
             if (Math.random() < 0.4) spawnPart({ x: p.x, y: p.y, z: p.z, vx: 0, vy: 0, vz: rnd(6, 14), life: 0.5, size: rnd(1, 2), col: '120,120,130', add: 0, alpha: 0.4, grav: -8 });
         } else if (p.kind === 'umbral') {
             spawnPart({ x: p.x + Math.sin(p.life * 22) * 0.14, y: p.y + Math.cos(p.life * 22) * 0.14, z: p.z, vx: 0, vy: 0, vz: rnd(-4, 6), life: rnd(0.3, 0.6), size: rnd(1.5, 3), col: '150,80,230', add: 1, grav: 0 });
+        } else if (p.kind === 'stone') {
+            if (Math.random() < 0.5) spawnPart({ x: p.x, y: p.y, z: p.z + rnd(-2, 2), vx: rnd(-0.2, 0.2), vy: rnd(-0.2, 0.2), vz: rnd(-6, 4), life: rnd(0.25, 0.5), size: rnd(1, 2.2), col: '150,145,135', add: 0, alpha: 0.6, grav: 40 });
         }
         if (dummyHitRadius(p.x, p.y, 0.55)) {
+            if (p.kind === 'stone') {
+                var rs = spellDmg('basalt');
+                dealHit(rnd(rs.lo, rs.hi), 'phys', { st: rs.st, spell: 'Basalt Spear', spellId: 'basalt' });
+                RT.dummy.wobble = 1;                       // rock hits like an argument
+                burst(p.x, p.y, p.z, 16, { col: '170,162,150', sp0: 0.7, sp1: 2.6, l0: 0.3, l1: 0.7, add: 0, grav: 220 });
+                burst(p.x, p.y, p.z, 6, { col: '220,214,200', sp0: 0.3, sp1: 1.2, l0: 0.15, l1: 0.35 });
+                RT.shake = Math.min(7, RT.shake + 2);
+                sfx('hit');
+                RT.projs.splice(i, 1); continue;
+            }
             if (p.kind === 'ember') {
                 var r = spellDmg('emberbolt');
                 dealHit(rnd(r.lo, r.hi), 'fire', { st: r.st, spell: 'Emberbolt', spellId: 'emberbolt' });
@@ -1220,7 +1271,7 @@ function drawProjs(cx) {
         var p = RT.projs[i];
         var sx = isoX(p.x, p.y), sy = isoY(p.x, p.y) + TILE_H / 2 - p.z;
         cx.globalCompositeOperation = 'lighter';
-        var core = p.kind === 'ember' ? ['255,220,140', '255,120,30'] : ['230,190,255', '140,60,220'];
+        var core = p.kind === 'ember' ? ['255,220,140', '255,120,30'] : p.kind === 'stone' ? ['225,218,205', '120,115,108'] : ['230,190,255', '140,60,220'];
         var g = cx.createRadialGradient(sx, sy, 1, sx, sy, 9);
         g.addColorStop(0, 'rgba(' + core[0] + ',.95)'); g.addColorStop(0.5, 'rgba(' + core[1] + ',.55)'); g.addColorStop(1, 'rgba(' + core[1] + ',0)');
         cx.fillStyle = g; cx.beginPath(); cx.arc(sx, sy, 9, 0, TAU); cx.fill();
@@ -1502,6 +1553,7 @@ function sfx(kind) {
         else if (kind === 'death') { noise(0.3, 0.07); tone('triangle', 200, 40, 0.5, 0.08); }
         else if (kind === 'level') { [440, 554, 659, 880].forEach(function (f, i) { tone('square', f, f, 0.12, 0.035, i * 0.09); }); }
         else if (kind === 'flask') { tone('sine', 500, 800, 0.15, 0.04); }
+        else if (kind === 'stone') { noise(0.07, 0.05); tone('triangle', 220, 90, 0.14, 0.05); }
         else if (kind === 'charge') { tone('sine', 200, 400, 0.1, 0.015); }
         else if (kind === 'alloc') { tone('square', 330, 660, 0.12, 0.03); }
     } catch (e) {}
@@ -1588,6 +1640,11 @@ function draw() {
 /* ─────────────── HUD ─────────────── */
 function updateHud(dt) {
     var st = stats();
+    // real elapsed time since the last HUD pass — we run on a 50ms cadence but
+    // were being handed a single frame's dt, so lag animations crawled
+    var hdt = RT.hudPrev == null ? 0 : Math.min(0.5, RT.t - RT.hudPrev);
+    RT.hudPrev = RT.t;
+    dt = hdt;
     drawGlobe(RT.root.querySelector('.ar-globe-hp canvas'), RT.life / st.lifeMax, ['#7a1420', '#c22536', '#e8556a'], RT.t);
     drawGlobe(RT.root.querySelector('.ar-globe-mp canvas'), RT.mana / st.manaMax, ['#122a6a', '#2a4fc2', '#5a86e8'], RT.t + 2);
     RT.root.querySelector('.ar-globe-hp .ar-globe-t').textContent = Math.ceil(RT.life) + '/' + st.lifeMax;
@@ -1596,7 +1653,7 @@ function updateHud(dt) {
     SLOT_KEYS.forEach(function (k) {
         var slot = RT.root.querySelector('.ar-slot[data-slot="' + k + '"]');
         var id = S.binds[k], cdEl = slot.querySelector('.ar-slot-cd');
-        if (!id) { cdEl.style.height = '0'; return; }
+        if (!id) { cdEl.style.height = '0'; slot.classList.remove('nomana', 'channeling'); return; }
         var sp = SPELLS[id];
         var frac = 0;
         if (id === 'flamedash') frac = RT.dashCharges > 0 ? 0 : clamp(RT.dashCd / sp.cd, 0, 1);
@@ -1612,7 +1669,7 @@ function updateHud(dt) {
     var em = boss.querySelector('.ar-boss-bar em');   // lagging white ghost bar
     var cur = parseFloat(em.style.width) || 100;
     var want = clamp(d.hp / d.hpm * 100, 0, 100);
-    em.style.width = Math.max(want, cur - 26 * (dt || 0.05)) + '%';
+    em.style.width = Math.max(want, cur - 26 * dt) + '%';
     boss.querySelector('.ar-boss-hp').textContent = d.dead ? 'composting…' : fmtN(d.hp) + ' / ' + fmtN(d.hpm);
     var stEl = boss.querySelector('.ar-boss-status');
     var icons = statusIcons();
@@ -1629,7 +1686,7 @@ function updateHud(dt) {
     // flasks
     RT.flasks.forEach(function (f, i) {
         var el = RT.root.querySelector('.ar-flask[data-flask="' + (i + 1) + '"]');
-        f.anim = Math.max(0, f.anim - (dt || 0.05));
+        f.anim = Math.max(0, f.anim - dt);
         el.querySelector('.ar-flask-liq').style.height = (f.charges / f.max * 82) + '%';
         el.classList.toggle('using', f.anim > 0);
         el.classList.toggle('empty', f.charges <= 0);
@@ -1697,7 +1754,7 @@ function paintSpellIcon(cv, id) {
     var g = cv.getContext('2d'), W2 = cv.width;
     g.clearRect(0, 0, W2, W2);
     g.fillStyle = '#0c0a14'; g.fillRect(0, 0, W2, W2);
-    if (!id) { g.strokeStyle = '#241f30'; g.strokeRect(3.5, 3.5, W2 - 7, W2 - 7); return; }
+    if (!id || !SPELLS[id]) { g.strokeStyle = '#241f30'; g.strokeRect(3.5, 3.5, W2 - 7, W2 - 7); return; }
     var sp = SPELLS[id], base = ECOL[sp.el], dark = EDARK[sp.el];
     // element wash
     var bg = g.createRadialGradient(W2 / 2, W2 / 2, 2, W2 / 2, W2 / 2, W2 / 2);
@@ -1731,6 +1788,11 @@ function paintSpellIcon(cv, id) {
     } else if (id === 'arcanesurge') { // rising sun
         g.beginPath(); g.arc(c, c + 4, 8, 0, TAU); g.fill();
         for (var s2 = 0; s2 < 5; s2++) { var an2 = Math.PI + s2 / 4 * Math.PI; g.beginPath(); g.moveTo(c - Math.cos(an2) * 12, c + 4 + Math.sin(an2) * 12); g.lineTo(c - Math.cos(an2) * 18, c + 4 + Math.sin(an2) * 18); g.stroke(); }
+    } else if (id === 'basalt') {     // spear of rock
+        g.save(); g.translate(c, c); g.rotate(-Math.PI / 4);
+        g.fillRect(-2, -16, 4, 24);
+        g.beginPath(); g.moveTo(0, -22); g.lineTo(6, -12); g.lineTo(-6, -12); g.closePath(); g.fill();
+        g.globalAlpha = 0.5; g.fillRect(-5, 8, 10, 3); g.restore(); g.globalAlpha = 1;
     } else if (id === 'sigil') {      // rune ring
         g.beginPath(); g.arc(c, c, 13, 0, TAU); g.stroke();
         for (var r3 = 0; r3 < 4; r3++) { var an3 = r3 / 4 * TAU + 0.4; g.fillRect(c + Math.cos(an3) * 13 - 2.5, c + Math.sin(an3) * 13 - 2.5, 5, 5); }
@@ -1808,6 +1870,7 @@ function togglePanel(name) {
 }
 function refreshPanels() {
     if (!RT) return;
+    hideTip();   // panel rebuilds orphan hovered nodes; their pointerleave never fires
     if (RT.panel === 'char') fillChar();
     else if (RT.panel === 'book') fillBook();
     else if (RT.panel === 'dummy') fillDummy();
@@ -1818,6 +1881,7 @@ function refreshPanels() {
 /* — character sheet: stats + gear + stash — */
 function fillChar() {
     var st = stats(), m = st.m;
+    hideTip();
     var body = RT.root.querySelector('.ar-p-char .ar-p-body');
     function row(l, v) { return '<div class="ar-crow"><span>' + l + '</span><b>' + v + '</b></div>'; }
     var gearHtml = ['weapon', 'ring', 'amulet'].map(function (slot) {
@@ -1861,6 +1925,7 @@ function fillChar() {
             S.gear[item.slot] = item;
             logLine('equips <b style="color:' + RARITY[item.rarity] + '">' + esc(item.n) + '</b>.', 'loot');
             sfx('alloc'); sSave(); fillChar(); paintSlots();
+            RT.root.focus();
         });
         tipWire(el2, function () { return itemTip(it); });
     });
@@ -1872,6 +1937,7 @@ function fillChar() {
             delete S.gear[slot];
             S.stash.push(it);
             sSave(); fillChar();
+            RT.root.focus();
         });
         tipWire(el2, function () { return itemTip(it); });
     });
@@ -1904,6 +1970,7 @@ function fillBook() {
             S.binds[k] = S.binds[k] === id ? null : id;
             sSave(); paintSlots(); fillBook();
             sfx('alloc');
+            RT.root.focus();   // clicking a button must not strand keyboard focus on <body>
         });
     });
 }
@@ -1939,6 +2006,7 @@ function fillDummy() {
             sSave();
             if (a[0] === 'hp') { RT.dummy.hpm = cfg.hpm; RT.dummy.hp = Math.min(RT.dummy.hp, cfg.hpm); }
             fillDummy();
+            RT.root.focus();
         });
     });
 }
@@ -2041,6 +2109,7 @@ function wireTree(cv) {
             }
         }
         drag = null;
+        RT.root.focus();
     });
     cv.addEventListener('pointerleave', function () { RT.root.querySelector('.ar-tree-tip').hidden = true; });
 }
