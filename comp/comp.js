@@ -6808,6 +6808,8 @@ var APPS = {
         render: function () { return window.MC ? window.MC.render() : '<p style="padding:24px">The world fell into the void (minecraft.js missing).</p>'; },
         init: function (el) { if (window.MC) window.MC.init(el); },
         onFocus: function (el) { var r = el.querySelector('.mc'); if (r) r.focus(); },
+        onMinimize: function () { if (window.MC && window.MC.suspend) window.MC.suspend(); },   // hidden worlds pause; nobody dies off-screen
+        onRestore: function (el) { var r = el.querySelector('.mc'); if (r) r.focus(); },
         onClose: function () { if (window.MC) bankPlaytime('minecraft', window.MC.close() || 0); } },
     mclauncher: { title: 'Minecraft Launcher', icon: 'ic-mc', w: 980, h: 620, render: renderMC, init: initMC, onClose: closeMC, focusArg: mclFocus },
     ureboy:   { launch: '/ureboy/' },

@@ -725,6 +725,12 @@
             if (!th) continue;
             var gh = heightAt(wx, wz);
             if (caveAt(wx, gh, wz)) continue;   // no trees over a cave mouth
+            // dirt under the trunk (vanilla): otherwise the buried grass slowly converts at runtime,
+            // spamming relights and junk save edits for terrain nobody touched
+            if (Math.floor(wx / CW) === cx && Math.floor(wz / CW) === cz && gh >= 0 && gh < CH) {
+                var bui = (wx & 15) | ((wz & 15) << 4) | (gh << 8);
+                if (bl[bui] === GRASS || bl[bui] === SNOWGRASS) bl[bui] = DIRT;
+            }
             for (var dy = 0; dy <= th + 1; dy++) {
                 var ty = gh + 1 + dy;
                 if (ty >= CH) break;
@@ -795,7 +801,7 @@
             }
         }
     }
-    function lightSpread(queue, chan) {   // BFS across loaded chunks; only ever brightens
+    function lightSpread(queue, chan, touched) {   // BFS across loaded chunks; only ever brightens
         var qi = 0, isSky = chan === 'sky';
         while (qi < queue.length) {
             var wx = queue[qi], wy = queue[qi + 1], wz = queue[qi + 2]; qi += 3;
@@ -810,7 +816,11 @@
                 if (B[nb] && B[nb].opaque) continue;
                 var cost = lightCost(nb);
                 var nv = (isSky && d === 3 && v === 15 && cost === 1) ? 15 : v - cost;
-                if (nv > c[chan][ni]) { c[chan][ni] = nv; queue.push(nx, ny, nz); }
+                if (nv > c[chan][ni]) {
+                    c[chan][ni] = nv;
+                    if (touched) touched[c.cx + ',' + c.cz] = 1;
+                    queue.push(nx, ny, nz);
+                }
             }
         }
     }
@@ -872,13 +882,77 @@
         lightSpread(q.s, 'sky'); lightSpread(q.b, 'blk');
         for (var k in touched) dirtyChunk(k);
     }
+    // incremental single-edit lighting: unlight BFS carrying old values, then re-spread.
+    // ~100x cheaper than the box relight — mining must not hitch.
+    function lightEdit(wx, wy, wz, newB) {
+        var touched = {};
+        var cEdit = chunkAt(wx, wz);
+        if (!cEdit) return touched;
+        var i0 = lidx(wx, wy, wz);
+        for (var ci = 0; ci < 2; ci++) {
+            var chan = ci === 0 ? 'sky' : 'blk', isSky = ci === 0;
+            var oldV = cEdit[chan][i0], own = 0;
+            if (!isSky && B[newB] && B[newB].lite) own = B[newB].lite;
+            if (isSky && !(B[newB] && B[newB].opaque)) {
+                var above = wy + 1 >= CH ? 15 : getSky(wx, wy + 1, wz);
+                if (above === 15 && lightCost(newB) === 1) own = 15;   // the sun falls straight through
+            }
+            cEdit[chan][i0] = own;
+            touched[cEdit.cx + ',' + cEdit.cz] = 1;
+            var relQ = [];
+            if (oldV > own) {
+                var unQ = [wx, wy, wz, oldV], qi = 0;
+                while (qi < unQ.length) {
+                    var ux = unQ[qi], uy = unQ[qi + 1], uz = unQ[qi + 2], uv = unQ[qi + 3]; qi += 4;
+                    for (var d = 0; d < 6; d++) {
+                        var nx = ux + (d === 0 ? 1 : d === 1 ? -1 : 0), ny = uy + (d === 2 ? 1 : d === 3 ? -1 : 0), nz = uz + (d === 4 ? 1 : d === 5 ? -1 : 0);
+                        if (ny < 0 || ny >= CH) continue;
+                        var c = chunkAt(nx, nz); if (!c) continue;
+                        var ni = lidx(nx, ny, nz), nv = c[chan][ni];
+                        if (nv === 0) continue;
+                        // full sun below full sun rode the free downward pass: it dies with its parent
+                        if (nv < uv || (isSky && d === 3 && nv === 15 && uv === 15)) {
+                            c[chan][ni] = 0;
+                            touched[c.cx + ',' + c.cz] = 1;
+                            unQ.push(nx, ny, nz, nv);
+                        } else relQ.push(nx, ny, nz);   // a surviving brighter neighbor re-floods the hole
+                    }
+                }
+            }
+            if (own > 1) relQ.push(wx, wy, wz);
+            for (var d2 = 0; d2 < 6; d2++) {   // a removed block lets every side shine in
+                var ax = wx + (d2 === 0 ? 1 : d2 === 1 ? -1 : 0), ay = wy + (d2 === 2 ? 1 : d2 === 3 ? -1 : 0), az = wz + (d2 === 4 ? 1 : d2 === 5 ? -1 : 0);
+                if (ay >= 0 && ay < CH && chunkAt(ax, az)) relQ.push(ax, ay, az);
+            }
+            lightSpread(relQ, chan, touched);
+        }
+        // keep the column's sun floor honest for future frontier scans
+        var lx = wx & 15, lz = wz & 15, sf = 0;
+        for (var y2 = CH - 1; y2 >= 0; y2--) if (cEdit.sky[lx | (lz << 4) | (y2 << 8)] < 15) { sf = y2 + 1; break; }
+        cEdit.sunF[lx | (lz << 4)] = sf;
+        return touched;
+    }
 
     /* ── edits ──────────────────────────────────────────────── */
     function dirtyChunk(k) { var c = RT.chunks[k]; if (c) { c.dirty = true; if (RT.meshQ.indexOf(k) < 0) RT.meshQ.push(k); } }
+    function torchSupported(wx, wy, wz) {
+        return solidAt(wx, wy - 1, wz) || solidAt(wx + 1, wy, wz) || solidAt(wx - 1, wy, wz) || solidAt(wx, wy, wz + 1) || solidAt(wx, wy, wz - 1);
+    }
+    function popCross(wx, wy, wz) {   // a plant/torch loses its footing: pop as a real drop, not into the void
+        var b = getB(wx, wy, wz);
+        if (b <= 0 || !B[b] || !B[b].cross) return;
+        var ds = dropFor(b);
+        setB(wx, wy, wz, AIR);
+        for (var i = 0; i < ds.length; i++) dropItem(wx + 0.5, wy + 0.3, wz + 0.5, ds[i][0], ds[i][1]);
+    }
     function setB(wx, wy, wz, id, silent) {
         if (wy < 0 || wy >= CH) return;
         var c = chunkAt(wx, wz); if (!c) return;
         var i = lidx(wx, wy, wz), old = c.bl[i];
+        // a freed cell beside or under water floods — no floating water walls, no permanent air bubbles
+        if (id === AIR && !silent &&
+            (getB(wx, wy + 1, wz) === WATER || getB(wx + 1, wy, wz) === WATER || getB(wx - 1, wy, wz) === WATER ||
+             getB(wx, wy, wz + 1) === WATER || getB(wx, wy, wz - 1) === WATER)) id = WATER;
         if (old === id) return;
         c.bl[i] = id;
         var k = ckey(c.cx, c.cz);
@@ -888,39 +962,63 @@
         var stillSame = (old === FURN || old === FURN_LIT) && (id === FURN || id === FURN_LIT);
         if (wasStation && !stillSame) tentBreak(wx, wy, wz);
         if (!silent) {
-            relight(wx, wz);
-            dirtyChunk(k);   // border blocks also dirty the neighbor even if light didn't move
-            if ((wx & 15) === 0) dirtyChunk(ckey(c.cx - 1, c.cz)); if ((wx & 15) === 15) dirtyChunk(ckey(c.cx + 1, c.cz));
-            if ((wz & 15) === 0) dirtyChunk(ckey(c.cx, c.cz - 1)); if ((wz & 15) === 15) dirtyChunk(ckey(c.cx, c.cz + 1));
+            var touched = lightEdit(wx, wy, wz, id);
+            touched[k] = 1;   // border blocks also dirty the neighbor even if light didn't move
+            if ((wx & 15) === 0) touched[(c.cx - 1) + ',' + c.cz] = 1; if ((wx & 15) === 15) touched[(c.cx + 1) + ',' + c.cz] = 1;
+            if ((wz & 15) === 0) touched[c.cx + ',' + (c.cz - 1)] = 1; if ((wz & 15) === 15) touched[c.cx + ',' + (c.cz + 1)] = 1;
+            for (var tk in touched) dirtyChunk(tk);
         }
-        // gravity blocks fall
-        if ((id === AIR || B[id].cross) && wy + 1 < CH) {
+        var gone = id === AIR || id === WATER;
+        // gravity blocks fall; plants above a vanished floor pop as drops
+        if ((gone || B[id].cross) && wy + 1 < CH) {
             var above = getB(wx, wy + 1, wz);
             if (above === SAND || above === GRAVEL) fallStart(wx, wy + 1, wz, above);
-            else if (above >= WHEAT0 && above <= WHEAT3 && id === AIR) setB(wx, wy + 1, wz, AIR);   // crops need farmland
-            else if ((above === TALLGRASS || above === DANDELION || above === POPPY) && id === AIR) setB(wx, wy + 1, wz, AIR);
+            else if (gone && B[above] && B[above].cross) popCross(wx, wy + 1, wz);
+        }
+        // a wall torch loses its last support
+        if (gone) {
+            if (getB(wx + 1, wy, wz) === TORCH && !torchSupported(wx + 1, wy, wz)) popCross(wx + 1, wy, wz);
+            if (getB(wx - 1, wy, wz) === TORCH && !torchSupported(wx - 1, wy, wz)) popCross(wx - 1, wy, wz);
+            if (getB(wx, wy, wz + 1) === TORCH && !torchSupported(wx, wy, wz + 1)) popCross(wx, wy, wz + 1);
+            if (getB(wx, wy, wz - 1) === TORCH && !torchSupported(wx, wy, wz - 1)) popCross(wx, wy, wz - 1);
         }
     }
-    function fallStart(wx, wy, wz, id) {   // sand/gravel: teleport-fall to rest (no falling entity at this fidelity)
-        setB(wx, wy, wz, AIR);
+    function fallStart(wx, wy, wz, id) {   // sand/gravel: the whole contiguous column falls at once (one relight, not 2N+1)
+        var col = [], top = wy;
+        while (top < CH) { var b = getB(wx, top, wz); if (b === SAND || b === GRAVEL) { col.push(b); top++; } else break; }
+        // strip top-down: removing bottom-up would re-trigger the gravity hook for the sand still above
+        for (var r = col.length - 1; r >= 0; r--) setB(wx, wy + r, wz, AIR, true);
         var y = wy;
         while (y > 0 && !solidAt(wx, y - 1, wz) && getB(wx, y - 1, wz) !== WATER) y--;
         while (y > 0 && getB(wx, y - 1, wz) === WATER) y--;   // sinks through water
-        setB(wx, y, wz, id);
+        for (var p = 0; p < col.length && y + p < CH; p++) {
+            var rest = getB(wx, y + p, wz);
+            if (rest > 0 && B[rest] && B[rest].cross) {   // landing on a torch/plant pops it as a drop
+                var ds = dropFor(rest);
+                for (var di = 0; di < ds.length; di++) dropItem(wx + 0.5, y + p + 0.3, wz + 0.5, ds[di][0], ds[di][1]);
+            }
+            setB(wx, y + p, wz, col[p], true);
+        }
+        relight(wx, wz);   // one box pass for the whole column
     }
 
     /* ── random ticks: growth and decay ─────────────────────── */
-    function randomTicks() {
+    function randomTicks(dt) {
         var keys = RT.ckeys;
         if (!keys.length) return;
-        for (var n = 0; n < 30; n++) {
+        // vanilla pace: ~3 ticks per 16³ section per game tick ≈ 360/s per loaded column (was ~16x too slow)
+        RT.rtAcc = (RT.rtAcc || 0) + Math.min(dt, 0.05) * keys.length * 360;
+        var budget = RT.rtAcc | 0;
+        if (budget > 4000) budget = 4000;
+        RT.rtAcc -= budget;
+        for (var n = 0; n < budget; n++) {
             var c = RT.chunks[keys[(Math.random() * keys.length) | 0]];
             if (!c) continue;
             var lx = (Math.random() * CW) | 0, lz = (Math.random() * CW) | 0, y = (Math.random() * CH) | 0;
             var i = lx | (lz << 4) | (y << 8), b = c.bl[i];
             var wx = c.cx * CW + lx, wz = c.cz * CW + lz;
             if (b >= WHEAT0 && b < WHEAT3) {
-                if (Math.max(getSky(wx, y, wz), getBlk(wx, y, wz)) >= 9 && Math.random() < 0.25) setB(wx, y, wz, b + 1);
+                if (Math.max(getSky(wx, y, wz), getBlk(wx, y, wz)) >= 9 && Math.random() < 0.4) setB(wx, y, wz, b + 1);
             } else if (b === LEAVES) {
                 if (!logNear(wx, y, wz)) {
                     setB(wx, y, wz, AIR);
@@ -957,13 +1055,13 @@
     // vertex = x,y,z, u,v, sky,blk, ao, white  (9 floats)
     // faces: 0 +x, 1 -x, 2 +y, 3 -y, 4 +z, 5 -z
     var FACE_N = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
-    var FACE_C = [   // 4 corners each, CCW from outside
+    var FACE_C = [   // 4 corners each, CCW from outside (±z were wound inward once — sky slivers at every silhouette)
         [[1, 0, 1], [1, 0, 0], [1, 1, 0], [1, 1, 1]],
         [[0, 0, 0], [0, 0, 1], [0, 1, 1], [0, 1, 0]],
         [[0, 1, 1], [1, 1, 1], [1, 1, 0], [0, 1, 0]],
         [[0, 0, 0], [1, 0, 0], [1, 0, 1], [0, 0, 1]],
-        [[1, 0, 1], [0, 0, 1], [0, 1, 1], [1, 1, 1]],
-        [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]]
+        [[0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]],
+        [[1, 0, 0], [0, 0, 0], [0, 1, 0], [1, 1, 0]]
     ];
     var TS16 = 1 / 16, INSET = 1 / 512;   // half-texel inset stops atlas bleed
     function tileUV(tid) { return [(tid % 16) * TS16, ((tid / 16) | 0) * TS16]; }
@@ -1167,6 +1265,7 @@
     }
     function uploadMesh(c, op, cut, wat) {
         var gl = RT.G.gl;
+        if (window.__mcKeepArrays) { c.dbgOp = op.slice(); c.dbgCut = cut.slice(); }
         if (c.mesh) { gl.deleteBuffer(c.mesh.op.b); gl.deleteBuffer(c.mesh.cut.b); gl.deleteBuffer(c.mesh.wat.b); }
         function cap(a) { return a.length / 36 > MAXQ ? a.slice(0, MAXQ * 36) : a; }
         op = cap(op); cut = cap(cut); wat = cap(wat);
@@ -1298,12 +1397,15 @@
             if (dx * -fx + dz * -fz > 24) continue;   // fully behind the camera
             meshes.push(c);
         }
-        for (k = 0; k < meshes.length; k++) { c = meshes[k]; if (c.mesh.op.n) { bindMain(G, c.mesh.op.b); gl.drawElements(gl.TRIANGLES, c.mesh.op.n, gl.UNSIGNED_SHORT, 0); } }
+        var dbg = window.__mcDraw || 0;   // debug pass toggles (QC only; 0 in normal play)
+        if (dbg.noCull) gl.disable(gl.CULL_FACE);
+        if (!dbg.noOp) for (k = 0; k < meshes.length; k++) { c = meshes[k]; if (c.mesh.op.n) { bindMain(G, c.mesh.op.b); gl.drawElements(gl.TRIANGLES, c.mesh.op.n, gl.UNSIGNED_SHORT, 0); } }
+        if (dbg.noCull) gl.enable(gl.CULL_FACE);
         gl.disable(gl.CULL_FACE);
-        for (k = 0; k < meshes.length; k++) { c = meshes[k]; if (c.mesh.cut.n) { bindMain(G, c.mesh.cut.b); gl.drawElements(gl.TRIANGLES, c.mesh.cut.n, gl.UNSIGNED_SHORT, 0); } }
+        if (!dbg.noCut) for (k = 0; k < meshes.length; k++) { c = meshes[k]; if (c.mesh.cut.n) { bindMain(G, c.mesh.cut.b); gl.drawElements(gl.TRIANGLES, c.mesh.cut.n, gl.UNSIGNED_SHORT, 0); } }
         gl.enable(gl.CULL_FACE);
         // entities (built by entGeo() into RT.entV this frame)
-        if (RT.entV.length) {
+        if (RT.entV.length && !dbg.noEnt) {
             gl.bindBuffer(gl.ARRAY_BUFFER, G.dyn);
             gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(RT.entV), gl.DYNAMIC_DRAW);
             bindMain(G, G.dyn);
@@ -1324,7 +1426,7 @@
             gl.disable(gl.BLEND); gl.disable(gl.POLYGON_OFFSET_FILL);
         }
         if (RT.target) {
-            var t = RT.target, e = 0.004, x0 = t[0] - e, y0 = t[1] - e, z0 = t[2] - e, x1 = t[0] + 1 + e, y1 = t[1] + 1 + e, z1 = t[2] + 1 + e;
+            var t = RT.target, e = 0.004, x0 = t.x - e, y0 = t.y - e, z0 = t.z - e, x1 = t.x + 1 + e, y1 = t.y + 1 + e, z1 = t.z + 1 + e;
             var L = [x0, y0, z0, x1, y0, z0, x1, y0, z0, x1, y0, z1, x1, y0, z1, x0, y0, z1, x0, y0, z1, x0, y0, z0,
                 x0, y1, z0, x1, y1, z0, x1, y1, z0, x1, y1, z1, x1, y1, z1, x0, y1, z1, x0, y1, z1, x0, y1, z0,
                 x0, y0, z0, x0, y1, z0, x1, y0, z0, x1, y1, z0, x1, y0, z1, x1, y1, z1, x0, y0, z1, x0, y1, z1];
@@ -1343,19 +1445,22 @@
         gl.useProgram(G.prog);
         gl.uniform1f(G.u.alpha, 0.72);
         gl.disable(gl.CULL_FACE);
-        for (k = 0; k < meshes.length; k++) { c = meshes[k]; if (c.mesh.wat.n) { bindMain(G, c.mesh.wat.b); gl.drawElements(gl.TRIANGLES, c.mesh.wat.n, gl.UNSIGNED_SHORT, 0); } }
+        if (!dbg.noWater) for (k = 0; k < meshes.length; k++) { c = meshes[k]; if (c.mesh.wat.n) { bindMain(G, c.mesh.wat.b); gl.drawElements(gl.TRIANGLES, c.mesh.wat.n, gl.UNSIGNED_SHORT, 0); } }
         gl.enable(gl.CULL_FACE);
         gl.uniform1f(G.u.alpha, 1);
-        // clouds: two tiles so the wrap seam never shows
-        if (!under && !inLava) {
+        // clouds: 2×2 tiles toward the player's side of each wrap boundary, so no seam or bare half-sky ever shows
+        if (!under && !inLava && !dbg.noClouds) {
             var drift = (RT.worldMs * 0.0008) % 768;
             gl.useProgram(G.flat);
             gl.uniform4f(G.uf.col, 1, 1, 1, 0.55 * (0.25 + 0.75 * sky.dayF));
             gl.depthMask(false);
             gl.disable(gl.CULL_FACE);
-            for (var ci = 0; ci < 2; ci++) {
-                var bx = Math.round((S.px - drift) / 768) * 768 + drift + (ci ? -768 : 0);
-                gl.uniformMatrix4fv(G.uf.mvp, false, mMul(pv, mTrans(bx, 0, Math.round(S.pz / 768) * 768)));
+            var cbx = Math.round((S.px - drift) / 768) * 768 + drift;
+            var cbz = Math.round(S.pz / 768) * 768;
+            var cxs = [cbx, cbx + (S.px >= cbx ? 768 : -768)];
+            var czs = [cbz, cbz + (S.pz >= cbz ? 768 : -768)];
+            for (var ci = 0; ci < 2; ci++) for (var cj = 0; cj < 2; cj++) {
+                gl.uniformMatrix4fv(G.uf.mvp, false, mMul(pv, mTrans(cxs[ci], 0, czs[cj])));
                 gl.bindBuffer(gl.ARRAY_BUFFER, G.cloudB);
                 gl.vertexAttribPointer(G.uf.pos, 3, gl.FLOAT, false, 12, 0);
                 gl.enableVertexAttribArray(G.uf.pos);
@@ -1672,7 +1777,14 @@
         var h = held();
         if (h && I[h.id] && I[h.id].tool && B[b].hard > 0) wearHeld(1);
         addExh(0.005);
-        if (b === LOG) unlock('wood');
+        if (b === LOG) {
+            unlock('wood');
+            // chopping wood schedules the orphaned canopy for a quick decay (random ticks alone take minutes)
+            for (var dx = -4; dx <= 4; dx++) for (var dy = -4; dy <= 4; dy++) for (var dz = -4; dz <= 4; dz++) {
+                if (Math.abs(dx) + Math.abs(dy) + Math.abs(dz) > 5) continue;
+                if (getB(x + dx, y + dy, z + dz) === LEAVES) RT.decayQ.push(x + dx, y + dy, z + dz);
+            }
+        }
         if (b === ORE_DIA && harvest) unlock('diamonds');
     }
     function digTick(dt) {
@@ -1772,6 +1884,10 @@
         } else if (h.id === 'bow') {
             if (invCount('arrow') < 1 && RT.bowT === 0) return;
             RT.bowT = Math.min(1, RT.bowT + dt);
+        } else if (def.place != null || (def.tool && def.tool.k === 'hoe') || h.id === 'bonemeal') {
+            // hold-to-build: repeat placement like the real game (mousedown already fired the first one)
+            RT.placeCd -= dt;
+            if (RT.placeCd <= 0) { tryUse(); RT.placeCd = 0.22; }
         }
     }
     function finishUse() {
@@ -1859,20 +1975,24 @@
                 if (solidAt(x, y, z)) return true;
             return false;
         }
-        if (dx) { f.x += dx; if (hits()) { var sx = dx > 0 ? 1 : -1, g = 0; while (hits() && g++ < 60) f.x -= sx * 0.02; hit.x = true; } }
-        if (dz) { f.z += dz; if (hits()) { var sz = dz > 0 ? 1 : -1, g2 = 0; while (hits() && g2++ < 60) f.z -= sz * 0.02; hit.z = true; } }
+        // a resolver that can't find free space must UNDO the move — never leave the body displaced
+        var ox = f.x, oy = f.y, oz = f.z;
+        if (dx) { f.x += dx; if (hits()) { var sx = dx > 0 ? 1 : -1, g = 0; while (hits() && g++ < 60) f.x -= sx * 0.02; if (hits()) f.x = ox; hit.x = true; } }
+        if (dz) { f.z += dz; if (hits()) { var sz = dz > 0 ? 1 : -1, g2 = 0; while (hits() && g2++ < 60) f.z -= sz * 0.02; if (hits()) f.z = oz; hit.z = true; } }
         if (dy) {
             var rem = dy, sy = dy > 0 ? 1 : -1;
             while (rem !== 0 && !hit.y) {
                 var stp = Math.abs(rem) > 0.5 ? sy * 0.5 : rem;
                 f.y += stp; rem -= stp;
-                if (hits()) { var g3 = 0; while (hits() && g3++ < 120) f.y -= sy * 0.02; hit.y = true; }
+                if (hits()) { var g3 = 0; while (hits() && g3++ < 120) f.y -= sy * 0.02; if (hits()) f.y = oy; hit.y = true; }
             }
         }
         return hit;
     }
     function entInWater(f) { return getB(Math.floor(f.x), Math.floor(f.y + 0.3), Math.floor(f.z)) === WATER; }
     function foeUpdate(f, dt) {
+        // an unloaded chunk has no floor to stand on: freeze in place until the world comes back
+        if (!chunkAt(Math.floor(f.x), Math.floor(f.z))) return false;
         var d = MOBS[f.k];
         if (f.hp <= 0) { foeDie(f); return true; }
         f.ifr = Math.max(0, f.ifr - dt); f.hurtF = Math.max(0, f.hurtF - dt);
@@ -1927,7 +2047,7 @@
         var hit = entMove(f, mvx, 0, mvz);
         if ((hit.x || hit.z)) {
             if (d.climbs && f.hostile && dist < 18) f.vy = 2.6;
-            else if (f.ground) f.vy = JUMP * 0.72;
+            else if (f.ground) f.vy = JUMP;   // full player-height hop: 0.72x could never clear a 1-block step
         }
         var hy = entMove(f, 0, f.vy * dt, 0);
         if (hy.y) {
@@ -2010,8 +2130,13 @@
 
     /* ── spawning ───────────────────────────────────────────── */
     function spawnTick() {
+        // only NEARBY animals count toward the cap, or eight sheep back at spawn starve every new biome of wildlife
         var hostiles = 0, passives = 0, i;
-        for (i = 0; i < RT.foes.length; i++) { if (RT.foes[i].hostile) hostiles++; else passives++; }
+        for (i = 0; i < RT.foes.length; i++) {
+            var f = RT.foes[i];
+            if (Math.abs(f.x - S.px) > 64 || Math.abs(f.z - S.pz) > 64) continue;
+            if (f.hostile) hostiles++; else passives++;
+        }
         var st = skyState();
         if (hostiles < 10) trySpawn(true, st);
         if (passives < 8 && st.day) trySpawn(false, st);
@@ -2055,6 +2180,7 @@
             it: id, c: c, dur: dur, age: 0, hw: 0.12, h: 0.24 });
     }
     function dropUpdate(d, dt) {
+        if (!chunkAt(Math.floor(d.x), Math.floor(d.z))) return false;   // frozen with its chunk
         d.age += dt;
         if (d.age > 300) return true;
         var water = getB(Math.floor(d.x), Math.floor(d.y), Math.floor(d.z)) === WATER;
@@ -2138,6 +2264,12 @@
                 var ds = dropFor(b);
                 for (i = 0; i < ds.length; i++) dropItem(x + 0.5, y + 0.3, z + 0.5, ds[i][0], ds[i][1]);
             }
+        }
+        // underwater craters flood instead of leaving permanent air bubbles
+        for (var wx2 = bx - r; wx2 <= bx + r; wx2++) for (var wy2 = by - r; wy2 <= by + r; wy2++) for (var wz2 = bz - r; wz2 <= bz + r; wz2++) {
+            if (getB(wx2, wy2, wz2) !== AIR) continue;
+            if (getB(wx2, wy2 + 1, wz2) === WATER || getB(wx2 + 1, wy2, wz2) === WATER || getB(wx2 - 1, wy2, wz2) === WATER ||
+                getB(wx2, wy2, wz2 + 1) === WATER || getB(wx2, wy2, wz2 - 1) === WATER) setB(wx2, wy2, wz2, WATER, true);
         }
         relight(bx, bz);
         for (var k in RT.chunks) if (RT.chunks[k].dirty) dirtyChunk(k);
@@ -2311,7 +2443,7 @@
         var pull = RT.bowT > 0 ? RT.bowT * 0.12 : 0;
         var eatN = RT.eatT > 0 ? Math.sin(RT.eatT * 22) * 0.03 : 0;
         oy += eatN; oz += pull;
-        if (def && def.place != null && !B[def.place].cross) {
+        if (def && def.place != null && !B[def.place].cross && !B[def.place].half) {
             pushBox(v, ox, oy + eatN, oz, 0.16, 0.16, 0.16, Math.cos(0.62), Math.sin(0.62), swingP * 0.6, 0,
                 (function (pl) { return function (dd) { return TEX[pl][dd === 2 ? 0 : dd === 3 ? 1 : 2]; }; })(def.place),
                 sk2, bl2, 0);
@@ -2473,6 +2605,7 @@
         RT.el.querySelector('.mc-pause').style.display = 'none';
         RT.el.querySelector('.mc-achs').style.display = 'none';
         RT.lastT = 0;   // don't count paused time as a frame
+        RT.el.focus();  // the clicked button just vanished with the menu — keys must land on the game root
     }
     function paintAchList() {
         var el = RT.el.querySelector('.mc-achs .mc-achrows'), out = '';
@@ -2488,7 +2621,7 @@
         d.querySelector('.mc-dscore').textContent = 'Score: ' + (S.achN * 100 + ((S.hrs * 60) | 0));
         d.style.display = '';
     }
-    function hideDeath() { RT.el.querySelector('.mc-death').style.display = 'none'; }
+    function hideDeath() { RT.el.querySelector('.mc-death').style.display = 'none'; RT.el.focus(); }
     function sleepTick(dt) {
         if (!RT.sleep) return;
         RT.sleep += dt;
@@ -2678,6 +2811,7 @@
         var wrap = RT.el.querySelector('.mc-panelwrap');
         wrap.style.display = 'none'; wrap.innerHTML = '';
         paintHotbar();
+        RT.el.focus();   // panel clicks may have focused a slot; keys go back to the game
         if (!silent) lockCursor();
     }
     function paintPanel() {
@@ -2899,7 +3033,7 @@
     /* a small C418 impression: slow pentatonic wandering, very quiet */
     var PENTA = [261.6, 293.7, 329.6, 392, 440, 523.3, 587.3, 659.3, 784, 880];
     function playMusic() {
-        if (!AC || !S.mus) return;
+        if (!AC || !S.mus) { RT.musT = 20; return; }   // muted now ≠ muted forever: keep the scheduler alive
         var n = 10 + ((Math.random() * 12) | 0), at = 1, idx = 3 + ((Math.random() * 4) | 0);
         for (var i = 0; i < n; i++) {
             idx += (Math.random() * 5 | 0) - 2;
@@ -2964,7 +3098,7 @@
             S.ents.push({ k: f.k, x: Math.round(f.x * 10) / 10, y: Math.round(f.y * 10) / 10, z: Math.round(f.z * 10) / 10, hp: f.hp });
         }
         S.items = [];
-        for (i = 0; i < RT.drops.length && S.items.length < 60; i++) {
+        for (i = RT.drops.length - 1; i >= 0 && S.items.length < 150; i--) {   // newest first: death gear beats old blast rubble
             var d = RT.drops[i];
             S.items.push({ it: d.it, c: d.c, dur: d.dur, x: Math.round(d.x * 10) / 10, y: Math.round(d.y * 10) / 10, z: Math.round(d.z * 10) / 10 });
         }
@@ -2991,11 +3125,20 @@
     }
 
     /* ── pointer lock plumbing ──────────────────────────────── */
-    function lockCursor() { if (RT && RT.cv && RT.cv.requestPointerLock) { try { RT.cv.requestPointerLock(); } catch (e) {} } }
+    function lockFailed() {   // requestPointerLock rejects async (Esc cooldown, no activation): land back on the menu, never in limbo
+        if (RT && RT.ready && !RT.panel && !RT.dead && !RT.devFree && document.pointerLockElement !== RT.cv) showPause();
+    }
+    function lockCursor() {
+        if (!(RT && RT.cv && RT.cv.requestPointerLock)) return;
+        try {
+            var p = RT.cv.requestPointerLock();
+            if (p && p.catch) p.catch(lockFailed);
+        } catch (e) { lockFailed(); }
+    }
     function unlockCursor() { if (document.pointerLockElement) { RT.expectUnlock = true; try { document.exitPointerLock(); } catch (e) {} } }
     function onLockChange() {
         if (!RT) return;
-        if (document.pointerLockElement === RT.cv) { RT.expectUnlock = false; if (RT.paused) hidePause(); }
+        if (document.pointerLockElement === RT.cv) { RT.expectUnlock = false; if (RT.paused) hidePause(); RT.el.focus(); }
         else {
             if (RT.expectUnlock) { RT.expectUnlock = false; return; }
             if (RT.ready && !RT.panel && !RT.dead && !RT.devFree) showPause();
@@ -3046,6 +3189,12 @@
             }
             return;
         }
+        // a hidden window (minimize, Show desktop) or hidden tab with a GUI open must not keep the world killing you off-screen
+        if (!RT.paused && RT.ready && !RT.dead && !RT.devFree && (RT.el.offsetParent === null || (document.hidden && RT.panel))) {
+            if (RT.panel) closePanel(true);
+            unlockCursor();
+            showPause();
+        }
         var simming = !RT.paused;
         if (simming) {
             RT.playT += dt;
@@ -3075,8 +3224,18 @@
                 ensureChunks();
                 if (!RT.saveT) RT.saveT = 0;
                 if (++RT.saveT >= 20) { RT.saveT = 0; sSave(); }
+                // orphaned canopies melt over a few seconds, like they should
+                for (var dq = 0; dq < 8 && RT.decayQ.length; ) {
+                    var lf = RT.decayQ.splice(0, 3);
+                    if (getB(lf[0], lf[1], lf[2]) === LEAVES && !logNear(lf[0], lf[1], lf[2])) {
+                        setB(lf[0], lf[1], lf[2], AIR);
+                        if (Math.random() < 0.05) dropItem(lf[0] + 0.5, lf[1] + 0.4, lf[2] + 0.5, 'apple', 1);
+                        if (Math.random() < 0.02) dropItem(lf[0] + 0.5, lf[1] + 0.4, lf[2] + 0.5, 'stick', 1);
+                        dq++;
+                    }
+                }
             }
-            randomTicks();
+            randomTicks(dt);
             furnaceTick(dt);
             genStep();
             meshStep(2);
@@ -3124,7 +3283,7 @@
             '<button class="mc-btn mc-resume">Back to Game</button>' +
             '<button class="mc-btn mc-achbtn">Achievements</button>' +
             '<div class="mc-optrow"><button class="mc-btn half mc-snd">Sound: ON</button><button class="mc-btn half mc-mus">Music: ON</button></div>' +
-            '<p class="mc-hint">WASD move · Space jump · Ctrl sprint · Shift sneak<br>LMB mine · RMB place/use · E inventory · Q drop · F3 debug</p>' +
+            '<p class="mc-hint">WASD move · Space jump · double-tap W sprints · Shift sneak<br>LMB mine · RMB place/use · E inventory · Q drop · F3 debug</p>' +
             '<div class="mc-achs" style="display:none"><div class="mc-achn"></div><div class="mc-achrows"></div></div>' +
             '</div></div>' +
             '<div class="mc-death" style="display:none"><div class="mc-menu"><h3>You died!</h3><div class="mc-dscore"></div>' +
@@ -3152,12 +3311,12 @@
         if (!G) { root.innerHTML = '<p style="padding:24px">WebGL fell out of the world. (This machine refused a 3D context.)</p>'; return; }
         RT = {
             el: root, cv: cv, G: G,
-            chunks: {}, ckeys: [], genQ: [], meshQ: [],
+            chunks: {}, ckeys: [], genQ: [], meshQ: [], decayQ: [],
             foes: [], drops: [], arrows: [], tnts: [], parts: [], entV: [],
             keys: {}, mouse: { l: false, r: false },
             vy: 0, ground: false, fallY: S.py, sprint: false,
             exh: 0, regenT: 0, starveT: 0, iframe: 0, digT: 0, digCd: 0, digNeed: 1, digAt: null,
-            eatT: 0, bowT: 0, swing: 0, bob: 0, flash: 0, shake: 0, sleep: 0,
+            eatT: 0, bowT: 0, swing: 0, bob: 0, flash: 0, shake: 0, sleep: 0, placeCd: 0,
             target: null, panel: null, cur: null, craft: [null, null, null, null, null, null, null, null, null], craftW: 2,
             paused: false, dead: S.hp <= 0, ready: false, lit: false, expectUnlock: false,
             worldMs: 0, playT: 0, baseHrs: S.hrs || 0, lastT: 0, secT: 0, hudT: 0, saveT: 0,
@@ -3198,11 +3357,23 @@
             var k = e.key.toLowerCase();
             if (e.key === 'Escape') {
                 if (RT.panel) { closePanel(); e.stopPropagation(); }
-                else if (RT.paused && RT.ready) { hidePause(); lockCursor(); e.stopPropagation(); }
+                else if (RT.paused && RT.ready) {
+                    // don't hide the menu on hope: Chrome refuses relocks for ~1.3s after an Esc exit.
+                    // onLockChange dismisses the menu when the lock actually lands; a rejection keeps it up.
+                    audioInit();
+                    lockCursor();
+                    e.stopPropagation();
+                }
                 return;   // otherwise it belongs to the desktop
             }
+            // OS auto-repeat must not double-tap sprint or toggle panels ("you can never just walk")
+            if (e.repeat) {
+                if (k === ' ') e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
             RT.keys[k] = true;
-            if (k === 'control') RT.sprint = true;
+            // sprint is double-tap W only — holding real Ctrl arms Ctrl+W (closes the tab!)
             if (k === 'w' && RT.lastW && performance.now() - RT.lastW < 280) RT.sprint = true;
             if (k === 'w') RT.lastW = performance.now();
             if (k === ' ') e.preventDefault();
@@ -3224,7 +3395,6 @@
         });
         root.addEventListener('keyup', function (e) {
             RT.keys[e.key.toLowerCase()] = false;
-            if (e.key.toLowerCase() === 'control') RT.sprint = false;
             e.stopPropagation();
         });
         root.addEventListener('blur', function () { RT.keys = {}; RT.mouse.l = RT.mouse.r = false; });
@@ -3237,7 +3407,7 @@
                 return;
             }
             if (e.button === 0) { RT.mouse.l = true; attack(); }
-            if (e.button === 2) { RT.mouse.r = true; tryUse(); }
+            if (e.button === 2) { RT.mouse.r = true; RT.placeCd = 0.3; tryUse(); }
             e.preventDefault();
         });
         cv.addEventListener('contextmenu', function (e) { e.preventDefault(); });
@@ -3255,6 +3425,10 @@
             if (S.pitch < -lim) S.pitch = -lim;
         });
         document.addEventListener('pointerlockchange', RT.plc = onLockChange);
+        document.addEventListener('pointerlockerror', RT.ple = lockFailed);
+        // menu buttons must not steal focus from the game root on mousedown (click still fires)
+        var btns = root.querySelectorAll('.mc-btn');
+        for (var bi = 0; bi < btns.length; bi++) btns[bi].addEventListener('mousedown', function (e) { e.preventDefault(); });
         root.addEventListener('wheel', function (e) {
             if (RT.panel || RT.paused) return;
             S.sel = ((S.sel + (e.deltaY > 0 ? 1 : -1)) % 9 + 9) % 9;
@@ -3341,6 +3515,11 @@
             openPanel: function (k, t) { openPanel(k, t); },
             place: function (id) { var t = RT.target; if (t) { S.inv[S.sel] = { id: id, c: 1 }; tryUse(); } },
             setB: setB, getB: getB, explode: explode, unlockAll: function () { for (var i = 0; i < ACH.length; i++) unlock(ACH[i].id); },
+            chunkDbg: function (cx, cz) { var c = RT.chunks[cx + ',' + cz]; return c ? { op: c.dbgOp || null, cut: c.dbgCut || null } : null; },
+            remesh: function (cx, cz) { var c = RT.chunks[cx + ',' + cz]; if (c) meshChunk(c); },
+            lightAt: function (x, y, z) { return [getSky(x, y, z), getBlk(x, y, z)]; },
+            relightBox: function (x, z) { relight(x, z); },
+            setSlot: function (i, id, c) { S.inv[i] = id ? { id: id, c: c || 1 } : null; paintHotbar(); },
             craftGrid: function (arr) { RT.craftW = 3; for (var i = 0; i < 9; i++) RT.craft[i] = arr[i] ? { id: arr[i][0], c: arr[i][1] } : null; },
             shiftCraft: function () { takeCraft(true); },
             invSnap: function () { var o = {}; for (var i = 0; i < 36; i++) { var s = S.inv[i]; if (s) o[s.id] = (o[s.id] || 0) + s.c; } return o; },
@@ -3375,6 +3554,7 @@
         if (RT.ro) RT.ro.disconnect();
         document.removeEventListener('mousemove', RT.mmv);
         document.removeEventListener('pointerlockchange', RT.plc);
+        document.removeEventListener('pointerlockerror', RT.ple);
         window.removeEventListener('mouseup', RT.mup);
         unlockCursor();
         if (RT.G && RT.G.gl) {   // hand the GPU context back rather than waiting on GC across many open/close cycles
@@ -3398,6 +3578,12 @@
         render: render,
         init: init,
         close: close,
+        suspend: function () {   // the desktop minimized us: fold panels, drop the lock, pause
+            if (!RT) return;
+            if (RT.panel) closePanel(true);
+            unlockCursor();
+            if (RT.ready && !RT.dead) showPause();
+        },
         ach: achOut,
         steamAch: achOut,
         hours: function () { var s = S || sLoad(); return s ? (s.hrs || 0) : 0; }
