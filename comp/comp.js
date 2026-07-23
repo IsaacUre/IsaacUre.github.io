@@ -6195,11 +6195,27 @@ function mcSyncFS() {
         items: crashes.map(function (c) { return mcDoc(c.n, c.text, '6 KB'); }),
         empty: 'No crashes. Suspicious.'
     };
-    // every .minecraft subfolder points up at its parent key, so Explorer's ↑ climbs the tree
+    // give every .minecraft subfolder the same Explorer metadata fsCompile authors for real
+    // folders — a clickable breadcrumb CHAIN, a display label, a parent, and an address-bar index
+    var mcRootCrumb = FS['.minecraft'].crumb;
     Object.keys(FS).forEach(function (k) {
-        if (k.indexOf('.minecraft/') === 0) FS[k].parent = k.slice(0, k.lastIndexOf('/'));
+        if (k.indexOf('.minecraft/') !== 0) return;
+        var segs = k.slice(11).split('/'), crumb = mcRootCrumb.slice(), acc = '.minecraft';
+        segs.forEach(function (s) { acc += '/' + s; crumb.push([s, acc]); });
+        FS[k].crumb = crumb;
+        FS[k].label = MC_MCDIR + '\\' + segs.join('\\');
+        FS[k].parent = k.slice(0, k.lastIndexOf('/'));
+        fsIndex(k);
     });
     fsIndex('.minecraft');   // register the canonical path so it resolves in the address bar / dev hooks
+    // if an Explorer is parked on a folder the launcher just deleted (e.g. a version wiped by Reset),
+    // climb it to the nearest surviving ancestor — otherwise itemsFor falls back to Home's contents
+    // under a dead breadcrumb and a Delete there writes a bogus tombstone (QC finding, fs73)
+    if (exState.explorer && exState.explorer.go && !FS[exState.explorer.path]) {
+        var p = exState.explorer.path;
+        while (p && p.indexOf('/') >= 0 && !FS[p]) p = p.slice(0, p.lastIndexOf('/'));
+        exState.explorer.go(FS[p] ? p : 'This PC');
+    }
     refreshFileViews();
 }
 function mcUntomb(path, name) {
@@ -6318,7 +6334,9 @@ function mcPlay() {
     mcPaintPlay();
 }
 function mcLaunchDone(r) {
-    var ok = !!APPS.minecraft;
+    // the game must be BOTH registered (APPS.minecraft, from #74) AND actually loaded (window.MC) to run;
+    // if minecraft.js failed to load the launcher shows its honest crash instead. __mclForceCrash demos it.
+    var ok = !window.__mclForceCrash && !!(APPS.minecraft && window.MC);
     mcjSet('log', { text: mcLogText(r.v, ok), v: r.v });
     mcSyncFS();
     mcUntomb('.minecraft/logs', 'latest.log'); mcUntomb('.minecraft', 'logs');
@@ -7609,7 +7627,7 @@ if (devMcl) {
     else if (mclSec === 'notes') mcCtl('go', 'notes');
     else if (mclSec === 'settings') mcCtl('settings');
     else if (mclSec === 'editor') { mcCtl('go', 'skins'); if (MC) { MC.skinEdit = mcNewSkinData(null); mcPage(); } }
-    else if (mclSec === 'crash') mcCtl('play');
+    else if (mclSec === 'crash') { window.__mclForceCrash = true; mcCtl('play'); }   // force the honest-crash screen (the game normally launches fine now)
 }
 if (location.search.indexOf('dev') >= 0) window.__mcl = {
     open: function () { openApp('mclauncher'); },
