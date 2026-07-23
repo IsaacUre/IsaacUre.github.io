@@ -1308,6 +1308,14 @@ mark.fnd.cur { background: #ff9632; color: #15151a; }
 .st-drop { position: absolute; z-index: 44; min-width: 210px; padding: 4px;
     background: #2a2d35; border: 1px solid #0c0e12; box-shadow: 0 6px 18px rgba(0,0,0,.55);
     display: flex; flex-direction: column; border-radius: 3px; }
+
+/* right-click menus wear the client's own dropdown colours; above the 44s (friends panel, drops) */
+.bctx.steam { z-index: 46; background: #2a2d35; border: 1px solid #0c0e12; border-radius: 3px; box-shadow: 0 6px 18px rgba(0,0,0,.55); }
+.bctx.steam .bctx-i { color: #dcdedf; }
+.bctx.steam .bctx-i:hover:not([disabled]), .bctx.steam .bctx-i:focus-visible { background: var(--s-blue2); color: #fff; }
+.bctx.steam .bctx-i[disabled] { color: var(--s-faint); }
+.bctx.steam .bctx-hint { color: var(--s-dim); }
+.bctx.steam .bctx-sep { background: #3a3f47; margin: 4px 0; }
 .st-drop-i { padding: 6px 12px; border-radius: 2px; font-size: .78rem; color: #dcdedf; text-align: left; white-space: nowrap; }
 .st-drop-i:hover { background: var(--s-blue2); color: #fff; }
 
