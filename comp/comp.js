@@ -2399,7 +2399,11 @@ webPage('chrome://newtab', {
     }
 });
 
-/* — Search results — */
+/* — Search results — a REAL aggregated SERP. render() lays out the shell with
+   a placeholder per source; init() fires Wikipedia + GitHub + Hacker News in
+   parallel and drops each into its slot as it lands. Every result links into a
+   page the live layer actually loads. The local curated corpus rides along as
+   its own instant section. — */
 webPage('google.com/search', {
     title: function (q) { return q + ' - ' + crEngine() + ' Search'; }, fav: { ch: 'G', c: '#4285f4' }, dynamic: true,
     render: function (q) {
@@ -2409,28 +2413,44 @@ webPage('google.com/search', {
         var hits = corpus.filter(function (s) { return (s.stitle + ' ' + s.sdesc + ' ' + (s.skey || '')).toLowerCase().indexOf(ql) >= 0; });
         if (!hits.length) hits = corpus.filter(function (s) { return ql.split(/\s+/).some(function (w) { return w.length > 2 && (s.stitle + ' ' + (s.skey || '')).toLowerCase().indexOf(w) >= 0; }); });
         var snippet = '';
-        if (/gti|argent|golf/.test(ql)) snippet = '<div class="cr-snip"><b>Volkswagen Golf GTI “Argent”</b><p>A silver MK8 GTI belonging to one (1) Isaac Ure. Known for: back roads, financing an FSAE team, being named like a knight.</p>' + crLink('en.wikipedia.org/wiki/Volkswagen_Golf_GTI', 'en.wikipedia.org › Volkswagen_Golf_GTI', 'cr-snipl') + '</div>';
         if (/dino|dinosaur|t-?rex/.test(ql)) snippet = '<div class="cr-snip"><b>chrome://dino</b><p>You appear to be looking for the dinosaur. He is employed here.</p>' + crLink('chrome://dino', 'Play the dino game', 'cr-snipl') + '</div>';
-        var rows = hits.slice(0, 6).map(function (s) {
+        var localRows = hits.slice(0, 4).map(function (s) {
             return '<div class="cr-res">' + crLink(s.host, '<span class="cr-resurl">' + crFav(s.fav) + ' https://' + esc(s.host) + '</span><span class="cr-restitle">' + esc(s.stitle) + '</span>', '') +
                 '<span class="cr-resdesc">' + esc(s.sdesc) + '</span></div>';
         }).join('');
-        var funny = '<div class="cr-res dim"><span class="cr-resurl">https://reddit.com › r/rice › comments</span><span class="cr-restitle2">' + esc(q) + '? — asking for a friend</span><span class="cr-resdesc">14 comments · top reply: “just ask the guy who made the pixel desktop”</span></div>';
-        var rel = ['gti run high score', 'isaacure.com room', 'formula sae budget spreadsheet', 'is chamomile caffeine free', 'dino game'].map(function (r) { return crLink('google.com/search?q=' + encodeURIComponent(r), '🔍 ' + esc(r), 'cr-rel'); }).join('');
+        var local = localRows ? '<div class="cr-serpsec"><h4 class="cr-serph">From isaacure.com</h4>' + localRows + '</div>' : '';
+        var load = function (id, label) { return '<div class="cr-serpsec" id="' + id + '"><h4 class="cr-serph">' + label + '</h4><div class="cr-serploading"><span class="cr-lvspin"></span> searching…</div></div>'; };
+        var rel = ['game boy', 'volkswagen golf gti', 'rice university', 'factorio', 'hades speedrun'].map(function (r) { return crLink('google.com/search?q=' + encodeURIComponent(r), '🔍 ' + esc(r), 'cr-rel'); }).join('');
         return '<div class="cr-serp">' +
             '<div class="cr-serphead">' + (crEngine() === 'Google' ? '<span class="cr-serplogo"><b style="color:#4285f4">G</b><b style="color:#ea4335">o</b><b style="color:#fbbc05">o</b><b style="color:#4285f4">g</b><b style="color:#34a853">l</b><b style="color:#ea4335">e</b></span>' : '<span class="cr-serplogo"><b style="color:#d81e05">URE</b></span>') +
-              '<label class="cr-serpbox">' + ic('ic-search') + '<input class="cr-serpq" value="' + esc(q) + '" spellcheck="false" autocomplete="off"></label></div>' +
+              '<label class="cr-serpbox">' + ic('ic-search') + '<input class="cr-serpq" value="' + esc(q) + '" spellcheck="false" autocomplete="off"></label>' + liveChip() + '</div>' +
             '<div class="cr-serptabs"><span class="on">All</span><span>Images</span><span>Videos</span><span>News</span><span>Maps</span></div>' +
-            '<p class="cr-serpstat">About ' + (12400 + q.length * 733).toLocaleString() + ' results (0.0' + (2 + q.length % 7) + ' seconds)</p>' +
-            snippet + rows + funny +
+            '<p class="cr-serpstat" id="crSerpStat">Searching the real web for “' + esc(q) + '”…</p>' +
+            snippet + local +
+            '<div class="cr-serpsec cr-serpfeatslot" id="crSerpFeat"></div>' +
+            load('crSerpWiki', 'Wikipedia') + load('crSerpGH', 'Code · GitHub') + load('crSerpHN', 'Discussion · Hacker News') +
             '<div class="cr-relwrap"><b>Related searches</b><div class="cr-rels">' + rel + '</div></div></div>';
     },
     init: function (view) {
         var q = view.querySelector('.cr-serpq');
+        var query = q ? q.value : crQOf(crTab().url);
         if (q) q.addEventListener('keydown', function (e) { if (e.key === 'Enter' && q.value.trim()) crNav('google.com/search?q=' + encodeURIComponent(q.value.trim())); });
         view.querySelectorAll('.cr-serptabs span').forEach(function (t) {
             t.addEventListener('click', function () { if (!t.classList.contains('on')) toast(t.textContent + ' results: also pixels, but sideways.'); });
         });
+        if (!query || !query.trim()) { var st0 = view.querySelector('#crSerpStat'); if (st0) st0.textContent = 'Type something to search the real web.'; return; }
+        function fill(id, html) { if (!view.isConnected) return; var el = view.querySelector('#' + id); if (el) el.innerHTML = html; }
+        serpWiki(query, true, function (secHtml, total) {
+            if (!view.isConnected) return;
+            var feat = view.querySelector('#crSerpFeat'), wiki = view.querySelector('#crSerpWiki');
+            var cut = secHtml.indexOf('<h4');                         // the featured card precedes the first <h4
+            if (feat && cut > 0) { feat.innerHTML = secHtml.slice(0, cut); wiki.innerHTML = secHtml.slice(cut); }
+            else if (wiki) wiki.innerHTML = secHtml;
+            var st = view.querySelector('#crSerpStat');
+            if (st) st.textContent = total ? 'About ' + nnum(total).toLocaleString() + ' Wikipedia results — plus live GitHub and Hacker News' : 'Real results for “' + query + '”';
+        });
+        serpGH(query, function (h) { fill('crSerpGH', h); });
+        serpHN(query, function (h) { fill('crSerpHN', h); });
     }
 });
 
@@ -2863,6 +2883,92 @@ function liveFill(view, url, html, title) {
 }
 /* the little proof-of-life chip live pages wear */
 function liveChip() { return '<span class="cr-lvchip" title="Fetched from the real site just now">● live</span>'; }
+
+/* ── real search: snippet plumbing ──
+   a search snippet arrives as HTML (Wikipedia wraps matches in <span
+   class="searchmatch">). Take its PLAIN text, then re-bold the query terms
+   ourselves — escaping each segment independently, so nothing from the wire
+   is ever concatenated into markup and no entity gets corrupted mid-bold. */
+function snipText(html) {
+    try { return new DOMParser().parseFromString(String(html || ''), 'text/html').body.textContent || ''; }
+    catch (e) { return String(html || '').replace(/<[^>]*>/g, ''); }
+}
+function snipHighlight(html, q) {
+    var txt = snipText(html);
+    var words = String(q || '').trim().split(/\s+/).filter(function (w) { return w.length > 1; })
+        .map(function (w) { return w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); });
+    if (!words.length) return esc(txt);
+    var re = new RegExp('(' + words.join('|') + ')', 'gi'), out = '', last = 0, m;
+    while ((m = re.exec(txt))) {
+        out += esc(txt.slice(last, m.index)) + '<b>' + esc(m[0]) + '</b>';
+        last = m.index + m[0].length;
+        if (re.lastIndex === m.index) re.lastIndex++;      // zero-width guard
+        if (out.length > 4000) break;                      // a pathological snippet can't balloon the DOM
+    }
+    return out + esc(txt.slice(last));
+}
+/* one SERP section: a header, then rows, an empty note, or an error note.
+   fills a pre-placed #slot so the three sources can land in any order and the
+   layout never jumps. every fill is guarded by the caller's view.isConnected. */
+function serpSection(slot, label, err, rowsHtml, emptyMsg) {
+    if (err === 'rate') return '<h4 class="cr-serph">' + esc(label) + '</h4><p class="cr-serpnote">' + esc(label) + ' allows 10 anonymous searches a minute — it just hit the limit. Try again shortly.</p>';
+    if (err) return '<h4 class="cr-serph">' + esc(label) + '</h4><p class="cr-serpnote">Couldn’t reach ' + esc(label) + ' (' + esc(String(err)) + ').</p>';
+    if (!rowsHtml) return '<h4 class="cr-serph">' + esc(label) + '</h4><p class="cr-serpnote">' + esc(emptyMsg || ('No ' + label + ' results.')) + '</p>';
+    return '<h4 class="cr-serph">' + esc(label) + '</h4>' + rowsHtml;
+}
+/* the three real sources. each takes the query + a done(html) it calls once,
+   and is entirely self-contained so one source failing never blocks another. */
+function serpWiki(q, feat, done) {
+    liveGet('https://en.wikipedia.org/w/api.php?format=json&origin=*&action=query&list=search&srlimit=6&srinfo=totalhits&srprop=snippet&srsearch=' + encodeURIComponent(q), function (err, j, r) {
+        if (err || !j || !j.query || !j.query.search) { done(serpSection(0, 'Wikipedia', err || 'empty'), null); return; }
+        var hits = j.query.search, total = j.query.searchinfo && j.query.searchinfo.totalhits;
+        if (!hits.length) { done(serpSection(0, 'Wikipedia', null, null), total); return; }
+        var top = hits[0], rest = hits.slice(1, 5);
+        var featHtml = '';
+        if (feat) {
+            var turl = 'en.wikipedia.org/wiki/' + top.title.replace(/ /g, '_');
+            featHtml = '<div class="cr-serpfeat">' + crLink(turl, '<span class="cr-featt">' + esc(top.title) + '</span>', 'cr-featlink') +
+                '<span class="cr-featsrc">Wikipedia</span><p class="cr-featsnip">' + snipHighlight(top.snippet, q) + '…</p>' +
+                crLink(turl, 'Read the full article →', 'cr-featmore') + '</div>';
+        }
+        var list = feat ? rest : hits.slice(0, 5);
+        var rows = list.map(function (h) {
+            var u = 'en.wikipedia.org/wiki/' + h.title.replace(/ /g, '_');
+            return serpRow(u, 'en.wikipedia.org › wiki › ' + esc(h.title), { ch: 'W', c: '#202122' }, h.title, snipHighlight(h.snippet, q) + '…');
+        }).join('');
+        done(featHtml + serpSection(0, 'More from Wikipedia', null, rows), total);
+    });
+}
+function serpGH(q, done) {
+    liveGet('https://api.github.com/search/repositories?per_page=4&sort=stars&q=' + encodeURIComponent(q), function (err, j, r) {
+        if (err) { done(serpSection(0, 'GitHub', err === 'http403' ? 'rate' : err)); return; }
+        if (!j || !j.items || !j.items.length) { done(serpSection(0, 'GitHub', null, null, 'No repositories match.')); return; }
+        var rows = j.items.slice(0, 4).map(function (rp) {
+            var meta = '★ ' + nnum(rp.stargazers_count).toLocaleString() + (rp.language ? ' · ' + esc(rp.language) : '');
+            return serpRow('github.com/' + rp.full_name, 'github.com › ' + esc(rp.full_name), { ch: 'G', c: '#24292f' }, rp.full_name,
+                (rp.description ? esc(rp.description) + ' ' : '') + '<span class="cr-serpmeta">' + meta + '</span>');
+        }).join('');
+        done(serpSection(0, 'Code · GitHub', null, rows));
+    });
+}
+function serpHN(q, done) {
+    liveGet('https://hn.algolia.com/api/v1/search?tags=story&hitsPerPage=5&query=' + encodeURIComponent(q), function (err, j, r) {
+        if (err || !j || !j.hits) { done(serpSection(0, 'Hacker News', err || 'empty')); return; }
+        var hits = j.hits.filter(function (h) { return h.title; });
+        if (!hits.length) { done(serpSection(0, 'Hacker News', null, null, 'No discussions found.')); return; }
+        var rows = hits.slice(0, 4).map(function (h) {
+            var item = 'news.ycombinator.com/item?id=' + h.objectID;
+            return serpRow(item, 'news.ycombinator.com › item', { ch: 'Y', c: '#ff6600' }, h.title,
+                '<span class="cr-serpmeta">' + nnum(h.points) + ' points · ' + nnum(h.num_comments) + ' comments · ' + esc(h.author || '?') + '</span>');
+        }).join('');
+        done(serpSection(0, 'Discussion · Hacker News', null, rows));
+    });
+}
+/* one result row, Google-shaped: url line, blue title, snippet */
+function serpRow(url, urlLine, fav, title, snipHtml) {
+    return '<div class="cr-res">' + crLink(url, '<span class="cr-resurl">' + crFav(fav) + ' ' + urlLine + '</span><span class="cr-restitle">' + esc(title) + '</span>', '') +
+        '<span class="cr-resdesc">' + snipHtml + '</span></div>';
+}
 
 /* — Wikipedia, the whole thing — */
 function wikiTitleOf(path) {
@@ -3334,19 +3440,20 @@ function crPage() {
 }
 
 /* ═════════════ omnibox suggestions ═════════════ */
-function crSuggest(q) {
-    var box = CR.el.querySelector('#crSuggest');
-    q = String(q || '').trim().toLowerCase();
-    if (!q) { box.hidden = true; return; }
+/* the local rows (typed interpretation, bookmarks, history, curated corpus)
+   render instantly; a debounced Wikipedia opensearch then folds REAL query
+   completions in right under the typed row, exactly like a real omnibox. */
+var SUG_CACHE = {};                                        // query → completions, session-only
+function crSugIsUrl(q) { return /^[a-z0-9.-]+\.[a-z]{2,}/.test(q.replace(/^https?:\/\//, '').replace(/^www\./, '')) || /^chrome:\/\//.test(q); }
+function crSuggestLocal(q) {
     var rows = [], seen = {};
     function add(icon, label, url, note) {
-        if (rows.length >= 7 || seen[url]) return; seen[url] = 1;
+        if (rows.length >= 9 || seen[url]) return; seen[url] = 1;
         rows.push({ icon: icon, label: label, url: url, note: note });
     }
     // row 0 is always the typed-text interpretation, so Enter and the highlight agree.
-    // classify on the protocol-stripped form so a pasted https://host reads as a site.
-    var qbare = q.replace(/^https?:\/\//i, '').replace(/^www\./i, '');
-    if (/^[a-z0-9.-]+\.[a-z]{2,}/.test(qbare) || /^chrome:\/\//.test(q)) add('🌐', q, qbare, '');
+    var qbare = q.replace(/^https?:\/\//, '').replace(/^www\./, '');
+    if (crSugIsUrl(q)) add('🌐', q, qbare, '');
     else add('🔍', 'Search ' + crEngine() + ' for “' + q + '”', 'google.com/search?q=' + encodeURIComponent(q), '');
     crBM().forEach(function (b) { if ((b[0] + ' ' + b[1]).toLowerCase().indexOf(q) >= 0) add('★', b[0], b[1], b[1]); });
     crHist().forEach(function (h) { if ((h.t + ' ' + h.u).toLowerCase().indexOf(q) >= 0) add('🕓', h.t, h.u, h.u); });
@@ -3354,12 +3461,54 @@ function crSuggest(q) {
         var s = WEB[k]; if (!s.searchable) return;
         if ((k + ' ' + s.stitle).toLowerCase().indexOf(q) >= 0) add('🌐', s.stitle, k, k);
     });
-    add('🔍', 'Search ' + crEngine() + ' for “' + q + '”', 'google.com/search?q=' + encodeURIComponent(q), '');
+    return { rows: rows, seen: seen };
+}
+function crSuggestPaint(built) {
+    if (!CR) return;
+    var box = CR.el.querySelector('#crSuggest');
     CR.sugSel = 0;
-    box.innerHTML = rows.map(function (r, i) {
+    box.innerHTML = built.rows.slice(0, 9).map(function (r, i) {
         return '<div class="cr-sg' + (i === 0 ? ' sel' : '') + '" data-su="' + esc(r.url) + '"><span class="cr-sgic">' + r.icon + '</span><span class="cr-sgt">' + esc(r.label) + '</span>' + (r.note ? '<span class="cr-sgn">— ' + esc(r.note) + '</span>' : '') + '</div>';
     }).join('');
-    box.hidden = false;
+    box.hidden = !built.rows.length;
+}
+function crSuggest(q) {
+    var raw = String(q || '').trim();
+    q = raw.toLowerCase();
+    if (!q) { CR.el.querySelector('#crSuggest').hidden = true; CR.sugQ = ''; clearTimeout(CR.sugTmr); return; }
+    CR.sugQ = q;
+    var built = crSuggestLocal(q);
+    crSuggestPaint(built);
+    clearTimeout(CR.sugTmr);
+    if (crSugIsUrl(q) || q.length < 2) return;             // URL-ish or too short: no live completions
+    CR.sugTmr = setTimeout(function () { crSuggestLive(q, built); }, 150);
+}
+function crSuggestLive(q, built) {
+    function merge(comps) {
+        // only fold in if the user is still typing THIS query and hasn't started
+        // arrowing through the list (sel 0) — never yank a highlighted row away
+        if (!CR || CR.sugQ !== q || (CR.sugSel || 0) !== 0) return;
+        var box = CR.el.querySelector('#crSuggest');
+        if (box.hidden) return;
+        var extra = [];
+        comps.forEach(function (c) {
+            var key = 'google.com/search?q=' + encodeURIComponent(c);
+            if (c.toLowerCase() === q || built.seen[key]) return;
+            built.seen[key] = 1;
+            extra.push({ icon: '🔍', label: c, url: key, note: '' });
+        });
+        if (!extra.length) return;
+        var head = built.rows.slice(0, 1), tail = built.rows.slice(1);   // completions sit under row 0
+        crSuggestPaint({ rows: head.concat(extra.slice(0, 5)).concat(tail) });
+    }
+    if (SUG_CACHE[q]) { merge(SUG_CACHE[q]); return; }
+    liveGet('https://en.wikipedia.org/w/api.php?format=json&origin=*&action=opensearch&limit=6&search=' + encodeURIComponent(q), function (err, j) {
+        if (err || !j || !j[1]) return;
+        var comps = j[1];
+        if (!(CR && CR.incog)) SUG_CACHE[q] = comps;        // incognito keystrokes leave no crumbs
+        if (Object.keys(SUG_CACHE).length > 60) SUG_CACHE = {};
+        merge(comps);
+    });
 }
 function crSuggestMove(d) {
     var box = CR.el.querySelector('#crSuggest'); if (box.hidden) return null;
