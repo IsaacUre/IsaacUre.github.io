@@ -2426,15 +2426,23 @@ webPage('google.com/search', {
         var load = function (id, label) { return '<div class="cr-serpsec" id="' + id + '"><h4 class="cr-serph">' + label + '</h4><div class="cr-serploading"><span class="cr-lvspin"></span> searching…</div></div>'; };
         // the live sections only exist when there's a query to fire them — an empty
         // SERP must not paint spinners that init() will never fill
+        // intent-conditional slots stay EMPTY (not spinners) — a spinner that may
+        // never be filled is exactly the bug the empty-query fix was about
         var sections = has ? (snippet + local +
+            '<div class="cr-serpslot" id="crSerpKp"></div>' +
             '<div class="cr-serpsec cr-serpfeatslot" id="crSerpFeat"></div>' +
-            load('crSerpWiki', 'Wikipedia') + load('crSerpGH', 'Code · GitHub') + load('crSerpHN', 'Discussion · Hacker News')) : '';
+            load('crSerpWiki', 'Wikipedia') +
+            '<div class="cr-serpslot" id="crSerpImg"></div>' +
+            load('crSerpGH', 'Code · GitHub') +
+            '<div class="cr-serpslot" id="crSerpSO"></div>' +
+            load('crSerpHN', 'Discussion · Hacker News')) : '';
         var rel = ['game boy', 'volkswagen golf gti', 'rice university', 'factorio', 'hades speedrun'].map(function (r) { return crLink('google.com/search?q=' + encodeURIComponent(r), '🔍 ' + esc(r), 'cr-rel'); }).join('');
         return '<div class="cr-serp">' +
             '<div class="cr-serphead">' + (crEngine() === 'Google' ? '<span class="cr-serplogo"><b style="color:#4285f4">G</b><b style="color:#ea4335">o</b><b style="color:#fbbc05">o</b><b style="color:#4285f4">g</b><b style="color:#34a853">l</b><b style="color:#ea4335">e</b></span>' : '<span class="cr-serplogo"><b style="color:#d81e05">URE</b></span>') +
               '<label class="cr-serpbox">' + ic('ic-search') + '<input class="cr-serpq" value="' + esc(q) + '" spellcheck="false" autocomplete="off"></label>' + liveChip() + '</div>' +
             '<div class="cr-serptabs"><span class="on">All</span><span>Images</span><span>Videos</span><span>News</span><span>Maps</span></div>' +
             '<p class="cr-serpstat" id="crSerpStat">' + (has ? 'Searching the real web for “' + esc(q) + '”…' : 'Type a query to search the real web.') + '</p>' +
+            '<div id="crSerpAns"></div><div id="crSerpDym"></div>' +
             sections +
             '<div class="cr-relwrap"><b>Related searches</b><div class="cr-rels">' + rel + '</div></div></div>';
     },
@@ -2447,10 +2455,37 @@ webPage('google.com/search', {
         });
         if (!query || !query.trim()) return;                          // empty SERP: render() already left no spinners
         function fill(id, html) { if (!view.isConnected) return; var el = view.querySelector('#' + id); if (el) el.innerHTML = html; }
-        serpWiki(query, true, function (featHtml, restHtml, total) {
+        function addAns(html) { if (!html || !view.isConnected) return; var el = view.querySelector('#crSerpAns'); if (el) el.innerHTML += html; }
+
+        /* read the query's shape first; only the packs that fit get to fetch */
+        var intent = serpIntent(query);
+        if (intent.kind === 'math') {
+            var mv = mathEval(query);
+            if (mv !== null) addAns(serpAnswer('Calculator', fmtNum(mv), query.replace(/\s+/g, ' ') + ' ='));
+        } else if (intent.kind === 'unit') {
+            var uc = unitConvert(intent.n, intent.from, intent.to);
+            if (uc) addAns(serpAnswer('Unit conversion', fmtNum(uc.v) + ' ' + uc.unit, fmtNum(intent.n) + ' ' + intent.from + ' ='));
+        } else if (intent.kind === 'time') serpTime(intent.place, addAns);
+        else if (intent.kind === 'weather') serpWeatherCard(intent.place, addAns);
+        else if (intent.kind === 'define') serpDict(intent.word, addAns);
+        else if (intent.kind === 'map') serpMap(intent.place, addAns);
+
+        /* the knowledge panel rides along for anything entity-shaped */
+        if (/^(general|code|map|weather)$/.test(intent.kind) && query.trim().split(/\s+/).length <= 5)
+            serpKnowledge(query, function (h) { fill('crSerpKp', h); });
+        if (intent.kind === 'code') serpSO(query, function (h) { fill('crSerpSO', h); });
+        if (/^(general|code)$/.test(intent.kind)) serpImages(query, function (h) { fill('crSerpImg', h); });
+
+        serpWiki(query, true, function (featHtml, restHtml, total, suggest) {
             if (!view.isConnected) return;
             fill('crSerpFeat', featHtml);
             fill('crSerpWiki', restHtml);
+            /* wikipedia suggests variants even for correctly-spelled queries
+               ("Douglas Adams" → "douglas adam's"); only ask when the suggestion
+               differs by more than case, spacing, and punctuation */
+            function dymKey(s) { return String(s).toLowerCase().replace(/[^a-z0-9]/g, ''); }
+            if (suggest && dymKey(suggest) !== dymKey(query))
+                fill('crSerpDym', '<p class="cr-dym">Did you mean ' + crLink('google.com/search?q=' + encodeURIComponent(suggest), esc(suggest), 'cr-dymlink') + '?</p>');
             var st = view.querySelector('#crSerpStat');
             if (st) st.textContent = total ? 'About ' + nnum(total).toLocaleString() + ' Wikipedia results — plus live GitHub and Hacker News' : 'Real results for “' + query + '”';
         });
@@ -2928,10 +2963,10 @@ function serpSection(label, err, rowsHtml, emptyMsg) {
    returns (featuredCardHtml, restSectionHtml, totalHits) so the caller drops the
    card and the rows into their own slots — no fragile string re-splitting. */
 function serpWiki(q, feat, done) {
-    liveGet('https://en.wikipedia.org/w/api.php?format=json&origin=*&action=query&list=search&srlimit=6&srinfo=totalhits&srprop=snippet&srsearch=' + encodeURIComponent(q), function (err, j, r) {
+    liveGet('https://en.wikipedia.org/w/api.php?format=json&origin=*&action=query&list=search&srlimit=6&srinfo=totalhits|suggestion&srprop=snippet&srsearch=' + encodeURIComponent(q), function (err, j, r) {
         if (err || !j || !j.query || !j.query.search) { done('', serpSection('Wikipedia', err || 'empty'), null); return; }
-        var hits = j.query.search, total = j.query.searchinfo && j.query.searchinfo.totalhits;
-        if (!hits.length) { done('', serpSection('Wikipedia', null, null), 0); return; }
+        var info = j.query.searchinfo || {}, hits = j.query.search, total = info.totalhits, sug = info.suggestion || '';
+        if (!hits.length) { done('', serpSection('Wikipedia', null, null), 0, sug); return; }
         var top = hits[0];
         var turl = 'en.wikipedia.org/wiki/' + top.title.replace(/ /g, '_');
         var featHtml = feat ? '<div class="cr-serpfeat">' + crLink(turl, '<span class="cr-featt">' + esc(top.title) + '</span>', 'cr-featlink') +
@@ -2943,7 +2978,7 @@ function serpWiki(q, feat, done) {
             return serpRow(u, 'en.wikipedia.org › wiki › ' + esc(h.title), { ch: 'W', c: '#202122' }, h.title, snipHighlight(h.snippet, q) + '…');
         }).join('');
         // a single-hit query has no "rest" — show only the featured card, no contradictory empty note
-        done(featHtml, rows ? serpSection(feat ? 'More from Wikipedia' : 'Wikipedia', null, rows) : '', total);
+        done(featHtml, rows ? serpSection(feat ? 'More from Wikipedia' : 'Wikipedia', null, rows) : '', total, sug);
     });
 }
 function serpGH(q, done) {
@@ -2972,6 +3007,232 @@ function serpHN(q, done) {
     });
 }
 /* one result row, Google-shaped: url line, blue title, snippet */
+/* ── query intent ──
+   Google doesn't fire every pack on every search and neither do we: read the
+   shape of the query first, then only fetch what fits. Keeps a search to two
+   or three requests instead of nine, and keeps us polite to free APIs. */
+function serpIntent(q) {
+    var s = String(q || '').trim(), l = s.toLowerCase();
+    if (/^[-+.\d\s()*/^%]+$/.test(s) && /[+\-*/^%]/.test(s) && /\d/.test(s)) return { kind: 'math' };
+    var u = l.match(/^([-+]?[\d.,]+)\s*([a-z°"']+)\s+(?:in|to|as)\s+([a-z°"']+)\??$/);
+    if (u) return { kind: 'unit', n: parseFloat(u[1].replace(/,/g, '')), from: u[2], to: u[3] };
+    var t = l.match(/^(?:what(?:'s| is)? the )?time (?:in|at) (.+?)\??$/);
+    if (t) return { kind: 'time', place: t[1] };
+    var d = l.match(/^(?:define|definition of|meaning of|what does)\s+(.+?)(?:\s+mean)?\??$/);
+    if (d && /^[a-z][a-z' -]{1,30}$/.test(d[1])) return { kind: 'define', word: d[1].trim() };
+    var w = l.match(/^weather(?:\s+(?:in|at|for))?\s+(.+?)\??$/) || l.match(/^(.+?)\s+weather$/);
+    if (w) return { kind: 'weather', place: w[1] };
+    var m = l.match(/^(?:where is|map of|directions to)\s+(.+?)\??$/);
+    if (m) return { kind: 'map', place: m[1] };
+    if (/\b(error|exception|typeerror|undefined|npm|pip|git|regex|async|await|segfault|stacktrace|compile|syntax)\b/.test(l)
+        || /\b(python|javascript|typescript|rust|golang|java|c\+\+|sql|bash|css|html)\b/.test(l)) return { kind: 'code' };
+    return { kind: 'general' };
+}
+/* ── instant answers that never touch the network ── */
+/* a real shunting-yard evaluator: eval() on user text is how you get owned */
+var MATH_OPS = { '+': [1, 'l'], '-': [1, 'l'], '*': [2, 'l'], '/': [2, 'l'], '%': [2, 'l'], '^': [3, 'r'] };
+function mathEval(src) {
+    var toks = String(src).match(/(\d+\.?\d*|\.\d+|[-+*/^%()])/g);
+    if (!toks || toks.length > 200) return null;
+    var out = [], ops = [], prev = null;
+    for (var i = 0; i < toks.length; i++) {
+        var t = toks[i];
+        if (/^[\d.]/.test(t)) { var v = parseFloat(t); if (!isFinite(v)) return null; out.push(v); }
+        else if (t === '(') ops.push(t);
+        else if (t === ')') {
+            while (ops.length && ops[ops.length - 1] !== '(') if (!mathPop(out, ops.pop())) return null;
+            if (!ops.length) return null;
+            ops.pop();
+        } else if (MATH_OPS[t]) {
+            if ((t === '-' || t === '+') && (prev === null || prev === '(' || MATH_OPS[prev])) out.push(0);   // unary
+            var o = MATH_OPS[t];
+            while (ops.length && MATH_OPS[ops[ops.length - 1]] &&
+                   (MATH_OPS[ops[ops.length - 1]][0] > o[0] || (MATH_OPS[ops[ops.length - 1]][0] === o[0] && o[1] === 'l')))
+                if (!mathPop(out, ops.pop())) return null;
+            ops.push(t);
+        } else return null;
+        prev = t;
+    }
+    while (ops.length) { var op = ops.pop(); if (op === '(' || !mathPop(out, op)) return null; }
+    if (out.length !== 1 || !isFinite(out[0])) return null;
+    return out[0];
+}
+function mathPop(out, op) {
+    if (out.length < 2) return false;
+    var b = out.pop(), a = out.pop(), r;
+    if (op === '+') r = a + b; else if (op === '-') r = a - b; else if (op === '*') r = a * b;
+    else if (op === '/') r = b === 0 ? NaN : a / b; else if (op === '%') r = b === 0 ? NaN : a % b;
+    else if (op === '^') r = Math.pow(a, b); else return false;
+    if (!isFinite(r)) return false;
+    out.push(r); return true;
+}
+/* unit conversion: everything reduces to a base unit per dimension */
+var UNITS = {
+    len: { m: 1, meter: 1, meters: 1, km: 1000, kilometer: 1000, kilometers: 1000, cm: 0.01, mm: 0.001,
+           mi: 1609.344, mile: 1609.344, miles: 1609.344, ft: 0.3048, foot: 0.3048, feet: 0.3048,
+           in: 0.0254, inch: 0.0254, inches: 0.0254, yd: 0.9144, yard: 0.9144, yards: 0.9144, nmi: 1852 },
+    mass: { g: 1, gram: 1, grams: 1, kg: 1000, kilogram: 1000, kilograms: 1000, mg: 0.001, t: 1e6, tonne: 1e6,
+            lb: 453.59237, lbs: 453.59237, pound: 453.59237, pounds: 453.59237, oz: 28.349523125, ounce: 28.349523125, ounces: 28.349523125, st: 6350.29318 },
+    vol: { l: 1, liter: 1, liters: 1, litre: 1, ml: 0.001, gal: 3.785411784, gallon: 3.785411784, gallons: 3.785411784,
+           qt: 0.946352946, pt: 0.473176473, cup: 0.2365882365, cups: 0.2365882365, floz: 0.0295735295625 },
+    data: { b: 1, byte: 1, bytes: 1, kb: 1024, mb: 1048576, gb: 1073741824, tb: 1099511627776 },
+    speed: { mps: 1, kph: 0.277777778, kmh: 0.277777778, mph: 0.44704, knot: 0.514444, knots: 0.514444 },
+    time: { s: 1, sec: 1, second: 1, seconds: 1, min: 60, minute: 60, minutes: 60, h: 3600, hr: 3600, hour: 3600, hours: 3600, day: 86400, days: 86400, week: 604800, year: 31557600 }
+};
+var TEMPS = { c: 1, celsius: 1, '°c': 1, f: 1, fahrenheit: 1, '°f': 1, k: 1, kelvin: 1 };
+function unitConvert(n, from, to) {
+    if (!isFinite(n)) return null;
+    if (TEMPS[from] && TEMPS[to]) {
+        var c = /^(f|fahrenheit|°f)$/.test(from) ? (n - 32) * 5 / 9 : /^(k|kelvin)$/.test(from) ? n - 273.15 : n;
+        var v = /^(f|fahrenheit|°f)$/.test(to) ? c * 9 / 5 + 32 : /^(k|kelvin)$/.test(to) ? c + 273.15 : c;
+        return { v: v, unit: to };
+    }
+    for (var dim in UNITS) {
+        if (UNITS[dim][from] !== undefined && UNITS[dim][to] !== undefined)
+            return { v: n * UNITS[dim][from] / UNITS[dim][to], unit: to };
+    }
+    return null;
+}
+function fmtNum(v) {
+    if (!isFinite(v)) return '—';
+    var a = Math.abs(v);
+    if (a !== 0 && (a < 1e-4 || a >= 1e15)) return v.toExponential(6).replace(/e([+-])/, ' × 10^$1');
+    var s = (Math.round(v * 1e6) / 1e6).toString();
+    return s.indexOf('.') < 0 ? (+s).toLocaleString() : s;
+}
+/* the big answer box at the top of the page */
+function serpAnswer(title, big, sub) {
+    return '<div class="cr-ansbox"><span class="cr-anslabel">' + esc(title) + '</span>' +
+        '<div class="cr-ansbig">' + esc(big) + '</div>' + (sub ? '<p class="cr-anssub">' + esc(sub) + '</p>' : '') + '</div>';
+}
+
+/* ── knowledge panel: REST summary for the prose + a TARGETED SPARQL query for
+   the facts. wbgetentities hands back 272KB for one person; this is 2.7KB. ── */
+var WD_PROPS = 'wdt:P569 wdt:P570 wdt:P106 wdt:P27 wdt:P571 wdt:P159 wdt:P1082 wdt:P170 wdt:P50 wdt:P176 wdt:P112 wdt:P36';
+function wdFmt(v) {
+    var m = String(v).match(/^(-?\d{4})-(\d{2})-(\d{2})T/);
+    if (!m) return String(v);
+    var d = new Date(v);
+    return isFinite(d.getTime()) ? d.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : m[1];
+}
+function serpKnowledge(q, done) {
+    liveGet('https://en.wikipedia.org/api/rest_v1/page/summary/' + encodeURIComponent(q.replace(/ /g, '_')), function (err, j) {
+        if (err || !j || !j.title || j.type === 'disambiguation' || !j.extract) { done(''); return; }
+        var thumb = j.thumbnail && /^https:\/\/upload\.wikimedia\.org\//.test(j.thumbnail.source || '') ? j.thumbnail.source : '';
+        var turl = 'en.wikipedia.org/wiki/' + String(j.title).replace(/ /g, '_');
+        function paint(factsHtml) {
+            done('<div class="cr-kp">' +
+                (thumb ? '<img class="cr-kpimg" alt="" referrerpolicy="no-referrer" src="' + esc(thumb) + '">' : '') +
+                '<div class="cr-kpbody"><h3 class="cr-kptitle">' + esc(j.title) + '</h3>' +
+                (j.description ? '<span class="cr-kpdesc">' + esc(j.description) + '</span>' : '') +
+                '<p class="cr-kpext">' + esc(j.extract) + '</p>' + (factsHtml || '') +
+                crLink(turl, 'Wikipedia →', 'cr-kpmore') + '</div></div>');
+        }
+        if (!j.wikibase_item) { paint(''); return; }
+        var sparql = 'SELECT ?propLabel ?valLabel WHERE { VALUES ?p { ' + WD_PROPS + ' } wd:' + j.wikibase_item +
+            ' ?p ?val . ?prop wikibase:directClaim ?p . SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } } LIMIT 14';
+        liveGet('https://query.wikidata.org/sparql?format=json&query=' + encodeURIComponent(sparql), function (e2, j2) {
+            var rows = '';
+            if (!e2 && j2 && j2.results && j2.results.bindings) {
+                var seen = {}, out = [];
+                j2.results.bindings.forEach(function (b) {
+                    if (!b.propLabel || !b.valLabel || out.length >= 6) return;
+                    var k = b.propLabel.value;
+                    if (seen[k]) return; seen[k] = 1;
+                    out.push('<div class="cr-kpfact"><b>' + esc(k) + '</b><span>' + esc(wdFmt(b.valLabel.value)) + '</span></div>');
+                });
+                rows = out.length ? '<div class="cr-kpfacts">' + out.join('') + '</div>' : '';
+            }
+            paint(rows);
+        });
+    });
+}
+/* ── dictionary card ── */
+function serpDict(word, done) {
+    liveGet('https://api.dictionaryapi.dev/api/v2/entries/en/' + encodeURIComponent(word), function (err, j) {
+        if (err || !j || !j.length || !j[0].meanings) { done(''); return; }
+        var e = j[0];
+        var phon = e.phonetic || (e.phonetics || []).map(function (p) { return p.text; }).filter(Boolean)[0] || '';
+        var blocks = e.meanings.slice(0, 3).map(function (m) {
+            var defs = (m.definitions || []).slice(0, 2).map(function (d) {
+                return '<li>' + esc(d.definition) + (d.example ? '<i class="cr-dexa">“' + esc(d.example) + '”</i>' : '') + '</li>';
+            }).join('');
+            return '<div class="cr-dblock"><i class="cr-dpos">' + esc(m.partOfSpeech || '') + '</i><ol>' + defs + '</ol></div>';
+        }).join('');
+        done('<div class="cr-dict"><div class="cr-dhead"><h3>' + esc(e.word) + '</h3>' + (phon ? '<span class="cr-dphon">' + esc(phon) + '</span>' : '') + '</div>' + blocks +
+            '<p class="cr-lvfoot">Definitions from the free Dictionary API.</p></div>');
+    });
+}
+/* ── images pack: real Wikimedia Commons thumbnails ── */
+function serpImages(q, done) {
+    liveGet('https://commons.wikimedia.org/w/api.php?format=json&origin=*&action=query&generator=search&gsrnamespace=6&gsrlimit=6&prop=imageinfo&iiprop=url|extmetadata&iiurlwidth=220&gsrsearch=' + encodeURIComponent(q), function (err, j) {
+        if (err || !j || !j.query || !j.query.pages) { done(''); return; }
+        var pages = j.query.pages, out = [];
+        Object.keys(pages).forEach(function (k) {
+            var p = pages[k], ii = p.imageinfo && p.imageinfo[0];
+            if (!ii || !ii.thumburl || !/^https:\/\/upload\.wikimedia\.org\//.test(ii.thumburl) || out.length >= 6) return;
+            out.push('<figure class="cr-imgcell"><img alt="" loading="lazy" referrerpolicy="no-referrer" src="' + esc(ii.thumburl) + '">' +
+                '<figcaption>' + esc(String(p.title || '').replace(/^File:/, '').replace(/\.[a-z]+$/i, '')) + '</figcaption></figure>');
+        });
+        done(out.length ? '<h4 class="cr-serph">Images</h4><div class="cr-imgrow">' + out.join('') + '</div><p class="cr-serpnote">From Wikimedia Commons.</p>' : '');
+    });
+}
+/* ── Stack Overflow answers, for code-shaped queries ── */
+function serpSO(q, done) {
+    liveGet('https://api.stackexchange.com/2.3/search/advanced?order=desc&sort=relevance&pagesize=4&site=stackoverflow&q=' + encodeURIComponent(q), function (err, j) {
+        if (err || !j || !j.items || !j.items.length) { done(''); return; }
+        var rows = j.items.slice(0, 4).map(function (it) {
+            var u = String(it.link || '').replace(/^https?:\/\//i, '');
+            return serpRow(u, 'stackoverflow.com › questions', { ch: 'S', c: '#f48024' }, snipText(it.title),
+                '<span class="cr-serpmeta">' + nnum(it.score) + ' votes · ' + nnum(it.answer_count) + ' answers' + (it.is_answered ? ' · ✓ accepted' : '') + '</span>');
+        }).join('');
+        done(serpSection('Answers · Stack Overflow', null, rows));
+    });
+}
+/* ── map card: real geocode + real OSM tiles stitched into a little map ── */
+function osmTile(lat, lon, z) {
+    var n = Math.pow(2, z);
+    return { x: Math.floor((lon + 180) / 360 * n), y: Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * n) };
+}
+function serpMap(place, done) {
+    liveGet('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(place), function (err, j) {
+        if (err || !j || !j.length) { done(''); return; }
+        var p = j[0], lat = parseFloat(p.lat), lon = parseFloat(p.lon), z = 13;
+        if (!isFinite(lat) || !isFinite(lon)) { done(''); return; }
+        var t = osmTile(lat, lon, z), tiles = '';
+        for (var dy = 0; dy < 2; dy++) for (var dx = 0; dx < 3; dx++)      // 6 tiles: a real map, politely small
+            tiles += '<img alt="" loading="lazy" referrerpolicy="no-referrer" src="https://tile.openstreetmap.org/' + z + '/' + (t.x - 1 + dx) + '/' + (t.y + dy) + '.png">';
+        done('<div class="cr-mapcard"><div class="cr-maptiles">' + tiles + '<span class="cr-mappin">📍</span></div>' +
+            '<div class="cr-mapmeta"><b>' + esc(String(p.display_name || place).split(',').slice(0, 2).join(',')) + '</b>' +
+            '<span>' + esc(String(p.display_name || '')) + '</span>' +
+            '<i>' + lat.toFixed(4) + ', ' + lon.toFixed(4) + ' · map © OpenStreetMap contributors</i></div></div>');
+    });
+}
+/* ── time + weather cards, both off the geocoder we already use ── */
+function serpTime(place, done) {
+    liveGet('https://geocoding-api.open-meteo.com/v1/search?count=1&name=' + encodeURIComponent(place), function (err, j) {
+        if (err || !j || !j.results || !j.results.length) { done(''); return; }
+        var g = j.results[0], tz = g.timezone;
+        var now;
+        try { now = new Date().toLocaleString('en-US', { timeZone: tz, weekday: 'long', hour: 'numeric', minute: '2-digit' }); }
+        catch (e) { done(''); return; }
+        done(serpAnswer('Time in ' + g.name, now, tz + (g.country ? ' · ' + g.country : '')));
+    });
+}
+function serpWeatherCard(place, done) {
+    liveGet('https://geocoding-api.open-meteo.com/v1/search?count=1&name=' + encodeURIComponent(place), function (err, j) {
+        if (err || !j || !j.results || !j.results.length) { done(''); return; }
+        var g = j.results[0];
+        liveGet('https://api.open-meteo.com/v1/forecast?temperature_unit=fahrenheit&wind_speed_unit=mph&current=temperature_2m,weather_code,relative_humidity_2m,wind_speed_10m&latitude=' + g.latitude + '&longitude=' + g.longitude, function (e2, j2) {
+            if (e2 || !j2 || !j2.current) { done(''); return; }
+            var c = j2.current, w = wmo(c.weather_code);
+            done('<div class="cr-ansbox cr-wxans"><span class="cr-anslabel">Weather · ' + esc(g.name + (g.admin1 ? ', ' + g.admin1 : '')) + '</span>' +
+                '<div class="cr-ansbig">' + w[0] + ' ' + Math.round(c.temperature_2m) + '°F</div>' +
+                '<p class="cr-anssub">' + esc(w[1]) + ' · humidity ' + nnum(c.relative_humidity_2m) + '% · wind ' + Math.round(c.wind_speed_10m) + ' mph</p>' +
+                crLink('open-meteo.com/forecast?q=' + encodeURIComponent(g.name + '@' + g.latitude + ',' + g.longitude), 'Full forecast →', 'cr-kpmore') + '</div>');
+        });
+    });
+}
 function serpRow(url, urlLine, fav, title, snipHtml) {
     return '<div class="cr-res">' + crLink(url, '<span class="cr-resurl">' + crFav(fav) + ' ' + urlLine + '</span><span class="cr-restitle">' + esc(title) + '</span>', '') +
         '<span class="cr-resdesc">' + snipHtml + '</span></div>';

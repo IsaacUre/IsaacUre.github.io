@@ -2634,6 +2634,51 @@ span.st-newsart .ic { width: 40px; height: 40px; }
 .cr-featsnip { font-size: 13px; color: #3c4043; margin: 0 0 8px; line-height: 1.55; }
 .cr-featmore { color: #1a73e8; font-size: 12.5px; }
 .cr-res .cr-resdesc b, .cr-featsnip b { font-weight: 700; color: #202124; }
+/* intent-conditional slots collapse when their pack never fires */
+.cr-serpslot:empty { display: none; }
+/* the answer box (calculator, units, time, weather) */
+.cr-ansbox { border: 1px solid #dadce0; border-radius: 10px; padding: 14px 18px; margin: 10px 0 14px; background: #fff; }
+.cr-anslabel { font-size: 11px; color: #5f6368; text-transform: uppercase; letter-spacing: .06em; }
+.cr-ansbig { font-size: 30px; font-weight: 400; color: #202124; margin: 4px 0 2px; word-break: break-word; }
+.cr-anssub { font-size: 12.5px; color: #5f6368; margin: 0; }
+.cr-wxans .cr-ansbig { font-size: 26px; }
+/* did you mean */
+.cr-dym { font-size: 13px; color: #3c4043; margin: 2px 0 8px; }
+.cr-dymlink { color: #1a0dab; font-style: italic; font-weight: 700; }
+/* knowledge panel */
+.cr-kp { display: flex; gap: 14px; border: 1px solid #dadce0; border-radius: 10px; padding: 14px 16px; margin: 10px 0 16px; background: #fff; align-items: flex-start; }
+.cr-kpimg { width: 108px; height: auto; max-height: 150px; object-fit: cover; border-radius: 6px; flex: 0 0 auto; }
+.cr-kpbody { min-width: 0; }
+.cr-kptitle { font-size: 19px; margin: 0; }
+.cr-kpdesc { display: block; font-size: 12px; color: #5f6368; margin: 1px 0 6px; }
+.cr-kpext { font-size: 12.5px; line-height: 1.55; color: #3c4043; margin: 0 0 8px; }
+.cr-kpfacts { display: grid; gap: 2px 10px; margin-bottom: 8px; }
+.cr-kpfact { font-size: 12px; color: #3c4043; }
+.cr-kpfact b { color: #202124; margin-right: 6px; }
+.cr-kpmore { color: #1a73e8; font-size: 12.5px; }
+/* dictionary */
+.cr-dict { border: 1px solid #dadce0; border-radius: 10px; padding: 14px 18px; margin: 10px 0 14px; background: #fff; }
+.cr-dhead { display: flex; align-items: baseline; gap: 10px; }
+.cr-dhead h3 { font-size: 22px; margin: 0; }
+.cr-dphon { color: #5f6368; font-size: 13px; }
+.cr-dblock { margin-top: 8px; }
+.cr-dpos { color: #5f6368; font-size: 12px; font-style: italic; }
+.cr-dblock ol { margin: 2px 0 0 18px; font-size: 13px; line-height: 1.55; }
+.cr-dexa { display: block; color: #5f6368; font-size: 12px; }
+/* images pack */
+.cr-imgrow { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; margin: 4px 0 6px; }
+.cr-imgcell { margin: 0; }
+.cr-imgcell img { width: 100%; height: 84px; object-fit: cover; border-radius: 6px; border: 1px solid #dadce0; background: #f1f3f4; }
+.cr-imgcell figcaption { font-size: 10.5px; color: #5f6368; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* map card */
+.cr-mapcard { border: 1px solid #dadce0; border-radius: 10px; overflow: hidden; margin: 10px 0 14px; background: #fff; }
+.cr-maptiles { position: relative; display: grid; grid-template-columns: repeat(3, 1fr); line-height: 0; max-height: 190px; overflow: hidden; }
+.cr-maptiles img { width: 100%; height: auto; }
+.cr-mappin { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -60%); font-size: 22px; line-height: 1; }
+.cr-mapmeta { padding: 10px 14px; font-size: 12.5px; }
+.cr-mapmeta b { display: block; font-size: 14px; }
+.cr-mapmeta span { display: block; color: #5f6368; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cr-mapmeta i { display: block; color: #80868b; font-size: 11px; font-style: normal; margin-top: 3px; }
 
 /* ═══════════════ VEILFALL — the proving grounds ═══════════════ */
 .ar { position: relative; width: 100%; height: 100%; background: #07060c; overflow: hidden; outline: none; font-family: "Pixelify Sans", sans-serif; user-select: none; }
