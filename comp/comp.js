@@ -3802,6 +3802,18 @@ var STG = [
     ach: [0, 40], achx: [],
     news: [['v1.0 — the UreOS port', "Cookie Clicker now runs in a real window on the pixel desktop. Achievements sync to this very Steam client. The grandmas came with the port; we did not ask them to.", 'Jul 9']] },
 
+  // the second game that actually runs IN the desktop — window.RACER, comp/racer.js
+  { id: 'sunrun', t: 'SUNSET RUNNER', dev: 'URE Softworks', pub: 'URE Softworks', yr: 2026,
+    tags: ['Racing', 'Arcade', 'Pixel Graphics', 'Great Soundtrack', 'Singleplayer'],
+    s: "A pseudo-3D sunset racer that runs right here on the desktop. Three circuits, five rivals, one nitro bar between you and the podium.",
+    d: "What GTI RUN's patch notes kept promising, built for real: a pseudo-3D racer in a live window on UreOS. Projected roads with curves and hills, three palettes (sunset coast, neon night, dawn ridge), five sprite-scaled rivals with live positions and lap times, drift, off-road, nitro, and a synth engine that climbs the gears. Grid up, wait for GO, and go hunt the checkered.",
+    price: 0, disc: 0, free: true, owned: true, inst: true, hrs: 0, hrs2w: 0,
+    rev: ['Overwhelmingly Positive', 97, 842], art: ['#241a45', '#e85c6f', 'RUN'], sc: 'road', trend: true, feat: true,
+    app: 'sunrun', live: 'RACER',
+    ach: [0, 6], achx: [['First Light', 'Finish a race', 0], ['Podium', 'Finish in the top three', 0], ['Checkered', 'Win a race', 0], ['Grand Tour', 'Win on all three circuits', 0], ['Redline', 'Drain the nitro bar to empty', 0], ['Night Shift', 'Win on NEON NIGHT', 0]],
+    revx: [["It runs IN the Steam that runs IN the website. I had to sit down.", 1, "3.2 hrs"], ["Caught NOVA on the last corner of the last lap. Yelled out loud.", 1, "1.8 hrs"]],
+    news: [['v1.0 — on the grid', "Sunset Runner ships as a real desktop app: three circuits, five rivals, live positions and a nitro bar. Open your library and hit Play.", 'Jul 23']] },
+
   { id: 'bg3', t: "Baldur's Gate 3", dev: 'Larian Studios', pub: 'Larian Studios', yr: 2023,
     tags: ['RPG', 'Dungeons & Dragons', 'Story Rich', 'Turn-Based', 'Co-op'],
     s: "Gather your party and venture forth. A cinematic take on the world's greatest role-playing game.",
@@ -7068,6 +7080,13 @@ var APPS = {
         onRestore: function (el) { var r = el.querySelector('.mc'); if (r) r.focus(); },
         onClose: function () { if (window.MC) bankPlaytime('minecraft', window.MC.close() || 0); } },
     mclauncher: { title: 'Minecraft Launcher', icon: 'ic-mc', w: 980, h: 620, render: renderMC, init: initMC, onClose: closeMC, focusArg: mclFocus },
+    sunrun:   { title: 'Sunset Runner', icon: 'ic-racer', w: 1000, h: 640,
+        render: function () { return window.RACER ? window.RACER.render() : '<p style="padding:24px">The engine never turned over (racer.js missing).</p>'; },
+        init: function (el) { if (window.RACER) window.RACER.init(el); },
+        onFocus: function (el) { var r = el.querySelector('.racer-root'); if (r) r.focus(); },
+        onClose: function () { if (window.RACER) bankPlaytime('sunrun', window.RACER.close() || 0); },
+        onMinimize: function () { if (window.RACER) window.RACER.pause(); },
+        onRestore: function (el) { if (window.RACER) window.RACER.resume(); var r = el.querySelector('.racer-root'); if (r) r.focus(); } },
     ureboy:   { launch: '/ureboy/' },
     room:     { launch: '/1p/' },
     gti:      { launch: '/ureboy/' }
@@ -7555,6 +7574,7 @@ var devSteam = location.search.match(/dev=steam(?::([a-z]+))?(?::([a-z]+))?(?::(
 if (devSteam) openApp('steam', devSteam[1] ? { section: devSteam[1], view: devSteam[2] || 'home', id: devSteam[3] || null } : undefined);
 if (location.search.indexOf('fast') >= 0) window.__fastCursor = true;   // dev: instant cursor jumps so the chain runs headless
 if (location.search.indexOf('dev=edge') >= 0) openApp('edge');       // watch the possession play out
+if (location.search.indexOf('dev=race') >= 0) openApp('sunrun');     // launch Sunset Runner straight to the grid
 if (location.search.indexOf('dev=chrome') >= 0) { installChrome({ shortcut: true }); openApp('chrome'); }
 var devCr = location.search.match(/dev=cr:([^&]+)/);   // ?dev=cr:<url> — open Chrome navigated somewhere (cr:dino → chrome://dino)
 if (devCr) { installChrome({}); openApp('chrome'); var crU; try { crU = decodeURIComponent(devCr[1]); } catch (e) { crU = devCr[1]; } if (CR) crNav(crParse(/^[a-z]+$/.test(crU) ? 'chrome://' + crU : crU)); }
