@@ -166,10 +166,16 @@ function openApp(id, arg) {
 }
 function createWindow(id, a, arg) {
     var w = a.w || 560, h = a.h || 420;
-    w = Math.min(w, window.innerWidth - 16); h = Math.min(h, window.innerHeight - BAR - 16);
+    // boot-time dev hooks can fire before the viewport has laid out; an unlaid
+    // (zero) viewport would write an invalid negative width the CSS parser drops.
+    // Only substitute defaults in that degenerate case — real narrow phones keep
+    // getting windows clamped to their true width.
+    var vw = window.innerWidth > 40 ? window.innerWidth : 1280;
+    var vh = window.innerHeight > 40 ? window.innerHeight : 800;
+    w = Math.min(w, vw - 16); h = Math.min(h, vh - BAR - 16);
     var n = Object.keys(openWins).length;
-    var left = clamp(Math.round((window.innerWidth - w) / 2) + (n % 5) * 26 - 52, 8, window.innerWidth - w - 8);
-    var top = clamp(Math.round((window.innerHeight - BAR - h) / 2) + (n % 5) * 22 - 40, 8, window.innerHeight - BAR - h - 8);
+    var left = clamp(Math.round((vw - w) / 2) + (n % 5) * 26 - 52, 8, Math.max(8, vw - w - 8));
+    var top = clamp(Math.round((vh - BAR - h) / 2) + (n % 5) * 22 - 40, 8, Math.max(8, vh - BAR - h - 8));
     var el = document.createElement('section');
     el.className = 'win px-lg lift' + (a.titlebar ? ' win-tabbar' : ''); el.setAttribute('data-app', id); el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', a.title);
     el.style.cssText = 'left:' + left + 'px;top:' + top + 'px;width:' + w + 'px;height:' + h + 'px';
@@ -577,7 +583,8 @@ var TREE_C = {
                 'common': {
                     'Terraria': { $when: 'inst:terraria', 'Terraria.exe': '@terraria', 'ReLogic.Native.dll': 0, 'Content': { 'Images': { $: { e: 'Every tree you have ever chopped, as .xnb files.' } }, 'Sounds': {} }, 'changelog.txt': 0 },
                     'Cookie Clicker': { $when: 'inst:cookie', 'Cookie Clicker.exe': '@cookie', 'resources': { 'app.asar': ['142 MB'] }, 'LICENSE.txt': 0 },
-                    'URE QUEST': { $when: 'inst:urequest', 'urequest.exe': '@ureboy', 'quest.pak': 0, 'readme.txt': 'URE QUEST v4 — the party rebuild.\nIf the game asks you to install an intercooler mid-boss, that is not a bug. That is the plot.' }
+                    'URE QUEST': { $when: 'inst:urequest', 'urequest.exe': '@ureboy', 'quest.pak': 0, 'readme.txt': 'URE QUEST v4 — the party rebuild.\nIf the game asks you to install an intercooler mid-boss, that is not a bug. That is the plot.' },
+                    'VEILFALL': { $when: 'inst:veilfall', 'veilfall.exe': '@arpg', 'Content': { 'spells.pak': 0, 'arena.pak': 0 }, 'story.txt': '[this file intentionally left blank]\n\n(the writer says it is coming. the writer says it will be short but sweet. the dummy waits.)' }
                 },
                 'workshop': {}
             },
@@ -2012,10 +2019,10 @@ function setClip(text) {
     try { navigator.clipboard.writeText(OSCLIP).catch(function () {}); } catch (err) {}
 }
 function closeBctx() { if (bctxEl) { bctxEl.remove(); bctxEl = null; } }
-function openBctx(host, e, items, fn, dark) {
+function openBctx(host, e, items, fn, skin) {   // skin: true = dark (Edge/Incognito), or a class name ('steam')
     closeBctx(); closeCtx(); closeFctx(); setStart(false); closeFlyouts();
     var m = document.createElement('div');
-    m.className = 'bctx' + (dark ? ' dark' : ''); m.setAttribute('role', 'menu'); m.tabIndex = -1;
+    m.className = 'bctx' + (skin === true ? ' dark' : skin ? ' ' + skin : ''); m.setAttribute('role', 'menu'); m.tabIndex = -1;
     m.innerHTML = items.map(function (it) {
         if (it === 'sep') return '<div class="bctx-sep"></div>';
         return '<button class="bctx-i" type="button" role="menuitem" data-bx="' + it.k + '"' + (it.dis ? ' disabled' : '') + '>' +
@@ -4243,6 +4250,17 @@ var STG = [
     rev: ['Very Positive', 90, 512], art: ['#2d1e3a', SC.gb, 'URE'], sc: 'dungeon', launch: '/ureboy/',
     ach: [11, 16], achx: [['First Blood', 'Win a battle', 1], ['Lorekeeper', 'Read every codex', 1], ['Pacifist', 'Clear a floor unhurt', 0], ['Nat 20', 'Land a crit', 1]] },
 
+  // runs IN the desktop — window.ARPG, comp/arpg.js
+  { id: 'veilfall', t: 'VEILFALL', dev: 'URE Softworks', pub: 'URE Softworks', yr: 2026,
+    tags: ['Action RPG', 'Early Access', 'Isometric', 'Dark Fantasy', 'Loot'],
+    s: "An isometric ARPG in Early Access. One arena, nine spells, one very patient dummy. The story isn't written yet. The violence is.",
+    d: "The proving grounds open before the campaign does: liquid life and mana globes, a passive web, flasks that refill on violence, crits, ignites, freezes, shocks, a curse, a meteor with a travel time, and a training dummy with configurable resistances and infinite forgiveness. Bring opinions about cast speed. Early Access roadmap: 'a short but sweet intriguing story' — the writer has been informed.",
+    price: 0, disc: 0, free: true, owned: true, inst: true, hrs: 0, hrs2w: 0, ea: true,   // real build => ships installed (#78)
+    rev: ['Very Positive', 91, 328], art: ['#160a20', '#8a4ae0', 'VF'], sc: 'dungeon', trend: true,
+    app: 'arpg', live: 'ARPG',
+    ach: [0, 14],
+    news: [['v0.1 — the proving grounds', "VEILFALL enters Early Access with a test arena, nine spells and a dummy that respawns with fresh optimism. The story arrives when it arrives. The meteor arrives in 1.1 seconds.", 'Jul 17']] },
+
   // runs IN the desktop (like Terraria below) — window.COOKIE, comp/cookie.js.
   // installed = playable on this Steam: only games with a real build (app: in a
   // window, launch: on the URE BOY) ship installed; the shelf games are library-only
@@ -4940,6 +4958,8 @@ function initSteam(el, id, arg) {
            hist: [], carouT: 0, dlT: 0, toastT: 0, chatT: {},
            notifRead: false, chatWith: null, chats: {}, chatIdx: {}, spHist: [], libCollapse: {} };
     ST.root.addEventListener('click', stClick);
+    el.addEventListener('contextmenu', stCtxMenu);        // on the window el: the title bar suppresses, the client answers
+    el.addEventListener('scroll', closeBctx, true);       // real menus don't scroll along with the page
     ST.root.addEventListener('keydown', function (e) {
         if (e.key !== 'Enter') { if (e.key === 'Escape') stCloseLayers(); return; }
         if (e.target.closest('[data-search]')) { stCloseLayers(); stGo('store', 'browse', null, { cat: null, q: e.target.value }); }
@@ -5226,7 +5246,7 @@ function stPoints() {
         var btn = eq ? '<b class="st-owned">' + (it.k === 'gag' ? 'Owned. It blinks.' : 'Equipped') + '</b>'
                 : own ? '<button class="st-ghost sm" data-st="ptsbuy" data-id="' + it.id + '">Equip</button>'
                 : '<button class="st-ghost sm" data-st="ptsbuy" data-id="' + it.id + '">' + gStar() + ' ' + it.c.toLocaleString() + '</button>';
-        return '<div class="st-gcard static st-pts-i">' + art + '<span class="st-gcard-b"><span class="st-scard-t">' + esc(it.n) + '</span><span class="st-pts-row">' + btn + '</span></span></div>';
+        return '<div class="st-gcard static st-pts-i" data-pts="' + it.id + '">' + art + '<span class="st-gcard-b"><span class="st-scard-t">' + esc(it.n) + '</span><span class="st-pts-row">' + btn + '</span></span></div>';
     }).join('');
     return '<div class="st-pad st-points"><h2 class="st-browse-h">Points Shop</h2>' +
         '<div class="st-points-bal">' + gStar() + ' <b>' + stPts().toLocaleString() + '</b> points <span class="st-pts-hint">earned by existing. spent on looking good.</span></div>' +
@@ -5559,10 +5579,24 @@ function stDropOpen(items, anchor) {
     if (top + ST.drop.offsetHeight > rootR.height) top = Math.max(0, r.top - rootR.top - ST.drop.offsetHeight - 2);   // flip up (status-bar menus)
     ST.drop.style.top = top + 'px';
 }
-function stModalOpen(kind) {
+function stModalOpen(kind, gid) {
     stCloseLayers('modal');
     var inner = '';
-    if (kind === 'activate') {
+    if (kind === 'props') {
+        var pg = SG[gid], pinst = isInst(gid);
+        var psz = (12 + Math.floor(stHash(gid, 5) * 600)) + ' KB';
+        inner = '<h3>' + esc(pg.t) + ' — Properties</h3>' +
+            '<dl class="st-facts">' +
+              '<dt>Status</dt><dd>' + (pinst ? 'Installed' : stInQueue(gid) ? 'Downloading' : 'Not installed') + '</dd>' +
+              '<dt>Install size</dt><dd>' + psz + ' of localStorage</dd>' +
+              '<dt>App ID</dt><dd>' + stAppId(gid) + '</dd>' +
+              '<dt>Developer</dt><dd>' + esc(pg.dev) + '</dd>' +
+              '<dt>Build</dt><dd>' + pg.yr + ' (latest — updates are instant when nothing changes)</dd>' +
+              '<dt>Playtime</dt><dd>' + stHrs(gid).toFixed(1) + ' hrs on record</dd></dl>' +
+            '<label class="st-modal-row"><span>Launch options</span><b>--pixels=all --thumbs=up</b></label>' +
+            '<div class="st-modal-btns"><button class="st-ghost" data-st="verify" data-id="' + gid + '">Verify integrity of game files</button><button class="st-ghost" data-st="modalclose">Close</button></div>' +
+            '<p class="st-modal-out" id="stVerifyOut"></p>';
+    } else if (kind === 'activate') {
         inner = '<h3>Activate a Product on Steam</h3><p>Enter your product code. Codes look like <b>URE0Y-XXXXX-XXXXX</b>.</p>' +
             '<input class="st-act-in" placeholder="URE0Y-....." autocomplete="off" spellcheck="false">' +
             '<div class="st-modal-btns"><button class="st-play" data-st="activatego">Activate</button><button class="st-ghost" data-st="modalclose">Cancel</button></div>' +
@@ -5869,6 +5903,205 @@ function stClick(e) {
     }
     if (act === 'dlcbuy') return stToast('DLC is décor in this museum — admire it from here.');
     if (act === 'hub') return stToast('The Community Hub is just the friends list with extra steps.');
+    if (act === 'verify') {
+        var vout = ST.modal.querySelector('#stVerifyOut'); if (!vout) return;
+        vout.textContent = 'Verifying…';
+        setTimeout(function () { if (ST && !ST.modal.hidden) vout.textContent = 'All files validated. 0 failed. It was mostly vibes, and the vibes check out.'; }, reduce ? 150 : 900);
+        return;
+    }
+}
+
+/* ═══════════════ right-click — every surface answers, like the real client ═══════════════ */
+function stAppId(id) { return 100000 + Math.floor(stHash(id, 3) * 899999); }   // deterministic fake AppID
+function stSlug(t) { return String(t).replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, ''); }
+function stUninstall(id) {
+    var g = SG[id];
+    if (!isInst(id)) return;
+    if (g.app && openWins[g.app]) { stToast(g.t + ' is running. Close it before uninstalling.'); return; }
+    sjSet('inst', stInst().filter(function (x) { return x !== id; }));
+    stToast(g.t + ' — uninstalled. The shelf space was imaginary, but still.');
+    stSyncBadges(); stRender();
+}
+/* the shared game menu: library surfaces get the manage half, store surfaces get the shopping half */
+function stCtxGame(e, id, inLib) {
+    var g = SG[id]; if (!g) return;
+    stLive(g);                                             // desktop-app games report real achievement counts
+    var owned = isOwned(id), inst = isInst(id), dl = stInQueue(id);
+    var items = [];
+    if (owned) items.push(dl ? { k: 'noop', t: 'Installing… ' + Math.floor(dl.pct) + '%', dis: true }
+        : inst ? { k: 'play', t: 'Play ' + g.t } : { k: 'inst', t: 'Install' });
+    else if (g.free) items.push({ k: 'inst', t: 'Install Game' });
+    else items.push(inCart(id) ? { k: 'cart', t: 'In cart — view cart' } : { k: 'add', t: 'Add to cart (' + stPrice(stFinal(g)) + ')' });
+    if (!owned) items.push({ k: 'wish', t: isWished(id) ? 'Remove from wishlist' : 'Add to wishlist' });
+    items.push('sep');
+    if (inLib) {
+        items.push({ k: 'store', t: 'View store page' });
+        if (g.ach && g.ach[1]) items.push({ k: 'ach', t: 'View achievements (' + g.ach[0] + '/' + g.ach[1] + ')' });
+        items.push({ k: 'fav', t: 'Add to favorites' });
+        items.push('sep');
+        items.push({ k: 'files', t: 'Browse local files', dis: !inst });
+        items.push({ k: 'uninst', t: 'Uninstall', dis: !inst });
+        items.push({ k: 'props', t: 'Properties…' });
+    } else {
+        items.push({ k: 'store', t: 'View store page' });
+        if (owned) items.push({ k: 'inlib', t: 'View in library' });
+        items.push('sep');
+        items.push({ k: 'cpurl', t: 'Copy store page URL' });
+    }
+    openBctx(ST.root, e, items, function (a) {
+        if (a === 'play') stPlay(id);
+        else if (a === 'inst') stInstall(id);
+        else if (a === 'add') { var c = stCart(); if (c.indexOf(id) < 0) { c.push(id); sjSet('cart', c); } stSyncBadges(); stToast(g.t + ' — added to cart.'); stRender(); }
+        else if (a === 'cart') stGo('cart', 'home', null);
+        else if (a === 'wish') {
+            var w = stWish(), i = w.indexOf(id);
+            if (i < 0) { w.push(id); stToast(g.t + ' — added to wishlist.'); } else { w.splice(i, 1); stToast(g.t + ' — removed from wishlist.'); }
+            sjSet('wish', w); stRender();
+        }
+        else if (a === 'store') stGo('store', 'game', id, { q: '' });
+        else if (a === 'inlib') stGo('library', 'game', id);
+        else if (a === 'ach') stGo('library', 'ach', id);
+        else if (a === 'fav') stToast('Favorites are earned in hours here, not assigned. Play more ' + g.t + '.');
+        else if (a === 'files') stToast('Local files: one corner of localStorage. You are technically inside them right now.');
+        else if (a === 'uninst') stUninstall(id);
+        else if (a === 'props') stModalOpen('props', id);
+        else if (a === 'cpurl') { setClip('https://store.steampowered.com/app/' + stAppId(id) + '/' + stSlug(g.t) + '/'); stToast('Store page URL copied.'); }
+    }, 'steam');
+}
+function stCtxMenu(e) {
+    e.preventDefault();
+    if (e.target.closest('.win-caps') || !e.target.closest('#steamRoot')) { closeBctx(); return; }   // title bar: suppress, no menu
+    var host = ST.root;
+
+    var inp = e.target.closest('input, textarea');
+    if (inp && !inp.readOnly && !inp.disabled) { bctxInput(host, e, inp, null, 'steam'); return; }
+    if (e.target.closest('.st-modal-card')) { closeBctx(); return; }   // a modal owns its space — don't shoot menus over it
+    if (e.target.closest('.st-modal')) { ST.modal.hidden = true; closeBctx(); return; }   // backdrop: dismiss like a left-click, no stray menu
+    stCloseLayers();
+
+    // — a friend: the <b> holds the name on BOTH row kinds (community rows' data-id is the GAME id) —
+    var fr = e.target.closest('.st-fp-row, .st-fr');
+    if (fr) {
+        var name = (fr.querySelector('b') ? fr.querySelector('b').textContent : '') || fr.getAttribute('data-id');
+        var f = SFR.filter(function (x) { return x[0] === name; })[0] || [name, 'Online', '', ''];
+        openBctx(host, e, [
+            { k: 'msg', t: 'Send message' },
+            { k: 'inv', t: 'Invite to play', dis: f[1] === 'Offline' },
+            { k: 'prof', t: 'View profile' },
+            'sep',
+            { k: 'nick', t: 'Add a nickname' },
+            { k: 'block', t: 'Block all communication' }
+        ], function (a) {
+            if (a === 'msg') { stFriendsToggle(true); stChatOpen(name); }
+            else if (a === 'inv') stToast(f[1] === 'In-Game' ? name + ' is already in ' + f[2] + '. Consider joining THEM.' : 'Invite sent. ' + name + ' typed “one more?” before it arrived.');
+            else if (a === 'prof') stToast('Only Isaac has a profile in this museum. ' + name + ' prefers the mystery.');
+            else if (a === 'nick') stToast('Nickname saved: “' + name + '”. Revolutionary.');
+            else stToast(name + ' cannot be blocked. They are load-bearing.');
+        }, 'steam');
+        return;
+    }
+
+    // — a chat message —
+    var msg = e.target.closest('.st-chat-m');
+    if (msg) {
+        var mine = msg.classList.contains('me');
+        var txt = msg.textContent.replace(/^[^:]*:\s*/, '');
+        openBctx(host, e, [
+            { k: 'cp', t: 'Copy message' },
+            { k: 'del', t: 'Delete message', dis: !mine }
+        ], function (a) {
+            if (a === 'cp') { setClip(txt); stToast('Copied.'); }
+            else stToast('Said is said.');
+        }, 'steam');
+        return;
+    }
+
+    // — a Points Shop item —
+    var pts = e.target.closest('[data-pts]');
+    if (pts) {
+        var it = SPTS.filter(function (x) { return x.id === pts.getAttribute('data-pts'); })[0];
+        if (it) {
+            var own = stPtsOwned().indexOf(it.id) >= 0;
+            var eq = (it.k === 'frame' && it.v === recall('steam_frame', '')) || (it.k === 'bg' && it.v === recall('steam_bg', '')) || (it.k === 'gag' && own);
+            var pitems = [];
+            if (it.k === 'gag') pitems.push(own ? { k: 'insp', t: 'Inspect closely' } : { k: 'buy', t: 'Purchase (' + it.c.toLocaleString() + ' points)', dis: stPts() < it.c });
+            else if (eq) pitems.push({k: 'uneq', t: 'Unequip' });
+            else if (own) pitems.push({ k: 'eq', t: 'Equip' });
+            else pitems.push({ k: 'buy', t: 'Purchase (' + it.c.toLocaleString() + ' points)', dis: stPts() < it.c });
+            openBctx(host, e, pitems, function (a) {
+                if (a === 'buy' && it.k === 'gag') {
+                    var po = stPtsOwned();
+                    if (po.indexOf(it.id) < 0 && stPts() >= it.c) { store('steam_points', String(stPts() - it.c)); po.push(it.id); sjSet('pshop', po); }
+                    stToast('It blinks. Trust me.'); stRender();
+                }
+                else if (a === 'buy' || a === 'eq') { if (stPtsBuy(it)) { stToast(it.n + ' — equipped. Check your profile.'); stRender(); } }
+                else if (a === 'uneq') { store('steam_' + (it.k === 'frame' ? 'frame' : 'bg'), ''); stToast(it.n + ' — unequipped. The profile mourns.'); stRender(); }
+                else if (a === 'insp') stToast('It blinked. You saw it.');
+            }, 'steam');
+            return;
+        }
+    }
+
+    // — downloads: the active card and queue rows (game id rides the art canvas) —
+    var dlq = e.target.closest('.st-dl-active, .st-dl-q');
+    if (dlq) {
+        var dcv = dlq.querySelector('canvas[data-g]'), did = dcv && dcv.getAttribute('data-g');
+        if (did && dlq.classList.contains('done')) { stCtxGame(e, did, true); return; }   // installed row = library game
+        if (did) {
+            var qhead = stQueue()[0] && stQueue()[0].id === did;
+            openBctx(host, e, [
+                { k: 'top', t: 'Move to top of queue', dis: qhead },
+                'sep',
+                { k: 'cxl', t: 'Cancel download' }
+            ], function (a) {
+                var q = stQueue(), qi = q.map(function (d) { return d.id; }).indexOf(did);
+                if (qi < 0) return;                                   // finished while the menu was open
+                if (a === 'top') q.unshift(q.splice(qi, 1)[0]);
+                else { q.splice(qi, 1); stToast(SG[did].t + ' — download cancelled.'); }
+                stDock(); stSyncBadges(); if (ST.section === 'downloads') stRender();
+            }, 'steam');
+            return;
+        }
+    }
+
+    // — a cart row: the one commerce surface where right-click removal is most natural —
+    var crow = e.target.closest('.st-cart-row');
+    if (crow) {
+        var ccv = crow.querySelector('canvas[data-g]'), cid = ccv && ccv.getAttribute('data-g');
+        if (cid && SG[cid]) {
+            openBctx(host, e, [
+                { k: 'rm', t: 'Remove from cart' },
+                'sep',
+                { k: 'store', t: 'View store page' },
+                { k: 'cpurl', t: 'Copy store page URL' }
+            ], function (a) {
+                if (a === 'rm') { sjSet('cart', stCart().filter(function (x) { return x !== cid; })); stSyncBadges(); stRender(); }
+                else if (a === 'store') stGo('store', 'game', cid, { q: '' });
+                else { setClip('https://store.steampowered.com/app/' + stAppId(cid) + '/' + stSlug(SG[cid].t) + '/'); stToast('Store page URL copied.'); }
+            }, 'steam');
+            return;
+        }
+    }
+
+    // — games: library surfaces first (sidebar, tiles, feed links, the game page's own hero), then store cards —
+    if (e.target.closest('.st-lg-hero, .st-lg-bar') && ST.section === 'library' && ST.gid) { stCtxGame(e, ST.gid, true); return; }
+    var lib = e.target.closest('[data-st="lib"]');
+    if (lib) { stCtxGame(e, lib.getAttribute('data-id'), true); return; }
+    var card = e.target.closest('[data-st="game"]');
+    if (card) { stCtxGame(e, card.getAttribute('data-id'), false); return; }
+
+    // — the page itself —
+    openBctx(host, e, [
+        { k: 'back', t: 'Back', dis: !ST.hist.length },
+        { k: 'fwd', t: 'Forward', dis: true },
+        { k: 'rld', t: 'Reload page' },
+        'sep',
+        { k: 'cpu', t: 'Copy page URL' }
+    ], function (a) {
+        if (a === 'back') stBack();
+        else if (a === 'rld') stRender();
+        else if (a === 'cpu') { setClip('steam://open/' + ST.section + '/' + ST.view + (ST.gid ? '/' + ST.gid : '')); stToast('Page URL copied. It only resolves on this desktop.'); }
+    }, 'steam');
 }
 
 /* ═════════════ Minecraft Launcher — the real thing, in pixels ═════════════
@@ -6434,11 +6667,27 @@ function mcSyncFS() {
         items: crashes.map(function (c) { return mcDoc(c.n, c.text, '6 KB'); }),
         empty: 'No crashes. Suspicious.'
     };
-    // every .minecraft subfolder points up at its parent key, so Explorer's ↑ climbs the tree
+    // give every .minecraft subfolder the same Explorer metadata fsCompile authors for real
+    // folders — a clickable breadcrumb CHAIN, a display label, a parent, and an address-bar index
+    var mcRootCrumb = FS['.minecraft'].crumb;
     Object.keys(FS).forEach(function (k) {
-        if (k.indexOf('.minecraft/') === 0) FS[k].parent = k.slice(0, k.lastIndexOf('/'));
+        if (k.indexOf('.minecraft/') !== 0) return;
+        var segs = k.slice(11).split('/'), crumb = mcRootCrumb.slice(), acc = '.minecraft';
+        segs.forEach(function (s) { acc += '/' + s; crumb.push([s, acc]); });
+        FS[k].crumb = crumb;
+        FS[k].label = MC_MCDIR + '\\' + segs.join('\\');
+        FS[k].parent = k.slice(0, k.lastIndexOf('/'));
+        fsIndex(k);
     });
     fsIndex('.minecraft');   // register the canonical path so it resolves in the address bar / dev hooks
+    // if an Explorer is parked on a folder the launcher just deleted (e.g. a version wiped by Reset),
+    // climb it to the nearest surviving ancestor — otherwise itemsFor falls back to Home's contents
+    // under a dead breadcrumb and a Delete there writes a bogus tombstone (QC finding, fs73)
+    if (exState.explorer && exState.explorer.go && !FS[exState.explorer.path]) {
+        var p = exState.explorer.path;
+        while (p && p.indexOf('/') >= 0 && !FS[p]) p = p.slice(0, p.lastIndexOf('/'));
+        exState.explorer.go(FS[p] ? p : 'This PC');
+    }
     refreshFileViews();
 }
 function mcUntomb(path, name) {
@@ -6557,7 +6806,9 @@ function mcPlay() {
     mcPaintPlay();
 }
 function mcLaunchDone(r) {
-    var ok = !!APPS.minecraft;
+    // the game must be BOTH registered (APPS.minecraft, from #74) AND actually loaded (window.MC) to run;
+    // if minecraft.js failed to load the launcher shows its honest crash instead. __mclForceCrash demos it.
+    var ok = !window.__mclForceCrash && !!(APPS.minecraft && window.MC);
     mcjSet('log', { text: mcLogText(r.v, ok), v: r.v });
     mcSyncFS();
     mcUntomb('.minecraft/logs', 'latest.log'); mcUntomb('.minecraft', 'logs');
@@ -7271,6 +7522,11 @@ var APPS = {
         render: function () { return window.COOKIE ? window.COOKIE.render() : '<p style="padding:24px">The oven never preheated (cookie.js missing).</p>'; },
         init: function (el) { if (window.COOKIE) window.COOKIE.init(el); },
         onClose: function () { if (window.COOKIE) bankPlaytime('cookie', window.COOKIE.close() || 0); } },
+    arpg: { title: 'VEILFALL', icon: 'ic-arpg', w: 1120, h: 700,
+        render: function () { return window.ARPG ? window.ARPG.render() : '<p style="padding:24px">The veil failed to fall (arpg.js missing).</p>'; },
+        init: function (el) { if (window.ARPG) window.ARPG.init(el); },
+        onFocus: function (el) { var r = el.querySelector('.ar'); if (r) r.focus(); },   // keys follow the window
+        onClose: function () { if (window.ARPG) bankPlaytime('veilfall', window.ARPG.close() || 0); } },
     terraria: { title: 'Terraria', icon: 'ic-terraria', w: 1040, h: 640,
         render: function () { return window.TERRA ? window.TERRA.render() : '<p style="padding:24px">World generation failed to start (terraria.js missing).</p>'; },
         init: function (el) { if (window.TERRA) window.TERRA.init(el); },
@@ -7280,6 +7536,8 @@ var APPS = {
         render: function () { return window.MC ? window.MC.render() : '<p style="padding:24px">The world fell into the void (minecraft.js missing).</p>'; },
         init: function (el) { if (window.MC) window.MC.init(el); },
         onFocus: function (el) { var r = el.querySelector('.mc'); if (r) r.focus(); },
+        onMinimize: function () { if (window.MC && window.MC.suspend) window.MC.suspend(); },   // hidden worlds pause; nobody dies off-screen
+        onRestore: function (el) { var r = el.querySelector('.mc'); if (r) r.focus(); },
         onClose: function () { if (window.MC) bankPlaytime('minecraft', window.MC.close() || 0); } },
     mclauncher: { title: 'Minecraft Launcher', icon: 'ic-mc', w: 980, h: 620, render: renderMC, init: initMC, onClose: closeMC, focusArg: mclFocus },
     ureboy:   { launch: '/ureboy/' },
@@ -7780,6 +8038,7 @@ if (location.search.indexOf('dev=bin') >= 0) {
 }
 if (location.search.indexOf('dev=cookie') >= 0) openApp('cookie');   // + &ckdev seeds a mature bakery
 if (location.search.indexOf('dev=terra') >= 0) openApp('terraria');   // + &tdev=night|cave|boss|kit
+if (location.search.indexOf('dev=arpg') >= 0) openApp('arpg');        // VEILFALL proving grounds (window.__arpg test handle)
 if (location.search.indexOf('dev=mc') >= 0) openApp('minecraft');   // + &mcdev=kit,night,dusk,cave,mobs (&mcseed=N)
 if (location.search.indexOf('dev=dnd') >= 0) {   // a file moved Downloads→Desktop + a repositioned icon, in Explorer's Desktop view
     var __d = fsAddFile('Downloads', chromeSetupItem());
@@ -7840,7 +8099,7 @@ if (devMcl) {
     else if (mclSec === 'notes') mcCtl('go', 'notes');
     else if (mclSec === 'settings') mcCtl('settings');
     else if (mclSec === 'editor') { mcCtl('go', 'skins'); if (MC) { MC.skinEdit = mcNewSkinData(null); mcPage(); } }
-    else if (mclSec === 'crash') mcCtl('play');
+    else if (mclSec === 'crash') { window.__mclForceCrash = true; mcCtl('play'); }   // force the honest-crash screen (the game normally launches fine now)
 }
 if (location.search.indexOf('dev') >= 0) window.__mcl = {
     open: function () { openApp('mclauncher'); },
