@@ -328,7 +328,10 @@ function buildFurniture() {
 
     /* ── the desk: a long dark-espresso writing desk, twin pedestals ── */
     dbox(158, 2, 252, 26, 3.6, 3.85, P.esp);                      // top slab
-    dbox(158, 24, 252, 26, 3.4, 3.6, P.espLit);                   // lit lip under the front edge
+    /* NOTE: coplanar faces z-fight. drawPoly tests `izp > DEPTH[idx]` strictly, so
+       two faces on the SAME plane resolve on float32 rounding and comb/vanish as you
+       walk. Everything meant to read as trim must be PROUD of what backs it. */
+    dbox(158, 26, 252, 26.4, 3.4, 3.6, P.espLit);                 // lit lip, proud of the front
     dbox(160, 4, 182, 26, 0, 2.3, P.esp2);                        // left pedestal, cubby above
     dbox(160, 4, 182, 10, 2.3, 3.6, P.esp2);                      // the cubby's back
     dbox(160, 4, 163, 26, 2.3, 3.6, P.esp2);                      // ...and cheeks
@@ -336,8 +339,9 @@ function buildFurniture() {
     dbox(163, 4, 179, 10.5, 2.3, 2.4, P.esp2);                    // shelf lip
     dbox(228, 4, 250, 26, 0, 3.6, P.esp2);                        // right pedestal
     dbox(160, 24, 250, 26, 0, 0.6, P.esp2);                       // toe stretcher
-    dbox(181.4, 8, 182, 20, 1.6, 2.0, P.champ);                   // bar pulls
-    dbox(228, 8, 228.6, 20, 1.6, 2.0, P.champ);
+    /* one champagne bar pull, on the right pedestal's drawer front facing the
+       room (the left pedestal is the open cubby — it has no drawer) */
+    dbox(232, 26, 246, 26.6, 1.6, 2.0, P.champ);
     dbox(165, 10, 177, 20, 2.4, 3.1, P.porc);                     // white router in the open cubby
     dbox(166, 20, 176, 20.4, 2.5, 3.0, '#ddd9cf');                // its mesh face, room side
     drectC(156, 0, 252, 28);
@@ -349,9 +353,9 @@ function buildFurniture() {
     dbox(150, 2.8, 214, 3.4, 7.25, 11.0, '#141414');             // bezel, off the wall
     dbox(152, 3.4, 212, 3.5, 7.4, 10.85, P.fire, true);          // navy screen field
     dbox(152, 3.5, 212, 3.52, 8.7, 9.7, P.fire2, true);          // a bright poster row
-    dbox(158, 3.5, 170, 3.52, 8.8, 9.5, '#b8322e', true);        // poster tiles
-    dbox(174, 3.5, 186, 3.52, 8.8, 9.5, '#2f8fb0', true);
-    dbox(190, 3.5, 202, 3.52, 8.8, 9.5, '#d9cba8', true);
+    dbox(158, 3.52, 170, 3.54, 8.8, 9.5, '#b8322e', true);       // poster tiles, proud of the row
+    dbox(174, 3.52, 186, 3.54, 8.8, 9.5, '#2f8fb0', true);
+    dbox(190, 3.52, 202, 3.54, 8.8, 9.5, '#d9cba8', true);
     dbox(179, 2.05, 180, 2.25, 3.85, 7.25, '#0c0c0c');           // the cable drop, on the wall
 
     /* ── LEFT monitor: LG ultrawide on a white curved arc stand ── */
@@ -364,14 +368,14 @@ function buildFurniture() {
 
     /* ── RIGHT monitor: ASUS on a black stand, higher and set a touch back ── */
     dbox(206, 11, 226, 16, 3.85, 4.0, P.mat);                     // base plate
-    dbox(213, 15.6, 219, 16, 3.88, 4.05, '#7ac142', true);        // the green nvidia sticker
+    dbox(213, 15.6, 219, 16.1, 3.88, 4.05, '#7ac142', true);      // the green nvidia sticker, proud
     dbox(214, 12, 218, 14.5, 4.0, 4.6, '#232629');                // neck pillar
-    dbox(213.5, 14, 218.5, 14.5, 4.55, 4.72, P.red);             // red ring at the joint
+    dbox(213.5, 14, 218.5, 14.65, 4.55, 4.72, P.red);            // red ring at the joint, proud
     dbox(204, 9, 230, 12, 4.5, 6.9, '#16181a');                  // bezel
     dbox(206, 12, 228, 12.6, 4.62, 6.75, P.wp, true);            // the screen
     dbox(210, 12.6, 226, 13.0, 4.75, 6.5, P.wp2, true);          // crescent
     dbox(213, 13.0, 224, 13.3, 4.85, 6.2, P.wpMag, true);        // magenta core
-    dbox(206.4, 12, 208.5, 12.6, 4.7, 6.6, '#2a3550', true);     // the desktop icon column
+    dbox(206.4, 12.6, 208.5, 12.7, 4.7, 6.6, '#2a3550', true);   // the desktop icon column, proud
 
     /* ── deskmat with its lime edge, keyboard, mouse ── */
     dbox(168, 14, 216, 25, 3.85, 3.9, P.lime);                    // the lime edge stitch
@@ -384,13 +388,13 @@ function buildFurniture() {
 
     /* ── the condenser mic on a tripod, on the bare wood right of the ASUS ── */
     dbox(234, 13, 238, 17, 3.85, 3.95, '#16181a');                // tripod foot
-    dbox(235, 14, 237, 16, 3.95, 5.2, '#232529');                 // body
+    dbox(235, 14.2, 237, 16, 3.95, 5.2, '#232529');               // body, clear of the URE BOY plane
     dbox(234.6, 13.6, 237.4, 15.6, 5.2, 5.55, '#3c4046');         // grille head
 
     /* ── THE URE BOY, sitting on the desk to the right ── */
     dbox(228, 14, 236, 20, 3.85, 5.05, P.shell, true);            // shell
-    dbox(228.6, 19.4, 235.4, 20, 4.3, 4.85, P.dmg, true);         // DMG screen, facing the room
-    dbox(230, 20, 233, 20.12, 4.45, 4.75, '#0f380f', true);       // the eye on it
+    dbox(228.6, 19.4, 235.4, 20.15, 4.3, 4.85, P.dmg, true);      // DMG screen, proud of the shell
+    dbox(230, 20.15, 233, 20.27, 4.45, 4.75, '#0f380f', true);    // the eye on it, proud again
     dbox(229, 14, 235, 14.5, 5.05, 5.28, P.red, true);            // cartridge up top
 
     /* ── the office chair: black mesh, red knob, tucked under the desk ── */
@@ -407,24 +411,27 @@ function buildFurniture() {
           fans on its SOUTH face, toward the room. ── */
     fbox(178, 10, 196, 29, 0, 0.25, '#cfd8e0');                   // acrylic riser
     fbox(179, 11, 195, 28, 0.25, 3.0, '#0e0f12');                 // black chassis
-    fbox(180, 27.6, 194, 28.0, 0.4, 2.9, P.ledDk, true);          // the tinted glass panel
-    fbox(181, 28.0, 193, 28.2, 0.7, 1.05, P.led, true);           // fan ring 1, proud
-    fbox(181, 28.0, 193, 28.2, 1.25, 1.6, P.led, true);           // fan ring 2
-    fbox(181, 28.0, 193, 28.2, 1.8, 2.15, P.led, true);           // fan ring 3
-    fbox(182, 28.2, 192, 28.35, 0.78, 0.97, P.led2, true);        // brighter ring cores
-    fbox(182, 28.2, 192, 28.35, 1.33, 1.52, P.led2, true);
-    fbox(182, 28.2, 192, 28.35, 1.88, 2.07, P.led2, true);
+    fbox(180, 27.6, 194, 28.1, 0.4, 2.9, P.ledDk, true);          // tinted glass, proud of the case
+    fbox(181, 28.1, 193, 28.3, 0.7, 1.05, P.led, true);           // fan ring 1, proud of the glass
+    fbox(181, 28.1, 193, 28.3, 1.25, 1.6, P.led, true);           // fan ring 2
+    fbox(181, 28.1, 193, 28.3, 1.8, 2.15, P.led, true);           // fan ring 3
+    fbox(182, 28.3, 192, 28.45, 0.78, 0.97, P.led2, true);        // brighter ring cores
+    fbox(182, 28.3, 192, 28.45, 1.33, 1.52, P.led2, true);
+    fbox(182, 28.3, 192, 28.45, 1.88, 2.07, P.led2, true);
     fbox(188, 11.5, 189, 12.5, 2.9, 3.05, P.led2, true);          // power dot on top
     rectC(176, 8, 198, 31);
 
     /* ── the cream sectional against the east wall, chaise at the south
           (kitchen) end, exactly as the photos have it ── */
-    fbox(276, 52, 312, 156, 0, 2.1, P.cream);                    // seat block
-    fbox(304, 52, 312, 156, 0, 4.2, P.cream2);                   // backrest against the wall
-    fbox(276, 48, 312, 56, 0, 3.2, P.cream2);                    // north arm
-    fbox(276, 152, 312, 160, 0, 3.2, P.cream2);                  // south arm
+    /* the arms and backrest ABUT the seat rather than overlapping it: two boxes
+       that share a face plane and both show it will z-fight (see the note in the
+       desk block), so the seat is cut back to z56-152 and the backrest stacked. */
+    fbox(276, 56, 312, 152, 0, 2.1, P.cream);                    // seat block
+    fbox(304, 56, 312, 152, 2.1, 4.2, P.cream2);                 // backrest, stacked on the seat
+    fbox(276, 48, 312, 56, 0, 3.2, P.cream2);                    // north arm, abutting
+    fbox(276, 152, 312, 160, 0, 3.2, P.cream2);                  // south arm, abutting
     fbox(236, 128, 276, 160, 0, 2.0, P.cream);                   // the chaise, projecting west
-    fbox(236, 128, 244, 160, 0, 2.6, P.cream2);                  // chaise end cushion
+    fbox(236, 128, 244, 160, 2.0, 2.6, P.cream2);                // chaise end cushion, stacked
     fbox(280, 60, 302, 100, 2.1, 3.0, '#e6ddc9');               // loose seat cushions
     fbox(280, 104, 302, 148, 2.1, 3.0, '#e6ddc9');
     fbox(300, 66, 304, 84, 3.0, 4.3, P.char);                    // charcoal pillow
@@ -442,11 +449,11 @@ function buildFurniture() {
     fbox(296, 21, 304, 29, 1.5, 1.52, P.cowDk);
     fbox(294, 20, 306, 32, 1.5, 2.6, P.cow);                     // the raised head end
     fbox(296, 21, 304, 31, 2.6, 2.62, P.cowDk);
-    fbox(300, 18, 306, 34, 2.4, 3.0, P.cowDk);                   // black leather bolster
+    fbox(300, 18, 306.4, 34, 2.4, 3.0, P.cowDk);                 // black leather bolster, proud
     fbox(260, 22, 304, 23, 0.4, 1.1, P.chrome);                  // chrome side rails
     fbox(260, 29, 304, 30, 0.4, 1.1, P.chrome);
-    fbox(268, 22, 269, 30, 0, 0.5, P.k);                         // black H-base
-    fbox(296, 22, 297, 30, 0, 0.5, P.k);
+    fbox(268, 22.3, 269, 29.7, 0, 0.5, P.k);                     // black H-base, clear of the rails
+    fbox(296, 22.3, 297, 29.7, 0, 0.5, P.k);
     rectC(254, 16, 310, 36);
 
     /* ── the floor lamp in the corner behind the chaise ── */
@@ -466,7 +473,7 @@ function buildFurniture() {
     fbox(262, 176, 268, 198, 0, 0.5, '#1c1c1e');                 // scooter deck
     fbox(262, 176, 266, 180, 0.5, 5.6, '#17171a');               // stem
     fbox(256, 174, 274, 178, 5.6, 5.9, '#3a3a3e');               // handlebar
-    fbox(263, 194, 267, 198, 0, 1.0, '#101012');                 // rear wheel
+    fbox(263, 194, 267, 198.3, 0, 1.0, '#101012');               // rear wheel, proud of the deck
     circ(264, 186, 1.6);
 
     /* ── track lighting: two rails running down the living room ── */
@@ -485,14 +492,14 @@ function buildFurniture() {
        nightstand + arc lamp on the bed's south (door) side, away from the
        window, matching the photo. */
     fbox(8.5, 44, 15, 108, 0, 6.15, P.hbd);                      // cream headboard
-    fbox(8.5, 44, 15, 47, 5.7, 6.35, shade(P.hbd, 1.05));        // its rolled top
-    fbox(15, 46, 92, 106, 0, 1.0, P.esp2);                       // platform frame
-    fbox(14, 44, 94, 108, 1.0, 2.55, P.duv);                     // the charcoal duvet
-    fbox(14, 44, 16, 108, 2.55, 2.7, P.duv2);                    // top fold shadow at the head
-    fbox(16, 47, 18, 51, 0, 1.0, P.k);                           // black wedge legs
-    fbox(88, 47, 90, 51, 0, 1.0, P.k);
-    fbox(16, 101, 18, 105, 0, 1.0, P.k);
-    fbox(88, 101, 90, 105, 0, 1.0, P.k);
+    fbox(8.3, 43.8, 15.2, 47, 5.7, 6.35, shade(P.hbd, 1.05));    // its rolled top, proud all round
+    fbox(15, 46, 92, 106, 0.35, 1.0, P.esp2);                    // platform frame, up on its legs
+    fbox(15, 44, 94, 108, 1.0, 2.55, P.duv);                     // the charcoal duvet, abutting
+    fbox(15, 44, 17, 108, 2.55, 2.7, P.duv2);                    // top fold shadow at the head
+    fbox(16, 47, 18, 51, 0, 0.35, P.k);                          // black wedge legs, under it
+    fbox(88, 47, 90, 51, 0, 0.35, P.k);
+    fbox(16, 101, 18, 105, 0, 0.35, P.k);
+    fbox(88, 101, 90, 105, 0, 0.35, P.k);
     /* the pillow row against the headboard */
     fbox(16, 50, 22, 96, 2.55, 3.6, P.porc);                     // white sleepers behind
     fbox(17, 48, 32, 64, 2.55, 4.0, P.char);                     // charcoal lumbar
@@ -501,13 +508,13 @@ function buildFurniture() {
     fbox(17, 86, 31, 102, 2.55, 3.85, P.slateB);                 // slate-blue lumbar
     rectC(6, 42, 96, 110);
     /* the mid-century oak nightstand + black arc lamp, south of the bed */
-    fbox(10, 114, 34, 132, 0, 2.75, P.oak);                      // body
-    fbox(34, 116, 34.5, 130, 0.25, 1.3, P.oak2);                 // drawer fronts, proud of the
-    fbox(34, 116, 34.5, 130, 1.5, 2.55, P.oak2);                 // east face toward the room
-    fbox(34.5, 121, 35, 125, 0.6, 0.95, '#2a2622');              // recessed pulls
-    fbox(34.5, 121, 35, 125, 1.85, 2.2, '#2a2622');
-    fbox(11, 114, 13, 116, 0, 0.4, P.k);                         // splayed leg tips
-    fbox(31, 114, 33, 116, 0, 0.4, P.k);
+    fbox(10, 114, 34, 132, 0.45, 2.75, P.oak);                   // body, up on its legs
+    fbox(34, 116, 34.5, 130, 0.7, 1.5, P.oak2);                  // drawer fronts, proud of the
+    fbox(34, 116, 34.5, 130, 1.7, 2.6, P.oak2);                  // east face toward the room
+    fbox(34.5, 121, 35, 125, 1.0, 1.25, '#2a2622');              // recessed pulls
+    fbox(34.5, 121, 35, 125, 2.0, 2.25, '#2a2622');
+    fbox(11, 116, 13, 118, 0, 0.45, P.k);                        // splayed leg tips, under it
+    fbox(31, 116, 33, 118, 0, 0.45, P.k);
     fbox(14, 118, 22, 126, 2.75, 2.9, '#1e1b1a');                // lamp disc base
     fbox(17, 121, 19, 123, 2.9, 4.5, '#1e1b1a');                 // lamp rod
     fbox(17, 116, 19, 121, 4.3, 4.5, '#1e1b1a');                 // arm cantilever
@@ -576,7 +583,7 @@ function buildFurniture() {
     fbox(80, 310, 88, 318, 3.6, 3.75, P.alu);                    // a laptop on it
     fbox(80.5, 311, 81.5, 317, 3.75, 4.6, '#16181a');            // its raised lid
     fbox(88, 306, 100, 322, 2.2, 2.7, '#1e1f21');                // a simple task chair
-    fbox(98, 308, 101, 320, 2.7, 4.4, '#2a2c31');
+    fbox(99, 308, 101.5, 320, 2.7, 4.4, '#2a2c31');              // back, clear of the panel plane
     rectC(74, 290, 106, 342);
     fbox(76, 362, 102, 398, 1.6, 1.8, '#cbb89a');                // entry closet shelves
     fbox(76, 362, 102, 398, 3.2, 3.4, '#cbb89a');
@@ -611,11 +618,11 @@ function buildFurniture() {
     rectC(246, 268, 314, 324);
     fbox(162, 386, 310, 407, 0, 4.2, P.esp2);                    // south counter run
     fbox(160, 384, 312, 407, 4.2, 4.6, '#c9b88f');
-    fbox(224, 384, 256, 407, 0, 4.4, P.porc);                    // the range
-    fbox(226, 386, 254, 405, 4.4, 4.62, '#31363e');              // cooktop
+    fbox(224, 382, 256, 407, 0, 4.4, P.porc);                    // the range, standing proud of
+    fbox(226, 386, 254, 405, 4.4, 4.62, '#31363e');              // the counter front like a real one
     fbox(229, 389, 237, 397, 4.62, 4.72, P.k);                   // burners
     fbox(243, 389, 251, 397, 4.62, 4.72, P.k);
-    fbox(228, 383.4, 252, 384, 1.4, 3.0, '#3d3020');             // oven window
+    fbox(228, 381.6, 252, 382, 1.4, 3.0, '#3d3020');             // oven window
     fbox(286, 350, 312, 386, 0, 4.2, P.esp2);                    // east return counter
     fbox(284, 348, 312, 386, 4.2, 4.6, '#c9b88f');
     fbox(290, 356, 306, 374, 4.6, 5.8, '#2a2a30');               // microwave
