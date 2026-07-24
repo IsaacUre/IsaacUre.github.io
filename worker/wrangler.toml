@@ -1,0 +1,11 @@
+name = "ure-fetch"
+main = "index.js"
+compatibility_date = "2026-01-01"
+
+# No KV, no D1, no secrets, no environment variables. This worker holds no
+# state and no credentials — if it is ever compromised there is nothing in it
+# to steal. The allowlist lives in index.js on purpose: changing what the
+# museum can reach should be a reviewable commit, not a dashboard click.
+
+[observability]
+enabled = true
