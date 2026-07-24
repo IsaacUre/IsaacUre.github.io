@@ -2672,9 +2672,11 @@ span.st-newsart .ic { width: 40px; height: 40px; }
 .cr-imgcell figcaption { font-size: 10.5px; color: #5f6368; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* map card */
 .cr-mapcard { border: 1px solid #dadce0; border-radius: 10px; overflow: hidden; margin: 10px 0 14px; background: #fff; }
-.cr-maptiles { position: relative; display: grid; grid-template-columns: repeat(3, 1fr); line-height: 0; max-height: 190px; overflow: hidden; }
+/* one row of three tiles, shown whole — no max-height clip, because every
+   pixel fetched from the OSM tile servers should be a pixel someone sees */
+.cr-maptiles { position: relative; display: grid; grid-template-columns: repeat(3, 1fr); line-height: 0; }
 .cr-maptiles img { width: 100%; height: auto; }
-.cr-mappin { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -60%); font-size: 22px; line-height: 1; }
+.cr-mappin { position: absolute; transform: translate(-50%, -85%); font-size: 22px; line-height: 1; }
 .cr-mapmeta { padding: 10px 14px; font-size: 12.5px; }
 .cr-mapmeta b { display: block; font-size: 14px; }
 .cr-mapmeta span { display: block; color: #5f6368; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

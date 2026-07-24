@@ -2427,15 +2427,19 @@ webPage('google.com/search', {
         // the live sections only exist when there's a query to fire them — an empty
         // SERP must not paint spinners that init() will never fill
         // intent-conditional slots stay EMPTY (not spinners) — a spinner that may
-        // never be filled is exactly the bug the empty-query fix was about
-        var sections = has ? (snippet + local +
+        // never be filled is exactly the bug the empty-query fix was about.
+        // a pure calculator/unit query answers offline, so it paints no live
+        // sections at all: three spinners under a finished answer is a lie, and
+        // github's anonymous search budget is 10/min.
+        var offline = has && /^(math|unit)$/.test(serpIntent(q).kind);
+        var sections = has && !offline ? (snippet + local +
             '<div class="cr-serpslot" id="crSerpKp"></div>' +
             '<div class="cr-serpsec cr-serpfeatslot" id="crSerpFeat"></div>' +
             load('crSerpWiki', 'Wikipedia') +
             '<div class="cr-serpslot" id="crSerpImg"></div>' +
             load('crSerpGH', 'Code · GitHub') +
             '<div class="cr-serpslot" id="crSerpSO"></div>' +
-            load('crSerpHN', 'Discussion · Hacker News')) : '';
+            load('crSerpHN', 'Discussion · Hacker News')) : (has ? snippet + local : '');
         var rel = ['game boy', 'volkswagen golf gti', 'rice university', 'factorio', 'hades speedrun'].map(function (r) { return crLink('google.com/search?q=' + encodeURIComponent(r), '🔍 ' + esc(r), 'cr-rel'); }).join('');
         return '<div class="cr-serp">' +
             '<div class="cr-serphead">' + (crEngine() === 'Google' ? '<span class="cr-serplogo"><b style="color:#4285f4">G</b><b style="color:#ea4335">o</b><b style="color:#fbbc05">o</b><b style="color:#4285f4">g</b><b style="color:#34a853">l</b><b style="color:#ea4335">e</b></span>' : '<span class="cr-serplogo"><b style="color:#d81e05">URE</b></span>') +
@@ -2462,17 +2466,24 @@ webPage('google.com/search', {
         if (intent.kind === 'math') {
             var mv = mathEval(query);
             if (mv !== null) addAns(serpAnswer('Calculator', fmtNum(mv), query.replace(/\s+/g, ' ') + ' ='));
-        } else if (intent.kind === 'unit') {
+            return;                                                   // answered offline: no live sections exist to fill
+        }
+        if (intent.kind === 'unit') {
             var uc = unitConvert(intent.n, intent.from, intent.to);
             if (uc) addAns(serpAnswer('Unit conversion', fmtNum(uc.v) + ' ' + uc.unit, fmtNum(intent.n) + ' ' + intent.from + ' ='));
-        } else if (intent.kind === 'time') serpTime(intent.place, addAns);
+            return;
+        }
+        if (intent.kind === 'time') serpTime(intent.place, addAns);
         else if (intent.kind === 'weather') serpWeatherCard(intent.place, addAns);
         else if (intent.kind === 'define') serpDict(intent.word, addAns);
         else if (intent.kind === 'map') serpMap(intent.place, addAns);
 
-        /* the knowledge panel rides along for anything entity-shaped */
-        if (/^(general|code|map|weather)$/.test(intent.kind) && query.trim().split(/\s+/).length <= 5)
-            serpKnowledge(query, function (h) { fill('crSerpKp', h); });
+        /* the knowledge panel rides along for anything entity-shaped. map/weather
+           must hand it the PLACE — "where is rice university" is not an article
+           title, so passing the raw query bought a guaranteed 404 per search. */
+        var kpTerm = (intent.kind === 'map' || intent.kind === 'weather') ? intent.place : query;
+        if (/^(general|code|map|weather)$/.test(intent.kind) && String(kpTerm).trim().split(/\s+/).length <= 5)
+            serpKnowledge(kpTerm, function (h) { fill('crSerpKp', h); });
         if (intent.kind === 'code') serpSO(query, function (h) { fill('crSerpSO', h); });
         if (/^(general|code)$/.test(intent.kind)) serpImages(query, function (h) { fill('crSerpImg', h); });
 
@@ -3013,9 +3024,16 @@ function serpHN(q, done) {
    or three requests instead of nine, and keeps us polite to free APIs. */
 function serpIntent(q) {
     var s = String(q || '').trim(), l = s.toLowerCase();
-    if (/^[-+.\d\s()*/^%]+$/.test(s) && /[+\-*/^%]/.test(s) && /\d/.test(s)) return { kind: 'math' };
+    /* a hyphen between digits is ambiguous — subtraction, or a phone number, or
+       a year range. Those two shapes are common enough as real queries that the
+       calculator must not swallow them (1-800-273-8255 is not -9327). */
+    var phoneish = /^\+?\d{1,4}([-\s.]\d{2,5}){2,}$/.test(s) || /^\d{4}\s*-\s*\d{4}$/.test(s);
+    if (!phoneish && /^[-+.\d\s()*/^%]+$/.test(s) && /[+\-*/^%]/.test(s) && /\d/.test(s)) return { kind: 'math' };
     var u = l.match(/^([-+]?[\d.,]+)\s*([a-z°"']+)\s+(?:in|to|as)\s+([a-z°"']+)\??$/);
-    if (u) return { kind: 'unit', n: parseFloat(u[1].replace(/,/g, '')), from: u[2], to: u[3] };
+    if (u && /^[-+]?(\d{1,3}(,\d{3})+|\d*)(\.\d+)?$/.test(u[1]) && /\d/.test(u[1])) {
+        // 1,5 (European decimal) and 1.5.2 are malformed here, not silently reinterpreted
+        return { kind: 'unit', n: parseFloat(u[1].replace(/,/g, '')), from: u[2], to: u[3] };
+    }
     var t = l.match(/^(?:what(?:'s| is)? the )?time (?:in|at) (.+?)\??$/);
     if (t) return { kind: 'time', place: t[1] };
     var d = l.match(/^(?:define|definition of|meaning of|what does)\s+(.+?)(?:\s+mean)?\??$/);
@@ -3029,22 +3047,31 @@ function serpIntent(q) {
     return { kind: 'general' };
 }
 /* ── instant answers that never touch the network ── */
-/* a real shunting-yard evaluator: eval() on user text is how you get owned */
-var MATH_OPS = { '+': [1, 'l'], '-': [1, 'l'], '*': [2, 'l'], '/': [2, 'l'], '%': [2, 'l'], '^': [3, 'r'] };
+/* a real shunting-yard evaluator: eval() on user text is how you get owned.
+   precedences are doubled so unary minus can sit BETWEEN * and ^ — that is what
+   makes -2^2 = -4 (Google/Python) while 2^-3 still = 0.125. 'u' is prefix, so
+   pushing it must never pop: a prefix operator has no left operand to bind. */
+var MATH_OPS = { '+': [2, 'l'], '-': [2, 'l'], '*': [4, 'l'], '/': [4, 'l'], '%': [4, 'l'], 'u': [5, 'r'], '^': [6, 'r'] };
 function mathEval(src) {
     var toks = String(src).match(/(\d+\.?\d*|\.\d+|[-+*/^%()])/g);
     if (!toks || toks.length > 200) return null;
     var out = [], ops = [], prev = null;
     for (var i = 0; i < toks.length; i++) {
         var t = toks[i];
-        if (/^[\d.]/.test(t)) { var v = parseFloat(t); if (!isFinite(v)) return null; out.push(v); }
+        if (/^[\d.]/.test(t)) {
+            if ((t.match(/\./g) || []).length > 1) return null;          // 1.2.3 is not a number
+            var v = parseFloat(t); if (!isFinite(v)) return null;
+            out.push(v);
+        }
         else if (t === '(') ops.push(t);
         else if (t === ')') {
             while (ops.length && ops[ops.length - 1] !== '(') if (!mathPop(out, ops.pop())) return null;
-            if (!ops.length) return null;
+            if (!ops.length) return null;                                 // unbalanced
             ops.pop();
+            if (out.length < 1) return null;                              // "()" has no value
         } else if (MATH_OPS[t]) {
-            if ((t === '-' || t === '+') && (prev === null || prev === '(' || MATH_OPS[prev])) out.push(0);   // unary
+            var unary = (t === '-' || t === '+') && (prev === null || prev === '(' || (MATH_OPS[prev] && prev !== ')'));
+            if (unary) { if (t === '-') ops.push('u'); prev = t; continue; }   // '+x' is a no-op; prefix never pops
             var o = MATH_OPS[t];
             while (ops.length && MATH_OPS[ops[ops.length - 1]] &&
                    (MATH_OPS[ops[ops.length - 1]][0] > o[0] || (MATH_OPS[ops[ops.length - 1]][0] === o[0] && o[1] === 'l')))
@@ -3058,6 +3085,12 @@ function mathEval(src) {
     return out[0];
 }
 function mathPop(out, op) {
+    if (op === 'u') {                                                     // prefix negate: one operand
+        if (!out.length) return false;
+        var n = -out.pop();
+        if (!isFinite(n)) return false;
+        out.push(n); return true;
+    }
     if (out.length < 2) return false;
     var b = out.pop(), a = out.pop(), r;
     if (op === '+') r = a + b; else if (op === '-') r = a - b; else if (op === '*') r = a * b;
@@ -3068,37 +3101,44 @@ function mathPop(out, op) {
 }
 /* unit conversion: everything reduces to a base unit per dimension */
 var UNITS = {
-    len: { m: 1, meter: 1, meters: 1, km: 1000, kilometer: 1000, kilometers: 1000, cm: 0.01, mm: 0.001,
-           mi: 1609.344, mile: 1609.344, miles: 1609.344, ft: 0.3048, foot: 0.3048, feet: 0.3048,
-           in: 0.0254, inch: 0.0254, inches: 0.0254, yd: 0.9144, yard: 0.9144, yards: 0.9144, nmi: 1852 },
-    mass: { g: 1, gram: 1, grams: 1, kg: 1000, kilogram: 1000, kilograms: 1000, mg: 0.001, t: 1e6, tonne: 1e6,
+    len: { m: 1, meter: 1, meters: 1, km: 1000, kilometer: 1000, kilometers: 1000, cm: 0.01, centimeter: 0.01, centimeters: 0.01, mm: 0.001,
+           mi: 1609.344, mile: 1609.344, miles: 1609.344, ft: 0.3048, foot: 0.3048, feet: 0.3048, "'": 0.3048,
+           in: 0.0254, inch: 0.0254, inches: 0.0254, '"': 0.0254, yd: 0.9144, yard: 0.9144, yards: 0.9144, nmi: 1852 },
+    mass: { g: 1, gram: 1, grams: 1, kg: 1000, kilogram: 1000, kilograms: 1000, mg: 0.001, t: 1e6, tonne: 1e6, tonnes: 1e6,
             lb: 453.59237, lbs: 453.59237, pound: 453.59237, pounds: 453.59237, oz: 28.349523125, ounce: 28.349523125, ounces: 28.349523125, st: 6350.29318 },
-    vol: { l: 1, liter: 1, liters: 1, litre: 1, ml: 0.001, gal: 3.785411784, gallon: 3.785411784, gallons: 3.785411784,
-           qt: 0.946352946, pt: 0.473176473, cup: 0.2365882365, cups: 0.2365882365, floz: 0.0295735295625 },
+    vol: { l: 1, liter: 1, liters: 1, litre: 1, litres: 1, ml: 0.001, gal: 3.785411784, gallon: 3.785411784, gallons: 3.785411784,
+           qt: 0.946352946, quart: 0.946352946, quarts: 0.946352946, pt: 0.473176473, pint: 0.473176473, pints: 0.473176473,
+           cup: 0.2365882365, cups: 0.2365882365, floz: 0.0295735295625 },
     data: { b: 1, byte: 1, bytes: 1, kb: 1024, mb: 1048576, gb: 1073741824, tb: 1099511627776 },
     speed: { mps: 1, kph: 0.277777778, kmh: 0.277777778, mph: 0.44704, knot: 0.514444, knots: 0.514444 },
-    time: { s: 1, sec: 1, second: 1, seconds: 1, min: 60, minute: 60, minutes: 60, h: 3600, hr: 3600, hour: 3600, hours: 3600, day: 86400, days: 86400, week: 604800, year: 31557600 }
+    time: { s: 1, sec: 1, secs: 1, second: 1, seconds: 1, min: 60, mins: 60, minute: 60, minutes: 60,
+            h: 3600, hr: 3600, hrs: 3600, hour: 3600, hours: 3600, day: 86400, days: 86400,
+            week: 604800, weeks: 604800, year: 31557600, years: 31557600 }
 };
 var TEMPS = { c: 1, celsius: 1, '°c': 1, f: 1, fahrenheit: 1, '°f': 1, k: 1, kelvin: 1 };
+function unitHas(tbl, k) { return Object.prototype.hasOwnProperty.call(tbl, k); }   // 'constructor' is not a unit
 function unitConvert(n, from, to) {
     if (!isFinite(n)) return null;
-    if (TEMPS[from] && TEMPS[to]) {
+    if (unitHas(TEMPS, from) && unitHas(TEMPS, to)) {
         var c = /^(f|fahrenheit|°f)$/.test(from) ? (n - 32) * 5 / 9 : /^(k|kelvin)$/.test(from) ? n - 273.15 : n;
         var v = /^(f|fahrenheit|°f)$/.test(to) ? c * 9 / 5 + 32 : /^(k|kelvin)$/.test(to) ? c + 273.15 : c;
         return { v: v, unit: to };
     }
     for (var dim in UNITS) {
-        if (UNITS[dim][from] !== undefined && UNITS[dim][to] !== undefined)
+        if (!unitHas(UNITS, dim)) continue;
+        if (unitHas(UNITS[dim], from) && unitHas(UNITS[dim], to))
             return { v: n * UNITS[dim][from] / UNITS[dim][to], unit: to };
     }
     return null;
 }
+/* significant figures, not decimal places: a fixed 1e6 quantisation shows
+   62.137119 for one query and a mangled 0.000977 for its reciprocal */
 function fmtNum(v) {
     if (!isFinite(v)) return '—';
     var a = Math.abs(v);
-    if (a !== 0 && (a < 1e-4 || a >= 1e15)) return v.toExponential(6).replace(/e([+-])/, ' × 10^$1');
-    var s = (Math.round(v * 1e6) / 1e6).toString();
-    return s.indexOf('.') < 0 ? (+s).toLocaleString() : s;
+    if (a !== 0 && (a < 1e-9 || a >= 1e15)) return v.toExponential(6).replace(/e([+-])/, ' × 10^$1');
+    var s = String(+v.toPrecision(10));
+    return s.indexOf('.') < 0 && s.indexOf('e') < 0 ? (+s).toLocaleString() : s;
 }
 /* the big answer box at the top of the page */
 function serpAnswer(title, big, sub) {
@@ -3165,15 +3205,21 @@ function serpDict(word, done) {
 }
 /* ── images pack: real Wikimedia Commons thumbnails ── */
 function serpImages(q, done) {
-    liveGet('https://commons.wikimedia.org/w/api.php?format=json&origin=*&action=query&generator=search&gsrnamespace=6&gsrlimit=6&prop=imageinfo&iiprop=url|extmetadata&iiurlwidth=220&gsrsearch=' + encodeURIComponent(q), function (err, j) {
+    // iiprop=url only: extmetadata carries multi-paragraph descriptions/licence
+    // blobs per file that this pack never reads
+    liveGet('https://commons.wikimedia.org/w/api.php?format=json&origin=*&action=query&generator=search&gsrnamespace=6&gsrlimit=6&prop=imageinfo&iiprop=url&iiurlwidth=220&gsrsearch=' + encodeURIComponent(q), function (err, j) {
         if (err || !j || !j.query || !j.query.pages) { done(''); return; }
         var pages = j.query.pages, out = [];
-        Object.keys(pages).forEach(function (k) {
-            var p = pages[k], ii = p.imageinfo && p.imageinfo[0];
-            if (!ii || !ii.thumburl || !/^https:\/\/upload\.wikimedia\.org\//.test(ii.thumburl) || out.length >= 6) return;
-            out.push('<figure class="cr-imgcell"><img alt="" loading="lazy" referrerpolicy="no-referrer" src="' + esc(ii.thumburl) + '">' +
-                '<figcaption>' + esc(String(p.title || '').replace(/^File:/, '').replace(/\.[a-z]+$/i, '')) + '</figcaption></figure>');
-        });
+        // generator results come back keyed by pageid (i.e. upload age); `index`
+        // is what carries the search ranking, so sort by it or the strip is noise
+        Object.keys(pages).map(function (k) { return pages[k]; })
+            .sort(function (a, b) { return (a.index || 0) - (b.index || 0); })
+            .forEach(function (p) {
+                var ii = p.imageinfo && p.imageinfo[0];
+                if (!ii || !ii.thumburl || !/^https:\/\/upload\.wikimedia\.org\//.test(ii.thumburl) || out.length >= 6) return;
+                out.push('<figure class="cr-imgcell"><img alt="" loading="lazy" referrerpolicy="no-referrer" src="' + esc(ii.thumburl) + '">' +
+                    '<figcaption>' + esc(String(p.title || '').replace(/^File:/, '').replace(/\.[a-z]+$/i, '')) + '</figcaption></figure>');
+            });
         done(out.length ? '<h4 class="cr-serph">Images</h4><div class="cr-imgrow">' + out.join('') + '</div><p class="cr-serpnote">From Wikimedia Commons.</p>' : '');
     });
 }
@@ -3190,19 +3236,26 @@ function serpSO(q, done) {
     });
 }
 /* ── map card: real geocode + real OSM tiles stitched into a little map ── */
-function osmTile(lat, lon, z) {
-    var n = Math.pow(2, z);
-    return { x: Math.floor((lon + 180) / 360 * n), y: Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * n) };
+/* fractional tile coords: the whole part picks the tile, the fraction places
+   the pin inside it. flooring both away is how a marker ends up 2km off. */
+function osmTileF(lat, lon, z) {
+    var n = Math.pow(2, z), la = lat * Math.PI / 180;
+    return { x: (lon + 180) / 360 * n, y: (1 - Math.log(Math.tan(la) + 1 / Math.cos(la)) / Math.PI) / 2 * n };
 }
 function serpMap(place, done) {
     liveGet('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(place), function (err, j) {
         if (err || !j || !j.length) { done(''); return; }
         var p = j[0], lat = parseFloat(p.lat), lon = parseFloat(p.lon), z = 13;
-        if (!isFinite(lat) || !isFinite(lon)) { done(''); return; }
-        var t = osmTile(lat, lon, z), tiles = '';
-        for (var dy = 0; dy < 2; dy++) for (var dx = 0; dx < 3; dx++)      // 6 tiles: a real map, politely small
-            tiles += '<img alt="" loading="lazy" referrerpolicy="no-referrer" src="https://tile.openstreetmap.org/' + z + '/' + (t.x - 1 + dx) + '/' + (t.y + dy) + '.png">';
-        done('<div class="cr-mapcard"><div class="cr-maptiles">' + tiles + '<span class="cr-mappin">📍</span></div>' +
+        if (!isFinite(lat) || !isFinite(lon) || Math.abs(lat) > 85) { done(''); return; }
+        var f = osmTileF(lat, lon, z), tx = Math.floor(f.x), ty = Math.floor(f.y), tiles = '';
+        /* one row of three: the second row was clipped by the card's max-height
+           at every real window width, so it was three OSM requests for pixels
+           nobody could see — their tile policy deserves better than that */
+        for (var dx = 0; dx < 3; dx++)
+            tiles += '<img alt="" loading="lazy" referrerpolicy="no-referrer" src="https://tile.openstreetmap.org/' + z + '/' + (tx - 1 + dx) + '/' + ty + '.png">';
+        var left = ((1 + (f.x - tx)) / 3 * 100).toFixed(2), top = ((f.y - ty) * 100).toFixed(2);
+        done('<div class="cr-mapcard"><div class="cr-maptiles">' + tiles +
+            '<span class="cr-mappin" style="left:' + left + '%;top:' + top + '%">📍</span></div>' +
             '<div class="cr-mapmeta"><b>' + esc(String(p.display_name || place).split(',').slice(0, 2).join(',')) + '</b>' +
             '<span>' + esc(String(p.display_name || '')) + '</span>' +
             '<i>' + lat.toFixed(4) + ', ' + lon.toFixed(4) + ' · map © OpenStreetMap contributors</i></div></div>');
@@ -3213,6 +3266,9 @@ function serpTime(place, done) {
     liveGet('https://geocoding-api.open-meteo.com/v1/search?count=1&name=' + encodeURIComponent(place), function (err, j) {
         if (err || !j || !j.results || !j.results.length) { done(''); return; }
         var g = j.results[0], tz = g.timezone;
+        // an ABSENT timeZone silently means "the viewer's own zone" — which would
+        // print the local clock under a Tokyo heading. only a real string will do.
+        if (typeof tz !== 'string' || !tz) { done(''); return; }
         var now;
         try { now = new Date().toLocaleString('en-US', { timeZone: tz, weekday: 'long', hour: 'numeric', minute: '2-digit' }); }
         catch (e) { done(''); return; }
