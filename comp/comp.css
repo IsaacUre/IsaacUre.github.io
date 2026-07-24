@@ -2505,6 +2505,21 @@ span.st-newsart .ic { width: 40px; height: 40px; }
 .cr-framewrap { position: relative; flex: 1; min-height: 0; }
 .cr-frameifr { width: 100%; height: 100%; border: 0; background: #fff; }
 .cr-frameload { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+/* real aggregated search results */
+.cr-serpsec { margin: 6px 0 14px; }
+.cr-serph { font-size: 12px; font-weight: 700; color: #5f6368; margin: 14px 0 6px; text-transform: none; letter-spacing: .02em; }
+.cr-serploading { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #70757a; padding: 4px 0; }
+.cr-serploading .cr-lvspin { width: 14px; height: 14px; border-width: 2px; }
+.cr-serpnote { font-size: 12px; color: #70757a; padding: 2px 0 6px; }
+.cr-serpmeta { color: #5f6368; font-size: 12px; }
+.cr-serpfeatslot:empty { display: none; }
+.cr-serpfeat { border: 1px solid #dadce0; border-radius: 10px; padding: 12px 16px; margin: 4px 0 14px; background: #fff; }
+.cr-featlink { text-align: left; }
+.cr-featt { font-size: 18px; color: #1a0dab; }
+.cr-featsrc { display: block; font-size: 11px; color: #5f6368; margin: 2px 0 6px; }
+.cr-featsnip { font-size: 13px; color: #3c4043; margin: 0 0 8px; line-height: 1.55; }
+.cr-featmore { color: #1a73e8; font-size: 12.5px; }
+.cr-res .cr-resdesc b, .cr-featsnip b { font-weight: 700; color: #202124; }
 
 /* ═══════════════ VEILFALL — the proving grounds ═══════════════ */
 .ar { position: relative; width: 100%; height: 100%; background: #07060c; overflow: hidden; outline: none; font-family: "Pixelify Sans", sans-serif; user-select: none; }
