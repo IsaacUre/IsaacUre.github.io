@@ -1178,6 +1178,7 @@ function stepEnemies(dt) {
     var alive = 0;
     for (var i = RT.enemies.length - 1; i >= 0; i--) {
         var e = RT.enemies[i];
+        if (!e) continue;                              // array truncated under us (defensive)
         e.wobble = Math.max(0, e.wobble - dt * 3);
         e.flashT = Math.max(0, e.flashT - dt);
         e.spawnT = Math.max(0, e.spawnT - dt);
@@ -1210,7 +1211,8 @@ function stepEnemies(dt) {
     }
     // enemy projectiles
     for (var p = RT.eproj.length - 1; p >= 0; p--) {
-        var pr = RT.eproj[p]; pr.x += pr.vx * dt; pr.y += pr.vy * dt; pr.life -= dt;
+        var pr = RT.eproj[p]; if (!pr) continue;       // array truncated under us (defensive)
+        pr.x += pr.vx * dt; pr.y += pr.vy * dt; pr.life -= dt;
         if (Math.random() < 0.5) spawnPart({ x: pr.x, y: pr.y, z: pr.z, vx: 0, vy: 0, vz: rnd(-4, 6), life: 0.3, size: rnd(1, 2.4), col: '150,90,220', add: 1, grav: 0 });
         if (Math.hypot(pr.x - RT.px, pr.y - RT.py) < 0.6) { hurtPlayer(pr.dmg, pr); RT.eproj.splice(p, 1); continue; }
         if (pr.life <= 0 || pr.x < -1 || pr.x > GRID + 1 || pr.y < -1 || pr.y > GRID + 1) RT.eproj.splice(p, 1);
@@ -1329,7 +1331,10 @@ function playerDie() {
     var wasTrial = RT.mode === 'trial';
     banner('YOU FELL', wasTrial ? 'the Trial ends at wave ' + RT.trial.wave : 'the veil catches you — one moment', 3);
     logLine('<b class="ar-log-crit">You fall in the proving grounds.</b> ' + (wasTrial ? 'The Trial is over.' : 'A breath, and you are set back on your feet.'), 'kill');
-    if (wasTrial) endTrial(false);
+    // DEFER the trial teardown: playerDie can fire from inside stepEnemies' loop
+    // over RT.enemies, and endTrial empties that array in place — clearing it now
+    // would strand the loop on an undefined element. step() drains this after.
+    if (wasTrial) RT.endQueued = true;
 }
 function respawnPlayer() {
     RT.dead = false; RT.invuln = 2;
@@ -1717,7 +1722,8 @@ function stepCast(dt) {
     if (RT.channel) {
         var ch = RT.channel, sp = SPELLS[ch.id];
         var held = keyHeldFor(ch.id);
-        var drain = sp.mana * (1 + (ch.stage - 1) * 0.5) * dt;
+        // per-tick drain honours the same gem mana modifier the start-gate charged
+        var drain = spellManaCost(ch.id, ch.gems) * (1 + (ch.stage - 1) * 0.5) * dt;
         if (!held || RT.mana < drain) { endChannel(); }
         else {
             RT.mana -= drain;
@@ -2136,6 +2142,9 @@ function step(dt) {
         ambient(dt);
         if (RT.trial) stepTrial(dt);
     }
+    // a queued trial teardown (from a death that fired mid-enemy-loop) runs here,
+    // safely outside any iteration over RT.enemies / RT.eproj
+    if (RT.endQueued) { RT.endQueued = false; endTrial(false); }
     if (RT.bossBeam) { RT.bossBeam.t -= dt; if (RT.bossBeam.t <= 0) RT.bossBeam = null; }
     if (RT.banner) { RT.banner.t -= dt; if (RT.banner.t <= 0) RT.banner = null; }
     RT.shake = Math.max(0, RT.shake - dt * 22);
@@ -2326,6 +2335,21 @@ function updateHud(dt) {
     }
     var shN = RT.root.querySelector('.ar-shards-n'); if (shN.textContent !== String(S.shards)) shN.textContent = S.shards;
     var bestN = RT.root.querySelector('.ar-best'); if (bestN.textContent !== String(S.bestWave)) bestN.textContent = S.bestWave;
+    // zone title tracks the mode
+    var zt = RT.root.querySelector('.ar-zone b'), zi = RT.root.querySelector('.ar-zone i');
+    var wantZ = trialActive ? 'THE TRIALS' : 'THE PROVING GROUNDS';
+    if (zt.textContent !== wantZ) { zt.textContent = wantZ; zi.textContent = trialActive ? 'wave ' + (RT.trial ? RT.trial.wave : 1) + ' · one must imagine it survivable' : 'act 0 · the story is still being written'; }
+    // socket dots on skill slots
+    SLOT_KEYS.forEach(function (k) {
+        var slot = RT.root.querySelector('.ar-slot[data-slot="' + k + '"]');
+        var n = slotGems(k).length, cur = +(slot.getAttribute('data-socks') || 0);
+        if (n !== cur) {
+            slot.setAttribute('data-socks', n);
+            var dots = slot.querySelector('.ar-slot-socks');
+            if (!dots && n) { dots = document.createElement('span'); dots.className = 'ar-slot-socks'; slot.appendChild(dots); }
+            if (dots) dots.innerHTML = n ? Array(n + 1).join('<i></i>') : '';
+        }
+    });
     // dps
     RT.root.querySelector('.ar-dps-now').textContent = fmtN(dpsNow());
     RT.root.querySelector('.ar-dps-peak').textContent = fmtN(RT.dps.peak);
@@ -2632,8 +2656,10 @@ function fillBook() {
     body.querySelectorAll('[data-bind]').forEach(function (b) {
         b.addEventListener('click', function () {
             var k = b.getAttribute('data-bind'), id = b.getAttribute('data-of');
-            if (S.binds[k] === id) { S.binds[k] = null; delete S.sockets[k]; }
-            else S.binds[k] = id;
+            if (S.binds[k] === id) {   // unbinding: return any socketed gems to the bag, don't destroy them
+                (S.sockets[k] || []).forEach(function (g) { S.gems[g] = (S.gems[g] || 0) + 1; });
+                delete S.sockets[k]; S.binds[k] = null;
+            } else S.binds[k] = id;
             sSave(); paintSlots(); fillBook(); sfx('alloc'); RT.root.focus();
         });
     });

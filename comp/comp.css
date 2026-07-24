@@ -2702,3 +2702,7 @@ span.st-newsart .ic { width: 40px; height: 40px; }
 .ar-tree-tip b.ar-tt-ks { color: #ffcf5a; }
 
 @media (max-width: 900px) { .ar-trials { top: 84px; } }
+
+/* skill-slot socket dots */
+.ar-slot-socks { position: absolute; left: 2px; top: 1px; display: flex; gap: 2px; pointer-events: none; }
+.ar-slot-socks i { width: 4px; height: 4px; border-radius: 50%; background: #9fe0c8; box-shadow: 0 0 3px rgba(159,224,200,.8); }
