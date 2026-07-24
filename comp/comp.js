@@ -166,10 +166,16 @@ function openApp(id, arg) {
 }
 function createWindow(id, a, arg) {
     var w = a.w || 560, h = a.h || 420;
-    w = Math.min(w, window.innerWidth - 16); h = Math.min(h, window.innerHeight - BAR - 16);
+    // boot-time dev hooks can fire before the viewport has laid out; an unlaid
+    // (zero) viewport would write an invalid negative width the CSS parser drops.
+    // Only substitute defaults in that degenerate case — real narrow phones keep
+    // getting windows clamped to their true width.
+    var vw = window.innerWidth > 40 ? window.innerWidth : 1280;
+    var vh = window.innerHeight > 40 ? window.innerHeight : 800;
+    w = Math.min(w, vw - 16); h = Math.min(h, vh - BAR - 16);
     var n = Object.keys(openWins).length;
-    var left = clamp(Math.round((window.innerWidth - w) / 2) + (n % 5) * 26 - 52, 8, window.innerWidth - w - 8);
-    var top = clamp(Math.round((window.innerHeight - BAR - h) / 2) + (n % 5) * 22 - 40, 8, window.innerHeight - BAR - h - 8);
+    var left = clamp(Math.round((vw - w) / 2) + (n % 5) * 26 - 52, 8, Math.max(8, vw - w - 8));
+    var top = clamp(Math.round((vh - BAR - h) / 2) + (n % 5) * 22 - 40, 8, Math.max(8, vh - BAR - h - 8));
     var el = document.createElement('section');
     el.className = 'win px-lg lift' + (a.titlebar ? ' win-tabbar' : ''); el.setAttribute('data-app', id); el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', a.title);
     el.style.cssText = 'left:' + left + 'px;top:' + top + 'px;width:' + w + 'px;height:' + h + 'px';
@@ -577,7 +583,8 @@ var TREE_C = {
                 'common': {
                     'Terraria': { $when: 'inst:terraria', 'Terraria.exe': '@terraria', 'ReLogic.Native.dll': 0, 'Content': { 'Images': { $: { e: 'Every tree you have ever chopped, as .xnb files.' } }, 'Sounds': {} }, 'changelog.txt': 0 },
                     'Cookie Clicker': { $when: 'inst:cookie', 'Cookie Clicker.exe': '@cookie', 'resources': { 'app.asar': ['142 MB'] }, 'LICENSE.txt': 0 },
-                    'URE QUEST': { $when: 'inst:urequest', 'urequest.exe': '@ureboy', 'quest.pak': 0, 'readme.txt': 'URE QUEST v4 — the party rebuild.\nIf the game asks you to install an intercooler mid-boss, that is not a bug. That is the plot.' }
+                    'URE QUEST': { $when: 'inst:urequest', 'urequest.exe': '@ureboy', 'quest.pak': 0, 'readme.txt': 'URE QUEST v4 — the party rebuild.\nIf the game asks you to install an intercooler mid-boss, that is not a bug. That is the plot.' },
+                    'VEILFALL': { $when: 'inst:veilfall', 'veilfall.exe': '@arpg', 'Content': { 'spells.pak': 0, 'arena.pak': 0 }, 'story.txt': '[this file intentionally left blank]\n\n(the writer says it is coming. the writer says it will be short but sweet. the dummy waits.)' }
                 },
                 'workshop': {}
             },
@@ -2012,10 +2019,10 @@ function setClip(text) {
     try { navigator.clipboard.writeText(OSCLIP).catch(function () {}); } catch (err) {}
 }
 function closeBctx() { if (bctxEl) { bctxEl.remove(); bctxEl = null; } }
-function openBctx(host, e, items, fn, dark) {
+function openBctx(host, e, items, fn, skin) {   // skin: true = dark (Edge/Incognito), or a class name ('steam')
     closeBctx(); closeCtx(); closeFctx(); setStart(false); closeFlyouts();
     var m = document.createElement('div');
-    m.className = 'bctx' + (dark ? ' dark' : ''); m.setAttribute('role', 'menu'); m.tabIndex = -1;
+    m.className = 'bctx' + (skin === true ? ' dark' : skin ? ' ' + skin : ''); m.setAttribute('role', 'menu'); m.tabIndex = -1;
     m.innerHTML = items.map(function (it) {
         if (it === 'sep') return '<div class="bctx-sep"></div>';
         return '<button class="bctx-i" type="button" role="menuitem" data-bx="' + it.k + '"' + (it.dis ? ' disabled' : '') + '>' +
@@ -2392,38 +2399,109 @@ webPage('chrome://newtab', {
     }
 });
 
-/* — Search results — */
+/* — Search results — a REAL aggregated SERP. render() lays out the shell with
+   a placeholder per source; init() fires Wikipedia + GitHub + Hacker News in
+   parallel and drops each into its slot as it lands. Every result links into a
+   page the live layer actually loads. The local curated corpus rides along as
+   its own instant section. — */
 webPage('google.com/search', {
     title: function (q) { return q + ' - ' + crEngine() + ' Search'; }, fav: { ch: 'G', c: '#4285f4' }, dynamic: true,
     render: function (q) {
         q = q || '';
+        var has = !!q.trim();
         var ql = q.toLowerCase();
-        var corpus = Object.keys(WEB).map(function (k) { return WEB[k]; }).filter(function (s) { return s.searchable; });
-        var hits = corpus.filter(function (s) { return (s.stitle + ' ' + s.sdesc + ' ' + (s.skey || '')).toLowerCase().indexOf(ql) >= 0; });
-        if (!hits.length) hits = corpus.filter(function (s) { return ql.split(/\s+/).some(function (w) { return w.length > 2 && (s.stitle + ' ' + (s.skey || '')).toLowerCase().indexOf(w) >= 0; }); });
         var snippet = '';
-        if (/gti|argent|golf/.test(ql)) snippet = '<div class="cr-snip"><b>Volkswagen Golf GTI “Argent”</b><p>A silver MK8 GTI belonging to one (1) Isaac Ure. Known for: back roads, financing an FSAE team, being named like a knight.</p>' + crLink('en.wikipedia.org/wiki/Volkswagen_Golf_GTI', 'en.wikipedia.org › Volkswagen_Golf_GTI', 'cr-snipl') + '</div>';
         if (/dino|dinosaur|t-?rex/.test(ql)) snippet = '<div class="cr-snip"><b>chrome://dino</b><p>You appear to be looking for the dinosaur. He is employed here.</p>' + crLink('chrome://dino', 'Play the dino game', 'cr-snipl') + '</div>';
-        var rows = hits.slice(0, 6).map(function (s) {
-            return '<div class="cr-res">' + crLink(s.host, '<span class="cr-resurl">' + crFav(s.fav) + ' https://' + esc(s.host) + '</span><span class="cr-restitle">' + esc(s.stitle) + '</span>', '') +
-                '<span class="cr-resdesc">' + esc(s.sdesc) + '</span></div>';
-        }).join('');
-        var funny = '<div class="cr-res dim"><span class="cr-resurl">https://reddit.com › r/rice › comments</span><span class="cr-restitle2">' + esc(q) + '? — asking for a friend</span><span class="cr-resdesc">14 comments · top reply: “just ask the guy who made the pixel desktop”</span></div>';
-        var rel = ['gti run high score', 'isaacure.com room', 'formula sae budget spreadsheet', 'is chamomile caffeine free', 'dino game'].map(function (r) { return crLink('google.com/search?q=' + encodeURIComponent(r), '🔍 ' + esc(r), 'cr-rel'); }).join('');
+        var local = '';
+        if (has) {
+            var corpus = Object.keys(WEB).map(function (k) { return WEB[k]; }).filter(function (s) { return s.searchable; });
+            var hits = corpus.filter(function (s) { return (s.stitle + ' ' + s.sdesc + ' ' + (s.skey || '')).toLowerCase().indexOf(ql) >= 0; });
+            if (!hits.length) hits = corpus.filter(function (s) { return ql.split(/\s+/).some(function (w) { return w.length > 2 && (s.stitle + ' ' + (s.skey || '')).toLowerCase().indexOf(w) >= 0; }); });
+            var localRows = hits.slice(0, 4).map(function (s) {
+                return '<div class="cr-res">' + crLink(s.host, '<span class="cr-resurl">' + crFav(s.fav) + ' https://' + esc(s.host) + '</span><span class="cr-restitle">' + esc(s.stitle) + '</span>', '') +
+                    '<span class="cr-resdesc">' + esc(s.sdesc) + '</span></div>';
+            }).join('');
+            local = localRows ? '<div class="cr-serpsec"><h4 class="cr-serph">From isaacure.com</h4>' + localRows + '</div>' : '';
+        }
+        var load = function (id, label) { return '<div class="cr-serpsec" id="' + id + '"><h4 class="cr-serph">' + label + '</h4><div class="cr-serploading"><span class="cr-lvspin"></span> searching…</div></div>'; };
+        // the live sections only exist when there's a query to fire them — an empty
+        // SERP must not paint spinners that init() will never fill
+        // intent-conditional slots stay EMPTY (not spinners) — a spinner that may
+        // never be filled is exactly the bug the empty-query fix was about.
+        // a pure calculator/unit query answers offline, so it paints no live
+        // sections at all: three spinners under a finished answer is a lie, and
+        // github's anonymous search budget is 10/min.
+        var offline = has && /^(math|unit)$/.test(serpIntent(q).kind);
+        var sections = has && !offline ? (snippet + local +
+            '<div class="cr-serpslot" id="crSerpKp"></div>' +
+            '<div class="cr-serpsec cr-serpfeatslot" id="crSerpFeat"></div>' +
+            load('crSerpWiki', 'Wikipedia') +
+            '<div class="cr-serpslot" id="crSerpImg"></div>' +
+            load('crSerpGH', 'Code · GitHub') +
+            '<div class="cr-serpslot" id="crSerpSO"></div>' +
+            load('crSerpHN', 'Discussion · Hacker News')) : (has ? snippet + local : '');
+        var rel = ['game boy', 'volkswagen golf gti', 'rice university', 'factorio', 'hades speedrun'].map(function (r) { return crLink('google.com/search?q=' + encodeURIComponent(r), '🔍 ' + esc(r), 'cr-rel'); }).join('');
         return '<div class="cr-serp">' +
             '<div class="cr-serphead">' + (crEngine() === 'Google' ? '<span class="cr-serplogo"><b style="color:#4285f4">G</b><b style="color:#ea4335">o</b><b style="color:#fbbc05">o</b><b style="color:#4285f4">g</b><b style="color:#34a853">l</b><b style="color:#ea4335">e</b></span>' : '<span class="cr-serplogo"><b style="color:#d81e05">URE</b></span>') +
-              '<label class="cr-serpbox">' + ic('ic-search') + '<input class="cr-serpq" value="' + esc(q) + '" spellcheck="false" autocomplete="off"></label></div>' +
+              '<label class="cr-serpbox">' + ic('ic-search') + '<input class="cr-serpq" value="' + esc(q) + '" spellcheck="false" autocomplete="off"></label>' + liveChip() + '</div>' +
             '<div class="cr-serptabs"><span class="on">All</span><span>Images</span><span>Videos</span><span>News</span><span>Maps</span></div>' +
-            '<p class="cr-serpstat">About ' + (12400 + q.length * 733).toLocaleString() + ' results (0.0' + (2 + q.length % 7) + ' seconds)</p>' +
-            snippet + rows + funny +
+            '<p class="cr-serpstat" id="crSerpStat">' + (has ? 'Searching the real web for “' + esc(q) + '”…' : 'Type a query to search the real web.') + '</p>' +
+            '<div id="crSerpAns"></div><div id="crSerpDym"></div>' +
+            sections +
             '<div class="cr-relwrap"><b>Related searches</b><div class="cr-rels">' + rel + '</div></div></div>';
     },
     init: function (view) {
         var q = view.querySelector('.cr-serpq');
+        var query = q ? q.value : crQOf(crTab().url);
         if (q) q.addEventListener('keydown', function (e) { if (e.key === 'Enter' && q.value.trim()) crNav('google.com/search?q=' + encodeURIComponent(q.value.trim())); });
         view.querySelectorAll('.cr-serptabs span').forEach(function (t) {
             t.addEventListener('click', function () { if (!t.classList.contains('on')) toast(t.textContent + ' results: also pixels, but sideways.'); });
         });
+        if (!query || !query.trim()) return;                          // empty SERP: render() already left no spinners
+        function fill(id, html) { if (!view.isConnected) return; var el = view.querySelector('#' + id); if (el) el.innerHTML = html; }
+        function addAns(html) { if (!html || !view.isConnected) return; var el = view.querySelector('#crSerpAns'); if (el) el.innerHTML += html; }
+
+        /* read the query's shape first; only the packs that fit get to fetch */
+        var intent = serpIntent(query);
+        if (intent.kind === 'math') {
+            var mv = mathEval(query);
+            if (mv !== null) addAns(serpAnswer('Calculator', fmtNum(mv), query.replace(/\s+/g, ' ') + ' ='));
+            return;                                                   // answered offline: no live sections exist to fill
+        }
+        if (intent.kind === 'unit') {
+            var uc = unitConvert(intent.n, intent.from, intent.to);
+            if (uc) addAns(serpAnswer('Unit conversion', fmtNum(uc.v) + ' ' + uc.unit, fmtNum(intent.n) + ' ' + intent.from + ' ='));
+            return;
+        }
+        if (intent.kind === 'time') serpTime(intent.place, addAns);
+        else if (intent.kind === 'weather') serpWeatherCard(intent.place, addAns);
+        else if (intent.kind === 'define') serpDict(intent.word, addAns);
+        else if (intent.kind === 'map') serpMap(intent.place, addAns);
+
+        /* the knowledge panel rides along for anything entity-shaped. map/weather
+           must hand it the PLACE — "where is rice university" is not an article
+           title, so passing the raw query bought a guaranteed 404 per search. */
+        var kpTerm = (intent.kind === 'map' || intent.kind === 'weather') ? intent.place : query;
+        if (/^(general|code|map|weather)$/.test(intent.kind) && String(kpTerm).trim().split(/\s+/).length <= 5)
+            serpKnowledge(kpTerm, function (h) { fill('crSerpKp', h); });
+        if (intent.kind === 'code') serpSO(query, function (h) { fill('crSerpSO', h); });
+        if (/^(general|code)$/.test(intent.kind)) serpImages(query, function (h) { fill('crSerpImg', h); });
+
+        serpWiki(query, true, function (featHtml, restHtml, total, suggest) {
+            if (!view.isConnected) return;
+            fill('crSerpFeat', featHtml);
+            fill('crSerpWiki', restHtml);
+            /* wikipedia suggests variants even for correctly-spelled queries
+               ("Douglas Adams" → "douglas adam's"); only ask when the suggestion
+               differs by more than case, spacing, and punctuation */
+            function dymKey(s) { return String(s).toLowerCase().replace(/[^a-z0-9]/g, ''); }
+            if (suggest && dymKey(suggest) !== dymKey(query))
+                fill('crSerpDym', '<p class="cr-dym">Did you mean ' + crLink('google.com/search?q=' + encodeURIComponent(suggest), esc(suggest), 'cr-dymlink') + '?</p>');
+            var st = view.querySelector('#crSerpStat');
+            if (st) st.textContent = total ? 'About ' + nnum(total).toLocaleString() + ' Wikipedia results — plus live GitHub and Hacker News' : 'Real results for “' + query + '”';
+        });
+        serpGH(query, function (h) { fill('crSerpGH', h); });
+        serpHN(query, function (h) { fill('crSerpHN', h); });
     }
 });
 
@@ -2720,6 +2798,820 @@ webPage('__viewsource', {
     }
 });
 
+/* ════════════════════ the LIVE web ════════════════════
+   The museum grows windows. A handful of real sites are CORS-open
+   to any static page, so this Chrome genuinely browses them:
+   Wikipedia (any article), Hacker News (front page + threads),
+   GitHub (any profile or repo), Open-Meteo (real weather). Each
+   is fetched client-side and re-rendered in the house style —
+   no proxy, no server, no dependencies, same as everything else.
+   Everything NOT understood falls through to a sandboxed iframe
+   (__frame) that loads the honest-to-goodness site when it lets us.
+   ════════════════════════════════════════════════════════ */
+var LIVE_CACHE = {};                                      // url → { t, v } · session-only, 5 min TTL
+var LIVE_TITLES = {};                                     // url → real page title, learned after load
+function liveCacheGet(u) { var e = LIVE_CACHE[u]; return e && Date.now() - e.t < 300000 ? e.v : null; }
+function liveCachePut(u, v) {
+    var ks = Object.keys(LIVE_CACHE);
+    if (ks.length > 48) delete LIVE_CACHE[ks[0]];         // insertion order: oldest goes first
+    LIVE_CACHE[u] = { t: Date.now(), v: v };
+}
+/* a wire field the renderer treats as a number gets coerced to one, so the
+   "nothing from the wire touches innerHTML unguarded" invariant holds even for
+   the counts and temperatures — a string (schema change, MITM) becomes 0, not
+   markup. esc() guards the text fields; nnum() guards the numeric ones. */
+function nnum(n) { n = +n; return isFinite(n) ? n : 0; }
+/* fetch JSON with a timeout, an offline check, and the cache in front.
+   incognito neither reads nor writes the cache — a private fetch must not leave
+   its response body behind for a normal tab, nor reuse one it left there. */
+function liveGet(url, cb) {
+    var priv = !!(CR && CR.incog);
+    if (!priv) { var hit = liveCacheGet(url); if (hit) { cb(null, hit); return; } }
+    if (navigator.onLine === false) { cb('offline'); return; }
+    var ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    var tmr = setTimeout(function () { if (ctl) ctl.abort(); }, 9000);
+    fetch(url, ctl ? { signal: ctl.signal } : {}).then(function (r) {
+        clearTimeout(tmr);
+        if (!r.ok) { cb('http' + r.status, null, r); return null; }
+        return r.json().then(function (j) { if (!priv) liveCachePut(url, j); cb(null, j); });
+    }).catch(function () { clearTimeout(tmr); cb('net'); });
+}
+/* the tab's URL with any view-source: prefix stripped — live pages parse their
+   own path from it, the same way __viewsource reads the tab directly */
+function liveUrl() { return String(crTab().url).replace(/^(view-source:)+/i, '').replace(/^https?:\/\//i, '').replace(/^www\./i, ''); }
+function livePath(host) {
+    var u = liveUrl();
+    return u.toLowerCase().indexOf(host) === 0 ? u.slice(host.length).replace(/^\//, '') : '';
+}
+/* ── sanitizer: real HTML → the small tag set this browser trusts ──
+   Parsed in an inert document (scripts never run), then rebuilt node by
+   node against a whitelist. Nothing from the wire touches innerHTML.
+   Links come back as the sim's own cr-l buttons via linkFn. */
+var LIVE_TAGS = { P: 'p', B: 'b', STRONG: 'b', I: 'i', EM: 'i', UL: 'ul', OL: 'ol', LI: 'li', H2: 'h3', H3: 'h4', H4: 'h4', BLOCKQUOTE: 'blockquote', CODE: 'code', PRE: 'pre', BR: 'br', SUP: 'sup', SUB: 'sub' };
+var LIVE_DROP = { SCRIPT: 1, STYLE: 1, IFRAME: 1, OBJECT: 1, EMBED: 1, SVG: 1, MATH: 1, TABLE: 1, FIGURE: 1, IMG: 1, VIDEO: 1, AUDIO: 1, LINK: 1, META: 1, FORM: 1, INPUT: 1, BUTTON: 1, TEXTAREA: 1, SELECT: 1, CANVAS: 1, TEMPLATE: 1, NOSCRIPT: 1 };
+function liveSanitize(html, linkFn) {
+    var doc;
+    try { doc = new DOMParser().parseFromString(String(html || ''), 'text/html'); } catch (e) { return ''; }
+    var out = document.createElement('div');
+    (function walk(src, dst, depth) {
+        if (depth > 40) return;
+        for (var n = src.firstChild; n; n = n.nextSibling) {
+            if (n.nodeType === 3) { dst.appendChild(document.createTextNode(n.nodeValue)); continue; }
+            if (n.nodeType !== 1) continue;
+            var tag = n.nodeName.toUpperCase();
+            if (LIVE_DROP[tag]) continue;
+            if (tag === 'A') {
+                var to = linkFn ? linkFn(n.getAttribute('href') || '') : null;
+                if (!to) { walk(n, dst, depth + 1); continue; }        // unroutable link: keep its text
+                var a = document.createElement('a');
+                a.className = 'cr-l cr-lva';
+                a.setAttribute('data-href', to);
+                walk(n, a, depth + 1);
+                dst.appendChild(a);
+                continue;
+            }
+            var mapped = LIVE_TAGS[tag];
+            if (mapped) {
+                var el = document.createElement(mapped);
+                walk(n, el, depth + 1);
+                dst.appendChild(el);
+            } else {
+                walk(n, dst, depth + 1);                               // unknown container: unwrap, keep the words
+            }
+        }
+    })(doc.body, out, 0);
+    return out.innerHTML;
+}
+/* shared live-page states, in the museum's voice */
+function liveSkeleton(label) {
+    return '<div class="cr-lv"><div class="cr-lvload"><span class="cr-lvspin"></span><p>Fetching the real ' + esc(label) + '…</p>' +
+        '<i>an actual network request is happening inside the fake computer</i></div></div>';
+}
+function liveFail(err, what, r) {
+    if (err === 'offline' || err === 'net') {
+        return '<div class="cr-err"><span class="cr-errdino">🦖</span><h2>The real internet didn’t answer</h2>' +
+            '<p>' + esc(what) + ' needs the outside world, and the outside world is ' + (err === 'offline' ? 'offline' : 'not picking up') + '.</p>' +
+            '<p class="cr-errcode">ERR_INTERNET_ACTUALLY_DISCONNECTED</p>' +
+            '<div class="cr-errbtns"><button class="cr-btn" id="crErrBack">Go back</button>' + crLink('chrome://dino', 'Play the dino — he was built for this', 'cr-btn ghost') + '</div></div>';
+    }
+    if (err === 'http403' && r && r.headers && r.headers.get('x-ratelimit-remaining') === '0') {
+        var reset = +r.headers.get('x-ratelimit-reset') * 1000;
+        return '<div class="cr-err"><span class="cr-errdino">⏳</span><h2>Rate limited</h2>' +
+            '<p>GitHub gives anonymous museums 60 requests an hour. They ran out.</p>' +
+            '<p class="cr-errcode">Resets ' + (reset ? 'around ' + fmtTime(new Date(reset)) : 'within the hour') + '</p>' +
+            '<div class="cr-errbtns"><button class="cr-btn" id="crErrBack">Go back</button></div></div>';
+    }
+    return '<div class="cr-err"><span class="cr-errdino">🦖</span><h2>That didn’t load</h2>' +
+        '<p>' + esc(what) + ' answered strangely (' + esc(String(err)) + '). The real web does that sometimes.</p>' +
+        '<div class="cr-errbtns"><button class="cr-btn" id="crErrBack">Go back</button></div></div>';
+}
+function liveWireBack(view) { var b = view.querySelector('#crErrBack'); if (b) b.addEventListener('click', crBack); }
+/* the geocoder came back empty (or unreachable) for a directly-typed city */
+function wxNoCity(name, err) {
+    if (err === 'offline' || err === 'net' || /^http/.test(String(err))) return liveFail(err, 'Open-Meteo');
+    return '<div class="cr-err"><span class="cr-errdino">🗺️</span><h2>No such place</h2>' +
+        '<p>The real atlas has no “<b>' + esc(name) + '</b>”. Check the spelling, or try a bigger nearby city.</p>' +
+        '<div class="cr-errbtns"><button class="cr-btn" id="crErrBack">Go back</button>' + crLink('open-meteo.com', 'Weather home', 'cr-btn ghost') + '</div></div>';
+}
+/* fill a live view when the fetch lands — but only if the user is still there.
+   crPage swaps the view node on every navigation, so a stale response writes
+   into a detached div and vanishes. isConnected is the whole race guard. */
+function liveFill(view, url, html, title) {
+    if (!view.isConnected) return;
+    view.innerHTML = html;
+    liveWireBack(view);
+    if (title && CR) {
+        if (!CR.incog) {                                   // a private page's real title stays out of the shared map
+            if (Object.keys(LIVE_TITLES).length > 80) LIVE_TITLES = {};   // check BEFORE the set, or the 81st write is wiped with the rest
+            LIVE_TITLES[url] = title;
+            var h = crHist();                              // retitle the history entry the nav just wrote
+            for (var i = 0; i < h.length; i++) if (h[i].u === url) { h[i].t = title; break; }
+            crjSet('hist', h);
+        }
+        crTabs();
+    }
+    if (find.appId === 'chrome' && findOpenNow()) runFind();
+}
+/* the little proof-of-life chip live pages wear */
+function liveChip() { return '<span class="cr-lvchip" title="Fetched from the real site just now">● live</span>'; }
+
+/* ── real search: snippet plumbing ──
+   a search snippet arrives as HTML (Wikipedia wraps matches in <span
+   class="searchmatch">). Take its PLAIN text, then re-bold the query terms
+   ourselves — escaping each segment independently, so nothing from the wire
+   is ever concatenated into markup and no entity gets corrupted mid-bold. */
+function snipText(html) {
+    try { return new DOMParser().parseFromString(String(html || ''), 'text/html').body.textContent || ''; }
+    catch (e) { return String(html || '').replace(/<[^>]*>/g, ''); }
+}
+function snipHighlight(html, q) {
+    var txt = snipText(html);
+    var words = String(q || '').trim().split(/\s+/).filter(function (w) { return w.length > 1; })
+        .map(function (w) { return w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); });
+    if (!words.length) return esc(txt);
+    var re = new RegExp('(' + words.join('|') + ')', 'gi'), out = '', last = 0, m;
+    while ((m = re.exec(txt))) {
+        out += esc(txt.slice(last, m.index)) + '<b>' + esc(m[0]) + '</b>';
+        last = m.index + m[0].length;
+        if (re.lastIndex === m.index) re.lastIndex++;      // zero-width guard
+        if (out.length > 4000) break;                      // a pathological snippet can't balloon the DOM
+    }
+    return out + esc(txt.slice(last));
+}
+/* one SERP section: a header, then rows, an empty note, or an error note.
+   fills a pre-placed #slot so the three sources can land in any order and the
+   layout never jumps. every fill is guarded by the caller's view.isConnected. */
+function serpSection(label, err, rowsHtml, emptyMsg) {
+    var h = '<h4 class="cr-serph">' + esc(label) + '</h4>';
+    if (err === 'rate') return h + '<p class="cr-serpnote">' + esc(label) + ' allows only a few anonymous searches a minute — it just hit the limit. Try again shortly.</p>';
+    if (err === 'badq') return h + '<p class="cr-serpnote">' + esc(label) + ' couldn’t parse that query.</p>';
+    if (err) return h + '<p class="cr-serpnote">Couldn’t reach ' + esc(label) + ' (' + esc(String(err)) + ').</p>';
+    if (!rowsHtml) return h + '<p class="cr-serpnote">' + esc(emptyMsg || 'No results.') + '</p>';
+    return h + rowsHtml;
+}
+/* the three real sources. each takes the query + a done() it calls once, and is
+   entirely self-contained so one source failing never blocks another. serpWiki
+   returns (featuredCardHtml, restSectionHtml, totalHits) so the caller drops the
+   card and the rows into their own slots — no fragile string re-splitting. */
+function serpWiki(q, feat, done) {
+    liveGet('https://en.wikipedia.org/w/api.php?format=json&origin=*&action=query&list=search&srlimit=6&srinfo=totalhits|suggestion&srprop=snippet&srsearch=' + encodeURIComponent(q), function (err, j, r) {
+        if (err || !j || !j.query || !j.query.search) { done('', serpSection('Wikipedia', err || 'empty'), null); return; }
+        var info = j.query.searchinfo || {}, hits = j.query.search, total = info.totalhits, sug = info.suggestion || '';
+        if (!hits.length) { done('', serpSection('Wikipedia', null, null), 0, sug); return; }
+        var top = hits[0];
+        var turl = 'en.wikipedia.org/wiki/' + top.title.replace(/ /g, '_');
+        var featHtml = feat ? '<div class="cr-serpfeat">' + crLink(turl, '<span class="cr-featt">' + esc(top.title) + '</span>', 'cr-featlink') +
+            '<span class="cr-featsrc">Wikipedia</span><p class="cr-featsnip">' + snipHighlight(top.snippet, q) + '…</p>' +
+            crLink(turl, 'Read the full article →', 'cr-featmore') + '</div>' : '';
+        var list = feat ? hits.slice(1, 5) : hits.slice(0, 5);
+        var rows = list.map(function (h) {
+            var u = 'en.wikipedia.org/wiki/' + h.title.replace(/ /g, '_');
+            return serpRow(u, 'en.wikipedia.org › wiki › ' + esc(h.title), { ch: 'W', c: '#202122' }, h.title, snipHighlight(h.snippet, q) + '…');
+        }).join('');
+        // a single-hit query has no "rest" — show only the featured card, no contradictory empty note
+        done(featHtml, rows ? serpSection(feat ? 'More from Wikipedia' : 'Wikipedia', null, rows) : '', total, sug);
+    });
+}
+function serpGH(q, done) {
+    liveGet('https://api.github.com/search/repositories?per_page=4&sort=stars&q=' + encodeURIComponent(q), function (err, j, r) {
+        if (err) { done(serpSection('Code · GitHub', err === 'http403' || err === 'http429' ? 'rate' : err === 'http422' ? 'badq' : err)); return; }
+        if (!j || !j.items || !j.items.length) { done(serpSection('Code · GitHub', null, null, 'No repositories match.')); return; }
+        var rows = j.items.slice(0, 4).map(function (rp) {
+            var meta = '★ ' + nnum(rp.stargazers_count).toLocaleString() + (rp.language ? ' · ' + esc(rp.language) : '');
+            return serpRow('github.com/' + rp.full_name, 'github.com › ' + esc(rp.full_name), { ch: 'G', c: '#24292f' }, rp.full_name,
+                (rp.description ? esc(rp.description) + ' ' : '') + '<span class="cr-serpmeta">' + meta + '</span>');
+        }).join('');
+        done(serpSection('Code · GitHub', null, rows));
+    });
+}
+function serpHN(q, done) {
+    liveGet('https://hn.algolia.com/api/v1/search?tags=story&hitsPerPage=5&query=' + encodeURIComponent(q), function (err, j, r) {
+        if (err || !j || !j.hits) { done(serpSection('Discussion · Hacker News', err || 'empty')); return; }
+        var hits = j.hits.filter(function (h) { return h.title; });
+        if (!hits.length) { done(serpSection('Discussion · Hacker News', null, null, 'No discussions found.')); return; }
+        var rows = hits.slice(0, 4).map(function (h) {
+            var item = 'news.ycombinator.com/item?id=' + h.objectID;
+            return serpRow(item, 'news.ycombinator.com › item', { ch: 'Y', c: '#ff6600' }, h.title,
+                '<span class="cr-serpmeta">' + nnum(h.points) + ' points · ' + nnum(h.num_comments) + ' comments · ' + esc(h.author || '?') + '</span>');
+        }).join('');
+        done(serpSection('Discussion · Hacker News', null, rows));
+    });
+}
+/* one result row, Google-shaped: url line, blue title, snippet */
+/* ── query intent ──
+   Google doesn't fire every pack on every search and neither do we: read the
+   shape of the query first, then only fetch what fits. Keeps a search to two
+   or three requests instead of nine, and keeps us polite to free APIs. */
+function serpIntent(q) {
+    var s = String(q || '').trim(), l = s.toLowerCase();
+    /* a hyphen between digits is ambiguous — subtraction, or a phone number, or
+       a year range. Those two shapes are common enough as real queries that the
+       calculator must not swallow them (1-800-273-8255 is not -9327). */
+    var phoneish = /^\+?\d{1,4}([-\s.]\d{2,5}){2,}$/.test(s) || /^\d{4}\s*-\s*\d{4}$/.test(s);
+    if (!phoneish && /^[-+.\d\s()*/^%]+$/.test(s) && /[+\-*/^%]/.test(s) && /\d/.test(s)) return { kind: 'math' };
+    var u = l.match(/^([-+]?[\d.,]+)\s*([a-z°"']+)\s+(?:in|to|as)\s+([a-z°"']+)\??$/);
+    if (u && /^[-+]?(\d{1,3}(,\d{3})+|\d*)(\.\d+)?$/.test(u[1]) && /\d/.test(u[1])) {
+        // 1,5 (European decimal) and 1.5.2 are malformed here, not silently reinterpreted
+        return { kind: 'unit', n: parseFloat(u[1].replace(/,/g, '')), from: u[2], to: u[3] };
+    }
+    var t = l.match(/^(?:what(?:'s| is)? the )?time (?:in|at) (.+?)\??$/);
+    if (t) return { kind: 'time', place: t[1] };
+    var d = l.match(/^(?:define|definition of|meaning of|what does)\s+(.+?)(?:\s+mean)?\??$/);
+    if (d && /^[a-z][a-z' -]{1,30}$/.test(d[1])) return { kind: 'define', word: d[1].trim() };
+    var w = l.match(/^weather(?:\s+(?:in|at|for))?\s+(.+?)\??$/) || l.match(/^(.+?)\s+weather$/);
+    if (w) return { kind: 'weather', place: w[1] };
+    var m = l.match(/^(?:where is|map of|directions to)\s+(.+?)\??$/);
+    if (m) return { kind: 'map', place: m[1] };
+    if (/\b(error|exception|typeerror|undefined|npm|pip|git|regex|async|await|segfault|stacktrace|compile|syntax)\b/.test(l)
+        || /\b(python|javascript|typescript|rust|golang|java|c\+\+|sql|bash|css|html)\b/.test(l)) return { kind: 'code' };
+    return { kind: 'general' };
+}
+/* ── instant answers that never touch the network ── */
+/* a real shunting-yard evaluator: eval() on user text is how you get owned.
+   precedences are doubled so unary minus can sit BETWEEN * and ^ — that is what
+   makes -2^2 = -4 (Google/Python) while 2^-3 still = 0.125. 'u' is prefix, so
+   pushing it must never pop: a prefix operator has no left operand to bind. */
+var MATH_OPS = { '+': [2, 'l'], '-': [2, 'l'], '*': [4, 'l'], '/': [4, 'l'], '%': [4, 'l'], 'u': [5, 'r'], '^': [6, 'r'] };
+function mathEval(src) {
+    var toks = String(src).match(/(\d+\.?\d*|\.\d+|[-+*/^%()])/g);
+    if (!toks || toks.length > 200) return null;
+    var out = [], ops = [], prev = null;
+    for (var i = 0; i < toks.length; i++) {
+        var t = toks[i];
+        if (/^[\d.]/.test(t)) {
+            if ((t.match(/\./g) || []).length > 1) return null;          // 1.2.3 is not a number
+            var v = parseFloat(t); if (!isFinite(v)) return null;
+            out.push(v);
+        }
+        else if (t === '(') ops.push(t);
+        else if (t === ')') {
+            while (ops.length && ops[ops.length - 1] !== '(') if (!mathPop(out, ops.pop())) return null;
+            if (!ops.length) return null;                                 // unbalanced
+            ops.pop();
+            if (out.length < 1) return null;                              // "()" has no value
+        } else if (MATH_OPS[t]) {
+            var unary = (t === '-' || t === '+') && (prev === null || prev === '(' || (MATH_OPS[prev] && prev !== ')'));
+            if (unary) { if (t === '-') ops.push('u'); prev = t; continue; }   // '+x' is a no-op; prefix never pops
+            var o = MATH_OPS[t];
+            while (ops.length && MATH_OPS[ops[ops.length - 1]] &&
+                   (MATH_OPS[ops[ops.length - 1]][0] > o[0] || (MATH_OPS[ops[ops.length - 1]][0] === o[0] && o[1] === 'l')))
+                if (!mathPop(out, ops.pop())) return null;
+            ops.push(t);
+        } else return null;
+        prev = t;
+    }
+    while (ops.length) { var op = ops.pop(); if (op === '(' || !mathPop(out, op)) return null; }
+    if (out.length !== 1 || !isFinite(out[0])) return null;
+    return out[0];
+}
+function mathPop(out, op) {
+    if (op === 'u') {                                                     // prefix negate: one operand
+        if (!out.length) return false;
+        var n = -out.pop();
+        if (!isFinite(n)) return false;
+        out.push(n); return true;
+    }
+    if (out.length < 2) return false;
+    var b = out.pop(), a = out.pop(), r;
+    if (op === '+') r = a + b; else if (op === '-') r = a - b; else if (op === '*') r = a * b;
+    else if (op === '/') r = b === 0 ? NaN : a / b; else if (op === '%') r = b === 0 ? NaN : a % b;
+    else if (op === '^') r = Math.pow(a, b); else return false;
+    if (!isFinite(r)) return false;
+    out.push(r); return true;
+}
+/* unit conversion: everything reduces to a base unit per dimension */
+var UNITS = {
+    len: { m: 1, meter: 1, meters: 1, km: 1000, kilometer: 1000, kilometers: 1000, cm: 0.01, centimeter: 0.01, centimeters: 0.01, mm: 0.001,
+           mi: 1609.344, mile: 1609.344, miles: 1609.344, ft: 0.3048, foot: 0.3048, feet: 0.3048, "'": 0.3048,
+           in: 0.0254, inch: 0.0254, inches: 0.0254, '"': 0.0254, yd: 0.9144, yard: 0.9144, yards: 0.9144, nmi: 1852 },
+    mass: { g: 1, gram: 1, grams: 1, kg: 1000, kilogram: 1000, kilograms: 1000, mg: 0.001, t: 1e6, tonne: 1e6, tonnes: 1e6,
+            lb: 453.59237, lbs: 453.59237, pound: 453.59237, pounds: 453.59237, oz: 28.349523125, ounce: 28.349523125, ounces: 28.349523125, st: 6350.29318 },
+    vol: { l: 1, liter: 1, liters: 1, litre: 1, litres: 1, ml: 0.001, gal: 3.785411784, gallon: 3.785411784, gallons: 3.785411784,
+           qt: 0.946352946, quart: 0.946352946, quarts: 0.946352946, pt: 0.473176473, pint: 0.473176473, pints: 0.473176473,
+           cup: 0.2365882365, cups: 0.2365882365, floz: 0.0295735295625 },
+    data: { b: 1, byte: 1, bytes: 1, kb: 1024, mb: 1048576, gb: 1073741824, tb: 1099511627776 },
+    speed: { mps: 1, kph: 0.277777778, kmh: 0.277777778, mph: 0.44704, knot: 0.514444, knots: 0.514444 },
+    time: { s: 1, sec: 1, secs: 1, second: 1, seconds: 1, min: 60, mins: 60, minute: 60, minutes: 60,
+            h: 3600, hr: 3600, hrs: 3600, hour: 3600, hours: 3600, day: 86400, days: 86400,
+            week: 604800, weeks: 604800, year: 31557600, years: 31557600 }
+};
+var TEMPS = { c: 1, celsius: 1, '°c': 1, f: 1, fahrenheit: 1, '°f': 1, k: 1, kelvin: 1 };
+function unitHas(tbl, k) { return Object.prototype.hasOwnProperty.call(tbl, k); }   // 'constructor' is not a unit
+function unitConvert(n, from, to) {
+    if (!isFinite(n)) return null;
+    if (unitHas(TEMPS, from) && unitHas(TEMPS, to)) {
+        var c = /^(f|fahrenheit|°f)$/.test(from) ? (n - 32) * 5 / 9 : /^(k|kelvin)$/.test(from) ? n - 273.15 : n;
+        var v = /^(f|fahrenheit|°f)$/.test(to) ? c * 9 / 5 + 32 : /^(k|kelvin)$/.test(to) ? c + 273.15 : c;
+        return { v: v, unit: to };
+    }
+    for (var dim in UNITS) {
+        if (!unitHas(UNITS, dim)) continue;
+        if (unitHas(UNITS[dim], from) && unitHas(UNITS[dim], to))
+            return { v: n * UNITS[dim][from] / UNITS[dim][to], unit: to };
+    }
+    return null;
+}
+/* significant figures, not decimal places: a fixed 1e6 quantisation shows
+   62.137119 for one query and a mangled 0.000977 for its reciprocal */
+function fmtNum(v) {
+    if (!isFinite(v)) return '—';
+    var a = Math.abs(v);
+    if (a !== 0 && (a < 1e-9 || a >= 1e15)) return v.toExponential(6).replace(/e([+-])/, ' × 10^$1');
+    var s = String(+v.toPrecision(10));
+    return s.indexOf('.') < 0 && s.indexOf('e') < 0 ? (+s).toLocaleString() : s;
+}
+/* the big answer box at the top of the page */
+function serpAnswer(title, big, sub) {
+    return '<div class="cr-ansbox"><span class="cr-anslabel">' + esc(title) + '</span>' +
+        '<div class="cr-ansbig">' + esc(big) + '</div>' + (sub ? '<p class="cr-anssub">' + esc(sub) + '</p>' : '') + '</div>';
+}
+
+/* ── knowledge panel: REST summary for the prose + a TARGETED SPARQL query for
+   the facts. wbgetentities hands back 272KB for one person; this is 2.7KB. ── */
+var WD_PROPS = 'wdt:P569 wdt:P570 wdt:P106 wdt:P27 wdt:P571 wdt:P159 wdt:P1082 wdt:P170 wdt:P50 wdt:P176 wdt:P112 wdt:P36';
+function wdFmt(v) {
+    var m = String(v).match(/^(-?\d{4})-(\d{2})-(\d{2})T/);
+    if (!m) return String(v);
+    var d = new Date(v);
+    return isFinite(d.getTime()) ? d.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : m[1];
+}
+function serpKnowledge(q, done) {
+    liveGet('https://en.wikipedia.org/api/rest_v1/page/summary/' + encodeURIComponent(q.replace(/ /g, '_')), function (err, j) {
+        if (err || !j || !j.title || j.type === 'disambiguation' || !j.extract) { done(''); return; }
+        var thumb = j.thumbnail && /^https:\/\/upload\.wikimedia\.org\//.test(j.thumbnail.source || '') ? j.thumbnail.source : '';
+        var turl = 'en.wikipedia.org/wiki/' + String(j.title).replace(/ /g, '_');
+        function paint(factsHtml) {
+            done('<div class="cr-kp">' +
+                (thumb ? '<img class="cr-kpimg" alt="" referrerpolicy="no-referrer" src="' + esc(thumb) + '">' : '') +
+                '<div class="cr-kpbody"><h3 class="cr-kptitle">' + esc(j.title) + '</h3>' +
+                (j.description ? '<span class="cr-kpdesc">' + esc(j.description) + '</span>' : '') +
+                '<p class="cr-kpext">' + esc(j.extract) + '</p>' + (factsHtml || '') +
+                crLink(turl, 'Wikipedia →', 'cr-kpmore') + '</div></div>');
+        }
+        if (!j.wikibase_item) { paint(''); return; }
+        var sparql = 'SELECT ?propLabel ?valLabel WHERE { VALUES ?p { ' + WD_PROPS + ' } wd:' + j.wikibase_item +
+            ' ?p ?val . ?prop wikibase:directClaim ?p . SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } } LIMIT 14';
+        liveGet('https://query.wikidata.org/sparql?format=json&query=' + encodeURIComponent(sparql), function (e2, j2) {
+            var rows = '';
+            if (!e2 && j2 && j2.results && j2.results.bindings) {
+                var seen = {}, out = [];
+                j2.results.bindings.forEach(function (b) {
+                    if (!b.propLabel || !b.valLabel || out.length >= 6) return;
+                    var k = b.propLabel.value;
+                    if (seen[k]) return; seen[k] = 1;
+                    out.push('<div class="cr-kpfact"><b>' + esc(k) + '</b><span>' + esc(wdFmt(b.valLabel.value)) + '</span></div>');
+                });
+                rows = out.length ? '<div class="cr-kpfacts">' + out.join('') + '</div>' : '';
+            }
+            paint(rows);
+        });
+    });
+}
+/* ── dictionary card ── */
+function serpDict(word, done) {
+    liveGet('https://api.dictionaryapi.dev/api/v2/entries/en/' + encodeURIComponent(word), function (err, j) {
+        if (err || !j || !j.length || !j[0].meanings) { done(''); return; }
+        var e = j[0];
+        var phon = e.phonetic || (e.phonetics || []).map(function (p) { return p.text; }).filter(Boolean)[0] || '';
+        var blocks = e.meanings.slice(0, 3).map(function (m) {
+            var defs = (m.definitions || []).slice(0, 2).map(function (d) {
+                return '<li>' + esc(d.definition) + (d.example ? '<i class="cr-dexa">“' + esc(d.example) + '”</i>' : '') + '</li>';
+            }).join('');
+            return '<div class="cr-dblock"><i class="cr-dpos">' + esc(m.partOfSpeech || '') + '</i><ol>' + defs + '</ol></div>';
+        }).join('');
+        done('<div class="cr-dict"><div class="cr-dhead"><h3>' + esc(e.word) + '</h3>' + (phon ? '<span class="cr-dphon">' + esc(phon) + '</span>' : '') + '</div>' + blocks +
+            '<p class="cr-lvfoot">Definitions from the free Dictionary API.</p></div>');
+    });
+}
+/* ── images pack: real Wikimedia Commons thumbnails ── */
+function serpImages(q, done) {
+    // iiprop=url only: extmetadata carries multi-paragraph descriptions/licence
+    // blobs per file that this pack never reads
+    liveGet('https://commons.wikimedia.org/w/api.php?format=json&origin=*&action=query&generator=search&gsrnamespace=6&gsrlimit=6&prop=imageinfo&iiprop=url&iiurlwidth=220&gsrsearch=' + encodeURIComponent(q), function (err, j) {
+        if (err || !j || !j.query || !j.query.pages) { done(''); return; }
+        var pages = j.query.pages, out = [];
+        // generator results come back keyed by pageid (i.e. upload age); `index`
+        // is what carries the search ranking, so sort by it or the strip is noise
+        Object.keys(pages).map(function (k) { return pages[k]; })
+            .sort(function (a, b) { return (a.index || 0) - (b.index || 0); })
+            .forEach(function (p) {
+                var ii = p.imageinfo && p.imageinfo[0];
+                if (!ii || !ii.thumburl || !/^https:\/\/upload\.wikimedia\.org\//.test(ii.thumburl) || out.length >= 6) return;
+                out.push('<figure class="cr-imgcell"><img alt="" loading="lazy" referrerpolicy="no-referrer" src="' + esc(ii.thumburl) + '">' +
+                    '<figcaption>' + esc(String(p.title || '').replace(/^File:/, '').replace(/\.[a-z]+$/i, '')) + '</figcaption></figure>');
+            });
+        done(out.length ? '<h4 class="cr-serph">Images</h4><div class="cr-imgrow">' + out.join('') + '</div><p class="cr-serpnote">From Wikimedia Commons.</p>' : '');
+    });
+}
+/* ── Stack Overflow answers, for code-shaped queries ── */
+function serpSO(q, done) {
+    liveGet('https://api.stackexchange.com/2.3/search/advanced?order=desc&sort=relevance&pagesize=4&site=stackoverflow&q=' + encodeURIComponent(q), function (err, j) {
+        if (err || !j || !j.items || !j.items.length) { done(''); return; }
+        var rows = j.items.slice(0, 4).map(function (it) {
+            var u = String(it.link || '').replace(/^https?:\/\//i, '');
+            return serpRow(u, 'stackoverflow.com › questions', { ch: 'S', c: '#f48024' }, snipText(it.title),
+                '<span class="cr-serpmeta">' + nnum(it.score) + ' votes · ' + nnum(it.answer_count) + ' answers' + (it.is_answered ? ' · ✓ accepted' : '') + '</span>');
+        }).join('');
+        done(serpSection('Answers · Stack Overflow', null, rows));
+    });
+}
+/* ── map card: real geocode + real OSM tiles stitched into a little map ── */
+/* fractional tile coords: the whole part picks the tile, the fraction places
+   the pin inside it. flooring both away is how a marker ends up 2km off. */
+function osmTileF(lat, lon, z) {
+    var n = Math.pow(2, z), la = lat * Math.PI / 180;
+    return { x: (lon + 180) / 360 * n, y: (1 - Math.log(Math.tan(la) + 1 / Math.cos(la)) / Math.PI) / 2 * n };
+}
+function serpMap(place, done) {
+    liveGet('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(place), function (err, j) {
+        if (err || !j || !j.length) { done(''); return; }
+        var p = j[0], lat = parseFloat(p.lat), lon = parseFloat(p.lon), z = 13;
+        if (!isFinite(lat) || !isFinite(lon) || Math.abs(lat) > 85) { done(''); return; }
+        var f = osmTileF(lat, lon, z), tx = Math.floor(f.x), ty = Math.floor(f.y), tiles = '';
+        /* one row of three: the second row was clipped by the card's max-height
+           at every real window width, so it was three OSM requests for pixels
+           nobody could see — their tile policy deserves better than that */
+        for (var dx = 0; dx < 3; dx++)
+            tiles += '<img alt="" loading="lazy" referrerpolicy="no-referrer" src="https://tile.openstreetmap.org/' + z + '/' + (tx - 1 + dx) + '/' + ty + '.png">';
+        var left = ((1 + (f.x - tx)) / 3 * 100).toFixed(2), top = ((f.y - ty) * 100).toFixed(2);
+        done('<div class="cr-mapcard"><div class="cr-maptiles">' + tiles +
+            '<span class="cr-mappin" style="left:' + left + '%;top:' + top + '%">📍</span></div>' +
+            '<div class="cr-mapmeta"><b>' + esc(String(p.display_name || place).split(',').slice(0, 2).join(',')) + '</b>' +
+            '<span>' + esc(String(p.display_name || '')) + '</span>' +
+            '<i>' + lat.toFixed(4) + ', ' + lon.toFixed(4) + ' · map © OpenStreetMap contributors</i></div></div>');
+    });
+}
+/* ── time + weather cards, both off the geocoder we already use ── */
+function serpTime(place, done) {
+    liveGet('https://geocoding-api.open-meteo.com/v1/search?count=1&name=' + encodeURIComponent(place), function (err, j) {
+        if (err || !j || !j.results || !j.results.length) { done(''); return; }
+        var g = j.results[0], tz = g.timezone;
+        // an ABSENT timeZone silently means "the viewer's own zone" — which would
+        // print the local clock under a Tokyo heading. only a real string will do.
+        if (typeof tz !== 'string' || !tz) { done(''); return; }
+        var now;
+        try { now = new Date().toLocaleString('en-US', { timeZone: tz, weekday: 'long', hour: 'numeric', minute: '2-digit' }); }
+        catch (e) { done(''); return; }
+        done(serpAnswer('Time in ' + g.name, now, tz + (g.country ? ' · ' + g.country : '')));
+    });
+}
+function serpWeatherCard(place, done) {
+    liveGet('https://geocoding-api.open-meteo.com/v1/search?count=1&name=' + encodeURIComponent(place), function (err, j) {
+        if (err || !j || !j.results || !j.results.length) { done(''); return; }
+        var g = j.results[0];
+        liveGet('https://api.open-meteo.com/v1/forecast?temperature_unit=fahrenheit&wind_speed_unit=mph&current=temperature_2m,weather_code,relative_humidity_2m,wind_speed_10m&latitude=' + g.latitude + '&longitude=' + g.longitude, function (e2, j2) {
+            if (e2 || !j2 || !j2.current) { done(''); return; }
+            var c = j2.current, w = wmo(c.weather_code);
+            done('<div class="cr-ansbox cr-wxans"><span class="cr-anslabel">Weather · ' + esc(g.name + (g.admin1 ? ', ' + g.admin1 : '')) + '</span>' +
+                '<div class="cr-ansbig">' + w[0] + ' ' + Math.round(c.temperature_2m) + '°F</div>' +
+                '<p class="cr-anssub">' + esc(w[1]) + ' · humidity ' + nnum(c.relative_humidity_2m) + '% · wind ' + Math.round(c.wind_speed_10m) + ' mph</p>' +
+                crLink('open-meteo.com/forecast?q=' + encodeURIComponent(g.name + '@' + g.latitude + ',' + g.longitude), 'Full forecast →', 'cr-kpmore') + '</div>');
+        });
+    });
+}
+function serpRow(url, urlLine, fav, title, snipHtml) {
+    return '<div class="cr-res">' + crLink(url, '<span class="cr-resurl">' + crFav(fav) + ' ' + urlLine + '</span><span class="cr-restitle">' + esc(title) + '</span>', '') +
+        '<span class="cr-resdesc">' + snipHtml + '</span></div>';
+}
+
+/* — Wikipedia, the whole thing — */
+function wikiTitleOf(path) {
+    var t = path.replace(/^wiki\//i, '').split('#')[0].split('?')[0];
+    try { t = decodeURIComponent(t); } catch (e) {}
+    return t.replace(/_/g, ' ');
+}
+webPage('en.wikipedia.org', {
+    live: true,
+    title: 'Wikipedia', fav: { ch: 'W', c: '#202122' }, searchable: true,
+    stitle: 'Wikipedia, the free encyclopedia', sdesc: 'The real one. Type any article URL and this fake browser will genuinely fetch it. The pixels are ours; the words are theirs.', skey: 'wikipedia encyclopedia article live real',
+    render: function () {
+        var path = livePath('en.wikipedia.org');
+        if (!path || /^wiki\/Main_Page$/i.test(path)) {
+            return '<div class="cr-lv cr-lw"><div class="cr-lwhead"><span class="cr-lwball">W</span><h2>Wikipedia</h2><p>The free encyclopedia — actually reachable from inside the museum ' + liveChip() + '</p></div>' +
+                '<label class="cr-lvsearch">' + ic('ic-search') + '<input class="cr-wq" placeholder="Search 6,800,000 real articles" spellcheck="false"></label>' +
+                '<div class="cr-wsug" id="crWSug"></div>' +
+                '<div class="cr-lvtry"><b>Try:</b>' +
+                    crLink('en.wikipedia.org/wiki/Volkswagen_Golf', 'Volkswagen Golf', 'cr-chip') +
+                    crLink('en.wikipedia.org/wiki/Game_Boy', 'Game Boy', 'cr-chip') +
+                    crLink('en.wikipedia.org/wiki/Rice_University', 'Rice University', 'cr-chip') +
+                    crLink('en.wikipedia.org/wiki/Cookie_Clicker', 'Cookie Clicker', 'cr-chip') +
+                '</div></div>';
+        }
+        return liveSkeleton('Wikipedia article');
+    },
+    init: function (view) {
+        var path = livePath('en.wikipedia.org');
+        if (!path || /^wiki\/Main_Page$/i.test(path)) { wikiWireSearch(view); return; }
+        var title = wikiTitleOf(path), url = liveUrl();
+        var api = 'https://en.wikipedia.org/w/api.php?format=json&origin=*&redirects=1&action=parse&prop=text&disableeditsection=1&page=' + encodeURIComponent(title);
+        var meta = 'https://en.wikipedia.org/w/api.php?format=json&origin=*&redirects=1&action=query&prop=pageimages|description&pithumbsize=280&titles=' + encodeURIComponent(title);
+        liveGet(api, function (err, j, r) {
+            if (err || !j || !j.parse) { liveFill(view, url, liveFail(err || 'empty', 'Wikipedia', r)); return; }
+            var realTitle = j.parse.title;
+            var body = liveSanitize(j.parse.text['*'], function (href) {
+                if (!href) return null;
+                if (/^#/.test(href)) return null;                              // in-page anchors: keep the words
+                var m = href.match(/^\/wiki\/([^:]*)$/);                       // namespaced pages (File:, Help:) stay text
+                if (m) return 'en.wikipedia.org/wiki/' + m[1];
+                if (/^https?:\/\//i.test(href)) return href.replace(/^https?:\/\//i, '');
+                return null;
+            });
+            var html = '<div class="cr-lv cr-lw"><div class="cr-lwbar">' + crLink('en.wikipedia.org', '<span class="cr-lwball sm">W</span> Wikipedia', 'cr-lwhome') + liveChip() + '</div>' +
+                '<h2 class="cr-lwtitle">' + esc(realTitle) + '</h2><div class="cr-lwmeta" id="crWMeta"></div><div class="cr-lwbody">' + body + '</div>' +
+                '<p class="cr-lvfoot">Text from the real <b>en.wikipedia.org</b>, CC BY-SA, restyled into pixels. Blue words are real articles — keep clicking.</p></div>';
+            liveFill(view, url, html, realTitle + ' — Wikipedia');
+            liveGet(meta, function (e2, j2) {                                  // the lead image + one-liner, if the article has them
+                if (e2 || !j2 || !view.isConnected) return;
+                var pages = j2.query && j2.query.pages, first = pages && pages[Object.keys(pages)[0]];
+                if (!first) return;
+                var slot = view.querySelector('#crWMeta'); if (!slot) return;
+                var mhtml = '';
+                if (first.description) mhtml += '<i class="cr-lwdesc">' + esc(first.description) + '</i>';
+                if (first.thumbnail && /^https:\/\/upload\.wikimedia\.org\//.test(first.thumbnail.source))
+                    mhtml += '<img class="cr-lwthumb" alt="" referrerpolicy="no-referrer" src="' + esc(first.thumbnail.source) + '">';
+                slot.innerHTML = mhtml;
+            });
+        });
+    }
+});
+function wikiWireSearch(view) {
+    var q = view.querySelector('.cr-wq'), box = view.querySelector('#crWSug'), tmr = 0;
+    if (!q) return;
+    q.addEventListener('input', function () {
+        clearTimeout(tmr);
+        var v = q.value.trim();
+        if (!v) { box.innerHTML = ''; return; }
+        tmr = setTimeout(function () {
+            liveGet('https://en.wikipedia.org/w/api.php?format=json&origin=*&action=opensearch&limit=8&search=' + encodeURIComponent(v), function (err, j) {
+                if (err || !j || !view.isConnected || q.value.trim() !== v) return;
+                box.innerHTML = (j[1] || []).map(function (t) {
+                    return crLink('en.wikipedia.org/wiki/' + t.replace(/ /g, '_'), '📄 ' + esc(t), 'cr-wsugrow');
+                }).join('') || '<p class="cr-empty">The real Wikipedia has nothing. Impressive, honestly.</p>';
+            });
+        }, 280);
+    });
+    q.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' && q.value.trim()) crNav('en.wikipedia.org/wiki/' + q.value.trim().replace(/ /g, '_'));
+    });
+}
+
+/* — Hacker News, the real front page — */
+function hnAgo(ts) {
+    var m = Math.max(1, Math.round((Date.now() / 1000 - ts) / 60));
+    return m < 60 ? m + 'm ago' : m < 1440 ? Math.round(m / 60) + 'h ago' : Math.round(m / 1440) + 'd ago';
+}
+function hnHostOf(u) { try { return String(u || '').replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0]; } catch (e) { return ''; } }
+webPage('news.ycombinator.com', {
+    live: true,
+    title: 'Hacker News', fav: { ch: 'Y', c: '#ff6600' }, searchable: true,
+    stitle: 'Hacker News', sdesc: 'The actual front page, fetched live. Orange as ever. The comments are real people being confidently wrong in real time.', skey: 'hacker news hn tech front page live real',
+    render: function () {
+        return liveSkeleton(/item/.test(livePath('news.ycombinator.com')) ? 'Hacker News thread' : 'Hacker News front page');
+    },
+    init: function (view) {
+        var path = livePath('news.ycombinator.com'), url = liveUrl();
+        var idm = path.match(/^item\?id=(\d+)$/);
+        function head(extra) {
+            return '<div class="cr-hnbar">' + crLink('news.ycombinator.com', '<b class="cr-hny">Y</b> Hacker News', 'cr-hnhome') + (extra || '') + liveChip() + '</div>';
+        }
+        if (idm) {
+            liveGet('https://hn.algolia.com/api/v1/items/' + idm[1], function (err, j, r) {
+                if (err || !j) { liveFill(view, url, liveFail(err || 'empty', 'Hacker News', r)); return; }
+                var n = 0;
+                function cmts(kids, depth) {
+                    if (!kids || depth > 8 || n > 150) return '';
+                    return kids.map(function (k) {
+                        if (!k || k.type !== 'comment' || !k.author || n > 150) return '';
+                        n++;
+                        return '<div class="cr-hnc" style="--d:' + Math.min(depth, 7) + '"><div class="cr-hnch"><b>' + esc(k.author) + '</b><i>' + hnAgo(k.created_at_i) + '</i></div>' +
+                            '<div class="cr-hncb">' + liveSanitize(k.text, function (href) { return /^https?:\/\//i.test(href) ? href.replace(/^https?:\/\//i, '') : null; }) + '</div>' +
+                            cmts(k.children, depth + 1) + '</div>';
+                    }).join('');
+                }
+                var dom = hnHostOf(j.url);
+                var html = '<div class="cr-lv cr-hn">' + head() +
+                    '<div class="cr-hnstory"><h2>' + (j.url ? crLink(j.url.replace(/^https?:\/\//i, ''), esc(j.title), 'cr-hntitle') : esc(j.title || '(untitled)')) + (dom ? ' <i class="cr-hndom">(' + esc(dom) + ')</i>' : '') + '</h2>' +
+                    '<p class="cr-hnsub">' + nnum(j.points) + ' points · ' + esc(j.author || '?') + ' · ' + hnAgo(j.created_at_i) + '</p>' +
+                    (j.text ? '<div class="cr-hncb op">' + liveSanitize(j.text, function (href) { return /^https?:\/\//i.test(href) ? href.replace(/^https?:\/\//i, '') : null; }) + '</div>' : '') + '</div>' +
+                    cmts(j.children, 0) +
+                    (n > 150 ? '<p class="cr-lvfoot">Trimmed at 150 comments — the rest live on the real orange site.</p>' : '') + '</div>';
+                liveFill(view, url, html, (j.title || 'thread') + ' — Hacker News');
+            });
+            return;
+        }
+        liveGet('https://hn.algolia.com/api/v1/search?tags=front_page&hitsPerPage=30', function (err, j, r) {
+            if (err || !j || !j.hits) { liveFill(view, url, liveFail(err || 'empty', 'Hacker News', r)); return; }
+            var rows = j.hits.map(function (h, i) {
+                var dom = hnHostOf(h.url);
+                var tl = h.url ? crLink(h.url.replace(/^https?:\/\//i, ''), esc(h.title), 'cr-hntitle') : crLink('news.ycombinator.com/item?id=' + h.objectID, esc(h.title), 'cr-hntitle');
+                return '<div class="cr-hnrow"><span class="cr-hnrank">' + (i + 1) + '.</span><div class="cr-hnmain"><span>' + tl + (dom ? ' <i class="cr-hndom">(' + esc(dom) + ')</i>' : '') + '</span>' +
+                    '<span class="cr-hnsub">' + nnum(h.points) + ' points · ' + esc(h.author) + ' · ' + hnAgo(h.created_at_i) + ' · ' + crLink('news.ycombinator.com/item?id=' + h.objectID, nnum(h.num_comments) + ' comments', 'cr-hncl') + '</span></div></div>';
+            }).join('');
+            liveFill(view, url, '<div class="cr-lv cr-hn">' + head() + rows +
+                '<p class="cr-lvfoot">The real front page, via the Algolia HN API. Story links go where they really go — most will open in a framed window.</p></div>',
+                'Hacker News');
+        });
+    }
+});
+
+/* — GitHub, any profile or repo — */
+var GH_LANG = { JavaScript: '#f1e05a', TypeScript: '#3178c6', Python: '#3572A5', C: '#555555', 'C++': '#f34b7d', 'C#': '#178600', Java: '#b07219', Go: '#00ADD8', Rust: '#dea584', HTML: '#e34c26', CSS: '#563d7c', Shell: '#89e051', Ruby: '#701516', Swift: '#F05138', Kotlin: '#A97BFF', Lua: '#000080' };
+function ghMd(md) {
+    /* a deliberately small markdown: escape EVERYTHING first, then decorate.
+       enough for a README to read like a README, nothing more. */
+    var out = [], inCode = false, code = [];
+    String(md || '').split(/\r?\n/).forEach(function (ln) {
+        if (/^```/.test(ln)) {
+            if (inCode) { out.push('<pre>' + code.join('\n') + '</pre>'); code = []; }
+            inCode = !inCode; return;
+        }
+        if (inCode) { code.push(esc(ln)); return; }
+        var h = ln.match(/^(#{1,4})\s+(.*)/);
+        if (h) { out.push('<h' + Math.min(4, h[1].length + 2) + '>' + ghInline(h[2]) + '</h' + Math.min(4, h[1].length + 2) + '>'); return; }
+        if (/^\s*[-*]\s+/.test(ln)) { out.push('<li>' + ghInline(ln.replace(/^\s*[-*]\s+/, '')) + '</li>'); return; }
+        if (/^\s*$/.test(ln)) { out.push(''); return; }
+        out.push('<p>' + ghInline(ln) + '</p>');
+    });
+    if (inCode && code.length) out.push('<pre>' + code.join('\n') + '</pre>');
+    return out.join('');
+}
+function ghInline(s) {
+    return esc(s)
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+        .replace(/\*([^*]+)\*/g, '<i>$1</i>')
+        .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, function (m, t, u) { return '<a class="cr-l cr-lva" data-href="' + esc(u.replace(/^https?:\/\//i, '')) + '">' + t + '</a>'; })
+        .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1');
+}
+function ghRepoCard(rp) {
+    return '<div class="cr-lgrepo">' + crLink('github.com/' + rp.full_name, esc(rp.name), 'cr-lgrname') +
+        (rp.description ? '<p>' + esc(rp.description) + '</p>' : '') +
+        '<span class="cr-lgmeta">' + (rp.language ? '<i class="cr-lgdot" style="background:' + (GH_LANG[rp.language] || '#8b949e') + '"></i>' + esc(rp.language) + ' · ' : '') + '★ ' + nnum(rp.stargazers_count) + (rp.fork ? ' · fork' : '') + '</span></div>';
+}
+webPage('github.com', {
+    live: true,
+    title: 'GitHub', fav: { ch: 'G', c: '#24292f' }, searchable: true,
+    stitle: 'GitHub — the real one', sdesc: 'Type any github.com/user or /user/repo and the API answers for real. Sixty anonymous requests an hour; the museum spends them wisely.', skey: 'github git code repos live real',
+    render: function () {
+        var path = livePath('github.com');
+        if (!path) {
+            return '<div class="cr-lv cr-lg"><div class="cr-lghead"><span class="cr-lgmark">🐙</span><h2>GitHub</h2><p>The real API, in pixels ' + liveChip() + '</p></div>' +
+                '<label class="cr-lvsearch">' + ic('ic-search') + '<input class="cr-lgq" placeholder="user  or  user/repo" spellcheck="false"></label>' +
+                '<div class="cr-lvtry"><b>Try:</b>' +
+                    crLink('github.com/IsaacUre', 'IsaacUre', 'cr-chip') +
+                    crLink('github.com/torvalds', 'torvalds', 'cr-chip') +
+                    crLink('github.com/torvalds/linux', 'torvalds/linux', 'cr-chip') +
+                    crLink('github.com/anthropics/claude-code', 'anthropics/claude-code', 'cr-chip') +
+                '</div></div>';
+        }
+        return liveSkeleton('GitHub');
+    },
+    init: function (view) {
+        var path = livePath('github.com'), url = liveUrl();
+        if (!path) {
+            var q = view.querySelector('.cr-lgq');
+            if (q) q.addEventListener('keydown', function (e) { if (e.key === 'Enter' && q.value.trim()) crNav('github.com/' + q.value.trim().replace(/^\/+/, '')); });
+            return;
+        }
+        var parts = path.split('?')[0].split('/').filter(Boolean);
+        if (parts.length >= 2) {
+            var full = parts[0] + '/' + parts[1];
+            liveGet('https://api.github.com/repos/' + full, function (err, j, r) {
+                if (err || !j) { liveFill(view, url, liveFail(err || 'empty', 'GitHub', r)); return; }
+                var html = '<div class="cr-lv cr-lg"><div class="cr-lgbar">' + crLink('github.com', '🐙 GitHub', 'cr-lghome') + liveChip() + '</div>' +
+                    '<h2 class="cr-lgtitle">' + crLink('github.com/' + j.owner.login, esc(j.owner.login), 'cr-lgowner') + ' / <b>' + esc(j.name) + '</b></h2>' +
+                    (j.description ? '<p class="cr-lgdesc">' + esc(j.description) + '</p>' : '') +
+                    '<div class="cr-lgstats"><span>★ ' + nnum(j.stargazers_count).toLocaleString() + '</span><span>⑂ ' + nnum(j.forks_count).toLocaleString() + '</span>' +
+                    (j.language ? '<span><i class="cr-lgdot" style="background:' + (GH_LANG[j.language] || '#8b949e') + '"></i>' + esc(j.language) + '</span>' : '') +
+                    '<span>◷ updated ' + esc(String(j.pushed_at || '').slice(0, 10)) + '</span></div>' +
+                    '<div class="cr-lgreadme" id="crGhReadme"><p class="cr-empty">Fetching the README…</p></div>' +
+                    '<p class="cr-lvfoot">Live from <b>api.github.com</b>. Stars are real; give them somewhere else.</p></div>';
+                liveFill(view, url, html, full + ' — GitHub');
+                liveGet('https://api.github.com/repos/' + full + '/readme', function (e2, j2) {
+                    var slot = view.querySelector('#crGhReadme'); if (!slot || !view.isConnected) return;
+                    if (e2 || !j2 || !j2.content) { slot.innerHTML = '<p class="cr-empty">No README the API will admit to.</p>'; return; }
+                    var md = '';
+                    try { md = decodeURIComponent(escape(atob(j2.content.replace(/\n/g, '')))); } catch (e3) { md = ''; }
+                    slot.innerHTML = md ? '<h3 class="cr-lgrh">README.md</h3>' + ghMd(md.slice(0, 22000)) : '<p class="cr-empty">The README refused to decode. Mysterious.</p>';
+                });
+            });
+            return;
+        }
+        var user = parts[0];
+        liveGet('https://api.github.com/users/' + user, function (err, j, r) {
+            if (err || !j) { liveFill(view, url, liveFail(err || 'empty', 'GitHub', r)); return; }
+            var html = '<div class="cr-lv cr-lg"><div class="cr-lgbar">' + crLink('github.com', '🐙 GitHub', 'cr-lghome') + liveChip() + '</div>' +
+                '<div class="cr-lgprofile">' +
+                (/^https:\/\/avatars\.githubusercontent\.com\//.test(j.avatar_url || '') ? '<img class="cr-lgav" alt="" referrerpolicy="no-referrer" src="' + esc(j.avatar_url) + '">' : '') +
+                '<div><h2 class="cr-lgtitle">' + esc(j.name || j.login) + '</h2><span class="cr-lglogin">' + esc(j.login) + '</span>' +
+                (j.bio ? '<p class="cr-lgdesc">' + esc(j.bio) + '</p>' : '') +
+                '<div class="cr-lgstats"><span>' + nnum(j.followers).toLocaleString() + ' followers</span><span>' + nnum(j.public_repos).toLocaleString() + ' repos</span>' + (j.location ? '<span>📍 ' + esc(j.location) + '</span>' : '') + '</div></div></div>' +
+                '<div class="cr-lgrepos" id="crGhRepos"></div>' +
+                '<p class="cr-lvfoot">Live from <b>api.github.com</b>.</p></div>';
+            liveFill(view, url, html, (j.name || j.login) + ' — GitHub');
+            liveGet('https://api.github.com/users/' + user + '/repos?sort=updated&per_page=8', function (e2, j2) {
+                var slot = view.querySelector('#crGhRepos'); if (!slot || !view.isConnected || e2 || !j2 || !j2.map) return;
+                slot.innerHTML = j2.map(ghRepoCard).join('');
+            });
+        });
+    }
+});
+
+/* — real weather, via Open-Meteo (no key, CORS open, bless them) — */
+var WMO = { 0: ['☀️', 'Clear'], 1: ['🌤', 'Mostly clear'], 2: ['⛅', 'Partly cloudy'], 3: ['☁️', 'Overcast'], 45: ['🌫', 'Fog'], 48: ['🌫', 'Rime fog'], 51: ['🌦', 'Drizzle'], 53: ['🌦', 'Drizzle'], 55: ['🌧', 'Heavy drizzle'], 61: ['🌧', 'Rain'], 63: ['🌧', 'Rain'], 65: ['🌧', 'Heavy rain'], 71: ['🌨', 'Snow'], 73: ['🌨', 'Snow'], 75: ['❄️', 'Heavy snow'], 80: ['🌦', 'Showers'], 81: ['🌧', 'Showers'], 82: ['⛈', 'Violent showers'], 95: ['⛈', 'Thunderstorm'], 96: ['⛈', 'Thunder + hail'], 99: ['⛈', 'Thunder + hail'] };
+function wmo(c) { return WMO[c] || ['🌡', 'Weather']; }
+webPage('open-meteo.com', {
+    live: true,
+    title: 'Open-Meteo', fav: { ch: '☀', c: '#f59f00' }, searchable: true,
+    stitle: 'Open-Meteo — real weather', sdesc: 'Actual current weather and a real 7-day forecast for any city on Earth, fetched live into the pixel desktop.', skey: 'weather forecast temperature live real',
+    render: function () { return liveSkeleton('weather'); },
+    init: function (view) {
+        var url = liveUrl();
+        var qm = url.match(/[?&]q=([^&]*)/);
+        var q = '';
+        try { q = qm ? decodeURIComponent(qm[1].replace(/\+/g, ' ')) : ''; }   // a hand-typed %zz must not throw init away and strand the skeleton
+        catch (e) { q = qm[1].replace(/\+/g, ' '); }
+        var at = q.match(/^(.*)@(-?[\d.]+),(-?[\d.]+)$/);
+        function show(name, lat, lon) {
+            liveGet('https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lon + '&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,relative_humidity_2m&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&temperature_unit=fahrenheit&wind_speed_unit=mph', function (err, j, r) {
+                if (err || !j || !j.current) { liveFill(view, url, liveFail(err || 'empty', 'Open-Meteo', r)); return; }
+                var c = j.current, w = wmo(c.weather_code);
+                var days = (j.daily && j.daily.time || []).map(function (d, i) {
+                    var dw = wmo(j.daily.weather_code[i]);
+                    return '<div class="cr-wxday"><b>' + esc(new Date(d + 'T12:00').toLocaleDateString(undefined, { weekday: 'short' })) + '</b><span class="cr-wxem">' + dw[0] + '</span>' +
+                        '<span>' + Math.round(j.daily.temperature_2m_max[i]) + '°</span><i>' + Math.round(j.daily.temperature_2m_min[i]) + '°</i></div>';
+                }).join('');
+                liveFill(view, url, '<div class="cr-lv cr-wx"><div class="cr-wxbar">' + crLink('open-meteo.com', '☀ Open-Meteo', 'cr-wxhome') +
+                    '<label class="cr-lvsearch sm">' + ic('ic-search') + '<input class="cr-wxq" placeholder="Another city" spellcheck="false"></label>' + liveChip() + '</div>' +
+                    '<div class="cr-wxnow"><span class="cr-wxbig">' + w[0] + '</span><div><h2>' + Math.round(c.temperature_2m) + '°F</h2><p>' + w[1] + ' · feels ' + Math.round(c.apparent_temperature) + '° · wind ' + Math.round(c.wind_speed_10m) + ' mph · humidity ' + nnum(c.relative_humidity_2m) + '%</p><i>' + esc(name) + ', right now, for real</i></div></div>' +
+                    '<div class="cr-wxdays">' + days + '</div>' +
+                    '<p class="cr-lvfoot">Live from <b>api.open-meteo.com</b>. If it says rain, blame the sky, not the pixels.</p></div>',
+                    name + ' weather — Open-Meteo');
+                var nq = view.querySelector('.cr-wxq');
+                if (nq) nq.addEventListener('keydown', function (e) { if (e.key === 'Enter' && nq.value.trim()) wxFind(nq.value.trim()); });
+            });
+        }
+        function wxFind(name) {
+            liveGet('https://geocoding-api.open-meteo.com/v1/search?count=1&name=' + encodeURIComponent(name), function (err, j) {
+                if (!view.isConnected) return;                 // the user moved on; don't crNav-hijack the now-active tab
+                if (err || !j || !j.results || !j.results.length) {
+                    /* on the skeleton (direct nav to a bad city) show a real page,
+                       not a spinner that never resolves; on a loaded page just toast */
+                    if (view.querySelector('.cr-lvload')) liveFill(view, url, wxNoCity(name, err));
+                    else toast('The real atlas has no “' + name + '”.');
+                    return;
+                }
+                var g = j.results[0];
+                crNav('open-meteo.com/forecast?q=' + encodeURIComponent(g.name + (g.admin1 ? ', ' + g.admin1 : '') + '@' + g.latitude + ',' + g.longitude));
+            });
+        }
+        if (at) show(at[1], +at[2], +at[3]);
+        else if (q) wxFind(q);
+        else show('Houston, Texas', 29.76, -95.36);
+    }
+});
+
+/* — everything else: the honest iframe — */
+webPage('__frame', {
+    title: 'Live site', fav: { ch: '🌐', c: '#5f6368' },
+    render: function () {
+        var u = liveUrl();
+        var host = u.split('/')[0];
+        return '<div class="cr-frame"><div class="cr-framebar"><span>🌐 Loading the real <b>' + esc(host) + '</b> in a window' + liveChip() + '</span>' +
+            '<span class="cr-framenote">big sites refuse to be framed — if it stays blank, that’s ' + esc(host) + ' saying no</span>' +
+            '<button class="cr-chip" id="crFrameOut">Open in a real tab ↗</button></div>' +
+            '<div class="cr-framewrap"><div class="cr-frameload" id="crFrameLoad"><span class="cr-lvspin"></span></div>' +
+            '<iframe class="cr-frameifr" id="crFrameIfr" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" referrerpolicy="no-referrer" src="https://' + esc(u) + '"></iframe></div></div>';
+    },
+    init: function (view) {
+        var u = liveUrl();
+        var f = view.querySelector('#crFrameIfr'), ld = view.querySelector('#crFrameLoad'), out = view.querySelector('#crFrameOut');
+        if (f) f.addEventListener('load', function () { if (ld) ld.hidden = true; });
+        setTimeout(function () { if (ld && view.isConnected) ld.hidden = true; }, 6000);   // blocked frames still "load"; don't spin forever
+        if (out) out.addEventListener('click', function () { window.open('https://' + u, '_blank', 'noopener'); });
+    }
+});
+
 /* ═════════════ URL parsing / navigation engine ═════════════ */
 var WEB_LC = null;                                        // lowercase key → real key, built lazily after all webPage() calls
 function crResolveKey(input) {
@@ -2731,7 +3623,7 @@ function crResolveKey(input) {
     var lc = u.toLowerCase();
     if (WEB_LC[lc]) return WEB_LC[lc];
     if (lc.indexOf('google.com/search') === 0) return 'google.com/search';
-    var host = lc.split('/')[0];
+    var host = lc.split(/[/?#]/)[0].split(':')[0];       // host only: drop /path, ?query, #frag, and :port
     if (WEB_LC[host]) return WEB_LC[host];
     return null;
 }
@@ -2740,13 +3632,27 @@ function crParse(input) {
     if (!u) return null;
     if (/^view-source:/i.test(u)) return u;   // the prefix IS the URL — resolving it would eat the target
     var key = crResolveKey(u);
-    if (key) return key === 'google.com/search' ? u.replace(/^https?:\/\//i, '').replace(/^www\./i, '') : key;
-    if (/^[a-z0-9.-]+\.[a-z]{2,}(\/\S*)?$/i.test(u) || /^chrome:\/\//i.test(u)) return u;   // URL-shaped → will 404
+    var bare = u.replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/+$/, '');
+    if (key) {
+        if (key === 'google.com/search') return bare;
+        /* live hosts keep their whole path: collapsing en.wikipedia.org/wiki/Cat
+           down to the host key would eat the article */
+        if (WEB[key].live && bare.toLowerCase() !== key.toLowerCase()) return bare;
+        return key;
+    }
+    /* URL-shaped → the frame (or the dino for chrome://). Test the PROTOCOL-STRIPPED
+       form: a pasted https://arstechnica.com must reach the frame, not search. */
+    if (/^[a-z0-9.-]+\.[a-z]{2,}(:\d+)?(\/\S*)?$/i.test(bare) || /^chrome:\/\//i.test(u)) return bare;
     return 'google.com/search?q=' + encodeURIComponent(u);            // words → search
 }
 function crSite(url) {
     var key = crResolveKey(url);
-    return key ? WEB[key] : WEB.__err;
+    if (key) return WEB[key];
+    /* a real-looking domain the museum doesn't know: try the actual site in a
+       sandboxed frame. chrome:// nonsense and word salad still get the dino. */
+    var bare = String(url || '').replace(/^https?:\/\//i, '').replace(/^www\./i, '');
+    if (/^[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}(:\d+)?(\/|\?|#|$)/i.test(bare)) return WEB.__frame;
+    return WEB.__err;
 }
 function crQOf(url) {
     var m = String(url).match(/[?&]q=([^&]*)/); if (!m) return '';
@@ -2755,8 +3661,9 @@ function crQOf(url) {
 }
 function crTitleOf(url) {
     if (/^view-source:/i.test(String(url))) return String(url);   // the URL is the tab title, like the real thing
+    if (LIVE_TITLES[String(url)]) return LIVE_TITLES[String(url)];   // a live page told us its real name
     var s = crSite(url);
-    if (s === WEB.__err) return String(url).split('/')[0];
+    if (s === WEB.__err || s === WEB.__frame) return String(url).replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0];
     return typeof s.title === 'function' ? s.title(crQOf(url)) : s.title;
 }
 function crTab() { return CR.tabs[CR.active]; }
@@ -2857,17 +3764,20 @@ function crPage() {
 }
 
 /* ═════════════ omnibox suggestions ═════════════ */
-function crSuggest(q) {
-    var box = CR.el.querySelector('#crSuggest');
-    q = String(q || '').trim().toLowerCase();
-    if (!q) { box.hidden = true; return; }
+/* the local rows (typed interpretation, bookmarks, history, curated corpus)
+   render instantly; a debounced Wikipedia opensearch then folds REAL query
+   completions in right under the typed row, exactly like a real omnibox. */
+var SUG_CACHE = {};                                        // query → completions, session-only
+function crSugIsUrl(q) { return /^[a-z0-9.-]+\.[a-z]{2,}/.test(q.replace(/^https?:\/\//, '').replace(/^www\./, '')) || /^chrome:\/\//.test(q); }
+function crSuggestLocal(q) {
     var rows = [], seen = {};
     function add(icon, label, url, note) {
-        if (rows.length >= 7 || seen[url]) return; seen[url] = 1;
+        if (rows.length >= 9 || seen[url]) return; seen[url] = 1;
         rows.push({ icon: icon, label: label, url: url, note: note });
     }
-    // row 0 is always the typed-text interpretation, so Enter and the highlight agree
-    if (/^[a-z0-9.-]+\.[a-z]{2,}/.test(q) || /^chrome:\/\//.test(q)) add('🌐', q, q, '');
+    // row 0 is always the typed-text interpretation, so Enter and the highlight agree.
+    var qbare = q.replace(/^https?:\/\//, '').replace(/^www\./, '');
+    if (crSugIsUrl(q)) add('🌐', q, qbare, '');
     else add('🔍', 'Search ' + crEngine() + ' for “' + q + '”', 'google.com/search?q=' + encodeURIComponent(q), '');
     crBM().forEach(function (b) { if ((b[0] + ' ' + b[1]).toLowerCase().indexOf(q) >= 0) add('★', b[0], b[1], b[1]); });
     crHist().forEach(function (h) { if ((h.t + ' ' + h.u).toLowerCase().indexOf(q) >= 0) add('🕓', h.t, h.u, h.u); });
@@ -2875,12 +3785,54 @@ function crSuggest(q) {
         var s = WEB[k]; if (!s.searchable) return;
         if ((k + ' ' + s.stitle).toLowerCase().indexOf(q) >= 0) add('🌐', s.stitle, k, k);
     });
-    add('🔍', 'Search ' + crEngine() + ' for “' + q + '”', 'google.com/search?q=' + encodeURIComponent(q), '');
+    return { rows: rows, seen: seen };
+}
+function crSuggestPaint(built) {
+    if (!CR) return;
+    var box = CR.el.querySelector('#crSuggest');
     CR.sugSel = 0;
-    box.innerHTML = rows.map(function (r, i) {
+    box.innerHTML = built.rows.slice(0, 9).map(function (r, i) {
         return '<div class="cr-sg' + (i === 0 ? ' sel' : '') + '" data-su="' + esc(r.url) + '"><span class="cr-sgic">' + r.icon + '</span><span class="cr-sgt">' + esc(r.label) + '</span>' + (r.note ? '<span class="cr-sgn">— ' + esc(r.note) + '</span>' : '') + '</div>';
     }).join('');
-    box.hidden = false;
+    box.hidden = !built.rows.length;
+}
+function crSuggest(q) {
+    var raw = String(q || '').trim();
+    q = raw.toLowerCase();
+    if (!q) { CR.el.querySelector('#crSuggest').hidden = true; CR.sugQ = ''; clearTimeout(CR.sugTmr); return; }
+    CR.sugQ = q;
+    var built = crSuggestLocal(q);
+    crSuggestPaint(built);
+    clearTimeout(CR.sugTmr);
+    if (crSugIsUrl(q) || q.length < 2) return;             // URL-ish or too short: no live completions
+    CR.sugTmr = setTimeout(function () { crSuggestLive(q, built); }, 150);
+}
+function crSuggestLive(q, built) {
+    function merge(comps) {
+        // only fold in if the user is still typing THIS query and hasn't started
+        // arrowing through the list (sel 0) — never yank a highlighted row away
+        if (!CR || CR.sugQ !== q || (CR.sugSel || 0) !== 0) return;
+        var box = CR.el.querySelector('#crSuggest');
+        if (box.hidden) return;
+        var extra = [];
+        comps.forEach(function (c) {
+            var key = 'google.com/search?q=' + encodeURIComponent(c);
+            if (c.toLowerCase() === q || built.seen[key]) return;
+            built.seen[key] = 1;
+            extra.push({ icon: '🔍', label: c, url: key, note: '' });
+        });
+        if (!extra.length) return;
+        var head = built.rows.slice(0, 1), tail = built.rows.slice(1);   // completions sit under row 0
+        crSuggestPaint({ rows: head.concat(extra.slice(0, 5)).concat(tail) });
+    }
+    if (SUG_CACHE[q] && !(CR && CR.incog)) { merge(SUG_CACHE[q]); return; }   // incognito never reads the shared cache either
+    liveGet('https://en.wikipedia.org/w/api.php?format=json&origin=*&action=opensearch&limit=6&search=' + encodeURIComponent(q), function (err, j) {
+        if (err || !j || !j[1]) return;
+        var comps = j[1];
+        if (!(CR && CR.incog)) SUG_CACHE[q] = comps;        // incognito keystrokes leave no crumbs
+        if (Object.keys(SUG_CACHE).length > 60) SUG_CACHE = {};
+        merge(comps);
+    });
 }
 function crSuggestMove(d) {
     var box = CR.el.querySelector('#crSuggest'); if (box.hidden) return null;
@@ -3059,7 +4011,7 @@ function initChrome(el) {
     crChrome(); crTabs(); crPage();
 }
 function closeChrome() {
-    if (CR) { crDinoStop(); if (CR.keyFn) document.removeEventListener('keydown', CR.keyFn); }
+    if (CR) { crDinoStop(); clearTimeout(CR.sugTmr); if (CR.keyFn) document.removeEventListener('keydown', CR.keyFn); }   // a pending autocomplete debounce must not fetch after teardown
     CR = null;
 }
 function crBubble(msg) {
@@ -3771,6 +4723,17 @@ var STG = [
     rev: ['Very Positive', 90, 512], art: ['#2d1e3a', SC.gb, 'URE'], sc: 'dungeon', launch: '/ureboy/',
     ach: [11, 16], achx: [['First Blood', 'Win a battle', 1], ['Lorekeeper', 'Read every codex', 1], ['Pacifist', 'Clear a floor unhurt', 0], ['Nat 20', 'Land a crit', 1]] },
 
+  // runs IN the desktop — window.ARPG, comp/arpg.js
+  { id: 'veilfall', t: 'VEILFALL', dev: 'URE Softworks', pub: 'URE Softworks', yr: 2026,
+    tags: ['Action RPG', 'Early Access', 'Isometric', 'Dark Fantasy', 'Loot'],
+    s: "An isometric ARPG in Early Access. One arena, nine spells, one very patient dummy. The story isn't written yet. The violence is.",
+    d: "The proving grounds open before the campaign does: liquid life and mana globes, a passive web, flasks that refill on violence, crits, ignites, freezes, shocks, a curse, a meteor with a travel time, and a training dummy with configurable resistances and infinite forgiveness. Bring opinions about cast speed. Early Access roadmap: 'a short but sweet intriguing story' — the writer has been informed.",
+    price: 0, disc: 0, free: true, owned: true, inst: true, hrs: 0, hrs2w: 0, ea: true,   // real build => ships installed (#78)
+    rev: ['Very Positive', 91, 328], art: ['#160a20', '#8a4ae0', 'VF'], sc: 'dungeon', trend: true,
+    app: 'arpg', live: 'ARPG',
+    ach: [0, 14],
+    news: [['v0.1 — the proving grounds', "VEILFALL enters Early Access with a test arena, nine spells and a dummy that respawns with fresh optimism. The story arrives when it arrives. The meteor arrives in 1.1 seconds.", 'Jul 17']] },
+
   // runs IN the desktop (like Terraria below) — window.COOKIE, comp/cookie.js.
   // installed = playable on this Steam: only games with a real build (app: in a
   // window, launch: on the URE BOY) ship installed; the shelf games are library-only
@@ -3783,6 +4746,18 @@ var STG = [
     app: 'cookie', live: 'COOKIE',
     ach: [0, 40], achx: [],
     news: [['v1.0 — the UreOS port', "Cookie Clicker now runs in a real window on the pixel desktop. Achievements sync to this very Steam client. The grandmas came with the port; we did not ask them to.", 'Jul 9']] },
+
+  // the second game that actually runs IN the desktop — window.RACER, comp/racer.js
+  { id: 'sunrun', t: 'SUNSET RUNNER', dev: 'URE Softworks', pub: 'URE Softworks', yr: 2026,
+    tags: ['Racing', 'Arcade', 'Pixel Graphics', 'Great Soundtrack', 'Singleplayer'],
+    s: "A pseudo-3D pixel racer on the desktop. Five circuits, four cars, a full championship, and a ghost to chase in time trial.",
+    d: "The GTI RUN sequel UreOS deserved, running in a live window. Pseudo-3D roads with curves and hills across five circuits and four palettes (sunset coast, neon night, dawn ridge, canyon dusk) plus a rain race. Pick from four cars with real stat tradeoffs, then race five AI rivals that take racing lines and brake for corners. Chase points through a five-round championship, or hunt your own ghost in time trial. Drift, nitro, skid marks, weather, live positions, and a procedural synthwave soundtrack. Records live in comp_racer_*.",
+    price: 0, disc: 0, free: true, owned: true, inst: true, hrs: 0, hrs2w: 0,
+    rev: ['Overwhelmingly Positive', 98, 1140], art: ['#241a45', '#e85c6f', 'RUN'], sc: 'road', trend: true, feat: true,
+    app: 'sunrun', live: 'RACER',
+    ach: [0, 8], achx: [['First Light', 'Finish a race', 0], ['Podium', 'Finish in the top three', 0], ['Checkered', 'Win a race', 0], ['Grand Tour', 'Win on every circuit', 0], ['Redline', 'Drain the nitro bar to empty', 0], ['Champion', 'Win a championship', 0], ['Full Garage', 'Win a race in all four cars', 0], ['Stormchaser', 'Win in the rain', 0]],
+    revx: [["It runs IN the Steam that runs IN the website. I had to sit down.", 1, "6.4 hrs"], ["Won the title on the last corner of Storm Harbor. Yelled out loud.", 1, "4.1 hrs"]],
+    news: [['v1.1 — the season update', "Championship mode, time trial with ghosts, four cars, a canyon circuit and a rain race, smarter rivals, skid marks, and a synthwave soundtrack. Open your library and hit Play.", 'Jul 24'], ['v1.0 — on the grid', "Sunset Runner ships as a real desktop app: circuits, rivals, live positions and a nitro bar.", 'Jul 23']] },
 
   { id: 'bg3', t: "Baldur's Gate 3", dev: 'Larian Studios', pub: 'Larian Studios', yr: 2023,
     tags: ['RPG', 'Dungeons & Dragons', 'Story Rich', 'Turn-Based', 'Co-op'],
@@ -3984,12 +4959,12 @@ var STG = [
   { id: 'terraria', t: 'Terraria', dev: 'Re-Logic', pub: 'Re-Logic', yr: 2011,
     tags: ['Sandbox', 'Survival', 'Pixel Graphics', 'Crafting', 'Multiplayer'],
     s: "Dig, fight, explore, build! Nothing is impossible in this action-packed adventure.",
-    d: "2D Minecraft's cooler older sibling, ported to run IN a window on this desktop: a real generated world with caves, four ore tiers, flood-fill torchlight, a day/night cycle, slimes, zombies, demon eyes, proximity crafting, and the Eye of Cthulhu if you craft something you shouldn't. Isaac's 94 hours came with the shelf copy; yours count from here.",
+    d: "2D Minecraft's cooler older sibling, ported to run IN a window on this desktop: a real generated world of biomes — forest, snow, desert, jungle, corruption, ocean shores and floating islands over an ash-and-hellstone underworld — with flowing water and lava, background walls, twelve ores and six gems, chests, torchlight, a day/night cycle, grappling hooks, five armor sets, melee/ranged/magic, potions, a fog-of-war map, rebindable keys, the Guide/Merchant/Nurse, and three bosses if you craft what summons them. Isaac's 94 hours came with the shelf copy; yours count from here.",
     price: 999, disc: 50, owned: true, inst: true, hrs: 94.6, hrs2w: 0,
     rev: ['Overwhelmingly Positive', 98, 1121300], art: ['#12241a', '#5db04a', 'TER'], sc: 'cave',
     app: 'terraria', live: 'TERRA',
-    ach: [0, 16],
-    news: [['v1.0 — the UreOS port', "Terraria now generates a real 360x180 world inside a desktop window. The guide did not survive the port. He is fine. He is somewhere.", 'Jul 10']] },
+    ach: [0, 30],
+    news: [['v2.0 — the deep port', "Terraria's UreOS port goes deep: real biomes, liquids, a grappling hook, armor and magic, a fog-of-war map, rebindable keys, and the Guide who did (eventually) survive the port after all.", 'Jul 23']] },
 
   { id: 'ets2', t: 'Euro Truck Simulator 2', dev: 'SCS Software', pub: 'SCS Software', yr: 2012,
     tags: ['Driving', 'Simulation', 'Relaxing', 'Open World', 'Automobile Sim'],
@@ -4468,6 +5443,8 @@ function initSteam(el, id, arg) {
            hist: [], carouT: 0, dlT: 0, toastT: 0, chatT: {},
            notifRead: false, chatWith: null, chats: {}, chatIdx: {}, spHist: [], libCollapse: {} };
     ST.root.addEventListener('click', stClick);
+    el.addEventListener('contextmenu', stCtxMenu);        // on the window el: the title bar suppresses, the client answers
+    el.addEventListener('scroll', closeBctx, true);       // real menus don't scroll along with the page
     ST.root.addEventListener('keydown', function (e) {
         if (e.key !== 'Enter') { if (e.key === 'Escape') stCloseLayers(); return; }
         if (e.target.closest('[data-search]')) { stCloseLayers(); stGo('store', 'browse', null, { cat: null, q: e.target.value }); }
@@ -4754,7 +5731,7 @@ function stPoints() {
         var btn = eq ? '<b class="st-owned">' + (it.k === 'gag' ? 'Owned. It blinks.' : 'Equipped') + '</b>'
                 : own ? '<button class="st-ghost sm" data-st="ptsbuy" data-id="' + it.id + '">Equip</button>'
                 : '<button class="st-ghost sm" data-st="ptsbuy" data-id="' + it.id + '">' + gStar() + ' ' + it.c.toLocaleString() + '</button>';
-        return '<div class="st-gcard static st-pts-i">' + art + '<span class="st-gcard-b"><span class="st-scard-t">' + esc(it.n) + '</span><span class="st-pts-row">' + btn + '</span></span></div>';
+        return '<div class="st-gcard static st-pts-i" data-pts="' + it.id + '">' + art + '<span class="st-gcard-b"><span class="st-scard-t">' + esc(it.n) + '</span><span class="st-pts-row">' + btn + '</span></span></div>';
     }).join('');
     return '<div class="st-pad st-points"><h2 class="st-browse-h">Points Shop</h2>' +
         '<div class="st-points-bal">' + gStar() + ' <b>' + stPts().toLocaleString() + '</b> points <span class="st-pts-hint">earned by existing. spent on looking good.</span></div>' +
@@ -5087,10 +6064,24 @@ function stDropOpen(items, anchor) {
     if (top + ST.drop.offsetHeight > rootR.height) top = Math.max(0, r.top - rootR.top - ST.drop.offsetHeight - 2);   // flip up (status-bar menus)
     ST.drop.style.top = top + 'px';
 }
-function stModalOpen(kind) {
+function stModalOpen(kind, gid) {
     stCloseLayers('modal');
     var inner = '';
-    if (kind === 'activate') {
+    if (kind === 'props') {
+        var pg = SG[gid], pinst = isInst(gid);
+        var psz = (12 + Math.floor(stHash(gid, 5) * 600)) + ' KB';
+        inner = '<h3>' + esc(pg.t) + ' — Properties</h3>' +
+            '<dl class="st-facts">' +
+              '<dt>Status</dt><dd>' + (pinst ? 'Installed' : stInQueue(gid) ? 'Downloading' : 'Not installed') + '</dd>' +
+              '<dt>Install size</dt><dd>' + psz + ' of localStorage</dd>' +
+              '<dt>App ID</dt><dd>' + stAppId(gid) + '</dd>' +
+              '<dt>Developer</dt><dd>' + esc(pg.dev) + '</dd>' +
+              '<dt>Build</dt><dd>' + pg.yr + ' (latest — updates are instant when nothing changes)</dd>' +
+              '<dt>Playtime</dt><dd>' + stHrs(gid).toFixed(1) + ' hrs on record</dd></dl>' +
+            '<label class="st-modal-row"><span>Launch options</span><b>--pixels=all --thumbs=up</b></label>' +
+            '<div class="st-modal-btns"><button class="st-ghost" data-st="verify" data-id="' + gid + '">Verify integrity of game files</button><button class="st-ghost" data-st="modalclose">Close</button></div>' +
+            '<p class="st-modal-out" id="stVerifyOut"></p>';
+    } else if (kind === 'activate') {
         inner = '<h3>Activate a Product on Steam</h3><p>Enter your product code. Codes look like <b>URE0Y-XXXXX-XXXXX</b>.</p>' +
             '<input class="st-act-in" placeholder="URE0Y-....." autocomplete="off" spellcheck="false">' +
             '<div class="st-modal-btns"><button class="st-play" data-st="activatego">Activate</button><button class="st-ghost" data-st="modalclose">Cancel</button></div>' +
@@ -5397,6 +6388,205 @@ function stClick(e) {
     }
     if (act === 'dlcbuy') return stToast('DLC is décor in this museum — admire it from here.');
     if (act === 'hub') return stToast('The Community Hub is just the friends list with extra steps.');
+    if (act === 'verify') {
+        var vout = ST.modal.querySelector('#stVerifyOut'); if (!vout) return;
+        vout.textContent = 'Verifying…';
+        setTimeout(function () { if (ST && !ST.modal.hidden) vout.textContent = 'All files validated. 0 failed. It was mostly vibes, and the vibes check out.'; }, reduce ? 150 : 900);
+        return;
+    }
+}
+
+/* ═══════════════ right-click — every surface answers, like the real client ═══════════════ */
+function stAppId(id) { return 100000 + Math.floor(stHash(id, 3) * 899999); }   // deterministic fake AppID
+function stSlug(t) { return String(t).replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, ''); }
+function stUninstall(id) {
+    var g = SG[id];
+    if (!isInst(id)) return;
+    if (g.app && openWins[g.app]) { stToast(g.t + ' is running. Close it before uninstalling.'); return; }
+    sjSet('inst', stInst().filter(function (x) { return x !== id; }));
+    stToast(g.t + ' — uninstalled. The shelf space was imaginary, but still.');
+    stSyncBadges(); stRender();
+}
+/* the shared game menu: library surfaces get the manage half, store surfaces get the shopping half */
+function stCtxGame(e, id, inLib) {
+    var g = SG[id]; if (!g) return;
+    stLive(g);                                             // desktop-app games report real achievement counts
+    var owned = isOwned(id), inst = isInst(id), dl = stInQueue(id);
+    var items = [];
+    if (owned) items.push(dl ? { k: 'noop', t: 'Installing… ' + Math.floor(dl.pct) + '%', dis: true }
+        : inst ? { k: 'play', t: 'Play ' + g.t } : { k: 'inst', t: 'Install' });
+    else if (g.free) items.push({ k: 'inst', t: 'Install Game' });
+    else items.push(inCart(id) ? { k: 'cart', t: 'In cart — view cart' } : { k: 'add', t: 'Add to cart (' + stPrice(stFinal(g)) + ')' });
+    if (!owned) items.push({ k: 'wish', t: isWished(id) ? 'Remove from wishlist' : 'Add to wishlist' });
+    items.push('sep');
+    if (inLib) {
+        items.push({ k: 'store', t: 'View store page' });
+        if (g.ach && g.ach[1]) items.push({ k: 'ach', t: 'View achievements (' + g.ach[0] + '/' + g.ach[1] + ')' });
+        items.push({ k: 'fav', t: 'Add to favorites' });
+        items.push('sep');
+        items.push({ k: 'files', t: 'Browse local files', dis: !inst });
+        items.push({ k: 'uninst', t: 'Uninstall', dis: !inst });
+        items.push({ k: 'props', t: 'Properties…' });
+    } else {
+        items.push({ k: 'store', t: 'View store page' });
+        if (owned) items.push({ k: 'inlib', t: 'View in library' });
+        items.push('sep');
+        items.push({ k: 'cpurl', t: 'Copy store page URL' });
+    }
+    openBctx(ST.root, e, items, function (a) {
+        if (a === 'play') stPlay(id);
+        else if (a === 'inst') stInstall(id);
+        else if (a === 'add') { var c = stCart(); if (c.indexOf(id) < 0) { c.push(id); sjSet('cart', c); } stSyncBadges(); stToast(g.t + ' — added to cart.'); stRender(); }
+        else if (a === 'cart') stGo('cart', 'home', null);
+        else if (a === 'wish') {
+            var w = stWish(), i = w.indexOf(id);
+            if (i < 0) { w.push(id); stToast(g.t + ' — added to wishlist.'); } else { w.splice(i, 1); stToast(g.t + ' — removed from wishlist.'); }
+            sjSet('wish', w); stRender();
+        }
+        else if (a === 'store') stGo('store', 'game', id, { q: '' });
+        else if (a === 'inlib') stGo('library', 'game', id);
+        else if (a === 'ach') stGo('library', 'ach', id);
+        else if (a === 'fav') stToast('Favorites are earned in hours here, not assigned. Play more ' + g.t + '.');
+        else if (a === 'files') stToast('Local files: one corner of localStorage. You are technically inside them right now.');
+        else if (a === 'uninst') stUninstall(id);
+        else if (a === 'props') stModalOpen('props', id);
+        else if (a === 'cpurl') { setClip('https://store.steampowered.com/app/' + stAppId(id) + '/' + stSlug(g.t) + '/'); stToast('Store page URL copied.'); }
+    }, 'steam');
+}
+function stCtxMenu(e) {
+    e.preventDefault();
+    if (e.target.closest('.win-caps') || !e.target.closest('#steamRoot')) { closeBctx(); return; }   // title bar: suppress, no menu
+    var host = ST.root;
+
+    var inp = e.target.closest('input, textarea');
+    if (inp && !inp.readOnly && !inp.disabled) { bctxInput(host, e, inp, null, 'steam'); return; }
+    if (e.target.closest('.st-modal-card')) { closeBctx(); return; }   // a modal owns its space — don't shoot menus over it
+    if (e.target.closest('.st-modal')) { ST.modal.hidden = true; closeBctx(); return; }   // backdrop: dismiss like a left-click, no stray menu
+    stCloseLayers();
+
+    // — a friend: the <b> holds the name on BOTH row kinds (community rows' data-id is the GAME id) —
+    var fr = e.target.closest('.st-fp-row, .st-fr');
+    if (fr) {
+        var name = (fr.querySelector('b') ? fr.querySelector('b').textContent : '') || fr.getAttribute('data-id');
+        var f = SFR.filter(function (x) { return x[0] === name; })[0] || [name, 'Online', '', ''];
+        openBctx(host, e, [
+            { k: 'msg', t: 'Send message' },
+            { k: 'inv', t: 'Invite to play', dis: f[1] === 'Offline' },
+            { k: 'prof', t: 'View profile' },
+            'sep',
+            { k: 'nick', t: 'Add a nickname' },
+            { k: 'block', t: 'Block all communication' }
+        ], function (a) {
+            if (a === 'msg') { stFriendsToggle(true); stChatOpen(name); }
+            else if (a === 'inv') stToast(f[1] === 'In-Game' ? name + ' is already in ' + f[2] + '. Consider joining THEM.' : 'Invite sent. ' + name + ' typed “one more?” before it arrived.');
+            else if (a === 'prof') stToast('Only Isaac has a profile in this museum. ' + name + ' prefers the mystery.');
+            else if (a === 'nick') stToast('Nickname saved: “' + name + '”. Revolutionary.');
+            else stToast(name + ' cannot be blocked. They are load-bearing.');
+        }, 'steam');
+        return;
+    }
+
+    // — a chat message —
+    var msg = e.target.closest('.st-chat-m');
+    if (msg) {
+        var mine = msg.classList.contains('me');
+        var txt = msg.textContent.replace(/^[^:]*:\s*/, '');
+        openBctx(host, e, [
+            { k: 'cp', t: 'Copy message' },
+            { k: 'del', t: 'Delete message', dis: !mine }
+        ], function (a) {
+            if (a === 'cp') { setClip(txt); stToast('Copied.'); }
+            else stToast('Said is said.');
+        }, 'steam');
+        return;
+    }
+
+    // — a Points Shop item —
+    var pts = e.target.closest('[data-pts]');
+    if (pts) {
+        var it = SPTS.filter(function (x) { return x.id === pts.getAttribute('data-pts'); })[0];
+        if (it) {
+            var own = stPtsOwned().indexOf(it.id) >= 0;
+            var eq = (it.k === 'frame' && it.v === recall('steam_frame', '')) || (it.k === 'bg' && it.v === recall('steam_bg', '')) || (it.k === 'gag' && own);
+            var pitems = [];
+            if (it.k === 'gag') pitems.push(own ? { k: 'insp', t: 'Inspect closely' } : { k: 'buy', t: 'Purchase (' + it.c.toLocaleString() + ' points)', dis: stPts() < it.c });
+            else if (eq) pitems.push({k: 'uneq', t: 'Unequip' });
+            else if (own) pitems.push({ k: 'eq', t: 'Equip' });
+            else pitems.push({ k: 'buy', t: 'Purchase (' + it.c.toLocaleString() + ' points)', dis: stPts() < it.c });
+            openBctx(host, e, pitems, function (a) {
+                if (a === 'buy' && it.k === 'gag') {
+                    var po = stPtsOwned();
+                    if (po.indexOf(it.id) < 0 && stPts() >= it.c) { store('steam_points', String(stPts() - it.c)); po.push(it.id); sjSet('pshop', po); }
+                    stToast('It blinks. Trust me.'); stRender();
+                }
+                else if (a === 'buy' || a === 'eq') { if (stPtsBuy(it)) { stToast(it.n + ' — equipped. Check your profile.'); stRender(); } }
+                else if (a === 'uneq') { store('steam_' + (it.k === 'frame' ? 'frame' : 'bg'), ''); stToast(it.n + ' — unequipped. The profile mourns.'); stRender(); }
+                else if (a === 'insp') stToast('It blinked. You saw it.');
+            }, 'steam');
+            return;
+        }
+    }
+
+    // — downloads: the active card and queue rows (game id rides the art canvas) —
+    var dlq = e.target.closest('.st-dl-active, .st-dl-q');
+    if (dlq) {
+        var dcv = dlq.querySelector('canvas[data-g]'), did = dcv && dcv.getAttribute('data-g');
+        if (did && dlq.classList.contains('done')) { stCtxGame(e, did, true); return; }   // installed row = library game
+        if (did) {
+            var qhead = stQueue()[0] && stQueue()[0].id === did;
+            openBctx(host, e, [
+                { k: 'top', t: 'Move to top of queue', dis: qhead },
+                'sep',
+                { k: 'cxl', t: 'Cancel download' }
+            ], function (a) {
+                var q = stQueue(), qi = q.map(function (d) { return d.id; }).indexOf(did);
+                if (qi < 0) return;                                   // finished while the menu was open
+                if (a === 'top') q.unshift(q.splice(qi, 1)[0]);
+                else { q.splice(qi, 1); stToast(SG[did].t + ' — download cancelled.'); }
+                stDock(); stSyncBadges(); if (ST.section === 'downloads') stRender();
+            }, 'steam');
+            return;
+        }
+    }
+
+    // — a cart row: the one commerce surface where right-click removal is most natural —
+    var crow = e.target.closest('.st-cart-row');
+    if (crow) {
+        var ccv = crow.querySelector('canvas[data-g]'), cid = ccv && ccv.getAttribute('data-g');
+        if (cid && SG[cid]) {
+            openBctx(host, e, [
+                { k: 'rm', t: 'Remove from cart' },
+                'sep',
+                { k: 'store', t: 'View store page' },
+                { k: 'cpurl', t: 'Copy store page URL' }
+            ], function (a) {
+                if (a === 'rm') { sjSet('cart', stCart().filter(function (x) { return x !== cid; })); stSyncBadges(); stRender(); }
+                else if (a === 'store') stGo('store', 'game', cid, { q: '' });
+                else { setClip('https://store.steampowered.com/app/' + stAppId(cid) + '/' + stSlug(SG[cid].t) + '/'); stToast('Store page URL copied.'); }
+            }, 'steam');
+            return;
+        }
+    }
+
+    // — games: library surfaces first (sidebar, tiles, feed links, the game page's own hero), then store cards —
+    if (e.target.closest('.st-lg-hero, .st-lg-bar') && ST.section === 'library' && ST.gid) { stCtxGame(e, ST.gid, true); return; }
+    var lib = e.target.closest('[data-st="lib"]');
+    if (lib) { stCtxGame(e, lib.getAttribute('data-id'), true); return; }
+    var card = e.target.closest('[data-st="game"]');
+    if (card) { stCtxGame(e, card.getAttribute('data-id'), false); return; }
+
+    // — the page itself —
+    openBctx(host, e, [
+        { k: 'back', t: 'Back', dis: !ST.hist.length },
+        { k: 'fwd', t: 'Forward', dis: true },
+        { k: 'rld', t: 'Reload page' },
+        'sep',
+        { k: 'cpu', t: 'Copy page URL' }
+    ], function (a) {
+        if (a === 'back') stBack();
+        else if (a === 'rld') stRender();
+        else if (a === 'cpu') { setClip('steam://open/' + ST.section + '/' + ST.view + (ST.gid ? '/' + ST.gid : '')); stToast('Page URL copied. It only resolves on this desktop.'); }
+    }, 'steam');
 }
 
 /* ═════════════ Minecraft Launcher — the real thing, in pixels ═════════════
@@ -5962,11 +7152,27 @@ function mcSyncFS() {
         items: crashes.map(function (c) { return mcDoc(c.n, c.text, '6 KB'); }),
         empty: 'No crashes. Suspicious.'
     };
-    // every .minecraft subfolder points up at its parent key, so Explorer's ↑ climbs the tree
+    // give every .minecraft subfolder the same Explorer metadata fsCompile authors for real
+    // folders — a clickable breadcrumb CHAIN, a display label, a parent, and an address-bar index
+    var mcRootCrumb = FS['.minecraft'].crumb;
     Object.keys(FS).forEach(function (k) {
-        if (k.indexOf('.minecraft/') === 0) FS[k].parent = k.slice(0, k.lastIndexOf('/'));
+        if (k.indexOf('.minecraft/') !== 0) return;
+        var segs = k.slice(11).split('/'), crumb = mcRootCrumb.slice(), acc = '.minecraft';
+        segs.forEach(function (s) { acc += '/' + s; crumb.push([s, acc]); });
+        FS[k].crumb = crumb;
+        FS[k].label = MC_MCDIR + '\\' + segs.join('\\');
+        FS[k].parent = k.slice(0, k.lastIndexOf('/'));
+        fsIndex(k);
     });
     fsIndex('.minecraft');   // register the canonical path so it resolves in the address bar / dev hooks
+    // if an Explorer is parked on a folder the launcher just deleted (e.g. a version wiped by Reset),
+    // climb it to the nearest surviving ancestor — otherwise itemsFor falls back to Home's contents
+    // under a dead breadcrumb and a Delete there writes a bogus tombstone (QC finding, fs73)
+    if (exState.explorer && exState.explorer.go && !FS[exState.explorer.path]) {
+        var p = exState.explorer.path;
+        while (p && p.indexOf('/') >= 0 && !FS[p]) p = p.slice(0, p.lastIndexOf('/'));
+        exState.explorer.go(FS[p] ? p : 'This PC');
+    }
     refreshFileViews();
 }
 function mcUntomb(path, name) {
@@ -6085,7 +7291,9 @@ function mcPlay() {
     mcPaintPlay();
 }
 function mcLaunchDone(r) {
-    var ok = !!APPS.minecraft;
+    // the game must be BOTH registered (APPS.minecraft, from #74) AND actually loaded (window.MC) to run;
+    // if minecraft.js failed to load the launcher shows its honest crash instead. __mclForceCrash demos it.
+    var ok = !window.__mclForceCrash && !!(APPS.minecraft && window.MC);
     mcjSet('log', { text: mcLogText(r.v, ok), v: r.v });
     mcSyncFS();
     mcUntomb('.minecraft/logs', 'latest.log'); mcUntomb('.minecraft', 'logs');
@@ -6799,6 +8007,11 @@ var APPS = {
         render: function () { return window.COOKIE ? window.COOKIE.render() : '<p style="padding:24px">The oven never preheated (cookie.js missing).</p>'; },
         init: function (el) { if (window.COOKIE) window.COOKIE.init(el); },
         onClose: function () { if (window.COOKIE) bankPlaytime('cookie', window.COOKIE.close() || 0); } },
+    arpg: { title: 'VEILFALL', icon: 'ic-arpg', w: 1120, h: 700,
+        render: function () { return window.ARPG ? window.ARPG.render() : '<p style="padding:24px">The veil failed to fall (arpg.js missing).</p>'; },
+        init: function (el) { if (window.ARPG) window.ARPG.init(el); },
+        onFocus: function (el) { var r = el.querySelector('.ar'); if (r) r.focus(); },   // keys follow the window
+        onClose: function () { if (window.ARPG) bankPlaytime('veilfall', window.ARPG.close() || 0); } },
     terraria: { title: 'Terraria', icon: 'ic-terraria', w: 1040, h: 640,
         render: function () { return window.TERRA ? window.TERRA.render() : '<p style="padding:24px">World generation failed to start (terraria.js missing).</p>'; },
         init: function (el) { if (window.TERRA) window.TERRA.init(el); },
@@ -6808,8 +8021,17 @@ var APPS = {
         render: function () { return window.MC ? window.MC.render() : '<p style="padding:24px">The world fell into the void (minecraft.js missing).</p>'; },
         init: function (el) { if (window.MC) window.MC.init(el); },
         onFocus: function (el) { var r = el.querySelector('.mc'); if (r) r.focus(); },
+        onMinimize: function () { if (window.MC && window.MC.suspend) window.MC.suspend(); },   // hidden worlds pause; nobody dies off-screen
+        onRestore: function (el) { var r = el.querySelector('.mc'); if (r) r.focus(); },
         onClose: function () { if (window.MC) bankPlaytime('minecraft', window.MC.close() || 0); } },
     mclauncher: { title: 'Minecraft Launcher', icon: 'ic-mc', w: 980, h: 620, render: renderMC, init: initMC, onClose: closeMC, focusArg: mclFocus },
+    sunrun:   { title: 'Sunset Runner', icon: 'ic-racer', w: 1000, h: 640,
+        render: function () { return window.RACER ? window.RACER.render() : '<p style="padding:24px">The engine never turned over (racer.js missing).</p>'; },
+        init: function (el) { if (window.RACER) window.RACER.init(el); },
+        onFocus: function (el) { var r = el.querySelector('.racer-root'); if (r) r.focus(); },
+        onClose: function () { if (window.RACER) bankPlaytime('sunrun', window.RACER.close() || 0); },
+        onMinimize: function () { if (window.RACER) window.RACER.pause(); },
+        onRestore: function (el) { if (window.RACER) window.RACER.resume(); var r = el.querySelector('.racer-root'); if (r) r.focus(); } },
     ureboy:   { launch: '/ureboy/' },
     room:     { launch: '/1p/' },
     gti:      { launch: '/ureboy/' }
@@ -7297,6 +8519,7 @@ var devSteam = location.search.match(/dev=steam(?::([a-z]+))?(?::([a-z]+))?(?::(
 if (devSteam) openApp('steam', devSteam[1] ? { section: devSteam[1], view: devSteam[2] || 'home', id: devSteam[3] || null } : undefined);
 if (location.search.indexOf('fast') >= 0) window.__fastCursor = true;   // dev: instant cursor jumps so the chain runs headless
 if (location.search.indexOf('dev=edge') >= 0) openApp('edge');       // watch the possession play out
+if (location.search.indexOf('dev=race') >= 0) openApp('sunrun');     // launch Sunset Runner straight to the grid
 if (location.search.indexOf('dev=chrome') >= 0) { installChrome({ shortcut: true }); openApp('chrome'); }
 var devCr = location.search.match(/dev=cr:([^&]+)/);   // ?dev=cr:<url> — open Chrome navigated somewhere (cr:dino → chrome://dino)
 if (devCr) { installChrome({}); openApp('chrome'); var crU; try { crU = decodeURIComponent(devCr[1]); } catch (e) { crU = devCr[1]; } if (CR) crNav(crParse(/^[a-z]+$/.test(crU) ? 'chrome://' + crU : crU)); }
@@ -7308,6 +8531,7 @@ if (location.search.indexOf('dev=bin') >= 0) {
 }
 if (location.search.indexOf('dev=cookie') >= 0) openApp('cookie');   // + &ckdev seeds a mature bakery
 if (location.search.indexOf('dev=terra') >= 0) openApp('terraria');   // + &tdev=night|cave|boss|kit
+if (location.search.indexOf('dev=arpg') >= 0) openApp('arpg');        // VEILFALL proving grounds (window.__arpg test handle)
 if (location.search.indexOf('dev=mc') >= 0) openApp('minecraft');   // + &mcdev=kit,night,dusk,cave,mobs (&mcseed=N)
 if (location.search.indexOf('dev=dnd') >= 0) {   // a file moved Downloads→Desktop + a repositioned icon, in Explorer's Desktop view
     var __d = fsAddFile('Downloads', chromeSetupItem());
@@ -7368,7 +8592,7 @@ if (devMcl) {
     else if (mclSec === 'notes') mcCtl('go', 'notes');
     else if (mclSec === 'settings') mcCtl('settings');
     else if (mclSec === 'editor') { mcCtl('go', 'skins'); if (MC) { MC.skinEdit = mcNewSkinData(null); mcPage(); } }
-    else if (mclSec === 'crash') mcCtl('play');
+    else if (mclSec === 'crash') { window.__mclForceCrash = true; mcCtl('play'); }   // force the honest-crash screen (the game normally launches fine now)
 }
 if (location.search.indexOf('dev') >= 0) window.__mcl = {
     open: function () { openApp('mclauncher'); },
