@@ -2743,17 +2743,19 @@ function liveCachePut(u, v) {
    the counts and temperatures — a string (schema change, MITM) becomes 0, not
    markup. esc() guards the text fields; nnum() guards the numeric ones. */
 function nnum(n) { n = +n; return isFinite(n) ? n : 0; }
-/* fetch JSON with a timeout, an offline check, and the cache in front */
+/* fetch JSON with a timeout, an offline check, and the cache in front.
+   incognito neither reads nor writes the cache — a private fetch must not leave
+   its response body behind for a normal tab, nor reuse one it left there. */
 function liveGet(url, cb) {
-    var hit = liveCacheGet(url);
-    if (hit) { cb(null, hit); return; }
+    var priv = !!(CR && CR.incog);
+    if (!priv) { var hit = liveCacheGet(url); if (hit) { cb(null, hit); return; } }
     if (navigator.onLine === false) { cb('offline'); return; }
     var ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
     var tmr = setTimeout(function () { if (ctl) ctl.abort(); }, 9000);
     fetch(url, ctl ? { signal: ctl.signal } : {}).then(function (r) {
         clearTimeout(tmr);
         if (!r.ok) { cb('http' + r.status, null, r); return null; }
-        return r.json().then(function (j) { liveCachePut(url, j); cb(null, j); });
+        return r.json().then(function (j) { if (!priv) liveCachePut(url, j); cb(null, j); });
     }).catch(function () { clearTimeout(tmr); cb('net'); });
 }
 /* the tab's URL with any view-source: prefix stripped — live pages parse their
@@ -2826,6 +2828,13 @@ function liveFail(err, what, r) {
         '<div class="cr-errbtns"><button class="cr-btn" id="crErrBack">Go back</button></div></div>';
 }
 function liveWireBack(view) { var b = view.querySelector('#crErrBack'); if (b) b.addEventListener('click', crBack); }
+/* the geocoder came back empty (or unreachable) for a directly-typed city */
+function wxNoCity(name, err) {
+    if (err === 'offline' || err === 'net' || /^http/.test(String(err))) return liveFail(err, 'Open-Meteo');
+    return '<div class="cr-err"><span class="cr-errdino">🗺️</span><h2>No such place</h2>' +
+        '<p>The real atlas has no “<b>' + esc(name) + '</b>”. Check the spelling, or try a bigger nearby city.</p>' +
+        '<div class="cr-errbtns"><button class="cr-btn" id="crErrBack">Go back</button>' + crLink('open-meteo.com', 'Weather home', 'cr-btn ghost') + '</div></div>';
+}
 /* fill a live view when the fetch lands — but only if the user is still there.
    crPage swaps the view node on every navigation, so a stale response writes
    into a detached div and vanishes. isConnected is the whole race guard. */
@@ -2834,10 +2843,10 @@ function liveFill(view, url, html, title) {
     view.innerHTML = html;
     liveWireBack(view);
     if (title && CR) {
-        LIVE_TITLES[url] = title;
-        if (Object.keys(LIVE_TITLES).length > 80) LIVE_TITLES = {};
-        if (!CR.incog) {                                   // retitle the history entry the nav just wrote
-            var h = crHist();
+        if (!CR.incog) {                                   // a private page's real title stays out of the shared map
+            if (Object.keys(LIVE_TITLES).length > 80) LIVE_TITLES = {};   // check BEFORE the set, or the 81st write is wiped with the rest
+            LIVE_TITLES[url] = title;
+            var h = crHist();                              // retitle the history entry the nav just wrote
             for (var i = 0; i < h.length; i++) if (h[i].u === url) { h[i].t = title; break; }
             crjSet('hist', h);
         }
@@ -3102,7 +3111,9 @@ webPage('open-meteo.com', {
     init: function (view) {
         var url = liveUrl();
         var qm = url.match(/[?&]q=([^&]*)/);
-        var q = qm ? decodeURIComponent(qm[1].replace(/\+/g, ' ')) : '';
+        var q = '';
+        try { q = qm ? decodeURIComponent(qm[1].replace(/\+/g, ' ')) : ''; }   // a hand-typed %zz must not throw init away and strand the skeleton
+        catch (e) { q = qm[1].replace(/\+/g, ' '); }
         var at = q.match(/^(.*)@(-?[\d.]+),(-?[\d.]+)$/);
         function show(name, lat, lon) {
             liveGet('https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lon + '&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,relative_humidity_2m&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&temperature_unit=fahrenheit&wind_speed_unit=mph', function (err, j, r) {
@@ -3125,7 +3136,14 @@ webPage('open-meteo.com', {
         }
         function wxFind(name) {
             liveGet('https://geocoding-api.open-meteo.com/v1/search?count=1&name=' + encodeURIComponent(name), function (err, j) {
-                if (err || !j || !j.results || !j.results.length) { toast('The real atlas has no “' + name + '”.'); return; }
+                if (!view.isConnected) return;                 // the user moved on; don't crNav-hijack the now-active tab
+                if (err || !j || !j.results || !j.results.length) {
+                    /* on the skeleton (direct nav to a bad city) show a real page,
+                       not a spinner that never resolves; on a loaded page just toast */
+                    if (view.querySelector('.cr-lvload')) liveFill(view, url, wxNoCity(name, err));
+                    else toast('The real atlas has no “' + name + '”.');
+                    return;
+                }
                 var g = j.results[0];
                 crNav('open-meteo.com/forecast?q=' + encodeURIComponent(g.name + (g.admin1 ? ', ' + g.admin1 : '') + '@' + g.latitude + ',' + g.longitude));
             });
@@ -3168,7 +3186,7 @@ function crResolveKey(input) {
     var lc = u.toLowerCase();
     if (WEB_LC[lc]) return WEB_LC[lc];
     if (lc.indexOf('google.com/search') === 0) return 'google.com/search';
-    var host = lc.split('/')[0];
+    var host = lc.split(/[/?#]/)[0].split(':')[0];       // host only: drop /path, ?query, #frag, and :port
     if (WEB_LC[host]) return WEB_LC[host];
     return null;
 }
@@ -3185,7 +3203,9 @@ function crParse(input) {
         if (WEB[key].live && bare.toLowerCase() !== key.toLowerCase()) return bare;
         return key;
     }
-    if (/^[a-z0-9.-]+\.[a-z]{2,}(\/\S*)?$/i.test(u) || /^chrome:\/\//i.test(u)) return u;   // URL-shaped → the frame or the dino
+    /* URL-shaped → the frame (or the dino for chrome://). Test the PROTOCOL-STRIPPED
+       form: a pasted https://arstechnica.com must reach the frame, not search. */
+    if (/^[a-z0-9.-]+\.[a-z]{2,}(:\d+)?(\/\S*)?$/i.test(bare) || /^chrome:\/\//i.test(u)) return bare;
     return 'google.com/search?q=' + encodeURIComponent(u);            // words → search
 }
 function crSite(url) {
@@ -3194,7 +3214,7 @@ function crSite(url) {
     /* a real-looking domain the museum doesn't know: try the actual site in a
        sandboxed frame. chrome:// nonsense and word salad still get the dino. */
     var bare = String(url || '').replace(/^https?:\/\//i, '').replace(/^www\./i, '');
-    if (/^[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}(\/|\?|$)/i.test(bare)) return WEB.__frame;
+    if (/^[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}(:\d+)?(\/|\?|#|$)/i.test(bare)) return WEB.__frame;
     return WEB.__err;
 }
 function crQOf(url) {
@@ -3316,8 +3336,10 @@ function crSuggest(q) {
         if (rows.length >= 7 || seen[url]) return; seen[url] = 1;
         rows.push({ icon: icon, label: label, url: url, note: note });
     }
-    // row 0 is always the typed-text interpretation, so Enter and the highlight agree
-    if (/^[a-z0-9.-]+\.[a-z]{2,}/.test(q) || /^chrome:\/\//.test(q)) add('🌐', q, q, '');
+    // row 0 is always the typed-text interpretation, so Enter and the highlight agree.
+    // classify on the protocol-stripped form so a pasted https://host reads as a site.
+    var qbare = q.replace(/^https?:\/\//i, '').replace(/^www\./i, '');
+    if (/^[a-z0-9.-]+\.[a-z]{2,}/.test(qbare) || /^chrome:\/\//.test(q)) add('🌐', q, qbare, '');
     else add('🔍', 'Search ' + crEngine() + ' for “' + q + '”', 'google.com/search?q=' + encodeURIComponent(q), '');
     crBM().forEach(function (b) { if ((b[0] + ' ' + b[1]).toLowerCase().indexOf(q) >= 0) add('★', b[0], b[1], b[1]); });
     crHist().forEach(function (h) { if ((h.t + ' ' + h.u).toLowerCase().indexOf(q) >= 0) add('🕓', h.t, h.u, h.u); });
