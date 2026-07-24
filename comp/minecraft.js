@@ -526,6 +526,13 @@
 
         /* flat item sprites */
         tile('i_stick', function () { for (var i = 0; i < 10; i++) { tpx(3 + i, 12 - i, '#a8834f'); tpx(4 + i, 12 - i, '#8a6a3e'); } });
+        // a FULL, opaque arrow — the flying arrow is a solid 3D box, so it can't use a transparent
+        // item sprite (that stretched into an invisible sliver, same bug class as the leather hand)
+        tile('arrow', function () {
+            trect(0, 0, 16, 16, '#6e5334'); sprinkle(['#5e4529', '#7e6040'], 10);   // wood shaft
+            trect(0, 0, 16, 3, '#c4c8d0'); trect(0, 1, 16, 1, '#e6eaf2');           // steel tip end
+            trect(0, 12, 16, 4, '#eaeaea'); tpx(3, 13, '#d83030'); tpx(12, 14, '#d83030');   // fletching end
+        });
         tile('i_coal', function () { trect(4, 5, 7, 6, '#2c2c2c'); trect(5, 4, 5, 8, '#2c2c2c'); tpx(6, 6, '#4a4a4a'); tpx(8, 8, '#111111'); });
         tile('i_charcoal', function () { trect(4, 5, 7, 6, '#3a2c22'); trect(5, 4, 5, 8, '#3a2c22'); tpx(6, 6, '#553f30'); tpx(8, 8, '#241a12'); });
         tile('i_iron', function () { trect(3, 8, 10, 4, '#d8d8d8'); trect(4, 6, 8, 2, '#eeeeee'); trect(3, 12, 10, 1, '#9a9a9a'); });
@@ -605,8 +612,10 @@
         TEX[WATER] = [t.water, t.water, t.water];
         TEX[LAVA] = [t.lava, t.lava, t.lava];
         TEX[TABLE] = [t.table_top, t.planks, t.table_side];
-        TEX[FURN] = [t.furn_top, t.furn_top, t.furn_front];
-        TEX[FURN_LIT] = [t.furn_top, t.furn_top, t.furn_lit];
+        // per-face [d0=+X, d1=-X, d2=top, d3=bottom, d4=+Z front, d5=-Z] so the mouth shows on ONE
+        // face, not all four (furn_side/chest_side were painted but never wired up)
+        TEX[FURN] = [t.furn_side, t.furn_side, t.furn_top, t.furn_top, t.furn_front, t.furn_side];
+        TEX[FURN_LIT] = [t.furn_side, t.furn_side, t.furn_top, t.furn_top, t.furn_lit, t.furn_side];
         TEX[TORCH] = [t.torch, t.torch, t.torch];
         TEX[GLASS] = [t.glass, t.glass, t.glass];
         TEX[SNOWGRASS] = [t.snow_top, t.dirt, t.snow_side];
@@ -620,7 +629,7 @@
         TEX[WHEAT1] = [t.wheat1, t.wheat1, t.wheat1];
         TEX[WHEAT2] = [t.wheat2, t.wheat2, t.wheat2];
         TEX[WHEAT3] = [t.wheat3, t.wheat3, t.wheat3];
-        TEX[CHEST] = [t.chest_top, t.chest_top, t.chest_front];
+        TEX[CHEST] = [t.chest_side, t.chest_side, t.chest_top, t.chest_top, t.chest_front, t.chest_side];
         TEX[TNT] = [t.tnt_top, t.tnt_top, t.tnt_side];
         /* item sprite lookup */
         for (var id in I) {
@@ -1069,6 +1078,10 @@
     ];
     var TS16 = 1 / 16, INSET = 1 / 512;   // half-texel inset stops atlas bleed
     function tileUV(tid) { return [(tid % 16) * TS16, ((tid / 16) | 0) * TS16]; }
+    // TEX is [top, bottom, side] (3) or per-face [d0..d5] (6, for directional blocks)
+    function texTop(tx) { return tx.length === 6 ? tx[2] : tx[0]; }
+    function texSide(tx) { return tx.length === 6 ? tx[0] : tx[2]; }
+    function texFace(tx, d) { return tx.length === 6 ? tx[d] : tx[d === 2 ? 0 : d === 3 ? 1 : 2]; }
     function faceUV(d, cr) {   // texture coords per corner, v runs down the tile
         if (d === 2) return [cr[0], cr[2]];
         if (d === 3) return [cr[0], 1 - cr[2]];
@@ -1145,7 +1158,9 @@
                 if (nb === -1 || (B[nb] && B[nb].opaque)) continue;
                 if (!def.opaque && nb === b) continue;                       // glass↔glass, leaves↔leaves inner faces
                 if (def.half && d !== 2 && nb !== AIR && B[nb] && B[nb].solid && !B[nb].half) continue;
-                var tid = TEX[b][d === 2 ? 0 : d === 3 ? 1 : 2];
+                // 3-slot TEX is [top, bottom, side]; a 6-slot TEX is per-face [d0..d5], letting
+                // directional blocks (furnace/chest) show a front on one face instead of all four
+                var tid = TEX[b].length === 6 ? TEX[b][d] : TEX[b][d === 2 ? 0 : d === 3 ? 1 : 2];
                 uv0 = tileUV(tid);
                 // tangent axes for AO sampling: the two axes perpendicular to the face normal
                 var a1 = d < 2 ? 2 : 0;                     // ±x faces: z; else x
@@ -2044,6 +2059,7 @@
         }
         var mvx = 0, mvz = 0;
         if (want != null && sp > 0) { mvx = -Math.sin(f.yaw) * sp * dt; mvz = Math.cos(f.yaw) * sp * dt; f.anim += dt * 6; }
+        else { var neutral = Math.round(f.anim / Math.PI) * Math.PI; f.anim += (neutral - f.anim) * Math.min(1, dt * 10); }   // ease legs to a standing pose, don't freeze mid-stride
         var water = entInWater(f);
         if (water) { f.vy += -GRAV * 0.15 * dt; f.vy *= Math.pow(0.4, dt * 3); if (f.hostile || Math.random() < 0.6) f.vy = Math.min(f.vy + GRAV * 0.4 * dt, 2.4); }
         else { f.vy -= GRAV * dt; if (f.vy < -TERMV) f.vy = -TERMV; }
@@ -2296,7 +2312,7 @@
         snd('boom');
     }
     function blockParticles(x, y, z, b) {
-        var uv0 = tileUV(TEX[b][2]);
+        var uv0 = tileUV(texSide(TEX[b]));
         for (var i = 0; i < 10; i++) {
             RT.parts.push({ x: x + Math.random(), y: y + Math.random(), z: z + Math.random(),
                 vx: (Math.random() - 0.5) * 3, vy: Math.random() * 3.5, vz: (Math.random() - 0.5) * 3,
@@ -2411,10 +2427,10 @@
             if (def && def.place != null && !B[def.place].cross && !B[def.place].half) {
                 var spin = RT.worldMs / 800 + i;
                 pushBox(v, dr.x, dr.y + bob + 0.13, dr.z, 0.13, 0.13, 0.13, Math.cos(spin), Math.sin(spin), 0, 0,
-                    (function (pl) { return function (dd) { return TEX[pl][dd === 2 ? 0 : dd === 3 ? 1 : 2]; }; })(def.place),
+                    (function (pl) { return function (dd) { return texFace(TEX[pl], dd); }; })(def.place),
                     DL[0], DL[1], 0);
             } else {
-                var tid2 = def && def.tile != null ? def.tile : (def && def.place != null ? TEX[def.place][0] : TILE.i_stick);
+                var tid2 = def && def.tile != null ? def.tile : (def && def.place != null ? texTop(TEX[def.place]) : TILE.i_stick);
                 var u2 = tileUV(tid2);
                 pushBillboard(v, dr.x, dr.y + bob + 0.15, dr.z, 0.17, u2[0] + INSET, u2[1] + INSET, u2[0] + TS16 - INSET, u2[1] + TS16 - INSET, DL[0], DL[1], 0);
             }
@@ -2423,8 +2439,9 @@
             var ar = RT.arrows[i];
             var AL = cellLight(ar.x, ar.y, ar.z);
             var ayaw = Math.atan2(-ar.vx, ar.vz);
-            pushBox(v, ar.x, ar.y, ar.z, 0.03, 0.03, 0.28, Math.cos(ayaw), Math.sin(ayaw), 0, 0,
-                function () { return TILE.i_stick; }, AL[0], AL[1], 0);
+            var apitch = Math.atan2(ar.vy, Math.sqrt(ar.vx * ar.vx + ar.vz * ar.vz));   // tip with the trajectory
+            pushBox(v, ar.x, ar.y, ar.z, 0.03, 0.03, 0.28, Math.cos(ayaw), Math.sin(ayaw), -apitch, 0,
+                function () { return TILE.arrow; }, AL[0], AL[1], 0);
         }
         for (i = 0; i < RT.parts.length; i++) {
             var pp = RT.parts[i];
@@ -2448,8 +2465,8 @@
         var eatN = RT.eatT > 0 ? Math.sin(RT.eatT * 22) * 0.03 : 0;
         oy += eatN; oz += pull;
         if (def && def.place != null && !B[def.place].cross && !B[def.place].half) {
-            pushBox(v, ox, oy + eatN, oz, 0.16, 0.16, 0.16, Math.cos(0.62), Math.sin(0.62), swingP * 0.6, 0,
-                (function (pl) { return function (dd) { return TEX[pl][dd === 2 ? 0 : dd === 3 ? 1 : 2]; }; })(def.place),
+            pushBox(v, ox, oy, oz, 0.16, 0.16, 0.16, Math.cos(0.62), Math.sin(0.62), swingP * 0.6, 0,
+                (function (pl) { return function (dd) { return texFace(TEX[pl], dd); }; })(def.place),
                 sk2, bl2, 0);
         } else if (h) {
             var tid = def && def.tile != null ? def.tile : TILE.i_stick;
@@ -2482,7 +2499,7 @@
         function tsrc(tid) { return { x: (tid % 16) * 16, y: ((tid / 16) | 0) * 16 }; }
         if (def && def.place != null && !B[def.place].cross && !B[def.place].half) {
             var tx = TEX[def.place];
-            var top = tsrc(tx[0]), side = tsrc(tx[2]);
+            var top = tsrc(texTop(tx)), side = tsrc(texSide(tx));
             function face(tf, sx, shade) {
                 c.setTransform(tf[0], tf[1], tf[2], tf[3], tf[4], tf[5]);
                 c.drawImage(ATLAS, sx.x, sx.y, 16, 16, 0, 0, 16, 16);
@@ -2493,7 +2510,7 @@
             face([0.72, 0.36, 0, 0.82, 4.5, 8.5], side, 0.28);
             face([0.72, -0.36, 0, 0.82, 16, 14.2], side, 0.45);
         } else {
-            var tid = def && def.tile != null ? def.tile : (def && def.place != null ? TEX[def.place][0] : TILE.i_stick);
+            var tid = def && def.tile != null ? def.tile : (def && def.place != null ? texTop(TEX[def.place]) : TILE.i_stick);
             var s = tsrc(tid);
             c.drawImage(ATLAS, s.x, s.y, 16, 16, 2, 2, 28, 28);
         }
