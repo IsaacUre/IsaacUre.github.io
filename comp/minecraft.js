@@ -519,6 +519,10 @@
             trect(6, 5, 1, 1, '#c81e1e'); trect(9, 5, 1, 1, '#c81e1e');
             tpx(5, 9, '#801212'); tpx(10, 9, '#801212');
         });
+        // the player's own skin — a FULL tile, so the empty first-person hand reads as a limb.
+        // (it used to borrow the flat leather ITEM sprite, which stretched over the box into a
+        //  glitchy brown blob with the icon's stitched border floating around it)
+        hide('hand', '#b0794f', ['#9c6a44', '#c48c5e', '#a5744e']);
 
         /* flat item sprites */
         tile('i_stick', function () { for (var i = 0; i < 10; i++) { tpx(3 + i, 12 - i, '#a8834f'); tpx(4 + i, 12 - i, '#8a6a3e'); } });
@@ -2462,7 +2466,7 @@
             }
         } else {
             pushBox(v, ox + 0.05, oy, oz, 0.09, 0.09, 0.3, Math.cos(0.5), Math.sin(0.5), swingP * 0.8, -0.2,
-                function () { return TILE.i_leather; }, sk2, bl2, 0);
+                function () { return TILE.hand; }, sk2, bl2, 0);
         }
         return v;
     }
