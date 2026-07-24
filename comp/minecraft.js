@@ -1230,6 +1230,12 @@
         setB(wx, wy, wz, AIR);
         for (var i = 0; i < ds.length; i++) dropItem(wx + 0.5, wy + 0.3, wz + 0.5, ds[i][0], ds[i][1]);
     }
+    function popCactus(wx, wy, wz) {   // a cactus segment lost its support: drop it; setB cascades up the column
+        if (getB(wx, wy, wz) !== CACTUS) return;
+        var ds = dropFor(CACTUS);
+        setB(wx, wy, wz, AIR);
+        for (var i = 0; i < ds.length; i++) dropItem(wx + 0.5, wy + 0.3, wz + 0.5, ds[i][0], ds[i][1]);
+    }
     function setB(wx, wy, wz, id, silent) {
         if (wy < 0 || wy >= CH) return;
         var c = chunkAt(wx, wz); if (!c) return;
@@ -1259,6 +1265,7 @@
             var above = getB(wx, wy + 1, wz);
             if (above === SAND || above === GRAVEL) fallStart(wx, wy + 1, wz, above);
             else if (gone && B[above] && B[above].cross) popCross(wx, wy + 1, wz);
+            else if (gone && above === CACTUS) popCactus(wx, wy + 1, wz);
         }
         // a wall torch loses its last support
         if (gone) {
@@ -2257,7 +2264,7 @@
         // a mob under the crosshair takes priority (feed / breed / milk)
         var ef = entRay();
         if (ef && h) {
-            if (ef.k === 'cow' && !ef.baby && h.id === 'bucket') { useOne(); invGive('milk_bucket', 1); paintHotbar(); snd('pop'); return; }
+            if (ef.k === 'cow' && !ef.baby && h.id === 'bucket') { if (h.c > 1 && invFree('milk_bucket') < 1) return; swapHeld('milk_bucket'); snd('pop'); return; }
             var food = BREED[ef.k];
             if (food && h.id === food) {
                 if (ef.baby > 0) { ef.baby = Math.max(0, ef.baby - 6); heartParticles(ef); useOne(); snd('eat'); return; }
@@ -2311,6 +2318,10 @@
             else if (t.b >= CARROT0 && t.b < CARROT3) grew = Math.min(CARROT3, t.b + 1 + ((Math.random() * 2) | 0));
             else if (t.b >= POTATO0 && t.b < POTATO3) grew = Math.min(POTATO3, t.b + 1 + ((Math.random() * 2) | 0));
             if (grew != null) { setB(t.x, t.y, t.z, grew); blockParticles(t.x, t.y, t.z, WHEAT1); useOne(); paintHotbar(); return; }
+        }
+        // carrots & potatoes are both food and crop: plant on farmland when aimed there, else fall through to eating
+        if (def.crop && def.place != null && t && getB(t.px, t.py, t.pz) === AIR && getB(t.px, t.py - 1, t.pz) === FARMLAND) {
+            setB(t.px, t.py, t.pz, def.place); useOne(); paintHotbar(); snd('place', def.place); return;
         }
         // food & bow are hold-to-use (handled in useTick); block placement is instant
         if (def.food || h.id === 'bow') return;
@@ -2474,7 +2485,7 @@
         var sz = f.sz || 2; f.sz = sz;
         f.hw = 0.25 * sz; f.h = 0.5 * sz;
         f.dmg = sz === 1 ? 0 : sz === 2 ? 2 : 3;
-        if (!f.hp || f.hp > (sz === 3 ? 16 : sz === 2 ? 4 : 1)) f.hp = sz === 3 ? 16 : sz === 2 ? 4 : 1;
+        f.hp = sz === 3 ? 16 : sz === 2 ? 4 : 1;   // full HP for the size; mkFoe/restoreEnts reassign a saved value after
     }
     function entMove(f, dx, dy, dz) {
         var hit = { x: false, y: false, z: false };
@@ -2646,7 +2657,7 @@
             var tx = Math.floor(f.x) + ((Math.random() * 48) | 0) - 24, tz = Math.floor(f.z) + ((Math.random() * 48) | 0) - 24;
             if (!chunkAt(tx, tz)) continue;
             for (var ty = Math.min(CH - 3, Math.floor(f.y) + 8); ty > 4; ty--) {
-                if (solidAt(tx, ty - 1, tz) && !solidAt(tx, ty, tz) && !solidAt(tx, ty + 1, tz) && getB(tx, ty, tz) !== WATER) {
+                if (solidAt(tx, ty - 1, tz) && !solidAt(tx, ty, tz) && !solidAt(tx, ty + 1, tz) && !solidAt(tx, ty + 2, tz) && getB(tx, ty, tz) !== WATER) {
                     poofParticles(f); f.x = tx + 0.5; f.y = ty; f.z = tz + 0.5; f.vy = 0; poofParticles(f); snd('teleport'); return true;
                 }
             }
@@ -2665,7 +2676,7 @@
         if (f.hurtF > 0.24 && Math.random() < 0.35) { teleportEnder(f); f.aggro = 12; }   // flickers away when hit
         var want = null, sp = MOBS.enderman.sp;
         if (f.aggro > 0 && !RT.dead) {
-            f.aggro -= dt; want = Math.atan2(-px, pz); sp *= 1.5;
+            f.aggro = Math.max(0, f.aggro - dt); want = Math.atan2(-px, pz); sp *= 1.5;
             if (dist > 20 && Math.random() < 0.02) teleportEnder(f);   // close the gap
         } else { f.wt -= dt; if (f.wt <= 0) { f.wt = 2 + Math.random() * 4; f.wd = Math.random() < 0.5 ? Math.random() * 6.28 : null; } want = f.wd; sp *= 0.5; }
         if (want != null) { var turn = want - f.yaw; while (turn > Math.PI) turn -= 6.283; while (turn < -Math.PI) turn += 6.283; f.yaw += Math.max(-4 * dt, Math.min(4 * dt, turn)); }
@@ -2835,7 +2846,8 @@
     }
     function takeXpLevels(n) {   // spend whole levels (anvil/enchant); returns true if affordable
         if (S.xpl < n) return false;
-        S.xpl -= n; if (S.xp > xpForLevel(S.xpl)) S.xp = 0;
+        var cap0 = xpForLevel(S.xpl), frac = cap0 ? S.xp / cap0 : 0;   // keep the same bar fraction across the drop
+        S.xpl -= n; S.xp = Math.floor(frac * xpForLevel(S.xpl));
         paintXp(); return true;
     }
     function spawnXp(x, y, z, amt) {
@@ -3560,6 +3572,7 @@
         if (!enchantable(it)) return;
         if (S.xpl < o.level) { toast('Not a high enough level'); return; }
         if (!lap || lap.c < o.lapis) { toast('Not enough Lapis Lazuli'); return; }
+        if (S.xpl < o.lapis) { toast('Not enough experience'); return; }   // the slot number is the real level charge
         takeXpLevels(o.lapis);                       // enchanting costs levels
         lap.c -= o.lapis; if (!lap.c) RT.enchLapis = null;
         if (it.id === 'book') it.id = 'ench_book';
@@ -3607,9 +3620,8 @@
         takeXpLevels(res.cost);
         var out = res.out; if (RT.anvilName) out.name = RT.anvilName;
         RT.anvilA = null; RT.anvilB = null; RT.anvilName = '';
-        var left = invGive(out.id, 1, out.dur);
-        var slot = null; for (var i = 0; i < 36; i++) if (S.inv[i] && S.inv[i].id === out.id && S.inv[i].dur === out.dur && !S.inv[i].ench) { slot = S.inv[i]; break; }
-        if (slot) { slot.ench = out.ench; if (out.name) slot.name = out.name; }
+        var left = invGive(out.id, out.c, out.dur, out.ench, out.name);   // hand back the whole stack, enchant + name intact
+        if (left > 0) dropItem(S.px, S.py + 1, S.pz, out.id, left, out.dur, false, out.ench, out.name);
         snd('anvil'); unlock('anvil2');
         paintPanel(); paintHotbar();
     }
@@ -3676,7 +3688,7 @@
         for (i = 0; i < give.length; i++) {
             if (!give[i]) continue;
             var left = invGive(give[i].id, give[i].c, give[i].dur, give[i].ench, give[i].name);
-            if (left) dropItem(S.px, S.py + 1, S.pz, give[i].id, left, give[i].dur);
+            if (left) dropItem(S.px, S.py + 1, S.pz, give[i].id, left, give[i].dur, false, give[i].ench, give[i].name);
         }
         RT.panel = null;
         var wrap = RT.el.querySelector('.mc-panelwrap');
@@ -3782,8 +3794,8 @@
     }
     function giveInto(arr, n, st) {
         var c = st.c, max = stkMax(st.id), i;
-        for (i = 0; i < n && c > 0; i++) if (arr[i] && arr[i].id === st.id && arr[i].c < max && st.dur == null) { var a = Math.min(max - arr[i].c, c); arr[i].c += a; c -= a; }
-        for (i = 0; i < n && c > 0; i++) if (!arr[i]) { arr[i] = { id: st.id, c: Math.min(max, c), dur: st.dur }; c -= arr[i].c; }
+        for (i = 0; i < n && c > 0; i++) if (arr[i] && arr[i].id === st.id && arr[i].c < max && st.dur == null && !st.ench && !arr[i].ench) { var a = Math.min(max - arr[i].c, c); arr[i].c += a; c -= a; }
+        for (i = 0; i < n && c > 0; i++) if (!arr[i]) { arr[i] = { id: st.id, c: Math.min(max, c), dur: st.dur, ench: st.ench, name: st.name }; c -= arr[i].c; }
         return c;
     }
     function mergeSlot(t, field, st) {
@@ -3828,12 +3840,12 @@
         } else {
             if (!RT.cur && st) {
                 var half = Math.ceil(st.c / 2);
-                RT.cur = { id: st.id, c: half, dur: st.dur };
+                RT.cur = { id: st.id, c: half, dur: st.dur, ench: st.ench, name: st.name };
                 st.c -= half;
                 if (!st.c) grp.set(idx, null);
             } else if (RT.cur && (!st || (st.id === RT.cur.id && st.c < stkMax(st.id) && st.dur == null && RT.cur.dur == null))) {
                 if (st) st.c++;
-                else grp.set(idx, { id: RT.cur.id, c: 1, dur: RT.cur.dur });
+                else grp.set(idx, { id: RT.cur.id, c: 1, dur: RT.cur.dur, ench: RT.cur.ench, name: RT.cur.name });
                 RT.cur.c--;
                 if (!RT.cur.c) RT.cur = null;
             }
