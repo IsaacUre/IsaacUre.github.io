@@ -30,8 +30,11 @@ const ALLOW = [
   // --- APIs the browser can't reach itself (no CORS headers) ---
   'api.frankfurter.app',            // currency, ECB data
   'api.gdeltproject.org',           // world news index
-  'www.googleapis.com',             // books
   'hacker-news.firebaseio.com',
+  /* NOT www.googleapis.com. It was here for the Books API, but the same host
+     anonymously serves Cloud Storage objects with a caller-chosen Content-Type
+     — i.e. an attacker-uploaded text/html served from our own origin. One host
+     doing double duty as a file-hosting service is not allowlistable. */
   // --- readable content sites ---
   '.wikipedia.org',
   '.wikimedia.org',
@@ -133,15 +136,19 @@ export default {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders(origin) });
     if (request.method !== 'GET') return fail(405, 'GET only', origin);
 
-    // A browser always sends Origin on a cross-origin fetch. Absent means a
-    // direct hit (curl, a scanner) — allowed for /health only.
     const reqUrl = new URL(request.url);
     if (reqUrl.pathname === '/health') {
       return new Response(JSON.stringify({ ok: true, hosts: ALLOW.length }), {
         headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
       });
     }
-    if (origin && !ORIGINS.includes(origin)) return fail(403, 'origin not allowed', origin);
+    /* A browser sends Origin on every cross-origin fetch, so REQUIRING it is
+       what keeps this from being a general-purpose proxy. An earlier version
+       only checked the header when present, which let anything that sends no
+       Origin — curl, <img>, <iframe>, plain navigation — through unchecked.
+       That would have made the endpoint a free IP-anonymising fetcher whose
+       traffic is attributed to the User-Agent below, i.e. to Isaac. */
+    if (!ORIGINS.includes(origin)) return fail(403, 'origin not allowed', origin);
 
     const target = reqUrl.searchParams.get('url');
     if (!target) return fail(400, 'missing ?url=', origin);
@@ -210,6 +217,11 @@ export default {
     const declared = parseInt(upstream.headers.get('Content-Length') || '0', 10);
     if (declared && declared > MAX_BYTES) return fail(413, 'response too large', origin);
 
+    // 204/205 are "ok" but have a null body by spec; getReader() on null throws
+    // out of the handler, and Cloudflare's own error page carries no CORS
+    // headers, so the caller sees "proxy is down" instead of "no content".
+    if (!upstream.body) return fail(502, 'empty upstream response', origin);
+
     // Read with a hard ceiling — Content-Length can lie or be absent entirely.
     const reader = upstream.body.getReader();
     const chunks = [];
@@ -233,6 +245,12 @@ export default {
         'Cache-Control': 'public, max-age=600',
         'X-Content-Type-Options': 'nosniff',
         'Referrer-Policy': 'no-referrer',
+        /* Defence in depth: the client only ever reads these bodies as TEXT and
+           parses them itself, so nothing here needs to be live in a browser.
+           If a response ever is rendered from this origin — an allowlisted host
+           serving attacker-uploaded HTML, say — this makes it inert. */
+        'Content-Security-Policy': "default-src 'none'; sandbox",
+        'X-Frame-Options': 'DENY',
         ...corsHeaders(origin),
         // Set-Cookie and every other upstream header are simply not copied.
       },

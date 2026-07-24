@@ -3617,6 +3617,7 @@ function crProxyValid(p) {
     return /^https:\/\/[a-z0-9.-]+/i.test(p) || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(p);
 }
 function crProxy() {
+    if (typeof DEV_PROXY === 'string' && DEV_PROXY) return DEV_PROXY;   // loopback-only test override, in memory
     var p = String(recall('proxy', '') || '').trim();
     return crProxyValid(p) ? p.replace(/\/+$/, '') : '';
 }
@@ -3630,15 +3631,22 @@ function readerExtract(html) {
                 (doc.querySelector('title') || {}).textContent || '';
     var body = doc.querySelector('article') || doc.querySelector('main') || doc.querySelector('[role="main"]');
     if (!body) {
-        var best = null, bestScore = 0;
-        var cands = doc.querySelectorAll('div, section');
-        for (var i = 0; i < cands.length && i < 400; i++) {
-            var ps = cands[i].querySelectorAll('p');
-            if (ps.length < 3) continue;
-            var len = 0;
-            for (var k = 0; k < ps.length; k++) len += (ps[k].textContent || '').length;
-            if (len > bestScore) { bestScore = len; best = cands[i]; }
+        /* Walk the PARAGRAPHS once and score their parents. The obvious version
+           — for each candidate div, querySelectorAll('p') — re-walks the same
+           subtree once per ancestor, which is quadratic: a 2.8MB page (under
+           the worker's 3MB cap) blocked the main thread for 47 seconds. This is
+           linear in the paragraph count, and capped besides. */
+        var ps = doc.querySelectorAll('p'), nodes = [], scores = [];
+        for (var i = 0; i < ps.length && i < 3000; i++) {
+            var len = (ps[i].textContent || '').length;
+            if (len < 25) continue;                              // nav/footer chaff
+            var par = ps[i].parentNode;
+            if (!par || par.nodeType !== 1) continue;
+            var at = nodes.indexOf(par);
+            if (at < 0) { nodes.push(par); scores.push(len); } else scores[at] += len;
         }
+        var best = null, bestScore = 0;
+        for (var k = 0; k < nodes.length; k++) if (scores[k] > bestScore) { bestScore = scores[k]; best = nodes[k]; }
         body = best;
     }
     if (!body) body = doc.body;
@@ -3686,7 +3694,9 @@ function readerLoad(view, u, host) {
             if (!href || /^#/.test(href)) return null;
             var abs;
             try { abs = new URL(href, 'https://' + u).toString(); } catch (e) { return null; }
-            return /^https:/i.test(abs) ? abs.replace(/^https?:\/\//i, '') : null;
+            // normalise exactly like liveUrl(), or the title this page learns is
+            // filed under a key no later lookup will match
+            return /^https:/i.test(abs) ? abs.replace(/^https?:\/\//i, '').replace(/^www\./i, '') : null;
         });
         if (!clean || clean.replace(/<[^>]*>/g, '').trim().length < 120) { view.innerHTML = readerFrameHtml(u); wireFrameOut(view, u); return; }
         view.innerHTML = '<div class="cr-lv cr-reader"><div class="cr-rdbar">📖 Reader · <b>' + esc(host) + '</b>' + liveChip() +
@@ -8631,8 +8641,20 @@ if (location.search.indexOf('fast') >= 0) window.__fastCursor = true;   // dev: 
 if (location.search.indexOf('dev=edge') >= 0) openApp('edge');       // watch the possession play out
 if (location.search.indexOf('dev=race') >= 0) openApp('sunrun');     // launch Sunset Runner straight to the grid
 if (location.search.indexOf('dev=chrome') >= 0) { installChrome({ shortcut: true }); openApp('chrome'); }
-var devProxy = location.search.match(/[?&]proxy=([^&]+)/);   // ?proxy=<worker> — point the reader at a worker for one visit (headless testing)
-if (devProxy) { try { var pv = decodeURIComponent(devProxy[1]); if (crProxyValid(pv)) store('proxy', pv.replace(/\/+$/, '')); } catch (e) {} }
+/* ?dev=proxy:<worker> — LOOPBACK ONLY, and never persisted.
+   An earlier version of this hook accepted ?proxy= on any origin and wrote it
+   to localStorage. That made a single link a permanent man-in-the-middle for
+   every unknown site the reader opens: the victim's in-sim browsing would be
+   sent to the attacker, whose HTML would render back under the real site's
+   name. A testing convenience is not worth a hole like that, so this now only
+   works when the page is served from localhost, and it lives in memory. */
+var DEV_PROXY = '';
+(function () {
+    if (!/^(localhost|127\.0\.0\.1)$/i.test(location.hostname)) return;
+    var m = location.search.match(/[?&]dev=proxy:([^&]+)/);
+    if (!m) return;
+    try { var pv = decodeURIComponent(m[1]); if (crProxyValid(pv)) DEV_PROXY = pv.replace(/\/+$/, ''); } catch (e) {}
+})();
 var devCr = location.search.match(/dev=cr:([^&]+)/);   // ?dev=cr:<url> — open Chrome navigated somewhere (cr:dino → chrome://dino)
 if (devCr) { installChrome({}); openApp('chrome'); var crU; try { crU = decodeURIComponent(devCr[1]); } catch (e) { crU = devCr[1]; } if (CR) crNav(crParse(/^[a-z]+$/.test(crU) ? 'chrome://' + crU : crU)); }
 if (location.search.indexOf('dev=wiz') >= 0) { fsAddFile('Downloads', chromeSetupItem()); openApp('setup'); }   // + &wstep=license|options|progress|finish (&freeze)

@@ -50,11 +50,27 @@ ever with `GET`. Everything else is denied.
   can't be used as a file mirror.
 - URLs carrying credentials (`https://user:pass@host/`), non-443 ports, and
   non-`https` schemes are refused.
-- Only the origins in `ORIGINS` may call it.
+- **An `Origin` header from the `ORIGINS` list is required.** Requests with no
+  `Origin` at all — `curl`, `<img>`, `<iframe>`, plain navigation — are refused,
+  which is what keeps this from being a general-purpose proxy that anyone who
+  learns the URL can point at the allowlist. (`/health` stays open.)
+- Every response carries `Content-Security-Policy: default-src 'none'; sandbox`
+  and `X-Frame-Options: DENY`. The client only ever reads these bodies as text
+  and parses them itself, so nothing needs to be live in a browser; if an
+  allowlisted host ever serves attacker-controlled HTML, it is inert here.
 - It sends a real, identifying `User-Agent` — which is what Nominatim and the
   Wikimedia APIs ask for and a browser cannot provide.
 
-It holds no secrets and no state, so there is nothing in it to steal.
+It holds no secrets. Its only state is Cloudflare's edge cache (10 minutes), so
+there is nothing in it to steal.
+
+### A note on choosing hosts
+
+Prefer hosts that serve one kind of thing. `www.googleapis.com` was on this list
+for the Books API and had to come off: the same hostname anonymously serves
+Cloud Storage objects with a **caller-chosen `Content-Type`**, so allowlisting it
+means allowlisting arbitrary uploaded content. A host that doubles as file
+hosting can't be allowlisted safely, no matter which of its APIs you wanted.
 
 ## Adding a site
 
