@@ -148,7 +148,12 @@ var PASSIVES = [
     { id: 'g4', n: 'Ruthless Arithmetic', x: 150, y: -20, m: { critMul: 20 }, req: ['g2'] },
     { id: 'g5', n: 'Quick Study', x: -80, y: -110, m: { cast: 8 }, req: ['g1'] },
     { id: 'g6', n: 'Patient Study', x: 80, y: -110, m: { manaRegen: 20 }, req: ['g2'] },
-    { id: 'g7', n: 'THE LONG GAME', x: 0, y: -340, m: { sd: 20, life: 40, mana: 40 }, req: ['n5'], notable: 1, d: 'One must imagine the exile levelling.' }
+    { id: 'g7', n: 'THE LONG GAME', x: 0, y: -340, m: { sd: 20, life: 40, mana: 40 }, req: ['n5'], notable: 1, d: 'One must imagine the exile levelling.' },
+    // ── keystones: behavioural forks, not stat sticks (see KEYSTONES) ──
+    { id: 'ks_avatar', n: 'AVATAR OF FIRE', x: -360, y: 175, m: {}, req: ['p7'], keystone: 'avatar' },
+    { id: 'ks_glass', n: 'GLASS CANNON', x: 360, y: 175, m: {}, req: ['r7'], keystone: 'glass' },
+    { id: 'ks_overload', n: 'ELEMENTAL OVERLOAD', x: 0, y: 360, m: {}, req: ['s5'], keystone: 'overload' },
+    { id: 'ks_resolute', n: 'RESOLUTE TECHNIQUE', x: 215, y: -25, m: {}, req: ['g4'], keystone: 'resolute' }
 ];
 var PASS_BY_ID = {}; PASSIVES.forEach(function (p) { PASS_BY_ID[p.id] = p; });
 
@@ -213,6 +218,95 @@ var ACH = [
     ['unique', 'It Was In The Trunk', 'Loot The Box']
 ];
 
+/* ═══════════════ DEPTH EXPANSION DATA ═══════════════
+   Enemies, support gems, keystones, and the Trials mode —
+   everything the story-less proving grounds needs to become
+   an actual game loop. Kept data-first so the systems below
+   read clean. */
+
+/* ─────────────── enemy archetypes ───────────────
+   hp/dmg are BASE (wave 1); waveScale() grows them.
+   ai: 'melee' chases + touches, 'charger' rushes + detonates,
+   'ranged' kites + lobs, 'boss' has a phase script. */
+var ENEMIES = {
+    wretch: {
+        n: 'Wretch', ai: 'melee', hp: 34, dmg: 8, speed: 2.7, r: 0.42,
+        xp: 42, shards: [0, 1], col: ['#5a6a4a', '#3c4832', '#8fb06a'], atkCd: 0.9, atkRange: 0.75, tell: 0.28,
+        d: 'A thin, fast thing. Comes in numbers. Individually unremarkable, collectively a problem.'
+    },
+    brute: {
+        n: 'Brute', ai: 'melee', hp: 170, dmg: 26, speed: 1.5, r: 0.62,
+        xp: 140, shards: [1, 3], col: ['#6a4a3a', '#4a3228', '#a8704a'], atkCd: 1.7, atkRange: 1.0, tell: 0.6, slam: 1,
+        d: 'Slow, enormous, and telegraphs its swing a country mile in advance. Punish the wind-up.'
+    },
+    caster: {
+        n: 'Hex-Caster', ai: 'ranged', hp: 72, dmg: 16, speed: 2.0, r: 0.46,
+        xp: 110, shards: [1, 2], col: ['#4a3a6a', '#322850', '#8a6ad0'], atkCd: 2.0, atkRange: 6.5, kite: 3.2, tell: 0.5,
+        d: 'Keeps its distance and lobs void-bolts. Close the gap or eat them.'
+    },
+    exploder: {
+        n: 'Bloatling', ai: 'charger', hp: 48, dmg: 44, speed: 3.4, r: 0.5,
+        xp: 90, shards: [1, 2], col: ['#6a6a2a', '#4a4a1e', '#c0c040'], atkRange: 1.1, tell: 0.55, boom: 2.2,
+        d: 'Runs at you and detonates. The blast radius is generous. So is the warning, barely.'
+    },
+    warden: {
+        n: 'THE WARDEN', ai: 'boss', hp: 2600, dmg: 34, speed: 1.35, r: 1.05, boss: 1,
+        xp: 1400, shards: [12, 20], col: ['#3a2c5c', '#241a3c', '#a06adf'], atkCd: 2.4, atkRange: 1.4, tell: 0.7,
+        d: 'The proving grounds keep one. It slams, it sweeps a beam, and when wounded it calls the Wretches in. It does not have a name in the story yet either.'
+    }
+};
+
+/* ─────────────── support gems ───────────────
+   sockets modify the linked spell. `mod` folds into spellDmg /
+   cast; `flags` drive behaviour (echo, chain, added element). */
+var GEMS = {
+    aoe:     { n: 'Increased Area', col: '#6fd4ff', d: 'Area of effect +45%. Bigger meteors, wider novas, splashier bolts.', area: 0.45 },
+    fast:    { n: 'Faster Casting', col: '#ffe66e', d: 'Cast speed +35% for the linked spell (mana cost +15%).', cast: 35, manaInc: 0.15 },
+    echo:    { n: 'Spell Echo', col: '#c896ff', d: 'The linked spell repeats once, a beat later. Mana cost +40%.', echo: 1, manaInc: 0.4 },
+    chain:   { n: 'Chaining', col: '#9fe0c8', d: 'Projectiles and Arc leap to a second nearby target for 70% damage.', chain: 1 },
+    addcold: { n: 'Added Cold', col: '#6fd4ff', d: 'Adds a cold hit worth 40% of the spell, and can chill.', add: 'cold', addPct: 0.4 },
+    addfire: { n: 'Added Fire', col: '#ff7a2e', d: 'Adds a fire hit worth 40% of the spell, and can ignite.', add: 'fire', addPct: 0.4 },
+    iron:    { n: 'Iron Will', col: '#c8c2b8', d: 'Linked spell deals +40% damage, but costs +45% mana.', more: 0.4, manaInc: 0.45 },
+    pierce:  { n: 'Deep Cut', col: '#ff6a8a', d: 'Projectiles pass through the first target and keep going.', pierce: 1 }
+};
+var GEM_IDS = Object.keys(GEMS);
+
+/* ─────────────── keystones (tree nodes with teeth) ───────────────
+   applied as flags in statSum; each is a real behavioural fork. */
+var KEYSTONES = {
+    resolute:  { n: 'RESOLUTE TECHNIQUE', d: 'Your hits can never be critical — but they deal +45% more damage and never stray. Consistency is its own violence.' },
+    overload:  { n: 'ELEMENTAL OVERLOAD', d: 'Fire, Cold and Lightning damage +50% — but your critical multiplier is fixed at 1.5. The elements do not care how sharp your knife is.' },
+    avatar:    { n: 'AVATAR OF FIRE', d: 'Half of all your non-fire damage is converted to Fire, and you gain +25% chance to ignite. Everything burns eventually.' },
+    glass:     { n: 'GLASS CANNON', d: '+60% spell damage. -45% maximum life. The proving grounds will teach you why the name.' }
+};
+
+/* ─────────────── the Trials — escalating waves ───────────────
+   sandbox stays the default; a rune at arena centre starts a run. */
+function waveScale(w) { return { hp: 1 + (w - 1) * 0.42 + Math.pow(w, 1.5) * 0.03, dmg: 1 + (w - 1) * 0.22, count: Math.min(14, 3 + Math.floor(w * 1.35)) }; }
+function waveIsBoss(w) { return w % 5 === 0; }
+function wavePool(w) {
+    // early waves: wretches; mix in brutes/casters/exploders as depth grows
+    var pool = ['wretch', 'wretch'];
+    if (w >= 2) pool.push('exploder');
+    if (w >= 3) pool.push('caster', 'wretch');
+    if (w >= 4) pool.push('brute');
+    if (w >= 6) pool.push('caster', 'brute', 'exploder');
+    return pool;
+}
+
+/* extra achievements for the new content (appended to ACH in ar_01) */
+ACH.push(
+    ['firstkill', 'It Fights Back', 'Kill something that was trying to kill you'],
+    ['wave5', 'Depths', 'Reach wave 5 of the Trials'],
+    ['wave10', 'The Long Dark', 'Reach wave 10 of the Trials'],
+    ['warden', 'Warden Down', 'Defeat THE WARDEN'],
+    ['nohit', 'Untouched', 'Clear a Trial wave without taking damage'],
+    ['socket', 'Well Linked', 'Socket a support gem into a spell'],
+    ['keystone', 'Point of No Return', 'Allocate a keystone'],
+    ['craft', 'Bench Time', 'Reforge an item at the crafting bench'],
+    ['die', 'Mortal After All', 'Fall in the proving grounds (it happens to everyone)']
+);
+
 /* ─────────────── save state ─────────────── */
 var S = null;
 function sLoad() {
@@ -234,6 +328,19 @@ function sLoad() {
     S.crits = S.crits || 0;
     S.sound = S.sound == null ? true : S.sound;
     S.dummy = S.dummy || { hpm: 10000, armor: 0, res: { fire: 0, cold: 0, light: 0, chaos: 0 }, regen: false };
+    // depth expansion
+    S.sockets = S.sockets || {};       // slot -> [gemId, gemId] (max 2)
+    S.gems = S.gems || {};             // gemId -> owned count in the bag
+    S.bestWave = S.bestWave || 0;      // deepest Trial reached
+    S.opts = S.opts || {};
+    if (S.opts.shake == null) S.opts.shake = true;
+    if (S.opts.nums == null) S.opts.nums = true;
+    if (S.opts.parts == null) S.opts.parts = 2;   // 0 low / 1 med / 2 high
+    // sockets pointing at a slot with no bound spell, or holding a retired gem, are dropped
+    Object.keys(S.sockets).forEach(function (k) {
+        if (SLOT_KEYS.indexOf(k) < 0 || !S.binds[k]) { delete S.sockets[k]; return; }
+        S.sockets[k] = (S.sockets[k] || []).filter(function (g) { return GEMS[g]; }).slice(0, 2);
+    });
 }
 function sSave() { try { localStorage.setItem('comp_arpg', JSON.stringify(S)); } catch (e) {} }
 function xpNeed(lv) { return Math.floor(800 * Math.pow(1.55, lv - 1)); }
@@ -256,29 +363,43 @@ function statSum() {
     if (RT && RT.buffs.surge > 0) { m.cast += 30; m.sd += 20; m.manaRegen += 100; }
     return m;
 }
+function hasKs(id) { return !!(S.alloc['ks_' + id]); }
 function stats() {
     var m = statSum();
+    var ks = { resolute: hasKs('resolute'), overload: hasKs('overload'), avatar: hasKs('avatar'), glass: hasKs('glass') };
+    if (ks.glass) m.sd += 60;
+    if (ks.overload) { m.fire += 50; m.cold += 50; m.light += 50; }
+    if (ks.avatar) m.igniteCh += 25;
+    var lifeMax = Math.round((320 + (S.lv - 1) * 22 + m.life) * (ks.glass ? 0.55 : 1));
     return {
-        m: m,
-        lifeMax: Math.round((320 + (S.lv - 1) * 22 + m.life)),
+        m: m, ks: ks,
+        lifeMax: lifeMax,
         manaMax: Math.round((180 + (S.lv - 1) * 14 + m.mana)),
         manaRegen: 8 * (1 + m.manaRegen / 100),
         lifeRegen: m.lifeRegen || 0,
         castSpd: 1 * (1 + m.cast / 100),
-        critCh: clamp(8 + m.crit, 0, 95),
-        critMul: 1.5 + m.critMul / 100,
+        critCh: ks.resolute ? 0 : clamp(8 + m.crit, 0, 95),
+        critMul: ks.overload ? 1.5 : 1.5 + m.critMul / 100,
+        moreMul: ks.resolute ? 1.45 : 1,        // Resolute trades crits for flat "more"
         move: 3.1 * (1 + m.move / 100),
         igniteCh: m.igniteCh, igniteDmg: m.igniteDmg, chillPow: m.chillPow,
         freezeCh: m.freezeCh, shockCh: m.shockCh, shatter: m.shatter, dotDmg: m.dotDmg
     };
 }
-/* a spell's damage range with every modifier applied (for tooltips AND for hits) */
-function spellDmg(id) {
+/* which support gems are linked to a slot (max 2), and to a spell for tooltips */
+function slotGems(slot) { return (S.sockets[slot] || []).filter(function (g) { return GEMS[g]; }); }
+function gemMod(gems, key) { var v = 0; (gems || []).forEach(function (g) { if (GEMS[g] && GEMS[g][key]) v += GEMS[g][key]; }); return v; }
+function gemHas(gems, key) { return (gems || []).some(function (g) { return GEMS[g] && GEMS[g][key]; }); }
+/* a spell's damage range with every modifier applied (for tooltips AND for hits).
+   `gems` are the support gems linked to the slot casting it. */
+function spellDmg(id, gems) {
     var sp = SPELLS[id], st = stats(), m = st.m;
     var lvMul = 1 + (S.lv - 1) * 0.12;
     var inc = 1 + (m.sd + (m[sp.el] || 0)) / 100;
-    return { lo: sp.dmg[0] * lvMul * inc, hi: sp.dmg[1] * lvMul * inc, st: st };
+    var more = st.moreMul * (1 + gemMod(gems, 'more'));
+    return { lo: sp.dmg[0] * lvMul * inc * more, hi: sp.dmg[1] * lvMul * inc * more, st: st, gems: gems || [] };
 }
+function spellManaCost(id, gems) { return Math.round(SPELLS[id].mana * (1 + gemMod(gems, 'manaInc'))); }
 
 /* ─────────────── item generation ─────────────── */
 function rollItem() {
@@ -356,6 +477,11 @@ function render() {
         '<div class="ar-buffs"></div>' +
         '<div class="ar-zone"><b>THE PROVING GROUNDS</b><i>act 0 · the story is still being written</i></div>' +
 
+        // trials control + wave/shards readout
+        '<div class="ar-trials"><button class="ar-trialbtn" data-ar="trial" type="button">▶ ENTER THE TRIALS</button>' +
+          '<div class="ar-wave" hidden><b class="ar-wave-n"></b><span class="ar-wave-sub"></span><button class="ar-mini" data-ar="abandon" type="button">abandon</button></div>' +
+          '<div class="ar-shards">◈ <b class="ar-shards-n">0</b> shards · best wave <b class="ar-best">0</b></div></div>' +
+
         // right column: dps meter + minimap-ish ornament
         '<div class="ar-dps"><b>DPS</b><span class="ar-dps-now">0</span>' +
           '<div class="ar-dps-rows"><span>peak <i class="ar-dps-peak">0</i></span><span>total <i class="ar-dps-total">0</i></span><span>time <i class="ar-dps-time">0.0s</i></span></div>' +
@@ -374,7 +500,9 @@ function render() {
               '<button class="ar-pbtn" data-ar="char" type="button" title="Character (C)">C</button>' +
               '<button class="ar-pbtn" data-ar="book" type="button" title="Spellbook (B)">B</button>' +
               '<button class="ar-pbtn" data-ar="tree" type="button" title="Passives (P)">P</button>' +
+              '<button class="ar-pbtn" data-ar="craft" type="button" title="Crafting bench (K)">K</button>' +
               '<button class="ar-pbtn" data-ar="dummy" type="button" title="Dummy config (O)">O</button>' +
+              '<button class="ar-pbtn" data-ar="opts" type="button" title="Options">⚙</button>' +
               '<button class="ar-pbtn" data-ar="snd" type="button" title="Sound">♪</button>' +
             '</div>' +
           '</div>' +
@@ -388,6 +516,8 @@ function render() {
         '<div class="ar-panel ar-p-tree" hidden><header>THE WEB OF FATE<span class="ar-tree-pts"></span><button class="ar-x" type="button">×</button></header>' +
           '<canvas class="ar-tree-cv" width="560" height="430"></canvas><div class="ar-tree-tip" hidden></div></div>' +
         '<div class="ar-panel ar-p-dummy" hidden><header>DUMMY CONFIGURATION<button class="ar-x" type="button">×</button></header><div class="ar-p-body"></div></div>' +
+        '<div class="ar-panel ar-p-craft" hidden><header>THE CRAFTING BENCH<span class="ar-craft-sh"></span><button class="ar-x" type="button">×</button></header><div class="ar-p-body"></div></div>' +
+        '<div class="ar-panel ar-p-opts" hidden><header>OPTIONS<button class="ar-x" type="button">×</button></header><div class="ar-p-body"></div></div>' +
 
         // floating layers
         '<div class="ar-tip" hidden></div>' +
@@ -418,6 +548,11 @@ function init(el) {
             { n: 'Quicksilver Flask', kind: 'quick', charges: 2, max: 2, anim: 0 }
         ],
         dummy: mkDummy(),
+        mode: 'sandbox',                                              // 'sandbox' | 'trial'
+        enemies: [], eproj: [],                                       // enemies + their projectiles
+        trial: null,                                                  // { wave, phase, timer, cleared, tookHit, score }
+        dead: false, deadT: 0, invuln: 0, hurtT: 0,                   // player mortality
+        banner: null,                                                 // { txt, sub, t }
         parts: [], projs: [], beams: [], rings: [], decals: [], bolts: [], nums: [], meteors: [],
         shake: 0, flash: 0, hitstop: 0,
         dps: { total: 0, peak: 0, t0: 0, hist: [] },
@@ -441,9 +576,12 @@ function init(el) {
     if (/[?&]dev=/.test(location.search)) {
         window.__arpg = {
             tick: function (n, dt) { for (var i = 0; i < (n || 1); i++) step(dt || 1 / 60); draw(); },
-            cast: function (id) { tryCast(id, RT.mouse.wx, RT.mouse.wy); },
+            cast: function (id, gems) { tryCast(id, RT.mouse.wx, RT.mouse.wy, gems || []); },
             aimAtDummy: function () { var d = RT.dummy; RT.mouse.wx = d.x; RT.mouse.wy = d.y; RT.mouse.x = isoX(d.x, d.y); RT.mouse.y = isoY(d.x, d.y); },
-            state: function () { return { life: RT.life, mana: RT.mana, dummyHp: RT.dummy.hp, lv: S.lv, xp: S.xp, kills: S.kills, dps: RT.dps, statuses: RT.dummy.st }; },
+            aimAt: function (x, y) { RT.mouse.wx = x; RT.mouse.wy = y; RT.mouse.x = isoX(x, y); RT.mouse.y = isoY(x, y); },
+            startTrial: function () { startTrial(); }, endTrial: function () { endTrial(false); },
+            spawn: function (kind, x, y) { return spawnEnemy(kind, x == null ? GRID / 2 : x, y == null ? GRID / 2 - 3 : y, { hp: 1, dmg: 1 }); },
+            state: function () { return { life: RT.life, mana: RT.mana, dummyHp: RT.dummy.hp, lv: S.lv, xp: S.xp, kills: S.kills, dps: RT.dps, statuses: RT.dummy.st, mode: RT.mode, enemies: RT.enemies.filter(function (e) { return !e.dead; }).length, dead: RT.dead, wave: RT.trial ? RT.trial.wave : 0, shards: S.shards }; },
             S: function () { return S; }, RT: function () { return RT; }
         };
     }
@@ -460,15 +598,29 @@ function init(el) {
         tryCast('meteor', d0.x, d0.y); tk(96);   // land mid-explosion
         draw();
     }
+    if (/adev=trial/.test(location.search)) {   // action shot: a live wave mid-fight
+        function tk2(n) { for (var i = 0; i < n; i++) step(1 / 60); }
+        S.gems.aoe = 1; S.gems.echo = 1;
+        startTrial(); tk2(110);                  // wave 1 spawns
+        for (var q = 0; q < 4; q++) { spawnEnemy('wretch', rnd(4, 11), rnd(4, 11), { hp: 1, dmg: 1 }); }
+        spawnEnemy('brute', 10, 5, { hp: 1, dmg: 1 }); spawnEnemy('caster', 4, 10, { hp: 1, dmg: 1 });
+        RT.life = stats().lifeMax * 0.62; RT.invuln = 99;
+        var en = RT.enemies[0]; RT.mouse.wx = en.x; RT.mouse.wy = en.y;
+        tryCast('emberbolt', en.x, en.y); tk2(14);
+        tryCast('arc', en.x, en.y); tk2(10);
+        tryCast('meteor', en.x, en.y); tk2(64);
+        draw();
+    }
     setTimeout(function () { root.focus(); }, 30);
 }
+function mkStatus() { return { ignite: [], chill: 0, freeze: 0, shock: 0, sigil: 0, coils: [] }; }
 function mkDummy() {
     sLoad();
     return {
+        isDummy: 1, kind: 'dummy', name: 'the dummy', r: 0.55,
         x: GRID / 2, y: GRID / 2 - 3.2, hp: S.dummy.hpm, hpm: S.dummy.hpm,
         dead: 0, respawn: 0, wobble: 0, flashT: 0, spawnT: 0,
-        st: { ignite: [], chill: 0, freeze: 0, shock: 0, sigil: 0, coils: [] },
-        lastReset: 0, bornAt: 0
+        st: mkStatus(), lastReset: 0, bornAt: 0
     };
 }
 
@@ -496,12 +648,13 @@ function wireInput(root, cv) {
         root.focus();
         var p = toWorld(e);
         RT.mouse.x = p.x; RT.mouse.y = p.y; RT.mouse.wx = p.wx; RT.mouse.wy = p.wy;
+        if (RT.dead) return;
         if (e.button === 2) { RT.mouse.rdown = true; slotCast('RMB'); }
         else if (e.button === 0) {
             RT.mouse.down = true;
-            // the arpg law: LMB moves on ground, casts on the enemy; Shift forces the cast
-            var d = RT.dummy, nearDummy = !d.dead && Math.hypot(d.x - p.wx, d.y - p.wy) < 1.35;
-            if (e.shiftKey || nearDummy) slotCast('LMB');
+            // the arpg law: LMB moves on ground, casts on a target under the cursor; Shift forces the cast
+            var near = nearestUnit(p.wx, p.wy, 1.35);
+            if (e.shiftKey || near) slotCast('LMB');
             else RT.moveTo = { x: clamp(p.wx, 0.8, GRID - 0.8), y: clamp(p.wy, 0.8, GRID - 0.8) };
         }
     });
@@ -529,6 +682,7 @@ function wireInput(root, cv) {
         else if (k === 'b') togglePanel('book');
         else if (k === 'p') togglePanel('tree');
         else if (k === 'o') togglePanel('dummy');
+        else if (k === 'k') togglePanel('craft');
         else if (k === 'h') RT.root.querySelector('.ar-log').classList.toggle('open');
         else return;
         e.preventDefault(); e.stopPropagation();
@@ -635,6 +789,11 @@ function ambient(dt) {
     }
 }
 
+/* screen shake, gated by the option; every += goes through here */
+function shake(amt, cap) { if (!S.opts || !S.opts.shake) return RT.shake; return Math.min(cap == null ? 12 : cap, RT.shake + amt); }
+/* particle-density option scales spawn counts: low halves, high full */
+function pq(n) { var d = S.opts ? S.opts.parts : 2; return Math.max(1, Math.round(n * (d === 0 ? 0.4 : d === 1 ? 0.7 : 1))); }
+
 /* ─────────────── particles ───────────────
    world-space (tile coords + z px above floor), painter-drawn
    after entities. col is 'r,g,b'; add uses lighter composite. */
@@ -645,6 +804,7 @@ function spawnPart(p) {
     if (RT.parts.length < 1400) RT.parts.push(p);
 }
 function burst(x, y, z, n, opt) {
+    n = pq(n);
     for (var i = 0; i < n; i++) {
         var an = rnd(0, TAU), sp = rnd(opt.sp0 || 0.5, opt.sp1 || 2.4);
         spawnPart({
@@ -833,6 +993,32 @@ function drawExile(cx, x, y, face, t, ghost) {
     cx.restore();
 }
 
+/* ─────────────── shared unit status ticking ───────────────
+   ignite/umbral DoTs deal damage (mitigated once, via dealRaw),
+   timers decay, ambient status particles. Dummy AND enemies. */
+function stepUnitStatuses(u, dt) {
+    var st = u.st;
+    for (var i = st.ignite.length - 1; i >= 0; i--) {
+        var ig = st.ignite[i]; ig.next -= dt; ig.t -= dt;
+        if (ig.next <= 0 && !u.dead) { ig.next = 0.5; dealRaw(ig.dps * 0.5, 'fire', { u: u, dot: true, tag: 'ignite' }); }
+        if (ig.t <= 0) st.ignite.splice(i, 1);
+    }
+    for (var j = st.coils.length - 1; j >= 0; j--) {
+        var c = st.coils[j]; c.next -= dt; c.t -= dt;
+        if (c.next <= 0 && !u.dead) { c.next = 0.5; dealRaw(c.dps * 0.5, 'chaos', { u: u, dot: true, tag: 'umbral' }); }
+        if (c.t <= 0) st.coils.splice(j, 1);
+    }
+    st.chill = Math.max(0, st.chill - dt);
+    st.freeze = Math.max(0, st.freeze - dt);
+    st.shock = Math.max(0, st.shock - dt);
+    st.sigil = Math.max(0, st.sigil - dt);
+    if (Math.random() < 0.08) {
+        if (st.ignite.length) burst(u.x, u.y, rnd(10, 40), 1, { col: '255,120,30', sp0: 0.1, sp1: 0.6, l0: 0.3, l1: 0.8 });
+        if (st.freeze > 0) burst(u.x, u.y, rnd(6, 44), 1, { col: '160,220,255', sp0: 0.05, sp1: 0.3, l0: 0.4, l1: 1, grav: 30 });
+        if (st.shock > 0) spawnPart({ x: u.x + rnd(-0.3, 0.3), y: u.y + rnd(-0.3, 0.3), z: rnd(8, 46), vx: 0, vy: 0, vz: 0, life: 0.1, size: rnd(1, 2.5), col: '255,240,140', add: 1, grav: 0 });
+    }
+}
+
 /* ─────────────── the dummy ─────────────── */
 function stepDummy(dt) {
     var d = RT.dummy;
@@ -840,6 +1026,7 @@ function stepDummy(dt) {
     d.flashT = Math.max(0, d.flashT - dt);
     d.spawnT = Math.max(0, d.spawnT - dt);
     if (d.dead) {
+        if (RT.mode !== 'sandbox') return;   // in a Trial the dummy stays gone
         d.respawn -= dt;
         if (d.respawn <= 0) {
             RT.dummy = mkDummy();
@@ -854,34 +1041,8 @@ function stepDummy(dt) {
         }
         return;
     }
-    var st = d.st;
-    // ignite stacks tick
-    for (var i = st.ignite.length - 1; i >= 0; i--) {
-        var ig = st.ignite[i];
-        ig.next -= dt; ig.t -= dt;
-        if (ig.next <= 0) {
-            ig.next = 0.5;
-            dealRaw(ig.dps * 0.5, 'fire', { dot: true, tag: 'ignite' });
-            S.igniteTicks = (S.igniteTicks || 0) + 1;
-        }
-        if (ig.t <= 0) st.ignite.splice(i, 1);
-    }
-    // umbral coils tick
-    for (var j = st.coils.length - 1; j >= 0; j--) {
-        var c = st.coils[j];
-        c.next -= dt; c.t -= dt;
-        if (c.next <= 0) { c.next = 0.5; dealRaw(c.dps * 0.5, 'chaos', { dot: true, tag: 'umbral' }); }
-        if (c.t <= 0) st.coils.splice(j, 1);
-    }
-    st.chill = Math.max(0, st.chill - dt);
-    st.freeze = Math.max(0, st.freeze - dt);
-    st.shock = Math.max(0, st.shock - dt);
-    st.sigil = Math.max(0, st.sigil - dt);
+    stepUnitStatuses(d, dt);
     if (S.dummy.regen && d.hp < d.hpm) d.hp = Math.min(d.hpm, d.hp + d.hpm * 0.02 * dt);
-    // status particles
-    if (st.ignite.length && Math.random() < 0.35) burst(d.x, d.y, rnd(10, 40), 1, { col: '255,120,30', sp0: 0.1, sp1: 0.6, l0: 0.3, l1: 0.8 });
-    if (st.freeze > 0 && Math.random() < 0.2) burst(d.x, d.y, rnd(6, 44), 1, { col: '160,220,255', sp0: 0.05, sp1: 0.3, l0: 0.4, l1: 1, grav: 30 });
-    if (st.shock > 0 && Math.random() < 0.3) spawnPart({ x: d.x + rnd(-0.3, 0.3), y: d.y + rnd(-0.3, 0.3), z: rnd(8, 46), vx: 0, vy: 0, vz: 0, life: 0.1, size: rnd(1, 2.5), col: '255,240,140', add: 1, grav: 0 });
 }
 function drawDummy(cx, t) {
     var d = RT.dummy;
@@ -950,8 +1111,8 @@ function drawDummy(cx, t) {
         cx.fillStyle = 'rgba(0,0,0,.35)'; cx.fillRect(sx - icons.length * 5 + k * 10, sy - 74, 8, 1);
     }
 }
-function statusIcons() {
-    var st = RT.dummy.st, out = [];
+function statusIconsOf(u) {
+    var st = u.st, out = [];
     if (st.ignite.length) out.push(['ignite', '#ff7a2e']);
     if (st.chill > 0) out.push(['chill', '#6fd4ff']);
     if (st.freeze > 0) out.push(['freeze', '#bfe6ff']);
@@ -960,110 +1121,498 @@ function statusIcons() {
     if (st.coils.length) out.push(['umbral', '#8a4ae0']);
     return out;
 }
+function statusIcons() { return statusIconsOf(RT.dummy); }
 
-/* ─────────────── damage pipeline ───────────────
-   hit → crit roll → dummy armor/res/shock/sigil → number,
-   log, dps, xp, statuses, death. Chaos pierces half of res. */
+/* ═══════════════ ENEMIES + TARGETING + PLAYER MORTALITY ═══════════════ */
+
+/* every alive damageable thing right now (dummy in sandbox, enemies always) */
+function units() {
+    var out = [];
+    if (RT.mode === 'sandbox' && RT.dummy && !RT.dummy.dead) out.push(RT.dummy);
+    for (var i = 0; i < RT.enemies.length; i++) if (!RT.enemies[i].dead) out.push(RT.enemies[i]);
+    return out;
+}
+function nearestUnit(x, y, maxR, exclude) {
+    var us = units(), best = null, bd = (maxR || 999) * (maxR || 999);
+    for (var i = 0; i < us.length; i++) {
+        if (exclude && us[i] === exclude) continue;
+        var d2 = (us[i].x - x) * (us[i].x - x) + (us[i].y - y) * (us[i].y - y);
+        if (d2 < bd) { bd = d2; best = us[i]; }
+    }
+    return best;
+}
+function unitsInRadius(x, y, r) {
+    var us = units(), out = [];
+    for (var i = 0; i < us.length; i++) if (Math.hypot(us[i].x - x, us[i].y - y) <= r + us[i].r) out.push(us[i]);
+    return out;
+}
+/* the unit a spell aimed at (tx,ty) should home to: one under/near the cursor,
+   else the closest in a small cone. Falls back to null (aim at the ground). */
+function aimUnit(tx, ty) {
+    var u = nearestUnit(tx, ty, 1.6);
+    return u || nearestUnit(RT.px, RT.py, 99);   // else whatever's closest to the exile
+}
+
+/* ─────────────── spawn ─────────────── */
+function spawnEnemy(kind, x, y, scale) {
+    var def = ENEMIES[kind]; if (!def) return null;
+    scale = scale || { hp: 1, dmg: 1 };
+    var e = {
+        kind: kind, name: 'the ' + def.n, def: def, boss: def.boss || 0,
+        x: x, y: y, r: def.r, hpm: Math.round(def.hp * scale.hp), dead: 0,
+        st: mkStatus(), wobble: 0, flashT: 0, spawnT: 0.4, bornAt: RT.t,
+        vx: 0, vy: 0, face: 0, anim: rnd(0, TAU),
+        armor: 0, res: { fire: 0, cold: 0, light: 0, chaos: def.boss ? 20 : 0 },
+        dmg: def.dmg * scale.dmg, speed: def.speed, atkCd: 0, atkT: 0, state: 'walk', tell: 0,
+        phase: 1, summonCd: 6
+    };
+    e.hp = e.hpm;
+    if (RT.enemies.length < 60) RT.enemies.push(e);
+    burst(x, y, 8, 14, { col: def.col[2].slice(1).match(/../g).map(function (h) { return parseInt(h, 16); }).join(','), sp0: 0.4, sp1: 1.8, l0: 0.3, l1: 0.7 });
+    return e;
+}
+function chill01(u) { return u.st.freeze > 0 ? 0 : u.st.chill > 0 ? 0.4 : 0; }  // slow factor
+
+/* ─────────────── enemy step / AI ─────────────── */
+function stepEnemies(dt) {
+    var alive = 0;
+    for (var i = RT.enemies.length - 1; i >= 0; i--) {
+        var e = RT.enemies[i];
+        e.wobble = Math.max(0, e.wobble - dt * 3);
+        e.flashT = Math.max(0, e.flashT - dt);
+        e.spawnT = Math.max(0, e.spawnT - dt);
+        e.anim += dt;
+        if (e.dead) { RT.enemies.splice(i, 1); continue; }
+        alive++;
+        stepUnitStatuses(e, dt);
+        if (e.st.freeze > 0) continue;                 // frozen solid: no acting
+        var slow = 1 - chill01(e);
+        var dx = RT.px - e.x, dy = RT.py - e.y, dist = Math.hypot(dx, dy) || 0.0001;
+        e.face = Math.atan2(dy, dx);
+        e.atkT = Math.max(0, e.atkT - dt);
+        if (e.def.ai === 'boss') { stepBoss(e, dt, dist, dx, dy, slow); }
+        else if (e.def.ai === 'ranged') {
+            // kite to preferred range, then lob
+            var want = e.def.kite;
+            var mv = dist < want ? -1 : dist > e.def.atkRange ? 1 : 0;
+            if (mv) moveEnemy(e, dx / dist * mv, dy / dist * mv, dt, slow);
+            if (e.atkT <= 0 && dist <= e.def.atkRange && e.state === 'walk') { e.state = 'tell'; e.tell = e.def.tell; }
+            tickTelegraph(e, dt, function () { enemyProjectile(e); e.atkT = e.def.atkCd; });
+        } else if (e.def.ai === 'charger') {
+            moveEnemy(e, dx / dist, dy / dist, dt, slow);
+            if (dist <= e.def.atkRange && e.state === 'walk') { e.state = 'tell'; e.tell = e.def.tell; }
+            tickTelegraph(e, dt, function () { enemyBoom(e); });
+        } else {   // melee
+            if (dist > e.def.atkRange - 0.1) moveEnemy(e, dx / dist, dy / dist, dt, slow);
+            if (e.atkT <= 0 && dist <= e.def.atkRange && e.state === 'walk') { e.state = 'tell'; e.tell = e.def.tell; }
+            tickTelegraph(e, dt, function () { if (Math.hypot(RT.px - e.x, RT.py - e.y) <= e.def.atkRange + 0.5) hurtPlayer(e.dmg, e); e.atkT = e.def.atkCd; if (e.def.slam) { ringFx(e.x, e.y, 1.3, '200,120,60'); RT.shake = shake(3); } });
+        }
+    }
+    // enemy projectiles
+    for (var p = RT.eproj.length - 1; p >= 0; p--) {
+        var pr = RT.eproj[p]; pr.x += pr.vx * dt; pr.y += pr.vy * dt; pr.life -= dt;
+        if (Math.random() < 0.5) spawnPart({ x: pr.x, y: pr.y, z: pr.z, vx: 0, vy: 0, vz: rnd(-4, 6), life: 0.3, size: rnd(1, 2.4), col: '150,90,220', add: 1, grav: 0 });
+        if (Math.hypot(pr.x - RT.px, pr.y - RT.py) < 0.6) { hurtPlayer(pr.dmg, pr); RT.eproj.splice(p, 1); continue; }
+        if (pr.life <= 0 || pr.x < -1 || pr.x > GRID + 1 || pr.y < -1 || pr.y > GRID + 1) RT.eproj.splice(p, 1);
+    }
+    return alive;
+}
+function moveEnemy(e, nx, ny, dt, slow) {
+    // separation: shove off overlapping neighbours so they don't stack into one dot
+    var sx = 0, sy = 0;
+    for (var i = 0; i < RT.enemies.length; i++) {
+        var o = RT.enemies[i]; if (o === e || o.dead) continue;
+        var ox = e.x - o.x, oy = e.y - o.y, od = Math.hypot(ox, oy);
+        if (od > 0.01 && od < e.r + o.r + 0.2) { sx += ox / od; sy += oy / od; }
+    }
+    var mx = nx + sx * 0.5, my = ny + sy * 0.5, ml = Math.hypot(mx, my) || 1;
+    e.x = clamp(e.x + mx / ml * e.speed * slow * dt, 0.6, GRID - 0.6);
+    e.y = clamp(e.y + my / ml * e.speed * slow * dt, 0.6, GRID - 0.6);
+}
+function tickTelegraph(e, dt, fire) {
+    if (e.state !== 'tell') return;
+    e.tell -= dt;
+    if (e.tell <= 0) { e.state = 'walk'; fire(); }
+}
+function enemyProjectile(e) {
+    var a = Math.atan2(RT.py - e.y, RT.px - e.x);
+    RT.eproj.push({ x: e.x, y: e.y, z: 26, vx: Math.cos(a) * 6.5, vy: Math.sin(a) * 6.5, life: 2.4, dmg: e.dmg });
+    sfx('void');
+}
+function enemyBoom(e) {
+    var R = e.def.boom;
+    ringFx(e.x, e.y, R, '220,220,80');
+    burst(e.x, e.y, 6, 40, { col: '220,220,60', sp0: 1, sp1: 3.6, l0: 0.3, l1: 0.9 });
+    if (Math.hypot(RT.px - e.x, RT.py - e.y) <= R) hurtPlayer(e.dmg, e);
+    RT.shake = shake(7); sfx('nova');
+    e.dead = 1; enemyDeath(e, true);   // the bloatling dies to its own blast
+}
+function stepBoss(e, dt, dist, dx, dy, slow) {
+    // phase shift at 50% -> summons come online
+    if (e.phase === 1 && e.hp < e.hpm * 0.5) { e.phase = 2; banner('THE WARDEN AWAKENS', 'it calls for help now', 2); ringFx(e.x, e.y, 3, '160,110,240'); RT.shake = shake(8); }
+    e.summonCd -= dt;
+    if (e.phase === 2 && e.summonCd <= 0) {
+        e.summonCd = 8;
+        for (var s = 0; s < 3; s++) { var an = rnd(0, TAU); spawnEnemy('wretch', clamp(e.x + Math.cos(an) * 1.5, 1, GRID - 1), clamp(e.y + Math.sin(an) * 1.5, 1, GRID - 1), RT.trial ? waveScale(RT.trial.wave) : { hp: 1, dmg: 1 }); }
+        logLine('<b style="color:#a06adf">THE WARDEN</b> calls the Wretches in.', 'st');
+    }
+    if (dist > e.def.atkRange - 0.1) moveEnemy(e, dx / dist, dy / dist, dt, slow);
+    if (e.atkT <= 0 && e.state === 'walk') {
+        // alternate slam (close) and beam sweep (any range)
+        if (dist <= e.def.atkRange + 0.4) { e.state = 'tell'; e.tell = e.def.tell; e.pend = 'slam'; }
+        else { e.state = 'tell'; e.tell = 0.9; e.pend = 'beam'; e.beamA = Math.atan2(dy, dx); }
+    }
+    tickTelegraph(e, dt, function () {
+        if (e.pend === 'slam') {
+            ringFx(e.x, e.y, 2.4, '200,120,60'); RT.shake = shake(9);
+            if (Math.hypot(RT.px - e.x, RT.py - e.y) <= 2.4) hurtPlayer(e.dmg * 1.4, e);
+            burst(e.x, e.y, 4, 30, { col: '200,120,60', sp0: 1, sp1: 3, l0: 0.3, l1: 0.8 });
+        } else {   // beam: a line from the boss along beamA
+            RT.bossBeam = { x: e.x, y: e.y, a: e.beamA, t: 0.4 };
+            var bx = Math.cos(e.beamA), by = Math.sin(e.beamA);
+            var tproj = ((RT.px - e.x) * bx + (RT.py - e.y) * by);
+            var px2 = e.x + bx * tproj, py2 = e.y + by * tproj;
+            if (tproj > 0 && Math.hypot(RT.px - px2, RT.py - py2) < 0.8) hurtPlayer(e.dmg * 1.1, e);
+            sfx('zap'); RT.flash = 0.1;
+        }
+        e.atkT = e.def.atkCd;
+    });
+}
+
+/* ─────────────── enemy death ─────────────── */
+function enemyDeath(e, quiet) {
+    if (e._counted) return; e._counted = 1;
+    e.dead = 1;
+    S.kills++; if (S.kills >= 10) ach('serial');
+    ach('firstkill');
+    var rgb = e.def.col[2].slice(1).match(/../g).map(function (h) { return parseInt(h, 16); }).join(',');
+    burst(e.x, e.y, 12, e.boss ? 60 : 24, { col: rgb, add: 0, sp0: 1, sp1: e.boss ? 4 : 3, l0: 0.4, l1: 1.1, grav: 150 });
+    RT.shake = shake(e.boss ? 12 : 3);
+    if (!quiet) sfx('death');
+    var sh = irnd(e.def.shards[0], e.def.shards[1]); S.shards += sh;
+    gainXp(e.def.xp);
+    if (e.boss) {
+        ach('warden');
+        banner('WARDEN DOWN', 'the proving grounds are quiet again', 3);
+        dropLoot(e.x, e.y, 1, 0.15); dropLoot(e.x, e.y, 1, 0.4);
+        logLine('<b style="color:#a06adf">THE WARDEN falls.</b> +' + sh + ' shards.', 'kill');
+    } else {
+        var gemBias = e.kind === 'caster' ? 0.14 : 0.05;
+        dropLoot(e.x, e.y, e.kind === 'brute' ? 0.5 : 0.2, gemBias);
+    }
+    if (RT.trial) RT.trial.killed++;
+    sSave();
+    if (RT.panel) refreshPanels();
+}
+
+/* ─────────────── the exile takes damage ─────────────── */
+function hurtPlayer(amount, src) {
+    if (RT.dead || RT.invuln > 0) return;
+    var st = stats();
+    amount = Math.max(1, Math.round(amount));
+    RT.life -= amount;
+    RT.hurtT = 0.35;
+    RT.shake = shake(3);
+    if (RT.trial) RT.trial.tookHit = true;
+    if (S.opts.nums) num(RT.px + rnd(-0.2, 0.2), RT.py, '-' + amount, '#ff5a6a', amount > st.lifeMax * 0.15, false);
+    burst(RT.px, RT.py, 22, 8, { col: '200,40,60', sp0: 0.4, sp1: 1.6, l0: 0.2, l1: 0.5 });
+    sfx('hurt');
+    if (RT.life <= 0) playerDie();
+}
+function playerDie() {
+    RT.dead = true; RT.deadT = 2.4; RT.life = 0;
+    RT.channel = null; RT.casting = null;
+    ach('die');
+    RT.shake = shake(12); RT.flash = 0.3;
+    burst(RT.px, RT.py, 10, 40, { col: '200,40,60', sp0: 0.6, sp1: 3, l0: 0.5, l1: 1.2 });
+    sfx('death');
+    var wasTrial = RT.mode === 'trial';
+    banner('YOU FELL', wasTrial ? 'the Trial ends at wave ' + RT.trial.wave : 'the veil catches you — one moment', 3);
+    logLine('<b class="ar-log-crit">You fall in the proving grounds.</b> ' + (wasTrial ? 'The Trial is over.' : 'A breath, and you are set back on your feet.'), 'kill');
+    if (wasTrial) endTrial(false);
+}
+function respawnPlayer() {
+    RT.dead = false; RT.invuln = 2;
+    RT.px = GRID / 2; RT.py = GRID / 2 + 3.5;
+    RT.life = stats().lifeMax; RT.mana = stats().manaMax;
+    RT.keys = {};
+    burst(RT.px, RT.py, 12, 30, { col: '160,110,240', sp0: 0.5, sp1: 2.4, l0: 0.4, l1: 1, vz0: 30, vz1: 120 });
+    ringFx(RT.px, RT.py, 1.8, '160,110,240');
+    logLine('You are set back on your feet at the veil-mark. Try that again.', 'sys');
+}
+
+/* ─────────────── draw an enemy ─────────────── */
+function drawEnemy(cx, e, t) {
+    var sx = isoX(e.x, e.y), sy = isoY(e.x, e.y) + TILE_H / 2;
+    var frozen = e.st.freeze > 0, chilled = e.st.chill > 0;
+    var pop = e.spawnT > 0 ? 0.6 + (0.4 - e.spawnT) : 1;
+    var wob = Math.sin(t * 24) * e.wobble * 3;
+    var telePulse = e.state === 'tell' ? 0.5 + 0.5 * Math.sin(t * 30) : 0;
+    var col = e.def.col, west = Math.cos(e.face) < 0 ? -1 : 1;
+    // telegraph ground ring
+    if (e.state === 'tell') {
+        var rr = (e.def.ai === 'charger' ? e.def.boom : e.def.ai === 'ranged' ? 0.5 : e.def.atkRange);
+        cx.save(); cx.translate(sx, sy); cx.scale(1, 0.5);
+        cx.strokeStyle = 'rgba(255,80,60,' + (0.4 + telePulse * 0.4) + ')'; cx.lineWidth = 2;
+        cx.beginPath(); cx.arc(0, 0, rr * TILE_W / 2, 0, TAU); cx.stroke(); cx.restore();
+    }
+    cx.save(); cx.translate(sx, sy - Math.abs(wob)); cx.rotate(wob * 0.03); cx.scale(pop, pop);
+    cx.fillStyle = 'rgba(0,0,0,.4)'; cx.beginPath(); cx.ellipse(0, 0, e.r * 20, e.r * 8, 0, 0, TAU); cx.fill();
+    cx.scale(west, 1);
+    var h = e.r * 62, w = e.r * 30;
+    var body = frozen ? '#bfe6ff' : chilled ? mix(col[0], '#a8c4d8', 0.4) : col[0];
+    if (e.def.ai === 'boss') drawWarden(cx, e, body, col, t, telePulse);
+    else if (e.def.ai === 'charger') {  // bloated round thing
+        cx.fillStyle = body; cx.beginPath(); cx.arc(0, -w, w * 1.2 + telePulse * 3, 0, TAU); cx.fill();
+        cx.fillStyle = col[1]; cx.beginPath(); cx.arc(0, -w, w * 1.2 + telePulse * 3, 0.2, Math.PI - 0.2); cx.fill();
+        cx.fillStyle = '#1a1a10'; cx.fillRect(-w * 0.5, -w * 1.3, 3, 3); cx.fillRect(w * 0.3, -w * 1.3, 3, 3);
+        if (telePulse > 0) { cx.globalCompositeOperation = 'lighter'; cx.fillStyle = 'rgba(255,255,120,' + telePulse * 0.5 + ')'; cx.beginPath(); cx.arc(0, -w, w * 1.4, 0, TAU); cx.fill(); cx.globalCompositeOperation = 'source-over'; }
+    } else if (e.def.ai === 'ranged') {  // hooded caster
+        cx.fillStyle = body; cx.beginPath(); cx.moveTo(-w * 0.7, 0); cx.lineTo(-w * 0.4, -h * 0.8); cx.lineTo(w * 0.4, -h * 0.8); cx.lineTo(w * 0.7, 0); cx.closePath(); cx.fill();
+        cx.fillStyle = col[1]; cx.beginPath(); cx.arc(0, -h * 0.85, w * 0.5, 0, TAU); cx.fill();
+        cx.fillStyle = '#c9a1ff'; cx.fillRect(-w * 0.15, -h * 0.9, w * 0.3, 2);
+        if (e.state === 'tell') { cx.globalCompositeOperation = 'lighter'; cx.fillStyle = 'rgba(150,90,220,' + (0.4 + telePulse * 0.5) + ')'; cx.beginPath(); cx.arc(w * 0.6, -h * 0.5, 4 + telePulse * 3, 0, TAU); cx.fill(); cx.globalCompositeOperation = 'source-over'; }
+    } else if (e.r > 0.55) {  // brute: big blocky
+        cx.fillStyle = body; cx.fillRect(-w, -h, w * 2, h);
+        cx.fillStyle = col[1]; cx.fillRect(-w, -h, w * 2, h * 0.28);
+        cx.fillStyle = '#1a0e08'; cx.fillRect(-w * 0.5, -h * 0.8, 4, 4); cx.fillRect(w * 0.2, -h * 0.8, 4, 4);
+        var swing = e.state === 'tell' ? -telePulse * 0.9 : 0;   // arm winds back
+        cx.save(); cx.translate(w, -h * 0.7); cx.rotate(swing); cx.fillStyle = col[0]; cx.fillRect(0, -3, w * 1.4, 6); cx.fillStyle = '#3a2418'; cx.fillRect(w * 1.2, -8, 10, 16); cx.restore();
+    } else {  // wretch: thin biped
+        cx.fillStyle = body; cx.fillRect(-w * 0.5, -h, w, h);
+        cx.fillStyle = col[2]; cx.beginPath(); cx.arc(0, -h, w * 0.6, 0, TAU); cx.fill();
+        cx.fillStyle = '#0c0c06'; cx.fillRect(-w * 0.25, -h - 1, 2, 2); cx.fillRect(w * 0.1, -h - 1, 2, 2);
+        var legK = Math.sin(t * 12 + e.anim) * 3;
+        cx.fillStyle = col[1]; cx.fillRect(-w * 0.5, -3, 3, 6 + legK); cx.fillRect(w * 0.2, -3, 3, 6 - legK);
+    }
+    if (e.flashT > 0) { cx.globalCompositeOperation = 'lighter'; cx.globalAlpha = e.flashT * 3.2; cx.fillStyle = '#fff'; cx.fillRect(-w * 1.4, -h * 1.4, w * 2.8, h * 1.5); cx.globalAlpha = 1; cx.globalCompositeOperation = 'source-over'; }
+    if (frozen) { cx.globalAlpha = 0.45; cx.fillStyle = '#dff2ff'; cx.fillRect(-w * 1.3, -h * 1.2, w * 2.6, h * 1.25); cx.globalAlpha = 1; }
+    cx.restore();
+    // health bar + statuses
+    var barW = e.boss ? 0 : (e.r * 70), hpF = clamp(e.hp / e.hpm, 0, 1);
+    if (barW) {
+        cx.fillStyle = 'rgba(0,0,0,.6)'; cx.fillRect(sx - barW / 2, sy - h - 12, barW, 4);
+        cx.fillStyle = hpF > 0.35 ? '#c33' : '#e85a2a'; cx.fillRect(sx - barW / 2 + 1, sy - h - 11, (barW - 2) * hpF, 2);
+    }
+    var icons = statusIconsOf(e);
+    for (var k = 0; k < icons.length; k++) { cx.fillStyle = icons[k][1]; cx.fillRect(sx - icons.length * 4 + k * 8, sy - h - 20, 6, 4); }
+}
+function drawWarden(cx, e, body, col, t, tp) {
+    var w = e.r * 30, h = e.r * 62;
+    cx.fillStyle = body; cx.fillRect(-w, -h, w * 2, h);
+    cx.fillStyle = col[1]; cx.fillRect(-w, -h, w * 2, h * 0.3);
+    // shoulder crests
+    cx.fillStyle = col[2]; cx.beginPath(); cx.moveTo(-w, -h); cx.lineTo(-w * 1.4, -h * 1.2); cx.lineTo(-w * 0.5, -h * 0.95); cx.closePath(); cx.fill();
+    cx.beginPath(); cx.moveTo(w, -h); cx.lineTo(w * 1.4, -h * 1.2); cx.lineTo(w * 0.5, -h * 0.95); cx.fill();
+    // eye visor
+    cx.globalCompositeOperation = 'lighter';
+    cx.fillStyle = 'rgba(200,120,255,' + (0.6 + Math.sin(t * 4) * 0.2 + tp * 0.3) + ')';
+    cx.fillRect(-w * 0.7, -h * 0.82, w * 1.4, 4);
+    cx.globalCompositeOperation = 'source-over';
+    // phase-2 aura
+    if (e.phase === 2) { cx.globalCompositeOperation = 'lighter'; cx.fillStyle = 'rgba(160,110,240,.12)'; cx.beginPath(); cx.arc(0, -h * 0.5, w * 2.4, 0, TAU); cx.fill(); cx.globalCompositeOperation = 'source-over'; }
+}
+function mix(a, b, t) {
+    var pa = a.slice(1).match(/../g).map(function (h) { return parseInt(h, 16); });
+    var pb = b.slice(1).match(/../g).map(function (h) { return parseInt(h, 16); });
+    return 'rgb(' + pa.map(function (v, i) { return Math.round(lerp(v, pb[i], t)); }).join(',') + ')';
+}
+
+/* ─────────────── the Trials ─────────────── */
+function startTrial() {
+    if (RT.mode === 'trial') return;
+    RT.mode = 'trial';
+    RT.enemies.length = 0; RT.eproj.length = 0;
+    RT.dummy.dead = 1;                              // dummy steps aside during a run
+    RT.trial = { wave: 0, phase: 'gap', timer: 1.4, spawned: 0, killed: 0, toSpawn: 0, queue: [], tookHit: false, score: 0, start: RT.t };
+    banner('THE TRIALS BEGIN', 'survive. it is the whole design.', 2.2);
+    logLine('<b class="ar-log-lv">THE TRIALS BEGIN.</b> Kill everything. Stay standing.', 'sys');
+    sfx('surge');
+}
+function endTrial(won) {
+    var tr = RT.trial;
+    if (tr && tr.wave > S.bestWave) { S.bestWave = tr.wave; sSave(); }
+    RT.mode = 'sandbox';
+    RT.trial = null;
+    RT.enemies.length = 0; RT.eproj.length = 0;
+    RT.bossBeam = null;
+    RT.dummy = mkDummy(); RT.dummy.spawnT = 0.5; RT.dummy.bornAt = RT.t;
+    if (won) banner('TRIAL CLEARED', 'the arena exhales', 3);
+}
+function stepTrial(dt) {
+    var tr = RT.trial; if (!tr) return;
+    tr.score = tr.wave * 100 + S.kills;
+    var aliveCount = RT.enemies.filter(function (e) { return !e.dead; }).length;
+    if (tr.phase === 'gap') {
+        tr.timer -= dt;
+        if (tr.timer <= 0) beginWave(tr.wave + 1);
+    } else if (tr.phase === 'spawn') {
+        tr.timer -= dt;
+        if (tr.timer <= 0 && tr.queue.length) {
+            var k = tr.queue.shift();
+            var an = rnd(0, TAU), edge = GRID / 2 - 1.5;
+            spawnEnemy(k, clamp(GRID / 2 + Math.cos(an) * edge, 1, GRID - 1), clamp(GRID / 2 + Math.sin(an) * edge, 1, GRID - 1), waveScale(tr.wave));
+            tr.timer = waveIsBoss(tr.wave) ? 0 : rnd(0.3, 0.7);
+            if (!tr.queue.length) tr.phase = 'fight';
+        }
+    } else if (tr.phase === 'fight') {
+        if (aliveCount === 0) {   // wave cleared
+            if (!tr.tookHit) ach('nohit');
+            if (tr.wave >= 5) ach('wave5');
+            if (tr.wave >= 10) ach('wave10');
+            flaskGain(2);
+            banner('WAVE ' + tr.wave + ' CLEARED', tr.wave % 5 === 4 ? 'a Warden stirs…' : 'breathe. the next is worse.', 1.8);
+            tr.phase = 'gap'; tr.timer = 3.2; tr.tookHit = false;
+            sSave();
+        }
+    }
+}
+function beginWave(w) {
+    var tr = RT.trial;
+    tr.wave = w; tr.phase = 'spawn'; tr.timer = 0.4; tr.queue = []; tr.tookHit = false;
+    if (waveIsBoss(w)) {
+        banner('WAVE ' + w + ' — WARDEN', 'the proving grounds keep one', 2);
+        tr.queue.push('warden');
+    } else {
+        var sc = waveScale(w), pool = wavePool(w);
+        for (var i = 0; i < sc.count; i++) tr.queue.push(pick(pool));
+        banner('WAVE ' + w, sc.count + ' incoming', 1.6);
+    }
+    logLine('<b>Wave ' + w + '.</b> ' + (waveIsBoss(w) ? 'THE WARDEN approaches.' : tr.queue.length + ' enemies inbound.'), 'sys');
+}
+function banner(txt, sub, dur) { RT.banner = { txt: txt, sub: sub, t: dur || 2, max: dur || 2 }; }
+
+/* ─────────────── damage pipeline (unit-agnostic) ───────────────
+   Every damageable thing — the dummy AND every enemy — is a "unit"
+   with {hp,hpm,st,dead,...}. opt.u selects the target (default: the
+   sandbox dummy). hit → crit → mitigation → number/log/dps/xp →
+   statuses → death. Chaos pierces half of resistance; Avatar of Fire
+   converts half of non-fire damage to fire at the mitigation step. */
+function unitArmor(u) { return u.isDummy ? S.dummy.armor : (u.armor || 0); }
+function unitRes(u, el) { var r = u.isDummy ? (S.dummy.res[el] || 0) : ((u.res && u.res[el]) || 0); return clamp(r, -100, 75); }
 function dealHit(base, el, opt) {
     opt = opt || {};
-    var d = RT.dummy; if (d.dead) return 0;
+    var u = opt.u || RT.dummy; if (!u || u.dead) return 0;
     var st = opt.st || stats();
-    var crit = Math.random() * 100 < st.critCh;
+    var crit = st.critCh > 0 && Math.random() * 100 < st.critCh;
     var pre = base * (crit ? st.critMul : 1);   // pre-mitigation: statuses scale off THIS,
-    var dmg = dealRaw(pre, el, { crit: crit, tag: opt.tag, quiet: opt.quiet, spell: opt.spell, shatterMul: opt.shatterMul });
+    var dmg = dealRaw(pre, el, { u: u, crit: crit, tag: opt.tag, quiet: opt.quiet, spell: opt.spell, shatterMul: opt.shatterMul, st: st });
     if (crit) { S.crits++; if (S.crits >= 10) ach('crit10'); }
     // ...because the tick path mitigates again on its own — no double-dipping resists
-    if (dmg > 0 && !d.dead) applyStatus(el, pre, st, opt);
+    if (dmg > 0 && !u.dead) applyStatus(u, el, pre, st, opt);
     return dmg;
+}
+function mitigate(u, dmg, el, st) {
+    // Avatar of Fire: half of non-fire is mitigated as fire instead
+    if (st && st.ks && st.ks.avatar && el !== 'fire' && el !== 'phys') {
+        return mitigate(u, dmg * 0.5, el, null) + mitigate(u, dmg * 0.5, 'fire', null);
+    }
+    if (el === 'phys') { var ar = unitArmor(u); return ar > 0 ? dmg * (1 - clamp(ar / (ar + 5 * dmg), 0, 0.9)) : dmg; }
+    var res = unitRes(u, el);
+    if (el === 'chaos') res /= 2;               // chaos does not read the resistance sheet fully
+    return dmg * (1 - res / 100);
 }
 function dealRaw(dmg, el, opt) {
     opt = opt || {};
-    var d = RT.dummy; if (d.dead) return 0;
-    var cfg = S.dummy;
-    if (el === 'phys' && cfg.armor > 0) dmg *= 1 - clamp(cfg.armor / (cfg.armor + 5 * dmg), 0, 0.9);
-    else if (el !== 'phys') {
-        var res = clamp(cfg.res[el] || 0, -100, 75);
-        if (el === 'chaos') res /= 2;                       // chaos does not read the resistance sheet fully
-        dmg *= 1 - res / 100;
-    }
-    if (d.st.shock > 0) dmg *= 1.4;
-    if (d.st.sigil > 0) dmg *= 1.25;
+    var u = opt.u || RT.dummy; if (!u || u.dead) return 0;
+    dmg = mitigate(u, dmg, el, opt.st);
+    if (u.st.shock > 0) dmg *= 1.4;
+    if (u.st.sigil > 0) dmg *= 1.25;
     if (opt.shatterMul) dmg *= opt.shatterMul;
     dmg = Math.max(1, Math.round(dmg));
-    d.hp -= dmg;
-    d.wobble = Math.min(1, d.wobble + (opt.dot ? 0.1 : 0.5));
-    if (!opt.dot) d.flashT = 0.09;
-    // numbers: dots small + tinted, crits huge
-    var col = opt.dot ? 'rgba(' + hex2rgb(ECOL[el]) + ',.85)' : (opt.crit ? '#ffd24a' : ECOL[el]);
-    num(d.x + rnd(-0.25, 0.25), d.y + rnd(-0.15, 0.15), fmtN(dmg), col, dmg > 200, opt.crit);
+    u.hp -= dmg;
+    u.wobble = Math.min(1, u.wobble + (opt.dot ? 0.1 : 0.5));
+    if (!opt.dot) u.flashT = 0.09;
+    if (S.opts.nums) {   // dots small + tinted, crits huge
+        var col = opt.dot ? 'rgba(' + hex2rgb(ECOL[el]) + ',.85)' : (opt.crit ? '#ffd24a' : ECOL[el]);
+        num(u.x + rnd(-0.25, 0.25), u.y + rnd(-0.15, 0.15), fmtN(dmg), col, dmg > 200, opt.crit);
+    }
     // dps + xp + flask charges + achievements
     dpsAdd(dmg);
-    gainXp(Math.round(dmg / 6));
+    gainXp(Math.max(1, Math.round(dmg / (u.isDummy ? 6 : 3))));
     if (!opt.dot) { RT.hitN = (RT.hitN || 0) + 1; if (RT.hitN % 6 === 0) flaskGain(1); }
     ach('blood');
     if (dmg >= 1000) ach('overkill');
-    var s2 = d.st;
+    var s2 = u.st;
     if (s2.ignite.length && s2.chill > 0 && s2.shock > 0) ach('storm');
-    if (!opt.quiet) {
+    if (!opt.quiet && u.isDummy) {
         logLine((opt.spell ? '<b>' + esc(opt.spell) + '</b> ' : '') + (opt.crit ? '<b class="ar-log-crit">CRITS</b> the dummy for ' : opt.dot ? '<i>' + esc(opt.tag || 'dot') + '</i> ticks for ' : 'hits the dummy for ') + '<b style="color:' + ECOL[el] + '">' + fmtN(dmg) + '</b>', opt.dot ? 'dot' : 'hit');
     }
-    if (d.hp <= 0) dummyDeath();
+    if (u.hp <= 0) unitDeath(u);
     return dmg;
 }
 function hex2rgb(h) { return parseInt(h.slice(1, 3), 16) + ',' + parseInt(h.slice(3, 5), 16) + ',' + parseInt(h.slice(5, 7), 16); }
-function applyStatus(el, dmg, st, opt) {
-    var d = RT.dummy, sp = opt.spellId ? SPELLS[opt.spellId] : null;
-    if (el === 'fire') {
+function applyStatus(u, el, dmg, st, opt) {
+    var sp = opt.spellId ? SPELLS[opt.spellId] : null;
+    // Avatar of Fire lets the fire half of any spell ignite
+    var canFire = el === 'fire' || (st.ks && st.ks.avatar);
+    if (canFire) {
         var ch = (sp && sp.ignite ? sp.ignite * 100 : 0) + st.igniteCh + (opt.forceIgnite ? 100 : 0);
         if (Math.random() * 100 < ch) {
-            d.st.ignite.push({ dps: dmg * 0.35 * (1 + (st.igniteDmg + st.dotDmg) / 100), t: 3, next: 0.5 });
-            if (d.st.ignite.length > 3) d.st.ignite.shift();
-            logLine('the dummy is <b style="color:#ff7a2e">ignited</b>. it does not scream. it never screams.', 'st');
+            u.st.ignite.push({ dps: dmg * (el === 'fire' ? 0.35 : 0.18) * (1 + (st.igniteDmg + st.dotDmg) / 100), t: 3, next: 0.5 });
+            if (u.st.ignite.length > 4) u.st.ignite.shift();
+            if (u.isDummy) logLine('the dummy is <b style="color:#ff7a2e">ignited</b>. it does not scream. it never screams.', 'st');
         }
     }
     if (el === 'cold') {
-        d.st.chill = Math.max(d.st.chill, 2.4 * (1 + st.chillPow / 100));
+        u.st.chill = Math.max(u.st.chill, 2.4 * (1 + st.chillPow / 100));
         if (Math.random() * 100 < st.freezeCh + (opt.freezeBonus || 0)) {
-            if (d.st.freeze <= 0) logLine('the dummy is <b style="color:#bfe6ff">frozen solid</b>.', 'st');
-            d.st.freeze = Math.max(d.st.freeze, 1.6);
+            if (u.st.freeze <= 0 && u.isDummy) logLine('the dummy is <b style="color:#bfe6ff">frozen solid</b>.', 'st');
+            u.st.freeze = Math.max(u.st.freeze, u.boss ? 0.8 : 1.6);   // bosses shrug freezes faster
         }
     }
     if (el === 'light') {
         var sh = (sp && sp.shock ? sp.shock * 100 : 0) + st.shockCh;
         if (Math.random() * 100 < sh) {
-            if (d.st.shock <= 0) logLine('the dummy is <b style="color:#ffe66e">shocked</b> (+40% damage taken).', 'st');
-            d.st.shock = Math.max(d.st.shock, 4);
+            if (u.st.shock <= 0 && u.isDummy) logLine('the dummy is <b style="color:#ffe66e">shocked</b> (+40% damage taken).', 'st');
+            u.st.shock = Math.max(u.st.shock, 4);
         }
     }
 }
-function dummyDeath() {
-    var d = RT.dummy;
-    d.dead = 1; d.respawn = 2.2; d.hp = 0;
+function unitDeath(u) {
+    if (u.dead) return;
+    u.dead = 1; u.hp = 0;
+    if (u.isDummy) return dummyDeath(u);
+    enemyDeath(u);
+}
+function dummyDeath(d) {
+    d.respawn = 2.2;
     S.kills++;
     ach('slain'); if (S.kills >= 10) ach('serial');
     if (RT.t - d.bornAt < 15) ach('speed');
     // straw explosion + loot
     burst(d.x, d.y, 20, 46, { col: '184,154,94', add: 0, sp0: 1, sp1: 3.4, l0: 0.5, l1: 1.4, grav: 160 });
     burst(d.x, d.y, 26, 22, { col: '255,200,120', sp0: 0.5, sp1: 2, l0: 0.3, l1: 0.8 });
-    RT.shake = Math.min(10, RT.shake + 6);
+    RT.shake = shake(6, 10);
     sfx('death');
     var shGain = irnd(2, 5);
     S.shards += shGain;
     flaskGain(3);                                       // a kill refills the belt. tradition.
     logLine('<b>The dummy is destroyed.</b> +' + shGain + ' <b style="color:#ffe66e">void shards</b>. It will be back. It is always back.', 'kill');
-    if (Math.random() < 0.65 || !S.stash.length) {
-        var it = rollItem();
-        if (S.stash.length >= 8) {   // evict the oldest NON-unique; The Box is never compost
-            var evict = 0; while (evict < S.stash.length && S.stash[evict].rarity === 'unique') evict++;
-            S.stash.splice(Math.min(evict, S.stash.length - 1), 1);
-        }
-        S.stash.push(it);
-        if (it.rarity === 'unique') { ach('unique'); logLine('<b style="color:#af6025">THE BOX DROPS.</b> It has been in the trunk since session one.', 'loot'); }
-        else logLine('the dummy drops <b style="color:' + RARITY[it.rarity] + '">' + esc(it.n) + '</b> — check your Character panel.', 'loot');
-        lootBeam(d.x, d.y, RARITY[it.rarity]);
-    }
+    dropLoot(d.x, d.y, 0.65, 0);
     sSave();
     refreshPanels();
+}
+/* loot roll shared by dummy + enemies. chance = base drop chance,
+   gemBias raises the odds a support gem falls instead of gear. */
+function dropLoot(x, y, chance, gemBias) {
+    if (Math.random() < (gemBias || 0)) {   // a support gem
+        var gid = pick(GEM_IDS);
+        S.gems[gid] = (S.gems[gid] || 0) + 1;
+        logLine('a <b style="color:' + GEMS[gid].col + '">' + esc(GEMS[gid].n) + '</b> support gem drops — socket it in the Spellbook (B).', 'loot');
+        lootBeam(x, y, GEMS[gid].col);
+        return;
+    }
+    if (Math.random() >= chance && S.stash.length) return;
+    var it = rollItem();
+    if (S.stash.length >= 8) {   // evict the oldest NON-unique; The Box is never compost
+        var evict = 0; while (evict < S.stash.length && S.stash[evict].rarity === 'unique') evict++;
+        S.stash.splice(Math.min(evict, S.stash.length - 1), 1);
+    }
+    S.stash.push(it);
+    if (it.rarity === 'unique') { ach('unique'); logLine('<b style="color:#af6025">THE BOX DROPS.</b> It has been in the trunk since session one.', 'loot'); }
+    else logLine('drops <b style="color:' + RARITY[it.rarity] + '">' + esc(it.n) + '</b> — check your Character panel (C).', 'loot');
+    lootBeam(x, y, RARITY[it.rarity]);
 }
 function lootBeam(x, y, col) {
     var rgb = hex2rgb(col);
@@ -1102,42 +1651,52 @@ function dpsNow() {
 /* ─────────────── casting ─────────────── */
 function slotCast(slot) {
     var id = S.binds[slot]; if (!id) return;
-    tryCast(id, RT.mouse.wx, RT.mouse.wy);
+    tryCast(id, RT.mouse.wx, RT.mouse.wy, slotGems(slot));
 }
-function tryCast(id, tx, ty) {
-    var sp = SPELLS[id]; if (!sp || !RT || RT.casting) return;
+function castSpell(id, tx, ty, gems) {   // the raw dispatch (also the echo re-entry)
+    if (id === 'emberbolt') castEmberbolt(tx, ty, gems);
+    else if (id === 'basalt') castBasalt(tx, ty, gems);
+    else if (id === 'arc') castArc(tx, ty, gems);
+    else if (id === 'meteor') castMeteor(tx, ty, gems);
+    else if (id === 'frostnova') castFrostNova(tx, ty, gems);
+    else if (id === 'umbralcoil') castUmbral(tx, ty, gems);
+    else if (id === 'arcanesurge') castSurge();
+    else if (id === 'sigil') castSigil(tx, ty);
+}
+function tryCast(id, tx, ty, gems) {
+    var sp = SPELLS[id]; if (!sp || !RT || RT.dead || RT.casting) return;
+    gems = gems || [];
     if (RT.channel) { if (RT.channel.id === id) return; endChannel(); }   // a new intent breaks the beam
     if (id === 'flamedash') { doDash(); return; }
-    if (id === 'glacialray') { startChannel(id, tx, ty); return; }
+    if (id === 'glacialray') { startChannel(id, tx, ty, gems); return; }
     if ((RT.cds[id] || 0) > 0) { hudNudge(id); return; }
-    if (RT.mana < sp.mana) { logLine('<i>not enough mana.</i> the globe judges you.', 'dim'); hudNudgeMana(); return; }
+    var cost = spellManaCost(id, gems);
+    if (RT.mana < cost) { logLine('<i>not enough mana.</i> the globe judges you.', 'dim'); hudNudgeMana(); return; }
     var st = stats();
-    RT.mana -= sp.mana;
+    RT.mana -= cost;
     RT.cds[id] = sp.cd || 0;
     RT.face = Math.atan2(ty - RT.py, tx - RT.px);
     RT.castAny = true; RT.idleT = 0;
     ach('spark');
-    var castT = (sp.castT || 0.3) / st.castSpd;
-    RT.casting = { id: id, t: castT, max: castT, tx: tx, ty: ty };
+    var castT = (sp.castT || 0.3) / (st.castSpd * (1 + gemMod(gems, 'cast') / 100));
+    RT.casting = { id: id, t: castT, max: castT, tx: tx, ty: ty, gems: gems };
     sfx('charge');
 }
-function finishCast(id, tx, ty) {
+function finishCast(id, tx, ty, gems) {
     var sp = SPELLS[id];
-    if (id === 'emberbolt') castEmberbolt(tx, ty);
-    else if (id === 'basalt') castBasalt(tx, ty);
-    else if (id === 'arc') castArc(tx, ty);
-    else if (id === 'meteor') castMeteor(tx, ty);
-    else if (id === 'frostnova') castFrostNova();
-    else if (id === 'umbralcoil') castUmbral(tx, ty);
-    else if (id === 'arcanesurge') castSurge();
-    else if (id === 'sigil') castSigil();
+    castSpell(id, tx, ty, gems);
     logLine('cast <b style="color:' + ECOL[sp.el] + '">' + esc(sp.n) + '</b>', 'cast');
+    if (gemHas(gems, 'echo')) {   // Spell Echo: one repeat a beat later, aimed anew
+        RT.timers.push(setTimeout(function () {
+            if (RT && !RT.dead) castSpell(id, RT.mouse.wx, RT.mouse.wy, gems.filter(function (g) { return g !== 'echo'; }));
+        }, 170));
+    }
 }
-function startChannel(id, tx, ty) {
+function startChannel(id, tx, ty, gems) {
     var sp = SPELLS[id];
     if (RT.channel) return;
-    if (RT.mana < sp.mana) { hudNudgeMana(); return; }
-    RT.channel = { id: id, t: 0, stage: 1, tick: 0, drain: sp.mana };
+    if (RT.mana < spellManaCost(id, gems)) { hudNudgeMana(); return; }
+    RT.channel = { id: id, t: 0, stage: 1, tick: 0, drain: sp.mana, gems: gems || [] };
     RT.castAny = true; RT.idleT = 0; ach('spark');
     logLine('channelling <b style="color:' + ECOL.cold + '">' + esc(sp.n) + '</b>…', 'cast');
     sfx('beam');
@@ -1152,7 +1711,7 @@ function stepCast(dt) {
     // one-shot cast wind-up
     if (RT.casting) {
         RT.casting.t -= dt;
-        if (RT.casting.t <= 0) { var c = RT.casting; RT.casting = null; finishCast(c.id, c.tx, c.ty); }
+        if (RT.casting.t <= 0) { var c = RT.casting; RT.casting = null; finishCast(c.id, c.tx, c.ty, c.gems || []); }
     }
     // channel: held Q (or key rebound to glacialray)
     if (RT.channel) {
@@ -1175,9 +1734,9 @@ function stepCast(dt) {
     // buffs
     RT.buffs.surge = Math.max(0, RT.buffs.surge - dt);
     RT.buffs.quick = Math.max(0, RT.buffs.quick - dt);
-    // idle achievement
+    // idle achievement (sandbox only — you can't stand still in a Trial and live)
     RT.idleT += dt;
-    if (RT.idleT > 60 && !RT.dummy.dead) ach('patient');
+    if (RT.idleT > 60 && RT.mode === 'sandbox' && !RT.dummy.dead) ach('patient');
 }
 function keyHeldFor(id) {
     for (var i = 0; i < SLOT_KEYS.length; i++) {
@@ -1195,74 +1754,107 @@ function endChannel() {
     RT.beams.length = 0;
 }
 
-/* ─────────────── the spells themselves ─────────────── */
-function dummyHitRadius(x, y, r) {
-    var d = RT.dummy;
-    return !d.dead && Math.hypot(d.x - x, d.y - y) <= r;
-}
+/* ─────────────── the spells themselves ───────────────
+   Every spell now targets any UNIT (dummy or enemy) via units().
+   Support gems linked to the casting slot ride along in `gems`:
+   aoe widens, chain leaps, pierce passes through, add* bolt on an
+   extra element, echo repeats (handled in finishCast). */
 
-/* EMBERBOLT — projectile with a flame tail */
-function castEmberbolt(tx, ty) {
+/* deal a spell's hit to one unit, plus any added-element gem hits */
+function spellHit(u, id, r, el, gems, opt) {
+    opt = opt || {}; opt.u = u; opt.st = r.st; opt.spellId = id; opt.spell = SPELLS[id].n;
+    var dmg = dealHit(rnd(r.lo, r.hi), el, opt);
+    (gems || []).forEach(function (g) {
+        if (GEMS[g] && GEMS[g].add && !u.dead) {
+            dealHit(rnd(r.lo, r.hi) * GEMS[g].addPct, GEMS[g].add, { u: u, st: r.st, spellId: id, quiet: true, spell: SPELLS[id].n, forceIgnite: false });
+        }
+    });
+    return dmg;
+}
+function areaMul(gems) { return 1 + gemMod(gems, 'area'); }
+
+/* EMBERBOLT / BASALT / UMBRAL — projectiles */
+function castEmberbolt(tx, ty, gems) {
     var a = Math.atan2(ty - RT.py, tx - RT.px);
-    RT.projs.push({ kind: 'ember', x: RT.px + Math.cos(a) * 0.5, y: RT.py + Math.sin(a) * 0.5, z: 26, vx: Math.cos(a) * SPELLS.emberbolt.speed, vy: Math.sin(a) * SPELLS.emberbolt.speed, life: 2.4 });
+    RT.projs.push({ kind: 'ember', gems: gems || [], x: RT.px + Math.cos(a) * 0.5, y: RT.py + Math.sin(a) * 0.5, z: 26, vx: Math.cos(a) * SPELLS.emberbolt.speed, vy: Math.sin(a) * SPELLS.emberbolt.speed, life: 2.4, hitU: [] });
     sfx('fire');
 }
-
-/* BASALT SPEAR — the honest one; the only spell armour argues with */
-function castBasalt(tx, ty) {
+function castBasalt(tx, ty, gems) {
     var a = Math.atan2(ty - RT.py, tx - RT.px);
-    RT.projs.push({ kind: 'stone', x: RT.px + Math.cos(a) * 0.5, y: RT.py + Math.sin(a) * 0.5, z: 28, vx: Math.cos(a) * SPELLS.basalt.speed, vy: Math.sin(a) * SPELLS.basalt.speed, life: 2 });
+    RT.projs.push({ kind: 'stone', gems: gems || [], x: RT.px + Math.cos(a) * 0.5, y: RT.py + Math.sin(a) * 0.5, z: 28, vx: Math.cos(a) * SPELLS.basalt.speed, vy: Math.sin(a) * SPELLS.basalt.speed, life: 2, hitU: [] });
     sfx('stone');
+}
+function castUmbral(tx, ty, gems) {
+    var a = Math.atan2(ty - RT.py, tx - RT.px);
+    RT.projs.push({ kind: 'umbral', gems: gems || [], x: RT.px + Math.cos(a) * 0.5, y: RT.py + Math.sin(a) * 0.5, z: 28, vx: Math.cos(a) * 6, vy: Math.sin(a) * 6, life: 3, hitU: [] });
+    sfx('void');
+}
+function projImpact(p, u) {
+    var gems = p.gems || [];
+    if (p.kind === 'stone') {
+        var rs = spellDmg('basalt', gems);
+        spellHit(u, 'basalt', rs, 'phys', gems); u.wobble = 1;
+        burst(p.x, p.y, p.z, 16, { col: '170,162,150', sp0: 0.7, sp1: 2.6, l0: 0.3, l1: 0.7, add: 0, grav: 220 });
+        burst(p.x, p.y, p.z, 6, { col: '220,214,200', sp0: 0.3, sp1: 1.2, l0: 0.15, l1: 0.35 });
+        RT.shake = shake(2); sfx('hit');
+    } else if (p.kind === 'ember') {
+        var r = spellDmg('emberbolt', gems);
+        spellHit(u, 'emberbolt', r, 'fire', gems);
+        burst(p.x, p.y, p.z, 22, { col: '255,140,40', sp0: 0.8, sp1: 3, l0: 0.25, l1: 0.6 });
+        burst(p.x, p.y, p.z, 8, { col: '255,220,120', sp0: 0.4, sp1: 1.4, l0: 0.2, l1: 0.4 });
+        decal(p.x, p.y, 20 * areaMul(gems), '190,80,20', 3.5);
+        if (gemHas(gems, 'area')) unitsInRadius(p.x, p.y, 1.2 * areaMul(gems)).forEach(function (o) { if (o !== u) spellHit(o, 'emberbolt', spellDmg('emberbolt', gems), 'fire', gems, { quiet: true }); });
+        RT.shake = shake(1.2); sfx('hit');
+    } else if (p.kind === 'umbral') {
+        var r2 = spellDmg('umbralcoil', gems), st2 = r2.st;
+        spellHit(u, 'umbralcoil', r2, 'chaos', gems);
+        if (!u.dead) {
+            var dot = SPELLS.umbralcoil;
+            var dps = rnd(dot.dot[0], dot.dot[1]) * (1 + (S.lv - 1) * 0.12) * (1 + (st2.m.sd + st2.m.chaos + st2.dotDmg) / 100) * (1 + gemMod(gems, 'more'));
+            u.st.coils.push({ dps: dps, t: dot.dotT, next: 0.5 });
+            while (u.st.coils.length > dot.maxStk) u.st.coils.shift();
+            if (u.isDummy) logLine('an <b style="color:#c06aff">umbral coil</b> latches on (' + u.st.coils.length + '/' + dot.maxStk + ')', 'st');
+        }
+        burst(p.x, p.y, p.z, 18, { col: '150,80,230', sp0: 0.6, sp1: 2.2, l0: 0.3, l1: 0.7 }); sfx('void');
+    }
+    // CHAIN gem: leap to a second nearby target for 70%
+    if (gemHas(gems, 'chain')) {
+        var next = nearestUnit(p.x, p.y, 3.2, u);
+        if (next && p.hitU.indexOf(next) < 0) {
+            p.hitU.push(next);
+            boltFx(p.x, p.y, next.x, next.y, 0);
+            var el = p.kind === 'stone' ? 'phys' : p.kind === 'ember' ? 'fire' : 'chaos';
+            var id = p.kind === 'stone' ? 'basalt' : p.kind === 'ember' ? 'emberbolt' : 'umbralcoil';
+            spellHit(next, id, { lo: spellDmg(id, gems).lo * 0.7, hi: spellDmg(id, gems).hi * 0.7, st: spellDmg(id, gems).st }, el, gems, { quiet: true });
+        }
+    }
 }
 function stepProjs(dt) {
     for (var i = RT.projs.length - 1; i >= 0; i--) {
         var p = RT.projs[i];
         p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt;
         var out = p.x < -1 || p.x > GRID + 1 || p.y < -1 || p.y > GRID + 1;
-        // trail
         if (p.kind === 'ember') {
             spawnPart({ x: p.x, y: p.y, z: p.z + rnd(-2, 2), vx: rnd(-0.3, 0.3), vy: rnd(-0.3, 0.3), vz: rnd(4, 18), life: rnd(0.2, 0.45), size: rnd(1.5, 3), col: '255,140,40', add: 1, grav: 20 });
-            if (Math.random() < 0.4) spawnPart({ x: p.x, y: p.y, z: p.z, vx: 0, vy: 0, vz: rnd(6, 14), life: 0.5, size: rnd(1, 2), col: '120,120,130', add: 0, alpha: 0.4, grav: -8 });
         } else if (p.kind === 'umbral') {
             spawnPart({ x: p.x + Math.sin(p.life * 22) * 0.14, y: p.y + Math.cos(p.life * 22) * 0.14, z: p.z, vx: 0, vy: 0, vz: rnd(-4, 6), life: rnd(0.3, 0.6), size: rnd(1.5, 3), col: '150,80,230', add: 1, grav: 0 });
-        } else if (p.kind === 'stone') {
-            if (Math.random() < 0.5) spawnPart({ x: p.x, y: p.y, z: p.z + rnd(-2, 2), vx: rnd(-0.2, 0.2), vy: rnd(-0.2, 0.2), vz: rnd(-6, 4), life: rnd(0.25, 0.5), size: rnd(1, 2.2), col: '150,145,135', add: 0, alpha: 0.6, grav: 40 });
+        } else if (p.kind === 'stone' && Math.random() < 0.5) {
+            spawnPart({ x: p.x, y: p.y, z: p.z + rnd(-2, 2), vx: rnd(-0.2, 0.2), vy: rnd(-0.2, 0.2), vz: rnd(-6, 4), life: rnd(0.25, 0.5), size: rnd(1, 2.2), col: '150,145,135', add: 0, alpha: 0.6, grav: 40 });
         }
-        if (dummyHitRadius(p.x, p.y, 0.55)) {
-            if (p.kind === 'stone') {
-                var rs = spellDmg('basalt');
-                dealHit(rnd(rs.lo, rs.hi), 'phys', { st: rs.st, spell: 'Basalt Spear', spellId: 'basalt' });
-                RT.dummy.wobble = 1;                       // rock hits like an argument
-                burst(p.x, p.y, p.z, 16, { col: '170,162,150', sp0: 0.7, sp1: 2.6, l0: 0.3, l1: 0.7, add: 0, grav: 220 });
-                burst(p.x, p.y, p.z, 6, { col: '220,214,200', sp0: 0.3, sp1: 1.2, l0: 0.15, l1: 0.35 });
-                RT.shake = Math.min(7, RT.shake + 2);
-                sfx('hit');
-                RT.projs.splice(i, 1); continue;
+        // hit test against every unit not yet struck by this projectile
+        var us = units(), struck = false;
+        for (var u = 0; u < us.length; u++) {
+            var t = us[u];
+            if (p.hitU.indexOf(t) >= 0) continue;
+            if (Math.hypot(t.x - p.x, t.y - p.y) <= 0.4 + t.r) {
+                p.hitU.push(t);
+                projImpact(p, t);
+                struck = true;
+                break;
             }
-            if (p.kind === 'ember') {
-                var r = spellDmg('emberbolt');
-                dealHit(rnd(r.lo, r.hi), 'fire', { st: r.st, spell: 'Emberbolt', spellId: 'emberbolt' });
-                burst(p.x, p.y, p.z, 22, { col: '255,140,40', sp0: 0.8, sp1: 3, l0: 0.25, l1: 0.6 });
-                burst(p.x, p.y, p.z, 8, { col: '255,220,120', sp0: 0.4, sp1: 1.4, l0: 0.2, l1: 0.4 });
-                decal(p.x, p.y, 20, '190,80,20', 3.5);
-                RT.shake = Math.min(6, RT.shake + 1.2);
-                sfx('hit');
-            } else if (p.kind === 'umbral') {
-                var r2 = spellDmg('umbralcoil'), st2 = r2.st;
-                dealHit(rnd(r2.lo, r2.hi), 'chaos', { st: st2, spell: 'Umbral Coil', spellId: 'umbralcoil' });
-                var d = RT.dummy;
-                if (!d.dead) {
-                    var dot = SPELLS.umbralcoil;
-                    var dps = rnd(dot.dot[0], dot.dot[1]) * (1 + (S.lv - 1) * 0.12) * (1 + (st2.m.sd + st2.m.chaos + st2.dotDmg) / 100);
-                    d.st.coils.push({ dps: dps, t: dot.dotT, next: 0.5 });
-                    while (d.st.coils.length > dot.maxStk) d.st.coils.shift();
-                    logLine('an <b style="color:#c06aff">umbral coil</b> latches on (' + d.st.coils.length + '/' + dot.maxStk + ')', 'st');
-                }
-                burst(p.x, p.y, p.z, 18, { col: '150,80,230', sp0: 0.6, sp1: 2.2, l0: 0.3, l1: 0.7 });
-                sfx('void');
-            }
-            RT.projs.splice(i, 1); continue;
         }
+        // pierce keeps the projectile alive through the first target
+        if (struck && !gemHas(p.gems, 'pierce')) { RT.projs.splice(i, 1); continue; }
         if (p.life <= 0 || out) RT.projs.splice(i, 1);
     }
 }
@@ -1279,27 +1871,24 @@ function drawProjs(cx) {
     }
 }
 
-/* GLACIAL RAY — the channelled beam; beamTick does the damage */
+/* GLACIAL RAY — channelled beam; hits every unit near the segment */
 function beamTick(ch) {
-    var sp = SPELLS.glacialray, r = spellDmg('glacialray'), st = r.st;
+    var gems = ch.gems || [], r = spellDmg('glacialray', gems), st = r.st;
     var stageMul = 1 + (ch.stage - 1) * 0.75;
-    // beam endpoint: toward mouse, max 7 tiles
     var a = Math.atan2(RT.mouse.wy - RT.py, RT.mouse.wx - RT.px);
     var ex = RT.px + Math.cos(a) * 7, ey = RT.py + Math.sin(a) * 7;
     RT.beams = [{ x0: RT.px, y0: RT.py, x1: ex, y1: ey, stage: ch.stage, t: 0.14 }];
-    // hit test: distance from dummy to the beam segment
-    var d = RT.dummy;
-    if (!d.dead) {
-        var t = clamp(((d.x - RT.px) * (ex - RT.px) + (d.y - RT.py) * (ey - RT.py)) / (49), 0, 1);
+    var us = units();
+    for (var i = 0; i < us.length; i++) {
+        var d = us[i];
+        var t = clamp(((d.x - RT.px) * (ex - RT.px) + (d.y - RT.py) * (ey - RT.py)) / 49, 0, 1);
         var px2 = RT.px + (ex - RT.px) * t, py2 = RT.py + (ey - RT.py) * t;
-        if (Math.hypot(d.x - px2, d.y - py2) < 0.7) {
-            dealHit(rnd(r.lo, r.hi) * stageMul, 'cold', { st: st, quiet: true, spellId: 'glacialray', freezeBonus: ch.stage * 4 });
+        if (Math.hypot(d.x - px2, d.y - py2) < 0.7 + d.r) {
+            spellHit(d, 'glacialray', { lo: r.lo * stageMul, hi: r.hi * stageMul, st: st }, 'cold', gems, { quiet: true, freezeBonus: ch.stage * 4 });
             burst(d.x, d.y, rnd(10, 40), 3, { col: '140,210,255', sp0: 0.3, sp1: 1.4, l0: 0.2, l1: 0.5, grav: 60 });
-            if (Math.random() < 0.15) decal(d.x, d.y, 22, '80,150,220', 2.5);
         }
     }
-    // frost motes along the beam
-    for (var i = 0; i < 2 + ch.stage; i++) {
+    for (var k = 0; k < 2 + ch.stage; k++) {
         var tt = Math.random();
         spawnPart({ x: RT.px + (ex - RT.px) * tt, y: RT.py + (ey - RT.py) * tt, z: 24 + rnd(-6, 6), vx: rnd(-0.4, 0.4), vy: rnd(-0.4, 0.4), vz: rnd(-10, 10), life: rnd(0.2, 0.5), size: rnd(1, 2.6), col: '160,220,255', add: 1, grav: 0 });
     }
@@ -1322,40 +1911,39 @@ function drawBeams(cx, dt) {
     }
 }
 
-/* ARC — instant jagged lightning with branches */
-function castArc(tx, ty) {
-    var d = RT.dummy;
-    // arc SEEKS: if the dummy is anywhere near the aim line, it takes the hit
-    var hit = !d.dead && Math.hypot(d.x - tx, d.y - ty) < 2.6;
-    var ex = hit ? d.x : tx, ey = hit ? d.y : ty;
+/* ARC — instant lightning, seeks a unit near the aim, chains if socketed */
+function castArc(tx, ty, gems) {
+    var target = nearestUnit(tx, ty, 2.6) || nearestUnit(RT.px, RT.py, 4);
+    var ex = target ? target.x : tx, ey = target ? target.y : ty;
     boltFx(RT.px, RT.py, ex, ey, 2);
-    RT.flash = 0.12; RT.shake = Math.min(7, RT.shake + 2.4);
-    sfx('zap');
-    if (hit) {
-        var r = spellDmg('arc');
-        dealHit(rnd(r.lo, r.hi), 'light', { st: r.st, spell: 'Arc', spellId: 'arc' });
+    RT.flash = 0.12; RT.shake = shake(2.4); sfx('zap');
+    if (target) {
+        var r = spellDmg('arc', gems);
+        spellHit(target, 'arc', r, 'light', gems);
         burst(ex, ey, 30, 14, { col: '255,240,140', sp0: 1, sp1: 3.4, l0: 0.15, l1: 0.4, grav: 40 });
-    } else {
-        burst(ex, ey, 4, 10, { col: '255,240,140', sp0: 0.5, sp1: 2, l0: 0.1, l1: 0.3 });
-        decal(ex, ey, 14, '200,190,90', 1.2);
-    }
+        var jumps = gemHas(gems, 'chain') ? 2 : 1, from = target, hitSet = [target];
+        for (var j = 0; j < jumps; j++) {
+            var nx = nearestUnit(from.x, from.y, 3.5, null);
+            // pick nearest not already hit
+            var us = units(), best = null, bd = 3.5 * 3.5;
+            for (var u = 0; u < us.length; u++) { if (hitSet.indexOf(us[u]) >= 0) continue; var d2 = (us[u].x - from.x) * (us[u].x - from.x) + (us[u].y - from.y) * (us[u].y - from.y); if (d2 < bd) { bd = d2; best = us[u]; } }
+            if (!best) break;
+            hitSet.push(best); boltFx(from.x, from.y, best.x, best.y, 0);
+            spellHit(best, 'arc', { lo: r.lo * 0.6, hi: r.hi * 0.6, st: r.st }, 'light', gems, { quiet: true });
+            from = best;
+        }
+    } else { burst(ex, ey, 4, 10, { col: '255,240,140', sp0: 0.5, sp1: 2, l0: 0.1, l1: 0.3 }); decal(ex, ey, 14, '200,190,90', 1.2); }
 }
 function boltFx(x0, y0, x1, y1, depth) {
-    var pts = [[isoX(x0, y0), isoY(x0, y0) - 22]];
-    var seg = 7;
+    var pts = [[isoX(x0, y0), isoY(x0, y0) - 22]], seg = 7;
     for (var i = 1; i < seg; i++) {
         var t = i / seg;
-        pts.push([
-            lerp(isoX(x0, y0), isoX(x1, y1), t) + rnd(-14, 14),
-            lerp(isoY(x0, y0) - 22, isoY(x1, y1) - 8, t) + rnd(-10, 10)
-        ]);
+        pts.push([lerp(isoX(x0, y0), isoX(x1, y1), t) + rnd(-14, 14), lerp(isoY(x0, y0) - 22, isoY(x1, y1) - 8, t) + rnd(-10, 10)]);
     }
     pts.push([isoX(x1, y1), isoY(x1, y1) - 8]);
     RT.bolts.push({ pts: pts, t: 0.16, w: 2.6 });
-    // branches
     if (depth > 0) for (var b = 0; b < 2; b++) {
-        var bi = irnd(2, seg - 2), bp = pts[bi];
-        var bpts = [bp];
+        var bi = irnd(2, seg - 2), bp = pts[bi], bpts = [bp];
         for (var j = 1; j <= 3; j++) bpts.push([bp[0] + rnd(-30, 30), bp[1] + rnd(-4, 26) * j / 2]);
         RT.bolts.push({ pts: bpts, t: 0.12, w: 1.3 });
     }
@@ -1368,55 +1956,37 @@ function drawBolts(cx, dt) {
         var a = clamp(b.t / 0.16, 0, 1);
         [['rgba(200,220,255,', b.w * 3, 0.25], ['rgba(255,250,190,', b.w, 0.9], ['rgba(255,255,255,', b.w * 0.4, 1]].forEach(function (L) {
             cx.strokeStyle = L[0] + (L[2] * a) + ')'; cx.lineWidth = L[1];
-            cx.beginPath();
-            b.pts.forEach(function (p, k) { k ? cx.lineTo(p[0], p[1]) : cx.moveTo(p[0], p[1]); });
-            cx.stroke();
+            cx.beginPath(); b.pts.forEach(function (p, k) { k ? cx.lineTo(p[0], p[1]) : cx.moveTo(p[0], p[1]); }); cx.stroke();
         });
         cx.restore();
     }
 }
 
-/* VOIDFALL METEOR — reticle, dread, impact */
-function castMeteor(tx, ty) {
-    RT.meteors.push({ x: tx, y: ty, t: SPELLS.meteor.delay, max: SPELLS.meteor.delay, fell: false });
+/* VOIDFALL METEOR — hits every unit in the (gem-widened) blast */
+function castMeteor(tx, ty, gems) {
+    RT.meteors.push({ x: tx, y: ty, gems: gems || [], radius: SPELLS.meteor.radius * areaMul(gems), t: SPELLS.meteor.delay, max: SPELLS.meteor.delay, fell: false });
     sfx('meteorMark');
 }
 function stepMeteors(dt) {
     for (var i = RT.meteors.length - 1; i >= 0; i--) {
-        var m = RT.meteors[i];
-        m.t -= dt;
-        if (m.t <= 0 && !m.fell) {
-            m.fell = true;
-            meteorImpact(m);
-            RT.meteors.splice(i, 1);
-        }
+        var m = RT.meteors[i]; m.t -= dt;
+        if (m.t <= 0 && !m.fell) { m.fell = true; meteorImpact(m); RT.meteors.splice(i, 1); }
     }
 }
 function meteorImpact(m) {
-    var sp = SPELLS.meteor, r = spellDmg('meteor');
-    var d = RT.dummy;
-    var dist = Math.hypot(d.x - m.x, d.y - m.y);
-    if (!d.dead && dist <= sp.radius) {
-        var falloff = 1 - (dist / sp.radius) * 0.5;
-        dealHit(rnd(r.lo, r.hi) * falloff, 'fire', { st: r.st, spell: 'Voidfall Meteor', spellId: 'meteor', forceIgnite: dist < 0.9 });
-        if (dist < 0.9) ach('direct');
-    }
-    // the show
-    RT.shake = Math.min(16, RT.shake + 12);
-    RT.flash = 0.2; RT.hitstop = 0.06;
+    var gems = m.gems || [], r = spellDmg('meteor', gems), R = m.radius;
+    unitsInRadius(m.x, m.y, R).forEach(function (u) {
+        var dist = Math.hypot(u.x - m.x, u.y - m.y), falloff = 1 - (dist / R) * 0.5;
+        spellHit(u, 'meteor', { lo: r.lo * falloff, hi: r.hi * falloff, st: r.st }, 'fire', gems, { forceIgnite: dist < 0.9 });
+        if (dist < 0.9 && u.isDummy) ach('direct');
+    });
+    RT.shake = shake(12, 16); RT.flash = 0.2; RT.hitstop = 0.06;
     burst(m.x, m.y, 6, 60, { col: '255,120,30', sp0: 1, sp1: 4.5, l0: 0.4, l1: 1.1, vz0: 40, vz1: 220, grav: 220 });
     burst(m.x, m.y, 4, 30, { col: '255,220,120', sp0: 0.6, sp1: 3, l0: 0.3, l1: 0.8 });
     burst(m.x, m.y, 10, 24, { col: '90,80,90', sp0: 0.4, sp1: 2, l0: 0.8, l1: 2, add: 0, alpha: 0.5, grav: 30 });
-    ringFx(m.x, m.y, sp.radius, '255,140,50');
-    decal(m.x, m.y, 54, '160,60,10', 8);
-    sfx('meteor');
-    // ember rain
-    for (var i = 0; i < 16; i++) {
-        (function (k) {
-            RT.timers.push(setTimeout(function () {
-                if (RT) burst(m.x + rnd(-1.6, 1.6), m.y + rnd(-1.6, 1.6), rnd(20, 80), 2, { col: '255,150,50', sp0: 0.1, sp1: 0.8, l0: 0.3, l1: 0.9 });
-            }, k * 60));
-        })(i);
+    ringFx(m.x, m.y, R, '255,140,50'); decal(m.x, m.y, 54 * areaMul(gems), '160,60,10', 8); sfx('meteor');
+    for (var i = 0; i < pq(16); i++) {
+        (function (k) { RT.timers.push(setTimeout(function () { if (RT) burst(m.x + rnd(-1.6, 1.6) * areaMul(gems), m.y + rnd(-1.6, 1.6) * areaMul(gems), rnd(20, 80), 2, { col: '255,150,50', sp0: 0.1, sp1: 0.8, l0: 0.3, l1: 0.9 }); }, k * 60)); })(i);
     }
 }
 function ringFx(x, y, r, col) { RT.rings.push({ x: x, y: y, r: 0.2, max: r, col: col, t: 0.5, life: 0.5 }); }
@@ -1424,15 +1994,11 @@ function drawRings(cx, dt) {
     for (var i = RT.rings.length - 1; i >= 0; i--) {
         var g = RT.rings[i]; g.t -= dt;
         if (g.t <= 0) { RT.rings.splice(i, 1); continue; }
-        var k = 1 - g.t / g.life;
-        var rr = g.max * (0.2 + 0.8 * k);
+        var k = 1 - g.t / g.life, rr = g.max * (0.2 + 0.8 * k);
         var sx = isoX(g.x, g.y), sy = isoY(g.x, g.y) + TILE_H / 2;
-        cx.save(); cx.translate(sx, sy); cx.scale(1, 0.5);
-        cx.globalCompositeOperation = 'lighter';
-        cx.strokeStyle = 'rgba(' + g.col + ',' + (0.8 * (1 - k)) + ')';
-        cx.lineWidth = 4 * (1 - k) + 1;
-        cx.beginPath(); cx.arc(0, 0, rr * TILE_W / 2, 0, TAU); cx.stroke();
-        cx.restore();
+        cx.save(); cx.translate(sx, sy); cx.scale(1, 0.5); cx.globalCompositeOperation = 'lighter';
+        cx.strokeStyle = 'rgba(' + g.col + ',' + (0.8 * (1 - k)) + ')'; cx.lineWidth = 4 * (1 - k) + 1;
+        cx.beginPath(); cx.arc(0, 0, rr * TILE_W / 2, 0, TAU); cx.stroke(); cx.restore();
     }
 }
 function drawMeteorMarks(cx) {
@@ -1440,19 +2006,14 @@ function drawMeteorMarks(cx) {
         var m = RT.meteors[i], k = 1 - m.t / m.max;
         var sx = isoX(m.x, m.y), sy = isoY(m.x, m.y) + TILE_H / 2;
         cx.save(); cx.translate(sx, sy); cx.scale(1, 0.5);
-        cx.strokeStyle = 'rgba(255,90,20,' + (0.35 + k * 0.5) + ')';
-        cx.lineWidth = 2;
-        var rr = SPELLS.meteor.radius * TILE_W / 2;
+        cx.strokeStyle = 'rgba(255,90,20,' + (0.35 + k * 0.5) + ')'; cx.lineWidth = 2;
+        var rr = m.radius * TILE_W / 2;
         cx.beginPath(); cx.arc(0, 0, rr, 0, TAU); cx.stroke();
         cx.beginPath(); cx.arc(0, 0, rr * (1 - k), 0, TAU); cx.stroke();
-        // crosshair
         cx.beginPath(); cx.moveTo(-rr, 0); cx.lineTo(rr, 0); cx.moveTo(0, -rr); cx.lineTo(0, rr);
-        cx.strokeStyle = 'rgba(255,90,20,.25)'; cx.stroke();
-        cx.restore();
-        // the incoming rock (last 30%)
+        cx.strokeStyle = 'rgba(255,90,20,.25)'; cx.stroke(); cx.restore();
         if (k > 0.7) {
-            var fall = (k - 0.7) / 0.3;
-            var my = sy - 420 * (1 - fall);
+            var fall = (k - 0.7) / 0.3, my = sy - 420 * (1 - fall);
             cx.globalCompositeOperation = 'lighter';
             var gr = cx.createRadialGradient(sx + 60 * (1 - fall), my, 2, sx + 60 * (1 - fall), my, 22);
             gr.addColorStop(0, 'rgba(255,230,160,.95)'); gr.addColorStop(0.5, 'rgba(255,120,30,.7)'); gr.addColorStop(1, 'rgba(255,80,20,0)');
@@ -1462,55 +2023,40 @@ function drawMeteorMarks(cx) {
     }
 }
 
-/* FROST NOVA — ring out from the exile */
-function castFrostNova() {
-    var sp = SPELLS.frostnova, r = spellDmg('frostnova');
-    ringFx(RT.px, RT.py, sp.radius, '140,210,255');
-    ringFx(RT.px, RT.py, sp.radius * 0.7, '200,240,255');
+/* FROST NOVA — ring from the exile; shatters frozen units in range */
+function castFrostNova(tx, ty, gems) {
+    var R = SPELLS.frostnova.radius * areaMul(gems), r = spellDmg('frostnova', gems);
+    ringFx(RT.px, RT.py, R, '140,210,255'); ringFx(RT.px, RT.py, R * 0.7, '200,240,255');
     burst(RT.px, RT.py, 10, 40, { col: '160,220,255', sp0: 1.4, sp1: 3.6, l0: 0.3, l1: 0.8, grav: 80 });
-    decal(RT.px, RT.py, 60, '90,160,230', 5);
-    RT.shake = Math.min(8, RT.shake + 3);
-    sfx('nova');
-    var d = RT.dummy;
-    if (!d.dead && Math.hypot(d.x - RT.px, d.y - RT.py) <= sp.radius) {
-        var frozen = d.st.freeze > 0;
-        var st = r.st;
-        var mul = frozen ? 2.5 * (1 + st.shatter / 100) : 1;
-        dealHit(rnd(r.lo, r.hi), 'cold', { st: st, spell: 'Frost Nova', spellId: 'frostnova', shatterMul: mul, freezeBonus: 6 });
+    decal(RT.px, RT.py, 60 * areaMul(gems), '90,160,230', 5); RT.shake = shake(3); sfx('nova');
+    unitsInRadius(RT.px, RT.py, R).forEach(function (u) {
+        var frozen = u.st.freeze > 0, mul = frozen ? 2.5 * (1 + r.st.shatter / 100) : 1;
+        spellHit(u, 'frostnova', r, 'cold', gems, { shatterMul: mul, freezeBonus: 6 });
         if (frozen) {
-            ach('shatter');
-            d.st.freeze = 0;
-            logLine('<b style="color:#bfe6ff">SHATTER!</b> the ice goes everywhere. beautiful.', 'st');
-            burst(d.x, d.y, 20, 40, { col: '210,240,255', sp0: 1, sp1: 4, l0: 0.4, l1: 1, grav: 200 });
-            RT.hitstop = 0.05;
+            if (u.isDummy) ach('shatter');
+            u.st.freeze = 0;
+            if (u.isDummy) logLine('<b style="color:#bfe6ff">SHATTER!</b> the ice goes everywhere. beautiful.', 'st');
+            burst(u.x, u.y, 20, 40, { col: '210,240,255', sp0: 1, sp1: 4, l0: 0.4, l1: 1, grav: 200 }); RT.hitstop = 0.05;
         }
-    }
+    });
 }
 
-/* UMBRAL COIL — slow homing-ish lance */
-function castUmbral(tx, ty) {
-    var a = Math.atan2(ty - RT.py, tx - RT.px);
-    RT.projs.push({ kind: 'umbral', x: RT.px + Math.cos(a) * 0.5, y: RT.py + Math.sin(a) * 0.5, z: 28, vx: Math.cos(a) * 6, vy: Math.sin(a) * 6, life: 3 });
-    sfx('void');
-}
-
-/* ARCANE SURGE — the self-buff */
+/* ARCANE SURGE — the self-buff (gems irrelevant) */
 function castSurge() {
     RT.buffs.surge = SPELLS.arcanesurge.buffT;
     burst(RT.px, RT.py, 20, 30, { col: '200,230,255', sp0: 0.5, sp1: 2, l0: 0.4, l1: 1, vz0: 30, vz1: 120 });
     ringFx(RT.px, RT.py, 1.6, '200,230,255');
     logLine('<b style="color:#ffe66e">Arcane Surge</b> — the veil hums. +30% cast, +20% damage, 8s.', 'st');
-    sfx('surge');
-    refreshBuffs();
+    sfx('surge'); refreshBuffs();
 }
 
-/* SIGIL OF RUIN — the curse */
-function castSigil() {
-    var d = RT.dummy; if (d.dead) return;
-    d.st.sigil = SPELLS.sigil.curseT;
-    burst(d.x, d.y, 4, 24, { col: '192,106,255', sp0: 0.4, sp1: 1.8, l0: 0.4, l1: 1 });
-    decal(d.x, d.y, 34, '140,60,220', SPELLS.sigil.curseT);
-    logLine('the dummy is branded with a <b style="color:#c06aff">Sigil of Ruin</b> (+25% damage taken).', 'st');
+/* SIGIL OF RUIN — curse the aimed unit */
+function castSigil(tx, ty) {
+    var u = nearestUnit(tx, ty, 3) || nearestUnit(RT.px, RT.py, 99); if (!u) return;
+    u.st.sigil = SPELLS.sigil.curseT;
+    burst(u.x, u.y, 4, 24, { col: '192,106,255', sp0: 0.4, sp1: 1.8, l0: 0.4, l1: 1 });
+    decal(u.x, u.y, 34, '140,60,220', SPELLS.sigil.curseT);
+    if (u.isDummy) logLine('the dummy is branded with a <b style="color:#c06aff">Sigil of Ruin</b> (+25% damage taken).', 'st');
     sfx('curse');
 }
 
@@ -1551,6 +2097,7 @@ function sfx(kind) {
         else if (kind === 'surge') { tone('sine', 300, 900, 0.4, 0.04); tone('sine', 450, 1300, 0.4, 0.03, 0.06); }
         else if (kind === 'curse') { tone('triangle', 200, 70, 0.5, 0.05); }
         else if (kind === 'death') { noise(0.3, 0.07); tone('triangle', 200, 40, 0.5, 0.08); }
+        else if (kind === 'hurt') { noise(0.12, 0.08); tone('sawtooth', 180, 70, 0.16, 0.06); }
         else if (kind === 'level') { [440, 554, 659, 880].forEach(function (f, i) { tone('square', f, f, 0.12, 0.035, i * 0.09); }); }
         else if (kind === 'flask') { tone('sine', 500, 800, 0.15, 0.04); }
         else if (kind === 'stone') { noise(0.07, 0.05); tone('triangle', 220, 90, 0.14, 0.05); }
@@ -1571,13 +2118,26 @@ function frame(now) {
 }
 function step(dt) {
     RT.t += dt;
-    stepPlayer(dt);
-    stepCast(dt);
-    stepDummy(dt);
-    stepProjs(dt);
-    stepMeteors(dt);
-    stepParts(dt);
-    ambient(dt);
+    // player death: freeze inputs, run the clock, then set back on your feet
+    if (RT.dead) {
+        RT.deadT -= dt;
+        stepEnemies(dt); stepParts(dt);
+        if (RT.deadT <= 0) respawnPlayer();
+    } else {
+        RT.invuln = Math.max(0, RT.invuln - dt);
+        RT.hurtT = Math.max(0, RT.hurtT - dt);
+        stepPlayer(dt);
+        stepCast(dt);
+        stepDummy(dt);
+        stepEnemies(dt);
+        stepProjs(dt);
+        stepMeteors(dt);
+        stepParts(dt);
+        ambient(dt);
+        if (RT.trial) stepTrial(dt);
+    }
+    if (RT.bossBeam) { RT.bossBeam.t -= dt; if (RT.bossBeam.t <= 0) RT.bossBeam = null; }
+    if (RT.banner) { RT.banner.t -= dt; if (RT.banner.t <= 0) RT.banner = null; }
     RT.shake = Math.max(0, RT.shake - dt * 22);
     RT.flash = Math.max(0, RT.flash - dt * 2);
     // flask + hud + achievement toasts on a soft cadence
@@ -1588,13 +2148,24 @@ function step(dt) {
 function draw() {
     var cx = RT.cx;
     cx.save();
-    if (RT.shake > 0.2) cx.translate(rnd(-RT.shake, RT.shake) * 0.5, rnd(-RT.shake, RT.shake) * 0.35);
+    if (S.opts.shake && RT.shake > 0.2) cx.translate(rnd(-RT.shake, RT.shake) * 0.5, rnd(-RT.shake, RT.shake) * 0.35);
     cx.clearRect(-20, -20, VW + 40, VH + 40);
     cx.drawImage(FLOOR, 0, 0);
     drawDecals(cx, 1 / 60);
     drawMeteorMarks(cx);
+    // the boss beam sweeps under everything
+    if (RT.bossBeam) {
+        var bb = RT.bossBeam, x0 = isoX(bb.x, bb.y), y0 = isoY(bb.x, bb.y) + TILE_H / 2 - 20;
+        var ex = bb.x + Math.cos(bb.a) * 10, ey = bb.y + Math.sin(bb.a) * 10;
+        var x1 = isoX(ex, ey), y1 = isoY(ex, ey) + TILE_H / 2 - 20;
+        cx.save(); cx.globalCompositeOperation = 'lighter'; cx.lineCap = 'round';
+        cx.strokeStyle = 'rgba(160,110,240,' + (bb.t * 0.9) + ')'; cx.lineWidth = 10 + bb.t * 10;
+        cx.beginPath(); cx.moveTo(x0, y0); cx.lineTo(x1, y1); cx.stroke();
+        cx.strokeStyle = 'rgba(230,200,255,' + bb.t + ')'; cx.lineWidth = 3;
+        cx.beginPath(); cx.moveTo(x0, y0); cx.lineTo(x1, y1); cx.stroke(); cx.restore();
+    }
     // click-to-move marker
-    if (RT.moveTo) {
+    if (RT.moveTo && !RT.dead) {
         var mx = isoX(RT.moveTo.x, RT.moveTo.y), my = isoY(RT.moveTo.x, RT.moveTo.y) + TILE_H / 2;
         cx.save(); cx.translate(mx, my); cx.scale(1, 0.5);
         cx.strokeStyle = 'rgba(159,224,200,.5)'; cx.lineWidth = 1.5;
@@ -1603,8 +2174,9 @@ function draw() {
     }
     // entities painter-sorted by world (x+y)
     var ents = [];
-    ents.push({ k: (RT.dummy.x + RT.dummy.y), fn: function () { drawDummy(cx, RT.t); } });
-    ents.push({ k: (RT.px + RT.py), fn: function () { drawExile(cx, RT.px, RT.py, RT.face, RT.t); } });
+    if (RT.mode === 'sandbox') ents.push({ k: (RT.dummy.x + RT.dummy.y), fn: function () { drawDummy(cx, RT.t); } });
+    if (!RT.dead) ents.push({ k: (RT.px + RT.py), fn: function () { drawExile(cx, RT.px, RT.py, RT.face, RT.t, RT.invuln > 0 ? 0.55 + Math.sin(RT.t * 20) * 0.35 : 0); } });
+    RT.enemies.forEach(function (en) { if (!en.dead) ents.push({ k: (en.x + en.y), fn: function () { drawEnemy(cx, en, RT.t); } }); });
     BRAZIERS.forEach(function (b) { ents.push({ k: b[0] + b[1], fn: function () { drawBrazier(cx, b, RT.t); } }); });
     RT.dashTrail.forEach(function (g) { ents.push({ k: g.x + g.y - 0.01, fn: function () { drawExile(cx, g.x, g.y, g.face, RT.t, g.t * 1.4); } }); });
     ents.sort(function (a, b) { return a.k - b.k; });
@@ -1612,6 +2184,7 @@ function draw() {
     drawBeams(cx, 1 / 60);
     drawBolts(cx, 1 / 60);
     drawProjs(cx);
+    drawEproj(cx);
     drawRings(cx, 1 / 60);
     drawParts(cx);
     drawNums(cx, 1 / 60);
@@ -1620,7 +2193,15 @@ function draw() {
         cx.fillStyle = 'rgba(255,250,230,' + (RT.flash * 0.5) + ')';
         cx.fillRect(-20, -20, VW + 40, VH + 40);
     }
+    // hurt vignette
+    if (RT.hurtT > 0 || RT.dead) {
+        cx.fillStyle = 'rgba(150,10,20,' + (RT.dead ? 0.4 : RT.hurtT * 0.7) + ')';
+        cx.fillRect(-20, -20, VW + 40, VH + 40);
+    }
     cx.restore();
+    drawBanner(cx);
+    drawMinimap(cx);
+    if (RT.dead) drawDeathOverlay(cx);
     // achievement toasts (canvas-top so they ride above everything)
     for (var i = 0; i < RT.achToasts.length; i++) {
         var a = RT.achToasts[i], aY = 64 + i * 44;
@@ -1635,6 +2216,53 @@ function draw() {
         cx.fillText(a.d.length > 40 ? a.d.slice(0, 39) + '…' : a.d, VW - 258, aY + 29);
         cx.globalAlpha = 1;
     }
+}
+function drawEproj(cx) {
+    for (var i = 0; i < RT.eproj.length; i++) {
+        var p = RT.eproj[i], sx = isoX(p.x, p.y), sy = isoY(p.x, p.y) + TILE_H / 2 - p.z;
+        cx.globalCompositeOperation = 'lighter';
+        var g = cx.createRadialGradient(sx, sy, 1, sx, sy, 8);
+        g.addColorStop(0, 'rgba(220,180,255,.95)'); g.addColorStop(0.5, 'rgba(150,80,220,.5)'); g.addColorStop(1, 'rgba(120,40,200,0)');
+        cx.fillStyle = g; cx.beginPath(); cx.arc(sx, sy, 8, 0, TAU); cx.fill();
+        cx.globalCompositeOperation = 'source-over';
+    }
+}
+/* the big centred wave / event banner */
+function drawBanner(cx) {
+    if (!RT.banner) return;
+    var b = RT.banner, k = clamp(b.t / b.max, 0, 1);
+    var slide = b.t > b.max - 0.3 ? (b.max - b.t) / 0.3 : b.t < 0.4 ? b.t / 0.4 : 1;
+    cx.globalAlpha = clamp(slide, 0, 1);
+    cx.textAlign = 'center';
+    cx.fillStyle = 'rgba(6,4,12,.55)'; cx.fillRect(0, VH * 0.28, VW, 74);
+    cx.fillStyle = '#160a20'; cx.fillRect(0, VH * 0.28, VW, 3); cx.fillRect(0, VH * 0.28 + 71, VW, 3);
+    cx.fillStyle = '#e8dcff'; cx.font = '30px "Press Start 2P", monospace';
+    cx.fillText(b.txt, VW / 2, VH * 0.28 + 36);
+    cx.fillStyle = '#9a86c8'; cx.font = '13px "Pixelify Sans"';
+    cx.fillText(b.sub || '', VW / 2, VH * 0.28 + 58);
+    cx.textAlign = 'left'; cx.globalAlpha = 1;
+}
+/* minimap: arena square with the exile, dummy, and enemy blips */
+function drawMinimap(cx) {
+    var S2 = 108, ox = VW - S2 - 12, oy = VH - S2 - 118, sc = S2 / GRID;
+    cx.fillStyle = 'rgba(8,6,14,.8)'; cx.fillRect(ox - 3, oy - 3, S2 + 6, S2 + 6);
+    cx.strokeStyle = '#2a2436'; cx.strokeRect(ox - 3.5, oy - 3.5, S2 + 7, S2 + 7);
+    cx.strokeStyle = 'rgba(138,74,224,.25)'; cx.strokeRect(ox + 0.5, oy + 0.5, S2 - 1, S2 - 1);
+    function blip(x, y, r, col) { cx.fillStyle = col; cx.beginPath(); cx.arc(ox + x * sc, oy + y * sc, r, 0, TAU); cx.fill(); }
+    if (RT.mode === 'sandbox' && !RT.dummy.dead) blip(RT.dummy.x, RT.dummy.y, 2.5, '#b89a5e');
+    RT.enemies.forEach(function (e) { if (!e.dead) blip(e.x, e.y, e.boss ? 4 : 2, e.boss ? '#c896ff' : '#e05a4a'); });
+    if (!RT.dead) blip(RT.px, RT.py, 3, '#9fe0c8');
+    cx.fillStyle = '#5a5468'; cx.font = '8px "Pixelify Sans"'; cx.textAlign = 'right';
+    cx.fillText(RT.mode === 'trial' ? 'TRIAL' : 'PROVING GROUNDS', ox + S2, oy - 6); cx.textAlign = 'left';
+}
+function drawDeathOverlay(cx) {
+    cx.fillStyle = 'rgba(6,2,6,.5)'; cx.fillRect(0, 0, VW, VH);
+    cx.textAlign = 'center';
+    cx.fillStyle = '#ff5a6a'; cx.font = '40px "Press Start 2P", monospace';
+    cx.fillText('YOU FELL', VW / 2, VH / 2 - 6);
+    cx.fillStyle = '#c8b0b4'; cx.font = '13px "Pixelify Sans"';
+    cx.fillText(RT.deadT > 0 ? 'rising in ' + Math.ceil(RT.deadT) + '…' : 'rising…', VW / 2, VH / 2 + 24);
+    cx.textAlign = 'left';
 }
 
 /* ─────────────── HUD ─────────────── */
@@ -1662,22 +2290,42 @@ function updateHud(dt) {
         slot.classList.toggle('nomana', RT.mana < sp.mana);
         slot.classList.toggle('channeling', !!(RT.channel && RT.channel.id === id));
     });
-    // boss bar
-    var d = RT.dummy, boss = RT.root.querySelector('.ar-boss');
-    boss.classList.toggle('dead', !!d.dead);
-    boss.querySelector('.ar-boss-bar i').style.width = clamp(d.hp / d.hpm * 100, 0, 100) + '%';
-    var em = boss.querySelector('.ar-boss-bar em');   // lagging white ghost bar
-    var cur = parseFloat(em.style.width) || 100;
-    var want = clamp(d.hp / d.hpm * 100, 0, 100);
-    em.style.width = Math.max(want, cur - 26 * dt) + '%';
-    boss.querySelector('.ar-boss-hp').textContent = d.dead ? 'composting…' : fmtN(d.hp) + ' / ' + fmtN(d.hpm);
-    var stEl = boss.querySelector('.ar-boss-status');
-    var icons = statusIcons();
-    var html = icons.map(function (ic2) {
-        var extra = ic2[0] === 'ignite' ? '×' + RT.dummy.st.ignite.length : ic2[0] === 'umbral' ? '×' + RT.dummy.st.coils.length : '';
-        return '<span class="ar-st" style="border-color:' + ic2[1] + ';color:' + ic2[1] + '" title="' + ic2[0] + '">' + ic2[0] + extra + '</span>';
-    }).join('');
-    if (stEl._h !== html) { stEl._h = html; stEl.innerHTML = html; }
+    // top boss bar: the WARDEN if one is alive, else the dummy in sandbox, else hidden
+    var boss = RT.root.querySelector('.ar-boss');
+    var warden = null; for (var wi = 0; wi < RT.enemies.length; wi++) if (RT.enemies[wi].boss && !RT.enemies[wi].dead) warden = RT.enemies[wi];
+    var d = warden || (RT.mode === 'sandbox' ? RT.dummy : null);
+    var showBar = !!d;
+    boss.style.display = showBar ? '' : 'none';
+    if (showBar) {
+        boss.querySelector('.ar-boss-n').textContent = warden ? 'THE WARDEN' + (warden.phase === 2 ? ' — AWAKENED' : '') : 'TRAINING DUMMY, THE PATIENT';
+        boss.classList.toggle('dead', !!d.dead);
+        boss.querySelector('.ar-boss-bar i').style.width = clamp(d.hp / d.hpm * 100, 0, 100) + '%';
+        var em = boss.querySelector('.ar-boss-bar em');   // lagging white ghost bar
+        var cur = parseFloat(em.style.width); if (isNaN(cur)) cur = 100;
+        var want = clamp(d.hp / d.hpm * 100, 0, 100);
+        em.style.width = Math.max(want, cur - 26 * dt) + '%';
+        boss.querySelector('.ar-boss-hp').textContent = d.dead ? 'composting…' : fmtN(Math.max(0, d.hp)) + ' / ' + fmtN(d.hpm);
+        var stEl = boss.querySelector('.ar-boss-status');
+        var icons = statusIconsOf(d);
+        var html = icons.map(function (ic2) {
+            var extra = ic2[0] === 'ignite' ? '×' + d.st.ignite.length : ic2[0] === 'umbral' ? '×' + d.st.coils.length : '';
+            return '<span class="ar-st" style="border-color:' + ic2[1] + ';color:' + ic2[1] + '" title="' + ic2[0] + '">' + ic2[0] + extra + '</span>';
+        }).join('');
+        if (stEl._h !== html) { stEl._h = html; stEl.innerHTML = html; }
+    }
+    // trials + shards readout
+    var trialsEl = RT.root.querySelector('.ar-trials');
+    var trialActive = RT.mode === 'trial';
+    trialsEl.querySelector('.ar-trialbtn').style.display = trialActive ? 'none' : '';
+    var waveEl = trialsEl.querySelector('.ar-wave');
+    waveEl.hidden = !trialActive;
+    if (trialActive && RT.trial) {
+        waveEl.querySelector('.ar-wave-n').textContent = 'WAVE ' + RT.trial.wave;
+        var aliveN = RT.enemies.filter(function (e) { return !e.dead; }).length;
+        waveEl.querySelector('.ar-wave-sub').textContent = RT.trial.phase === 'gap' ? 'next wave incoming…' : aliveN + ' left · score ' + fmtN(RT.trial.score);
+    }
+    var shN = RT.root.querySelector('.ar-shards-n'); if (shN.textContent !== String(S.shards)) shN.textContent = S.shards;
+    var bestN = RT.root.querySelector('.ar-best'); if (bestN.textContent !== String(S.bestWave)) bestN.textContent = S.bestWave;
     // dps
     RT.root.querySelector('.ar-dps-now').textContent = fmtN(dpsNow());
     RT.root.querySelector('.ar-dps-peak').textContent = fmtN(RT.dps.peak);
@@ -1859,12 +2507,11 @@ function hudNudgeMana() {
 }
 
 /* ─────────────── panels ─────────────── */
+var AR_PANELS = ['char', 'book', 'tree', 'dummy', 'craft', 'opts'];
 function togglePanel(name) {
     var open = RT.panel === name ? null : name;
     RT.panel = open;
-    ['char', 'book', 'tree', 'dummy'].forEach(function (p) {
-        RT.root.querySelector('.ar-p-' + p).hidden = open !== p;
-    });
+    AR_PANELS.forEach(function (p) { RT.root.querySelector('.ar-p-' + p).hidden = open !== p; });
     if (open) refreshPanels();
     if (open === 'tree') drawTree();
 }
@@ -1874,6 +2521,8 @@ function refreshPanels() {
     if (RT.panel === 'char') fillChar();
     else if (RT.panel === 'book') fillBook();
     else if (RT.panel === 'dummy') fillDummy();
+    else if (RT.panel === 'craft') fillCraft();
+    else if (RT.panel === 'opts') fillOpts();
     else if (RT.panel === 'tree') drawTree();
     refreshXp();
 }
@@ -1943,36 +2592,79 @@ function fillChar() {
     });
 }
 
-/* — spellbook: all spells, bind to slots — */
+/* — spellbook: bind spells + socket support gems — */
 function fillBook() {
     var body = RT.root.querySelector('.ar-p-book .ar-p-body');
-    body.innerHTML = '<div class="ar-book-hint">click a spell, then a slot key — or drag your eyes across the tags like a real arpg player.</div>' +
-        SPELL_IDS.map(function (id) {
-            var sp = SPELLS[id], r = spellDmg(id);
-            var bound = SLOT_KEYS.filter(function (k) { return S.binds[k] === id; });
-            return '<div class="ar-spell" data-spell="' + id + '">' +
-                '<canvas width="46" height="46"></canvas>' +
-                '<div class="ar-spell-b"><b style="color:' + ECOL[sp.el] + '">' + esc(sp.n) + '</b>' +
-                '<i class="ar-tags">' + sp.tags.join(' · ') + '</i>' +
-                '<p>' + esc(sp.d) + '</p>' +
-                '<i class="ar-spell-nums">' + (sp.dmg[1] ? 'deals ' + Math.round(r.lo) + '–' + Math.round(r.hi) + (sp.tick ? ' per ' + sp.tick + 's tick' : '') : 'utility') +
-                ' · ' + sp.mana + ' mana' + (sp.cd ? ' · ' + sp.cd + 's cd' : '') + '</i></div>' +
-                '<div class="ar-bindrow">' + SLOT_KEYS.map(function (k) {
-                    return '<button class="ar-bind' + (S.binds[k] === id ? ' on' : '') + '" data-bind="' + k + '" data-of="' + id + '" type="button">' + k + '</button>';
-                }).join('') + (bound.length ? '' : '<i class="ar-unbound">unbound</i>') + '</div></div>';
+    if (!RT.socketSel || !S.binds[RT.socketSel]) RT.socketSel = SLOT_KEYS.filter(function (k) { return S.binds[k]; })[0] || null;
+    // gem bag
+    var bag = GEM_IDS.filter(function (g) { return (S.gems[g] || 0) > 0; });
+    var bagHtml = bag.length ? bag.map(function (g) {
+        return '<button class="ar-gem" data-gem="' + g + '" style="border-color:' + GEMS[g].col + '" type="button"><b style="color:' + GEMS[g].col + '">' + esc(GEMS[g].n) + '</b><i>×' + S.gems[g] + '</i></button>';
+    }).join('') : '<div class="ar-empty">no support gems yet — they drop from enemies in the Trials.</div>';
+    // per-slot socket rows
+    var linkHtml = SLOT_KEYS.filter(function (k) { return S.binds[k]; }).map(function (k) {
+        var id = S.binds[k], gems = slotGems(k), sel = RT.socketSel === k;
+        var socks = [0, 1].map(function (i) {
+            var g = gems[i];
+            return '<button class="ar-sock' + (g ? ' filled' : '') + '" data-sock="' + k + ':' + i + '"' + (g ? ' style="border-color:' + GEMS[g].col + ';color:' + GEMS[g].col + '"' : '') + ' type="button">' + (g ? esc(GEMS[g].n) : '+') + '</button>';
         }).join('');
-    body.querySelectorAll('.ar-spell canvas').forEach(function (cv2) {
-        paintSpellIcon(cv2, cv2.closest('.ar-spell').getAttribute('data-spell'));
-    });
+        return '<div class="ar-link' + (sel ? ' sel' : '') + '" data-linksel="' + k + '"><span class="ar-link-k">' + k + '</span>' +
+            '<span class="ar-link-sp" style="color:' + ECOL[SPELLS[id].el] + '">' + esc(SPELLS[id].n) + '</span><span class="ar-socks">' + socks + '</span></div>';
+    }).join('') || '<div class="ar-empty">bind a spell below, then socket gems into it.</div>';
+    var spellHtml = SPELL_IDS.map(function (id) {
+        var sp = SPELLS[id], r = spellDmg(id);
+        return '<div class="ar-spell" data-spell="' + id + '">' +
+            '<canvas width="46" height="46"></canvas>' +
+            '<div class="ar-spell-b"><b style="color:' + ECOL[sp.el] + '">' + esc(sp.n) + '</b>' +
+            '<i class="ar-tags">' + sp.tags.join(' · ') + '</i>' +
+            '<p>' + esc(sp.d) + '</p>' +
+            '<i class="ar-spell-nums">' + (sp.dmg[1] ? 'deals ' + Math.round(r.lo) + '–' + Math.round(r.hi) + (sp.tick ? ' per ' + sp.tick + 's tick' : '') : 'utility') +
+            ' · ' + sp.mana + ' mana' + (sp.cd ? ' · ' + sp.cd + 's cd' : '') + '</i></div>' +
+            '<div class="ar-bindrow">' + SLOT_KEYS.map(function (k) {
+                return '<button class="ar-bind' + (S.binds[k] === id ? ' on' : '') + '" data-bind="' + k + '" data-of="' + id + '" type="button">' + k + '</button>';
+            }).join('') + '</div></div>';
+    }).join('');
+    body.innerHTML =
+        '<h4>LINKS <i>· click a link, then a gem to socket it</i></h4><div class="ar-links">' + linkHtml + '</div>' +
+        '<h4>SUPPORT GEMS <i>· bag</i></h4><div class="ar-gembag">' + bagHtml + '</div>' +
+        '<h4>SPELLS <i>· click a slot key to bind</i></h4>' + spellHtml;
+    body.querySelectorAll('.ar-spell canvas').forEach(function (cv2) { paintSpellIcon(cv2, cv2.closest('.ar-spell').getAttribute('data-spell')); });
     body.querySelectorAll('[data-bind]').forEach(function (b) {
         b.addEventListener('click', function () {
             var k = b.getAttribute('data-bind'), id = b.getAttribute('data-of');
-            S.binds[k] = S.binds[k] === id ? null : id;
-            sSave(); paintSlots(); fillBook();
-            sfx('alloc');
-            RT.root.focus();   // clicking a button must not strand keyboard focus on <body>
+            if (S.binds[k] === id) { S.binds[k] = null; delete S.sockets[k]; }
+            else S.binds[k] = id;
+            sSave(); paintSlots(); fillBook(); sfx('alloc'); RT.root.focus();
         });
     });
+    body.querySelectorAll('[data-linksel]').forEach(function (b) {
+        b.addEventListener('click', function () { RT.socketSel = b.getAttribute('data-linksel'); fillBook(); RT.root.focus(); });
+    });
+    body.querySelectorAll('[data-sock]').forEach(function (b) {
+        tipWire(b, function () { var g = slotGems(b.getAttribute('data-sock').split(':')[0])[+b.getAttribute('data-sock').split(':')[1]]; return g ? gemTip(g) : '<b>empty socket</b><i>click a gem in the bag to fill it</i>'; });
+        b.addEventListener('click', function () {   // click a socketed gem to pop it back to the bag
+            var a = b.getAttribute('data-sock').split(':'), k = a[0], i = +a[1], gems = (S.sockets[k] || []);
+            RT.socketSel = k;
+            if (gems[i]) { var g = gems.splice(i, 1)[0]; S.gems[g] = (S.gems[g] || 0) + 1; S.sockets[k] = gems; sSave(); }
+            fillBook(); RT.root.focus();
+        });
+    });
+    body.querySelectorAll('[data-gem]').forEach(function (b) {
+        var g = b.getAttribute('data-gem');
+        tipWire(b, function () { return gemTip(g); });
+        b.addEventListener('click', function () {
+            var k = RT.socketSel; if (!k || !S.binds[k]) { logLine('<i>select a link first (click one under LINKS).</i>', 'dim'); return; }
+            var socks = S.sockets[k] || [];
+            if (socks.indexOf(g) >= 0) return;             // one of each per link
+            if (socks.length >= 2) { var out = socks.pop(); S.gems[out] = (S.gems[out] || 0) + 1; }
+            socks.push(g); S.sockets[k] = socks;
+            S.gems[g]--; if (S.gems[g] <= 0) delete S.gems[g];
+            ach('socket'); sSave(); fillBook(); sfx('alloc'); RT.root.focus();
+        });
+    });
+}
+function gemTip(g) {
+    return '<b style="color:' + GEMS[g].col + '">' + esc(GEMS[g].n) + '</b><span class="ar-sep"></span><span>' + esc(GEMS[g].d) + '</span>';
 }
 
 /* — dummy config — */
@@ -2011,6 +2703,114 @@ function fillDummy() {
     });
 }
 
+/* — the crafting bench: spend void shards to reshape loot — */
+var CRAFT_PREF = ['Honed', 'Warded', 'Blazing', 'Chilling', 'Charged', 'Cruel', 'Vital', 'Runed'];
+function craftReroll(it) {
+    it.mods = {};
+    var n = it.rarity === 'rare' ? irnd(3, 4) : it.rarity === 'magic' ? irnd(1, 2) : 0;
+    var used = {};
+    for (var i = 0; i < n; i++) {
+        var ai = irnd(0, AFFIXES.length - 1); if (used[ai]) continue; used[ai] = 1;
+        var a = AFFIXES[ai], hi = Math.random() < 0.45, mods = hi ? a[3] : a[1];
+        Object.keys(mods).forEach(function (k) { it.mods[k] = (it.mods[k] || 0) + mods[k]; });
+    }
+    it.n = it.rarity === 'rare' ? rareName() : it.rarity === 'magic' ? (pick(CRAFT_PREF) + ' ' + it.base) : it.base;
+}
+function craftCost(it, op) {
+    if (op === 'reforge') return it.rarity === 'rare' ? 40 : it.rarity === 'magic' ? 20 : 12;
+    if (op === 'augment') return 16;
+    if (op === 'upgrade') return it.rarity === 'normal' ? 10 : 25;
+    return 0;
+}
+function fillCraft() {
+    var body = RT.root.querySelector('.ar-p-craft .ar-p-body');
+    RT.root.querySelector('.ar-craft-sh').textContent = '◈ ' + S.shards + ' shards';
+    var items = [];
+    ['weapon', 'ring', 'amulet'].forEach(function (s) { if (S.gear[s]) items.push({ it: S.gear[s], where: 'gear', slot: s }); });
+    S.stash.forEach(function (it, i) { items.push({ it: it, where: 'stash', idx: i }); });
+    if (!items.length) { body.innerHTML = '<div class="ar-empty">No items to craft. The Trials are generous to the violent.</div>'; return; }
+    body.innerHTML = '<div class="ar-craft-hint">Void shards reshape loot. Uniques are beyond the bench.</div>' + items.map(function (e, n) {
+        var it = e.it, uniq = it.rarity === 'unique';
+        var affN = Object.keys(it.mods || {}).length, cap = it.rarity === 'rare' ? 4 : it.rarity === 'magic' ? 2 : 0;
+        var mods = Object.keys(it.mods || {}).map(function (k) { return '+' + it.mods[k] + (isPct(k) ? '%' : '') + ' ' + (STAT_LABELS[k] || k); }).join(' · ') || '—';
+        return '<div class="ar-craft-it r-' + it.rarity + '" data-ci="' + n + '">' +
+            '<div class="ar-craft-h"><b style="color:' + RARITY[it.rarity] + '">' + esc(it.n) + '</b><i>' + esc(it.where === 'gear' ? 'equipped' : it.slot) + '</i></div>' +
+            '<i class="ar-craft-mods">' + esc(mods) + '</i>' +
+            (uniq ? '<div class="ar-craft-ops"><i class="ar-unbound">The Box keeps its own counsel.</i></div>' :
+            '<div class="ar-craft-ops">' +
+              '<button class="ar-mini" data-craft="reforge:' + n + '">Reforge ◈' + craftCost(it, 'reforge') + '</button>' +
+              (affN < cap ? '<button class="ar-mini" data-craft="augment:' + n + '">Augment ◈' + craftCost(it, 'augment') + '</button>' : '') +
+              (it.rarity !== 'rare' ? '<button class="ar-mini" data-craft="upgrade:' + n + '">Upgrade ◈' + craftCost(it, 'upgrade') + '</button>' : '') +
+              '<button class="ar-mini" data-craft="sell:' + n + '">Sell +◈' + (it.rarity === 'rare' ? 18 : it.rarity === 'magic' ? 8 : 4) + '</button>' +
+            '</div>') + '</div>';
+    }).join('');
+    body.querySelectorAll('[data-craft]').forEach(function (b) {
+        b.addEventListener('click', function () {
+            var a = b.getAttribute('data-craft').split(':'), op = a[0], e = items[+a[1]], it = e.it;
+            if (op === 'sell') {
+                var v = it.rarity === 'rare' ? 18 : it.rarity === 'magic' ? 8 : 4;
+                S.shards += v;
+                if (e.where === 'gear') delete S.gear[e.slot]; else S.stash.splice(e.idx, 1);
+                logLine('sold <b style="color:' + RARITY[it.rarity] + '">' + esc(it.n) + '</b> for ' + v + ' shards.', 'loot');
+            } else {
+                var cost = craftCost(it, op);
+                if (S.shards < cost) { logLine('<i>not enough shards.</i> the Trials await.', 'dim'); return; }
+                if (op === 'upgrade' && it.rarity === 'rare') return;
+                S.shards -= cost;
+                if (op === 'reforge') { craftReroll(it); ach('craft'); }
+                else if (op === 'upgrade') { it.rarity = it.rarity === 'normal' ? 'magic' : 'rare'; craftReroll(it); }
+                else if (op === 'augment') {
+                    var cap2 = it.rarity === 'rare' ? 4 : 2, tries = 0;
+                    while (Object.keys(it.mods).length < cap2 && tries++ < 12) {
+                        var af = AFFIXES[irnd(0, AFFIXES.length - 1)], hi = Math.random() < 0.45, mm = hi ? af[3] : af[1], nk = Object.keys(mm)[0];
+                        if (!it.mods[nk]) Object.keys(mm).forEach(function (k) { it.mods[k] = mm[k]; });
+                    }
+                }
+                logLine('the bench reshapes <b style="color:' + RARITY[it.rarity] + '">' + esc(it.n) + '</b>.', 'loot');
+                sfx('alloc');
+            }
+            sSave(); fillCraft(); paintSlots(); RT.root.focus();
+        });
+        var e = items[+b.getAttribute('data-craft').split(':')[1]];
+        tipWire(b, function () { return itemTip(e.it); });
+    });
+}
+
+/* — options — */
+function fillOpts() {
+    var body = RT.root.querySelector('.ar-p-opts .ar-p-body');
+    var o = S.opts;
+    function toggle(key, label, on) { return '<div class="ar-crow"><span>' + label + '</span><button class="ar-mini" data-opt="' + key + '">' + (on ? 'ON' : 'OFF') + '</button></div>'; }
+    body.innerHTML =
+        toggle('shake', 'Screen shake', o.shake) +
+        toggle('nums', 'Floating damage numbers', o.nums) +
+        toggle('sound', 'Sound', S.sound) +
+        '<div class="ar-crow"><span>Particle density</span><span class="ar-cfg"><button data-opt="parts-" type="button">−</button><b>' + ['Low', 'Medium', 'High'][o.parts] + '</b><button data-opt="parts+" type="button">+</button></span></div>' +
+        '<div class="ar-crow"><span>Controls: WASD/click move · LMB-RMB-Q-E-R-T cast · Space dash · 1/2/3 flasks</span></div>' +
+        '<div class="ar-crow"><span>Panels: C char · B spells+gems · P passives · K bench · O dummy</span></div>' +
+        '<button class="ar-mini wide danger" data-opt="wipe">ERASE SAVE (start over)</button>';
+    body.querySelectorAll('[data-opt]').forEach(function (b) {
+        b.addEventListener('click', function () {
+            var k = b.getAttribute('data-opt');
+            if (k === 'shake' || k === 'nums') o[k] = !o[k];
+            else if (k === 'sound') { S.sound = !S.sound; RT.root.querySelector('.ar-pbtn[data-ar="snd"]').classList.toggle('off', !S.sound); }
+            else if (k === 'parts+') o.parts = clamp(o.parts + 1, 0, 2);
+            else if (k === 'parts-') o.parts = clamp(o.parts - 1, 0, 2);
+            else if (k === 'wipe') {
+                dlgWipe();
+                return;
+            }
+            sSave(); fillOpts(); RT.root.focus();
+        });
+    });
+}
+function dlgWipe() {
+    if (RT._wipeArm) { try { localStorage.removeItem('comp_arpg'); } catch (e) {} S = null; sLoad(); logLine('<b>Save erased.</b> A clean exile. Reopen VEILFALL for a fresh start.', 'kill'); RT._wipeArm = false; fillOpts(); return; }
+    RT._wipeArm = true;
+    var b = RT.root.querySelector('[data-opt="wipe"]'); if (b) b.textContent = 'CLICK AGAIN TO CONFIRM';
+    setTimeout(function () { RT._wipeArm = false; if (RT && RT.panel === 'opts') fillOpts(); }, 3000);
+}
+
 /* — the passive web — */
 function treeCtx() { return RT.root.querySelector('.ar-tree-cv').getContext('2d'); }
 function drawTree() {
@@ -2038,6 +2838,16 @@ function drawTree() {
     PASSIVES.forEach(function (p) {
         var x = ox + p.x, y = oy + p.y;
         var on = !!S.alloc[p.id], can = canAlloc(p);
+        if (p.keystone) {   // keystones: gold hexish frame
+            var kr = 15;
+            g.save(); g.translate(x, y);
+            g.beginPath(); for (var s = 0; s < 6; s++) { var an = s / 6 * TAU + Math.PI / 6; g[s ? 'lineTo' : 'moveTo'](Math.cos(an) * kr, Math.sin(an) * kr); } g.closePath();
+            g.fillStyle = on ? '#4a3410' : '#1c1608'; g.fill();
+            g.strokeStyle = on ? '#ffcf5a' : can ? '#b08a3a' : '#5a4a28'; g.lineWidth = 2.5; g.stroke();
+            if (on) { g.globalCompositeOperation = 'lighter'; g.fillStyle = 'rgba(255,200,90,.22)'; g.beginPath(); g.arc(0, 0, kr + 6, 0, TAU); g.fill(); g.globalCompositeOperation = 'source-over'; }
+            g.restore();
+            return;
+        }
         var r = p.notable ? 11 : 7;
         if (p.notable) {  // notable frame
             g.save(); g.translate(x, y); g.rotate(Math.PI / 4);
@@ -2055,7 +2865,7 @@ function drawTree() {
         if (on) { g.globalCompositeOperation = 'lighter'; g.fillStyle = 'rgba(160,110,240,.25)'; g.beginPath(); g.arc(x, y, r + 5, 0, TAU); g.fill(); g.globalCompositeOperation = 'source-over'; }
     });
     g.fillStyle = '#5a5468'; g.font = '10px "Pixelify Sans"';
-    g.fillText('drag to pan · click to allocate · notables are the big diamonds', 10, H2 - 10);
+    g.fillText('drag to pan · click to allocate · diamonds are notables · gold hexes are keystones', 10, H2 - 10);
 }
 function canAlloc(p) {
     if (S.alloc[p.id]) return false;
@@ -2083,8 +2893,9 @@ function wireTree(cv) {
         if (p) {
             tip.hidden = false;
             var mods = Object.keys(p.m || {}).map(function (k) { return '+' + p.m[k] + (isPct(k) ? '%' : '') + ' ' + (STAT_LABELS[k] || k); }).join('<br>');
-            tip.innerHTML = '<b class="' + (p.notable ? 'ar-tt-not' : '') + '">' + esc(p.n) + '</b>' + (mods ? '<span>' + mods + '</span>' : '') +
-                (p.d ? '<i>' + esc(p.d) + '</i>' : '') +
+            var ksd = p.keystone ? KEYSTONES[p.keystone].d : p.d;
+            tip.innerHTML = '<b class="' + (p.keystone ? 'ar-tt-ks' : p.notable ? 'ar-tt-not' : '') + '">' + esc(p.n) + '</b>' + (mods ? '<span>' + mods + '</span>' : '') +
+                (ksd ? '<i>' + esc(ksd) + '</i>' : '') +
                 (S.alloc[p.id] ? '<em>allocated</em>' : canAlloc(p) ? '<em class="ok">click to allocate</em>' : '<em>needs a connected node' + (S.pts <= 0 ? ' + a point' : '') + '</em>');
             var r2 = cv.getBoundingClientRect();
             tip.style.left = clamp(e.clientX - r2.left + 14, 0, r2.width - 190) + 'px';
@@ -2099,7 +2910,8 @@ function wireTree(cv) {
                 if (!p.free) S.pts--;
                 var na = 0; Object.keys(S.alloc).forEach(function () { na++; });
                 if (na >= 10) ach('web10');
-                logLine('allocates <b style="color:#c896ff">' + esc(p.n) + '</b>.', 'lv');
+                if (p.keystone) ach('keystone');
+                logLine('allocates <b style="color:' + (p.keystone ? '#ffcf5a' : '#c896ff') + '">' + esc(p.n) + '</b>.', 'lv');
                 sfx('alloc'); sSave(); drawTree(); refreshXp();
                 // life/mana maxima may have grown
             } else if (p && S.alloc[p.id] && !p.free) {
@@ -2120,7 +2932,7 @@ function treeHit(cv, e) {
     var ox = cv.width / 2 + RT.treePan.x, oy = cv.height / 2 + 40 + RT.treePan.y;
     var hit = null;
     PASSIVES.forEach(function (p) {
-        var rr = (p.notable ? 14 : 9);
+        var rr = (p.keystone ? 17 : p.notable ? 14 : 9);
         if (Math.hypot(mx - (ox + p.x), my - (oy + p.y)) <= rr) hit = p;
     });
     return hit;
@@ -2140,14 +2952,15 @@ function showTip(html, e) {
     tip.style.top = clamp(y - tip.offsetHeight, 4, r.height - 40) + 'px';
 }
 function hideTip() { var t = RT && RT.root.querySelector('.ar-tip'); if (t) t.hidden = true; }
-function spellTip(id) {
+function spellTip(id, gems) {
     var sp = SPELLS[id]; if (!sp) return '';
-    var r = spellDmg(id);
+    var r = spellDmg(id, gems), mana = spellManaCost(id, gems);
+    var gemLine = (gems && gems.length) ? '<span class="ar-sep"></span><span style="color:#9fe0c8">linked: ' + gems.map(function (g) { return GEMS[g].n; }).join(', ') + '</span>' : '';
     return '<b style="color:' + ECOL[sp.el] + '">' + esc(sp.n) + '</b>' +
         '<i class="ar-tags">' + sp.tags.join(' · ') + '</i><span class="ar-sep"></span>' +
         (sp.dmg[1] ? '<span>Deals <b>' + Math.round(r.lo) + '–' + Math.round(r.hi) + '</b> ' + sp.el + ' damage' + (sp.tick ? ' per ' + sp.tick + 's tick (ramps ×' + sp.ramp + ')' : '') + '</span>' : '<span>Utility</span>') +
-        '<span>' + sp.mana + ' mana' + (sp.cd ? ' · ' + sp.cd + 's cooldown' : '') + (sp.charges ? ' · ' + sp.charges + ' charges' : '') + '</span>' +
-        '<span class="ar-sep"></span><i class="ar-it-fl">' + esc(sp.d) + '</i>';
+        '<span>' + mana + ' mana' + (sp.cd ? ' · ' + sp.cd + 's cooldown' : '') + (sp.charges ? ' · ' + sp.charges + ' charges' : '') + '</span>' +
+        gemLine + '<span class="ar-sep"></span><i class="ar-it-fl">' + esc(sp.d) + '</i>';
 }
 
 /* HUD wiring: panel buttons, slot tooltips + click-to-open-book, log toggle, dps reset */
@@ -2166,7 +2979,8 @@ function wireHud(root) {
         x.addEventListener('click', function () { togglePanel(null); root.focus(); });
     });
     root.querySelectorAll('.ar-slot').forEach(function (slot) {
-        tipWire(slot, function () { return spellTip(S.binds[slot.getAttribute('data-slot')]) || '<b>empty slot</b><i>bind a spell in the book (B)</i>'; });
+        var k = slot.getAttribute('data-slot');
+        tipWire(slot, function () { return spellTip(S.binds[k], slotGems(k)) || '<b>empty slot</b><i>bind a spell in the book (B)</i>'; });
         slot.addEventListener('click', function (e) { e.stopPropagation(); togglePanel('book'); });
     });
     RT.flasks.forEach(function (f, i) {
@@ -2181,6 +2995,8 @@ function wireHud(root) {
         RT.dps = { total: 0, peak: 0, t0: 0, hist: [] };
         logLine('DPS meter reset.', 'dim'); root.focus();
     });
+    root.querySelector('[data-ar="trial"]').addEventListener('click', function (e) { e.stopPropagation(); startTrial(); root.focus(); });
+    root.querySelector('[data-ar="abandon"]').addEventListener('click', function (e) { e.stopPropagation(); if (RT.mode === 'trial') { logLine('You step out of the Trials.', 'sys'); endTrial(false); } root.focus(); });
     root.querySelector('.ar-log-title').addEventListener('click', function () {
         root.querySelector('.ar-log').classList.toggle('open');
     });

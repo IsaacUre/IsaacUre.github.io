@@ -2658,3 +2658,47 @@ span.st-newsart .ic { width: 40px; height: 40px; }
     .ar-dps { top: auto; bottom: 150px; }
     .ar-panelbtns { position: static; margin-top: 4px; }
 }
+
+/* ═══════════ VEILFALL depth expansion — UI ═══════════ */
+/* trials control + shards */
+.ar-trials { position: absolute; top: 92px; left: 12px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.ar-trialbtn { padding: 7px 14px; background: linear-gradient(180deg, #3d2c5c, #241a3c); border: 1px solid #8a4ae0; color: #e8dcff; font-family: "Pixelify Sans", sans-serif; font-size: .74rem; letter-spacing: .08em; box-shadow: 0 2px 0 rgba(0,0,0,.5); cursor: pointer; }
+.ar-trialbtn:hover { background: linear-gradient(180deg, #4d379c, #31245a); box-shadow: 0 0 12px rgba(138,74,224,.5); }
+.ar-wave { background: rgba(8,6,14,.85); border: 1px solid #8a4ae0; padding: 5px 10px; min-width: 130px; }
+.ar-wave-n { display: block; font-family: "Press Start 2P", monospace; font-size: .64rem; color: #c896ff; letter-spacing: .04em; }
+.ar-wave-sub { display: block; font-size: .6rem; color: #9a93a8; margin: 2px 0 4px; }
+.ar-shards { font-size: .62rem; color: #9a93a8; }
+.ar-shards b { color: #ffe66e; }
+
+/* spellbook: links + sockets + gem bag */
+.ar-links { display: flex; flex-direction: column; gap: 4px; margin-bottom: 4px; }
+.ar-link { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border: 1px solid #2a2436; background: rgba(16,13,22,.7); cursor: pointer; }
+.ar-link.sel { border-color: #8a4ae0; background: rgba(40,28,60,.7); }
+.ar-link:hover { border-color: #6a5a90; }
+.ar-link-k { width: 34px; font-size: .6rem; color: #9a93a8; border: 1px solid #3a3346; text-align: center; padding: 2px 0; }
+.ar-link-sp { flex: 1 1 auto; font-size: .72rem; }
+.ar-socks { display: flex; gap: 4px; }
+.ar-sock { min-width: 60px; padding: 3px 7px; font-size: .56rem; background: #14101c; border: 1px dashed #3a3346; color: #5a5468; }
+.ar-sock.filled { border-style: solid; }
+.ar-sock:hover { border-color: #8a4ae0; }
+.ar-gembag { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 4px; }
+.ar-gem { display: flex; flex-direction: column; align-items: flex-start; padding: 4px 8px; background: rgba(16,13,22,.8); border: 1px solid #3a3346; font-size: .58rem; cursor: pointer; }
+.ar-gem:hover { background: rgba(30,22,42,.9); }
+.ar-gem i { color: #7a7390; }
+
+/* crafting bench */
+.ar-craft-sh { font-size: .62rem; color: #ffe66e; letter-spacing: .04em; }
+.ar-craft-hint { font-size: .6rem; color: #5a5468; margin-bottom: 8px; }
+.ar-craft-it { padding: 7px 9px; margin-bottom: 5px; border: 1px solid #2a2436; background: rgba(16,13,22,.7); }
+.ar-craft-h { display: flex; justify-content: space-between; align-items: baseline; }
+.ar-craft-h b { font-size: .74rem; }
+.ar-craft-h i { font-size: .56rem; color: #5a5468; }
+.ar-craft-mods { display: block; font-size: .6rem; color: #8888ff; margin: 3px 0 5px; line-height: 1.4; }
+.ar-craft-ops { display: flex; flex-wrap: wrap; gap: 4px; }
+.ar-mini.danger { border-color: #7a1420; color: #e88; }
+.ar-mini.danger:hover { background: #3a1014; border-color: #c22536; color: #fff; }
+
+/* keystone tooltip accent */
+.ar-tree-tip b.ar-tt-ks { color: #ffcf5a; }
+
+@media (max-width: 900px) { .ar-trials { top: 84px; } }
