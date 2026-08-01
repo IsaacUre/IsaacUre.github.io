@@ -2691,6 +2691,10 @@ webPage('chrome://settings', {
                 '<label class="cr-setrow"><span>Theme</span><span class="cr-setval">Pixel (system) — the only theme</span></label></div>' +
               '<div class="cr-setcard"><h3>Search engine</h3>' +
                 '<label class="cr-setrow"><span>Search engine used in the address bar</span><select class="cr-sel" data-cract="engine"><option value="google"' + (s.engine !== 'ure' ? ' selected' : '') + '>Google</option><option value="ure"' + (s.engine === 'ure' ? ' selected' : '') + '>URE Search</option></select></label></div>' +
+              '<div class="cr-setcard"><h3>Reader proxy</h3>' +
+                '<label class="cr-setrow"><span>URE FETCH worker URL<i class="cr-sethint">optional · lets unknown sites be READ instead of framed. Deploy worker/ and paste the URL. Stored here only.</i></span>' +
+                  '<input class="cr-setinput" id="crProxyIn" spellcheck="false" placeholder="https://ure-fetch.you.workers.dev" value="' + esc(recall('proxy', '')) + '"></label>' +
+                '<label class="cr-setrow"><span>Status</span><span class="cr-setval' + (crProxy() ? ' good' : '') + '" id="crProxyStat">' + (crProxy() ? '✓ configured — unknown sites open in Reader' : 'not set — unknown sites open in a sandboxed frame') + '</span></label></div>' +
               '<div class="cr-setcard"><h3>Default browser</h3><label class="cr-setrow"><span>Google Chrome is your default browser</span><span class="cr-setval good">✓ Finally</span></label>' +
                 '<label class="cr-setrow"><span>Microsoft Edge</span><button class="cr-chip" data-cract="edge">Console it</button></label></div>' +
               '<div class="cr-setcard"><h3>About Chrome</h3><label class="cr-setrow"><span>Version 126.0.pixel.1 (Official Build) (64-bit) (UreOS)</span><span class="cr-setval good" id="crUpd">✓ Chrome is up to date</span></label>' +
@@ -2708,6 +2712,15 @@ webPage('chrome://settings', {
         });
         var sel = view.querySelector('[data-cract="engine"]');
         if (sel) sel.addEventListener('change', function () { var s = crSet(); s.engine = sel.value; crjSet('set', s); toast('Address-bar search: ' + crEngine() + '.'); });
+        var px = view.querySelector('#crProxyIn');
+        if (px) px.addEventListener('change', function () {
+            var v = px.value.trim().replace(/\/+$/, '');
+            if (v && !crProxyValid(v)) { toast('That needs to be an https:// worker URL.'); return; }
+            store('proxy', v);
+            var st = view.querySelector('#crProxyStat');
+            if (st) { st.textContent = v ? '✓ configured — unknown sites open in Reader' : 'not set — unknown sites open in a sandboxed frame'; st.classList.toggle('good', !!v); }
+            toast(v ? 'Reader proxy set. Unknown sites will be read, not framed.' : 'Reader proxy cleared.');
+        });
         view.querySelectorAll('.cr-setnav span:not(.on)').forEach(function (n) { n.addEventListener('click', function () { toast('It all lives on one page here. Museum floor plan.'); }); });
     }
 });
@@ -3592,11 +3605,60 @@ webPage('open-meteo.com', {
 });
 
 /* — everything else: the honest iframe — */
+/* ══════════ the optional reader proxy ══════════
+   If a URe FETCH worker is configured (Settings → Reader proxy), unknown sites
+   are READ instead of framed: the worker fetches the HTML server-side, and the
+   existing sanitizer turns it into a page in the house style. Without a proxy
+   configured — the default — nothing changes: everything still falls back to
+   the sandboxed iframe below. The worker is an accelerator, not a dependency. */
+// https anywhere, or plain http on loopback only — that second case is
+// `wrangler dev`, which serves the worker over http://localhost:8787
+function crProxyValid(p) {
+    return /^https:\/\/[a-z0-9.-]+/i.test(p) || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(p);
+}
+function crProxy() {
+    if (typeof DEV_PROXY === 'string' && DEV_PROXY) return DEV_PROXY;   // loopback-only test override, in memory
+    var p = String(recall('proxy', '') || '').trim();
+    return crProxyValid(p) ? p.replace(/\/+$/, '') : '';
+}
+function proxyUrl(target) { return crProxy() + '/?url=' + encodeURIComponent('https://' + String(target).replace(/^https?:\/\//i, '')); }
+/* pull the readable part out of a real page: prefer the tags real articles use,
+   fall back to the densest block of prose we can find */
+function readerExtract(html) {
+    var doc;
+    try { doc = new DOMParser().parseFromString(String(html || ''), 'text/html'); } catch (e) { return null; }
+    var title = (doc.querySelector('meta[property="og:title"]') || {}).content ||
+                (doc.querySelector('title') || {}).textContent || '';
+    var body = doc.querySelector('article') || doc.querySelector('main') || doc.querySelector('[role="main"]');
+    if (!body) {
+        /* Walk the PARAGRAPHS once and score their parents. The obvious version
+           — for each candidate div, querySelectorAll('p') — re-walks the same
+           subtree once per ancestor, which is quadratic: a 2.8MB page (under
+           the worker's 3MB cap) blocked the main thread for 47 seconds. This is
+           linear in the paragraph count, and capped besides. */
+        var ps = doc.querySelectorAll('p'), nodes = [], scores = [];
+        for (var i = 0; i < ps.length && i < 3000; i++) {
+            var len = (ps[i].textContent || '').length;
+            if (len < 25) continue;                              // nav/footer chaff
+            var par = ps[i].parentNode;
+            if (!par || par.nodeType !== 1) continue;
+            var at = nodes.indexOf(par);
+            if (at < 0) { nodes.push(par); scores.push(len); } else scores[at] += len;
+        }
+        var best = null, bestScore = 0;
+        for (var k = 0; k < nodes.length; k++) if (scores[k] > bestScore) { bestScore = scores[k]; best = nodes[k]; }
+        body = best;
+    }
+    if (!body) body = doc.body;
+    if (!body || (body.textContent || '').replace(/\s+/g, ' ').trim().length < 200) return null;
+    return { title: String(title).trim(), html: body.innerHTML };
+}
 webPage('__frame', {
     title: 'Live site', fav: { ch: '🌐', c: '#5f6368' },
     render: function () {
         var u = liveUrl();
         var host = u.split('/')[0];
+        if (crProxy()) return liveSkeleton('page from ' + host);
         return '<div class="cr-frame"><div class="cr-framebar"><span>🌐 Loading the real <b>' + esc(host) + '</b> in a window' + liveChip() + '</span>' +
             '<span class="cr-framenote">big sites refuse to be framed — if it stays blank, that’s ' + esc(host) + ' saying no</span>' +
             '<button class="cr-chip" id="crFrameOut">Open in a real tab ↗</button></div>' +
@@ -3604,13 +3666,71 @@ webPage('__frame', {
             '<iframe class="cr-frameifr" id="crFrameIfr" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" referrerpolicy="no-referrer" src="https://' + esc(u) + '"></iframe></div></div>';
     },
     init: function (view) {
-        var u = liveUrl();
+        var u = liveUrl(), host = u.split('/')[0];
+        if (crProxy()) { readerLoad(view, u, host); return; }
         var f = view.querySelector('#crFrameIfr'), ld = view.querySelector('#crFrameLoad'), out = view.querySelector('#crFrameOut');
         if (f) f.addEventListener('load', function () { if (ld) ld.hidden = true; });
         setTimeout(function () { if (ld && view.isConnected) ld.hidden = true; }, 6000);   // blocked frames still "load"; don't spin forever
         if (out) out.addEventListener('click', function () { window.open('https://' + u, '_blank', 'noopener'); });
     }
 });
+/* the reader path, kept out of the page object so the iframe fallback stays legible */
+function readerFrameHtml(u) {
+    return '<div class="cr-frame"><div class="cr-framebar"><span>🌐 The real <b>' + esc(u.split('/')[0]) + '</b>, framed</span>' +
+        '<span class="cr-framenote">the reader proxy couldn’t read this one, so here is the site itself</span>' +
+        '<button class="cr-chip" id="crFrameOut">Open in a real tab ↗</button></div>' +
+        '<div class="cr-framewrap"><iframe class="cr-frameifr" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" referrerpolicy="no-referrer" src="https://' + esc(u) + '"></iframe></div></div>';
+}
+function readerLoad(view, u, host) {
+    var pageUrl = liveUrl();
+    fetchText(proxyUrl(u), function (err, text) {
+        if (!view.isConnected) return;
+        // anything the reader can't handle falls back to the iframe, so a proxy
+        // that is down or refuses a host is never worse than having no proxy
+        if (err) { view.innerHTML = readerFrameHtml(u); wireFrameOut(view, u); return; }
+        var got = readerExtract(text);
+        if (!got) { view.innerHTML = readerFrameHtml(u); wireFrameOut(view, u); return; }
+        var clean = liveSanitize(got.html, function (href) {
+            if (!href || /^#/.test(href)) return null;
+            var abs;
+            try { abs = new URL(href, 'https://' + u).toString(); } catch (e) { return null; }
+            // normalise exactly like liveUrl(), or the title this page learns is
+            // filed under a key no later lookup will match
+            return /^https:/i.test(abs) ? abs.replace(/^https?:\/\//i, '').replace(/^www\./i, '') : null;
+        });
+        if (!clean || clean.replace(/<[^>]*>/g, '').trim().length < 120) { view.innerHTML = readerFrameHtml(u); wireFrameOut(view, u); return; }
+        view.innerHTML = '<div class="cr-lv cr-reader"><div class="cr-rdbar">📖 Reader · <b>' + esc(host) + '</b>' + liveChip() +
+            '<button class="cr-chip" id="crRdFrame">View the real page ↗</button></div>' +
+            (got.title ? '<h2 class="cr-rdtitle">' + esc(got.title) + '</h2>' : '') +
+            '<div class="cr-rdbody">' + clean + '</div>' +
+            '<p class="cr-lvfoot">Fetched through your URE FETCH worker and re-rendered in pixels. Formatting is ours; the words are theirs.</p></div>';
+        var b = view.querySelector('#crRdFrame');
+        if (b) b.addEventListener('click', function () { window.open('https://' + u, '_blank', 'noopener'); });
+        if (CR && !CR.incog && got.title) {
+            LIVE_TITLES[pageUrl] = got.title;
+            var h = crHist();
+            for (var i = 0; i < h.length; i++) if (h[i].u === pageUrl) { h[i].t = got.title; break; }
+            crjSet('hist', h);
+            crTabs();
+        }
+        if (find.appId === 'chrome' && findOpenNow()) runFind();
+    });
+}
+function wireFrameOut(view, u) {
+    var out = view.querySelector('#crFrameOut');
+    if (out) out.addEventListener('click', function () { window.open('https://' + u, '_blank', 'noopener'); });
+}
+/* like liveGet but for text/html — same timeout and offline manners */
+function fetchText(url, cb) {
+    if (navigator.onLine === false) { cb('offline'); return; }
+    var ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    var tmr = setTimeout(function () { if (ctl) ctl.abort(); }, 12000);
+    fetch(url, ctl ? { signal: ctl.signal } : {}).then(function (r) {
+        clearTimeout(tmr);
+        if (!r.ok) { cb('http' + r.status); return null; }
+        return r.text().then(function (t) { cb(null, t); });
+    }).catch(function () { clearTimeout(tmr); cb('net'); });
+}
 
 /* ═════════════ URL parsing / navigation engine ═════════════ */
 var WEB_LC = null;                                        // lowercase key → real key, built lazily after all webPage() calls
@@ -8521,6 +8641,20 @@ if (location.search.indexOf('fast') >= 0) window.__fastCursor = true;   // dev: 
 if (location.search.indexOf('dev=edge') >= 0) openApp('edge');       // watch the possession play out
 if (location.search.indexOf('dev=race') >= 0) openApp('sunrun');     // launch Sunset Runner straight to the grid
 if (location.search.indexOf('dev=chrome') >= 0) { installChrome({ shortcut: true }); openApp('chrome'); }
+/* ?dev=proxy:<worker> — LOOPBACK ONLY, and never persisted.
+   An earlier version of this hook accepted ?proxy= on any origin and wrote it
+   to localStorage. That made a single link a permanent man-in-the-middle for
+   every unknown site the reader opens: the victim's in-sim browsing would be
+   sent to the attacker, whose HTML would render back under the real site's
+   name. A testing convenience is not worth a hole like that, so this now only
+   works when the page is served from localhost, and it lives in memory. */
+var DEV_PROXY = '';
+(function () {
+    if (!/^(localhost|127\.0\.0\.1)$/i.test(location.hostname)) return;
+    var m = location.search.match(/[?&]dev=proxy:([^&]+)/);
+    if (!m) return;
+    try { var pv = decodeURIComponent(m[1]); if (crProxyValid(pv)) DEV_PROXY = pv.replace(/\/+$/, ''); } catch (e) {}
+})();
 var devCr = location.search.match(/dev=cr:([^&]+)/);   // ?dev=cr:<url> — open Chrome navigated somewhere (cr:dino → chrome://dino)
 if (devCr) { installChrome({}); openApp('chrome'); var crU; try { crU = decodeURIComponent(devCr[1]); } catch (e) { crU = devCr[1]; } if (CR) crNav(crParse(/^[a-z]+$/.test(crU) ? 'chrome://' + crU : crU)); }
 if (location.search.indexOf('dev=wiz') >= 0) { fsAddFile('Downloads', chromeSetupItem()); openApp('setup'); }   // + &wstep=license|options|progress|finish (&freeze)

@@ -2882,3 +2882,12 @@ span.st-newsart .ic { width: 40px; height: 40px; }
 /* skill-slot socket dots */
 .ar-slot-socks { position: absolute; left: 2px; top: 1px; display: flex; gap: 2px; pointer-events: none; }
 .ar-slot-socks i { width: 4px; height: 4px; border-radius: 50%; background: #9fe0c8; box-shadow: 0 0 3px rgba(159,224,200,.8); }
+
+/* ═══════════════ Chrome: reader mode (optional URE FETCH worker) ═══════════════ */
+.cr-reader { max-width: 700px; }
+.cr-rdbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; border-bottom: 1px solid rgba(127,127,127,.35); padding-bottom: 8px; margin-bottom: 12px; font-size: 12px; }
+.cr-rdtitle { font-family: Georgia, serif; font-size: 24px; line-height: 1.25; margin: 6px 0 12px; }
+.cr-rdbody { font-size: 14px; line-height: 1.7; }
+.cr-rdbody p { margin: 10px 0; }
+.cr-setinput { flex: 0 0 260px; max-width: 55%; border: 1px solid #45453f; background: rgba(127,127,127,.08); color: inherit; font: inherit; font-size: 12px; padding: 5px 8px; }
+.cr-sethint { display: block; font-style: normal; font-size: 11px; opacity: .6; margin-top: 2px; max-width: 340px; }
