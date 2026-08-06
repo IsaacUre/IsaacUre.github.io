@@ -21,6 +21,20 @@ function ic(id, cls) { return '<svg class="ic' + (cls ? ' ' + cls : '') + '"><us
 var PREFIX = 'comp_';
 function store(k, v) { try { localStorage.setItem(PREFIX + k, v); } catch (e) {} }
 function recall(k, d) { try { var v = localStorage.getItem(PREFIX + k); return v === null ? d : v; } catch (e) { return d; } }
+/* Parse stored JSON, but only accept it if it is the SHAPE the caller expects.
+   JSON.parse succeeding says nothing about type: a stored '{"a":1}' where a list
+   belongs sails through and then dies in the first .some()/.indexOf() that
+   touches it — which took out the whole browser render, not just bookmarks.
+   Anything of the wrong shape is treated as absent. */
+function jsonAs(raw, d) {
+    var v;
+    try { v = JSON.parse(raw); } catch (e) { return d; }
+    if (v == null) return d;
+    var wantArr = {}.toString.call(d) === '[object Array]';
+    if (wantArr !== ({}.toString.call(v) === '[object Array]')) return d;
+    if (!wantArr && d !== null && typeof d === 'object' && typeof v !== 'object') return d;
+    return v;
+}
 
 /* ────────────────────────── accent ─────────────────────────── */
 var ACCENTS = [
@@ -2352,7 +2366,7 @@ function initEdge(el) {
    shell; this is the one that feels like home. State: comp_chrome_*.
    ───────────────────────────────────────────────────────────────────── */
 var CR = null;                                   // live window state (single-instance, like ST)
-function crj(k, d) { try { var v = JSON.parse(recall('chrome_' + k, 'null')); return v == null ? d : v; } catch (e) { return d; } }
+function crj(k, d) { return jsonAs(recall('chrome_' + k, 'null'), d); }
 function crjSet(k, v) { store('chrome_' + k, JSON.stringify(v)); }
 function crBM() { return crj('bm', [['isaacure.com', 'isaacure.com'], ['GitHub', 'github.com/IsaacUre'], ['Golf GTI — Wikipedia', 'en.wikipedia.org/wiki/Volkswagen_Golf_GTI'], ['The Thresher', 'thresher.rice.edu'], ['Rice FSAE', 'fsae.rice.edu'], ['Steam', 'store.steampowered.com'], ['dino', 'chrome://dino'], ['Minecraft', 'minecraft.net']]); }
 function crHist() { return crj('hist', []); }
@@ -2433,7 +2447,7 @@ webPage('google.com/search', {
         // a pure calculator/unit query answers offline, so it paints no live
         // sections at all: three spinners under a finished answer is a lie, and
         // github's anonymous search budget is 10/min.
-        var offline = has && /^(math|unit)$/.test(serpIntent(q).kind);
+        var offline = has && !!serpOffline(q);   // only skip the live sections when an answer actually exists
         var sections = has && !offline ? (snippet + local +
             '<div class="cr-serpslot" id="crSerpKp"></div>' +
             '<div class="cr-serpsec cr-serpfeatslot" id="crSerpFeat"></div>' +
@@ -2460,19 +2474,20 @@ webPage('google.com/search', {
             t.addEventListener('click', function () { if (!t.classList.contains('on')) toast(t.textContent + ' results: also pixels, but sideways.'); });
         });
         if (!query || !query.trim()) return;                          // empty SERP: render() already left no spinners
-        function fill(id, html) { if (!view.isConnected) return; var el = view.querySelector('#' + id); if (el) el.innerHTML = html; }
-        function addAns(html) { if (!html || !view.isConnected) return; var el = view.querySelector('#crSerpAns'); if (el) el.innerHTML += html; }
+        /* re-mark for Alt+F after each section lands: the sections arrive long
+           after the page does, and a find bar opened in between would otherwise
+           never see them (liveFill does this for whole-page loads already) */
+        function refind() { if (find.appId === 'chrome' && findOpenNow()) runFind(); }
+        function fill(id, html) { if (!view.isConnected) return; var el = view.querySelector('#' + id); if (el) { el.innerHTML = html; refind(); } }
+        function addAns(html) { if (!html || !view.isConnected) return; var el = view.querySelector('#crSerpAns'); if (el) { el.innerHTML += html; refind(); } }
 
         /* read the query's shape first; only the packs that fit get to fetch */
         var intent = serpIntent(query);
-        if (intent.kind === 'math') {
-            var mv = mathEval(query);
-            if (mv !== null) addAns(serpAnswer('Calculator', fmtNum(mv), query.replace(/\s+/g, ' ') + ' ='));
-            return;                                                   // answered offline: no live sections exist to fill
-        }
-        if (intent.kind === 'unit') {
-            var uc = unitConvert(intent.n, intent.from, intent.to);
-            if (uc) addAns(serpAnswer('Unit conversion', fmtNum(uc.v) + ' ' + uc.unit, fmtNum(intent.n) + ' ' + intent.from + ' ='));
+        var off = serpOffline(query);
+        if (off) {                                                    // answered offline: render() painted no live sections
+            addAns(serpAnswer(off.label, off.big, off.sub));
+            var sOff = view.querySelector('#crSerpStat');
+            if (sOff) sOff.textContent = 'Answered without touching the network.';
             return;
         }
         if (intent.kind === 'time') serpTime(intent.place, addAns);
@@ -2810,8 +2825,11 @@ webPage('__viewsource', {
    Everything NOT understood falls through to a sandboxed iframe
    (__frame) that loads the honest-to-goodness site when it lets us.
    ════════════════════════════════════════════════════════ */
-var LIVE_CACHE = {};                                      // url → { t, v } · session-only, 5 min TTL
-var LIVE_TITLES = {};                                     // url → real page title, learned after load
+/* null prototype on every map keyed by user input or a fetched URL: a bare
+   {} inherits constructor/toString/valueOf, so looking up those words returns a
+   truthy non-entry and the caller then treats a Function as data. */
+var LIVE_CACHE = Object.create(null);                     // url → { t, v } · session-only, 5 min TTL
+var LIVE_TITLES = Object.create(null);                    // url → real page title, learned after load
 function liveCacheGet(u) { var e = LIVE_CACHE[u]; return e && Date.now() - e.t < 300000 ? e.v : null; }
 function liveCachePut(u, v) {
     var ks = Object.keys(LIVE_CACHE);
@@ -2861,13 +2879,39 @@ function liveSanitize(html, linkFn) {
             if (n.nodeType === 3) { dst.appendChild(document.createTextNode(n.nodeValue)); continue; }
             if (n.nodeType !== 1) continue;
             var tag = n.nodeName.toUpperCase();
-            if (LIVE_DROP[tag]) continue;
+            if (LIVE_DROP[tag]) {
+                /* A dropped node usually has nothing worth keeping — but Wikipedia
+                   ships every formula as <math> plus an <img> fallback, with the
+                   TeX sitting in alttext/alt. Dropping the subtree silently deleted
+                   it, so "defined as <formula> for <formula>" became "defined as
+                   for" on every maths article. Keep the text, drop the markup. */
+                var alt = n.getAttribute && (n.getAttribute('alttext') || n.getAttribute('alt'));
+                if (alt) {
+                    alt = String(alt).replace(/^\{\\displaystyle\s*/, '').replace(/\}$/, '').trim();
+                    // the <math> and its <img> fallback carry the SAME TeX, so
+                    // emitting both would print every formula twice
+                    var prev = dst.lastChild;
+                    var dupe = prev && prev.nodeType === 1 && prev.nodeName === 'CODE' && prev.textContent === alt;
+                    if (alt && alt.length < 400 && !dupe) {
+                        var code = document.createElement('code');
+                        code.appendChild(document.createTextNode(alt));
+                        dst.appendChild(code);
+                    }
+                }
+                continue;
+            }
             if (tag === 'A') {
                 var to = linkFn ? linkFn(n.getAttribute('href') || '') : null;
                 if (!to) { walk(n, dst, depth + 1); continue; }        // unroutable link: keep its text
                 var a = document.createElement('a');
                 a.className = 'cr-l cr-lva';
                 a.setAttribute('data-href', to);
+                /* a bare <a> with no href is not a link to the keyboard or a
+                   screen reader — it is unfocusable and unannounced. Give it a
+                   real href for semantics; the delegated handler still routes
+                   the click inside the sim, and preventDefault stops the browser
+                   from actually leaving the page. */
+                a.setAttribute('href', 'https://' + String(to).replace(/^https?:\/\//i, ''));
                 walk(n, a, depth + 1);
                 dst.appendChild(a);
                 continue;
@@ -2903,6 +2947,14 @@ function liveFail(err, what, r) {
             '<p class="cr-errcode">Resets ' + (reset ? 'around ' + fmtTime(new Date(reset)) : 'within the hour') + '</p>' +
             '<div class="cr-errbtns"><button class="cr-btn" id="crErrBack">Go back</button></div></div>';
     }
+    /* a 404 is not "strange" — it is the single most ordinary answer on the web,
+       and saying so is the difference between "you typo'd" and "this is broken" */
+    if (err === 'http404' || err === 'empty') {
+        return '<div class="cr-err"><span class="cr-errdino">🔎</span><h2>Nothing here by that name</h2>' +
+            '<p>' + esc(what) + ' has no page at that address. Check the spelling, or search for it instead.</p>' +
+            '<div class="cr-errbtns"><button class="cr-btn" id="crErrBack">Go back</button>' +
+            crLink('google.com/search?q=' + encodeURIComponent(String(liveUrl()).split('/').pop().replace(/_/g, ' ')), 'Search for it', 'cr-btn ghost') + '</div></div>';
+    }
     return '<div class="cr-err"><span class="cr-errdino">🦖</span><h2>That didn’t load</h2>' +
         '<p>' + esc(what) + ' answered strangely (' + esc(String(err)) + '). The real web does that sometimes.</p>' +
         '<div class="cr-errbtns"><button class="cr-btn" id="crErrBack">Go back</button></div></div>';
@@ -2924,7 +2976,7 @@ function liveFill(view, url, html, title) {
     liveWireBack(view);
     if (title && CR) {
         if (!CR.incog) {                                   // a private page's real title stays out of the shared map
-            if (Object.keys(LIVE_TITLES).length > 80) LIVE_TITLES = {};   // check BEFORE the set, or the 81st write is wiped with the rest
+            if (Object.keys(LIVE_TITLES).length > 80) LIVE_TITLES = Object.create(null);   // check BEFORE the set, or the 81st write is wiped with the rest
             LIVE_TITLES[url] = title;
             var h = crHist();                              // retitle the history entry the nav just wrote
             for (var i = 0; i < h.length; i++) if (h[i].u === url) { h[i].t = title; break; }
@@ -3030,7 +3082,14 @@ function serpIntent(q) {
        a year range. Those two shapes are common enough as real queries that the
        calculator must not swallow them (1-800-273-8255 is not -9327). */
     var phoneish = /^\+?\d{1,4}([-\s.]\d{2,5}){2,}$/.test(s) || /^\d{4}\s*-\s*\d{4}$/.test(s);
-    if (!phoneish && /^[-+.\d\s()*/^%]+$/.test(s) && /[+\-*/^%]/.test(s) && /\d/.test(s)) return { kind: 'math' };
+    /* A bare d/d is a date far more often than a division when it is a VALID
+       month/day — "9/11" and "10/4" are queries, not sums. Validity is what
+       keeps real arithmetic working: 1/0 (day 0) and 100/7 (no such month)
+       are not dates, so they still calculate. Anything with a second operator
+       or spaces is arithmetic regardless. */
+    var dm = s.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/);
+    var dateish = !!dm && +dm[1] >= 1 && +dm[1] <= 12 && +dm[2] >= 1 && +dm[2] <= 31;
+    if (!phoneish && !dateish && /^[-+.\d\s()*/^%]+$/.test(s) && /[+\-*/^%]/.test(s) && /\d/.test(s)) return { kind: 'math' };
     var u = l.match(/^([-+]?[\d.,]+)\s*([a-z°"']+)\s+(?:in|to|as)\s+([a-z°"']+)\??$/);
     if (u && /^[-+]?(\d{1,3}(,\d{3})+|\d*)(\.\d+)?$/.test(u[1]) && /\d/.test(u[1])) {
         // 1,5 (European decimal) and 1.5.2 are malformed here, not silently reinterpreted
@@ -3040,7 +3099,16 @@ function serpIntent(q) {
     if (t) return { kind: 'time', place: t[1] };
     var d = l.match(/^(?:define|definition of|meaning of|what does)\s+(.+?)(?:\s+mean)?\??$/);
     if (d && /^[a-z][a-z' -]{1,30}$/.test(d[1])) return { kind: 'define', word: d[1].trim() };
-    var w = l.match(/^weather(?:\s+(?:in|at|for))?\s+(.+?)\??$/) || l.match(/^(.+?)\s+weather$/);
+    /* "<place> weather" only counts when the prefix could actually BE a place:
+       short, and free of the function words that mark a question. The old
+       pattern turned "is the weather" and "what causes extreme weather" into a
+       geocode and showed a real forecast for somewhere never asked about. */
+    var w = l.match(/^weather(?:\s+(?:in|at|for))?\s+(.+?)\??$/);
+    if (!w) {
+        var tail = l.match(/^([a-z][a-z .'-]{1,28})\s+weather\??$/);
+        if (tail && !/\b(is|are|was|the|a|an|of|for|what|why|how|when|does|do|causes?|extreme|severe|bad|good|todays?|tomorrows?)\b/.test(tail[1]))
+            w = tail;
+    }
     if (w) return { kind: 'weather', place: w[1] };
     var m = l.match(/^(?:where is|map of|directions to)\s+(.+?)\??$/);
     if (m) return { kind: 'map', place: m[1] };
@@ -3112,7 +3180,9 @@ var UNITS = {
            qt: 0.946352946, quart: 0.946352946, quarts: 0.946352946, pt: 0.473176473, pint: 0.473176473, pints: 0.473176473,
            cup: 0.2365882365, cups: 0.2365882365, floz: 0.0295735295625 },
     data: { b: 1, byte: 1, bytes: 1, kb: 1024, mb: 1048576, gb: 1073741824, tb: 1099511627776 },
-    speed: { mps: 1, kph: 0.277777778, kmh: 0.277777778, mph: 0.44704, knot: 0.514444, knots: 0.514444 },
+    /* exact ratios, not hand-truncated decimals: 0.277777778 made "1 mps in kph"
+       answer 3.599999997 once the formatter started showing 10 digits */
+    speed: { mps: 1, kph: 1 / 3.6, kmh: 1 / 3.6, mph: 1609.344 / 3600, knot: 1852 / 3600, knots: 1852 / 3600 },
     time: { s: 1, sec: 1, secs: 1, second: 1, seconds: 1, min: 60, mins: 60, minute: 60, minutes: 60,
             h: 3600, hr: 3600, hrs: 3600, hour: 3600, hours: 3600, day: 86400, days: 86400,
             week: 604800, weeks: 604800, year: 31557600, years: 31557600 }
@@ -3139,8 +3209,28 @@ function fmtNum(v) {
     if (!isFinite(v)) return '—';
     var a = Math.abs(v);
     if (a !== 0 && (a < 1e-9 || a >= 1e15)) return v.toExponential(6).replace(/e([+-])/, ' × 10^$1');
+    // an exact integer prints exactly: rounding to 10 significant figures turned
+    // 123456789012 into 123,456,789,000, which is simply a wrong answer
+    if (v === Math.round(v)) return v.toLocaleString();
     var s = String(+v.toPrecision(10));
     return s.indexOf('.') < 0 && s.indexOf('e') < 0 ? (+s).toLocaleString() : s;
+}
+/* Can this query be answered with no network at all? ONE function, so render()
+   and init() can never disagree — render() skips the live sections only when an
+   answer really exists, and init() falls through to a normal web search when the
+   evaluator refuses (1/0, 2^5000, "5 kg in m"). Deciding that twice is how a
+   failed calculation ended up rendering a completely blank page. */
+function serpOffline(q) {
+    var intent = serpIntent(q);
+    if (intent.kind === 'math') {
+        var v = mathEval(q);
+        return v === null ? null : { label: 'Calculator', big: fmtNum(v), sub: String(q).replace(/\s+/g, ' ') + ' =' };
+    }
+    if (intent.kind === 'unit') {
+        var u = unitConvert(intent.n, intent.from, intent.to);
+        return u ? { label: 'Unit conversion', big: fmtNum(u.v) + ' ' + u.unit, sub: fmtNum(intent.n) + ' ' + intent.from + ' =' } : null;
+    }
+    return null;
 }
 /* the big answer box at the top of the page */
 function serpAnswer(title, big, sub) {
@@ -3176,7 +3266,7 @@ function serpKnowledge(q, done) {
         liveGet('https://query.wikidata.org/sparql?format=json&query=' + encodeURIComponent(sparql), function (e2, j2) {
             var rows = '';
             if (!e2 && j2 && j2.results && j2.results.bindings) {
-                var seen = {}, out = [];
+                var seen = Object.create(null), out = [];
                 j2.results.bindings.forEach(function (b) {
                     if (!b.propLabel || !b.valLabel || out.length >= 6) return;
                     var k = b.propLabel.value;
@@ -3584,7 +3674,8 @@ webPage('open-meteo.com', {
                     return;
                 }
                 var g = j.results[0];
-                crNav('open-meteo.com/forecast?q=' + encodeURIComponent(g.name + (g.admin1 ? ', ' + g.admin1 : '') + '@' + g.latitude + ',' + g.longitude));
+                // replace, don't push: this IS the same page, just resolved
+                crNav('open-meteo.com/forecast?q=' + encodeURIComponent(g.name + (g.admin1 ? ', ' + g.admin1 : '') + '@' + g.latitude + ',' + g.longitude), { replace: true });
             });
         }
         if (at) show(at[1], +at[2], +at[3]);
@@ -3622,12 +3713,15 @@ function crResolveKey(input) {
     u = u.replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/+$/, '');
     if (/^chrome:\/\//i.test(input)) u = input.trim().toLowerCase().replace(/\/+$/, '');
     if (!WEB_LC) { WEB_LC = {}; Object.keys(WEB).forEach(function (k) { WEB_LC[k.toLowerCase()] = k; }); }
+    /* hasOwnProperty, not a bare lookup: this map is keyed by whatever the user
+       typed, and searching "constructor" otherwise returns Object.prototype's
+       copy — a truthy non-key that then blew up as WEB[key].live */
+    function known(k) { return Object.prototype.hasOwnProperty.call(WEB_LC, k) ? WEB_LC[k] : null; }
     var lc = u.toLowerCase();
-    if (WEB_LC[lc]) return WEB_LC[lc];
+    if (known(lc)) return known(lc);
     if (lc.indexOf('google.com/search') === 0) return 'google.com/search';
     var host = lc.split(/[/?#]/)[0].split(':')[0];       // host only: drop /path, ?query, #frag, and :port
-    if (WEB_LC[host]) return WEB_LC[host];
-    return null;
+    return known(host);
 }
 function crParse(input) {
     var u = String(input || '').trim();
@@ -3673,7 +3767,12 @@ function crNav(url, opts) {
     if (!CR || !url) return;
     opts = opts || {};
     var t = crTab();
-    if (!opts.nopush) { t.hist = t.hist.slice(0, t.hi + 1); t.hist.push(url); t.hi = t.hist.length - 1; }
+    /* replace: swap the current entry instead of pushing. A page that resolves
+       itself into a canonical URL (the weather geocode) must not leave the
+       pre-resolution URL behind, or Back lands on it, it resolves again, and
+       the user is trapped bouncing forward forever. */
+    if (opts.replace) { t.hist[t.hi] = url; }
+    else if (!opts.nopush) { t.hist = t.hist.slice(0, t.hi + 1); t.hist.push(url); t.hi = t.hist.length - 1; }
     t.url = url;
     var s = crSite(url);
     if (!CR.incog && s !== WEB.__err && !s.nohist && s.host !== 'chrome://history')          // incognito keeps its word
@@ -3692,7 +3791,13 @@ function crCloseTab(i) {
     var wasActive = i === CR.active;
     CR.closed.push(CR.tabs[i].url);                                   // Alt+Shift+T can bring it back
     CR.tabs.splice(i, 1);
-    if (!CR.tabs.length) { closeWin('chrome'); return; }
+    if (!CR.tabs.length) {
+        /* closing the LAST incognito tab must not take the window — and with it
+           the regular tabs parked in CR.held, which the swap toast explicitly
+           promises are "waiting where you left them". Drop back instead. */
+        if (CR.incog && CR.held && CR.held.tabs && CR.held.tabs.length) { crIncogSwap(); return; }
+        closeWin('chrome'); return;
+    }
     if (CR.active >= CR.tabs.length) CR.active = CR.tabs.length - 1;
     else if (i < CR.active) CR.active--;
     crChrome(); crTabs();
@@ -3769,10 +3874,10 @@ function crPage() {
 /* the local rows (typed interpretation, bookmarks, history, curated corpus)
    render instantly; a debounced Wikipedia opensearch then folds REAL query
    completions in right under the typed row, exactly like a real omnibox. */
-var SUG_CACHE = {};                                        // query → completions, session-only
+var SUG_CACHE = Object.create(null);                       // query → completions, session-only
 function crSugIsUrl(q) { return /^[a-z0-9.-]+\.[a-z]{2,}/.test(q.replace(/^https?:\/\//, '').replace(/^www\./, '')) || /^chrome:\/\//.test(q); }
 function crSuggestLocal(q) {
-    var rows = [], seen = {};
+    var rows = [], seen = Object.create(null);   // keyed by typed text: no inherited members
     function add(icon, label, url, note) {
         if (rows.length >= 9 || seen[url]) return; seen[url] = 1;
         rows.push({ icon: icon, label: label, url: url, note: note });
@@ -3832,7 +3937,7 @@ function crSuggestLive(q, built) {
         if (err || !j || !j[1]) return;
         var comps = j[1];
         if (!(CR && CR.incog)) SUG_CACHE[q] = comps;        // incognito keystrokes leave no crumbs
-        if (Object.keys(SUG_CACHE).length > 60) SUG_CACHE = {};
+        if (Object.keys(SUG_CACHE).length > 60) SUG_CACHE = Object.create(null);
         merge(comps);
     });
 }
@@ -3948,7 +4053,10 @@ function initChrome(el) {
         if (!e.target.closest('#crMenu') && !e.target.closest('#crMore')) menu.hidden = true;
         if (!e.target.closest('#crOmni')) { suggest.hidden = true; }
         var l = e.target.closest('.cr-l');
-        if (l) { var t = crTab(); t.scroll = 0; crNav(l.getAttribute('data-href')); return; }
+        // preventDefault: reader-mode links carry a real href (so they are
+        // focusable and announced as links), and without this the click would
+        // navigate the sim AND take the whole page to the external site
+        if (l) { e.preventDefault(); var t = crTab(); t.scroll = 0; crNav(l.getAttribute('data-href')); return; }
         var tx = e.target.closest('.cr-tabx');
         if (tx) { e.stopPropagation(); crCloseTab(+tx.getAttribute('data-tx')); return; }
         var tab = e.target.closest('.cr-tab');
@@ -4025,9 +4133,15 @@ function crBubble(msg) {
 // swap whole sessions, like a separate window: regular tabs park and return untouched
 function crIncogSwap() {
     var held = CR.held || null;
-    CR.held = { tabs: CR.tabs, active: CR.active, closed: CR.closed };
+    /* park the session you are LEAVING — unless it is the private one. Keeping
+       incognito tabs around to be resurrected on the next swap is precisely the
+       thing incognito is supposed not to do. */
+    CR.held = CR.incog ? null : { tabs: CR.tabs, active: CR.active, closed: CR.closed };
     CR.incog = !CR.incog;
-    if (held) { CR.tabs = held.tabs; CR.active = Math.min(held.active, held.tabs.length - 1); CR.closed = held.closed; crChrome(); crTabs(); crPage(); }
+    if (held && held.tabs && held.tabs.length) {
+        CR.tabs = held.tabs; CR.active = Math.min(Math.max(held.active, 0), held.tabs.length - 1); CR.closed = held.closed;
+        crChrome(); crTabs(); crPage();
+    }
     else { CR.tabs = []; CR.closed = []; CR.active = 0; crNewTab(); }
     toast(CR.incog ? 'Incognito: history is off. Your regular tabs are waiting where you left them.' : 'Back to regular browsing. The record resumes.');
 }
@@ -5180,7 +5294,7 @@ function stPrice(c) { return c === 0 ? 'Free' : '$' + (c / 100).toFixed(2); }
 function stRevClass(pct) { return pct >= 80 ? 'pos' : pct >= 40 ? 'mix' : 'neg'; }
 
 /* ── persistence: owned / installed / wishlist / cart / stats ── */
-function sjGet(k, d) { try { var v = JSON.parse(recall('steam_' + k, 'null')); return v == null ? d : v; } catch (e) { return d; } }
+function sjGet(k, d) { return jsonAs(recall('steam_' + k, 'null'), d); }
 function sjSet(k, v) { store('steam_' + k, JSON.stringify(v)); }
 function stSeed() {
     var fsDirty = false;                  // any 'inst' write here changes steamapps/common: redraw Explorer once at the end
@@ -5190,16 +5304,31 @@ function stSeed() {
         sjSet('wish', ['eldenring', 'cities', 'obradinn', 'dysonsphere', 'rimworld']);
         sjSet('cart', []);
         sjSet('hrs', sjGet('hrs', {}));   // don't wipe hours a desktop game banked before Steam first opened
+        sjSet('seen', STG.map(function (g) { return g.id; }));   // every id offered once; later additions fold in
         store('steam_wishv2', '1');
         store('steam_instv2', '1');       // fresh seeds are already installed=playable
         fsDirty = true;
     } else {
-        // catalogue grew: fold any new default-owned games into an existing save
+        /* Catalogue grew: fold any NEW default-owned game into an existing save.
+           "New" has to mean new, though — this used to re-add every default on
+           every open, so uninstalling one of the shipped-installed games looked
+           like it worked and then silently came back the next time Steam
+           started. 'seen' records the ids a save has already been offered, so a
+           deliberate uninstall stands and only genuinely-new entries arrive. */
         var o = stOwned(), n = stInst(), ch = false;
-        STG.forEach(function (g) {
-            if (g.owned && o.indexOf(g.id) < 0) { o.push(g.id); ch = true; }
-            if (g.owned && g.inst && n.indexOf(g.id) < 0) { n.push(g.id); ch = true; }
-        });
+        var seenIds = sjGet('seen', null);
+        if (seenIds === null) {                       // save predates this list: adopt the current catalogue
+            sjSet('seen', STG.map(function (g) { return g.id; }));
+        } else {
+            var sch = false;
+            STG.forEach(function (g) {
+                if (seenIds.indexOf(g.id) >= 0) return;
+                seenIds.push(g.id); sch = true;
+                if (g.owned && o.indexOf(g.id) < 0) { o.push(g.id); ch = true; }
+                if (g.owned && g.inst && n.indexOf(g.id) < 0) { n.push(g.id); ch = true; }
+            });
+            if (sch) sjSet('seen', seenIds);
+        }
         if (ch) { sjSet('owned', o); sjSet('inst', n); fsDirty = true; }
         if (recall('steam_wishv2', null) == null) {                       // one-shot: v2's new wishlist seeds, unless already bought
             var w = stWish();
