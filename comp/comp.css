@@ -3058,3 +3058,9 @@ button.nn-drow:hover { background: rgba(30,60,48,.5); }
 .mc-eff i { width: 14px; height: 14px; display: block; border: 1px solid rgba(0,0,0,.5); }
 .mc-eff b { color: #fff; font-weight: 400; font-size: 13px; text-shadow: 1px 1px 0 rgba(0,0,0,.8); flex: 1; }
 .mc-eff span { color: #bbb; font-size: 12px; text-shadow: 1px 1px 0 rgba(0,0,0,.8); }
+/* NINTH NIGHT: the world layer — answering back */
+.nn-dlg-opts { display: flex; flex-direction: column; gap: 4px; margin-top: 9px; }
+.nn-opt { display: block; width: 100%; text-align: left; font-family: "VT323", monospace; font-size: 1.02rem; line-height: 1.3; color: #b9b0c6; background: rgba(20,16,30,.9); border: 1px solid #322a44; padding: 5px 10px; cursor: pointer; }
+.nn-opt:hover { color: #e8e2ee; border-color: #5a4d72; }
+.nn-opt.on { color: #ffe66e; border-color: #c9a94a; background: rgba(44,34,20,.9); }
+.nn-opt.on::before { content: "> "; color: #c9a94a; }

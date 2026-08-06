@@ -43,7 +43,49 @@ function grab(name) {
 
 var PLACES = grab('PLACES');
 var NPCS = grab('NPCS');
-var MAP_POS = grab('MAP_POS');
+var MAP_SEED = grab('MAP_SEED');
+var MAP_HIDE = grab('MAP_HIDE');
+var PROP = grab('PROP');
+var FLOOR_PAL = grab('FLOOR_PAL');
+
+/* The map is derived from the exit graph now rather than hand kept, so
+   the audit derives it the same way and checks the derivation, instead
+   of checking a table that can no longer be forgotten. Keep this in step
+   with buildMap()/exitDir() in the game. */
+function exitDir(p, e) {
+    var W = p.w || GRID, H = p.h || GRID;
+    var dx = e.x < W * 0.25 ? -1 : e.x > W * 0.75 ? 1 : 0;
+    var dy = e.y < H * 0.25 ? -1 : e.y > H * 0.75 ? 1 : 0;
+    if (dx && dy) { if (Math.abs(e.x - W / 2) / W > Math.abs(e.y - H / 2) / H) dy = 0; else dx = 0; }
+    if (!dx && !dy) dy = -1;
+    return [dx, dy];
+}
+function buildMap() {
+    var pos = {}, taken = {}, k;
+    for (k in MAP_SEED) if (PLACES[k]) { pos[k] = MAP_SEED[k].slice(); taken[pos[k].join(',')] = k; }
+    var q = ['square'], guard = 0;
+    while (q.length && guard++ < 400) {
+        var id = q.shift(), p = PLACES[id]; if (!p || !pos[id]) continue;
+        (p.exits || []).forEach(function (e) {
+            if (!PLACES[e.to] || pos[e.to]) return;
+            var d = exitDir(p, e), c = [pos[id][0] + d[0], pos[id][1] + d[1]], slip = 0;
+            while (taken[c.join(',')] && slip < 12) {
+                slip++;
+                if (d[0]) c[1] = pos[id][1] + (slip % 2 ? 1 : -1) * Math.ceil(slip / 2);
+                else c[0] = pos[id][0] + (slip % 2 ? 1 : -1) * Math.ceil(slip / 2);
+            }
+            pos[e.to] = c; taken[c.join(',')] = e.to; q.push(e.to);
+        });
+    }
+    var spare = 0;
+    Object.keys(PLACES).forEach(function (id) {
+        if (pos[id] || MAP_HIDE[id]) return;
+        while (taken[(-1) + ',' + spare] && spare < 40) spare++;
+        pos[id] = [-1, spare]; taken[pos[id].join(',')] = id; spare++;
+    });
+    return pos;
+}
+var MAP_POS = buildMap();
 
 var problems = [];
 function bad(msg) { problems.push(msg); }
@@ -76,15 +118,33 @@ function reachable(p, x, y, W, H) {
 Object.keys(PLACES).forEach(function (id) {
     var p = PLACES[id], W = p.w || GRID, H = p.h || GRID;
 
-    if (W > 17 || H > 17) {
-        bad(id + ': ' + W + 'x' + H + ' exceeds the 17x17 ceiling. There is no camera, so this renders off the bottom of the canvas.');
+    /* The 17x17 ceiling is gone: there is a camera. What replaces it is
+       memory. A floor bitmap is (w+h) tiles across and prerendered, so
+       a place that is huge on both axes costs real megabytes. */
+    var px = (W + H) * 29 + 128, py = (W + H) * 14.5 + 157;
+    var mb = px * py * 4 / 1048576;
+    if (mb > 8) bad(id + ': ' + W + 'x' + H + ' bakes a ' + Math.round(px) + 'x' + Math.round(py) + ' floor, about ' + mb.toFixed(1) + ' MB. Split it or make it narrower.');
+    if (W < 5 || H < 5) bad(id + ': ' + W + 'x' + H + ' is too small to stand up in.');
+
+    if (!FLOOR_PAL[p.floor]) {
+        bad(id + ': floor "' + p.floor + '" has no palette, so it silently falls back to the mill. Add it to FLOOR_PAL or use a kind that exists.');
     }
 
     (p.props || []).forEach(function (o) {
         if (o.b[0] < 0 || o.b[1] < 0 || o.b[0] + o.b[2] > W || o.b[1] + o.b[3] > H) {
             bad(id + ': prop "' + o.t + '" [' + o.b + '] sticks out of the ' + W + 'x' + H + ' floor.');
         }
+        if (!PROP[o.t]) {
+            bad(id + ': prop type "' + o.t + '" is not in PROP, so it draws as an anonymous box. (This is exactly how `stone` hid.)');
+        }
     });
+
+    // a place lit only by your own lantern is a deliberate choice; a lit
+    // place with nothing to light it is a mistake
+    if (p.night) {
+        var lit = (p.props || []).some(function (o) { return o.t === 'house' || o.t === 'lamp' || o.t === 'foot' || o.t === 'mill'; }) || (p.lights || []).length;
+        if (!lit && !p.dark) bad(id + ': is night but has no lamp, house or light in it. Set `dark: 1` if the lantern is meant to be the only light.');
+    }
 
     (p.exits || []).forEach(function (e) {
         var w = e.w || 0.9, h = e.h || 0.9, ok = 0, tot = 0;
@@ -106,6 +166,21 @@ Object.keys(PLACES).forEach(function (id) {
         if (!n) return bad(id + ': npc "' + nid + '" is not in NPCS.');
         if (blocked(p, n.x, n.y, 0.05)) bad(id + ': ' + nid + ' at ' + n.x + ',' + n.y + ' is standing inside a prop.');
         if (!reachable(p, n.x, n.y, W, H)) bad(id + ': ' + nid + ' has no standable tile within talk range. You can see them and never speak to them.');
+        /* people walk now, so where they walk has to be walkable too:
+           a waypoint in a wall makes them shudder against it forever */
+        (n.path || []).forEach(function (pt, i) {
+            if (!standable(p, pt[0], pt[1], W, H)) bad(id + ': ' + nid + ' path point ' + i + ' (' + pt + ') is inside a prop or off the floor.');
+            if (!reachable(p, pt[0], pt[1], W, H)) bad(id + ': ' + nid + ' path point ' + i + ' (' + pt + ') cannot be reached to talk to them there.');
+        });
+        if (n.wander) {
+            var free = 0;
+            for (var a = 0; a < 16; a++) {
+                var wx = n.x + Math.cos(a / 16 * Math.PI * 2) * n.wander;
+                var wy = n.y + Math.sin(a / 16 * Math.PI * 2) * n.wander;
+                if (standable(p, wx, wy, W, H)) free++;
+            }
+            if (free < 4) bad(id + ': ' + nid + ' wanders ' + n.wander + ' tiles but only ' + free + '/16 of that ring is standable. They will grind against a wall.');
+        }
     });
 
     (p.looks || []).forEach(function (l) {
@@ -132,9 +207,33 @@ Object.keys(PLACES).forEach(function (id) {
     });
 
     if (!MAP_POS[id]) {
-        bad(id + ': has no MAP_POS row, so it and every road to it are invisible on the map.');
+        bad(id + ': the map derivation gave it no cell, so it and every road to it are invisible on the map.');
     }
 });
+
+/* Two places on the same map cell draw on top of each other. The
+   derivation slides to avoid it, but it can run out of room. */
+var cells = {};
+Object.keys(MAP_POS).forEach(function (id) {
+    if (MAP_HIDE[id]) return;
+    var k = MAP_POS[id].join(',');
+    if (cells[k]) bad('map: "' + id + '" and "' + cells[k] + '" both land on cell ' + k + '. They will overlap.');
+    cells[k] = id;
+});
+
+/* Somewhere you can never walk to is content nobody will ever see. */
+(function () {
+    var seen = { square: 1 }, q = ['square'];
+    while (q.length) {
+        var id = q.shift();
+        (PLACES[id].exits || []).forEach(function (e) {
+            if (PLACES[e.to] && !seen[e.to]) { seen[e.to] = 1; q.push(e.to); }
+        });
+    }
+    Object.keys(PLACES).forEach(function (id) {
+        if (!seen[id] && !MAP_HIDE[id]) bad(id + ': no route to it from the square. Nobody will ever reach it.');
+    });
+})();
 
 var placed = {};
 Object.keys(PLACES).forEach(function (id) { (PLACES[id].npcs || []).forEach(function (n) { placed[n] = 1; }); });
