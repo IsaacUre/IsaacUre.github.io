@@ -3089,21 +3089,27 @@ function stepAudio(real) {
        see. Rising edge only, and no field initialiser needed for it
        because !undefined is already true on the first frame. */
     if (A.settle > 0) A.settle -= real;
-    var heard = 0;
+    var alive = 0, arrived = 0;
     for (var i = 0; i < RT.foes.length; i++) {
         var f = RT.foes[i];
         if (!f) continue;
-        if (!f._as) {
-            f._as = 1;
-            /* a wave draws all at once, and walking into a room means
-               meeting everything already in it. One sound between
-               them, and none at all until the room has settled. */
-            if (!heard && !f.dead && !(A.settle > 0)) { heard = 1; sfx('spawn'); }
-        }
+        if (!f.dead) alive++;
+        if (!f._as) { f._as = 1; if (!f.dead) arrived++; }
         if (f.dead || !f.def || !f.def.boss) continue;
         if (f.warn && !f._aw) { f._aw = 1; sfx('pulsewarn'); }
         else if (!f.warn && f._aw) f._aw = 0;
     }
+    /* a room filling up is a different event from one more thing
+       wandering into a fight already in progress, and a big draw is
+       different again. All three are read off the arrivals rather
+       than off RT.wave, which counts pending waves and is job 4's.
+       Nothing at all until the room has settled, because walking
+       through a doorway means meeting everything already in there. */
+    if (arrived && !(A.settle > 0)) {
+        if (A.alive) sfx('spawn');
+        else sfx(arrived >= 4 ? 'wave2' : 'wave');
+    }
+    A.alive = alive;
 }
 
 /* ─────────────── sfx ───────────────
@@ -3202,10 +3208,46 @@ function sfx(kind) {
                                         snd({ bus: 'ui', type: 'triangle', f0: deg(d, 0), dur: 0.4, vol: 0.03, atk: 0.01, delay: i * 0.085 });
                                      }); }
         else if (kind === 'ui')    { snd({ bus: 'ui', type: 'square', f0: 530, f1: 620, dur: 0.05, vol: 0.022, cut: 3000 }); }
+        /* ---- names the other jobs called for ---- */
+        /* The Chorus is a crowd saying the refrain in unison. When it
+           goes down the crowd stops, so what you hear is the refrain
+           starting and not getting to the end of itself. */
+        else if (kind === 'bossdie') {
+            sing([[5, 1], [4, 1]], RT.ac.currentTime + 0.06,
+                 { bpm: 108, vol: 0.05, voices: 7, det: 22, type: 'sawtooth', cut: 900 });
+            snd({ bus: 'world', noise: 1, dur: 1.4, vol: 0.07, cut: 1400, cut1: 160, atk: 0.05, delay: 0.55 });
+            snd({ bus: 'music', type: 'sine', f0: deg(1, -1), f1: deg(1, -1) / 2, dur: 2.2, vol: 0.06, atk: 0.1, delay: 0.5 });
+        }
+        /* ON AND ON. Two flat tones a couple of Hz apart, beating
+           against each other, going nowhere. It is the only sound in
+           the game with no pitch move and no shape: that is the joke. */
+        else if (kind === 'drone') {
+            snd({ bus: 'world', type: 'square', f0: 174, dur: 1.1, vol: 0.030, cut: 620, q: 2, atk: 0.12 });
+            snd({ bus: 'world', type: 'square', f0: 176.6, dur: 1.1, vol: 0.026, cut: 620, q: 2, atk: 0.12 });
+        }
+        /* again, and again, and again: your own last word coming back
+           at you, twice more and further off each time. Combat parks
+           the family you actually cast on RT.lastFam. */
+        else if (kind === 'reprise') {
+            voxAnswer(RT.lastFam || famOf('answer'), false);
+            for (var ri = 1; ri <= 2; ri++) {
+                snd({ bus: 'voice', type: 'sawtooth', f0: 176 / (1 + ri * 0.22), f1: 60, dur: 0.4,
+                      vol: 0.05 / (ri + 1), voices: 2, det: 10, cut: 1200, cut1: 200, delay: ri * 0.22 });
+            }
+        }
+        /* An unknown name used to fall off the end of this chain in
+           silence. That is how 'bossdie', 'drone' and 'reprise' each
+           shipped mute: three jobs called them, nothing answered, and
+           nothing anywhere said so. Job 4 found it and worked around
+           it by firing 'die' underneath 'bossdie', with a comment
+           explaining why. Nobody should have to do that again, so an
+           unknown name is now a reported failure like any other. */
+        else audioErr(new Error('no sound named ' + kind));
     } catch (e) { audioErr(e); }
 }
 /* every name sfx() answers to, for the DEV tester */
 var SFX_NAMES = ['call', 'hit', 'answer', 'slant', 'empty', 'sour', 'winded', 'breath',
+    'bossdie', 'drone', 'reprise',
     'stanza', 'wave', 'wave2', 'verse', 'pulsewarn', 'pulse', 'voice', 'bite', 'steal',
     'die', 'spawn', 'hurt', 'down', 'step', 'travel', 'coin', 'frag', 'ach', 'ui'];
 /* solo one bus to hear it on its own */
