@@ -91,10 +91,19 @@ function stepCamera(dt, snap) {
     var w = RT.world, bd = camBounds(pw(), ph());
     var tg = camTarget(RT.px, RT.py);
     tg.x = clamp(tg.x, bd.x0, bd.x1); tg.y = clamp(tg.y, bd.y0, bd.y1);
-    if (snap) { w.cam.x = tg.x; w.cam.y = tg.y; return; }
-    var k = 1 - Math.pow(0.0016, dt);              // frame-rate independent ease
-    w.cam.x += (tg.x - w.cam.x) * k;
-    w.cam.y += (tg.y - w.cam.y) * k;
+    if (snap) { w.cam.x = tg.x; w.cam.y = tg.y; }
+    else {
+        var k = 1 - Math.pow(0.0016, dt);          // frame-rate independent ease
+        w.cam.x += (tg.x - w.cam.x) * k;
+        w.cam.y += (tg.y - w.cam.y) * k;
+    }
+    // The cursor stays where it is and the world slides under it. Aim is
+    // a screen point, so the world point has to be re-derived every time
+    // the eye moves, or you spend the walk shooting at where the ground
+    // used to be. Before the camera the projection was constant and
+    // caching it on pointermove was safe.
+    var m = RT.mouse, p = screenToWorld(m.x, m.y);
+    m.wx = p.wx; m.wy = p.wy;
 }
 
 /* ─────────────── the ballad ───────────────
@@ -1041,7 +1050,9 @@ function stepCalls(dt) {
             landCall(f, c);
             RT.calls.splice(i, 1); continue;
         }
-        if (c.life <= 0 || c.x < -1 || c.x > GRID + 1 || c.y < -1 || c.y > GRID + 1) RT.calls.splice(i, 1);
+        // bound by the place, not by the old fixed grid: the road north
+        // is 34 deep and every call cast on it used to die on frame one
+        if (c.life <= 0 || c.x < -1 || c.x > pw() + 1 || c.y < -1 || c.y > ph() + 1) RT.calls.splice(i, 1);
     }
 }
 function landCall(f, c) {
@@ -2887,28 +2898,28 @@ var PROP = {
     mill:      { h: 96, pal: ['#4a3f30', '#37301f', '#5c5040'] },
     curtain:   { h: 120, pal: ['#3a1c22', '#2a1218', '#4a262e'] },
     stagewip:  { h: 26, pal: ['#43392e', '#332b22', '#544738'] },
-    tree:      { h: 62, pal: ['#243626', '#1a2a1c', '#2f4632'] },
-    well:      { h: 26, pal: ['#43392e', '#332b22', '#544738'] },
+    tree:      { h: 62, ins: 0.34, pal: ['#33291f', '#241c14', '#3e3225'] },
+    well:      { h: 26, body: 'cyl', pal: ['#43392e', '#332b22', '#544738'] },
     markstone: { h: 40, pal: ['#4a4a52', '#3a3a42', '#5c5c66'] },
     wheel:     { h: 70, pal: ['#43392e', '#332b22', '#544738'] },
     fence:     { h: 22, pal: ['#3a2f24', '#2c231a', '#4a3d2e'] },
     beam:      { h: 16, pal: ['#3a2f24', '#2c231a', '#4a3d2e'] },
     cart:      { h: 22, pal: ['#43392e', '#332b22', '#544738'] },
     crate:     { h: 20, pal: ['#4a3d2c', '#382e21', '#5c4c38'] },
-    sack:      { h: 14, pal: ['#5a4f36', '#463d29', '#6c5f44'] },
+    sack:      { h: 14, body: 'round', pal: ['#5a4f36', '#463d29', '#6c5f44'] },
     foot:      { h: 6,  pal: ['#4a4030', '#3a3224', '#5c5040'] },
-    stone:     { h: 20, pal: ['#4a4a52', '#3a3a42', '#5c5c66'] },
+    stone:     { h: 20, body: 'round', pal: ['#4a4a52', '#3a3a42', '#5c5c66'] },
     lamp:      { h: 34, pal: ['#2e2a26', '#232019', '#3c3630'] },
     post:      { h: 30, pal: ['#3a2f24', '#2c231a', '#4a3d2e'] },
-    cairn:     { h: 26, pal: ['#454550', '#35353f', '#565662'] },
+    cairn:     { h: 26, body: 'round', pal: ['#454550', '#35353f', '#565662'] },
     hedge:     { h: 24, pal: ['#22301f', '#182417', '#2c3f28'] },
     table:     { h: 20, pal: ['#4a3a28', '#382c1e', '#5e4a34'] },
     shelf:     { h: 46, pal: ['#413224', '#31261b', '#54412f'] },
     counter:   { h: 24, pal: ['#4a3a28', '#382c1e', '#5e4a34'] },
     bed:       { h: 14, pal: ['#3e3446', '#2f2836', '#4e4258'] },
-    barrel:    { h: 22, pal: ['#46372a', '#352a20', '#584636'] },
+    barrel:    { h: 22, body: 'cyl', pal: ['#46372a', '#352a20', '#584636'] },
     wall:      { h: 68, pal: ['#332b30', '#272026', '#42383e'] },
-    vat:       { h: 26, pal: ['#3e3a34', '#2f2c27', '#514c44'] },
+    vat:       { h: 26, body: 'cyl', pal: ['#3e3a34', '#2f2c27', '#514c44'] },
     _:         { h: 18, pal: ['#43392e', '#332b22', '#544738'] }
 };
 function propDef(t) { return PROP[t] || PROP._; }
@@ -2919,14 +2930,44 @@ function drawProp(cx, o) {
     if (Math.max(x0, x1, x2, x3) < -80 || Math.min(x0, x1, x2, x3) > VW + 80) return;   // off camera
     if (Math.min(y0, y1, y2, y3) - 130 > VH + 40 || Math.max(y0, y1, y2, y3) < -160) return;
     var d = propDef(t), hgt = d.h, pal = d.pal;
-    // top face
-    cx.beginPath(); cx.moveTo(x0, y0 - hgt); cx.lineTo(x1, y1 - hgt); cx.lineTo(x2, y2 - hgt); cx.lineTo(x3, y3 - hgt); cx.closePath();
-    cx.fillStyle = pal[2]; cx.fill();
-    // two visible walls
-    cx.beginPath(); cx.moveTo(x3, y3 - hgt); cx.lineTo(x2, y2 - hgt); cx.lineTo(x2, y2); cx.lineTo(x3, y3); cx.closePath();
-    cx.fillStyle = pal[0]; cx.fill();
-    cx.beginPath(); cx.moveTo(x1, y1 - hgt); cx.lineTo(x2, y2 - hgt); cx.lineTo(x2, y2); cx.lineTo(x1, y1); cx.closePath();
-    cx.fillStyle = pal[1]; cx.fill();
+    var mx0 = (x0 + x2) / 2, my0 = (y0 + y2) / 2;             // centre of the footprint
+    var rrx = (x1 - x3) / 2, rry = (y2 - y0) / 2;             // and its half extents, in px
+    /* The solid underneath the art. It used to be a box for everything,
+       always, and the round props then painted a lump on the lid that
+       covered about half of it, so the hollow read as six grey crates.
+       A prop that is round in the world gets a round solid. */
+    if (d.body === 'round') {
+        cx.fillStyle = pal[1];                                // the whole silhouette, in shadow
+        cx.beginPath(); cx.ellipse(mx0, my0 - hgt / 2, rrx * 0.96, rry + hgt / 2, 0, 0, TAU); cx.fill();
+        cx.fillStyle = pal[0];                                // the side that faces the light
+        cx.beginPath(); cx.ellipse(mx0 - rrx * 0.09, my0 - hgt * 0.6 - rry * 0.2, rrx * 0.8, (rry + hgt / 2) * 0.72, 0, 0, TAU); cx.fill();
+        cx.fillStyle = pal[2];
+        cx.beginPath(); cx.ellipse(mx0 - rrx * 0.2, my0 - hgt * 0.8 - rry * 0.4, rrx * 0.46, (rry + hgt / 2) * 0.34, 0, 0, TAU); cx.fill();
+    } else if (d.body === 'cyl') {                            // round in plan: a foot, a straight side, a lid
+        cx.fillStyle = pal[0];
+        cx.fillRect(mx0 - rrx, my0 - hgt, rrx * 2, hgt);
+        cx.beginPath(); cx.ellipse(mx0, my0, rrx, rry, 0, 0, TAU); cx.fill();
+        cx.fillStyle = pal[1];
+        cx.fillRect(mx0 + rrx * 0.3, my0 - hgt, rrx * 0.7, hgt);
+        cx.fillStyle = pal[2];
+        cx.beginPath(); cx.ellipse(mx0, my0 - hgt, rrx, rry, 0, 0, TAU); cx.fill();
+    } else {
+        // some props stand on less ground than they own: a tree is a
+        // trunk in the middle of its canopy, not a green cube
+        var k = d.ins || 1, gx0 = x0, gx1 = x1, gx2 = x2, gx3 = x3, gy0 = y0, gy1 = y1, gy2 = y2, gy3 = y3;
+        if (k !== 1) {
+            gx0 = mx0 + (x0 - mx0) * k; gx1 = mx0 + (x1 - mx0) * k; gx2 = mx0 + (x2 - mx0) * k; gx3 = mx0 + (x3 - mx0) * k;
+            gy0 = my0 + (y0 - my0) * k; gy1 = my0 + (y1 - my0) * k; gy2 = my0 + (y2 - my0) * k; gy3 = my0 + (y3 - my0) * k;
+        }
+        // top face
+        cx.beginPath(); cx.moveTo(gx0, gy0 - hgt); cx.lineTo(gx1, gy1 - hgt); cx.lineTo(gx2, gy2 - hgt); cx.lineTo(gx3, gy3 - hgt); cx.closePath();
+        cx.fillStyle = pal[2]; cx.fill();
+        // two visible walls
+        cx.beginPath(); cx.moveTo(gx3, gy3 - hgt); cx.lineTo(gx2, gy2 - hgt); cx.lineTo(gx2, gy2); cx.lineTo(gx3, gy3); cx.closePath();
+        cx.fillStyle = pal[0]; cx.fill();
+        cx.beginPath(); cx.moveTo(gx1, gy1 - hgt); cx.lineTo(gx2, gy2 - hgt); cx.lineTo(gx2, gy2); cx.lineTo(gx1, gy1); cx.closePath();
+        cx.fillStyle = pal[1]; cx.fill();
+    }
     if (t === 'house') {
         // a roof, so it reads as somewhere people sleep and not as a box
         var rh = 26, mx = (x0 + x2) / 2, my = (y0 + y2) / 2 - hgt;
@@ -2947,15 +2988,17 @@ function drawProp(cx, o) {
         cx.beginPath(); cx.moveTo(x3 + 16.5, y3 - hgt + 20); cx.lineTo(x3 + 16.5, y3 - hgt + 31); cx.stroke();
     }
     if (t === 'tree') {
-        // three overlapping blobs read as a canopy; one ellipse reads as a lozenge
+        // three overlapping blobs read as a canopy; one ellipse reads as
+        // a lozenge. The trunk is the inset solid underneath.
         var tx = (x0 + x2) / 2, ty = (y0 + y2) / 2 - hgt;
         cx.fillStyle = '#1c2c1f';
-        cx.beginPath(); cx.ellipse(tx - 12, ty + 4, 19, 13, 0, 0, TAU); cx.fill();
-        cx.beginPath(); cx.ellipse(tx + 13, ty + 2, 17, 12, 0, 0, TAU); cx.fill();
+        cx.beginPath(); cx.ellipse(tx - rrx * 0.28, ty + rry * 0.26, rrx * 0.44, rry * 0.64, 0, 0, TAU); cx.fill();
+        cx.beginPath(); cx.ellipse(tx + rrx * 0.3, ty + rry * 0.16, rrx * 0.4, rry * 0.6, 0, 0, TAU); cx.fill();
+        cx.beginPath(); cx.ellipse(tx, ty + rry * 0.5, rrx * 0.34, rry * 0.46, 0, 0, TAU); cx.fill();   // the skirt, over the trunk top
         cx.fillStyle = '#2c4430';
-        cx.beginPath(); cx.ellipse(tx, ty - 9, 24, 16, 0, 0, TAU); cx.fill();
+        cx.beginPath(); cx.ellipse(tx, ty - rry * 0.38, rrx * 0.56, rry * 0.94, 0, 0, TAU); cx.fill();
         cx.fillStyle = '#3a5840';
-        cx.beginPath(); cx.ellipse(tx - 6, ty - 15, 13, 8, 0, 0, TAU); cx.fill();
+        cx.beginPath(); cx.ellipse(tx - rrx * 0.16, ty - rry * 0.8, rrx * 0.3, rry * 0.44, 0, 0, TAU); cx.fill();
     }
     if (t === 'stagewip') {                               // the play, half built
         cx.strokeStyle = '#6a5638'; cx.lineWidth = 2;
@@ -2970,7 +3013,12 @@ function drawProp(cx, o) {
         cx.strokeStyle = '#6a6a76'; cx.lineWidth = 1;
         for (var s = 0; s < 4; s++) { cx.beginPath(); cx.moveTo((x0 + x2) / 2 - 9 + s * 5, (y0 + y2) / 2 - hgt + 11); cx.lineTo((x0 + x2) / 2 - 4 + s * 5, (y0 + y2) / 2 - hgt + 17); cx.stroke(); }
     }
-    if (t === 'well') { cx.fillStyle = '#12101a'; cx.beginPath(); cx.ellipse((x0 + x2) / 2, (y0 + y2) / 2 - hgt, 14, 7, 0, 0, TAU); cx.fill(); }
+    if (t === 'well') {                                   // a shaft, and a rim you could sit on
+        cx.fillStyle = '#12101a';
+        cx.beginPath(); cx.ellipse(mx0, my0 - hgt, rrx * 0.66, rry * 0.66, 0, 0, TAU); cx.fill();
+        cx.strokeStyle = 'rgba(30,24,18,.6)'; cx.lineWidth = 1.5;
+        cx.beginPath(); cx.ellipse(mx0, my0 - hgt, rrx * 0.84, rry * 0.84, 0, 0, TAU); cx.stroke();
+    }
     /* ── the nine that used to be coloured boxes, plus the indoor set ── */
     var tx = (x0 + x2) / 2, ty = (y0 + y2) / 2 - hgt;        // centre of the top face
     var fw = Math.hypot(x2 - x3, y2 - y3) || 1;              // the south-west face, in px
@@ -2995,17 +3043,28 @@ function drawProp(cx, o) {
         cx.beginPath(); cx.moveTo(x3, y3 - hgt + 8); cx.lineTo(x2, y2 - hgt + 8); cx.stroke();
     }
     if (t === 'beam' || t === 'post') { plank(3, 'rgba(0,0,0,.35)'); cx.fillStyle = 'rgba(255,240,210,.06)'; cx.fillRect(tx - fw * 0.3, ty - 1, fw * 0.6, 2); }
-    if (t === 'crate' || t === 'barrel') {
-        plank(t === 'barrel' ? 4 : 3, 'rgba(0,0,0,.4)');
+    if (t === 'crate') {
+        plank(3, 'rgba(0,0,0,.4)');
         cx.strokeStyle = '#6a5a40'; cx.lineWidth = 1.5;
         cx.beginPath(); cx.moveTo(x3, y3 - hgt * 0.55); cx.lineTo(x2, y2 - hgt * 0.55); cx.stroke();
-        if (t === 'crate') { cx.strokeStyle = 'rgba(120,100,70,.5)'; cx.beginPath(); cx.moveTo(x3, y3); cx.lineTo(x2, y2 - hgt); cx.stroke(); }
+        cx.strokeStyle = 'rgba(120,100,70,.5)';
+        cx.beginPath(); cx.moveTo(x3, y3); cx.lineTo(x2, y2 - hgt); cx.stroke();
     }
-    if (t === 'sack') {                                       // a grain sack slumps, it is not a cube
-        cx.fillStyle = '#6c5f44';
-        cx.beginPath(); cx.ellipse(tx, ty + 2, fw * 0.42, hgt * 0.5, 0, 0, TAU); cx.fill();
-        cx.fillStyle = '#7d6e4f'; cx.beginPath(); cx.ellipse(tx - 2, ty - 2, fw * 0.24, hgt * 0.3, 0, 0, TAU); cx.fill();
-        cx.fillStyle = '#463d29'; cx.fillRect(tx - 3, ty - hgt * 0.5 - 1, 6, 4);
+    if (t === 'barrel') {                                     // staves down, hoops around
+        cx.strokeStyle = 'rgba(0,0,0,.32)'; cx.lineWidth = 1;
+        for (var bs = -2; bs <= 2; bs++) {
+            var bx = mx0 + rrx * bs * 0.3;
+            cx.beginPath(); cx.moveTo(bx, my0 - hgt + 2); cx.lineTo(bx, my0 + rry * 0.5); cx.stroke();
+        }
+        cx.strokeStyle = '#6a5a40'; cx.lineWidth = 1.5;
+        [0.72, 0.24].forEach(function (q) {
+            cx.beginPath(); cx.ellipse(mx0, my0 - hgt * q, rrx, rry, 0, 0, Math.PI); cx.stroke();
+        });
+    }
+    if (t === 'sack') {                                       // a grain sack slumps, and it is tied at the neck
+        cx.fillStyle = '#463d29'; cx.fillRect(tx - 3, ty - rry + 1, 6, 5);
+        cx.strokeStyle = 'rgba(40,34,22,.5)'; cx.lineWidth = 1;
+        cx.beginPath(); cx.moveTo(tx - rrx * 0.36, ty + rry * 0.3); cx.lineTo(tx + rrx * 0.34, ty + rry * 0.5); cx.stroke();
     }
     if (t === 'cart') {                                       // two wheels and a bed with rails
         cx.fillStyle = '#2a2118';
@@ -3039,13 +3098,21 @@ function drawProp(cx, o) {
         }
     }
     if (t === 'stone' || t === 'cairn') {                     // a boulder, not a crate
-        cx.fillStyle = pal[2];
-        cx.beginPath(); cx.ellipse(tx, ty + 3, fw * 0.44, hgt * 0.55, 0, 0, TAU); cx.fill();
-        cx.fillStyle = pal[0];
-        cx.beginPath(); cx.ellipse(tx + fw * 0.12, ty + 7, fw * 0.3, hgt * 0.4, 0, 0, TAU); cx.fill();
-        cx.fillStyle = 'rgba(200,200,220,.10)';
-        cx.beginPath(); cx.ellipse(tx - fw * 0.14, ty - 3, fw * 0.18, hgt * 0.22, 0, 0, TAU); cx.fill();
-        if (t === 'cairn') { cx.fillStyle = pal[1]; cx.beginPath(); cx.ellipse(tx, ty - hgt * 0.45, fw * 0.22, hgt * 0.26, 0, 0, TAU); cx.fill(); }
+        cx.strokeStyle = 'rgba(18,16,24,.45)'; cx.lineWidth = 1;
+        cx.beginPath();
+        cx.moveTo(tx - rrx * 0.34, ty - rry * 0.1);
+        cx.lineTo(tx - rrx * 0.02, ty + rry * 0.26);
+        cx.lineTo(tx + rrx * 0.3, ty + rry * 0.16);
+        cx.stroke();
+        cx.fillStyle = 'rgba(210,210,230,.09)';
+        cx.beginPath(); cx.ellipse(tx - rrx * 0.26, ty - rry * 0.6, rrx * 0.16, rry * 0.34, -0.5, 0, TAU); cx.fill();
+        if (t === 'cairn') {                                  // one more stone on top, because somebody stacked it
+            var cy2 = ty - rry - hgt * 0.14;
+            cx.fillStyle = pal[1];
+            cx.beginPath(); cx.ellipse(tx + 1, cy2, rrx * 0.42, rry * 0.42, 0, 0, TAU); cx.fill();
+            cx.fillStyle = pal[2];
+            cx.beginPath(); cx.ellipse(tx - rrx * 0.05, cy2 - rry * 0.12, rrx * 0.26, rry * 0.24, 0, 0, TAU); cx.fill();
+        }
     }
     if (t === 'hedge') {
         cx.fillStyle = '#22331f';
@@ -3112,11 +3179,13 @@ function drawProp(cx, o) {
         var hx2 = x3 + (x0 - x3) * 0.72, hy2 = y3 + (y0 - y3) * 0.72;
         cx.beginPath(); cx.ellipse(hx2, hy2 - hgt - 1, 9, 5, 0, 0, TAU); cx.fill();
     }
-    if (t === 'vat') {
+    if (t === 'vat') {                                        // wax, cooling, with a skin on it
         cx.fillStyle = '#1b1a16';
-        cx.beginPath(); cx.ellipse(tx, ty, fw * 0.4, fw * 0.2, 0, 0, TAU); cx.fill();
+        cx.beginPath(); cx.ellipse(mx0, my0 - hgt, rrx * 0.84, rry * 0.84, 0, 0, TAU); cx.fill();
         cx.fillStyle = 'rgba(230,220,190,.5)';
-        cx.beginPath(); cx.ellipse(tx, ty + 1, fw * 0.33, fw * 0.16, 0, 0, TAU); cx.fill();
+        cx.beginPath(); cx.ellipse(mx0, my0 - hgt + 2, rrx * 0.7, rry * 0.7, 0, 0, TAU); cx.fill();
+        cx.fillStyle = 'rgba(255,244,214,.28)';
+        cx.beginPath(); cx.ellipse(mx0 - rrx * 0.2, my0 - hgt, rrx * 0.24, rry * 0.24, 0, 0, TAU); cx.fill();
     }
     if (t === 'wall') { plank(Math.max(2, Math.round(fw / 26)), 'rgba(0,0,0,.3)'); }
 }
