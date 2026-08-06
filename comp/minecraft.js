@@ -50,8 +50,61 @@
             ach: {}, achN: 0,
             hrs: 0,                        // lifetime raw hours
             snd: true, mus: true,
-            deaths: 0
+            deaths: 0,
+            gm: 0,                         // 0 survival · 1 creative · 2 adventure · 3 spectator
+            diff: 2,                       // 0 peaceful · 1 easy · 2 normal · 3 hard
+            eff: {},                       // 'speed' → { amp, t } · t in seconds remaining (1e9 = infinite)
+            rules: null                    // gamerules; filled from GR_DEF on load
         };
+    }
+    /* ── gamerules ──────────────────────────────────────────
+       The subset this world actually simulates. A rule nobody reads is a lie,
+       so every one of these is checked somewhere in the tick. */
+    var GR_DEF = {
+        doDaylightCycle: true, doWeatherCycle: true, doMobSpawning: true,
+        keepInventory: false, mobGriefing: true, doTileDrops: true,
+        naturalRegeneration: true, fallDamage: true, doImmediateRespawn: false
+    };
+    function rule(k) { return S && S.rules && S.rules[k] !== undefined ? S.rules[k] : GR_DEF[k]; }
+    /* Bring a save (old, new, or scenario-swapped) up to the shape the console
+       expects. Safe to call more than once. */
+    function normalizeCmdState() {
+        if (S.gm == null) S.gm = 0;
+        if (S.diff == null) S.diff = 2;
+        if (!S.eff || typeof S.eff !== 'object' || S.eff instanceof Array) S.eff = {};
+        if (!S.rules || typeof S.rules !== 'object' || S.rules instanceof Array) S.rules = {};
+        for (var k in GR_DEF) if (S.rules[k] === undefined) S.rules[k] = GR_DEF[k];
+    }
+    function isCreative() { return S.gm === 1; }
+    function isSpectator() { return S.gm === 3; }
+    function noClip() { return S.gm === 3; }
+    function invulnerable() { return S.gm === 1 || S.gm === 3; }
+    /* ── status effects ─────────────────────────────────────
+       Only the effects whose behaviour this engine can honestly express. */
+    var EFFECTS = {
+        speed:        { t: 'Speed', c: '#7cafc2' },
+        slowness:     { t: 'Slowness', c: '#5a6c81' },
+        haste:        { t: 'Haste', c: '#d9c043' },
+        mining_fatigue: { t: 'Mining Fatigue', c: '#4a4217' },
+        strength:     { t: 'Strength', c: '#932423' },
+        instant_health: { t: 'Instant Health', c: '#f82423', instant: 1 },
+        instant_damage: { t: 'Instant Damage', c: '#430a09', instant: 1 },
+        jump_boost:   { t: 'Jump Boost', c: '#22ff4c' },
+        regeneration: { t: 'Regeneration', c: '#cd5cab' },
+        resistance:   { t: 'Resistance', c: '#99453a' },
+        fire_resistance: { t: 'Fire Resistance', c: '#e49a3a' },
+        water_breathing: { t: 'Water Breathing', c: '#2e5299' },
+        invisibility: { t: 'Invisibility', c: '#7f8392' },
+        night_vision: { t: 'Night Vision', c: '#1f1fa1' },
+        weakness:     { t: 'Weakness', c: '#484d48' },
+        glowing:      { t: 'Glowing', c: '#94a061' },
+        levitation:   { t: 'Levitation', c: '#ceffff' },
+        saturation:   { t: 'Saturation', c: '#f82423' },
+        health_boost: { t: 'Health Boost', c: '#f87d23' }
+    };
+    function effLvl(id) {   // 0 when absent, else amplifier+1 (so "Speed II" → 2)
+        var e = S && S.eff && S.eff[id];
+        return e ? (e.amp || 0) + 1 : 0;
     }
 
     /* ── seeded noise ───────────────────────────────────────── */
@@ -1985,12 +2038,15 @@
         if (RT.dead || RT.sleep) return;
         // a GUI is open: stop reading movement keys (no walking off ledges while sorting items)
         // but keep gravity + collision live so the body still settles
-        var k = RT.panel ? EMPTY_KEYS : RT.keys, water = inFluid(WATER), lava = inFluid(LAVA), fluid = water || lava;
+        var k = (RT.panel || RT.chat) ? EMPTY_KEYS : RT.keys, water = inFluid(WATER), lava = inFluid(LAVA), fluid = water || lava;
         var fwd = (k.w ? 1 : 0) - (k.s ? 1 : 0), str = (k.d ? 1 : 0) - (k.a ? 1 : 0);
         var sneak = k.shift && !fluid;
         RT.sprint = RT.sprint && fwd > 0 && S.food > 6 && !sneak;
         var sp = fluid ? SWIM : sneak ? SNEAK : RT.sprint ? SPRINT : WALK;
         if (lava) sp *= 0.45;
+        sp *= 1 + 0.2 * effLvl('speed') - 0.15 * effLvl('slowness');   // MC's ±20%/−15% per level
+        if (sp < 0.05) sp = 0.05;
+        if (RT.fly) sp *= RT.keys.shift ? 1.4 : 2.4;                   // creative flight is quicker than walking
         var len = Math.sqrt(fwd * fwd + str * str) || 1;
         var mx = (fwd / len) * Math.sin(S.yaw) + (str / len) * Math.cos(S.yaw);
         var mz = (fwd / len) * -Math.cos(S.yaw) + (str / len) * Math.sin(S.yaw);
@@ -2008,11 +2064,17 @@
             if (k.w || k[' ']) RT.vy = 3;
             else if (k.shift) RT.vy = 0;
             RT.fallY = S.py;
+        } else if (RT.fly) {
+            /* creative/spectator flight: no gravity, Space rises, Shift sinks,
+               and letting go parks you in the air instead of dropping you */
+            var climb = (k[' '] ? 1 : 0) - (k.shift ? 1 : 0);
+            RT.vy = climb * (isSpectator() ? 11 : 7.5);
+            RT.fallY = S.py;
         } else {
             RT.vy -= GRAV * dt;
             if (RT.vy < -TERMV) RT.vy = -TERMV;
             if (k[' '] && RT.ground) {
-                RT.vy = JUMP;
+                RT.vy = JUMP * (1 + 0.18 * effLvl('jump_boost'));
                 RT.ground = false;
                 addExh(RT.sprint ? 0.2 : 0.05);
             }
@@ -2022,6 +2084,12 @@
             if (dz && !groundBelow(S.px, S.py, S.pz + dz)) dz = 0;
         }
         var wasGround = RT.ground;
+        if (noClip()) {   // spectators are not stopped by anything
+            S.px += dx; S.pz += dz; S.py += RT.vy * dt;
+            RT.ground = false; RT.fallY = S.py;
+            ensureChunks();
+            return;
+        }
         var hit = axisMove(dx, 0, dz);
         if (hit.x || hit.z) RT.sprint = false;
         var hy = axisMove(0, RT.vy * dt, 0);
@@ -2031,7 +2099,7 @@
                 var fall = RT.fallY - S.py;
                 // re-sample fluid at the landing box: a fast fall can plunge through a shallow
                 // pond in one frame, so the frame-start `water` misses it
-                if (fall > 3.5 && !water && !inFluid(WATER)) {
+                if (fall > 3.5 && !water && !inFluid(WATER) && rule('fallDamage') && !RT.fly) {
                     var ff = S.armor[3] ? ench(S.armor[3], 'feather') : 0;   // feather falling boots soften the landing
                     var fdmg = Math.floor((fall - 3) * (1 - ff * 0.12));
                     if (fdmg > 0) { hurt(fdmg, null, false, true); snd('fall'); }
@@ -2067,6 +2135,35 @@
 
     /* ── hunger, health ─────────────────────────────────────── */
     function addExh(n) { RT.exh += n; }
+    /* ── status effect tick ─────────────────────────────────
+       Counts every active effect down and applies the ones with an
+       ongoing behaviour. Effects survive in the save, so /effect give
+       … 1000000 really does outlast a reload. */
+    function effectTick(dt) {
+        if (RT.dead) return;
+        var any = false, changed = false;
+        for (var id in S.eff) {
+            if (!Object.prototype.hasOwnProperty.call(S.eff, id)) continue;
+            var e = S.eff[id];
+            if (!e || typeof e !== 'object') { delete S.eff[id]; changed = true; continue; }
+            e.t -= dt;
+            if (e.t <= 0) { delete S.eff[id]; changed = true; continue; }
+            any = true;
+        }
+        if (any) {
+            var lvl;
+            if ((lvl = effLvl('regeneration'))) {
+                RT.effRegen = (RT.effRegen || 0) + dt;
+                var every = 2.5 / lvl;
+                while (RT.effRegen >= every) { RT.effRegen -= every; if (S.hp < 20) { S.hp = Math.min(20, S.hp + 1); changed = true; } }
+            }
+            if ((lvl = effLvl('saturation'))) { S.food = Math.min(20, S.food + lvl * dt); S.sat = Math.min(20, S.sat + lvl * dt); changed = true; }
+            if (effLvl('water_breathing') && S.air < 10) { S.air = 10; changed = true; }
+            if ((lvl = effLvl('levitation'))) { RT.vy = lvl * 0.9; RT.fallY = S.py; }
+        }
+        if (changed) { paintVitals(); paintEffects(); }
+        else if (RT.effDirty) { paintEffects(); RT.effDirty = false; }
+    }
     function foodTick(dt) {
         if (RT.dead) return;
         while (RT.exh >= 4) {
@@ -2074,7 +2171,7 @@
             if (S.sat > 0) S.sat = Math.max(0, S.sat - 1);
             else S.food = Math.max(0, S.food - 1);
         }
-        if (S.food >= 18 && S.hp < 20) {
+        if (S.food >= 18 && S.hp < 20 && rule('naturalRegeneration')) {
             RT.regenT += dt;
             if (RT.regenT >= 4) { RT.regenT = 0; S.hp = Math.min(20, S.hp + 1); addExh(6); }
         } else RT.regenT = 0;
@@ -2084,8 +2181,8 @@
         } else RT.starveT = 0;
     }
     function weatherTick(dt) {
-        S.wt -= dt;
-        if (S.wt <= 0) {
+        if (rule('doWeatherCycle')) S.wt -= dt;
+        if (S.wt <= 0 && rule('doWeatherCycle')) {
             if (S.weather === 0) { S.weather = Math.random() < 0.28 ? (Math.random() < 0.3 ? 2 : 1) : 0; S.wt = S.weather ? 45 + Math.random() * 120 : 180 + Math.random() * 240; }
             else { S.weather = 0; S.wt = 180 + Math.random() * 240; }
             if (S.weather >= 1) toast(S.weather === 2 ? 'A thunderstorm rolls in' : 'It starts to rain');
@@ -2117,6 +2214,10 @@
     }
     function hurt(n, dir, quiet, bypassArmor) {
         if (RT.dead || !(n > 0)) return;   // !(n>0) also rejects NaN
+        if (invulnerable()) return;                        // creative and spectator take nothing
+        var resist = effLvl('resistance');
+        if (resist >= 5) return;                           // Resistance V is full immunity, as in the real game
+        if (resist) n = n * (1 - resist * 0.2);
         n = Math.min(99, Math.round(n));
         if (RT.iframe > 0 && !quiet) return;
         RT.iframe = 0.5;
@@ -2140,20 +2241,22 @@
         S.hp = 0;
         RT.dead = true;
         RT.digT = 0; RT.eatT = 0; RT.bowT = 0;
+        S.eff = {}; paintEffects();
         closePanel(true);   // fold cursor + crafting-grid items into the inventory FIRST so they scatter too
-        for (var i = 0; i < 36; i++) {   // your stuff scatters where you fell
+        var keep = rule('keepInventory');
+        for (var i = 0; i < 36 && !keep; i++) {   // your stuff scatters where you fell
             var s = S.inv[i];
             if (s) dropItem(S.px, S.py + 1, S.pz, s.id, s.c, s.dur, true, s.ench, s.name);
             S.inv[i] = null;
         }
-        for (i = 0; i < 4; i++) {   // worn armour drops too — you don't respawn still wearing it
+        for (i = 0; i < 4 && !keep; i++) {   // worn armour drops too — you don't respawn still wearing it
             var a = S.armor[i];
             if (a) dropItem(S.px, S.py + 1, S.pz, a.id, a.c, a.dur, true, a.ench, a.name);
             S.armor[i] = null;
         }
         // experience spills out, capped the way the real game caps it
-        var spill = Math.min(100, 7 * S.xpl);
-        S.xpl = 0; S.xp = 0;
+        var spill = keep ? 0 : Math.min(100, 7 * S.xpl);
+        if (!keep) { S.xpl = 0; S.xp = 0; }
         if (spill > 0) spawnXp(S.px, S.py + 0.5, S.pz, spill);
         paintXp(); paintArmorBar();
         S.deaths++;
@@ -2275,7 +2378,7 @@
         if (b === ORE_DIA && harvest) unlock('diamonds');
     }
     function digTick(dt) {
-        if (!RT.mouse.l || RT.dead || RT.panel || RT.paused) { RT.digT = 0; return; }
+        if (!RT.mouse.l || RT.dead || RT.panel || RT.paused || RT.chat) { RT.digT = 0; return; }
         var hitEnt = entRay();
         if (hitEnt) { RT.digT = 0; return; }   // swinging at a mob, not a block
         var t = RT.target;
@@ -2404,7 +2507,7 @@
     }
     function useTick(dt) {   // held-down right mouse: eating, bow
         var h = held(), def = h && I[h.id];
-        if (!RT.mouse.r || RT.dead || RT.panel || RT.paused || !def) { finishUse(); return; }
+        if (!RT.mouse.r || RT.dead || RT.panel || RT.paused || RT.chat || !def) { finishUse(); return; }
         if (def.food) {
             if (S.food >= 20 && h.id !== 'flesh') { RT.eatT = 0; return; }
             RT.eatT += dt;
@@ -2817,6 +2920,7 @@
 
     /* ── spawning ───────────────────────────────────────────── */
     function spawnTick() {
+        if (!rule('doMobSpawning')) return;
         // only NEARBY animals count toward the cap, or eight sheep back at spawn starve every new biome of wildlife
         var hostiles = 0, passives = 0, i;
         for (i = 0; i < RT.foes.length; i++) {
@@ -4177,6 +4281,7 @@
         if (!(dt > 0)) dt = 0.016;   // clock skew (rAF vs heartbeat, virtual time) must never run physics backwards
         dt = Math.min(0.05, dt);
         RT.lastT = ts;
+        RT.now = (RT.now || 0) + dt;          // seconds since open; the chat fade reads this
         RT.fpsN++; RT.fpsT += dt;
         if (RT.fpsT >= 1) { RT.fps = RT.fpsN; RT.fpsN = 0; RT.fpsT = 0; }
         if (!RT.ready) {   // world boot: gen → light → mesh → go
@@ -4221,7 +4326,7 @@
         if (simming) {
             RT.playT += dt;
             RT.worldMs += dt * 1000;
-            S.t = (S.t + dt * 1000) % CYCLE;
+            if (rule('doDaylightCycle')) S.t = (S.t + dt * 1000) % CYCLE;
             RT.iframe = Math.max(0, RT.iframe - dt);
             RT.digCd = Math.max(0, RT.digCd - dt);
             RT.atkCd = Math.max(0, RT.atkCd - dt);
@@ -4234,6 +4339,7 @@
             digTick(dt);
             useTick(dt);
             foodTick(dt);
+            effectTick(dt);
             sleepTick(dt);
             var i;
             for (i = RT.foes.length - 1; i >= 0; i--) if (foeUpdate(RT.foes[i], dt)) RT.foes.splice(i, 1);
@@ -4266,7 +4372,7 @@
             genStep();
             meshStep(2);
             RT.hudT += dt;
-            if (RT.hudT > 0.2) { RT.hudT = 0; paintVitals(); paintXp(); paintDebug(); tipFade(dt); }
+            if (RT.hudT > 0.2) { RT.hudT = 0; paintVitals(); paintXp(); paintDebug(); tipFade(dt); paintChat(); paintEffects(); }
             if (RT.musT > 0) { RT.musT -= dt; if (RT.musT <= 0) playMusic(); }
         }
         entGeo();
@@ -4303,6 +4409,10 @@
             '<div class="mc-xpbar"><i class="mc-xpfill"></i><span class="mc-xplvl"></span></div>' +
             '<div class="mc-hotbar">' + slotsHTML('inv', 0, 9, 'mc-hb') + '</div>' +
             '</div>' +
+            '<div class="mc-effects" style="display:none"></div>' +
+            '<div class="mc-chat"><div class="mc-chatlog"></div>' +
+              '<input class="mc-chatin" maxlength="256" spellcheck="false" autocomplete="off">' +
+              '<div class="mc-chattab"></div></div>' +
             '<div class="mc-toasts"></div>' +
             '<div class="mc-panelwrap" style="display:none"></div>' +
             '<div class="mc-debug" style="display:none"></div>' +
@@ -4320,6 +4430,823 @@
             '<div class="mc-load"><div class="mc-menu"><h3>Building terrain…</h3><div class="mc-bar"><i></i></div></div></div>' +
             '</div>';
     }
+
+    /* ═══════════════ chat & commands ═══════════════
+       A real chat line with real commands. The parser follows Minecraft's
+       grammar rather than approximating it: @-selectors with filters,
+       ~ relative and ^ local coordinates, per-argument validation, and the
+       game's own two-line syntax error with the caret under the offending
+       token. Every command moves state this world actually simulates —
+       nothing here is a printed message pretending to be an effect. */
+
+    var CHAT_MAX = 100;          // scrollback lines kept
+    var CHAT_FADE = 10;          // seconds a line stays visible with chat closed
+
+    /* ── message log ─────────────────────────────────────── */
+    function chatSay(text, cls) {
+        if (!RT) return;
+        RT.chatLog = RT.chatLog || [];
+        String(text).split('\n').forEach(function (line) {
+            RT.chatLog.push({ t: line, c: cls || '', at: RT.now || 0 });
+        });
+        while (RT.chatLog.length > CHAT_MAX) RT.chatLog.shift();
+        paintChat();
+    }
+    function chatErr(text) { chatSay(text, 'err'); }
+
+    /* Minecraft's syntax error: the message, then the command up to the bad
+       token with <--[HERE] pinned after it. */
+    function chatSyntax(msg, full, pos) {
+        chatErr(msg);
+        var head = String(full).slice(0, pos);
+        if (head.length > 32) head = '...' + head.slice(-29);
+        chatErr(head + '<--[HERE]');
+    }
+
+    /* ── argument reader ─────────────────────────────────── */
+    function Reader(str) { this.s = str; this.i = 0; }
+    Reader.prototype.skip = function () { while (this.i < this.s.length && this.s[this.i] === ' ') this.i++; };
+    Reader.prototype.done = function () { this.skip(); return this.i >= this.s.length; };
+    Reader.prototype.word = function () {          // next space-delimited token
+        this.skip();
+        var st = this.i;
+        while (this.i < this.s.length && this.s[this.i] !== ' ') this.i++;
+        return this.s.slice(st, this.i);
+    };
+    Reader.prototype.rest = function () { this.skip(); var r = this.s.slice(this.i); this.i = this.s.length; return r; };
+    /* a selector token has to survive [] containing spaces, so it can't just
+       split on whitespace */
+    Reader.prototype.selectorTok = function () {
+        this.skip();
+        var st = this.i, depth = 0;
+        while (this.i < this.s.length) {
+            var ch = this.s[this.i];
+            if (ch === '[') depth++;
+            else if (ch === ']') depth--;
+            else if (ch === ' ' && depth <= 0) break;
+            this.i++;
+        }
+        return this.s.slice(st, this.i);
+    };
+
+    /* ── numbers & coordinates ───────────────────────────── */
+    function parseNum(tok) {
+        if (!/^[-+]?(\d+\.?\d*|\.\d+)$/.test(tok)) return null;
+        var v = parseFloat(tok);
+        return isFinite(v) ? v : null;
+    }
+    function parseInt2(tok) {
+        if (!/^[-+]?\d+$/.test(tok)) return null;
+        var v = parseInt(tok, 10);
+        return isFinite(v) ? v : null;
+    }
+    /* One coordinate component. `~` is relative to base, `^` is local (relative
+       to where you're facing) and must not be mixed with the other two. */
+    function coordPart(tok, base) {
+        if (tok === '') return null;
+        if (tok[0] === '~') {
+            if (tok.length === 1) return { v: base, local: false };
+            var d = parseNum(tok.slice(1));
+            return d === null ? null : { v: base + d, local: false };
+        }
+        if (tok[0] === '^') {
+            var l = tok.length === 1 ? 0 : parseNum(tok.slice(1));
+            return l === null ? null : { v: l, local: true };
+        }
+        var a = parseNum(tok);
+        return a === null ? null : { v: a, local: false };
+    }
+    /* Read three components into a world position. Returns null on a bad token
+       (with `bad` set to the offending index) so the caller can point at it. */
+    function readPos(rd, ox, oy, oz) {
+        var toks = [rd.word(), rd.word(), rd.word()];
+        var parts = [], i;
+        var base = [ox, oy, oz];
+        for (i = 0; i < 3; i++) {
+            var p = coordPart(toks[i], base[i]);
+            if (!p) return null;
+            parts.push(p);
+        }
+        var locals = parts.filter(function (p) { return p.local; }).length;
+        if (locals && locals !== 3) return { mixed: true };
+        if (locals === 3) {
+            // ^left ^up ^forward, resolved against the player's facing
+            var yaw = S.yaw, pitch = S.pitch;
+            var cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
+            var fx = sy * cp, fy = -sp, fz = -cy * cp;         // forward
+            var rx = cy, ry = 0, rz = sy;                       // right
+            var ux = sy * sp, uy = cp, uz = -cy * sp;           // up
+            var L = parts[0].v, U = parts[1].v, F = parts[2].v;
+            return { x: ox - rx * L + ux * U + fx * F,
+                     y: oy - ry * L + uy * U + fy * F,
+                     z: oz - rz * L + uz * U + fz * F };
+        }
+        return { x: parts[0].v, y: parts[1].v, z: parts[2].v };
+    }
+
+    /* ── entity selectors ────────────────────────────────── */
+    function selFilters(body) {
+        // body is the text between [ and ]; split on commas not inside braces
+        var out = [], depth = 0, cur = '';
+        for (var i = 0; i < body.length; i++) {
+            var ch = body[i];
+            if (ch === '{' || ch === '[') depth++;
+            if (ch === '}' || ch === ']') depth--;
+            if (ch === ',' && depth <= 0) { out.push(cur); cur = ''; continue; }
+            cur += ch;
+        }
+        if (cur.trim()) out.push(cur);
+        var f = {};
+        for (i = 0; i < out.length; i++) {
+            var eq = out[i].indexOf('=');
+            if (eq < 0) return null;
+            f[out[i].slice(0, eq).trim()] = out[i].slice(eq + 1).trim();
+        }
+        return f;
+    }
+    function rangeTest(spec, v) {   // MC range syntax: n, a.., ..b, a..b
+        if (/^\.\./.test(spec)) { var hi = parseNum(spec.slice(2)); return hi !== null && v <= hi; }
+        var dd = spec.indexOf('..');
+        if (dd < 0) { var e = parseNum(spec); return e !== null && Math.abs(v - e) < 1e-6; }
+        var lo = parseNum(spec.slice(0, dd));
+        var h2 = spec.slice(dd + 2) === '' ? null : parseNum(spec.slice(dd + 2));
+        if (lo === null) return false;
+        return v >= lo && (h2 === null || v <= h2);
+    }
+    /* Resolve a selector to a list of targets. The player is a target like any
+       other, so /kill @e really does include you — as it does in the game. */
+    // give/clear/effect/enchant/xp only ever act on the player, so a selector that
+    // resolves to nothing (or to mobs only) must fail rather than quietly hit Steve
+    function playerTargeted(tg) {
+        for (var i = 0; i < tg.length; i++) if (tg[i].player) return true;
+        return false;
+    }
+    function resolveTargets(tok) {
+        var PLAYER = { player: true, name: 'Steve' };
+        if (!tok) return null;
+        if (tok[0] !== '@') return /^steve$/i.test(tok) ? [PLAYER] : [];
+        var kind = tok[1], rest = tok.slice(2), filt = {};
+        if ('pares'.indexOf(kind) < 0) return null;
+        if (rest) {
+            if (rest[0] !== '[' || rest[rest.length - 1] !== ']') return null;
+            filt = selFilters(rest.slice(1, -1));
+            if (!filt) return null;
+        }
+        var pool = [];
+        if (kind === 's') pool = [PLAYER];
+        else if (kind === 'p' || kind === 'a') pool = [PLAYER];
+        else if (kind === 'r') pool = [PLAYER];
+        else if (kind === 'e') { pool = [PLAYER].concat(RT.foes); }
+        var out = pool.filter(function (t) {
+            var tx = t.player ? S.px : t.x, ty = t.player ? S.py : t.y, tz = t.player ? S.pz : t.z;
+            var type = t.player ? 'player' : t.k;
+            if (filt.type !== undefined) {
+                var want = filt.type, neg = want[0] === '!';
+                if (neg) want = want.slice(1);
+                want = want.replace(/^minecraft:/, '');
+                var match = want === type;
+                if (neg ? match : !match) return false;
+            }
+            if (filt.distance !== undefined) {
+                var dx = tx - S.px, dy = ty - S.py, dz = tz - S.pz;
+                if (!rangeTest(filt.distance, Math.sqrt(dx * dx + dy * dy + dz * dz))) return false;
+            }
+            if (filt.name !== undefined && filt.name.replace(/^!/, '') === 'Steve') {
+                if ((filt.name[0] === '!') === !!t.player) return false;
+            }
+            return true;
+        });
+        if (filt.sort === 'nearest' || kind === 'p') {
+            out.sort(function (a, b) { return selDist(a) - selDist(b); });
+        } else if (filt.sort === 'furthest') {
+            out.sort(function (a, b) { return selDist(b) - selDist(a); });
+        } else if (filt.sort === 'random' || kind === 'r') {
+            out.sort(function () { return Math.random() - 0.5; });
+        }
+        var lim = filt.limit !== undefined ? parseInt2(filt.limit) : (kind === 'p' || kind === 's' || kind === 'r' ? 1 : null);
+        if (lim !== null && lim >= 0) out = out.slice(0, lim);
+        return out;
+    }
+    function selDist(t) {
+        var tx = t.player ? S.px : t.x, ty = t.player ? S.py : t.y, tz = t.player ? S.pz : t.z;
+        var dx = tx - S.px, dy = ty - S.py, dz = tz - S.pz;
+        return Math.sqrt(dx * dx + dy * dy + dz * dz);
+    }
+    function targetName(t) { return t.player ? 'Steve' : (MOBS[t.k] ? t.k.charAt(0).toUpperCase() + t.k.slice(1) : t.k); }
+
+    /* ── name tables ─────────────────────────────────────── */
+    var BLOCK_BY_NAME = null;
+    function blockNames() {
+        if (BLOCK_BY_NAME) return BLOCK_BY_NAME;
+        BLOCK_BY_NAME = {
+            air: AIR, grass_block: GRASS, grass: GRASS, dirt: DIRT, stone: STONE, cobblestone: COBBLE,
+            oak_log: LOG, log: LOG, oak_leaves: LEAVES, leaves: LEAVES, oak_planks: PLANKS, planks: PLANKS,
+            sand: SAND, gravel: GRAVEL, coal_ore: ORE_COAL, iron_ore: ORE_IRON, gold_ore: ORE_GOLD,
+            diamond_ore: ORE_DIA, redstone_ore: ORE_RED, lapis_ore: ORE_LAPIS, emerald_ore: ORE_EMERALD,
+            bedrock: BEDROCK, water: WATER, lava: LAVA, crafting_table: TABLE, furnace: FURN,
+            torch: TORCH, glass: GLASS, wool: WOOL, white_wool: WOOL, bed: BED, tall_grass: TALLGRASS,
+            dandelion: DANDELION, poppy: POPPY, farmland: FARMLAND, wheat: WHEAT3, chest: CHEST, tnt: TNT,
+            cactus: CACTUS, sugar_cane: SUGARCANE, pumpkin: PUMPKIN, melon: MELON,
+            obsidian: OBSIDIAN, stone_bricks: STONEBRICK, sandstone: SANDSTONE, bricks: BRICKS,
+            bookshelf: BOOKSHELF, ladder: LADDER, redstone_lamp: RLAMP, cake: CAKE,
+            enchanting_table: ETABLE, anvil: ANVIL, mushroom: MUSHROOM, clay: CLAY, snow_grass: SNOWGRASS
+        };
+        return BLOCK_BY_NAME;
+    }
+    function itemNames() { return Object.keys(I); }
+    function mobNames() { return Object.keys(MOBS); }
+    function stripNs(s) { return String(s).replace(/^minecraft:/, ''); }
+
+    /* ── the command table ───────────────────────────────── */
+    var GAMEMODES = { survival: 0, creative: 1, adventure: 2, spectator: 3, s: 0, c: 1, a: 2, sp: 3, '0': 0, '1': 1, '2': 2, '3': 3 };
+    var GM_NAME = ['Survival', 'Creative', 'Adventure', 'Spectator'];
+    var DIFFS = { peaceful: 0, easy: 1, normal: 2, hard: 3, p: 0, e: 1, n: 2, h: 3, '0': 0, '1': 1, '2': 2, '3': 3 };
+    var DIFF_NAME = ['Peaceful', 'Easy', 'Normal', 'Hard'];
+
+    var CMDS = {};
+    function cmd(name, usage, help, fn, complete) {
+        CMDS[name] = { name: name, usage: usage, help: help, run: fn, complete: complete };
+    }
+
+    cmd('help', '/help [command]', 'Shows a list of commands', function (rd) {
+        var q = rd.word();
+        if (q) {
+            var c = CMDS[stripNs(q).toLowerCase()];
+            if (!c) return chatErr('Unknown command: ' + q);
+            chatSay(c.usage);
+            chatSay(c.help);
+            return;
+        }
+        var names = Object.keys(CMDS).sort();
+        chatSay('--- Showing ' + names.length + ' commands ---', 'dim');
+        for (var i = 0; i < names.length; i++) chatSay(CMDS[names[i]].usage, 'dim');
+    }, function () { return Object.keys(CMDS).sort(); });
+
+    cmd('gamemode', '/gamemode <survival|creative|adventure|spectator>', 'Sets a player\'s game mode', function (rd, raw) {
+        var m = rd.word();
+        if (!m) return usageErr('gamemode', raw, rd.i);
+        var g = GAMEMODES[stripNs(m).toLowerCase()];
+        if (g === undefined) return chatSyntax('Unknown game mode: ' + m, raw, rd.i);
+        setGamemode(g);
+        chatSay('Set own game mode to ' + GM_NAME[g] + ' Mode');
+    }, function () { return ['survival', 'creative', 'adventure', 'spectator']; });
+
+    cmd('difficulty', '/difficulty [peaceful|easy|normal|hard]', 'Sets the difficulty level', function (rd, raw) {
+        var d = rd.word();
+        if (!d) return chatSay('The difficulty is ' + DIFF_NAME[S.diff]);
+        var v = DIFFS[stripNs(d).toLowerCase()];
+        if (v === undefined) return chatSyntax('Unknown difficulty: ' + d, raw, rd.i);
+        S.diff = v;
+        if (v === 0) {   // peaceful clears the hostiles, exactly like the real thing
+            var n = 0;
+            for (var i = RT.foes.length - 1; i >= 0; i--) if (RT.foes[i].hostile) { RT.foes.splice(i, 1); n++; }
+        }
+        chatSay('Set the difficulty to ' + DIFF_NAME[v]);
+    }, function () { return ['peaceful', 'easy', 'normal', 'hard']; });
+
+    cmd('time', '/time <set|add|query> <value>', 'Changes or queries the world time', function (rd, raw) {
+        var sub = rd.word().toLowerCase();
+        var TIMES = { day: 0.05, noon: 0.25, sunset: 0.48, night: 0.55, midnight: 0.75, sunrise: 0.95 };
+        if (sub === 'query') {
+            var q = rd.word().toLowerCase() || 'daytime';
+            var ticks = Math.floor(S.t / CYCLE * 24000);
+            if (q === 'day') return chatSay('The time is ' + Math.floor(S.hrs * 3600000 / CYCLE));
+            return chatSay('The time is ' + ticks);
+        }
+        if (sub !== 'set' && sub !== 'add') return usageErr('time', raw, rd.i);
+        var v = rd.word();
+        if (!v) return usageErr('time', raw, rd.i);
+        var frac = TIMES[v.toLowerCase()];
+        var ticks2;
+        if (frac !== undefined) ticks2 = Math.round(frac * 24000);
+        else {
+            var n = parseInt2(v.replace(/t$/, ''));
+            if (n === null) return chatSyntax('Expected integer', raw, rd.i - v.length);
+            ticks2 = n;
+        }
+        if (sub === 'set') S.t = ((ticks2 % 24000) + 24000) % 24000 / 24000 * CYCLE;
+        else S.t = (S.t + ticks2 / 24000 * CYCLE) % CYCLE;
+        var now = Math.floor(S.t / CYCLE * 24000);
+        chatSay(sub === 'set' ? 'Set the time to ' + now : 'Added ' + ticks2 + ' to the time');
+    }, function (a) { return a === 0 ? ['set', 'add', 'query'] : ['day', 'noon', 'sunset', 'night', 'midnight', 'sunrise']; });
+
+    cmd('weather', '/weather <clear|rain|thunder> [duration]', 'Sets the weather', function (rd, raw) {
+        var w = rd.word().toLowerCase();
+        var map = { clear: 0, rain: 1, thunder: 2 };
+        if (!(w in map)) return usageErr('weather', raw, rd.i);
+        var dur = rd.word();
+        var secs = dur ? parseInt2(dur) : 300;
+        if (dur && secs === null) return chatSyntax('Expected integer', raw, rd.i - dur.length);
+        S.weather = map[w]; S.wt = Math.max(1, secs);
+        chatSay(w === 'clear' ? 'Set the weather to clear' : w === 'rain' ? 'Set the weather to rain' : 'Set the weather to thunder');
+    }, function () { return ['clear', 'rain', 'thunder']; });
+
+    cmd('tp', '/tp <x> <y> <z> | /tp <target>', 'Teleports entities', cmdTeleport, tpComplete);
+    cmd('teleport', '/teleport <x> <y> <z> | /teleport <target>', 'Teleports entities', cmdTeleport, tpComplete);
+    function tpComplete() { return ['@p', '@e', '@s', '~ ~ ~']; }
+    function cmdTeleport(rd, raw) {
+        var save = rd.i, first = rd.selectorTok();
+        if (first && first[0] === '@') {
+            var tg = resolveTargets(first);
+            if (tg === null) return chatSyntax('Invalid entity selector', raw, save);
+            if (!tg.length) return chatErr('No entity was found');
+            var t = tg[0];
+            var dx = t.player ? S.px : t.x, dy = t.player ? S.py : t.y, dz = t.player ? S.pz : t.z;
+            tpPlayer(dx, dy, dz);
+            return chatSay('Teleported Steve to ' + fmtC(dx) + ', ' + fmtC(dy) + ', ' + fmtC(dz));
+        }
+        rd.i = save;
+        var p = readPos(rd, S.px, S.py, S.pz);
+        if (!p) return chatSyntax('Incomplete (expected 3 coordinates)', raw, rd.i);
+        if (p.mixed) return chatErr('Cannot mix world & local coordinates (everything must either use ^ or not)');
+        tpPlayer(p.x, p.y, p.z);
+        chatSay('Teleported Steve to ' + fmtC(p.x) + ', ' + fmtC(p.y) + ', ' + fmtC(p.z));
+    }
+
+    cmd('give', '/give <target> <item> [count]', 'Gives an item to a player', function (rd, raw) {
+        var selAt = rd.i, sel = rd.selectorTok();
+        if (!sel) return usageErr('give', raw, rd.i);
+        var tg = resolveTargets(sel);
+        if (tg === null) return chatSyntax('Invalid entity selector', raw, selAt);
+        if (!playerTargeted(tg)) return chatErr('No player was found');
+        var itAt = rd.i, item = stripNs(rd.word());
+        if (!item) return usageErr('give', raw, rd.i);
+        if (!I[item]) return chatSyntax('Unknown item \'minecraft:' + item + '\'', raw, itAt + 1);
+        var cAt = rd.i, ct = rd.word();
+        var n = ct ? parseInt2(ct) : 1;
+        if (ct && n === null) return chatSyntax('Expected integer', raw, cAt + 1);
+        if (n < 1) return chatErr('Integer must not be less than 1, found ' + n);
+        if (!tg.some(function (t) { return t.player; })) return chatErr('No player was found');
+        var left = invGive(item, n);
+        paintHotbar();
+        chatSay('Gave ' + n + ' [' + (I[item].t || item) + '] to Steve' + (left ? ' (' + left + ' would not fit)' : ''));
+    }, function (a) { return a === 0 ? ['@s', '@p'] : a === 1 ? itemNames() : []; });
+
+    cmd('clear', '/clear [target] [item]', 'Clears items from inventory', function (rd, raw) {
+        var selAt = rd.i, sel = rd.selectorTok();
+        // the target is optional, so "/clear diamond" names an item, not a player
+        if (sel && sel.charAt(0) !== '@' && I[stripNs(sel)]) { rd.i = selAt; sel = ''; }
+        if (sel) {
+            var ctg = resolveTargets(sel);
+            if (ctg === null) return chatSyntax('Invalid entity selector', raw, selAt);
+            if (!playerTargeted(ctg)) return chatErr('No player was found');
+        }
+        var itAt = rd.i, item = stripNs(rd.word());
+        if (item && !I[item]) return chatSyntax('Unknown item \'minecraft:' + item + '\'', raw, itAt + 1);
+        var n = 0, i;
+        for (i = 0; i < 36; i++) {
+            var s = S.inv[i];
+            if (!s) continue;
+            if (item && s.id !== item) continue;
+            n += s.c; S.inv[i] = null;
+        }
+        if (!item) for (i = 0; i < 4; i++) if (S.armor[i]) { n++; S.armor[i] = null; }
+        paintHotbar(); paintArmorBar();
+        chatSay(n ? 'Removed ' + n + ' items from player Steve' : 'No items were found on player Steve');
+    }, function (a) { return a === 0 ? ['@s'] : itemNames(); });
+
+    cmd('kill', '/kill [target]', 'Kills entities', function (rd, raw) {
+        var at = rd.i, sel = rd.selectorTok() || '@s';
+        var tg = resolveTargets(sel);
+        if (tg === null) return chatSyntax('Invalid entity selector', raw, at);
+        if (!tg.length) return chatErr('No entity was found');
+        var killed = 0, names = [];
+        for (var i = 0; i < tg.length; i++) {
+            var t = tg[i];
+            if (t.player) { S.hp = 0; RT.dead = false; hurtBypass(1000); killed++; names.push('Steve'); }
+            else { t.hp = 0; killFoe(t); killed++; names.push(targetName(t)); }
+        }
+        chatSay(killed === 1 ? 'Killed ' + names[0] : 'Killed ' + killed + ' entities');
+    }, function () { return ['@s', '@e', '@e[type=zombie]']; });
+
+    cmd('summon', '/summon <entity> [x y z]', 'Summons an entity', function (rd, raw) {
+        var at = rd.i, kind = stripNs(rd.word()).toLowerCase();
+        if (!kind) return usageErr('summon', raw, rd.i);
+        if (!MOBS[kind]) return chatSyntax('Unknown entity type \'minecraft:' + kind + '\'', raw, at + 1);
+        var p = { x: S.px, y: S.py, z: S.pz };
+        if (!rd.done()) {
+            var q = readPos(rd, S.px, S.py, S.pz);
+            if (!q) return chatSyntax('Incomplete (expected 3 coordinates)', raw, rd.i);
+            if (q.mixed) return chatErr('Cannot mix world & local coordinates (everything must either use ^ or not)');
+            p = q;
+        }
+        if (RT.foes.length >= 200) return chatErr('Too many entities in the world');
+        var nf = mkFoe(kind, p.x, p.y, p.z);
+        RT.foes.push(nf);
+        chatSay('Summoned new ' + (kind.charAt(0).toUpperCase() + kind.slice(1)));
+    }, function (a) { return a === 0 ? mobNames() : ['~ ~ ~']; });
+
+    cmd('setblock', '/setblock <x> <y> <z> <block>', 'Changes a block', function (rd, raw) {
+        var p = readPos(rd, Math.floor(S.px), Math.floor(S.py), Math.floor(S.pz));
+        if (!p) return chatSyntax('Incomplete (expected 3 coordinates)', raw, rd.i);
+        if (p.mixed) return chatErr('Cannot mix world & local coordinates (everything must either use ^ or not)');
+        var bAt = rd.i, bn = stripNs(rd.word()).toLowerCase();
+        if (!bn) return usageErr('setblock', raw, rd.i);
+        var id = blockNames()[bn];
+        if (id === undefined) return chatSyntax('Unknown block type \'minecraft:' + bn + '\'', raw, bAt + 1);
+        var x = Math.floor(p.x), y = Math.floor(p.y), z = Math.floor(p.z);
+        if (y < 0 || y >= CH) return chatErr('Position is not loaded');
+        // chunks outside the view radius do not exist yet; setB would no-op and
+        // the command would claim a success that never happened
+        if (!chunkAt(x, z)) return chatErr('Position is not loaded');
+        setB(x, y, z, id);
+        chatSay('Changed the block at ' + x + ', ' + y + ', ' + z);
+    }, function (a) { return a < 3 ? ['~'] : Object.keys(blockNames()); });
+
+    cmd('fill', '/fill <from> <to> <block> [replace|destroy|keep|hollow|outline]', 'Fills a region with a block', function (rd, raw) {
+        var bx = Math.floor(S.px), by = Math.floor(S.py), bz = Math.floor(S.pz);
+        var a = readPos(rd, bx, by, bz);
+        if (!a || a.mixed) return chatSyntax('Incomplete (expected 3 coordinates)', raw, rd.i);
+        var b = readPos(rd, bx, by, bz);
+        if (!b || b.mixed) return chatSyntax('Incomplete (expected 3 coordinates)', raw, rd.i);
+        var bAt = rd.i, bn = stripNs(rd.word()).toLowerCase();
+        if (!bn) return usageErr('fill', raw, rd.i);
+        var id = blockNames()[bn];
+        if (id === undefined) return chatSyntax('Unknown block type \'minecraft:' + bn + '\'', raw, bAt + 1);
+        var mode = (rd.word() || 'replace').toLowerCase();
+        if (['replace', 'destroy', 'keep', 'hollow', 'outline'].indexOf(mode) < 0) return chatErr('Unknown fill mode: ' + mode);
+        var x0 = Math.min(Math.floor(a.x), Math.floor(b.x)), x1 = Math.max(Math.floor(a.x), Math.floor(b.x));
+        var y0 = Math.max(0, Math.min(Math.floor(a.y), Math.floor(b.y))), y1 = Math.min(CH - 1, Math.max(Math.floor(a.y), Math.floor(b.y)));
+        var z0 = Math.min(Math.floor(a.z), Math.floor(b.z)), z1 = Math.max(Math.floor(a.z), Math.floor(b.z));
+        var vol = (x1 - x0 + 1) * (y1 - y0 + 1) * (z1 - z0 + 1);
+        if (vol > 32768) return chatErr('Too many blocks in the specified area (maximum 32768, specified ' + vol + ')');
+        if (!chunkAt(x0, z0) || !chunkAt(x1, z1)) return chatErr('Position is not loaded');
+        var n = 0;
+        for (var x = x0; x <= x1; x++) for (var y = y0; y <= y1; y++) for (var z = z0; z <= z1; z++) {
+            var edge = x === x0 || x === x1 || y === y0 || y === y1 || z === z0 || z === z1;
+            if ((mode === 'hollow' || mode === 'outline') && !edge) { if (mode === 'hollow') { if (getB(x, y, z) !== AIR) { setB(x, y, z, AIR, true); n++; } } continue; }
+            if (mode === 'keep' && getB(x, y, z) !== AIR) continue;
+            setB(x, y, z, id, true);
+            n++;
+        }
+        remeshAround(x0, y0, z0, x1, y1, z1);
+        chatSay(n ? 'Successfully filled ' + n + ' block(s)' : 'No blocks were filled');
+    }, function (a) { return a < 6 ? ['~'] : Object.keys(blockNames()); });
+
+    cmd('effect', '/effect <give|clear> [target] [effect] [seconds] [amplifier]', 'Adds or removes status effects', function (rd, raw) {
+        var sub = rd.word().toLowerCase();
+        if (sub !== 'give' && sub !== 'clear') return usageErr('effect', raw, rd.i);
+        var selAt = rd.i, sel = rd.selectorTok();
+        // vanilla's clear branch takes an optional target, so a bare "/effect clear"
+        // wipes your own effects and "/effect clear speed" names an effect, not a target
+        if (sub === 'clear' && (!sel || (sel.charAt(0) !== '@' && EFFECTS[stripNs(sel).toLowerCase()]))) {
+            rd.i = selAt;            // hand the token back; it's the effect name
+            sel = '@s';
+        }
+        if (!sel) return usageErr('effect', raw, rd.i);
+        var etg = resolveTargets(sel);
+        if (etg === null) return chatSyntax('Invalid entity selector', raw, selAt);
+        if (!playerTargeted(etg)) return chatErr('No player was found');
+        if (sub === 'clear') {
+            var eAt = rd.i, one = stripNs(rd.word()).toLowerCase();
+            if (one) {
+                if (!EFFECTS[one]) return chatSyntax('Unknown effect \'minecraft:' + one + '\'', raw, eAt + 1);
+                if (!S.eff[one]) return chatErr('Steve has no ' + EFFECTS[one].t);
+                delete S.eff[one]; paintEffects();
+                return chatSay('Took ' + EFFECTS[one].t + ' from Steve');
+            }
+            var had = Object.keys(S.eff).length;
+            S.eff = {}; paintEffects();
+            return chatSay(had ? 'Took every effect from Steve' : 'Steve has no effects to remove');
+        }
+        var evAt = rd.i, ev = stripNs(rd.word()).toLowerCase();
+        if (!ev) return usageErr('effect', raw, rd.i);
+        if (!EFFECTS[ev]) return chatSyntax('Unknown effect \'minecraft:' + ev + '\'', raw, evAt + 1);
+        var sAt = rd.i, st = rd.word();
+        var secs = st ? parseInt2(st) : 30;
+        if (st && secs === null) return chatSyntax('Expected integer', raw, sAt + 1);
+        var aAt = rd.i, at2 = rd.word();
+        var amp = at2 ? parseInt2(at2) : 0;
+        if (at2 && amp === null) return chatSyntax('Expected integer', raw, aAt + 1);
+        if (amp < 0 || amp > 255) return chatErr('Amplifier must be between 0 and 255');
+        applyEffect(ev, secs, amp);
+        chatSay('Applied effect ' + EFFECTS[ev].t + (amp ? ' ' + roman(amp + 1) : '') + ' to Steve for ' + secs + ' seconds');
+    }, function (a) { return a === 0 ? ['give', 'clear'] : a === 1 ? ['@s'] : a === 2 ? Object.keys(EFFECTS) : []; });
+
+    cmd('xp', '/xp <add|set|query> <targets> <amount> [levels|points]', 'Adds or removes experience', function (rd, raw) {
+        var sub = rd.word().toLowerCase();
+        if (['add', 'set', 'query'].indexOf(sub) < 0) return usageErr('xp', raw, rd.i);
+        // vanilla puts the targets before the amount; tolerate it being left off
+        var selAt = rd.i, sel = rd.selectorTok();
+        if (!sel || sel.charAt(0) !== '@') { rd.i = selAt; sel = '@s'; }
+        var xtg = resolveTargets(sel);
+        if (xtg === null) return chatSyntax('Invalid entity selector', raw, selAt);
+        if (!playerTargeted(xtg)) return chatErr('No player was found');
+        if (sub === 'query') {
+            var qu = (rd.word() || 'levels').toLowerCase();
+            return chatSay(qu === 'points' || qu === 'p'
+                ? 'Steve has ' + S.xp + ' experience points'
+                : 'Steve has ' + S.xpl + ' levels');
+        }
+        var vAt = rd.i, v = rd.word();
+        var n = parseInt2(v);
+        if (n === null) return chatSyntax('Expected integer', raw, vAt + 1);
+        var unit = (rd.word() || 'points').toLowerCase();
+        if (unit === 'levels' || unit === 'l') {
+            S.xpl = sub === 'set' ? Math.max(0, n) : Math.max(0, S.xpl + n);
+            S.xp = 0;
+        } else {
+            if (sub === 'set') { S.xpl = 0; S.xp = 0; }
+            if (n > 0) spawnXpDirect(n);
+            else { S.xp = Math.max(0, S.xp + n); }
+        }
+        paintXp();
+        chatSay(sub === 'set' ? 'Set ' + n + ' experience ' + unit + ' on Steve' : 'Gave ' + n + ' experience ' + unit + ' to Steve');
+    }, function (a) { return a === 0 ? ['add', 'set', 'query'] : a === 1 ? ['@s', '@p'] : a === 3 ? ['levels', 'points'] : []; });
+
+    cmd('gamerule', '/gamerule <rule> [value]', 'Sets or queries a game rule', function (rd, raw) {
+        var rAt = rd.i, r = rd.word();
+        if (!r) {
+            chatSay('--- Game rules ---', 'dim');
+            for (var k in GR_DEF) chatSay(k + ' = ' + rule(k), 'dim');
+            return;
+        }
+        var key = null;
+        for (var g in GR_DEF) if (g.toLowerCase() === r.toLowerCase()) key = g;
+        if (!key) return chatSyntax('Unknown game rule: ' + r, raw, rAt + 1);
+        var v = rd.word();
+        if (!v) return chatSay('Gamerule ' + key + ' is currently set to: ' + rule(key));
+        if (v !== 'true' && v !== 'false') return chatSyntax('Invalid boolean, expected \'true\' or \'false\'', raw, rd.i - v.length);
+        S.rules[key] = v === 'true';
+        chatSay('Gamerule ' + key + ' is now set to: ' + v);
+    }, function (a) { return a === 0 ? Object.keys(GR_DEF) : ['true', 'false']; });
+
+    cmd('seed', '/seed', 'Displays the world seed', function () {
+        chatSay('Seed: [' + S.seed + ']');
+    });
+
+    cmd('spawnpoint', '/spawnpoint [x y z]', 'Sets your spawn point', function (rd, raw) {
+        var p = { x: S.px, y: S.py, z: S.pz };
+        if (!rd.done()) {
+            var q = readPos(rd, S.px, S.py, S.pz);
+            if (!q || q.mixed) return chatSyntax('Incomplete (expected 3 coordinates)', raw, rd.i);
+            p = q;
+        }
+        S.spawn = [p.x, p.y, p.z];
+        chatSay('Set spawn point to ' + fmtC(p.x) + ', ' + fmtC(p.y) + ', ' + fmtC(p.z) + ' for Steve');
+    }, function () { return ['~ ~ ~']; });
+
+    cmd('setworldspawn', '/setworldspawn [x y z]', 'Sets the world spawn', function (rd, raw) {
+        var p = { x: S.px, y: S.py, z: S.pz };
+        if (!rd.done()) {
+            var q = readPos(rd, S.px, S.py, S.pz);
+            if (!q || q.mixed) return chatSyntax('Incomplete (expected 3 coordinates)', raw, rd.i);
+            p = q;
+        }
+        S.wspawn = [p.x, p.y, p.z];
+        chatSay('Set the world spawn point to ' + fmtC(p.x) + ', ' + fmtC(p.y) + ', ' + fmtC(p.z));
+    }, function () { return ['~ ~ ~']; });
+
+    cmd('enchant', '/enchant <target> <enchantment> [level]', 'Enchants the held item', function (rd, raw) {
+        var selAt = rd.i, sel = rd.selectorTok();
+        if (!sel) return usageErr('enchant', raw, rd.i);
+        var ntg = resolveTargets(sel);
+        if (ntg === null) return chatSyntax('Invalid entity selector', raw, selAt);
+        if (!playerTargeted(ntg)) return chatErr('No player was found');
+        var eAt = rd.i, en = stripNs(rd.word()).toLowerCase();
+        if (!en) return usageErr('enchant', raw, rd.i);
+        if (!ENCH_BY_CMD[en]) return chatSyntax('Unknown enchantment \'minecraft:' + en + '\'', raw, eAt + 1);
+        var lAt = rd.i, lv = rd.word();
+        var l = lv ? parseInt2(lv) : 1;
+        if (lv && l === null) return chatSyntax('Expected integer', raw, lAt + 1);
+        var h = held();
+        if (!h) return chatErr('Steve is not holding an item');
+        if (l < 1 || l > 5) return chatErr('Level ' + l + ' is not supported (1-5)');
+        h.ench = h.ench || {};
+        h.ench[ENCH_BY_CMD[en]] = l;
+        paintHotbar();
+        chatSay('Applied enchantment to Steve\'s item');
+    }, function (a) { return a === 0 ? ['@s'] : a === 1 ? Object.keys(ENCH_BY_CMD) : []; });
+
+    cmd('say', '/say <message>', 'Broadcasts a message', function (rd) {
+        var m = rd.rest();
+        if (!m) return chatErr('Expected message');
+        chatSay('[Steve] ' + m);
+    });
+    cmd('me', '/me <action>', 'Displays a narrative message', function (rd) {
+        var m = rd.rest();
+        if (!m) return chatErr('Expected message');
+        chatSay('* Steve ' + m);
+    });
+    cmd('list', '/list', 'Lists players on the server', function () {
+        chatSay('There are 1 of a max of 1 players online: Steve');
+    });
+    cmd('locate', '/locate <biome>', 'Reports the nearest biome of a kind', function (rd, raw) {
+        var BIOMES = ['plains', 'forest', 'desert', 'snowy'];
+        var b = stripNs(rd.word()).toLowerCase();
+        if (!b) return usageErr('locate', raw, rd.i);
+        var want = BIOMES.indexOf(b);
+        if (want < 0) return chatSyntax('Unknown biome \'minecraft:' + b + '\'', raw, rd.i - b.length);
+        // real search: walk outward on a spiral asking the same noise the terrain uses
+        var px = Math.floor(S.px), pz = Math.floor(S.pz);
+        for (var r = 0; r <= 512; r += 16) {
+            for (var a = 0; a < 32; a++) {
+                var ang = a / 32 * 6.283;
+                var x = px + Math.round(Math.cos(ang) * r), z = pz + Math.round(Math.sin(ang) * r);
+                if (biomeAt(x, z) === want) {
+                    return chatSay('The nearest ' + b + ' is at [' + x + ', ~, ' + z + '] (' + Math.round(Math.sqrt((x - px) * (x - px) + (z - pz) * (z - pz))) + ' blocks away)');
+                }
+            }
+        }
+        chatErr('Could not find a ' + b + ' within 512 blocks');
+    }, function () { return ['plains', 'forest', 'desert', 'snowy']; });
+
+    cmd('tellraw', '/tellraw <target> <message>', 'Displays a raw message', function (rd) {
+        rd.selectorTok();
+        var m = rd.rest();
+        try { var j = JSON.parse(m); chatSay(typeof j === 'string' ? j : (j.text || m)); }
+        catch (e) { chatSay(m); }
+    });
+
+    /* command name → the id this engine stores on a stack */
+    var ENCH_BY_CMD = {
+        sharpness: 'sharp', efficiency: 'eff', fortune: 'fortune', silk_touch: 'silk',
+        unbreaking: 'unbreaking', knockback: 'knock', looting: 'looting',
+        fire_aspect: 'fire', feather_falling: 'feather'
+    };
+
+    /* ── helpers the commands lean on ────────────────────── */
+    function fmtC(v) { return (Math.round(v * 100) / 100).toString(); }
+    function roman(n) { return ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'][n] || String(n); }
+    function usageErr(name, raw, pos) { chatSyntax('Incomplete command', raw, pos); chatErr('Usage: ' + CMDS[name].usage); }
+    function tpPlayer(x, y, z) {
+        S.px = x; S.py = y; S.pz = z;
+        RT.vy = 0; RT.fallY = y;
+        ensureChunks();
+    }
+    function hurtBypass(n) { S.hp = 0; RT.dead = false; die(); }
+    function killFoe(f) {
+        var i = RT.foes.indexOf(f);
+        if (i >= 0) RT.foes.splice(i, 1);
+    }
+    function spawnXpDirect(n) { addXp(n); }
+    function setGamemode(g) {
+        S.gm = g;
+        RT.fly = (g === 1 && RT.fly) || g === 3;   // spectators always fly; creative keeps whatever it had
+        if (g !== 1 && g !== 3) RT.fly = false;
+        if (g === 3) { RT.dead = false; hideDeath && hideDeath(); }
+        paintHotbar();
+    }
+    function applyEffect(id, secs, amp) {
+        var d = EFFECTS[id];
+        if (d.instant) {   // instant health/damage resolve immediately and are never stored
+            if (id === 'instant_health') { S.hp = Math.min(20, S.hp + 4 * (amp + 1)); paintVitals(); }
+            else hurt(3 * (amp + 1), null, true, true);
+            return;
+        }
+        S.eff[id] = { amp: amp, t: secs >= 1000000 ? 1e9 : secs };
+        RT.effDirty = true;
+        paintEffects();
+    }
+    function remeshAround(x0, y0, z0, x1, y1, z1) {
+        var seen = {};
+        for (var x = x0 - 1; x <= x1 + 1; x += 8) for (var z = z0 - 1; z <= z1 + 1; z += 8) {
+            var cx = Math.floor(x / CW), cz = Math.floor(z / CW), k = cx + ',' + cz;
+            if (seen[k]) continue; seen[k] = 1;
+            var c = RT.chunks[k];
+            if (c) { relight(x, z); meshChunk(c); }
+        }
+    }
+
+    /* ── the chat overlay ────────────────────────────────── */
+    function paintChat() {
+        if (!RT || !RT.el) return;
+        var wrap = RT.el.querySelector('.mc-chat');
+        if (!wrap) return;
+        var log = RT.chatLog || [];
+        var open = !!RT.chat;
+        // closed chat shows only the recent lines, and fades them out
+        var now = RT.now || 0;
+        var vis = open ? log.slice(-18) : log.filter(function (m) { return now - m.at < CHAT_FADE; }).slice(-10);
+        wrap.querySelector('.mc-chatlog').innerHTML = vis.map(function (m) {
+            var age = now - m.at;
+            var op = (!open && age > CHAT_FADE - 1.5) ? (CHAT_FADE - age) / 1.5 : 1;
+            return '<div class="mc-cline' + (m.c ? ' ' + m.c : '') + '"' +
+                   (op < 1 ? ' style="opacity:' + op.toFixed(2) + '"' : '') + '>' + escHtml(m.t) + '</div>';
+        }).join('');
+        wrap.classList.toggle('open', open);
+        var lg = wrap.querySelector('.mc-chatlog');
+        lg.scrollTop = lg.scrollHeight;
+    }
+    function escHtml(s) {
+        return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+    function openChat(prefill) {
+        if (!RT || RT.dead || RT.panel || RT.paused) return;
+        // remember whether we were the one holding the pointer, so closing only
+        // takes it back if opening gave it up
+        RT.chat = { hist: RT.chatHist || [], hi: -1, draft: '', relock: !!document.pointerLockElement };
+        RT.chatHist = RT.chat.hist;
+        RT.keys = {};                      // a held W must not keep walking while you type
+        if (RT.mouse) RT.mouse.l = RT.mouse.r = false;   // nor a held button keep mining
+        RT.digT = 0;
+        unlockCursor();
+        var wrap = RT.el.querySelector('.mc-chat');
+        wrap.classList.add('open');
+        var inp = wrap.querySelector('.mc-chatin');
+        inp.value = prefill || '';
+        inp.style.display = '';
+        paintChat();
+        // synchronously: the opening keydown is preventDefault'd, so no stray 't'
+        // lands in the box, and a throttled timer can't leave the box unfocused
+        inp.focus();
+        inp.setSelectionRange(inp.value.length, inp.value.length);
+    }
+    function closeChat(relock) {
+        if (!RT || !RT.chat) return;
+        var wasLocked = RT.chat.relock;
+        RT.chat = null;
+        var wrap = RT.el.querySelector('.mc-chat');
+        if (wrap) {
+            wrap.classList.remove('open');
+            var inp = wrap.querySelector('.mc-chatin');
+            inp.blur(); inp.value = '';
+            var tabBox = wrap.querySelector('.mc-chattab');
+            if (tabBox) { tabBox.textContent = ''; tabBox.style.display = 'none'; }
+        }
+        paintChat();
+        if (relock && wasLocked && !RT.panel && !RT.paused && !RT.dead) {
+            RT.el.focus();
+            setTimeout(function () { lockCursor(); }, 30);
+        }
+    }
+    /* ── run a line ──────────────────────────────────────── */
+    function runChatLine(line) {
+        line = String(line || '').trim();
+        if (!line) return;
+        RT.chatHist = RT.chatHist || [];
+        if (RT.chatHist[RT.chatHist.length - 1] !== line) RT.chatHist.push(line);
+        if (RT.chatHist.length > 60) RT.chatHist.shift();
+        if (line[0] !== '/') { chatSay('<Steve> ' + line); return; }
+        runCommand(line.slice(1), line);
+    }
+    function runCommand(body, raw) {
+        var rd = new Reader(body);
+        var nameAt = rd.i, name = stripNs(rd.word()).toLowerCase();
+        if (!name) return;
+        var c = CMDS[name];
+        if (!c) {
+            chatErr('Unknown or incomplete command, see below for error');
+            chatErr(raw.slice(0, 1 + nameAt + name.length) + '<--[HERE]');
+            return;
+        }
+        try { c.run(rd, raw.slice(1)); }
+        catch (e) { chatErr('An unexpected error occurred running that command'); }
+    }
+    /* ── tab completion ──────────────────────────────────── */
+    function tabComplete(text) {
+        // completing the command name itself
+        if (text[0] !== '/') return null;
+        var body = text.slice(1);
+        if (body.indexOf(' ') < 0) {
+            var hits = Object.keys(CMDS).filter(function (n) { return n.indexOf(body.toLowerCase()) === 0; }).sort();
+            if (!hits.length) return null;
+            return { text: '/' + commonPrefix(hits, body.length) + (hits.length === 1 ? ' ' : ''), hits: hits };
+        }
+        // completing an argument: which one are we on?
+        var parts = body.split(' ');
+        var cname = stripNs(parts[0]).toLowerCase();
+        var c = CMDS[cname];
+        if (!c || !c.complete) return null;
+        var argIdx = parts.length - 2;
+        var cur = parts[parts.length - 1];
+        var opts = c.complete(argIdx) || [];
+        var m = opts.filter(function (o) { return o.toLowerCase().indexOf(cur.toLowerCase()) === 0; }).sort();
+        if (!m.length) return null;
+        parts[parts.length - 1] = commonPrefix(m, cur.length);
+        return { text: '/' + parts.join(' ') + (m.length === 1 ? ' ' : ''), hits: m };
+    }
+    function commonPrefix(list, from) {
+        if (list.length === 1) return list[0];
+        var p = list[0];
+        for (var i = 1; i < list.length; i++) {
+            var j = 0;
+            while (j < p.length && j < list[i].length && p[j].toLowerCase() === list[i][j].toLowerCase()) j++;
+            p = p.slice(0, j);
+        }
+        return p.length >= from ? p : list[0].slice(0, from);
+    }
+    /* ── active-effect HUD ───────────────────────────────── */
+    function paintEffects() {
+        if (!RT || !RT.el) return;
+        var box = RT.el.querySelector('.mc-effects');
+        if (!box) return;
+        var ids = Object.keys(S.eff || {});
+        box.innerHTML = ids.map(function (id) {
+            var e = S.eff[id], d = EFFECTS[id];
+            if (!d) return '';
+            var t = e.t >= 1e8 ? '∞' : fmtTimeLeft(e.t);
+            return '<div class="mc-eff"><i style="background:' + d.c + '"></i>' +
+                   '<b>' + escHtml(d.t) + (e.amp ? ' ' + roman(e.amp + 1) : '') + '</b><span>' + t + '</span></div>';
+        }).join('');
+        box.style.display = ids.length ? '' : 'none';
+    }
+    function fmtTimeLeft(s) {
+        s = Math.max(0, Math.ceil(s));
+        var m = Math.floor(s / 60);
+        return m + ':' + ('0' + (s % 60)).slice(-2);
+    }
+
     function init(el) {
         var root = el.querySelector('.mc');
         S = sLoad() || sNew();
@@ -4330,7 +5257,11 @@
         if (!S.armor) S.armor = [null, null, null, null];
         if (S.xpl == null) { S.xpl = 0; S.xp = 0; }
         if (S.weather == null) { S.weather = 0; S.wt = 120; }
+        // saves from before the command console predate all of this
         var devModes = devPre();   // ?mcdev= swaps in a fresh scenario world before anything reads S
+        // AFTER devPre: a scenario world replaces S wholesale, so migrating first
+        // left the fresh save holding sNew()'s nulls and /gamerule threw on assign
+        normalizeCmdState();
         buildAtlas();
         texInit();
         if (!document.getElementById('mc-atlas-css')) {   // HUD icons sample the atlas via CSS
@@ -4347,6 +5278,7 @@
             chunks: {}, ckeys: [], genQ: [], meshQ: [], decayQ: [],
             foes: [], drops: [], arrows: [], tnts: [], parts: [], entV: [], orbs: [],
             keys: {}, mouse: { l: false, r: false },
+            chat: null, chatLog: [], chatHist: [], now: 0, fly: false,
             vy: 0, ground: false, fallY: S.py, sprint: false,
             exh: 0, regenT: 0, starveT: 0, iframe: 0, digT: 0, digCd: 0, digNeed: 1, digAt: null, atkCd: 0,
             eatT: 0, bowT: 0, swing: 0, bob: 0, flash: 0, shake: 0, sleep: 0, placeCd: 0,
@@ -4386,10 +5318,69 @@
         RT.cv.height = Math.max(100, Math.round(h / 3));
     }
     function wireInput(root, cv) {
+        /* the chat input owns its own keys: Enter runs, Esc closes, Tab
+           completes, Up/Down walk the history. Everything stops here so a
+           command never leaks a keystroke into the world. */
+        var chatIn = root.querySelector('.mc-chatin');
+        if (chatIn) {
+            chatIn.addEventListener('keydown', function (e) {
+                e.stopPropagation();
+                var c = RT && RT.chat;
+                if (e.key === 'Enter') {
+                    var line = chatIn.value;
+                    closeChat(true);
+                    runChatLine(line);
+                    e.preventDefault();
+                    return;
+                }
+                if (e.key === 'Escape') { closeChat(true); e.preventDefault(); return; }
+                if (e.key === 'Tab') {
+                    e.preventDefault();
+                    var r = tabComplete(chatIn.value);
+                    if (r) {
+                        chatIn.value = r.text;
+                        chatIn.setSelectionRange(r.text.length, r.text.length);
+                        var tabBox = root.querySelector('.mc-chattab');
+                        tabBox.textContent = r.hits.length > 1 ? r.hits.slice(0, 12).join('  ') : '';
+                        tabBox.style.display = r.hits.length > 1 ? '' : 'none';
+                    }
+                    return;
+                }
+                if (!c) return;
+                if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    var h = RT.chatHist || [];
+                    if (!h.length) return;
+                    if (c.hi < 0) c.draft = chatIn.value;
+                    c.hi += e.key === 'ArrowUp' ? 1 : -1;
+                    if (c.hi >= h.length) c.hi = h.length - 1;
+                    if (c.hi < 0) { c.hi = -1; chatIn.value = c.draft || ''; }
+                    else chatIn.value = h[h.length - 1 - c.hi];
+                    chatIn.setSelectionRange(chatIn.value.length, chatIn.value.length);
+                }
+            });
+            chatIn.addEventListener('keyup', function (e) { e.stopPropagation(); });
+            chatIn.addEventListener('input', function () {
+                var tabBox = root.querySelector('.mc-chattab');
+                if (tabBox) { tabBox.textContent = ''; tabBox.style.display = 'none'; }
+            });
+            chatIn.addEventListener('blur', function (e) {
+                if (!(RT && RT.chat)) return;
+                // alt-tabbing away must not throw away a half-typed command
+                if (!document.hasFocus()) return;
+                // focus that stayed inside the game (a stray focus(), the canvas)
+                // belongs back in the box; focus that left it means the player
+                // moved on to another window, so drop the chat without relocking
+                var to = e.relatedTarget;
+                if (to && RT.el && RT.el.contains(to)) { chatIn.focus(); return; }
+                closeChat(false);
+            });
+        }
         root.addEventListener('keydown', function (e) {
             var k = e.key.toLowerCase();
             if (e.key === 'Escape') {
-                if (RT.panel) { closePanel(); e.stopPropagation(); }
+                if (RT.chat) { closeChat(true); e.stopPropagation(); e.preventDefault(); }
+                else if (RT.panel) { closePanel(); e.stopPropagation(); }
                 else if (RT.paused && RT.ready) {
                     // don't hide the menu on hope: Chrome refuses relocks for ~1.3s after an Esc exit.
                     // onLockChange dismisses the menu when the lock actually lands; a rejection keeps it up.
@@ -4405,10 +5396,28 @@
                 e.stopPropagation();
                 return;
             }
+            if (RT.chat) {
+                // the chat input owns the keyboard. if focus drifted (alt-tab and
+                // back, a stray focus()) take it back rather than swallowing keys
+                // into a box the player can't see themselves typing in
+                var ci = RT.el.querySelector('.mc-chatin');
+                if (ci && document.activeElement !== ci) ci.focus();
+                e.stopPropagation();
+                return;
+            }
+            if ((k === 't' || k === '/') && RT.ready && !RT.dead && !RT.panel && !RT.paused) {
+                openChat(k === '/' ? '/' : '');
+                e.preventDefault(); e.stopPropagation();
+                return;
+            }
             RT.keys[k] = true;
             // sprint is double-tap W only — holding real Ctrl arms Ctrl+W (closes the tab!)
             if (k === 'w' && RT.lastW && performance.now() - RT.lastW < 280) RT.sprint = true;
             if (k === 'w') RT.lastW = performance.now();
+            if (k === ' ' && (isCreative() || isSpectator())) {
+                if (RT.lastSp && performance.now() - RT.lastSp < 320) { RT.fly = !RT.fly; RT.vy = 0; }
+                RT.lastSp = performance.now();
+            }
             if (k === ' ') e.preventDefault();
             if (k === 'e' && RT.ready && !RT.dead && !RT.paused) { if (RT.panel) closePanel(); else openPanel('inv'); }
             if (k === 'q' && !RT.panel && !RT.paused && !RT.dead) {
@@ -4433,6 +5442,9 @@
         root.addEventListener('blur', function () { RT.keys = {}; RT.mouse.l = RT.mouse.r = false; });
         cv.addEventListener('mousedown', function (e) {
             audioInit();
+            // with chat open the world is inert: no swinging, no relock, and the
+            // click must not pull focus out of the box you're typing in
+            if (RT.chat) { e.preventDefault(); return; }
             root.focus();
             if (!RT.ready || RT.dead) return;
             if (!document.pointerLockElement && !RT.devFree) {
@@ -4463,7 +5475,7 @@
         var btns = root.querySelectorAll('.mc-btn');
         for (var bi = 0; bi < btns.length; bi++) btns[bi].addEventListener('mousedown', function (e) { e.preventDefault(); });
         root.addEventListener('wheel', function (e) {
-            if (RT.panel || RT.paused) return;
+            if (RT.panel || RT.paused || RT.chat) return;
             S.sel = ((S.sel + (e.deltaY > 0 ? 1 : -1)) % 9 + 9) % 9;
             paintHotbar();
             e.preventDefault();
@@ -4576,6 +5588,15 @@
             key: function (k, down) { RT.keys[k] = !!down; },
             mouse: function (btn, down) { if (btn === 0) { RT.mouse.l = !!down; if (down) attack(); } else { RT.mouse.r = !!down; if (down) tryUse(); else finishUse(); } },
             openInv: function () { openPanel('inv'); },
+            chat: function (line) { runChatLine(line); return (RT.chatLog || []).slice(-6).map(function (m) { return (m.c === 'err' ? '! ' : '') + m.t; }); },
+            chatOpen: function (pre) { openChat(pre); return !!RT.chat; },
+            chatClose: function () { closeChat(false); },
+            chatState: function () { return { open: !!RT.chat, lines: (RT.chatLog || []).length, last: (RT.chatLog || []).slice(-1)[0] || null }; },
+            complete: function (t) { return tabComplete(t); },
+            gm: function () { return S.gm; }, diff: function () { return S.diff; },
+            eff: function () { return JSON.parse(JSON.stringify(S.eff || {})); },
+            rules: function () { return JSON.parse(JSON.stringify(S.rules || {})); },
+            flying: function () { return !!RT.fly; },
             openPanel: function (k, t) { openPanel(k, t); },
             place: function (id) { var t = RT.target; if (t) { S.inv[S.sel] = { id: id, c: 1 }; tryUse(); } },
             setB: setB, getB: getB, explode: explode, unlockAll: function () { for (var i = 0; i < ACH.length; i++) unlock(ACH[i].id); },
