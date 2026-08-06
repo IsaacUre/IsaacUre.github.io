@@ -257,6 +257,136 @@ var CHARMS = {
 };
 var CHARM_IDS = Object.keys(CHARMS);
 
+/* ─────────────── things you carry ───────────────
+   A charm is a bag of modifiers. An item is a thing. The test that
+   separates them: an item can be used, given, shown to somebody, or
+   lost, and a charm that adds 30% damage cannot do any of those.
+
+   `use` returns a string to say, or false to mean "not here, not now"
+   and stay in the bag. `writ` is a word burnt or scratched into the
+   object: reading it teaches the word, because in this game a word is
+   a line of a song and somebody had to write it down somewhere.
+   `keep` items are never consumed by use. */
+var ITEMS = {
+    coal: {
+        n: 'A Cold Coal', tag: 'keep', keep: 1, one: 1,
+        d: 'Burnt through and gone out. It is not the prop from the play; the prop is whole and painted. Somebody carried this one a long way and did not bring it back.',
+        use: function () { return 'You turn it over. Cold all the way through. Whoever put it out did it a long time before you were born.'; }
+    },
+    // NOT to be confused with the charm called The Sill Lamp, which is the
+    // one the town sets out for him. This is a plain lamp you can carry.
+    lamp: {
+        n: 'A Tallow Lamp', tag: 'tool', keep: 1, cost: 30, sell: 8,
+        d: 'Wick, tallow, a tin shade with a dent in it. The kind every house sets on the sill, before anybody decided which sill mattered. You can put it down somewhere.',
+        use: function () { return setLamp(); }
+    },
+    // you have carried this since the prologue; it is granted to a new save
+    mask: {
+        n: 'The Mask', tag: 'keep', keep: 1, one: 1,
+        d: 'The one you wore when you were nine. It was too big then and it is too big now, which tells you something about how long they have been handing it down.',
+        // worn state lives on the save, not the runtime: a mask you put on
+        // should still be on after you walk through a door. Job 1 can read
+        // S.items.wearing for the ending.
+        use: function () {
+            var worn = S.items.wearing = S.items.wearing ? 0 : 1;
+            sSave();
+            return worn ? 'You put it on. The eyeholes sit too high, the way they always did. You have to turn your head to see anything.'
+                        : 'You take it off. The square is wider than it was a moment ago.';
+        }
+    },
+    wax: {
+        n: 'A Stub of Wax', tag: 'use', cost: 18,
+        d: 'Off the chandler\'s counter. Warm it in your hand and a mismatched pair holds for a while: slants land in full.',
+        // stacks rather than resets, so a second stub is never worth less
+        // than the seconds it wipes off the first
+        use: function () {
+            RT.items.freeSlant = Math.min(44, RT.items.freeSlant + 22);
+            return 'You work the wax soft. For a little while a slant will not fall flat.';
+        }
+    },
+    pitch: {
+        // names the refrain on purpose. The thief strips a stack too and this
+        // does not stop him: a description that said "one thing that would
+        // strip them" would be lying about the thief.
+        n: 'A Thumb of Pitch', tag: 'use', cost: 26,
+        d: 'Black, sticky, smells like the mill. Thumb it on and the refrain will not strip your rhymes off, once.',
+        use: function () {
+            if (RT.items.tack) return { no: 'You already have pitch on your palm. It has not been used up yet.' };
+            RT.items.tack = 1;
+            return 'You thumb it onto your palm. The next refrain goes through and your rhymes stay where you put them.';
+        }
+    },
+    breath: {
+        n: 'A Held Breath', tag: 'use', cost: 22,
+        d: 'A stoppered jar with nothing visible in it. The chandler sells them cheap and will not explain.',
+        use: function () {
+            if (!RT) return false;
+            if (RT.breath >= stats().breathMax - 0.5) return { no: 'You are not short of breath. It keeps.' };
+            RT.breath = stats().breathMax; RT.winded = 0;
+            return 'You unstopper it and somebody else\'s breath goes into you. It is not pleasant. It works.';
+        }
+    },
+    // spends Echo, which nothing else in the game consumes. Flagged for job 4,
+    // which owns whether Echo gets a real consumer: if it builds one, this
+    // should become a second use of that, not a private reader.
+    horn: {
+        n: 'A Cracked Horn', tag: 'use', cost: 34,
+        d: 'It will not sound. Hold it while a room is still ringing and it takes the ringing instead, and gives it back as breath.',
+        use: function () {
+            if (!RT || RT.echo < 20) return { no: 'Nothing is ringing. The horn wants a room that is still going.' };
+            var got = Math.round(RT.echo * 0.55); RT.echo = 0;
+            RT.breath = Math.min(stats().breathMax, RT.breath + got); RT.winded = 0;
+            return 'The horn takes the ring out of the room. You get ' + got + ' breath back and the quiet is very sudden.';
+        }
+    },
+    slate: {
+        n: 'Hal\'s Slate', tag: 'keep', keep: 1, cost: 45, one: 1,
+        d: 'The chandler had it off Hal years ago and never asked why. Hal kneels and writes her name in the dirt and rubs it out with his boot, every time. Writing on a slate stays until somebody wipes it.',
+        use: function () { return 'You keep it in your coat. Nothing is written on it yet. That is the point of it.'; }
+    },
+    // the word market: he found them written on things, which is what the
+    // shop header has claimed since the day it was written
+    // Exactly the thirteen words a player does not start with and is not
+    // handed by a fragment. Every one needs an object or the word has no
+    // source at all: the flat 30-coin list this replaced covered all
+    // thirteen, so anything missed here is a word deleted from the game.
+    writ_eat:    { n: 'A Butcher\'s Tally', tag: 'writ', cost: 26, writ: 'eat',
+        d: 'EAT, and then a column of numbers that stop partway down the ninth year.' },
+    writ_wheat:  { n: 'A Flour Scoop', tag: 'writ', cost: 30, writ: 'wheat',
+        d: 'WHEAT scratched round the handle where a thumb would sit.' },
+    writ_night:  { n: 'A Shutter Slat', tag: 'writ', cost: 30, writ: 'night',
+        d: 'NIGHT cut into the inside face, where it would only ever be read from indoors.' },
+    writ_right:  { n: 'A Warrant Corner', tag: 'writ', cost: 34, writ: 'right',
+        d: 'RIGHT, in a clerk\'s hand, on the only corner of the page that did not burn.' },
+    writ_heard:  { n: 'A Vestry Ledger Page', tag: 'writ', cost: 34, writ: 'heard',
+        d: 'HEARD, in the middle of a list of who paid for candles in a year nobody can read.' },
+    writ_bird:   { n: 'A Cage Door', tag: 'writ', cost: 34, writ: 'bird',
+        d: 'BIRD, scratched on the inside. On the inside, where the bird was.' },
+    writ_third:  { n: 'A Prompt Card', tag: 'writ', cost: 36, writ: 'third',
+        d: 'THIRD, and under it "wait for the hall to go quiet". Somebody has crossed that out.' },
+    writ_mark:   { n: 'A Fence Post Chip', tag: 'writ', cost: 38, writ: 'mark',
+        d: 'MARK, cut deep, on a chip of post from out past the fence. She does not say who brought it in.' },
+    writ_spark:  { n: 'A Flint Wrap', tag: 'writ', cost: 38, writ: 'spark',
+        d: 'SPARK, on the rag the flint was wrapped in, in something that is not ink.' },
+    writ_stark:  { n: 'A Surveyor\'s Peg', tag: 'writ', cost: 40, writ: 'stark',
+        d: 'STARK, burnt in, on a peg from a field that has not been worked since.' },
+    writ_sill:   { n: 'A Window Board', tag: 'writ', cost: 40, writ: 'sill',
+        d: 'SILL, written where the lamp would stand, so it would be under the lamp every year.' },
+    writ_still:  { n: 'A Bell Rope End', tag: 'writ', cost: 42, writ: 'still',
+        d: 'STILL, inked onto the frayed end. The rope was cut, not worn through.' },
+    writ_chill:  { n: 'A Milk Pail Base', tag: 'writ', cost: 42, writ: 'chill',
+        d: 'CHILL, punched into the tin from the inside, one letter at a time.' },
+    // loot, not stock
+    scrap: {
+        n: 'A Misremembered Line', tag: 'use',
+        d: 'A scrap of somebody else\'s memory of the play, in the wrong metre. The chandler buys these. Occasionally one has a word on the back.',
+        sell: 6,
+        use: function () { return 'You read it through. It does not scan. Whoever remembered it was remembering something they had only ever heard.'; }
+    }
+};
+var ITEM_IDS = Object.keys(ITEMS);
+function writForWord(w) { for (var i = 0; i < ITEM_IDS.length; i++) if (ITEMS[ITEM_IDS[i]].writ === w) return ITEM_IDS[i]; return null; }
+
 /* ─────────────── save ─────────────── */
 var S = null;
 function sLoad() {
@@ -297,6 +427,10 @@ function sLoad() {
     // put the Chorus back once it is down, so the roster would be permanently
     // one short. You were there. Backfill it.
     if (S.seen && S.seen.chorusDown) S.combat.met.chorus = 1;
+    // the mask is yours already: you wore it in the prologue
+    S.items = S.items || { inv: { mask: 1 }, lamps: {}, wearing: 0 };
+    if (!S.items.inv) S.items.inv = {}; if (!S.items.lamps) S.items.lamps = {};
+    if (S.items.wearing == null) S.items.wearing = 0;
     return S;
 }
 function sSave() { try { localStorage.setItem('comp_ninth', JSON.stringify(S)); } catch (e) {} }
@@ -341,8 +475,13 @@ function famOwned(f) { return !!S.fams[f]; }
 
 /* ─────────────── economy ─────────────── */
 function coin(n, x, y) {
-    S.coin += n;
+    // the dev arena is explicitly a place where nothing means anything. It was
+    // also the only unbounded coin faucet in the game: story play left you
+    // short and ten minutes of arena left you rich.
+    if (n > 0 && RT && RT.place === 'arena') return;
+    S.coin = Math.max(0, S.coin + n);
     if (n > 0 && x != null) typo(x, y, '+' + n, '#ffe66e', 0.7, 13, 'drift');
+    sSave();   // every other coin source used to ride on foeDie saving right after
 }
 function buyCharm(id) {
     var c = CHARMS[id]; if (!c || S.charms[id]) return false;
@@ -356,14 +495,22 @@ function sellCharm(id) {
     delete S.charms[id];
     S.worn = S.worn.filter(function (w) { return w !== id; });
     coin(c.sell); sSave();
-    say('The chandler pays <b>' + c.sell + '</b> coin for a piece of stage furniture and looks pleased with himself.', 'good');
+    say('The chandler pays <b>' + c.sell + '</b> coin for a piece of stage furniture and looks pleased with herself.', 'good');
     return true;
 }
 function wearCharm(id) {
     if (!S.charms[id]) return;
     var i = S.worn.indexOf(id);
-    if (i >= 0) S.worn.splice(i, 1);
-    else { if (S.worn.length >= 2) S.worn.shift(); S.worn.push(id); }
+    if (i >= 0) { S.worn.splice(i, 1); say('You put <b>' + esc(CHARMS[id].n) + '</b> away.', 'dim'); }
+    else {
+        // this used to evict the oldest worn charm in silence, so a player
+        // reading through their charms quietly unequipped things
+        if (S.worn.length >= 2) {
+            var off = S.worn.shift();
+            say('You take off <b>' + esc(CHARMS[off].n) + '</b> to make room for <b>' + esc(CHARMS[id].n) + '</b>.', 'dim');
+        } else say('You put on <b>' + esc(CHARMS[id].n) + '</b>.', 'good');
+        S.worn.push(id);
+    }
     sSave();
 }
 function learnWord(w) {
@@ -371,6 +518,139 @@ function learnWord(w) {
     S.owned[w] = 1; sSave();
     say('You have the word <b style="color:' + FAMS[WORDS[w]].col + '">' + esc(w.toUpperCase()) + '</b>.', 'good');
     return true;
+}
+
+/* ─────────────── the bag ───────────────
+   Counts keyed by item id. Everything goes through these four so
+   there is one place that saves and one place that can refuse. */
+function inv() { return S.items.inv; }
+function itemCount(id) { return inv()[id] || 0; }
+function hasItem(id) { return itemCount(id) > 0; }
+function giveItem(id, n) {
+    if (!ITEMS[id]) { if (window.console) console.warn('NINTH: giveItem("' + id + '") is not in ITEMS'); return false; }
+    // there is one coal, one mask and one slate. Nothing consumes them, so a
+    // second copy is dead weight in the bag forever. The boss can be respawned
+    // from the dev menu and would otherwise hand out a coal every time.
+    if (ITEMS[id].one && hasItem(id)) return false;
+    n = n || 1;
+    inv()[id] = itemCount(id) + n;
+    sSave();
+    return true;
+}
+function takeItem(id, n) {
+    n = n || 1;
+    if (itemCount(id) < n) return false;
+    inv()[id] -= n;
+    if (inv()[id] <= 0) delete inv()[id];
+    sSave();
+    return true;
+}
+/* Using a thing. `use` returns the line to say, or `{ no: 'reason' }` to
+   refuse: the item stays in the bag, nothing is spent, and the player is
+   told why rather than getting a flat "not here". */
+function useItem(id) {
+    var it = ITEMS[id];
+    if (!it || !hasItem(id)) return false;
+    if (it.writ) return readWrit(id);
+    var msg = it.use ? it.use() : false;
+    if (msg && msg.no) { say(msg.no, 'dim'); sfx('ui'); return false; }
+    if (msg === false) { say('Not now.', 'dim'); sfx('ui'); return false; }
+    if (!it.keep) takeItem(id, 1);
+    say(msg, 'big');
+    sfx('use');
+    fillBag();
+    return true;
+}
+/* Reading the word off the thing it was written on. The object is
+   spent: the writing is the only copy and now it is in your head. */
+function readWrit(id) {
+    var it = ITEMS[id];
+    if (!famOwned(WORDS[it.writ])) {
+        say('You can read it. <b>' + esc(it.writ.toUpperCase()) + '</b>. It does not sound like anything you know how to say yet.', 'dim');
+        return false;
+    }
+    if (S.owned[it.writ]) { say('You already have that one.', 'dim'); return false; }
+    if (!learnWord(it.writ)) return false;            // spend the object only once the word has landed
+    takeItem(id, 1);
+    sfx('learn');
+    fillBag();
+    return true;
+}
+/* The lamp. You can set it down, which means you can set it down in
+   the wrong place, which is the only reason it is an item. */
+function setLamp() {
+    var here = RT.place, p = place();
+    if (S.items.lamps[here]) {
+        delete S.items.lamps[here]; giveItem('lamp'); sSave(); fillBag();
+        return 'You pick the lamp back up. The sill is bare again.';
+    }
+    // the lamp is a `keep` item so useItem will not spend it for us, and
+    // setting one down has to actually cost you the lamp or you have as
+    // many as you have sills
+    if (!takeItem('lamp', 1)) return false;
+    S.items.lamps[here] = 1; sSave();
+    if (here === 'mark') {
+        // past the fence. Nobody has ever set out a second lamp, and
+        // nobody has ever set one out here.
+        return 'You set it down on the marker stone, out past the fence, for somebody the town does not set lamps out for. It burns exactly as well here as it does on a sill.';
+    }
+    if (here === 'square') return 'You set it on a sill with all the others. It looks like all the others.';
+    return 'You set the lamp down. It throws about a yard of light and the rest of it stays dark.';
+}
+function lampsOut() { return Object.keys(S.items.lamps).length; }
+/* a lamp you left here, retrieved when you are carrying none: without this
+   the bag shows no lamp row at all and the one on the sill is unreachable */
+function takeLamp() {
+    if (!RT || !S.items.lamps[RT.place]) return false;
+    delete S.items.lamps[RT.place];
+    giveItem('lamp');
+    say('You take the lamp back off the sill.', 'dim');
+    sfx('use'); fillBag();
+    return true;
+}
+
+/* ─────────────── loot ───────────────
+   Coin out of a dead mouth was placeholder. Hearsay is a
+   misremembering of a song, so what it leaves behind is a scrap of
+   one, and once in a while the scrap has a word on the back. */
+function dropLoot(f) {
+    if (RT.place === 'arena') return;                  // dev arena rewards nothing
+    var k = f.kind, r = Math.random();
+    if (f.def.boss) {
+        giveItem('coal');
+        typo(f.x, f.y, 'a coal', '#ffb14e', 1.1, 12, 'drift');
+        say('Something falls out of the noise and hits the boards. A coal, burnt through, cold. It has been up here a long time.', 'big');
+        return;
+    }
+    var chance = k === 'mouth' ? 0.5 : k === 'thief' ? 0.4 : k === 'sword' ? 0.9 : 0.3;
+    if (r > chance) return;
+    // an unlearned word you can actually read comes up rarely, and only
+    // ever in a family you have already opened
+    var open = [];
+    FAM_IDS.forEach(function (fid) {
+        if (!famOwned(fid)) return;
+        FAMS[fid].words.forEach(function (w) { if (!S.owned[w] && writForWord(w)) open.push(w); });
+    });
+    if (open.length && Math.random() < 0.16) {
+        var id = writForWord(pick(open));
+        giveItem(id);
+        typo(f.x, f.y, 'something written', '#8a6ad0', 1.1, 11, 'drift');
+        say('It leaves something behind with writing on it. <b>' + esc(ITEMS[id].n) + '</b>.', 'good');
+        return;
+    }
+    giveItem('scrap');
+    typo(f.x, f.y, 'a scrap', '#8a8296', 0.9, 10, 'drift');
+}
+/* ─────────────── stake ───────────────
+   Dying used to cost 2.2 seconds and nothing else. It should not be
+   punishing, this is not that kind of game, but it should cost
+   something, and coin is the thing the game already counts. */
+function deathToll() {
+    if (RT.place === 'arena') return;                  // the arena pays nothing, so it takes nothing
+    var lost = Math.floor(S.coin * 0.15);
+    if (lost <= 0) return;
+    coin(-lost);
+    say('You come round with your pockets lighter by <b>' + lost + '</b>. Somebody was very quick about it.', 'dim');
 }
 function grantFragment(n) {
     var map = { 1: ['erd', 'word'], 2: ['ark', 'dark'], 3: ['ill', 'will'] };
@@ -436,6 +716,7 @@ function render() {
         '<div class="nn-panel nn-p-book" hidden><header>THE PLAY<button class="nn-x" type="button">×</button></header><div class="nn-pb"></div></div>' +
         '<div class="nn-panel nn-p-kit" hidden><header>WORDS &amp; CHARMS<button class="nn-x" type="button">×</button></header><div class="nn-pb"></div></div>' +
         '<div class="nn-panel nn-p-shop" hidden><header>THE CHANDLER<span class="nn-shop-coin"></span><button class="nn-x" type="button">×</button></header><div class="nn-pb"></div></div>' +
+        '<div class="nn-panel nn-p-bag" hidden><header>WHAT YOU CARRY<span class="nn-bag-coin"></span><button class="nn-x" type="button">×</button></header><div class="nn-pb"></div></div>' +
 
         // dev menu — the whole point of the ask. populated from DEV below.
         '<div class="nn-dev" hidden><header>DEV MENU<i>`</i><button class="nn-x" type="button">×</button></header>' +
@@ -445,6 +726,7 @@ function render() {
         '<div class="nn-btns">' +
           '<button class="nn-b" data-nn="p:book" type="button" title="The play (B)">B</button>' +
           '<button class="nn-b" data-nn="p:kit" type="button" title="Words &amp; charms (C)">C</button>' +
+          '<button class="nn-b" data-nn="p:bag" type="button" title="What you carry (I)">I</button>' +
           '<button class="nn-b" data-nn="p:shop" type="button" title="The chandler (V)">V</button>' +
           '<button class="nn-b" data-nn="dev" type="button" title="Dev menu (`)">`</button>' +
         '</div>' +
@@ -567,7 +849,13 @@ var DEV = [
       rows.push({ k: 'btn', t: 'Grant every word', on: function () { Object.keys(WORDS).forEach(function (w) { S.owned[w] = 1; }); FAM_IDS.forEach(function (f) { S.fams[f] = 1; }); sSave(); } });
       rows.push({ k: 'tgl', t: 'Verse (R) unlocked', get: function () { return !!S.verse; }, set: function (v) { S.verse = v ? 1 : 0; sSave(); } });
       rows.push({ k: 'btn', t: 'Grant every charm', on: function () { CHARM_IDS.forEach(function (c) { S.charms[c] = 1; }); sSave(); } });
-      rows.push({ k: 'num', t: 'Coin', get: function () { return S.coin; }, set: function (v) { S.coin = Math.max(0, Math.round(v)); }, step: 25 });
+      rows.push({ k: 'num', t: 'Coin', get: function () { return S.coin; }, set: function (v) { S.coin = Math.max(0, Math.round(v)); sSave(); }, step: 25 });
+      rows.push({ k: 'note', t: 'What you carry. Items are objects: usable, giveable, losable.' });
+      rows.push({ k: 'btn', t: 'Grant one of everything', on: function () { ITEM_IDS.forEach(function (id) { giveItem(id); }); } });
+      ITEM_IDS.forEach(function (id) {
+          rows.push({ k: 'btn', t: ITEMS[id].n + (itemCount(id) ? ' (' + itemCount(id) + ')' : ''), sub: ITEMS[id].writ ? 'writes ' + ITEMS[id].writ.toUpperCase() : ITEMS[id].tag, on: function () { giveItem(id); } });
+      });
+      rows.push({ k: 'btn', t: 'Clear the bag', danger: 1, on: function () { S.items.inv = {}; S.items.lamps = {}; S.items.wearing = 0; if (RT) { RT.items.freeSlant = 0; RT.items.tack = 0; } sSave(); } });
       rows.push({ k: 'btn', danger: 1, wipe: 1,
           t: wipeArmed ? 'Wipe save — click again to confirm' : 'Wipe save (reset everything, start over)',
           sub: wipeArmed ? 'story, words, charms, coin, achievements and cheats. Any other control backs out.'
@@ -846,8 +1134,9 @@ function init(el) {
         god: 0, infBreath: 0, holdStacks: 0, oneShot: 0,
         dbgStacks: 0, dbgAI: 0, dbgHit: 0, dbgPerf: 0,
         fps: 0, _fc: 0, _ft: 0, ac: null, tookHit: false,
-        world: { cam: { x: 0, y: 0 }, npc: {}, seenLine: null },
-        combat: { cuts: [], rep: null, encI: 0, lull: 0 }
+        combat: { cuts: [], rep: null, encI: 0, lull: 0 },
+        items: { freeSlant: 0, tack: 0, atShop: false },
+        world: { cam: { x: 0, y: 0 }, npc: {}, seenLine: null }
     };
     wireInput(root, cv);
     wireHud(root);
@@ -1036,6 +1325,7 @@ function downPlayer() {
     RT.hp = 0; RT.dead = true; RT.deadT = 2.2;
     bigLine('you lose your place', '', '#ff5a6a', 2);
     say('You lose your place in the line. Bern would tell you to take it from the top.', 'bad');
+    deathToll();                                      // job 5: dying costs coin, not time
     sfx('down');
 }
 function revive() {
@@ -1241,7 +1531,8 @@ function doAnswer() {
         var closed = match > 0;
         var n = closed ? match : other;
         var dmg = (st.answerBase + st.answerPerStack * n) * famDmgMul(fam);
-        if (!closed) { dmg *= st.slantMul; anySlant = true; }
+        // soft wax holds a mismatched pair together: a slant lands in full
+        if (!closed) { dmg *= (RT.items.freeSlant > 0 ? 1 : st.slantMul); anySlant = true; }
         dmg *= deafMul(f, fam);          // the deaf hear nothing: only -ill touches them
         hurtFoe(f, dmg, fam, { answer: 1, closed: closed, n: n });
         if (closed) { totalMatched += match; if (match > best) best = match; famEffect(f, fam, match); }
@@ -1868,9 +2159,13 @@ function stepChorus(f, dt, d) {
         f.pulseT = f.pulse;
         RT.rings.push({ x: f.x, y: f.y, r: 0.4, max: 14, col: '210,200,225', t: 0.6, life: 0.6 });
         var stripped = 0;
-        RT.foes.forEach(function (q) { if (!q.dead) { stripped += q.stacks.length; q.stacks.length = 0; } });
-        slam('AND HE WENT ALONE', '#d2c8e1', 'the refrain strips everything');
-        RT.shake = shake(8);
+        // a thumb of pitch holds one pulse's worth of rhyme on
+        var held = !!RT.items.tack;
+        if (held) RT.items.tack = 0;
+        else RT.foes.forEach(function (q) { if (!q.dead) { stripped += q.stacks.length; q.stacks.length = 0; } });
+        slam('AND HE WENT ALONE', held ? '#c9a94a' : '#d2c8e1', held ? 'the pitch holds' : 'the refrain strips everything');
+        if (held) say('The refrain comes through and the pitch holds your rhymes on.', 'good');
+        RT.shake = shake(held ? 5 : 8);
         if (stripped) { RT.echo = Math.max(0, RT.echo - stripped * 2); }
         if (Math.hypot(RT.px - f.x, RT.py - f.y) < 3) hurtPlayer(f.dmg);
         sfx('pulse');
@@ -1921,6 +2216,7 @@ function foeDie(f, quiet) {
     var c = irnd(f.def.coin[0], f.def.coin[1]);
     if (f.m) c += T('eliteCoin');                       // elites are worth the trouble
     if (c) coin(c, f.x, f.y);
+    dropLoot(f);                                      // job 5: items, with fiction
     if (f.kind === 'sword' && f.callDmg && !f.otherDmg) ach('sword');
     if (f.m) ach('elite');
     if (f.def.onDown && BOSS_DOWN[f.def.onDown]) BOSS_DOWN[f.def.onDown](f);
@@ -2171,6 +2467,7 @@ function step(dt, real) {
     RT.callCd = Math.max(0, (RT.callCd || 0) - dt);
     RT.answerCd = Math.max(0, (RT.answerCd || 0) - dt);
     RT.conceal = Math.max(0, (RT.conceal || 0) - dt);
+    stepItems(dt);                                          // job 5: the wax goes cold, the shop closes behind you
     if (RT.dead) {
         RT.deadT -= (real || dt);
         stepParts(dt);
@@ -2400,13 +2697,47 @@ function hudNudge(what) {
 
 /* ─────────────── panels ─────────────── */
 function panel(name) {
+    // The shop is a person, not a menu. It used to open from anywhere,
+    // including the middle of the Chorus fight, because panel() pauses
+    // nothing. It now needs the chandler within earshot. The bag stays
+    // openable anywhere on purpose: consumables exist to be used under
+    // pressure, and a pause would take that away.
+    if (name === 'shop' && RT.panel !== 'shop' && !chandlerNear()) {
+        // two different refusals: standing in her shop and not bothering to
+        // walk to the counter is not the same as being somewhere she is not
+        say((place().npcs || []).indexOf('chandler') >= 0
+            ? 'She is behind the counter. You would have to walk over.'
+            : 'The chandler is not here. Her shop is off the east side of the square.', 'dim');
+        sfx('ui');
+        return;
+    }
     var open = RT.panel === name ? null : name;
     RT.panel = open;
-    ['book', 'kit', 'shop'].forEach(function (p) { RT.root.querySelector('.nn-p-' + p).hidden = open !== p; });
+    ['book', 'kit', 'shop', 'bag'].forEach(function (p) { RT.root.querySelector('.nn-p-' + p).hidden = open !== p; });
     if (open === 'book') fillBook();
     else if (open === 'kit') fillKit();
     else if (open === 'shop') fillShop();
+    else if (open === 'bag') fillBag();
     sfx('ui');
+}
+/* Per-frame item upkeep. The shop closing is not decoration: the open
+   check alone was bypassable, because panel() pauses nothing and you can
+   walk out of earshot with the counter still on screen and keep buying. */
+function stepItems(dt) {
+    RT.items.freeSlant = Math.max(0, RT.items.freeSlant - dt);   // the wax goes cold
+    if (RT.panel === 'shop' && !chandlerNear()) {
+        panel(null);
+        say('You have walked away from the counter. She waits.', 'dim');
+    }
+}
+/* her counter, in her own shop: close enough to talk across it */
+function chandlerNear() {
+    if (!RT) return false;
+    if (RT.items.atShop) return true;
+    var n = NPCS.chandler;
+    if (!n || (place().npcs || []).indexOf('chandler') < 0) return false;
+    var w = RT.world.npc.chandler;                 // she wanders behind the counter, so use where she actually is
+    return Math.hypot((w ? w.x : n.x) - RT.px, (w ? w.y : n.y) - RT.py) < 2.6;
 }
 /* THE PLAY — the ballad as you currently know it. Full lines are
    allowed here because nothing is trying to kill you. */
@@ -2461,41 +2792,121 @@ function fillKit() {
         el.addEventListener('click', function () { wearCharm(el.getAttribute('data-charm')); fillKit(); sfx('ui'); RT.root.focus(); });
     });
 }
+/* WHAT YOU CARRY — things, as opposed to modifier bags */
+function fillBag() {
+    var el = RT.root.querySelector('.nn-p-bag');
+    if (!el || el.hidden) return;                     // called from useItem too
+    var b = el.querySelector('.nn-pb');
+    RT.root.querySelector('.nn-bag-coin').textContent = '◦ ' + S.coin;
+    var ids = ITEM_IDS.filter(function (id) { return hasItem(id); });
+    var html = '<p class="nn-note">Things, rather than numbers. Some of them do something when you use them. Some of them are only worth carrying because of who they belonged to.</p>';
+    if (!ids.length) html += '<p class="nn-note dim">You are carrying nothing at all. The crown does not count; you are wearing that.</p>';
+    var groups = [['use', 'USE ONCE'], ['writ', 'WRITTEN ON'], ['tool', 'TOOLS'], ['keep', 'KEPT']];
+    groups.forEach(function (g) {
+        var mine = ids.filter(function (id) { return (ITEMS[id].tag || 'keep') === g[0]; });
+        if (!mine.length) return;
+        html += '<h4>' + g[1] + '</h4>';
+        mine.forEach(function (id) {
+            var it = ITEMS[id], n = itemCount(id);
+            var label = it.writ ? 'read' : 'use';
+            var extra = '';
+            if (id === 'lamp' && lampsOut()) extra = '<em class="nn-bag-note">' + lampsOut() + ' set down elsewhere</em>';
+            if (id === 'mask' && S.items.wearing) extra = '<em class="nn-bag-note">on your face</em>';
+            html += '<div class="nn-buy"><div><b>' + esc(it.n) + (n > 1 ? ' <i class="nn-bag-x">x' + n + '</i>' : '') + '</b><i>' + esc(it.d) + '</i>' + extra + '</div>' +
+                '<span class="nn-bagbtns"><button class="nn-mini" data-use="' + id + '">' + label + '</button>' +
+                (it.sell ? '<button class="nn-mini" data-give="' + id + '">give ◦' + it.sell + '</button>' : '') + '</span></div>';
+        });
+    });
+    if (S.items.lamps[RT.place]) {
+        html += '<h4>ON A SILL HERE</h4><div class="nn-buy"><div><b>' + esc(ITEMS.lamp.n) +
+            '</b><i>You set this one down here. It is still burning.</i></div>' +
+            '<span class="nn-bagbtns"><button class="nn-mini" data-takelamp="1">take</button></span></div>';
+    }
+    var elsewhere = Object.keys(S.items.lamps).filter(function (p) { return p !== RT.place; });
+    if (elsewhere.length) {
+        html += '<h4>LAMPS YOU HAVE LEFT SOMEWHERE</h4><p class="nn-note">' +
+            elsewhere.map(function (p) { return esc((PLACES[p] && PLACES[p].n) || p); }).join(', ') +
+            '. They stay where you put them.</p>';
+    }
+    b.innerHTML = html;
+    var tl = b.querySelector('[data-takelamp]');
+    if (tl) tl.addEventListener('click', function (e) { e.stopPropagation(); takeLamp(); fillBag(); RT.root.focus(); });
+    b.querySelectorAll('[data-use]').forEach(function (x) {
+        x.addEventListener('click', function (e) { e.stopPropagation(); useItem(x.getAttribute('data-use')); fillBag(); RT.root.focus(); });
+    });
+    b.querySelectorAll('[data-give]').forEach(function (x) {
+        x.addEventListener('click', function (e) {
+            e.stopPropagation();
+            var id = x.getAttribute('data-give');
+            if (!chandlerNear()) { say('There is nobody here to give it to.', 'dim'); return; }
+            if (!takeItem(id, 1)) return;
+            coin(ITEMS[id].sell);
+            say('You hand over <b>' + esc(ITEMS[id].n) + '</b>. She does not ask where it came from.', 'good');
+            sfx('coin'); fillBag(); RT.root.focus();
+        });
+    });
+}
 /* THE CHANDLER — the economy the design doc told me to cut */
 function fillShop() {
     var b = RT.root.querySelector('.nn-p-shop .nn-pb');
     RT.root.querySelector('.nn-shop-coin').textContent = '◦ ' + S.coin;
-    var html = '<p class="nn-note">He sells wax, wick and small objects out of other people\'s attics. He does not ask what you want them for.</p>';
+    var html = '<p class="nn-note">She sells wax, wick and small objects out of other people\'s attics. She does not ask what you want them for.</p>';
+    html += '<h4>CHARMS <i>· wear two</i></h4>';
     CHARM_IDS.forEach(function (id) {
         var c = CHARMS[id], owned = !!S.charms[id];
-        if (owned && !c.sell) return;
-        html += '<div class="nn-buy"><div><b>' + esc(c.n) + '</b><i>' + esc(c.d) + '</i></div>' +
-            (owned ? '<button class="nn-mini" data-sell="' + id + '">sell ◦' + c.sell + '</button>'
+        // an owned charm with nothing to sell used to vanish from the shop
+        // permanently, which left the late-game shop as one "sell the hilt"
+        // row under an always-rendered empty WORDS header
+        html += '<div class="nn-buy' + (owned ? ' got' : '') + '"><div><b>' + esc(c.n) + '</b><i>' + esc(c.d) + '</i></div>' +
+            (owned ? (c.sell ? '<button class="nn-mini" data-sell="' + id + '">sell ◦' + c.sell + '</button>' : '<em class="nn-have">yours</em>')
                    : '<button class="nn-mini' + (S.coin < c.cost ? ' poor' : '') + '" data-buy="' + id + '">◦' + c.cost + '</button>') + '</div>';
     });
-    // every word of a family you have opened, minus the one the
-    // fragment already gave you. Nine words used to be unbuyable.
-    var forSale = [];
-    FAM_IDS.forEach(function (fid) {
-        if (!famOwned(fid)) return;
-        FAMS[fid].words.forEach(function (w) { if (!S.owned[w]) forSale.push(w); });
+    // Stock, and the word market. She does not sell words: she sells the
+    // things people wrote them on, and reading one is how you learn it.
+    html += '<h4>OFF THE COUNTER <i>· wax, wick and small objects</i></h4>';
+    var stock = ITEM_IDS.filter(function (id) { return ITEMS[id].cost && !ITEMS[id].writ; });
+    stock.forEach(function (id) {
+        var it = ITEMS[id], got = it.one && hasItem(id);   // there is only one slate
+        html += '<div class="nn-buy' + (got ? ' got' : '') + '"><div><b>' + esc(it.n) + '</b><i>' + esc(it.d) + '</i></div>' +
+            (got ? '<em class="nn-have">yours</em>'
+                 : '<button class="nn-mini' + (S.coin < it.cost ? ' poor' : '') + '" data-item="' + id + '">◦' + it.cost + '</button>') + '</div>';
     });
-    html += '<h4>WORDS <i>· he found them written on things</i></h4>';
-    forSale.forEach(function (w) {
-        if (S.owned[w] || !famOwned(WORDS[w])) return;
-        html += '<div class="nn-buy"><div><b style="color:' + FAMS[WORDS[w]].col + '">' + w.toUpperCase() + '</b><i>' + FAMS[WORDS[w]].n + ' · ' + FAMS[WORDS[w]].d + '</i></div>' +
-            '<button class="nn-mini' + (S.coin < 30 ? ' poor' : '') + '" data-word="' + w + '">◦30</button></div>';
+    var writs = ITEM_IDS.filter(function (id) {
+        var it = ITEMS[id];
+        if (!it.writ || S.owned[it.writ]) return false;
+        return famOwned(WORDS[it.writ]);              // he will not sell you a sound you cannot make
+    });
+    html += '<h4>WRITTEN ON THINGS <i>· somebody had to remember it</i></h4>';
+    if (!writs.length) html += '<p class="nn-note dim">Nothing on the counter you can read. She shrugs. Open another family and come back.</p>';
+    writs.forEach(function (id) {
+        var it = ITEMS[id], fam = FAMS[WORDS[it.writ]], got = hasItem(id);   // bought, not read yet
+        html += '<div class="nn-buy' + (got ? ' got' : '') + '"><div><b>' + esc(it.n) + ' <i class="nn-writ" style="color:' + fam.col + '">' + it.writ.toUpperCase() + '</i></b><i>' + esc(it.d) + '</i></div>' +
+            (got ? '<em class="nn-have">in your bag</em>'
+                 : '<button class="nn-mini' + (S.coin < it.cost ? ' poor' : '') + '" data-item="' + id + '">◦' + it.cost + '</button>') + '</div>';
     });
     b.innerHTML = html;
     b.querySelectorAll('[data-buy]').forEach(function (el) { el.addEventListener('click', function () { if (buyCharm(el.getAttribute('data-buy'))) { sfx('coin'); fillShop(); } }); });
     b.querySelectorAll('[data-sell]').forEach(function (el) { el.addEventListener('click', function () { if (sellCharm(el.getAttribute('data-sell'))) { sfx('coin'); fillShop(); } }); });
-    b.querySelectorAll('[data-word]').forEach(function (el) {
-        el.addEventListener('click', function () {
-            var w = el.getAttribute('data-word');
-            if (S.coin < 30) { say('Not enough coin.', 'dim'); return; }
-            S.coin -= 30; learnWord(w); sfx('coin'); fillShop();
-        });
+    b.querySelectorAll('[data-item]').forEach(function (el) {
+        el.addEventListener('click', function () { if (buyItem(el.getAttribute('data-item'))) { sfx('coin'); fillShop(); } });
     });
+}
+/* one transaction, validated before any coin moves. The word rows used to
+   read `S.coin -= 30; learnWord(w);` and learnWord returns false for an
+   unknown or already-owned word, so the cost was paid either way. */
+function buyItem(id) {
+    var it = ITEMS[id];
+    if (!it || !it.cost) return false;
+    if (S.coin < it.cost) { say('Not enough coin.', 'dim'); return false; }
+    if (it.writ && S.owned[it.writ]) { say('You already have that word.', 'dim'); return false; }
+    // a second copy would be dead weight: a writ is read once, and there is
+    // only one slate
+    if (it.writ && hasItem(id)) { say('You are already carrying that one. Read it first.', 'dim'); return false; }
+    if (it.one && hasItem(id)) { say('You have one of those already.', 'dim'); return false; }
+    if (!giveItem(id)) return false;                  // refuses before the coin moves
+    coin(-it.cost);
+    say('You take <b>' + esc(it.n) + '</b>' + (it.writ ? '. Read it when you have a moment.' : '.'), 'good');
+    return true;
 }
 
 /* ═══════════════ DEV MENU ═══════════════
@@ -2785,6 +3196,10 @@ var PLACE_IDS = Object.keys(PLACES);
    thing out loud, in plain words, for anybody who does not hear
    meter. */
 var NPCS = {
+    /* The chandler used to be a panel header, a tooltip, a comment and one
+       line of sell flavour. Job 3 gave her a shop off the square and a
+       ledger four hundred years long, so job 5 only hangs the stock on
+       her: see chandlerNear and fillShop. */
     bern: {
         n: 'Bern', x: 7.4, y: 7.2, col: ['#6a4f3a', '#8a6a4a', '#d8b48c'], hat: 1,
         talk: function () {
@@ -3958,6 +4373,7 @@ function devDemo() {
         S = null; sLoad();
     }
     if (q.nfrag) for (var i = 1; i <= +q.nfrag; i++) grantFragment(i);
+    if (q.nitems) { ITEM_IDS.forEach(function (it) { giveItem(it); }); S.coin = Math.max(S.coin, +q.nitems || 250); sSave(); }
     if (PLACES[id]) gotoPlace(id, true);
     if (q.nat) { var xy = q.nat.split(','); RT.px = +xy[0]; RT.py = +xy[1]; RT.armed = false; unstick(); }
     if (q.ndevtab) RT.devTab = q.ndevtab.toUpperCase();   // which dev tab nkey=` should land on
@@ -3978,6 +4394,8 @@ function devDemo() {
         draw();
     });
     if (q.nmap) RT.mapOpen = true;
+    // the shop is gated on standing at the chandler; a capture has no legs
+    if (q.npanel === 'shop') RT.items.atShop = true;
     if (q.npanel) panel(q.npanel);
     draw();
     window.__nnReady = true;
@@ -3999,5 +4417,18 @@ function close() {
     return hrs;
 }
 combatBoot();          // job 4: keybind + travel reset, once every var above exists
+/* ─────────────── job 5 registrations ───────────────
+   Down here because bindKey and onPlaceChange write into KEYS and
+   RESETS, and those are plain `var`s that are still undefined higher up
+   the file. Registering next to ITEMS threw on load. */
+bindKey('i', function () { panel('bag'); });
+/* Soft wax goes cold in a doorway and the counter is behind you. The pitch
+   stays on your palm until something tries to strip a stack, and the mask
+   stays on your face: it lives on the save, not the runtime. */
+onPlaceChange(function () {
+    if (!RT) return;
+    RT.items.freeSlant = 0; RT.items.atShop = false;   // the wax and the shop do not follow you; the mask does
+});
+
 window.NINTH = { render: render, init: init, close: close, steamAch: steamAch };
 })();
