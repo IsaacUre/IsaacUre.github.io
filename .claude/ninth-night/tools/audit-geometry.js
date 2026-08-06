@@ -36,7 +36,7 @@ function grab(name) {
     /* the literals are plain data plus function-valued talk() fields, so
        evaluating them standalone is safe enough and far more honest than
        a regex. S and sSave are stubbed for the talk bodies. */
-    var S = { heard: {}, seen: {}, frags: {} };
+    var S = { heard: {}, seen: {}, frags: {}, a3: {} };
     var sSave = function () {};
     return eval('(' + src.slice(start, j + 1) + ')');   // eslint-disable-line no-eval
 }

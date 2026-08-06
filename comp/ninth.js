@@ -24,6 +24,14 @@
 (function () {
 'use strict';
 
+/* Anything that must not survive a doorway registers a callback here,
+   next to its own code, instead of editing gotoPlace's reset block.
+   Declared first: registrations run at module scope all through this
+   file, and a `var RESETS = []` further down would either throw on the
+   push or quietly throw the registrations away. */
+var RESETS = [];
+function onPlaceChange(fn) { RESETS.push(fn); }
+
 function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 var clamp = function (v, a, b) { return v < a ? a : v > b ? b : v; };
 var lerp = function (a, b, t) { return a + (b - a) * t; };
@@ -493,7 +501,9 @@ function coin(n, x, y) {
     sSave();   // every other coin source used to ride on foeDie saving right after
 }
 function buyCharm(id) {
-    var c = CHARMS[id]; if (!c || S.charms[id]) return false;
+    // `own` means given, not sold. The crown costs 0, and the silence
+    // ending takes it away: without this you buy it straight back.
+    var c = CHARMS[id]; if (!c || S.charms[id] || c.own) return false;
     if (S.coin < c.cost) { say('Not enough coin.', 'dim'); return false; }
     S.coin -= c.cost; S.charms[id] = 1; sSave();
     say('You pocket <b>' + esc(c.n) + '</b>.', 'good');
@@ -788,14 +798,21 @@ var DEV = [
       rows.push({ k: 'btn', t: 'Run the performance from the top', on: function () { toggleDev(); delete S.a3.ending; sSave(); gotoPlace('a3sq', true); } });
       rows.push({ k: 'btn', t: 'Jump to the last cue', on: function () {
           toggleDev(); delete S.a3.ending; sSave(); gotoPlace('a3sq', true);
-          RT.beats = []; RT.story = { cue: 0, holding: 0, tries: 0, waitT: 0, done: 0, sawCall: 0 };
+          RT.beats = []; RT.story = { cue: 0, holding: 0, tries: 0, waitT: 0, done: 0, sawCall: 0, sawAnswer: 0,
+                                      callMark: RT.nCalls, answerMark: RT.nAnswers };
           a3Crowd(); a3Mark(); a3CueLast(); a3Watch();
       } });
       ['written', 'true', 'silence'].forEach(function (e) {
           rows.push({ k: 'btn', t: 'Force ending: ' + e, on: function () {
+              // unconditional reset. Pressed while an ending was already
+              // running, the old version left the first ending's beats
+              // queued and ran two credit rolls over each other.
               toggleDev();
-              if (RT.place !== 'a3sq') { delete S.a3.ending; gotoPlace('a3sq', true); RT.beats = []; a3Crowd(); a3Mark(); }
-              RT.story = { cue: 3, holding: 0, tries: 0, waitT: 0, done: 0, sawCall: 0 };
+              delete S.a3.ending; sSave();
+              gotoPlace('a3sq', true);
+              RT.beats = []; a3Crowd(); a3Mark();
+              RT.story = { cue: 3, holding: 0, tries: 0, waitT: 0, done: 0, sawCall: 0, sawAnswer: 0,
+                           callMark: RT.nCalls, answerMark: RT.nAnswers };
               a3End(e);
           } });
       });
@@ -1205,7 +1222,7 @@ function init(el) {
         stanzaCd: [0, 0, 0], casting: null, recital: null, verseCast: 0,
         toasts: [], panel: null, devTab: 'WORLD', devOpen: false,
         nCalls: 0, nAnswers: 0,          // monotonic: a beat cannot observe RT.calls, see stepScene order
-        story: { cue: 0, holding: 0, tries: 0, waitT: 0, done: 0 },
+        story: { cue: 0, holding: 0, tries: 0, waitT: 0, done: 0, sawCall: 0, sawAnswer: 0, callMark: 0, answerMark: 0 },
         god: 0, infBreath: 0, holdStacks: 0, oneShot: 0,
         dbgStacks: 0, dbgAI: 0, dbgHit: 0, dbgPerf: 0,
         fps: 0, _fc: 0, _ft: 0, ac: null, tookHit: false,
@@ -1602,7 +1619,7 @@ function doAnswer() {
     RT.casting = { t: 0.22, max: 0.22 };
     var fam = answerFam(), word = S.answer.toUpperCase();
     RT.lastWord = word; RT.lastFam = fam;          // the Reprise says the last thing you said
-    var live = RT.foes.filter(function (f) { return !f.dead && f.stacks.length; });
+    var live = RT.foes.filter(function (f) { return !f.dead && f.stacks.length && !heldOpen(f); });
     var totalMatched = 0, hitFoes = 0, best = 0, anySlant = false;
 
     live.forEach(function (f) {
@@ -1694,9 +1711,10 @@ function stepReprise(dt) {
     typo(RT.px, RT.py + 0.4, r.word, FAMS[r.fam].col, 0.6, 15, 'pop');
     if (r.n <= 0) RT.combat.rep = null;
 }
-/* Registered from combatBoot() at the foot of the file, not here: KEYS and
-   RESETS are `var`s declared further down, so a module-scope call up here
-   runs before they exist and takes the whole script out with it. */
+/* Registered from combatBoot() at the foot of the file, not here: KEYS is a
+   `var` declared further down, so a module-scope call up here runs before it
+   exists and takes the whole script out with it. RESETS has since been
+   hoisted to the top for the same reason; KEYS has not. */
 function combatBoot() {
     bindKey('g', doReprise);
     // a doorway ends the reprise and clears the cut-off lines with it, rather
@@ -1854,8 +1872,6 @@ function doVerse() {
         return;
     }
     RT.verseCast = 1;
-    if (RT.place === 'a3sq') S.a3.verseSpent = 1;
-    sSave();
     RT.dilate = 6; RT.mono = 8.4;             // mono now runs the length of the recital
     var i = 0;
     BALLAD.forEach(function (st, k) {
@@ -1881,6 +1897,12 @@ function doVerse() {
     RT.timers.push(setTimeout(function () {
         if (!RT) return;
         RT.verseCast = 0;
+        // spent when it finishes, not when the key goes down. These are
+        // setTimeouts: close() kills them and a reload never had them, so
+        // committing the flag on the keypress burned the one-shot and
+        // skipped everything it pays for. Not keyed on place either, or
+        // the Verse is repeatable forever anywhere else.
+        S.a3.verseSpent = 1; sSave();
         if (RT.place === 'a3sq') { ach('verse'); a3Hal(); }
         else say('The ballad closes. Every rhyme lands.', 'good');
     }, i * 260 + 1200));
@@ -1954,8 +1976,18 @@ function stepFoes(dt) {
         f.spawn = Math.max(0, f.spawn - dt); f.anim += dt;
         f.revealed = Math.max(0, f.revealed - dt);
         f.silence = Math.max(0, f.silence - dt);
-        if (f.def.folk) { alive++; continue; }   // they sit. That is the whole of their AI.
+        // frozen decays above the folk skip: an -ill answer lands on all
+        // twenty five of them at once, and if it never ticked down the
+        // whole square would stay under the ice tint for the rest of the
+        // ending. A second and a half of the town going still is the point.
         f.frozen = Math.max(0, f.frozen - dt);
+        if (f.def.folk) {
+            alive++;
+            // they sit. That is the whole of their AI, except for the one
+            // man at the back, who at the end of it stands up and walks.
+            if (f.walk) f.y -= Math.min(f.y - f.walkTo, dt * 1.0);
+            continue;
+        }
         if (f.dead) { RT.foes.splice(i, 1); continue; }
         alive++;
         if (f.burn) {                                  // -eat and -ark leave something cooking
@@ -3594,6 +3626,10 @@ function fillShop() {
     html += '<h4>CHARMS <i>· wear two</i></h4>';
     CHARM_IDS.forEach(function (id) {
         var c = CHARMS[id], owned = !!S.charms[id];
+        // `own` means given, not sold. It stays on the list while it is yours
+        // and goes off it the moment it is not: the only thing that takes one
+        // away is the silence ending, and she does not sell that back at ◦0.
+        if (c.own && !owned) return;
         // an owned charm with nothing to sell used to vanish from the shop
         // permanently, which left the late-game shop as one "sell the hilt"
         // row under an always-rendered empty WORDS header
@@ -4132,7 +4168,6 @@ var SCRIPTS = {
         beat(13.4, function () { gotoPlace('square', true); });
     },
     wick: function () {
-        a3After();
         say('<b>Wick.</b> They are building the stage in the square. You have been given the crown and the lantern.', 'big');
         beat(3.4, function () { say('Talk to people. Look at things. Nothing here wants to hurt you.', 'dim'); });
         beat(6.4, function () { say('When you are ready, the lane runs north to the mill.', 'dim'); });
@@ -4172,8 +4207,31 @@ var A3_ROWS = [[5.4, 6.4], [7.0, 6.9], [8.6, 6.4], [10.2, 6.9], [11.8, 6.4],
                [4.4, 12.0], [6.2, 12.4], [8.0, 12.0], [9.8, 12.4], [11.6, 12.0], [13.2, 12.4],
                [7.2, 13.6], [9.4, 13.6]];
 
+/* Leaving the act by any route has to unfreeze stack decay, or nothing
+   in the game ever goes sour again for the rest of the session. a3Mark
+   sets it again on arrival. */
+onPlaceChange(function () { RT.holdStacks = 0; unpin(); });
+
+/* The world after the true ending is module state, not saved state, so it
+   has to be re-applied on every load. Registered rather than called from
+   one script, because the old version only ran on arrival in the square:
+   reload anywhere else and Hal was back at the fence. */
+onPlaceChange(a3After);
+
 function a3Folk() { return RT.foes.filter(function (f) { return !f.dead && f.def.folk; }); }
 function a3Open() { return a3Folk().reduce(function (a, f) { return a + f.stacks.length; }, 0); }
+
+/* Four hundred years of open line, and doAnswer would strip all of it on
+   any click from the moment the crowd is marked. The line is not
+   answerable until the play has actually asked for it: before the last
+   cue is holding, an Answer goes out over their heads and finds nothing.
+   Without this, one early click empties the square, the last cue reads
+   zero open lines the frame it lands, and the game hands out its own
+   biggest ending for an input made two cues earlier. */
+function heldOpen(f) {
+    if (!f.def.folk) return false;
+    return !(RT.story && RT.story.holding && RT.story.cue >= 3);
+}
 
 /* the crowd, and the one man standing outside the lamps at the back */
 function a3Crowd() {
@@ -4205,16 +4263,18 @@ function a3Cue(lines, blank, then) {
         bigLine(blank, '', '#e8e2ee', 999, 1);
         RT.story.holding = 1;
         RT.story.sawCall = 0;
+        RT.story.sawAnswer = 0;
         RT.story.waitT = 0;
         RT.story.lastT = null;
         RT.story.callMark = RT.nCalls;
+        RT.story.answerMark = RT.nAnswers;
         if (then) then();
     });
 }
 
 function a3Start() {
-    if (S.a3.ending) { a3After(); return; }
-    RT.story = { cue: 0, holding: 0, tries: 0, waitT: 0, done: 0, sawCall: 0 };
+    if (S.a3.ending) { a3Resume(); return; }
+    RT.story = { cue: 0, holding: 0, tries: 0, waitT: 0, done: 0, sawCall: 0, sawAnswer: 0 };
     RT.px = 8.6; RT.py = 5.4;
     bigLine('the ninth night', 'THE FOUR HUNDREDTH', '#c9a94a', 3.2);
     beat(3.4, function () { a3Say('Every sill in the square has a lamp on it. They light them before the play, not after, so the man has something to come back to.'); });
@@ -4227,6 +4287,27 @@ function a3Start() {
     beat(14.0, function () { a3Say('Nothing has ever answered it.', 'big'); });
     beat(17.5, function () { say('<b>Bern:</b> Emberwright. You are on.', 'big'); });
     beat(20.0, function () { a3CueOne(); a3Watch(); });
+}
+
+/* You can arrive here with the night already behind you: a reload while
+   the credits were still rolling, a dev jump, an old save whose S.place
+   is a3sq. a3sq has no exits, so anything that returns without putting
+   the player somewhere is a permanent softlock that survives a reload.
+   Nobody gets left standing in an empty square. */
+function a3Resume() {
+    RT.story = { cue: 3, holding: 0, tries: 0, waitT: 0, done: 2, sawCall: 0, sawAnswer: 0,
+                 callMark: RT.nCalls, answerMark: RT.nAnswers };
+    if (S.a3.ending === 'true' && S.verse && !S.a3.verseSpent) {
+        // the couplet is closed and the Verse has not been sung yet. Put
+        // the square back the way they left it and wait for R again.
+        RT.px = 8.6; RT.py = 5.4;
+        a3Crowd();
+        beat(0.8, function () { a3Say('Nothing has moved. The curtain is still halfway down.'); });
+        beat(3.2, function () { updateHud(0); hudNudge('verse'); say('<i>R</i>', 'big'); });
+        return;
+    }
+    beat(0.8, function () { a3Say('The stage is down to the boards. Whatever happened up here has happened.'); });
+    beat(3.2, function () { a3Home(); });
 }
 
 function a3CueOne() {
@@ -4266,6 +4347,7 @@ function a3Watch() {
     // row lives about five frames before it lands, and a 10Hz poll misses it
     if (st.holding) {
         if (RT.nCalls > st.callMark) st.sawCall = 1;
+        if (RT.nAnswers > st.answerMark) st.sawAnswer = 1;
         if (st.cue < 3) {
             if (st.sawCall) {
                 st.sawCall = 0; st.callMark = RT.nCalls;
@@ -4273,16 +4355,23 @@ function a3Watch() {
                 beat(4.0, st.cue === 1 ? a3CueTwo : a3CueLast);
             }
         } else {
-            if (st.sawCall) { st.sawCall = 0; a3End('written'); }
-            else if (a3Open() === 0) { a3Answered(); }
+            // an Answer, not the absence of open lines. a3Open() is state,
+            // and state can reach zero for reasons that were not a choice
+            // the player made at this cue. The Answer is checked first: in
+            // WASD mode holding left mouse calls every frame, and somebody
+            // who right-clicks at the last cue meant to answer it.
+            if (st.sawAnswer) { st.sawAnswer = 0; st.answerMark = RT.nAnswers; a3Answered(); }
+            else if (st.sawCall) { st.sawCall = 0; a3End('written'); }
             else {
-                // the clock only runs once you could afford to speak, so
-                // being winded can never pick the ending for you
-                // dt-correct, so the wait is the same at 60Hz and 144Hz, and
-                // the clock only runs once you could afford to speak
+                // dt-correct, so the wait is the same at 60Hz and 144Hz. It
+                // only runs while the player could actually have answered:
+                // a3Answered tells them to go and re-slot the word, and
+                // reading the panel that does it is not a decision to say
+                // nothing. Being winded is not one either.
                 var el = RT.t - (st.lastT == null ? RT.t : st.lastT);
                 st.lastT = RT.t;
-                if (RT.breath >= T('answerCost')) st.waitT += el;
+                var mute = RT.devOpen || RT.dialog || RT.mapOpen || RT.panel || RT.winded > 0;
+                if (!mute && RT.breath >= T('answerCost')) st.waitT += el;
                 if (st.waitT > 4.5 && !st.n1) { st.n1 = 1; say('<b>Bern:</b> <i>(from the wings)</i> and ______', 'dim'); }
                 if (st.waitT > 9.0 && !st.n2) { st.n2 = 1; say('<b>Bern:</b> Say the line, lad.', 'dim'); }
                 if (st.waitT > 14.0) { a3End('silence'); return; }
@@ -4292,9 +4381,8 @@ function a3Watch() {
     beat(0, a3Watch);
 }
 
-/* every stack in the square went to zero. Only doAnswer can do that.
-   answerFam() has not changed since the click, so it tells closed from
-   slant without hooking anything. */
+/* they answered the last cue. answerFam() has not changed since the
+   click, so it tells closed from slant without hooking anything. */
 function a3Answered() {
     var st = RT.story;
     if (answerFam() === 'ill') { a3End('true'); return; }
@@ -4302,7 +4390,10 @@ function a3Answered() {
     slam(S.answer.toUpperCase(), '#6a5f72', 'slant');
     beat(0.9, function () {
         a3Mark();
-        st.holding = 1; st.waitT = 0; st.sawCall = 0; st.callMark = RT.nCalls; st.lastT = null;
+        st.holding = 1; st.waitT = 0; st.lastT = null;
+        st.sawCall = 0; st.callMark = RT.nCalls;
+        st.sawAnswer = 0; st.answerMark = RT.nAnswers;
+        st.n1 = 0; st.n2 = 0;      // Bern nags again, or the silence arrives with no warning at all
         if (st.tries === 1) say('<b>Bern:</b> <i>(from the wings)</i> Wrong sound. It has to be the sound of the line before it.', 'dim');
         else if (st.tries === 2) say('<b>Bern:</b> Sill. Still. <i>Will.</i>', 'dim');
         else {
@@ -4321,7 +4412,10 @@ function a3Hal() {
     var hal = RT.foes.filter(function (f) { return f.isHal && !f.dead; })[0];
     beat(1.6, function () { a3Say('Everybody in the square is standing except one man at the back, outside the lamps.'); });
     beat(5.0, function () {
-        if (hal) { hal.seat = 0; hal.walk = 1; }
+        // stepFoes moves him, one tile a second, from the back of the
+        // square to the footlights. Seven and a half seconds, which lands
+        // him at the front on "Jill." It takes him a while.
+        if (hal) { hal.seat = 0; hal.walk = 1; hal.walkTo = 6.6; }
         a3Say('Then he stands, and he is the last one, and he comes up the square to the front of the stage. It takes him a while.');
     });
     beat(9.5, function () { a3Say('Four letters come out. The air does not take them.'); });
@@ -4530,13 +4624,6 @@ function stepScene(dt) {
 }
 function beat(after, fn) { RT.beats.push({ t: after, fn: fn }); }
 
-/* Anything that must not survive a doorway registers a callback here,
-   next to its own code, instead of editing gotoPlace's reset block.
-   Five people adding features to one file all want that block; this is
-   how they get it without touching the same nine lines. */
-var RESETS = [];
-function onPlaceChange(fn) { RESETS.push(fn); }
-
 /* ═══════════════ WORLD SYSTEMS ═══════════════
    Travel, solid things, people you can walk up to, and the rule
    that draws hearsay: speaking. */
@@ -4581,7 +4668,7 @@ function stepTravel() {
     if (!e) { RT.armed = true; RT.nagged = null; return; }
     if (!RT.armed) return;
     if (exitOpen(e)) { gotoPlace(e.to, false); return; }
-    if (RT.nagged !== e.n) { RT.nagged = e.n; say(e.shut || 'Not yet.', 'dim'); hudNudge('breath'); }
+    if (RT.nagged !== e.n) { RT.nagged = e.n; say(shutText(e), 'dim'); hudNudge('breath'); }
 }
 /* never wake up inside a wall */
 function unstick() {
@@ -4602,6 +4689,9 @@ function lookKey(l) { return RT.place + ':' + l.n; }
      needs: function (S) { ... }      anything at all
    The dev flag still opens everything. */
 function exitOpen(e) {
+    // `over` shuts a door for good once the night has happened. openAll
+    // does not lift it: there is nothing on the other side any more.
+    if (e.over && S.a3.ending) return false;
     if (!e.needs) return true;
     if (S.seen.openAll) return true;
     return testNeed(e.needs);
@@ -4612,6 +4702,9 @@ function testNeed(n) {
     if (Array.isArray(n)) return n.every(testNeed);
     return !!S.seen[n];
 }
+/* a shut line is allowed to be a function, because one door refuses you
+   for two different reasons at two different points in the story */
+function shutText(e) { return (typeof e.shut === 'function' ? e.shut() : e.shut) || 'Not yet.'; }
 function gotoPlace(id, fresh) {
     if (!PLACES[id]) id = 'square';
     var prev = RT.place;
@@ -4624,7 +4717,7 @@ function gotoPlace(id, fresh) {
     RT.beats = []; RT.typo.length = 0; RT.slams.length = 0; RT.lines.length = 0;
     RT.dialog = null; RT.pressure = 0; RT.cleared = false;
     RT.wave = 0; RT.tookHit = false;                       // per place, not per session
-    RT.verseCast = 0; RT.recital = null; RT.dilate = 0; RT.timeScale = 1;
+    RT.verseCast = 0; RT.recital = null; RT.dilate = 0; RT.mono = 0; RT.timeScale = 1;
     RT.timers.forEach(function (t) { clearTimeout(t); }); RT.timers.length = 0;
     // those timers were what faded the narration out. Clear the log with them,
     // and shut the dialogue panel the nulled RT.dialog used to own.
@@ -4719,7 +4812,9 @@ function interactables() {
         out.push({ k: 'look', i: i, x: l.x, y: l.y, label: 'look at ' + l.n, l: l });
     });
     (p.exits || []).forEach(function (e) {
-        out.push({ k: 'exit', x: e.x, y: e.y, label: exitOpen(e) ? 'go to ' + e.n : 'not yet', e: e, shut: !exitOpen(e) });
+        var open = exitOpen(e);
+        out.push({ k: 'exit', x: e.x, y: e.y, e: e, shut: !open,
+                   label: open ? 'go to ' + e.n : (e.over && S.a3.ending ? 'over' : 'not yet') });
     });
     return out;
 }
@@ -4744,7 +4839,7 @@ function doInteract() {
         openDialog([['', o.l.d]], o.l.n, o.l.key);   // silently rewrite which ones you had read
     }
     else if (o.k === 'exit') {
-        if (o.shut) { say(o.e.shut || 'Not that way. Not yet.', 'dim'); return; }
+        if (o.shut) { say(shutText(o.e), 'dim'); return; }
         gotoPlace(o.e.to, false);
     }
 }
@@ -5443,10 +5538,19 @@ function devDemo() {
     });
     if (q.na3) {                       // na3=crowd|cue|verse|written|true|silence
         RT.beats = [];
-        RT.story = { cue: 0, holding: 0, tries: 0, waitT: 0, done: 0, sawCall: 0 };
+        RT.story = { cue: 0, holding: 0, tries: 0, waitT: 0, done: 0, sawCall: 0, sawAnswer: 0,
+                     callMark: RT.nCalls, answerMark: RT.nAnswers };
         a3Crowd(); a3Mark();
-        if (q.na3 === 'cue') { a3CueLast(); }
+        if (q.na3 === 'cue') { a3CueLast(); a3Watch(); }   // the watcher too, or no ending can fire
         else if (q.na3 === 'verse') { S.verse = 1; RT.story.cue = 3; a3End('true'); for (var v = 0; v < 400; v++) step(1 / 60); doVerse(); }
+        else if (q.na3 === 'hal') {
+            // the far side of the Verse, without waiting on its timers: the
+            // town on its feet and the last man walking up to the front.
+            S.verse = 1; RT.story.cue = 3; a3End('true');
+            for (var w3 = 0; w3 < 400; w3++) step(1 / 60);
+            RT.foes.forEach(function (f) { if (f.def.folk && !f.isHal) f.seat = 0; });
+            a3Hal();
+        }
         else if (q.na3 !== 'crowd') { RT.story.cue = 3; a3End(q.na3); }
         for (var b3 = 0; b3 < (+q.na3fr || 90); b3++) { step(1 / 60); draw(1 / 60); }
     }
