@@ -611,13 +611,13 @@ function genWorld(seed) {
 /* a spawn you can actually stand in: solid footing with a clear body-height column above it, dry
    and tree-free. Sky islands and trees generate over the world centre, so the naive
    "3 tiles above surf[middle]" could bury the player in dirt — and respawn returns there forever. */
-function findSpawn(w, lq, surf) {
-    var mid = Math.floor(W / 2);
+function findSpawn(w, lq, surf, originX) {
+    var mid = (originX == null) ? Math.floor(W / 2) : clamp(originX, 6, W - 7);
     for (var d = 0; d < 90; d++) {
         for (var s = 0; s < 2; s++) {
             var x = mid + (s ? -d : d);
             if (x < 6 || x > W - 7) continue;
-            var from = Math.max(3, Math.round(surf[x]) - 10);
+            var from = Math.max(3, Math.round(surf && surf[x] != null ? surf[x] : 3) - 10);
             for (var y = from; y < HELL - 2; y++) {
                 if (!SOLID[w[y * W + x]]) continue;                      // find the first floor
                 var head = y - 3, clear = true;
@@ -631,7 +631,7 @@ function findSpawn(w, lq, surf) {
             }
         }
     }
-    return { x: mid, y: Math.max(3, Math.round(surf[mid]) - 3) };
+    return { x: mid, y: Math.max(3, Math.round(surf && surf[mid] != null ? surf[mid] : 40) - 3) };
 }
 
 /* chest loot tables, rolled lazily on first open (so a fresh look is deterministic per chest index) */
@@ -1363,7 +1363,7 @@ function spawnTick() {
     var pinky = kind === 'slime' && Math.random() < 0.012;
     var green = kind === 'slime' && depth < 70 && Math.random() < 0.3;
     RT.foes.push({
-        kind: kind, x: tx * TS, y: ty * TS, vx: 0, vy: 0,
+        kind: kind, x: tx * TS, y: ty * TS - 10, vx: 0, vy: 0,   // above the floor: they fall onto it
         hp: kind === 'zombie' ? 45 : kind === 'eye' ? 60 : kind === 'skeleton' ? 55 : kind === 'bat' ? 22 : kind === 'hornet' ? 40 : pinky ? 150 : green ? 25 : 16,
         dmg: kind === 'zombie' ? 14 : kind === 'eye' ? 18 : kind === 'skeleton' ? 20 : kind === 'bat' ? 12 : kind === 'hornet' ? 16 : 7,
         pinky: pinky, green: green, t: (Math.random() * 60) | 0, hurtT: 0
@@ -1379,7 +1379,7 @@ function foeStep(f) {
         f.y += f.vy; if (SOLID[tileAt(f.x + 4, f.y)] || SOLID[tileAt(f.x + 4, f.y + 8)]) { f.y -= f.vy; f.vy = 0; }
     } else if (f.kind === 'zombie' || f.kind === 'skeleton') {
         f.vy = Math.min(f.vy + 0.17, 5);
-        var onG = SOLID[tileAt(f.x + 4, f.y + 17)];
+        var onG = SOLID[tileAt(f.x + 4, f.y + 18)];   // see stepNPCs: resting hovers a hair above the tile
         if (onG) { f.vy = 0; f.vx = toward * (f.kind === 'skeleton' ? 0.7 : 0.55); }
         if (onG && SOLID[tileAt(f.x + 4 + toward * 6, f.y + 12)]) f.vy = -3.3;
         f.x += f.vx; if (SOLID[tileAt(f.x + 4, f.y + 2)] || SOLID[tileAt(f.x + 4, f.y + 15)]) f.x -= f.vx;
@@ -1533,8 +1533,11 @@ function releaseGrapple() { RT.grapple = null; }
 /* ─────────────── NPCs ─────────────── */
 function spawnNPC(kind) {
     if (RT.npcs.some(function (n) { return n.kind === kind; })) return;
-    var x = S.spawnx + (kind === 'guide' ? -40 : kind === 'merchant' ? 40 : 80);
-    RT.npcs.push({ kind: kind, x: x, y: S.spawny, vx: 0, vy: 0, face: 1, t: 0, wander: 0 });
+    // stand them on real footing: dropped blind beside the spawn they could land inside a hillside,
+    // where both walk probes read solid and the NPC never moves again
+    var want = Math.floor((S.spawnx + (kind === 'guide' ? -40 : kind === 'merchant' ? 40 : 80)) / TS);
+    var sp = findSpawn(RT.w, RT.lq, RT.surf || [], want);
+    RT.npcs.push({ kind: kind, x: sp.x * TS, y: sp.y * TS, vx: 0, vy: 0, face: 1, t: 0, wander: 0 });
 }
 function stepNPCs() {
     // merchant moves in at ≥ 50 silver (5000 copper); nurse at first heart crystal
@@ -1544,12 +1547,16 @@ function stepNPCs() {
         n.t++;
         n.vy = Math.min(n.vy + 0.17, 5);
         if (n.wander <= 0 && n.t % 120 === 0) { n.wander = 60 + (Math.random() * 90 | 0); n.face = Math.random() < 0.5 ? -1 : 1; }
-        var onG = SOLID[tileAt(n.x + 4, n.y + 17)];
-        if (n.wander > 0 && onG) { n.wander--; n.vx = n.face * 0.4; if (SOLID[tileAt(n.x + 4 + n.face * 6, n.y + 12)]) n.vx = 0; }
+        var onG = SOLID[tileAt(n.x + 4, n.y + 18)];   // tolerance: resting leaves the feet a hair above the tile
+        // walking into a wall used to burn the whole wander timer standing still — turn around instead
+        if (n.wander > 0 && onG) { n.wander--; n.vx = n.face * 0.4; if (SOLID[tileAt(n.x + 4 + n.face * 6, n.y + 12)]) { n.vx = 0; n.face = -n.face; } }
         else n.vx *= 0.7;
         if (onG) n.vy = 0;
         n.x += n.vx; if (SOLID[tileAt(n.x + 4, n.y + 15)]) n.x -= n.vx;
-        n.y += n.vy; if (SOLID[tileAt(n.x + 4, n.y + 17)]) { n.y -= n.vy; n.vy = 0; }
+        // snap to the surface instead of reverting the whole move: a fast fall could otherwise
+        // leave several pixels of gap, so the ground probe never read solid and the NPC froze
+        n.y += n.vy;
+        if (SOLID[tileAt(n.x + 4, n.y + 17)]) { var ng = 0; while (SOLID[tileAt(n.x + 4, n.y + 17)] && ng++ < 24) n.y -= 0.5; n.vy = 0; }
         // stay near home
         if (Math.abs(n.x - S.spawnx) > 200) { n.face = n.x > S.spawnx ? -1 : 1; n.wander = 40; }
     });
