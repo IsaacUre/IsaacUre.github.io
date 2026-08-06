@@ -2472,8 +2472,12 @@ webPage('google.com/search', {
             t.addEventListener('click', function () { if (!t.classList.contains('on')) toast(t.textContent + ' results: also pixels, but sideways.'); });
         });
         if (!query || !query.trim()) return;                          // empty SERP: render() already left no spinners
-        function fill(id, html) { if (!view.isConnected) return; var el = view.querySelector('#' + id); if (el) el.innerHTML = html; }
-        function addAns(html) { if (!html || !view.isConnected) return; var el = view.querySelector('#crSerpAns'); if (el) el.innerHTML += html; }
+        /* re-mark for Alt+F after each section lands: the sections arrive long
+           after the page does, and a find bar opened in between would otherwise
+           never see them (liveFill does this for whole-page loads already) */
+        function refind() { if (find.appId === 'chrome' && findOpenNow()) runFind(); }
+        function fill(id, html) { if (!view.isConnected) return; var el = view.querySelector('#' + id); if (el) { el.innerHTML = html; refind(); } }
+        function addAns(html) { if (!html || !view.isConnected) return; var el = view.querySelector('#crSerpAns'); if (el) { el.innerHTML += html; refind(); } }
 
         /* read the query's shape first; only the packs that fit get to fetch */
         var intent = serpIntent(query);
