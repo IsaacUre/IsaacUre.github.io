@@ -1,0 +1,253 @@
+<!doctype html><meta charset="utf-8"><title>combat checks running</title>
+<style>body{background:#14121a;color:#e6e1f0;font:12px/1.5 monospace;margin:0;padding:10px}
+pre{white-space:pre-wrap}iframe{position:fixed;left:-3000px;width:1200px;height:760px;border:0}</style>
+<pre id="out">booting</pre>
+<iframe id="f" src="/comp/?dev=ninth&nwipe=1&ndev=mill&nfr=2"></iframe>
+<script>
+/* COMBAT CHECKS — NINTH NIGHT, job 4.
+   One assertion per finding from the adversarial review, each running the
+   finding's own reproduction against the real game rather than an extracted
+   copy of the function. Deterministic: steps the sim by hand at a fixed dt,
+   because rAF never runs headless on this project.
+
+   Usage: headless chrome --dump-dom "http://localhost:PORT/.claude/ninth-night/tools/combat-checks.html"
+   then read the <pre>.                                                     */
+var OUT = [], PASS = 0, FAIL = 0;
+function log(s) { OUT.push(s); document.getElementById('out').textContent = OUT.join('\n'); }
+function ok(name, cond, detail) {
+    if (cond) { PASS++; log('PASS  ' + name + (detail ? '   ' + detail : '')); }
+    else { FAIL++; log('FAIL  ' + name + (detail ? '   ' + detail : '')); }
+}
+var tries = 0;
+function ready() { try { var W = frames[0]; return W.__ninth && W.__ninth.RT(); } catch (e) { return false; } }
+function wait() { tries++; if (ready()) { setTimeout(run, 60); return; }
+    if (tries > 600) { log('FAIL: game never came up'); document.title = 'CHECKS FAIL'; return; }
+    setTimeout(wait, 40); }
+wait();
+
+var DT = 1 / 60;
+function run() {
+    var W = frames[0], N = W.__ninth, S = N.S();
+    var errs = [];
+    W.console.error = (function (o) { return function () { errs.push([].slice.call(arguments).join(' ')); o.apply(W.console, arguments); }; })(W.console.error);
+    W.onerror = function (m) { errs.push('onerror ' + m); };
+
+    function clean() {
+        var rt = N.RT();
+        rt.foes.length = 0; rt.fproj.length = 0; rt.calls.length = 0;
+        rt.god = 0; rt.infBreath = 0; rt.holdStacks = 0; rt.oneShot = 0;
+        rt.hp = rt.hpm; rt.breath = 999; rt.winded = 0; rt.echo = 0; rt.dead = false;
+        rt.combat.rep = null; rt.combat.cuts.length = 0;
+        return rt;
+    }
+
+    /* ── 1. HIGH: a body carrying both specials used to deadlock on f.sp ── */
+    (function () {
+        var rt = clean();
+        var f = N.spawn('thief', rt.px, rt.py - 4, 'droning');
+        var v = N.spawn('mouth', rt.px + 1, rt.py - 4);
+        var steals = 0, drones = 0, rooted = 0, frames = 60 * 30;
+        for (var i = 0; i < frames; i++) {
+            if (!v.stacks.length) v.stacks.push({ fam: 'eat', t: 99, max: 99 });   // keep a pool to steal from
+            v.hp = v.hpm; f.hp = f.hpm; rt.hp = rt.hpm;                            // isolate: nobody dies
+            var s0 = f.stealT, d0 = f.droneT;
+            N.tick(1, DT);
+            if (f.stealT > s0 + 0.5) steals++;         // the timer reset means the special fired
+            if (f.droneT > d0 + 0.5) drones++;
+            if (f.sp) rooted++;
+        }
+        ok('dual-special elite is not deadlocked', steals > 0 && drones > 0 && rooted < frames * 0.9,
+            'steals=' + steals + ' drones=' + drones + ' rooted=' + rooted + '/' + frames +
+            ' stealT=' + f.stealT.toFixed(1) + ' droneT=' + f.droneT.toFixed(1));
+    })();
+
+    /* ── 2. MED: a foe killed by its own burn used to finish its special ── */
+    (function () {
+        var rt = clean();
+        var f = N.spawn('thief', rt.px, rt.py - 4);
+        var v = N.spawn('mouth', rt.px + 1, rt.py - 4);
+        v.stacks.push({ fam: 'eat', t: 99, max: 99 });
+        f.sp = 'steal'; f.wind = DT * 0.5; f.windMax = 0.8;          // one frame from firing
+        f.burn = { dps: 9999, t: 5, tick: 0 };                        // and about to die to its own DoT
+        N.tick(1, DT);
+        ok('a corpse does not complete its steal', f.dead && v.stacks.length === 1,
+            'thief dead=' + !!f.dead + ' victim stacks=' + v.stacks.length + ' (1 = untouched)');
+    })();
+
+    /* ── 3. MED: -erd / -ill must CANCEL a windup, not pause it ── */
+    (function () {
+        var rt = clean();
+        var f = N.spawn('thief', rt.px, rt.py - 4);
+        var v = N.spawn('mouth', rt.px + 1, rt.py - 4);
+        v.stacks.push({ fam: 'eat', t: 99, max: 99 });
+        f.sp = 'steal'; f.wind = 0.4; f.windMax = 0.8;
+        f.silence = 1.6;                                              // HUSH lands mid-tell
+        N.tick(1, DT);
+        var cancelled = !f.sp && f.stealT >= f.steal - 0.001;
+        // and it must not simply resume when the silence lapses
+        f.silence = 0;
+        for (var i = 0; i < 30; i++) { v.hp = v.hpm; N.tick(1, DT); }
+        ok('-erd cancels a windup instead of pausing it', cancelled && v.stacks.length === 1,
+            'sp=' + f.sp + ' stealT=' + f.stealT.toFixed(2) + ' victim stacks=' + v.stacks.length);
+    })();
+
+    /* ── 4. MED: a Droner's own lapsing stack bills you NOTHING, echo included ─ */
+    (function () {
+        var rt = clean();
+        var f = N.spawn('droner', rt.px, rt.py - 4);
+        rt.echo = 60; var hp0 = rt.hp;
+        f.stacks.push({ fam: 'ight', t: 0.02, max: 4, drone: 1 });    // its own word, about to lapse
+        for (var i = 0; i < 8; i++) N.tick(1, DT);
+        var e1 = rt.echo, h1 = rt.hp;
+        f.stacks.push({ fam: 'ight', t: 0.02, max: 4 });               // YOUR word, about to lapse
+        for (i = 0; i < 8; i++) N.tick(1, DT);
+        ok('a droner stack costs no echo and no hp; yours costs both',
+            e1 === 60 && h1 === hp0 && rt.echo === 60 - N.TUNE.echoBreak && rt.hp < h1,
+            'after drone lapse echo=' + e1 + ' hp=' + h1 + ' | after own lapse echo=' + rt.echo + ' hp=' + rt.hp);
+    })();
+
+    /* ── 5. MED: the Elite HP multiplier dev row has to actually do something ─ */
+    (function () {
+        var rt = clean();
+        var base = N.spawn('mouth', rt.px, rt.py - 4, 'loud').hpm;
+        S.tune.eliteHp = 2;
+        var dial = N.spawn('mouth', rt.px, rt.py - 4, 'loud').hpm;
+        var plain = N.spawn('mouth', rt.px, rt.py - 4).hpm;
+        delete S.tune.eliteHp;
+        ok('T(eliteHp) scales elite hp and leaves trash alone', dial === Math.round(26 * 1.6 * 2) && plain === 26,
+            'loud=' + base + ' loud@2x=' + dial + ' plain=' + plain);
+    })();
+
+    /* ── 6. HIGH: every authored slot has to be reachable in normal play ── */
+    (function () {
+        // every place that draws hearsay has to show its whole authored cast
+        ['mill', 'road', 'hollow'].forEach(function (pl) {
+            N.place(pl);
+            var rt = clean(), met = {}, waves = 0;
+            for (var w = 0; w < 6; w++) {
+                rt.foes.length = 0;
+                rt.wave = w; rt.pressure = 999; rt.cleared = false; rt.dialog = null;
+                rt.callCd = 0; rt.breath = 999; rt.winded = 0;
+                N.call();                                 // a real Call is what draws a wave
+                if (rt.foes.length) waves++;
+                rt.foes.forEach(function (f) { met[f.kind] = 1; });
+            }
+            ok('the ' + pl + ' ladder shows its whole cast',
+                met.sword && met.deaf && met.droner && met.thief && waves >= 5,
+                'kinds=' + Object.keys(met).sort().join(',') + ' waves=' + waves);
+        });
+    })();
+
+    /* ── 7. MED: clearing a room costs one rung, and cannot farm the reward ── */
+    (function () {
+        var rt = clean();
+        rt.wave = 4; rt.cleared = false; rt.combat.lull = 0;
+        var coin0 = S.coin, quiets = 0;
+        var say0 = rt.log ? rt.log.length : 0;
+        for (var i = 0; i < 60 * 60; i++) {              // a full minute standing in an empty room
+            var c = rt.cleared; N.tick(1, DT);
+            if (!c && rt.cleared) quiets++;
+        }
+        ok('an empty room pays out once and steps down one rung',
+            quiets === 1 && rt.wave === 3, 'quiets=' + quiets + ' wave=' + rt.wave + ' coin+' + (S.coin - coin0));
+    })();
+
+    /* ── 8. LOW: going down cuts the line off ── */
+    (function () {
+        var rt = clean();
+        rt.echo = 100; rt.lastFam = 'eat'; rt.lastWord = 'HEAT';
+        N.reprise();
+        var started = !!rt.combat.rep;
+        rt.hp = 1; rt.dead = true; rt.deadT = 0.01;
+        for (var i = 0; i < 40; i++) N.tick(1, DT);       // die, respawn
+        ok('a reprise does not survive the death that interrupted it',
+            started && !rt.combat.rep, 'started=' + started + ' rep after revive=' + rt.combat.rep);
+    })();
+
+    /* ── 9. the Reprise still works, and still costs a full bar ── */
+    (function () {
+        var rt = clean();
+        var f = N.spawn('mouth', rt.px, rt.py - 3);
+        f.hp = f.hpm = 9999;
+        f.stacks.push({ fam: 'eat', t: 99, max: 99 });
+        rt.echo = 99; rt.lastFam = 'eat'; rt.lastWord = 'HEAT';
+        N.reprise();
+        var refused = !rt.combat.rep;
+        // four stacks, nothing added afterwards: what a full bar actually buys
+        while (f.stacks.length < 4) f.stacks.push({ fam: 'eat', t: 99, max: 99 });
+        rt.echo = 100;
+        N.reprise();
+        var spent = rt.echo, hp0 = f.hp, beats = 0;
+        for (var i = 0; i < 200 && (rt.combat.rep || i < 4); i++) { var h = f.hp; N.tick(1, DT); if (f.hp < h) beats++; }
+        var rep = Math.round(hp0 - f.hp);
+        // and the same four stacks answered normally, for comparison
+        var g = N.spawn('mouth', rt.px, rt.py - 3); g.hp = g.hpm = 9999;
+        for (i = 0; i < 4; i++) g.stacks.push({ fam: 'eat', t: 99, max: 99 });
+        N.aim(g.x, g.y); rt.answerCd = 0; rt.breath = 999; var g0 = g.hp;
+        N.answer(); N.tick(1, DT);
+        var ans = Math.round(g0 - g.hp);
+        ok('the Reprise refuses at 99 echo, spends the bar at 100, and all 3 beats land',
+            refused && spent === 0 && beats === 3 && rep > ans,
+            'refused@99=' + refused + ' echo after=' + spent + ' beats=' + beats +
+            ' reprise=' + rep + ' vs one free Answer=' + ans);
+    })();
+
+    /* ── 10. the boss still dies through its named hook, with a sound ── */
+    (function () {
+        var rt = clean();
+        var b = N.spawn('chorus', rt.px, rt.py - 4);
+        S.seen.chorusDown = 0;
+        // kill it the way the game does: a real stack, a real Answer
+        b.stacks.push({ fam: N.RT().lastFam || 'eat', t: 99, max: 99 });
+        N.aim(b.x, b.y); rt.oneShot = 1; rt.answerCd = 0; rt.breath = 999;
+        N.answer();
+        for (var i = 0; i < 6; i++) N.tick(1, DT);
+        rt.oneShot = 0;
+        ok('the Chorus dies through BOSS_DOWN', !!S.seen.chorusDown, 'chorusDown=' + S.seen.chorusDown);
+    })();
+
+    /* ── 11. the critical path, after all of the above ── */
+    (function () {
+        var ids = ['stage', 'square', 'bernhouse', 'chandler', 'lane', 'mill', 'loft', 'village', 'mark', 'road', 'hollow', 'arena'];
+        var loaded = 0, tried = 0;
+        ids.forEach(function (id) {
+            try { N.place(id); tried++; if (N.state().place === id) loaded++; N.tick(30, DT); } catch (e) { errs.push('place ' + id + ': ' + e.message); }
+        });
+        ok('every place still loads and steps', loaded === tried && tried > 0, loaded + '/' + tried);
+    })();
+
+    /* ── 12. mashing keys with foes in flight throws nothing ── */
+    (function () {
+        var rt = clean();
+        N.place('mill');
+        rt = N.RT();
+        for (var i = 0; i < 6; i++) N.spawn(['mouth', 'thief', 'droner', 'deaf', 'sword', 'mouth'][i], rt.px + i - 3, rt.py - 4, i % 2 ? 'quick' : null);
+        var keys = 'gewasdqe1234 g'.split('');
+        for (i = 0; i < 240; i++) {
+            var k = keys[i % keys.length];
+            frames[0].document.dispatchEvent(new frames[0].KeyboardEvent('keydown', { key: k, bubbles: true }));
+            frames[0].document.dispatchEvent(new frames[0].KeyboardEvent('keyup', { key: k, bubbles: true }));
+            N.call(); N.answer(); N.tick(1, DT);
+        }
+        ok('240 frames of key-mashing with the whole roster in flight', errs.length === 0, errs.slice(0, 3).join(' | ') || 'no errors');
+    })();
+
+    /* ── 13. the story path: dialogue, three fragments, the boss ── */
+    (function () {
+        var rt = clean();
+        N.place('square');
+        N.talk('bern');
+        var dlg = !!N.state().dialog;
+        frames[0].document.dispatchEvent(new frames[0].KeyboardEvent('keydown', { key: 'e', bubbles: true }));
+        N.tick(6, DT);
+        for (var i = 1; i <= 3; i++) N.frag(i);
+        var frags = [1, 2, 3].filter(function (n) { return S.frags[n]; }).length;
+        var stanzas = [1, 2, 3].filter(function (n) { return S.stanzas[n]; }).length;
+        ok('dialogue opens and all three fragments land', dlg && frags === 3 && stanzas === 3,
+            'dialog=' + dlg + ' fragments=' + frags + '/3 stanzas=' + stanzas + '/3');
+    })();
+    log('');
+    log('RESULT  ' + PASS + ' passed, ' + FAIL + ' failed');
+    document.title = FAIL ? 'CHECKS FAIL ' + FAIL : 'CHECKS PASS ' + PASS;
+}
+</script>

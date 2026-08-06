@@ -1,0 +1,125 @@
+<!doctype html><meta charset="utf-8"><title>ttk running</title>
+<style>body{background:#14121a;color:#e6e1f0;font:12px/1.5 monospace;margin:0;padding:10px}
+pre{white-space:pre-wrap}iframe{position:fixed;left:-3000px;width:1200px;height:760px;border:0}</style>
+<pre id="out">booting</pre>
+<iframe id="f" src="/comp/?dev=ninth&nwipe=1&ndev=arena&nfr=2"></iframe>
+<script>
+/* TIME TO KILL BENCH — NINTH NIGHT, job 4.
+   Runs a fixed "competent play" rotation against one spawned foe at a time and
+   reports sim seconds to kill plus effective DPS. Deterministic: it steps the
+   sim by hand at a fixed dt, so it does not depend on rAF (which never runs
+   headless on this project).
+
+   Rotation: hold max stacks up with Call, Answer when the stack count is at
+   the answer threshold or when the target is about to strip, respecting breath
+   and the silence ramp. That is the same loop a competent player runs.
+
+   Usage:  headless chrome ... "http://localhost:PORT/.claude/ninth-night/tools/ttk-bench.html"
+   Read the result out of document.title / the <pre>.                        */
+var OUT = [];
+function log(s){ OUT.push(s); document.getElementById('out').textContent = OUT.join('\n'); }
+var tries = 0;
+function ready(){ try { var W = frames[0]; return W.__ninth && W.__ninth.state && W.__ninth.RT(); } catch(e){ return false; } }
+function wait(){ tries++; if (ready()) { setTimeout(run, 60); return; }
+    if (tries > 600) { log('FAIL: game never came up'); document.title = 'TTK FAIL'; return; }
+    setTimeout(wait, 40); }
+wait();
+
+var DT = 1/60;
+function run(){
+  var W = frames[0], N = W.__ninth, RT = N.RT(), S = N.S();
+
+  // a fair, fixed loadout: the two starting words (they rhyme -eat / -ight is a
+  // SLANT, so use heat + street which is the game's own default pairing), both
+  // charms off except the given crown, and no dev cheats.
+  function reset(){
+    var rt = N.RT();
+    rt.god = 0; rt.infBreath = 0; rt.holdStacks = 0; rt.oneShot = 0;
+    rt.foes.length = 0; rt.fproj.length = 0; rt.calls.length = 0;
+    rt.hp = rt.hpm; rt.breath = 999999;    // breath handled by the rotation, not by starvation
+    rt.winded = 0; rt.echo = 0; rt.dead = false;
+  }
+
+  // one measured fight.
+  //   free:true  = breath topped every frame. A damage CEILING.
+  //   free:false = the real breath economy, including the silence ramp. This is
+  //                the number that matters: breath, not damage, is the limiter.
+  function fight(kind, opts){
+    opts = opts || {};
+    reset();
+    var rt = N.RT();
+    if (!opts.free) { rt.breath = N.stats ? N.stats().breathMax : 40; }
+    // park the player centre, spawn the foe at a fixed distance in front
+    rt.px = 8; rt.py = 8;
+    var f = N.spawn(kind, 8, 4.6);
+    if (!f) return { kind: kind, err: 'spawn refused' };
+    // freeze the fight geometry: we are measuring damage throughput, not kiting
+    var t = 0, calls = 0, answers = 0, guard = 0, dry = 0;
+    var stacksWanted = opts.stacks || 6;      // dump then detonate: the big-hit fantasy
+    while (!f.dead && guard++ < 60 * 240) {
+      // aim at the foe every frame (the player would be tracking it)
+      N.aim(f.x, f.y);
+      var live = f.stacks ? f.stacks.length : 0;
+      var b = rt.breath, before = b;
+      // Competent play is burst-then-breathe: the ramp pays 8/s for staying
+      // quiet and only 3/s for chattering, so a good player banks a whole
+      // combo in silence and spends it in one window. A rotation that calls
+      // on every available frame holds itself at the slow rate forever.
+      var st2 = N.stats ? N.stats() : null;
+      var combo = st2 ? st2.callCost * stacksWanted + st2.answerCost : 39;
+      if (rt.winded > 0) { /* locked out: shut up and let it come back */ }
+      else if (opts.free) {
+        if (rt.callCd <= 0 && live < stacksWanted) { N.call(); calls++; }
+        else if (rt.answerCd <= 0 && live >= Math.min(stacksWanted, 1)) { N.answer(); answers++; }
+      // cash in early if the target is about to strip everything (the Chorus
+      // telegraphs its pulse with f.warn): that is "burst between pulses".
+      } else if (live >= stacksWanted || (live > 0 && f.warn) ||
+                 (live > 0 && rt.breath < (st2 ? st2.answerCost : 15))) {
+        if (rt.answerCd <= 0 && rt.breath >= (st2 ? st2.answerCost : 15)) { N.answer(); answers++; }
+      } else if (rt.callCd <= 0 && rt.breath - (st2 ? st2.callCost : 4) >= (st2 ? st2.answerCost : 15)) {
+        // never spend the answer down: a stack you cannot detonate goes sour
+        N.call(); calls++;
+      }
+      if (opts.free) { rt.breath = 999999; rt.winded = 0; }
+      else if (rt.breath === before) dry++;    // frames spent silent, waiting on the ramp
+      // isolate the target: the Chorus spawns adds that soak the calls aimed at
+      // it, which measures the encounter rather than the archetype. Both are
+      // worth knowing; this table is the archetype.
+      for (var q = rt.foes.length - 1; q >= 0; q--) if (rt.foes[q] !== f) rt.foes.splice(q, 1);
+      N.tick(1, DT); t += DT;
+      if (f.dead) break;
+      // never let the foe kill us mid-measurement
+      if (rt.hp < 40) rt.hp = rt.hpm;
+      // stop chasing an unkillable target
+      if (t > 235) break;
+    }
+    var hp = f.hpm;
+    return { kind: kind, hp: hp, t: +t.toFixed(2), dps: +(hp / Math.max(0.001, t)).toFixed(1),
+             calls: calls, answers: answers, silent: +(dry * DT).toFixed(1), killed: !!f.dead };
+  }
+
+  var kinds = Object.keys(W.FOES || {});
+  if (!kinds.length) {           // FOES is closure-private: enumerate from the dev handle
+    kinds = ['mouth','thief','droner','deaf','sword','chorus'];
+  }
+  var rows = [];
+  function table(title, opts){
+    log('');
+    log(title);
+    log('kind        hp     secs    dps    calls  answers  silent  killed');
+    kinds.forEach(function(k){
+      var r;
+      try { r = fight(k, opts); } catch(e){ r = { kind:k, err: e.message }; }
+      r.mode = opts.free ? 'ceiling' : 'real';
+      rows.push(r);
+      if (r.err) { log(pad(k,11) + ' ERROR ' + r.err); return; }
+      log(pad(k,11) + pad(r.hp,7) + pad(r.t,8) + pad(r.dps,7) + pad(r.calls,7) + pad(r.answers,9) + pad(r.silent,8) + (r.killed?'yes':'NO'));
+    });
+  }
+  table('REAL  (breath economy on: this is the number that matters)', { free: false });
+  table('CEILING  (breath free: pure damage throughput)', { free: true });
+  window.__ttk = rows;
+  document.title = 'TTK DONE';
+}
+function pad(v,n){ v = String(v); while (v.length < n) v = v + ' '; return v; }
+</script>
