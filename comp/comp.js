@@ -2819,8 +2819,11 @@ webPage('__viewsource', {
    Everything NOT understood falls through to a sandboxed iframe
    (__frame) that loads the honest-to-goodness site when it lets us.
    ════════════════════════════════════════════════════════ */
-var LIVE_CACHE = {};                                      // url → { t, v } · session-only, 5 min TTL
-var LIVE_TITLES = {};                                     // url → real page title, learned after load
+/* null prototype on every map keyed by user input or a fetched URL: a bare
+   {} inherits constructor/toString/valueOf, so looking up those words returns a
+   truthy non-entry and the caller then treats a Function as data. */
+var LIVE_CACHE = Object.create(null);                     // url → { t, v } · session-only, 5 min TTL
+var LIVE_TITLES = Object.create(null);                    // url → real page title, learned after load
 function liveCacheGet(u) { var e = LIVE_CACHE[u]; return e && Date.now() - e.t < 300000 ? e.v : null; }
 function liveCachePut(u, v) {
     var ks = Object.keys(LIVE_CACHE);
@@ -2933,7 +2936,7 @@ function liveFill(view, url, html, title) {
     liveWireBack(view);
     if (title && CR) {
         if (!CR.incog) {                                   // a private page's real title stays out of the shared map
-            if (Object.keys(LIVE_TITLES).length > 80) LIVE_TITLES = {};   // check BEFORE the set, or the 81st write is wiped with the rest
+            if (Object.keys(LIVE_TITLES).length > 80) LIVE_TITLES = Object.create(null);   // check BEFORE the set, or the 81st write is wiped with the rest
             LIVE_TITLES[url] = title;
             var h = crHist();                              // retitle the history entry the nav just wrote
             for (var i = 0; i < h.length; i++) if (h[i].u === url) { h[i].t = title; break; }
@@ -3205,7 +3208,7 @@ function serpKnowledge(q, done) {
         liveGet('https://query.wikidata.org/sparql?format=json&query=' + encodeURIComponent(sparql), function (e2, j2) {
             var rows = '';
             if (!e2 && j2 && j2.results && j2.results.bindings) {
-                var seen = {}, out = [];
+                var seen = Object.create(null), out = [];
                 j2.results.bindings.forEach(function (b) {
                     if (!b.propLabel || !b.valLabel || out.length >= 6) return;
                     var k = b.propLabel.value;
@@ -3651,12 +3654,15 @@ function crResolveKey(input) {
     u = u.replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/+$/, '');
     if (/^chrome:\/\//i.test(input)) u = input.trim().toLowerCase().replace(/\/+$/, '');
     if (!WEB_LC) { WEB_LC = {}; Object.keys(WEB).forEach(function (k) { WEB_LC[k.toLowerCase()] = k; }); }
+    /* hasOwnProperty, not a bare lookup: this map is keyed by whatever the user
+       typed, and searching "constructor" otherwise returns Object.prototype's
+       copy — a truthy non-key that then blew up as WEB[key].live */
+    function known(k) { return Object.prototype.hasOwnProperty.call(WEB_LC, k) ? WEB_LC[k] : null; }
     var lc = u.toLowerCase();
-    if (WEB_LC[lc]) return WEB_LC[lc];
+    if (known(lc)) return known(lc);
     if (lc.indexOf('google.com/search') === 0) return 'google.com/search';
     var host = lc.split(/[/?#]/)[0].split(':')[0];       // host only: drop /path, ?query, #frag, and :port
-    if (WEB_LC[host]) return WEB_LC[host];
-    return null;
+    return known(host);
 }
 function crParse(input) {
     var u = String(input || '').trim();
@@ -3798,10 +3804,10 @@ function crPage() {
 /* the local rows (typed interpretation, bookmarks, history, curated corpus)
    render instantly; a debounced Wikipedia opensearch then folds REAL query
    completions in right under the typed row, exactly like a real omnibox. */
-var SUG_CACHE = {};                                        // query → completions, session-only
+var SUG_CACHE = Object.create(null);                       // query → completions, session-only
 function crSugIsUrl(q) { return /^[a-z0-9.-]+\.[a-z]{2,}/.test(q.replace(/^https?:\/\//, '').replace(/^www\./, '')) || /^chrome:\/\//.test(q); }
 function crSuggestLocal(q) {
-    var rows = [], seen = {};
+    var rows = [], seen = Object.create(null);   // keyed by typed text: no inherited members
     function add(icon, label, url, note) {
         if (rows.length >= 9 || seen[url]) return; seen[url] = 1;
         rows.push({ icon: icon, label: label, url: url, note: note });
@@ -3861,7 +3867,7 @@ function crSuggestLive(q, built) {
         if (err || !j || !j[1]) return;
         var comps = j[1];
         if (!(CR && CR.incog)) SUG_CACHE[q] = comps;        // incognito keystrokes leave no crumbs
-        if (Object.keys(SUG_CACHE).length > 60) SUG_CACHE = {};
+        if (Object.keys(SUG_CACHE).length > 60) SUG_CACHE = Object.create(null);
         merge(comps);
     });
 }
