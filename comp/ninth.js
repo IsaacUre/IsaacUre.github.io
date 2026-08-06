@@ -157,7 +157,14 @@ var TUNE = {
     dilation: 0.3, dilationT: 1.5,
     moveSpd: 3.5, dashDist: 3.2, dashCd: 2.4,
     callRange: 7.5, answerRange: 99,
-    ttk: 1               // global enemy hp multiplier, for feel testing
+    ttk: 1,              // global enemy hp multiplier, for feel testing
+    /* job 4 */
+    deafMul: 0.2,        // what the Deaf takes from anything that is not -ill
+    eliteChance: 0.18,   // odds an authored encounter slot rolls a modifier
+    eliteHp: 1.7, eliteCoin: 3,
+    repriseCost: 100,    // a full Echo bar
+    repriseHits: 3, repriseMul: 0.85, repriseGap: 0.34,
+    droneSelfHurt: 0     // 0 = a Droner's own words never hurt YOU. see the PR.
 };
 
 /* ─────────────── hearsay ───────────────
@@ -165,18 +172,41 @@ var TUNE = {
    applause with teeth. The counters are the lesson. */
 var FOES = {
     mouth:  { n: 'Hearsay', hp: 26, dmg: 6, spd: 2.5, r: 0.42, atk: 1.0, tell: 0.3, xp: 8, coin: [0, 1],
+              ai: 'walk', draw: 'mouth',
               d: 'A chattering mouth. Says a bit of the play that was never in the play.' },
-    thief:  { n: 'Thief',   hp: 40, dmg: 8, spd: 2.9, r: 0.44, atk: 1.4, tell: 0.35, xp: 16, coin: [1, 2], steal: 2.2,
-              d: 'Answers your stacks for you, with the wrong sound, stealing your detonation. -ark hides stacks from it.' },
-    droner: { n: 'Droner',  hp: 54, dmg: 7, spd: 1.9, r: 0.5, atk: 1.6, tell: 0.5, xp: 18, coin: [1, 2], drone: 1.0,
-              d: 'Applies its own rhyme to itself every second. Overwrite it before you can answer it.' },
+    thief:  { n: 'Thief',   hp: 40, dmg: 8, spd: 3.2, r: 0.44, atk: 1.4, tell: 0.35, xp: 16, coin: [1, 2], steal: 2.2,
+              ai: 'dart', draw: 'thief', stealTell: 0.8, keep: 4.2,
+              d: 'Runs in, answers your stacks for you with the wrong sound, and runs off with the detonation. Kill it first. -ark hides your stacks from it.' },
+    droner: { n: 'Droner',  hp: 54, dmg: 7, spd: 1.9, r: 0.5, atk: 1.6, tell: 0.5, xp: 18, coin: [1, 2], drone: 1.6,
+              ai: 'hold', draw: 'droner', droneTell: 0.7, keep: 5.4, range: 7.2,
+              d: 'Hangs back and says its own line over and over, writing a rhyme onto itself. Overwrite it faster than it can drone, or it never opens.' },
     deaf:   { n: 'The Deaf', hp: 70, dmg: 11, spd: 1.7, r: 0.55, atk: 1.5, tell: 0.55, xp: 24, coin: [1, 3], deaf: 1,
-              d: 'Ignores sound entirely. Only -ill touches it: stun, freeze, execute.' },
+              ai: 'walk', draw: 'deaf', armor0: 3,
+              d: 'Hears nothing. Sound slides off it: only -ill touches it, so it is the enemy you change your build for.' },
     sword:  { n: 'The Sword', hp: 150, dmg: 16, spd: 2.1, r: 0.6, atk: 1.3, tell: 0.45, xp: 40, coin: [3, 6], norhyme: 1, elite: 1,
+              ai: 'walk', draw: 'sword',
               d: 'Carries no rhyme at all. Cannot be stacked. Cannot be detonated. Kill it with raw call damage, slowly, like an idiot, while everything else on screen explodes beautifully.' },
     chorus: { n: 'THE CHORUS', hp: 900, dmg: 12, spd: 0, r: 1.6, atk: 2.2, tell: 0.8, xp: 300, coin: [20, 30], boss: 1, pulse: 5.5,
+              ai: 'chorus', draw: 'chorus', onDown: 'chorus',
               d: 'A crowd of voices, no bodies, saying the refrain in unison. It strips rhyme off everything on a pulse. Burst between pulses.' }
 };
+/* ─────────────── elite modifiers ───────────────
+   A thin composable layer, so six archetypes cover a whole game. A
+   modifier bends numbers and adds one readable mark; it never adds a
+   new AI. Applied at spawn by the encounter table or the DEV tab. */
+var MODS = {
+    loud:   { n: 'Loud',    col: '#e8913a', hp: 1.6, dmg: 1.3, mark: 'ring',
+              d: 'Bigger, louder, hits harder. Nothing clever.' },
+    quick:  { n: 'Quick',   col: '#9fe0c8', hp: 0.8, spd: 1.55, atk: 0.7, mark: 'streak',
+              d: 'Half the health, twice the pace. It gets inside your rhythm.' },
+    sealed: { n: 'Sealed',  col: '#6fd4ff', hp: 1.3, armor: 5, mark: 'plate',
+              d: 'Armoured until something reveals it. -ight strips it.' },
+    droning:{ n: 'Droning', col: '#c9a94a', hp: 1.2, drone: 2.2, mark: 'halo',
+              d: 'Writes on itself like a Droner does, whatever it is underneath.' },
+    thieving:{ n: 'Light-fingered', col: '#c86a6a', hp: 1.15, steal: 3.4, mark: 'hand',
+              d: 'Steals a detonation like a Thief does, whatever it is underneath.' }
+};
+var MOD_IDS = Object.keys(MODS);
 
 /* places, people and scripts live in the world section below. */
 
@@ -195,7 +225,10 @@ var ACH = [
     ['stanza', 'Recital', 'Cast a Stanza'],
     ['deaf', 'Still', 'Put down one of the Deaf with -ill'],
     ['nohit', 'Word Perfect', 'Clear a wave without being touched'],
-    ['hear', 'You Heard It', 'Notice what does not rhyme']
+    ['hear', 'You Heard It', 'Notice what does not rhyme'],
+    ['reprise', 'Again', 'Spend a full Echo on a Reprise'],
+    ['elite', 'Worse Than Usual', 'Put down an elite'],
+    ['allsix', 'The Whole Cast', 'Meet all six of them']
 ];
 
 /* ─────────────── charms ───────────────
@@ -256,6 +289,7 @@ function sLoad() {
     if (S.opts.sound == null) S.opts.sound = true;
     if (S.opts.bigtext == null) S.opts.bigtext = true;
     S.tune = S.tune || {};                           // dev-menu overrides, persisted so tuning survives a reload
+    S.combat = S.combat || {};                       // job 4: { met: {kind:1} } — who you have actually faced
     return S;
 }
 function sSave() { try { localStorage.setItem('comp_ninth', JSON.stringify(S)); } catch (e) {} }
@@ -448,9 +482,21 @@ var DEV = [
       Object.keys(FOES).forEach(function (id) {
           rows.push({ k: 'btn', t: FOES[id].n, sub: FOES[id].d, on: function () { spawnFoe(id, RT.mouse.wx, RT.mouse.wy); } });
       });
+      // the same six, wearing a modifier. auto-enumerated, so a new one is free.
+      rows.push({ k: 'note', t: 'Elites: the same archetype, bent. Spawns at the cursor.' });
+      MOD_IDS.forEach(function (mid) {
+          rows.push({ k: 'btn', t: MODS[mid].n + ' (roll archetype)', sub: MODS[mid].d,
+              on: function () { spawnFoe(pick(['mouth', 'thief', 'droner', 'deaf']), RT.mouse.wx, RT.mouse.wy, mid); } });
+      });
+      rows.push({ k: 'note', t: 'Authored encounters, dropped around you.' });
+      rows.push({ k: 'btn', t: 'Next wave for this place', sub: 'walks the ladder in ENCOUNTERS',
+          on: function () { RT.combat.encI = (RT.combat.encI || 0) + 1; var e = encounterFor(RT.place, RT.combat.encI - 1); RT.combat.enc = e; spawnWave(e, RT.px, RT.py); } });
+      rows.push({ k: 'btn', t: 'The whole cast, at once', sub: 'one of everything, for reading them side by side',
+          on: function () { spawnWave({ w: [['mouth', 1], ['thief', 1], ['droner', 1], ['deaf', 1], ['sword', 1]] }, RT.px, RT.py, [3.5, 6]); } });
       rows.push({ k: 'btn', t: 'Kill everything', on: function () { RT.foes.forEach(function (f) { if (!f.dead) foeDie(f, true); }); } });
       rows.push({ k: 'btn', t: 'Clear the arena (no rewards)', on: function () { RT.foes.length = 0; RT.fproj.length = 0; } });
       rows.push({ k: 'num', t: 'Enemy HP multiplier', get: function () { return T('ttk'); }, set: function (v) { S.tune.ttk = clamp(v, 0.1, 10); }, step: 0.25, fix: 2 });
+      rows.push({ k: 'num', t: 'Elite roll chance', get: function () { return T('eliteChance'); }, set: function (v) { S.tune.eliteChance = clamp(v, 0, 1); }, step: 0.05, fix: 2 });
       return rows;
   } },
   { tab: 'FEEL', rows: function () { return [
@@ -471,6 +517,19 @@ var DEV = [
       { k: 'num', t: 'Break self-damage / stack', get: function () { return T('breakSelfDmg'); }, set: function (v) { S.tune.breakSelfDmg = clamp(v, 0, 50); }, step: 1 },
       { k: 'num', t: 'Move speed', get: function () { return T('moveSpd'); }, set: function (v) { S.tune.moveSpd = clamp(v, 0.5, 12); }, step: 0.25, fix: 2 },
       { k: 'num', t: 'Stanza time dilation', get: function () { return T('dilation'); }, set: function (v) { S.tune.dilation = clamp(v, 0.05, 1); }, step: 0.05, fix: 2 },
+      /* job 4: every number this job added, and the four that never had a row */
+      { k: 'note', t: 'What you fight.' },
+      { k: 'num', t: 'Deaf damage taken (not -ill)', get: function () { return T('deafMul'); }, set: function (v) { S.tune.deafMul = clamp(v, 0, 1); }, step: 0.05, fix: 2 },
+      { k: 'num', t: 'Elite HP multiplier', get: function () { return T('eliteHp'); }, set: function (v) { S.tune.eliteHp = clamp(v, 1, 6); }, step: 0.1, fix: 2 },
+      { k: 'num', t: 'Elite bonus coin', get: function () { return T('eliteCoin'); }, set: function (v) { S.tune.eliteCoin = clamp(v, 0, 50); }, step: 1 },
+      { k: 'num', t: 'Reprise cost (echo)', get: function () { return T('repriseCost'); }, set: function (v) { S.tune.repriseCost = clamp(v, 10, 100); }, step: 5 },
+      { k: 'num', t: 'Reprise hits', get: function () { return T('repriseHits'); }, set: function (v) { S.tune.repriseHits = clamp(v, 1, 8); }, step: 1 },
+      { k: 'num', t: 'Reprise damage x', get: function () { return T('repriseMul'); }, set: function (v) { S.tune.repriseMul = clamp(v, 0.1, 3); }, step: 0.05, fix: 2 },
+      { k: 'tgl', t: 'Droner stacks hurt YOU when they lapse', get: function () { return !!T('droneSelfHurt'); }, set: function (v) { S.tune.droneSelfHurt = v ? 1 : 0; sSave(); } },
+      { k: 'num', t: 'Echo per stack', get: function () { return T('echoPerStack'); }, set: function (v) { S.tune.echoPerStack = clamp(v, 0, 50); }, step: 1 },
+      { k: 'num', t: 'Echo decay / s', get: function () { return T('echoDecay'); }, set: function (v) { S.tune.echoDecay = clamp(v, 0, 40); }, step: 0.5, fix: 1 },
+      { k: 'num', t: 'Call range', get: function () { return T('callRange'); }, set: function (v) { S.tune.callRange = clamp(v, 1, 30); }, step: 0.5, fix: 1 },
+      { k: 'num', t: 'Winded lockout is above; stanza cost below', get: function () { return T('dilationT'); }, set: function (v) { S.tune.dilationT = clamp(v, 0.2, 6); }, step: 0.1, fix: 1 },
       { k: 'btn', t: 'Reset every number to default', on: function () { S.tune = {}; sSave(); } }
   ]; } },
   { tab: 'KIT', rows: function () {
@@ -753,7 +812,8 @@ function init(el) {
         god: 0, infBreath: 0, holdStacks: 0, oneShot: 0,
         dbgStacks: 0, dbgAI: 0, dbgHit: 0, dbgPerf: 0,
         fps: 0, _fc: 0, _ft: 0, ac: null, tookHit: false,
-        world: { cam: { x: 0, y: 0 }, npc: {}, seenLine: null }
+        world: { cam: { x: 0, y: 0 }, npc: {}, seenLine: null },
+        combat: { cuts: [], rep: null, enc: null, encI: 0 }
     };
     wireInput(root, cv);
     wireHud(root);
@@ -769,7 +829,9 @@ function init(el) {
             stanza: function (n) { doStanza(n); },
             aim: function (x, y) { RT.mouse.wx = x; RT.mouse.wy = y; RT.mouse.x = isoX(x, y); RT.mouse.y = isoY(x, y); },
             aimFoe: function (i) { var f = RT.foes.filter(function (q) { return !q.dead; })[i || 0]; if (f) window.__ninth.aim(f.x, f.y); return !!f; },
-            spawn: function (k, x, y) { return spawnFoe(k, x == null ? GRID / 2 : x, y == null ? GRID / 2 - 3 : y); },
+            spawn: function (k, x, y, mod) { return spawnFoe(k, x == null ? GRID / 2 : x, y == null ? GRID / 2 - 3 : y, mod); },
+            wave: function (n) { var e = encounterFor(RT.place, n == null ? RT.wave : n); RT.combat.enc = e; return spawnWave(e, RT.px, RT.py); },
+            reprise: function () { doReprise(); },
             place: function (id) { gotoPlace(id, true); },
             talk: function (id) { var n = NPCS[id]; if (n) openDialog(n.talk(), n.n); },
             interact: function () { RT.prompt = nearestInteract(); doInteract(); },
@@ -1055,9 +1117,15 @@ function stepCalls(dt) {
         if (c.life <= 0 || c.x < -1 || c.x > pw() + 1 || c.y < -1 || c.y > ph() + 1) RT.calls.splice(i, 1);
     }
 }
+/* The Deaf hears nothing, and that has to mean the same thing everywhere:
+   it used to be quarter damage from an Answer, fully immune to a Stanza,
+   and take Calls at FULL price, which is why the wall you were supposed to
+   change your build for died in a second to the starting kit. */
+function deafMul(f, fam) { return (f.def.deaf && fam !== 'ill') ? T('deafMul') : 1; }
 function landCall(f, c) {
     var st = stats();
-    var dmg = st.callDmg * famDmgMul(c.fam);
+    var dmg = st.callDmg * famDmgMul(c.fam) * deafMul(f, c.fam);
+    if (f.def.deaf && c.fam !== 'ill') typo(f.x, f.y, 'deaf', '#6a5f72', 0.4, 8, 'drift');
     hurtFoe(f, dmg, c.fam, { call: 1 });
     // tier 1: a small word pops at the impact point. deliberately underwhelming.
     typo(f.x, f.y, c.word, FAMS[c.fam].col, 0.5, 13, 'pop');
@@ -1093,7 +1161,13 @@ function stepStacks(dt) {
    spamming call forever. */
 function breakStack(f, s) {
     RT.echo = Math.max(0, RT.echo - 6);
-    if (!RT.god) { RT.hp -= T('breakSelfDmg'); RT.hurt = Math.max(RT.hurt, 0.25); }
+    // A sour line is YOUR unfinished line. A Droner's own words are not
+    // yours and never were, so they cost you nothing when they lapse. The
+    // Droner is a race to overwrite, not an aura that bills you 3 HP a
+    // second for standing near it, untelegraphed, through the i-frames.
+    var mine = !s.drone || T('droneSelfHurt');
+    if (!RT.god && mine) { RT.hp -= T('breakSelfDmg'); RT.hurt = Math.max(RT.hurt, 0.25); }
+    if (!mine) { typo(f.x, f.y, 'lapses', '#6a5f72', 0.5, 8, 'drift'); return; }
     typo(f.x, f.y, 'sour', '#6a5f72', 0.7, 9, 'drift');
     part({ x: f.x, y: f.y, z: 34, vx: 0, vy: 0, vz: -6, life: 0.5, size: 3, col: '106,95,114', add: 0, grav: 0 });
     RT.sourN = (RT.sourN || 0) + 1;
@@ -1115,6 +1189,7 @@ function doAnswer() {
     RT.answerCd = 0.34;
     RT.casting = { t: 0.22, max: 0.22 };
     var fam = answerFam(), word = S.answer.toUpperCase();
+    RT.lastWord = word; RT.lastFam = fam;          // the Reprise says the last thing you said
     var live = RT.foes.filter(function (f) { return !f.dead && f.stacks.length; });
     var totalMatched = 0, hitFoes = 0, best = 0, anySlant = false;
 
@@ -1126,8 +1201,7 @@ function doAnswer() {
         var n = closed ? match : other;
         var dmg = (st.answerBase + st.answerPerStack * n) * famDmgMul(fam);
         if (!closed) { dmg *= st.slantMul; anySlant = true; }
-        // the deaf hear nothing: only -ill touches them
-        if (f.def.deaf && fam !== 'ill') dmg *= 0.25;
+        dmg *= deafMul(f, fam);          // the deaf hear nothing: only -ill touches them
         hurtFoe(f, dmg, fam, { answer: 1, closed: closed, n: n });
         if (closed) { totalMatched += match; if (match > best) best = match; famEffect(f, fam, match); }
         hitFoes++;
@@ -1154,6 +1228,66 @@ function doAnswer() {
         sfx('empty');
     }
 }
+/* ─────────────── THE REPRISE ───────────────
+   Echo was a fully plumbed resource with no consumer: written from five
+   places, decayed, drawn on the HUD, spent by nothing. It is what the
+   room gives back when you close a couplet, so spending it should sound
+   like the room saying your line with you.
+
+   A full bar, on G: the last thing you said comes back three times, and
+   every rhyme on screen answers it, matching or not. It is the only
+   thing in the game that treats a slant as closed, which is the whole
+   point: for three beats, everything you said counts. */
+function doReprise() {
+    if (!RT || RT.dead || RT.devOpen || RT.dialog || RT.mapOpen) return;
+    if (RT.combat.rep) return;
+    if (RT.echo < T('repriseCost')) { hudNudge('echo'); typo(RT.px, RT.py, 'NOT YET', '#6a5f72', 0.5, 10, 'pop'); return; }
+    RT.echo = 0;
+    var word = (RT.lastWord || S.answer || 'again').toUpperCase();
+    var fam = RT.lastFam || answerFam();
+    RT.combat.rep = { n: T('repriseHits'), t: 0, gap: T('repriseGap'), word: word, fam: fam };
+    RT.dilate = Math.max(RT.dilate, 0.5);
+    slam(word, FAMS[fam].col, 'reprise');
+    bigLine('again', 'and again, and again', FAMS[fam].col, 2);
+    RT.shake = shake(9); RT.chroma = 1;
+    sfx('reprise');
+    ach('reprise');
+}
+function stepReprise(dt) {
+    var r = RT.combat.rep; if (!r) return;
+    r.t -= dt;
+    if (r.t > 0) return;
+    r.t = r.gap; r.n--;
+    var st = stats(), hit = 0;
+    RT.foes.forEach(function (f) {
+        if (f.dead || !f.stacks.length) return;
+        var n = f.stacks.length;
+        // everything counts as closed, whatever sound it was
+        var dmg = (st.answerBase + st.answerPerStack * n) * T('repriseMul') * famDmgMul(r.fam) * deafMul(f, r.fam);
+        hurtFoe(f, dmg, r.fam, { answer: 1, closed: 1, n: n });
+        famEffect(f, r.fam, n);
+        f.stacks.length = 0;
+        snapStacks(f, FAMS[r.fam].col, n);
+        hit++;
+    });
+    RT.rings.push({ x: RT.px, y: RT.py, r: 0.5, max: 13, col: hex2rgb(FAMS[r.fam].col), t: 0.5, life: 0.5 });
+    if (hit) { RT.shake = shake(5); sfx('answer'); }
+    typo(RT.px, RT.py + 0.4, r.word, FAMS[r.fam].col, 0.6, 15, 'pop');
+    if (r.n <= 0) RT.combat.rep = null;
+}
+/* Registered from combatBoot() at the foot of the file, not here: KEYS and
+   RESETS are `var`s declared further down, so a module-scope call up here
+   runs before they exist and takes the whole script out with it. */
+function combatBoot() {
+    bindKey('g', doReprise);
+    // a doorway ends the reprise and clears the cut-off lines with it, rather
+    // than carrying a half-finished detonation into the next place
+    onPlaceChange(function () {
+        if (!RT || !RT.combat) return;
+        RT.combat.rep = null; RT.combat.cuts.length = 0; RT.combat.enc = null; RT.combat.encI = 0;
+    });
+}
+
 /* every stack on screen snaps into alignment before it goes */
 function snapStacks(f, col, n) {
     RT.snaps.push({ x: f.x, y: f.y, col: col, n: n, t: 0.32, max: 0.32 });
@@ -1330,16 +1464,26 @@ function drawRings(cx, dt) {
 /* ═══════════════ HEARSAY ═══════════════
    Trash is misrememberings: loose bits of the play, crowd noise,
    applause with teeth. The counters are the whole lesson. */
-function spawnFoe(kind, x, y) {
+function spawnFoe(kind, x, y, mod) {
     var def = FOES[kind]; if (!def || !RT) return null;
+    var m = MODS[mod] || null;
     var f = {
-        kind: kind, def: def, x: clamp(x, 0.8, pw() - 0.8), y: clamp(y, 0.8, ph() - 0.8),
+        kind: kind, def: def, mod: m ? mod : null, m: m, x: clamp(x, 0.8, pw() - 0.8), y: clamp(y, 0.8, ph() - 0.8),
         hp: def.hp * T('ttk'), hpm: def.hp * T('ttk'), r: def.r,
         stacks: [], state: 'walk', tell: 0, atkT: rnd(0, 0.6), flash: 0, wob: 0, dead: 0,
-        silence: 0, frozen: 0, burn: null, revealed: 0, armor: 0, spawn: 0.45,
+        silence: 0, frozen: 0, burn: null, revealed: 0, armor: def.armor0 || 0, spawn: 0.45,
         anim: rnd(0, TAU), steal: def.steal || 0, drone: def.drone || 0, pulse: def.pulse || 0, said: 0,
+        spd: def.spd, dmg: def.dmg, atk: def.atk,
         so: irnd(0, 2) * 9          // stack-row stagger: piled enemies must stay readable
     };
+    if (m) {                                   // an elite is the same archetype, bent
+        f.hp = f.hpm = Math.round(f.hpm * (m.hp || 1));
+        f.spd *= m.spd || 1; f.dmg = Math.round(f.dmg * (m.dmg || 1)); f.atk *= m.atk || 1;
+        if (m.armor) f.armor += m.armor;
+        if (m.drone) f.drone = f.drone || m.drone;
+        if (m.steal) f.steal = f.steal || m.steal;
+        f.r *= 1.08;
+    }
     if (blocked(f.x, f.y, f.r * 0.7)) {           // never spawn inside a wall
         for (var a2 = 0; a2 < 24; a2++) {
             var rr2 = 1 + (a2 >> 3), xx = clamp(f.x + Math.cos(a2 / 8 * TAU) * rr2, 0.8, pw() - 0.8),
@@ -1347,7 +1491,17 @@ function spawnFoe(kind, x, y) {
             if (!blocked(xx, yy, f.r * 0.7)) { f.x = xx; f.y = yy; break; }
         }
     }
-    if (RT.foes.length < 70) RT.foes.push(f);
+    // the cap rejects the push, so hand back nothing rather than a foe that
+    // is not in the world and will never be stepped or drawn
+    if (RT.foes.length >= 70) return null;
+    RT.foes.push(f);
+    if (S.combat) {                          // the roster you have actually faced
+        if (!S.combat.met) S.combat.met = {};
+        if (!S.combat.met[kind]) {
+            S.combat.met[kind] = 1;
+            if (Object.keys(FOES).every(function (k) { return S.combat.met[k]; })) ach('allsix');
+        }
+    }
     burst(f.x, f.y, 10, 8, { col: '160,150,175', sp0: 0.4, sp1: 1.6, l0: 0.2, l1: 0.5, add: 0 });
     return f;
 }
@@ -1373,62 +1527,11 @@ function stepFoes(dt) {
         var dx = RT.px - f.x, dy = RT.py - f.y, d = Math.hypot(dx, dy) || 0.001;
         f.face = Math.atan2(dy, dx);
         f.atkT = Math.max(0, f.atkT - dt);
-        if (f.def.boss) { stepChorus(f, dt, d); continue; }
-        // thieves answer your stacks for you, with the wrong sound
-        if (f.steal) {
-            f.stealT = (f.stealT || f.steal) - dt;
-            if (f.stealT <= 0) {
-                f.stealT = f.steal;
-                var conceal = RT.conceal > 0;
-                var pool = RT.foes.filter(function (q) { return !q.dead && q.stacks.length; });
-                if (!conceal && pool.length) {
-                    var v = pick(pool), n = v.stacks.length;
-                    v.stacks.length = 0;
-                    hurtFoe(v, stats().answerBase * 0.4, 'eat', { answer: 1, closed: 0, n: n });
-                    typo(v.x, v.y, 'STOLEN', '#c86a6a', 0.7, 11, 'drift');
-                    RT.echo = Math.max(0, RT.echo - 8);
-                    say('A thief answers your line for you. Wrongly.', 'bad');
-                    sfx('steal');
-                } else if (conceal) typo(f.x, f.y, '???', FAMS.ark.col, 0.5, 9, 'drift');
-            }
-        }
-        // droners write on themselves so you have to overwrite them
-        if (f.drone) {
-            f.droneT = (f.droneT || f.drone) - dt;
-            if (f.droneT <= 0) {
-                f.droneT = f.drone;
-                var mine = callFam();
-                var other = FAM_IDS.filter(function (x) { return x !== mine; });
-                f.stacks.push({ fam: pick(other), t: stats().stackLife, max: stats().stackLife, drone: 1 });
-                while (f.stacks.length > stats().stackMax) f.stacks.shift();
-            }
-        }
-        var reach = f.def.r + 0.75;
-        if (d > reach) {
-            var sx2 = 0, sy2 = 0;                       // shove apart so packs read as a crowd
-            for (var k = 0; k < RT.foes.length; k++) {
-                var o = RT.foes[k]; if (o === f || o.dead) continue;
-                var ox = f.x - o.x, oy = f.y - o.y, od = Math.hypot(ox, oy);
-                if (od > 0.01 && od < f.r + o.r + 0.25) { sx2 += ox / od; sy2 += oy / od; }
-            }
-            var mx = dx / d + sx2 * 0.55, my = dy / d + sy2 * 0.55, ml = Math.hypot(mx, my) || 1;
-            // axis-separated, same as the player: they used to drift straight
-            // through the mill wall and bite you from inside the building
-            var nx2 = clamp(f.x + mx / ml * f.def.spd * dt, 0.7, pw() - 0.7);
-            var ny2 = clamp(f.y + my / ml * f.def.spd * dt, 0.7, ph() - 0.7);
-            if (!blocked(nx2, f.y, f.r * 0.7)) f.x = nx2;
-            if (!blocked(f.x, ny2, f.r * 0.7)) f.y = ny2;
-            f.state = 'walk';
-        } else if (f.atkT <= 0 && f.state === 'walk') { f.state = 'tell'; f.tell = f.def.tell; }
-        if (f.state === 'tell') {
-            f.tell -= dt;
-            if (f.tell <= 0) {
-                f.state = 'walk'; f.atkT = f.def.atk;
-                if (Math.hypot(RT.px - f.x, RT.py - f.y) <= reach + 0.35) hurtPlayer(f.def.dmg, f);
-                typo(f.x, f.y, pick(['HA', 'HEARD', 'ALONE', 'SO THEY SAY']), '#c86a6a', 0.4, 9, 'pop');
-                sfx('bite');
-            }
-        }
+        stepSpecials(f, dt, d);
+        if (f.dead) continue;
+        // a special winding up roots it: the tell is a real window to punish
+        if (f.sp) { f.state = 'walk'; continue; }
+        (AI[f.def.ai] || AI.walk)(f, dt, d, dx, dy);
     }
     // boss voice waves
     for (var p = RT.fproj.length - 1; p >= 0; p--) {
@@ -1438,6 +1541,211 @@ function stepFoes(dt) {
         if (pr.life <= 0) RT.fproj.splice(p, 1);
     }
     return alive;
+}
+
+/* ─────────────── what a place sends at you ───────────────
+   The roster used to be one hardcoded pair, so every fight in the game
+   was mouths plus a thief on wave three. Encounters are authored per
+   place instead, each wave with a reason to exist. `teach` is a note to
+   the next person, not shown to the player.
+
+   A wave is a list of [kind, count, mod]. mod may be null, a modifier
+   id, or '?' to roll one at the place's elite rate. */
+var ENCOUNTERS = {
+    square: [
+        { teach: 'call, answer, nothing else', w: [['mouth', 2]] },
+        { teach: 'a thief in a crowd: kill it first', w: [['mouth', 2], ['thief', 1]] },
+        { teach: 'the sword is unanswerable, and it is the joke', w: [['mouth', 2], ['sword', 1]] }
+    ],
+    lane: [
+        { teach: 'a droner holds the back and writes over itself', w: [['mouth', 2], ['droner', 1]] },
+        { teach: 'two shapes at once: one closes, one will not', w: [['mouth', 1], ['thief', 1], ['droner', 1]] },
+        { teach: 'the first elite', w: [['mouth', 2], ['mouth', 1, 'quick']] }
+    ],
+    mill: [
+        { teach: 'the wall: -ill or nothing', w: [['deaf', 1], ['mouth', 2]] },
+        { teach: 'armour wants -ight before anything else', w: [['mouth', 2], ['deaf', 1, 'sealed']] },
+        { teach: 'shut up and let breath ramp, or you get caught winded', w: [['mouth', 3], ['thief', 1, 'quick']] },
+        { teach: 'everything at once', w: [['deaf', 1], ['droner', 1], ['thief', 1], ['mouth', 2]] }
+    ],
+    // Grelling and the mark do not draw hearsay today (no speakDraws on their
+    // PLACES entry, which is job 3's to set). These are authored and waiting.
+    village: [
+        { teach: 'droners in a pair force you to move', w: [['droner', 2], ['mouth', 1]] },
+        { teach: 'a loud one hits hard enough to respect', w: [['mouth', 2], ['mouth', 1, 'loud']] },
+        { teach: 'the sword, again, but you are busy now', w: [['sword', 1], ['mouth', 2], ['thief', 1]] }
+    ],
+    mark: [
+        { teach: 'thieves hunt in pairs out here', w: [['thief', 2], ['mouth', 1]] },
+        { teach: 'a droning deaf: it writes on itself and cannot hear you', w: [['deaf', 1, 'droning'], ['mouth', 2]] },
+        { teach: 'the full roster before the loft', w: [['deaf', 1], ['sword', 1], ['thief', 1], ['droner', 1]] }
+    ]
+};
+/* the dev arena walks this and then rolls elites forever */
+var ARENA_LADDER = [
+    { teach: 'arena 1', w: [['mouth', 3]] },
+    { teach: 'arena 2', w: [['mouth', 2], ['thief', 1]] },
+    { teach: 'arena 3', w: [['droner', 1], ['mouth', 2]] },
+    { teach: 'arena 4', w: [['deaf', 1], ['mouth', 2]] },
+    { teach: 'arena 5', w: [['sword', 1], ['mouth', 2]] },
+    { teach: 'arena 6', w: [['thief', 1, 'quick'], ['mouth', 2]] },
+    { teach: 'arena 7', w: [['deaf', 1, 'sealed'], ['droner', 1]] },
+    { teach: 'arena 8+', w: [['mouth', 2, '?'], ['thief', 1, '?'], ['droner', 1, '?']] }
+];
+var ENC_DEFAULT = [
+    { teach: 'generic pressure', w: [['mouth', 2]] },
+    { teach: 'generic pressure, with a thief', w: [['mouth', 2], ['thief', 1]] },
+    { teach: 'generic pressure, elite', w: [['mouth', 2], ['mouth', 1, '?']] }
+];
+function encounterFor(placeId, wave) {
+    var list = ENCOUNTERS[placeId] || ENC_DEFAULT;
+    return list[Math.min(wave, list.length - 1)];
+}
+/* roll the modifier for one slot: null, a named id, or '?' for a dice roll */
+function slotMod(mod) {
+    if (!mod) return null;
+    if (mod !== '?') return MODS[mod] ? mod : null;
+    return Math.random() < T('eliteChance') ? pick(MOD_IDS) : null;
+}
+/* spawn one authored wave in a ring around the player */
+function spawnWave(enc, cx0, cy0, spread) {
+    if (!enc) return 0;
+    var n = 0;
+    enc.w.forEach(function (slot) {
+        var kind = slot[0], count = slot[1] || 1, mod = slotMod(slot[2]);
+        for (var i = 0; i < count; i++) {
+            var a = rnd(0, TAU), rr = spread ? rnd(spread[0], spread[1]) : rnd(4.5, 6.5);
+            var f = spawnFoe(kind, clamp(cx0 + Math.cos(a) * rr, 1, pw() - 1), clamp(cy0 + Math.sin(a) * rr, 1, ph() - 1), mod);
+            if (f) n++;
+        }
+    });
+    return n;
+}
+
+/* ─────────────── how they move ───────────────
+   Named shapes, one per behaviour, so a new archetype picks a shape
+   instead of adding another branch to one walk-and-bite loop. Every
+   shape ends in a telegraphed bite: the ring you can read is the
+   whole contract of this game. */
+function foeSep(f) {                       // shove apart so packs read as a crowd
+    var sx = 0, sy = 0;
+    for (var k = 0; k < RT.foes.length; k++) {
+        var o = RT.foes[k]; if (o === f || o.dead) continue;
+        var ox = f.x - o.x, oy = f.y - o.y, od = Math.hypot(ox, oy);
+        if (od > 0.01 && od < f.r + o.r + 0.25) { sx += ox / od; sy += oy / od; }
+    }
+    return [sx, sy];
+}
+/* axis-separated, same as the player: they used to drift straight
+   through the mill wall and bite you from inside the building */
+function moveFoe(f, mx, my, dt, spd) {
+    var s = foeSep(f);
+    mx += s[0] * 0.55; my += s[1] * 0.55;
+    var ml = Math.hypot(mx, my) || 1;
+    var nx = clamp(f.x + mx / ml * spd * dt, 0.7, pw() - 0.7);
+    var ny = clamp(f.y + my / ml * spd * dt, 0.7, ph() - 0.7);
+    if (!blocked(nx, f.y, f.r * 0.7)) f.x = nx;
+    if (!blocked(f.x, ny, f.r * 0.7)) f.y = ny;
+}
+function foeBite(f, dt, d) {
+    var reach = f.r + 0.75;
+    if (d <= reach && f.atkT <= 0 && f.state !== 'tell') { f.state = 'tell'; f.tell = f.def.tell; }
+    if (f.state === 'tell') {
+        f.tell -= dt;
+        if (f.tell <= 0) {
+            f.state = 'walk'; f.atkT = f.atk;
+            if (Math.hypot(RT.px - f.x, RT.py - f.y) <= reach + 0.35) hurtPlayer(f.dmg, f);
+            typo(f.x, f.y, pick(['HA', 'HEARD', 'ALONE', 'SO THEY SAY']), '#c86a6a', 0.4, 9, 'pop');
+            sfx('bite');
+        }
+        return true;
+    }
+    return false;
+}
+var AI = {
+    /* straight at you, and bite. the baseline everything is read against */
+    walk: function (f, dt, d, dx, dy) {
+        if (!foeBite(f, dt, d) && d > f.r + 0.75) { moveFoe(f, dx / d, dy / d, dt, f.spd); f.state = 'walk'; }
+    },
+    /* in, take something, out. the Thief runs its steal and then keeps
+       its distance while the cooldown comes back, so the player gets a
+       window to punish it and a reason to want to. */
+    dart: function (f, dt, d, dx, dy) {
+        var keep = f.def.keep || 4;
+        var wants = f.stealT != null && f.stealT < 0.9;      // closing for the steal
+        if (f.state === 'tell') { foeBite(f, dt, d); return; }
+        if (f.flee > 0) {
+            f.flee -= dt;
+            moveFoe(f, -dx / d, -dy / d, dt, f.spd * 1.15);
+            f.state = 'flee';
+            return;
+        }
+        if (wants || d > keep + 2) {
+            if (!foeBite(f, dt, d) && d > f.r + 0.75) { moveFoe(f, dx / d, dy / d, dt, f.spd); f.state = 'walk'; }
+        } else if (d < keep) {
+            moveFoe(f, -dx / d, -dy / d, dt, f.spd * 0.8); f.state = 'walk';
+        } else { f.state = 'walk'; foeBite(f, dt, d); }
+    },
+    /* stands off and says its line at you. it will not close, so you
+       cannot ignore it and you cannot melee-range your way out of it. */
+    hold: function (f, dt, d, dx, dy) {
+        var keep = f.def.keep || 5;
+        if (d < keep - 0.6) { moveFoe(f, -dx / d, -dy / d, dt, f.spd); f.state = 'walk'; }
+        else if (d > keep + 0.8) { moveFoe(f, dx / d, dy / d, dt, f.spd * 0.85); f.state = 'walk'; }
+        else { f.state = 'walk'; }
+        foeBite(f, dt, d);                                   // only if you walk into it
+    },
+    chorus: function (f, dt, d) { stepChorus(f, dt, d); }
+};
+
+/* ─────────────── the specials, with something to read ───────────────
+   Both of these used to just happen. A special the player cannot see
+   coming is not difficulty, it is noise. Each one now winds up, says
+   what it is doing, and can be interrupted by -erd or -ill like
+   anything else. */
+function stepSpecials(f, dt, d) {
+    if (f.steal) {
+        f.stealT = (f.stealT == null ? f.steal : f.stealT) - dt;
+        if (f.stealT <= 0 && f.sp !== 'steal') {
+            var pool0 = RT.foes.filter(function (q) { return !q.dead && q.stacks.length; });
+            if (RT.conceal > 0) { typo(f.x, f.y, '???', FAMS.ark.col, 0.5, 9, 'drift'); f.stealT = f.steal * 0.5; }
+            else if (pool0.length) { f.sp = 'steal'; f.wind = f.def.stealTell || 0.8; f.windMax = f.wind; }
+            else f.stealT = 0.4;
+        }
+        if (f.sp === 'steal') {
+            f.wind -= dt;
+            if (f.wind <= 0) {
+                f.sp = null; f.stealT = f.steal; f.flee = 1.5;
+                var pool = RT.foes.filter(function (q) { return !q.dead && q.stacks.length; });
+                if (RT.conceal > 0 || !pool.length) { typo(f.x, f.y, 'nothing to take', '#6a5f72', 0.5, 9, 'drift'); }
+                else {
+                    var v = pick(pool), n = v.stacks.length;
+                    v.stacks.length = 0;
+                    hurtFoe(v, stats().answerBase * 0.4, 'eat', { answer: 1, closed: 0, n: n });
+                    typo(v.x, v.y, 'STOLEN', '#c86a6a', 0.7, 11, 'drift');
+                    RT.echo = Math.max(0, RT.echo - 8);
+                    say('A thief answers your line for you. Wrongly.', 'bad');
+                    sfx('steal');
+                }
+            }
+        }
+    }
+    if (f.drone) {
+        f.droneT = (f.droneT == null ? f.drone : f.droneT) - dt;
+        if (f.droneT <= 0 && f.sp !== 'drone') { f.sp = 'drone'; f.wind = f.def.droneTell || 0.7; f.windMax = f.wind; }
+        if (f.sp === 'drone') {
+            f.wind -= dt;
+            if (f.wind <= 0) {
+                f.sp = null; f.droneT = f.drone;
+                var st = stats(), mine = callFam();
+                var other = FAM_IDS.filter(function (x) { return x !== mine; });
+                f.stacks.push({ fam: pick(other), t: st.stackLife, max: st.stackLife, drone: 1 });
+                while (f.stacks.length > st.stackMax) f.stacks.shift();
+                typo(f.x, f.y, 'ON AND ON', '#c9a94a', 0.45, 9, 'drift');
+                sfx('drone');
+            }
+        }
+    }
 }
 
 /* ─────────────── THE CHORUS ───────────────
@@ -1456,7 +1764,7 @@ function stepChorus(f, dt, d) {
         slam('AND HE WENT ALONE', '#d2c8e1', 'the refrain strips everything');
         RT.shake = shake(8);
         if (stripped) { RT.echo = Math.max(0, RT.echo - stripped * 2); }
-        if (Math.hypot(RT.px - f.x, RT.py - f.y) < 3) hurtPlayer(f.def.dmg);
+        if (Math.hypot(RT.px - f.x, RT.py - f.y) < 3) hurtPlayer(f.dmg);
         sfx('pulse');
     }
     f.spawnT = (f.spawnT || 4) - dt;
@@ -1470,27 +1778,45 @@ function stepChorus(f, dt, d) {
     f.atkT -= 0;
     f.voiceT = (f.voiceT || 1.6) - dt;
     if (f.voiceT <= 0) {
-        f.voiceT = f.def.atk;
+        f.voiceT = f.atk;
         var an = Math.atan2(RT.py - f.y, RT.px - f.x);
         for (var j = -1; j <= 1; j++) {
-            RT.fproj.push({ x: f.x, y: f.y, vx: Math.cos(an + j * 0.22) * 5.5, vy: Math.sin(an + j * 0.22) * 5.5, life: 2.6, dmg: f.def.dmg });
+            RT.fproj.push({ x: f.x, y: f.y, vx: Math.cos(an + j * 0.22) * 5.5, vy: Math.sin(an + j * 0.22) * 5.5, life: 2.6, dmg: f.dmg });
         }
         sfx('voice');
     }
 }
 
 /* ─────────────── death ─────────────── */
+/* What happens when a boss goes down is a named hook, not an if. A second
+   boss registers here and gets its own ending without touching foeDie. */
+var BOSS_DOWN = { chorus: function (f) { onChorusDown(f); } };
+function onBossDown(name, fn) { BOSS_DOWN[name] = fn; }
+
+/* ─────────────── a line, cut off ───────────────
+   They used to stop existing. In a game where everything is a
+   misremembered line, dying should sound like being interrupted: the
+   thing gets most of a word out, and the word is cut where it stands. */
+var LAST_WORDS = ['AND HE WENT', 'SHE ASKED FOR A', 'THE NINTH', 'WE ALL HE', 'NOT FOR THE MAN', 'SO LIGHT YOUR', 'ALONE, ALO', 'HE CAME BACK D'];
+function deathLine(f) {
+    var w = pick(LAST_WORDS);
+    var cut = Math.max(2, Math.round(w.length * rnd(0.45, 0.8)));
+    RT.combat.cuts.push({ x: f.x, y: f.y, w: w.slice(0, cut), t: 0.55, max: 0.55, big: f.def.boss ? 1 : 0 });
+}
 function foeDie(f, quiet) {
     if (f.dead) return;
     f.dead = 1; S.kills++;
-    var rgb = f.def.boss ? '210,200,225' : '170,160,185';
-    burst(f.x, f.y, 14, f.def.boss ? 50 : 16, { col: rgb, sp0: 0.6, sp1: f.def.boss ? 3.6 : 2.4, l0: 0.3, l1: 1, add: 0, grav: 140 });
-    typo(f.x, f.y, pick(['—', 'oh', 'ah', 'hm']), '#8a8090', 0.6, 10, 'drift');
+    var boss = !!f.def.boss;
+    var rgb = boss ? '210,200,225' : '170,160,185';
+    burst(f.x, f.y, 14, boss ? 50 : 16, { col: rgb, sp0: 0.6, sp1: boss ? 3.6 : 2.4, l0: 0.3, l1: 1, add: 0, grav: 140 });
+    deathLine(f);
     var c = irnd(f.def.coin[0], f.def.coin[1]);
+    if (f.m) c += T('eliteCoin');                       // elites are worth the trouble
     if (c) coin(c, f.x, f.y);
     if (f.kind === 'sword' && f.callDmg && !f.otherDmg) ach('sword');
-    if (f.def.boss) onChorusDown(f);
-    if (!quiet) sfx('die');
+    if (f.m) ach('elite');
+    if (f.def.onDown && BOSS_DOWN[f.def.onDown]) BOSS_DOWN[f.def.onDown](f);
+    if (!quiet) sfx(boss ? 'bossdie' : 'die');
     if (RT.trial) RT.trial.killed++;
     sSave();
 }
@@ -1514,16 +1840,27 @@ function drawFoe(cx, f) {
     if (f.state === 'tell' && !f.def.boss) {          // the wind-up ring
         cx.save(); cx.translate(sx, sy); cx.scale(1, 0.5);
         cx.strokeStyle = 'rgba(255,90,80,' + (0.35 + tell * 0.4) + ')'; cx.lineWidth = 2;
-        cx.beginPath(); cx.arc(0, 0, (f.def.r + 0.75) * TILE_W / 2, 0, TAU); cx.stroke(); cx.restore();
+        cx.beginPath(); cx.arc(0, 0, (f.r + 0.75) * TILE_W / 2, 0, TAU); cx.stroke(); cx.restore();
+    }
+    // a special winding up: the ring closes on the beat it lands, and the
+    // word above says which special it is. Both are interruptible.
+    if ((f.sp === 'steal' || f.sp === 'drone') && f.windMax) {
+        var k2 = clamp(1 - f.wind / f.windMax, 0, 1);
+        var col2 = f.sp === 'steal' ? '#c86a6a' : '#c9a94a';
+        cx.save(); cx.translate(sx, sy); cx.scale(1, 0.5);
+        cx.strokeStyle = col2; cx.lineWidth = 2; cx.globalAlpha = 0.85;
+        cx.beginPath(); cx.arc(0, 0, (2.6 - k2 * 1.9) * TILE_W / 2, 0, TAU); cx.stroke();
+        cx.globalAlpha = 0.3; cx.beginPath(); cx.arc(0, 0, 0.7 * TILE_W / 2, 0, TAU); cx.stroke();
+        cx.restore();
+        cx.save(); cx.font = 'bold 8px "Press Start 2P", monospace'; cx.textAlign = 'center';
+        cx.fillStyle = col2; cx.globalAlpha = 0.6 + Math.sin(RT.t * 26) * 0.4;
+        cx.fillText(f.sp === 'steal' ? 'REACHING' : 'ON AND ON', sx, sy - h - 30);
+        cx.restore(); cx.textAlign = 'left';
     }
     cx.save(); cx.translate(sx, sy - Math.abs(wob) * 0.4); cx.scale(pop, pop);
     cx.fillStyle = 'rgba(0,0,0,.42)'; cx.beginPath(); cx.ellipse(0, 0, f.r * 21, f.r * 8, 0, 0, TAU); cx.fill();
-    if (f.def.boss) drawChorus(cx, f, tell);
-    else if (f.kind === 'sword') drawSword(cx, f, tell);
-    else if (f.kind === 'deaf') drawDeaf(cx, f, tell);
-    else if (f.kind === 'droner') drawDroner(cx, f, tell);
-    else if (f.kind === 'thief') drawThief(cx, f, tell);
-    else drawMouth(cx, f, tell);
+    (FOE_DRAW[f.def.draw] || drawMouth)(cx, f, tell);
+    if (f.m) drawMod(cx, f, h);                      // the elite mark rides on top of the body
     if (f.flash > 0) { cx.globalCompositeOperation = 'lighter'; cx.globalAlpha = f.flash * 3.4; cx.fillStyle = '#fff';
         cx.fillRect(-f.r * 22, -h, f.r * 44, h); cx.globalAlpha = 1; cx.globalCompositeOperation = 'source-over'; }
     if (f.frozen > 0) { cx.globalAlpha = 0.45; cx.fillStyle = '#cfeeff'; cx.fillRect(-f.r * 22, -h, f.r * 44, h); cx.globalAlpha = 1; }
@@ -1622,6 +1959,30 @@ function drawSword(cx, f, tell) {
     cx.fillStyle = '#8a8090'; cx.font = 'bold 8px "Press Start 2P", monospace'; cx.textAlign = 'center';
     cx.fillText('NO RHYME', 0, -h - 8); cx.textAlign = 'left';
 }
+/* one mark per modifier, drawn over whatever it is riding on, so an
+   elite reads as "that thing, but wrong" rather than as a new enemy */
+function drawMod(cx, f, h) {
+    var m = f.m, w = f.r * 44;
+    cx.save();
+    cx.strokeStyle = m.col; cx.fillStyle = m.col;
+    if (m.mark === 'ring') {
+        cx.globalAlpha = 0.5 + Math.sin(RT.t * 3) * 0.2; cx.lineWidth = 2;
+        cx.save(); cx.scale(1, 0.5); cx.beginPath(); cx.arc(0, 0, w * 1.15, 0, TAU); cx.stroke(); cx.restore();
+    } else if (m.mark === 'streak') {
+        cx.globalAlpha = 0.7;
+        for (var i = 0; i < 3; i++) cx.fillRect(-w - 6 - i * 5, -h * 0.55 - i * 4, 4, 1.5);
+    } else if (m.mark === 'plate') {
+        cx.globalAlpha = f.armor > 0 ? 0.85 : 0.2;
+        cx.lineWidth = 2; cx.strokeRect(-w * 0.8, -h * 0.75, w * 1.6, h * 0.5);
+    } else if (m.mark === 'halo') {
+        cx.globalAlpha = 0.25 + Math.abs(Math.sin(f.anim * 4)) * 0.35;
+        cx.save(); cx.scale(1, 0.4); cx.beginPath(); cx.arc(0, -h * 2.1, w * 1.1, 0, TAU); cx.fill(); cx.restore();
+    } else if (m.mark === 'hand') {
+        cx.globalAlpha = 0.8; cx.fillRect(w * 0.7, -h * 0.62, w * 0.55, 3);
+        cx.fillRect(w * 1.2, -h * 0.68, 3, 8);
+    }
+    cx.restore();
+}
 function drawChorus(cx, f, tell) {
     var w = 92, h = 118;
     cx.save();
@@ -1643,6 +2004,40 @@ function drawChorus(cx, f, tell) {
         cx.fillText('IN UNISON', 0, -h - 16); cx.textAlign = 'left';
     }
     cx.restore();
+}
+
+/* name → body. A new archetype brings its own drawer and registers it
+   here; drawFoe never grows another branch. */
+var FOE_DRAW = { mouth: drawMouth, thief: drawThief, droner: drawDroner, deaf: drawDeaf, sword: drawSword, chorus: drawChorus };
+
+/* the cut-off line left behind by a death. The word is drawn, then the
+   canvas is clipped mid-letter and a hard caesura bar sits on the cut:
+   a sentence stopped in the middle, which is what happened to her. */
+function drawCuts(cx, dt) {
+    var c2 = RT.combat.cuts;
+    for (var i = c2.length - 1; i >= 0; i--) {
+        var c = c2[i]; c.t -= dt;
+        if (c.t <= 0) { c2.splice(i, 1); continue; }
+        var k = 1 - c.t / c.max;
+        var sx = isoX(c.x, c.y), sy = isoY(c.x, c.y) + TILE_H / 2 - 34 - k * 16;
+        var size = c.big ? 15 : 9;
+        cx.save();
+        cx.font = 'bold ' + size + 'px "Press Start 2P", monospace';
+        cx.textAlign = 'left';
+        var w = cx.measureText(c.w).width;
+        var cutAt = w * (1 - Math.min(1, k * 1.6));            // the cut travels in
+        cx.globalAlpha = clamp(1 - k, 0, 1) * 0.95;
+        cx.beginPath(); cx.rect(sx - w / 2, sy - size - 4, Math.max(0, cutAt), size + 8); cx.clip();
+        cx.fillStyle = c.big ? '#d2c8e1' : '#b9b0c6';
+        cx.fillText(c.w, sx - w / 2, sy);
+        cx.restore();
+        if (cutAt > 1) {                                        // the bar sitting on the cut
+            cx.save(); cx.globalAlpha = clamp(1 - k, 0, 1);
+            cx.fillStyle = c.big ? '#fff' : '#e6e1f0';
+            cx.fillRect(sx - w / 2 + cutAt, sy - size - 2, 2, size + 5);
+            cx.restore();
+        }
+    }
 }
 
 /* ─────────────── loop ─────────────── */
@@ -1673,6 +2068,7 @@ function step(dt, real) {
         stepPlayer(dt);
         stepCalls(dt);
         stepStacks(dt);
+        stepReprise(dt);
         stepFoes(dt);
         stepParts(dt);
         stepRecital(real || dt);
@@ -1728,6 +2124,7 @@ function draw(rdt) {
     drawCalls(cx);
     drawFproj(cx);
     drawParts(cx);
+    drawCuts(cx, dt);            // job 4: the cut-off last line, world space
     drawSnaps(cx, dt);
     drawTypo(cx, dt);
     if (RT.flash > 0) { cx.fillStyle = 'rgba(255,250,235,' + (RT.flash * 0.5) + ')'; cx.fillRect(0, 0, VW, VH); }
@@ -1883,6 +2280,7 @@ function updateHud(dt) {
 function hudNudge(what) {
     if (!RT) return;
     var el = what === 'breath' ? RT.root.querySelector('.nn-breath')
+        : what === 'echo' ? RT.root.querySelector('.nn-echo')
         : what === 'verse' ? RT.root.querySelector('.nn-verse')
         : RT.root.querySelector('.nn-st:nth-child(' + (parseInt(what.slice(6), 10) || 1) + ')');
     if (!el) return;
@@ -2524,11 +2922,15 @@ function stepScene(dt) {
     }
     var p = place(), alive = RT.foes.filter(function (f) { return !f.dead; }).length;
     if (p.endless) {
+        // the arena escalates: it walks the authored ladder and then keeps
+        // rolling elites, so the dev arena is a real difficulty read
         RT.waveT -= dt;
         if (alive < 6 && RT.waveT <= 0) {
             RT.waveT = 2.5;
-            var a = rnd(0, TAU);
-            spawnFoe(pick(['mouth', 'mouth', 'thief', 'droner', 'deaf']), pw() / 2 + Math.cos(a) * 6, ph() / 2 + Math.sin(a) * 6);
+            RT.combat.encI = (RT.combat.encI || 0) + 1;
+            var lad = ARENA_LADDER[Math.min(RT.combat.encI - 1, ARENA_LADDER.length - 1)];
+            RT.combat.enc = lad;
+            spawnWave(lad, pw() / 2, ph() / 2, [5, 7]);
         }
         return;
     }
@@ -2876,13 +3278,13 @@ function speakPressure() {
     var need = 6 + RT.wave * 2;
     if (RT.pressure < need) return;
     RT.pressure = 0; RT.wave++;
-    var n = Math.min(p.speakDraws, 1 + RT.wave);
     say(pick(['Something in the dark starts saying it back.', 'The dark has opinions about your delivery.', 'Somewhere behind you, your own line, slightly wrong.']), 'bad');
-    for (var i = 0; i < n; i++) {
-        var a = rnd(0, TAU), rr = rnd(4.5, 6.5);
-        spawnFoe(RT.wave >= 3 && i === 0 ? 'thief' : 'mouth',
-            clamp(RT.px + Math.cos(a) * rr, 1, pw() - 1), clamp(RT.py + Math.sin(a) * rr, 1, ph() - 1));
-    }
+    // the roster is authored per place now (ENCOUNTERS), not one hardcoded
+    // pair. speakDraws still caps how much a place is willing to send.
+    var enc = encounterFor(RT.place, RT.wave - 1);
+    RT.combat.enc = enc;
+    var sent = spawnWave(enc, RT.px, RT.py);
+    if (!sent) spawnFoe('mouth', clamp(RT.px + 5, 1, pw() - 1), RT.py);
     S.draws = (S.draws || 0) + 1;                   // counted in the save, not in a frame counter
     if (RT.place === 'mill' && S.draws >= 2 && !S.seen.rehearsed) {
         S.seen.rehearsed = 1; sSave();
@@ -3475,5 +3877,6 @@ function close() {
     if (window.__ninth) delete window.__ninth;
     return hrs;
 }
+combatBoot();          // job 4: keybind + travel reset, once every var above exists
 window.NINTH = { render: render, init: init, close: close, steamAch: steamAch };
 })();
