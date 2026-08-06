@@ -3016,3 +3016,9 @@ button.nn-drow:hover { background: rgba(30,60,48,.5); }
     .nn-word { width: 106px; }
     .nn-left { width: 150px; }
 }
+
+/* NINTH NIGHT — the world layer */
+.nn-dlg { position: absolute; left: 50%; bottom: 128px; transform: translateX(-50%); width: 560px; max-width: calc(100% - 40px); padding: 12px 16px 10px; background: rgba(9,7,14,.96); border: 1px solid #4a3f5e; box-shadow: 0 6px 0 rgba(0,0,0,.45); z-index: 6; }
+.nn-dlg-who { display: block; font-size: .62rem; letter-spacing: .16em; color: #c9a94a; margin-bottom: 5px; }
+.nn-dlg-tx { font-family: "VT323", monospace; font-size: 1.12rem; line-height: 1.38; color: #e8e2ee; margin: 0; }
+.nn-dlg-more { display: block; text-align: right; font-size: .54rem; font-style: normal; color: #6a6278; margin-top: 7px; }

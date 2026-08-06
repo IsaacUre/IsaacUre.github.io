@@ -112,26 +112,7 @@ var FOES = {
               d: 'A crowd of voices, no bodies, saying the refrain in unison. It strips rhyme off everything on a pulse. Burst between pulses.' }
 };
 
-/* ─────────────── scenes ───────────────
-   The vertical slice the design doc asks for: prologue, Act 1,
-   the Chorus. Every one of these is a dev-menu jump target. */
-var SCENES = {
-    prologue: { n: 'Prologue — the stage', sub: 'you are nine, and the mask does not fit',
-        floor: 'stage', calm: 1, script: 'prologue' },
-    wick:     { n: 'Wick — the square', sub: 'they have given you the crown and the lantern',
-        floor: 'town', calm: 1, script: 'wick' },
-    mill:     { n: 'Act 1 — the mill', sub: 'rehearse where nobody can hear you, because you are bad',
-        floor: 'mill', script: 'mill', waves: [['mouth', 4], ['mouth', 6, 'thief', 1], ['mouth', 5, 'droner', 2], ['thief', 2, 'deaf', 1, 'mouth', 4]] },
-    yard:     { n: 'Act 1 — the yard', sub: 'the sword is in the play because it sounded good',
-        floor: 'mill', script: 'yard', waves: [['mouth', 6, 'sword', 1], ['deaf', 2, 'droner', 2, 'mouth', 6]] },
-    loft:     { n: 'Act 1 — the grain loft', sub: 'a crowd of voices with no bodies',
-        floor: 'loft', script: 'loft', boss: 'chorus' },
-    quiet:    { n: 'After the Chorus', sub: 'heard. alone. those are not a rhyme.',
-        floor: 'loft', calm: 1, script: 'quiet' },
-    arena:    { n: 'Dev — free arena', sub: 'nothing here means anything. hit things.',
-        floor: 'mill', script: null, endless: 1 }
-};
-var SCENE_IDS = Object.keys(SCENES);
+/* places, people and scripts live in the world section below. */
 
 /* achievements (the Steam client reads these live) */
 var ACH = [
@@ -170,7 +151,7 @@ var CHARMS = {
               m: { slantMul: 0.3 } },
     lamp:   { n: 'The Sill Lamp', cost: 85, d: 'Set out every year for a man who was never out there. -eat and -ight land 30% harder.',
               m: { famDmg: { eat: 0.3, ight: 0.3 } } },
-    hilt:   { n: 'A Sword Hilt', cost: 0, sell: 120, joke: 1, d: 'Prop, not weapon. Nothing rhymes with sword, so it does nothing at all, in any hand, forever. The chandler will give you good coin for it.',
+    hilt:   { n: 'A Sword Hilt', cost: 140, sell: 12, joke: 1, d: 'Prop, not weapon. Nothing rhymes with sword, so it does nothing at all, in any hand, forever. He is asking a great deal for it.',
               m: {} }
 };
 var CHARM_IDS = Object.keys(CHARMS);
@@ -181,7 +162,13 @@ function sLoad() {
     if (S) return;
     try { S = JSON.parse(localStorage.getItem('comp_ninth') || 'null'); } catch (e) { S = null; }
     if (!S) S = {};
-    S.scene = SCENES[S.scene] ? S.scene : 'prologue';
+    // saves written before places existed carried S.scene instead
+    if (!S.place && S.scene) {
+        S.place = { prologue: 'stage', wick: 'square', mill: 'mill', yard: 'lane', loft: 'loft', quiet: 'mill', arena: 'arena' }[S.scene] || 'square';
+        delete S.scene;
+    }
+    S.place = S.place || 'stage';
+    S.heard = S.heard || {};        // refrain / child / busker / shepherd — understanding, not loot
     S.fams = S.fams || { eat: 1, ight: 1 };          // the town's version is your starting kit
     S.frags = S.frags || {};
     S.stanzas = S.stanzas || {};
@@ -222,11 +209,12 @@ function charmSum() {
     return m;
 }
 /* every derived combat number in one place, recomputed fresh */
+function fragCount() { return (S && S.frags ? [1, 2, 3].filter(function (n) { return S.frags[n]; }).length : 0); }
 function stats() {
     var c = charmSum();
     return {
         c: c,
-        breathMax: T('breathMax'),
+        breathMax: T('breathMax') + fragCount() * 12,
         regen: T('breathRegen'), ramp: T('breathRamp'), rampAfter: Math.max(0.15, T('rampAfter') + c.rampAfter),
         callCost: T('callCost'), answerCost: T('answerCost'),
         callDmg: T('callDmg') * (1 + c.callDmg),
@@ -282,7 +270,6 @@ function grantFragment(n) {
     var f = map[n]; if (!f || S.frags[n]) return;
     S.frags[n] = 1; S.fams[f[0]] = 1; S.owned[f[1]] = 1; S.stanzas[n] = 1;
     if (n === 1) ach('frag1');
-    TUNE.breathMax += 12;                                  // max Breath up, every fragment
     sSave();
     bigLine('FRAGMENT ' + ['I', 'II', 'III'][n - 1], f[1].toUpperCase(), FAMS[f[0]].col);
     say('The line closes. <b style="color:' + FAMS[f[0]].col + '">' + f[1].toUpperCase() + '</b> is yours, and so is Stanza ' + ['I', 'II', 'III'][n - 1] + '.', 'good');
@@ -314,6 +301,7 @@ function render() {
 
         // narration: the slow channel. full lines are only ever allowed here.
         '<div class="nn-say"></div>' +
+        '<div class="nn-dlg" hidden><b class="nn-dlg-who"></b><p class="nn-dlg-tx"></p><i class="nn-dlg-more"></i></div>' +
 
         // bottom: breath, the two slotted words, the stanza bar
         '<div class="nn-hud">' +
@@ -363,12 +351,26 @@ function render() {
      pick   — choose one of a list
      note   — a line of text */
 var DEV = [
-  { tab: 'SCENE', rows: function () {
-      var rows = [{ k: 'note', t: 'Jump anywhere. Story beats replay from the top.' }];
-      SCENE_IDS.forEach(function (id) {
-          rows.push({ k: 'btn', t: SCENES[id].n, sub: SCENES[id].sub, go: id, on: function () { gotoScene(id, true); } });
+  { tab: 'WORLD', rows: function () {
+      var rows = [{ k: 'note', t: 'Walk anywhere. Scripts replay from the top.' }];
+      PLACE_IDS.forEach(function (id) {
+          rows.push({ k: 'btn', t: PLACES[id].n, sub: PLACES[id].sub, on: function () { gotoPlace(id, true); } });
       });
-      rows.push({ k: 'btn', t: 'Replay this scene\'s script', on: function () { delete S.seen[RT.scene]; gotoScene(RT.scene, true); } });
+      rows.push({ k: 'btn', t: 'Replay this place script', on: function () { var p = place(); if (p.script) delete S.seen[p.script + 'Intro']; gotoPlace(RT.place, true); } });
+      rows.push({ k: 'btn', t: 'Open every exit (ignore gates)', on: function () { S.seen.rehearsed = 1; S.seen.openAll = 1; sSave(); } });
+      return rows;
+  } },
+  { tab: 'PEOPLE', rows: function () {
+      var rows = [{ k: 'note', t: 'Hear anybody from anywhere, without walking to them.' }];
+      Object.keys(NPCS).forEach(function (id) {
+          rows.push({ k: 'btn', t: NPCS[id].n, sub: 'hear them out', on: function () { toggleDev(); openDialog(NPCS[id].talk(), NPCS[id].n); } });
+      });
+      rows.push({ k: 'note', t: 'Understanding, not loot: Fragment I lands once you have heard the refrain AND somebody carrying the true line.' });
+      rows.push({ k: 'tgl', t: 'heard the refrain (the Chorus)', get: function () { return !!S.heard.refrain; }, set: function (v) { S.heard.refrain = v ? 1 : 0; sSave(); } });
+      ['child', 'busker', 'shepherd'].forEach(function (w) {
+          rows.push({ k: 'tgl', t: 'heard the ' + w, get: function () { return !!S.heard[w]; }, set: function (v) { S.heard[w] = v ? 1 : 0; sSave(); } });
+      });
+      rows.push({ k: 'btn', t: 'Force the realisation now', on: function () { toggleDev(); S.heard.refrain = 1; S.heard.child = 1; checkRealisation(); } });
       return rows;
   } },
   { tab: 'SPAWN', rows: function () {
@@ -410,7 +412,7 @@ var DEV = [
       rows.push({ k: 'tgl', t: 'Verse (R) unlocked', get: function () { return !!S.verse; }, set: function (v) { S.verse = v ? 1 : 0; sSave(); } });
       rows.push({ k: 'btn', t: 'Grant every charm', on: function () { CHARM_IDS.forEach(function (c) { S.charms[c] = 1; }); sSave(); } });
       rows.push({ k: 'num', t: 'Coin', get: function () { return S.coin; }, set: function (v) { S.coin = Math.max(0, Math.round(v)); }, step: 25 });
-      rows.push({ k: 'btn', t: 'Wipe save (start over)', danger: 1, on: function () { try { localStorage.removeItem('comp_ninth'); } catch (e) {} S = null; sLoad(); gotoScene('prologue', true); } });
+      rows.push({ k: 'btn', t: 'Wipe save (start over)', danger: 1, on: function () { try { localStorage.removeItem('comp_ninth'); } catch (e) {} S = null; sLoad(); gotoPlace('stage', true); } });
       return rows;
   } },
   { tab: 'CHEAT', rows: function () { return [
@@ -440,8 +442,10 @@ var DEV = [
    is dirt and chaff, the loft is boards and dark, the prologue is
    a plank stage with footlights and an audience you cannot see. */
 var FLOORS = {};
-function buildFloor(kind) {
-    if (FLOORS[kind]) return FLOORS[kind];
+function buildFloor(kind, gw, gh) {
+    gw = gw || GRID; gh = gh || GRID;
+    var key = kind + gw + 'x' + gh;
+    if (FLOORS[key]) return FLOORS[key];
     var cv = document.createElement('canvas'); cv.width = VW; cv.height = VH;
     var g = cv.getContext('2d');
     var seed = 9; function fr() { seed = (seed * 1103515245 + 12345) >>> 0; return (seed >>> 8) / 16777216; }
@@ -450,9 +454,9 @@ function buildFloor(kind) {
             : kind === 'loft'  ? ['#241c16', '#1a1410', '#332720']
             :                    ['#2e2620', '#241d19', '#3b312a'];
     g.fillStyle = '#07060a'; g.fillRect(0, 0, VW, VH);
-    for (var y = 0; y < GRID; y++) for (var x = 0; x < GRID; x++) {
+    for (var y = 0; y < gh; y++) for (var x = 0; x < gw; x++) {
         var sx = isoX(x, y), sy = isoY(x, y);
-        var edge = Math.min(x, y, GRID - 1 - x, GRID - 1 - y);
+        var edge = Math.min(x, y, gw - 1 - x, gh - 1 - y);
         g.beginPath();
         g.moveTo(sx, sy); g.lineTo(sx + TILE_W / 2, sy + TILE_H / 2);
         g.lineTo(sx, sy + TILE_H); g.lineTo(sx - TILE_W / 2, sy + TILE_H / 2); g.closePath();
@@ -468,7 +472,7 @@ function buildFloor(kind) {
         if (edge === 0) { g.fillStyle = 'rgba(4,3,8,.5)'; g.fill(); }
     }
     // a ring of light where the scene wants you to stand
-    var cx0 = isoX(GRID / 2, GRID / 2), cy0 = isoY(GRID / 2, GRID / 2);
+    var cx0 = isoX(gw / 2, gh / 2), cy0 = isoY(gw / 2, gh / 2);
     g.save(); g.translate(cx0, cy0); g.scale(1, 0.5);
     var rg = g.createRadialGradient(0, 0, 20, 0, 0, 330);
     rg.addColorStop(0, kind === 'stage' ? 'rgba(255,190,90,.16)' : 'rgba(255,200,120,.07)');
@@ -477,7 +481,7 @@ function buildFloor(kind) {
     var vg = g.createRadialGradient(VW / 2, VH / 2 - 30, 150, VW / 2, VH / 2, 560);
     vg.addColorStop(0, 'rgba(4,3,8,0)'); vg.addColorStop(1, 'rgba(4,3,8,.97)');
     g.fillStyle = vg; g.fillRect(0, 0, VW, VH);
-    FLOORS[kind] = cv; return cv;
+    FLOORS[key] = cv; return cv;
 }
 
 /* ─────────────── particles ─────────────── */
@@ -604,12 +608,14 @@ function say(html, cls) {
     d.innerHTML = html;
     el.appendChild(d);
     while (el.children.length > 5) el.removeChild(el.firstChild);
-    setTimeout(function () { if (d.parentNode) { d.classList.add('out'); setTimeout(function () { if (d.parentNode) d.remove(); }, 700); } }, 5200);
+    RT.timers.push(setTimeout(function () {
+        if (d.parentNode) { d.classList.add('out'); RT.timers.push(setTimeout(function () { if (d.parentNode) d.remove(); }, 700)); }
+    }, 5200));
 }
 
 /* ─────────────── runtime ─────────────── */
 var RT = null;
-function stanzaKeys() { return S.opts.wasd ? ['q', 'e', 'f'] : ['q', 'w', 'e']; }
+function stanzaKeys() { return ['1', '2', '3']; }   // E is interact, in every scheme
 function refreshStanzaKeys() {
     if (!RT) return;
     var k = stanzaKeys();
@@ -631,19 +637,19 @@ function init(el) {
         foes: [], fproj: [], parts: [], typo: [], slams: [], lines: [],
         calls: [], snaps: [], rings: [], beats: [],
         callCd: 0, answerCd: 0, conceal: 0, sourN: 0,
-        scene: S.scene, wave: 0, waveT: 0, phase: 'idle', pending: [],
+        place: S.place, wave: 0, waveT: 0, phase: 'idle', pending: [],
+        dialog: null, prompt: null, pressure: 0, cleared: false, mapOpen: false,
         shake: 0, chroma: 0, flash: 0, dilate: 0, mono: 0, timeScale: 1,
         stanzaCd: [0, 0, 0], casting: null, recital: null, verseCast: 0,
-        toasts: [], panel: null, devTab: 'SCENE', devOpen: false,
+        toasts: [], panel: null, devTab: 'WORLD', devOpen: false,
         god: 0, infBreath: 0, holdStacks: 0, oneShot: 0,
         dbgStacks: 0, dbgAI: 0, dbgHit: 0, dbgPerf: 0,
         fps: 0, _fc: 0, _ft: 0, ac: null, tookHit: false
     };
     wireInput(root, cv);
     wireHud(root);
-    buildFloor(SCENES[RT.scene].floor);
     refreshStanzaKeys();
-    gotoScene(S.scene, false);
+    gotoPlace(S.place, false);
     updateHud(0);
     RT.last = performance.now();
     RT.raf = requestAnimationFrame(frame);
@@ -655,12 +661,14 @@ function init(el) {
             aim: function (x, y) { RT.mouse.wx = x; RT.mouse.wy = y; RT.mouse.x = isoX(x, y); RT.mouse.y = isoY(x, y); },
             aimFoe: function (i) { var f = RT.foes.filter(function (q) { return !q.dead; })[i || 0]; if (f) window.__ninth.aim(f.x, f.y); return !!f; },
             spawn: function (k, x, y) { return spawnFoe(k, x == null ? GRID / 2 : x, y == null ? GRID / 2 - 3 : y); },
-            scene: function (id) { gotoScene(id, true); },
+            place: function (id) { gotoPlace(id, true); },
+            talk: function (id) { var n = NPCS[id]; if (n) openDialog(n.talk(), n.n); },
+            interact: function () { RT.prompt = nearestInteract(); doInteract(); },
             slot: function (c, a) { if (c) S.call = c; if (a) S.answer = a; sSave(); updateHud(0); },
             frag: function (n) { grantFragment(n); },
             state: function () {
                 var f = RT.foes.filter(function (q) { return !q.dead; });
-                return { scene: RT.scene, hp: RT.hp, breath: Math.round(RT.breath), winded: RT.winded > 0, echo: Math.round(RT.echo),
+                return { place: RT.place, hp: RT.hp, breath: Math.round(RT.breath), winded: RT.winded > 0, echo: Math.round(RT.echo), dialog: !!RT.dialog, prompt: RT.prompt && RT.prompt.label,
                          foes: f.length, stacks: f.map(function (q) { return q.stacks.length; }), coin: S.coin,
                          call: S.call, answer: S.answer, dead: RT.dead, phase: RT.phase, wave: RT.wave, dilate: RT.dilate };
             },
@@ -706,15 +714,28 @@ function wireInput(root, cv) {
         if (!RT || e.altKey || e.ctrlKey || e.metaKey) return;
         var k = e.key.toLowerCase();
         if (k === '`' || k === '~') { toggleDev(); e.preventDefault(); return; }
-        if (k === 'escape') { if (RT.devOpen) toggleDev(); else if (RT.panel) panel(null); e.stopPropagation(); e.preventDefault(); return; }
+        if (k === 'escape') {
+            // only eat it if it actually closed something, or the desktop
+            // never sees Escape while the game holds focus
+            var had = RT.devOpen || RT.mapOpen || RT.dialog || RT.panel;
+            if (RT.devOpen) toggleDev(); else if (RT.mapOpen) RT.mapOpen = false;
+            else if (RT.dialog) closeDialog(); else if (RT.panel) panel(null);
+            if (had) { e.stopPropagation(); e.preventDefault(); }
+            return;
+        }
         RT.keys[k] = true;
         if (e.repeat) { e.preventDefault(); return; }
+        // interact first, always. It used to sit after the stanza chain,
+        // which bound E to Stanza II and made the entire world layer
+        // unreachable from the keyboard.
         var sk = stanzaKeys();
-        if (k === sk[0]) doStanza(1);
+        if (k === 'e') doInteract();
+        else if (k === sk[0]) doStanza(1);
         else if (k === sk[1]) doStanza(2);
         else if (k === sk[2]) doStanza(3);
         else if (k === 'r') doVerse();
         else if (k === ' ') doDash();
+        else if (k === 'm') { if (!RT.dialog) RT.mapOpen = !RT.mapOpen; }
         else if (k === 'b') panel('book');
         else if (k === 'c') panel('kit');
         else if (k === 'v') panel('shop');
@@ -757,26 +778,30 @@ function stepPlayer(dt) {
         if (RT.keys.a) { mx -= 1; my += 1; }
         if (RT.keys.d) { mx += 1; my -= 1; }
     }
+    if (RT.dialog || RT.mapOpen) { RT.walking = false; mx = my = 0; RT.moveTo = null; }
     if (mx || my) {
         RT.moveTo = null;
         var l = Math.hypot(mx, my); mx /= l; my /= l;
-        RT.px += mx * spd * dt; RT.py += my * spd * dt; RT.walking = true;
+        moveActor(RT.px + mx * spd * dt, RT.py + my * spd * dt); RT.walking = true;
     } else if (RT.moveTo) {
         var dx = RT.moveTo.x - RT.px, dy = RT.moveTo.y - RT.py, d = Math.hypot(dx, dy);
         if (d < 0.14) { RT.moveTo = null; RT.walking = false; }
-        else { RT.px += dx / d * spd * dt; RT.py += dy / d * spd * dt; RT.walking = true; }
+        else { moveActor(RT.px + dx / d * spd * dt, RT.py + dy / d * spd * dt); RT.walking = true; }
     } else RT.walking = false;
-    RT.px = clamp(RT.px, 0.7, GRID - 0.7); RT.py = clamp(RT.py, 0.7, GRID - 0.7);
+    stepTravel();
+    RT.prompt = nearestInteract();
     RT.face = Math.atan2(RT.mouse.wy - RT.py, RT.mouse.wx - RT.px);
     // holding the call button keeps calling — this is the spam verb
     if (RT.mouse.down && S.opts.wasd) doCall();
 }
 function doDash() {
-    if (RT.dead || RT.dash > 0) return;
+    if (RT.dead || RT.dash > 0 || RT.dialog || RT.mapOpen) return;
     var a = Math.atan2(RT.mouse.wy - RT.py, RT.mouse.wx - RT.px);
     var d = Math.min(Math.hypot(RT.mouse.wx - RT.px, RT.mouse.wy - RT.py), T('dashDist'));
-    RT.px = clamp(RT.px + Math.cos(a) * d, 0.7, GRID - 0.7);
-    RT.py = clamp(RT.py + Math.sin(a) * d, 0.7, GRID - 0.7);
+    // walked in steps, not teleported: a dash used to pass clean through
+    // fences, beams and house walls whenever the far side happened to be clear
+    var steps = Math.max(1, Math.ceil(d / 0.2));
+    for (var i = 0; i < steps; i++) moveActor(RT.px + Math.cos(a) * (d / steps), RT.py + Math.sin(a) * (d / steps));
     RT.dash = T('dashCd'); RT.iframe = Math.max(RT.iframe, 0.3); RT.moveTo = null;
     burst(RT.px, RT.py, 8, 10, { col: '200,190,220', sp0: 0.3, sp1: 1.4, l0: 0.2, l1: 0.5, add: 0 });
     sfx('step');
@@ -787,16 +812,20 @@ function hurtPlayer(n, src) {
     RT.shake = shake(4);
     typo(RT.px, RT.py, '-' + Math.round(n), '#ff5a6a', 0.7, 13, 'drift');
     sfx('hurt');
-    if (RT.hp <= 0) {
-        RT.hp = 0; RT.dead = true; RT.deadT = 2.2;
-        bigLine('you lose your place', '', '#ff5a6a', 2);
-        say('You lose your place in the line. Bern would tell you to take it from the top.', 'bad');
-        sfx('down');
-    }
+    if (RT.hp <= 0) downPlayer();
+}
+/* going down is not the same as being hit: a stack going sour while
+   you have i-frames used to leave you at zero and still standing. */
+function downPlayer() {
+    if (RT.dead) return;
+    RT.hp = 0; RT.dead = true; RT.deadT = 2.2;
+    bigLine('you lose your place', '', '#ff5a6a', 2);
+    say('You lose your place in the line. Bern would tell you to take it from the top.', 'bad');
+    sfx('down');
 }
 function revive() {
     RT.dead = false; RT.hp = RT.hpm; RT.breath = stats().breathMax; RT.iframe = 1.6;
-    RT.px = GRID / 2; RT.py = GRID / 2 + 2;
+    RT.px = pw() / 2; RT.py = ph() - 2;
     RT.foes.forEach(function (f) { f.stacks.length = 0; });
     say('Take it from the top.', 'dim');
 }
@@ -874,7 +903,7 @@ function spendBreath(cost) {
    The word itself is the projectile. It flies, it lands, it pops
    small, and it leaves a syllable stuck to whatever it touched. */
 function doCall() {
-    if (!RT || RT.dead || RT.devOpen) return;
+    if (!RT || RT.dead || RT.devOpen || RT.dialog || RT.mapOpen) return;
     if (RT.winded > 0) { hudNudge('breath'); return; }
     if (RT.callCd > 0) return;
     var st = stats();
@@ -887,6 +916,7 @@ function doCall() {
         vx: Math.cos(a) * 13, vy: Math.sin(a) * 13, life: T('callRange') / 13,
         word: word.toUpperCase(), fam: fam, hit: [] });
     ach('firstcall');
+    speakPressure();          // saying it out loud is what brings them
     sfx('call');
 }
 function stepCalls(dt) {
@@ -947,7 +977,7 @@ function breakStack(f, s) {
     part({ x: f.x, y: f.y, z: 34, vx: 0, vy: 0, vz: -6, life: 0.5, size: 3, col: '106,95,114', add: 0, grav: 0 });
     RT.sourN = (RT.sourN || 0) + 1;
     if (RT.sourN >= 4) ach('sour');
-    if (RT.hp <= 0 && !RT.dead) hurtPlayer(0);
+    if (RT.hp <= 0) downPlayer();
 }
 
 /* ─────────────── ANSWER ───────────────
@@ -956,7 +986,7 @@ function breakStack(f, s) {
    stack with the wrong sound and you get a slant: half damage,
    no element, no echo. Weak, not punishing. */
 function doAnswer() {
-    if (!RT || RT.dead || RT.devOpen) return;
+    if (!RT || RT.dead || RT.devOpen || RT.dialog || RT.mapOpen) return;
     if (RT.winded > 0) { hudNudge('breath'); return; }
     if (RT.answerCd > 0) return;
     var st = stats();
@@ -1089,7 +1119,7 @@ var STANZAS = [
       lines: ['So light your lamps on the ninth night', 'and set one on the sill,', 'not for the man who came back down', 'but for the girl who never will.'] }
 ];
 function doStanza(n) {
-    if (!RT || RT.dead || RT.devOpen) return;
+    if (!RT || RT.dead || RT.devOpen || RT.dialog || RT.mapOpen) return;
     var sz = STANZAS[n - 1]; if (!sz) return;
     if (!S.stanzas[n]) { hudNudge('stanza' + n); say('You do not have that stanza yet.', 'dim'); return; }
     if (RT.stanzaCd[n - 1] > 0) { hudNudge('stanza' + n); return; }
@@ -1135,7 +1165,7 @@ function stanzaWave(sz, big) {
    the last fight. Four hours of a promise the UI is making. You
    press it once, ever, and it is the corrected ballad. */
 function doVerse() {
-    if (!RT || RT.devOpen) return;
+    if (!RT || RT.devOpen || RT.dialog || RT.mapOpen) return;
     if (!S.verse) {
         hudNudge('verse');
         var lines = ['Not yet.', 'You do not have all of it.', 'Something is still missing from the end.'];
@@ -1182,13 +1212,20 @@ function drawRings(cx, dt) {
 function spawnFoe(kind, x, y) {
     var def = FOES[kind]; if (!def || !RT) return null;
     var f = {
-        kind: kind, def: def, x: clamp(x, 0.8, GRID - 0.8), y: clamp(y, 0.8, GRID - 0.8),
+        kind: kind, def: def, x: clamp(x, 0.8, pw() - 0.8), y: clamp(y, 0.8, ph() - 0.8),
         hp: def.hp * T('ttk'), hpm: def.hp * T('ttk'), r: def.r,
         stacks: [], state: 'walk', tell: 0, atkT: rnd(0, 0.6), flash: 0, wob: 0, dead: 0,
         silence: 0, frozen: 0, burn: null, revealed: 0, armor: 0, spawn: 0.45,
         anim: rnd(0, TAU), steal: def.steal || 0, drone: def.drone || 0, pulse: def.pulse || 0, said: 0,
         so: irnd(0, 2) * 9          // stack-row stagger: piled enemies must stay readable
     };
+    if (blocked(f.x, f.y, f.r * 0.7)) {           // never spawn inside a wall
+        for (var a2 = 0; a2 < 24; a2++) {
+            var rr2 = 1 + (a2 >> 3), xx = clamp(f.x + Math.cos(a2 / 8 * TAU) * rr2, 0.8, pw() - 0.8),
+                yy = clamp(f.y + Math.sin(a2 / 8 * TAU) * rr2, 0.8, ph() - 0.8);
+            if (!blocked(xx, yy, f.r * 0.7)) { f.x = xx; f.y = yy; break; }
+        }
+    }
     if (RT.foes.length < 70) RT.foes.push(f);
     burst(f.x, f.y, 10, 8, { col: '160,150,175', sp0: 0.4, sp1: 1.6, l0: 0.2, l1: 0.5, add: 0 });
     return f;
@@ -1254,8 +1291,12 @@ function stepFoes(dt) {
                 if (od > 0.01 && od < f.r + o.r + 0.25) { sx2 += ox / od; sy2 += oy / od; }
             }
             var mx = dx / d + sx2 * 0.55, my = dy / d + sy2 * 0.55, ml = Math.hypot(mx, my) || 1;
-            f.x = clamp(f.x + mx / ml * f.def.spd * dt, 0.7, GRID - 0.7);
-            f.y = clamp(f.y + my / ml * f.def.spd * dt, 0.7, GRID - 0.7);
+            // axis-separated, same as the player: they used to drift straight
+            // through the mill wall and bite you from inside the building
+            var nx2 = clamp(f.x + mx / ml * f.def.spd * dt, 0.7, pw() - 0.7);
+            var ny2 = clamp(f.y + my / ml * f.def.spd * dt, 0.7, ph() - 0.7);
+            if (!blocked(nx2, f.y, f.r * 0.7)) f.x = nx2;
+            if (!blocked(f.x, ny2, f.r * 0.7)) f.y = ny2;
             f.state = 'walk';
         } else if (f.atkT <= 0 && f.state === 'walk') { f.state = 'tell'; f.tell = f.def.tell; }
         if (f.state === 'tell') {
@@ -1336,7 +1377,8 @@ function onChorusDown(f) {
     ach('chorus');
     RT.shake = shake(14); RT.flash = 0.5;
     bigLine('the refrain stops', '', '#d2c8e1', 3);
-    RT.timers.push(setTimeout(function () { if (RT) gotoScene('quiet', true); }, 2600));
+    S.seen.chorusDown = 1; S.heard.refrain = 1; sSave();
+    beat(2.2, function () { say('The loft is quiet. The refrain is still going in your head, the way it does after.', 'big'); checkRealisation(); });
 }
 
 /* ─────────────── drawing them ───────────────
@@ -1492,7 +1534,7 @@ function frame(now) {
     // time thickens while a stanza writes itself
     var scale = RT.timeScale * (RT.dilate > 0 ? T('dilation') : 1);
     step(real * scale, real);
-    draw();
+    draw(real);
     RT.raf = requestAnimationFrame(frame);
 }
 function step(dt, real) {
@@ -1522,18 +1564,23 @@ function step(dt, real) {
     RT.hudT = (RT.hudT || 0) - (real || dt);
     if (RT.hudT <= 0) { RT.hudT = 0.05; updateHud(0.05); }
 }
-function draw() {
-    var cx = RT.cx, dt = 1 / 60;
+function draw(rdt) {
+    // was hard-coded to 1/60: on a 144Hz screen every typographic
+    // effect outlived its intent by more than double
+    var cx = RT.cx, dt = Math.min(0.05, rdt || 1 / 60);
     cx.save();
     if (S.opts.shake && RT.shake > 0.2) cx.translate(rnd(-RT.shake, RT.shake) * 0.5, rnd(-RT.shake, RT.shake) * 0.35);
     cx.clearRect(-30, -30, VW + 60, VH + 60);
-    cx.drawImage(buildFloor(SCENES[RT.scene].floor), 0, 0);
+    cx.drawImage(buildFloor(place().floor, pw(), ph()), 0, 0);
     // during a recital the world drains away until the letters are the only light
     if (RT.dilate > 0) {
         cx.fillStyle = 'rgba(6,4,10,' + (0.55 * clamp(RT.dilate / T('dilationT'), 0, 1)).toFixed(3) + ')';
         cx.fillRect(0, 0, VW, VH);
     }
+    drawExits(cx);
+    drawLooks(cx);
     drawRings(cx, dt);
+    drawProps(cx, 'back');
     if (RT.moveTo && !S.opts.wasd) {
         var mx = isoX(RT.moveTo.x, RT.moveTo.y), my = isoY(RT.moveTo.x, RT.moveTo.y) + TILE_H / 2;
         cx.save(); cx.translate(mx, my); cx.scale(1, 0.5);
@@ -1543,9 +1590,11 @@ function draw() {
     // painter-sorted world
     var ents = [];
     RT.foes.forEach(function (f) { if (!f.dead) ents.push({ k: f.x + f.y, fn: function () { drawFoe(cx, f); } }); });
+    (place().npcs || []).forEach(function (id) { var n = NPCS[id]; if (n) ents.push({ k: n.x + n.y, fn: function () { drawNpc(cx, n); } }); });
     ents.push({ k: RT.px + RT.py, fn: function () { drawActor(cx); } });
     ents.sort(function (a, b) { return a.k - b.k; });
     ents.forEach(function (e) { e.fn(); });
+    drawProps(cx, 'front');
     drawCalls(cx);
     drawFproj(cx);
     drawParts(cx);
@@ -1553,11 +1602,13 @@ function draw() {
     drawTypo(cx, dt);
     if (RT.flash > 0) { cx.fillStyle = 'rgba(255,250,235,' + (RT.flash * 0.5) + ')'; cx.fillRect(0, 0, VW, VH); }
     if (RT.hurt > 0 || RT.dead) { cx.fillStyle = 'rgba(150,10,25,' + (RT.dead ? 0.34 : RT.hurt * 0.3) + ')'; cx.fillRect(0, 0, VW, VH); }
+    drawPrompt(cx);
     cx.restore();
     drawSlams(cx, dt);
     drawLines(cx, dt);
     drawBossBar(cx);
     drawToasts(cx);
+    drawMap(cx);
     if (RT.dbgPerf) {
         cx.font = '11px monospace'; cx.fillStyle = '#9fe0c8';
         cx.fillText(RT.fps + ' fps · foes ' + RT.foes.length + ' · parts ' + RT.parts.length + ' · typo ' + RT.typo.length + ' · calls ' + RT.calls.length, 12, VH - 12);
@@ -1697,7 +1748,7 @@ function updateHud(dt) {
     vs.disabled = !S.verse;
     var cn = r.querySelector('.nn-coin-n'); if (cn.textContent !== String(S.coin)) cn.textContent = S.coin;
     var sn = r.querySelector('.nn-scene-n');
-    if (sn._s !== RT.scene) { sn._s = RT.scene; sn.textContent = SCENES[RT.scene].n; r.querySelector('.nn-scene-s').textContent = SCENES[RT.scene].sub; }
+    if (sn._s !== RT.place) { sn._s = RT.place; sn.textContent = place().n; r.querySelector('.nn-scene-s').textContent = place().sub || ''; }
 }
 function hudNudge(what) {
     if (!RT) return;
@@ -1783,7 +1834,13 @@ function fillShop() {
             (owned ? '<button class="nn-mini" data-sell="' + id + '">sell ◦' + c.sell + '</button>'
                    : '<button class="nn-mini' + (S.coin < c.cost ? ' poor' : '') + '" data-buy="' + id + '">◦' + c.cost + '</button>') + '</div>';
     });
-    var forSale = ['street', 'wheat', 'night', 'right'];
+    // every word of a family you have opened, minus the one the
+    // fragment already gave you. Nine words used to be unbuyable.
+    var forSale = [];
+    FAM_IDS.forEach(function (fid) {
+        if (!famOwned(fid)) return;
+        FAMS[fid].words.forEach(function (w) { if (!S.owned[w]) forSale.push(w); });
+    });
     html += '<h4>WORDS <i>· he found them written on things</i></h4>';
     forSale.forEach(function (w) {
         if (S.owned[w] || !famOwned(WORDS[w])) return;
@@ -1845,7 +1902,7 @@ function fillDev() {
             sSave(); fillDev(); updateHud(0); sfx('ui'); RT.root.focus();
         });
     });
-    d.querySelector('.nn-dev-foot').textContent = 'scene ' + RT.scene + ' · foes ' + RT.foes.filter(function (f) { return !f.dead; }).length +
+    d.querySelector('.nn-dev-foot').textContent = place().n + ' · foes ' + RT.foes.filter(function (f) { return !f.dead; }).length +
         ' · breath ' + Math.round(RT.breath) + ' · echo ' + Math.round(RT.echo) + ' · coin ' + S.coin + ' · ` to close';
 }
 
@@ -1871,189 +1928,788 @@ function wireHud(root) {
     });
 }
 
-/* ═══════════════ SCENES ═══════════════
-   Beats are a little queue of delayed callbacks. Every scene is a
-   dev-menu jump target, and every script replays from the top so
-   you can watch a beat as many times as you need to tune it. */
-function beat(after, fn) { RT.beats.push({ t: after, fn: fn }); }
+/* ═══════════════ THE WORLD ═══════════════
+   The play is the setting. The game is walking out of it.
+
+   Places have edges, solid things in them, exits you walk to, and
+   people who will talk to you. Fighting is NOT the content: it is
+   what happens when you say the lines out loud somewhere the lie
+   does not want to be said. Most of this world you can cross
+   without casting once. */
+
+/* solid props. b = [x, y, w, h] footprint in tiles. */
+var PLACES = {
+    stage: {
+        n: 'The Ninth Night play', sub: 'twelve years ago, and the mask is too big',
+        floor: 'stage', calm: 1, script: 'prologue', w: 13, h: 11,
+        props: [
+            { t: 'curtain', b: [0, 0, 13, 1.4] },
+            { t: 'crate', b: [1, 8.4, 1.6, 1.2] }, { t: 'crate', b: [10, 8.6, 1.6, 1.2] },
+            { t: 'foot', b: [0, 9.9, 13, 0.5] }
+        ],
+        exits: []
+    },
+    square: {
+        n: 'Wick — the square', sub: 'they have given you the crown and the lantern',
+        floor: 'town', calm: 1, script: 'wick', w: 17, h: 15,
+        props: [
+            { t: 'house', b: [0, 0, 4, 3.4] }, { t: 'house', b: [5.2, 0, 3.6, 2.8] }, { t: 'house', b: [13, 0, 4, 3.6] },
+            { t: 'house', b: [0, 11.6, 4.2, 3.4] }, { t: 'house', b: [13.4, 11, 3.6, 4] },
+            { t: 'stagewip', b: [6.4, 3.6, 4.6, 2.6] },
+            { t: 'well', b: [8, 9.4, 1.6, 1.6] },
+            { t: 'cart', b: [3.4, 8.2, 2.2, 1.2] }
+        ],
+        npcs: ['bern', 'child', 'widow'],
+        looks: [
+            { x: 12.4, y: 8.2, n: 'A lamp on a sill', d: 'Set out on the ninth night for the man who walked out past the fence. Every house on the square has one. Nobody has ever set out a second.' },
+            { x: 7.2, y: 6.6, n: 'The playbill', d: 'THE NINTH NIGHT. A true account. The same four hundredth time.\n\nUnder the cast list somebody has pencilled your name, and then gone over it twice, harder.' }
+        ],
+        exits: [{ x: 8.5, y: 14.3, w: 3, to: 'lane', n: 'the lane, north' }]
+    },
+    lane: {
+        n: 'The lane out of Wick', sub: 'in the play it is a day\'s walk',
+        floor: 'mill', w: 13, h: 17,
+        props: [
+            { t: 'fence', b: [0.6, 4, 0.5, 9] }, { t: 'fence', b: [11.6, 3, 0.5, 3.2] }, { t: 'fence', b: [11.6, 10.2, 0.5, 2.8] },
+            { t: 'tree', b: [2.2, 6.4, 1.4, 1.4] }, { t: 'tree', b: [9.4, 10.2, 1.4, 1.4] },
+            { t: 'stone', b: [4.6, 12.6, 1, 1] }
+        ],
+        npcs: ['shepherd'],
+        looks: [{ x: 5.2, y: 12.4, n: 'A milestone', d: 'WICK — 1/4 MILE.\n\nIn the play he walks out past the mill and the well and the mark, and it takes him all night. It is four hundred yards. You can see both ends of it from here.' }],
+        exits: [
+            { x: 6.2, y: 16.3, w: 3, to: 'square', n: 'back to Wick' },
+            { x: 6.2, y: 0.7, w: 3, to: 'mill', n: 'the mill' },
+            { x: 12.3, y: 8, h: 3, to: 'village', n: 'the next village, east' }
+        ],
+        speakDraws: 2      // say a line out loud here and something answers
+    },
+    mill: {
+        n: 'The mill', sub: 'rehearse where nobody can hear you, because you are bad',
+        floor: 'mill', w: 15, h: 13,
+        props: [
+            { t: 'mill', b: [5.4, 0.6, 5, 4.4] },
+            { t: 'wheel', b: [10.8, 1.6, 1.2, 3.2] },
+            { t: 'sack', b: [3, 6.4, 1.2, 1 ] }, { t: 'sack', b: [4.4, 6.8, 1.2, 1] }, { t: 'sack', b: [3.6, 8, 1.2, 1] },
+            { t: 'fence', b: [0.6, 2, 0.5, 8] }, { t: 'fence', b: [13.9, 2, 0.5, 8] }
+        ],
+        looks: [{ x: 8, y: 5.4, n: 'The mill door', d: 'Bern told you to rehearse out here because the loft carries sound and the town does not need to hear you learn.\n\nHe meant it kindly. He is like that.' }],
+        exits: [
+            { x: 6.8, y: 12.3, w: 3, to: 'lane', n: 'back down the lane' },
+            { x: 7.9, y: 5.6, w: 1.8, to: 'loft', n: 'up the ladder, into the loft', needs: 'rehearsed',
+              shut: 'A ladder into the dark. There is no reason to climb it. Rehearse first.' }
+        ],
+        speakDraws: 4,
+        script: 'mill'
+    },
+    loft: {
+        n: 'The grain loft', sub: 'a crowd of voices with no bodies',
+        floor: 'loft', w: 13, h: 13,
+        props: [
+            { t: 'beam', b: [0, 3.2, 4.8, 0.6] }, { t: 'beam', b: [8.2, 3.2, 4.8, 0.6] },
+            { t: 'beam', b: [0, 9.2, 4.4, 0.6] }, { t: 'beam', b: [8.6, 9.2, 4.4, 0.6] },
+            { t: 'sack', b: [1.4, 5.4, 1.2, 1] }, { t: 'sack', b: [10.4, 6.6, 1.2, 1] }
+        ],
+        exits: [{ x: 6, y: 12.3, w: 3, to: 'mill', n: 'back down', needs: 'chorusDown',
+              shut: 'It is still going. You are not walking out on it.' }],
+        script: 'loft', boss: 'chorus'
+    },
+    village: {
+        n: 'Grelling — the next village', sub: 'an empty hat and a bad performance',
+        floor: 'town', calm: 1, w: 15, h: 12,
+        props: [
+            { t: 'house', b: [0, 0, 3.6, 3] }, { t: 'house', b: [11.4, 0, 3.6, 3.4] }, { t: 'house', b: [0, 9, 4, 3] },
+            { t: 'cart', b: [9.6, 7.4, 2.2, 1.2] }, { t: 'well', b: [3.4, 5.6, 1.6, 1.6] }
+        ],
+        npcs: ['busker'],
+        looks: [{ x: 7.4, y: 3.4, n: 'His hat', d: 'On the ground, open, with two coins in it that he almost certainly put there himself.' }],
+        exits: [
+            { x: 0.7, y: 6, h: 3, to: 'lane', n: 'west, back to the lane' },
+            { x: 14.3, y: 6, h: 3, to: 'mark', n: 'east, past the fence' }
+        ]
+    },
+    mark: {
+        n: 'The mark', sub: 'she walked out past the mill, the well, the mark',
+        floor: 'mill', calm: 1, w: 13, h: 11,
+        props: [
+            { t: 'markstone', b: [6, 4.6, 1.4, 1.6] },
+            { t: 'fence', b: [0.6, 1, 0.5, 2.4] }, { t: 'fence', b: [0.6, 7.6, 0.5, 2.4] },
+            { t: 'tree', b: [10.2, 2.4, 1.4, 1.4] }
+        ],
+        looks: [{ x: 6.7, y: 6.6, n: 'The marker stone', d: 'Two names cut into it. The upper one is HAL, and it has been recut so many times it is nearly through the stone.\n\nThe lower one has been scratched out. Not weathered. Scratched, with something hard, by somebody who took their time.\n\nYou cannot read it. You get the shape of four letters and nothing else.', key: 'markstone' }],
+        npcs: ['hal'],
+        exits: [{ x: 0.7, y: 5.4, h: 3, to: 'village', n: 'back west' }]
+    },
+    arena: {
+        n: 'Dev — free arena', sub: 'nothing here means anything. hit things.',
+        floor: 'mill', w: 17, h: 17, arena: 1, endless: 1, props: [], exits: []
+    }
+};
+var PLACE_IDS = Object.keys(PLACES);
+
+/* ─────────────── people ───────────────
+   Every one of these can be walked away from. The busker is the
+   accessibility valve the design doc asks for: he says the whole
+   thing out loud, in plain words, for anybody who does not hear
+   meter. */
+var NPCS = {
+    bern: {
+        n: 'Bern', x: 7.4, y: 7.2, col: ['#6a4f3a', '#8a6a4a', '#d8b48c'], hat: 1,
+        talk: function () {
+            if (!S.seen.bern1) {
+                S.seen.bern1 = 1;
+                return [['Bern', 'There he is. The new Emberwright.'],
+                        ['Bern', 'My father played him. I played him thirty years. Now you play him, and one day some child watches you and thinks, I could do that.'],
+                        ['Bern', 'That is the whole of it. That is why we do it.'],
+                        ['You', 'What if I get a line wrong?'],
+                        ['Bern', 'Then say it again correctly. It is not a difficult play. It is a true one.']];
+            }
+            if (S.frags[1]) {
+                return [['You', 'Bern. The third stanza. Heard, and alone.'],
+                        ['Bern', 'Mm.'],
+                        ['You', 'They do not rhyme.'],
+                        ['Bern', 'No, I suppose they do not. Never noticed. Four hundred years and nobody noticed, how about that.'],
+                        ['Bern', 'Sing it the way it is written, lad. It is written that way for a reason.'],
+                        ['', 'He does not say what the reason is. He does not know. He has never once needed to.']];
+            }
+            return [['Bern', 'Learn it out at the mill where the town cannot hear you. No shame in it. I was worse.'],
+                    ['Bern', 'Take the lantern. Mind the ladder.']];
+        }
+    },
+    child: {
+        n: 'A child with a skipping rope', x: 10.6, y: 9.8, col: ['#4a5a7a', '#6a7a9a', '#e8c8a0'], small: 1,
+        talk: function () {
+            S.heard.child = 1;
+            if (!S.seen.child1) {
+                S.seen.child1 = 1;
+                return [['', 'She is skipping and counting under her breath. You catch the end of it.'],
+                        ['The child', '"...and we would not say a word."'],
+                        ['You', 'That is not the line.'],
+                        ['The child', 'It is when you skip. The other one does not fit.'],
+                        ['You', 'The other one is the line.'],
+                        ['The child', 'Then the line is wrong.'],
+                        ['', 'She does not stop skipping. Children cannot tolerate a broken rhyme; they repair them by instinct, without knowing what they are preserving.']];
+            }
+            return [['The child', '"...and we would not say a word." You have to say it like that or you miss.']];
+        }
+    },
+    widow: {
+        n: 'A woman setting out a lamp', x: 12.2, y: 8.6, col: ['#3a3448', '#4e465e', '#d8b48c'],
+        talk: function () {
+            S.heard.widow = 1; sSave();
+            return [['', 'She sets the lamp on the sill and squares it up, twice.'],
+                    ['The woman', 'For the man who went out. My mother did it, her mother did it.'],
+                    ['You', 'Do you ever set out two?'],
+                    ['The woman', 'Two? Whatever for?'],
+                    ['', 'She laughs, and goes inside, and the lamp burns in the window for one person.']];
+        }
+    },
+    shepherd: {
+        n: 'A shepherd', x: 9.2, y: 5.6, col: ['#4a4a38', '#6a6a50', '#d8b48c'],
+        talk: function () {
+            S.heard.shepherd = 1;
+            if (!S.seen.shep1) {
+                S.seen.shep1 = 1;
+                return [['', 'He is singing the last verse to nobody, the way you sing when your hands are busy.'],
+                        ['The shepherd', '"...not for the man who came back down — but for the girl who never will."'],
+                        ['You', 'That is not how it goes.'],
+                        ['The shepherd', 'It is how my mother sang it.'],
+                        ['You', 'Where did she get it?'],
+                        ['The shepherd', 'Her mother, I should think. Nobody gets a song from anywhere else.'],
+                        ['', 'He has no idea he is the only person for four hundred years who has been singing it correctly.']];
+            }
+            return [['The shepherd', '"...but for the girl who never will." Aye. That is the one.']];
+        }
+    },
+    busker: {
+        n: 'A busker', x: 7.6, y: 4.4, col: ['#5a3a4a', '#7a5060', '#e8c8a0'],
+        talk: function () {
+            S.heard.busker = 1;
+            if (!S.seen.busk1) {
+                S.seen.busk1 = 1;
+                return [['', 'He is doing your play, badly, to four people and a dog.'],
+                        ['The busker', 'You are the new one. Wick\'s new Emberwright. I can tell by the walk.'],
+                        ['You', 'You are doing it wrong.'],
+                        ['The busker', 'I am doing it RIGHT. That is why the hat is empty.'],
+                        ['The busker', 'Listen. Your version says he stood up, he spoke, we all heard, and he went alone. Heard. Alone. Those two words do not rhyme, and every other verse in that song rhymes like a bell.'],
+                        ['The busker', 'Somebody snapped the end off and nailed a new one on. Four hundred years ago. They used the same patch twice because one was cheaper.'],
+                        ['You', 'What was the real one?'],
+                        ['The busker', 'Word. "And we would not say a word." Because nobody answered her.'],
+                        ['You', 'Her.'],
+                        ['The busker', '...Ask me again when you have heard it from somebody who is not being paid to say it. If you get that far, come find me. I will not be here.']];
+            }
+            return [['The busker', 'Heard. Alone. Say them out loud, one after the other, and tell me that is a rhyme.']];
+        }
+    },
+    hal: {
+        n: 'A man at the fence', x: 2.8, y: 6.2, col: ['#2a2434', '#3d3350', '#c8b8a8'],
+        talk: function () {
+            S.heard.hal = 1; sSave();
+            return [['', 'He is older than he should be. He has the look of somebody who has been trying to finish a sentence for a very long time.'],
+                    ['You', 'Who was she?'],
+                    ['', 'He opens his mouth. Four letters start to come out, and the air takes them and turns them over, and what you hear is:'],
+                    ['Hal', '"...the Emberwright."'],
+                    ['', 'He tries again. The same thing happens. He kneels and writes it in the dirt with one finger, and the dirt says THE EMBERWRIGHT.'],
+                    ['Hal', 'She talked to it. That is the whole story. She was the only one of us who would say anything to it.'],
+                    ['', 'He does not expand on it. He never will.']];
+        }
+    }
+};
+
+/* ─────────────── scripts ─────────────── */
+var SCRIPTS = {
+    prologue: function () {
+        say('<b>Twelve years ago.</b> You are nine, and the mask is too big.', 'big');
+        beat(3.0, function () { say('Your whole part is to walk across the stage and be the thing that ate the light. Walk to the far side.'); });
+        beat(7.5, function () { say('You trip. The hall laughs, kindly. Your mother crouches down and fixes the mask.', 'dim'); });
+        beat(11, function () { bigLine('twelve years later', '', '#c9a94a', 2.6); });
+        beat(13.4, function () { gotoPlace('square', true); });
+    },
+    wick: function () {
+        say('<b>Wick.</b> They are building the stage in the square. You have been given the crown and the lantern.', 'big');
+        beat(3.4, function () { say('Talk to people. Look at things. Nothing here wants to hurt you.', 'dim'); });
+        beat(6.4, function () { say('When you are ready, the lane runs north to the mill.', 'dim'); });
+    },
+    mill: function () {
+        if (S.seen.millIntro) return;
+        S.seen.millIntro = 1;
+        say('<b>The mill.</b> Nobody can hear you out here. That is the point of out here.', 'big');
+        beat(3.2, function () { say('Rehearse. <i>Say the lines out loud</i> — left click — and see what the dark does with them.', 'dim'); });
+    },
+    loft: function () {
+        if (S.seen.chorusDown) {                       // it is over; the room is just a room
+            say('The loft is quiet. Dust, sacks, and the shape of where a crowd was.', 'dim');
+            return;
+        }
+        say('<b>The grain loft.</b> Something up here is already saying your part.', 'big');
+        beat(2.6, function () { say('It strips the rhyme off everything on a pulse. You cannot build slowly here.', 'dim'); });
+        beat(4.6, function () { bigLine('THE CHORUS', 'burst between pulses', '#d2c8e1', 2.4); spawnFoe('chorus', 6.5, 6.2); });
+    }
+};
+
+/* ─────────────── the realisation ───────────────
+   Fragment 1 is NOT a boss drop. You get it when you have heard
+   the town's refrain in earnest AND heard somebody carrying the
+   true line, and the two rub together in your head. Understanding,
+   not looting. */
+function checkRealisation() {
+    if (S.frags[1] || RT.realising || !S.heard.refrain) return;
+    var src = S.heard.child || S.heard.busker || S.heard.shepherd;
+    if (!src) return;
+    RT.realising = 1;
+    beat(1.0, function () { bigLine('he spoke and we all heard', '', '#e8e2ee', 2.4); });
+    beat(3.4, function () { bigLine('and he went alone', '', '#e8e2ee', 2.4); });
+    beat(6.0, function () { bigLine('those are not a rhyme', '', '#ffe66e', 3); });
+    beat(9.4, function () { landRealisation(); });
+}
+
+/* The point of the realisation is the sentence, not the item. If a
+   doorway interrupts the sequence you still get both — losing the
+   only line that explains what you understood, and an achievement
+   that is granted nowhere else, is worse than losing the ceremony. */
+function landRealisation() {
+    if (S.frags[1]) { RT.realising = 0; return; }
+    RT.realising = 0;
+    ach('hear');
+    say('Somebody snapped the end off the song and nailed a lie onto it, four hundred years ago, and you have just heard the join.', 'good');
+    grantFragment(1);
+}
+
+/* FRAGMENT II — the mark. The stone has a name scratched off it.
+   Hal cannot say a name. Neither fact is a clue on its own. */
+function checkMark() {
+    if (S.frags[2] || RT.realising2 || !S.frags[1]) return;
+    if (!S.seen.markstone || !S.heard.hal) return;
+    RT.realising2 = 1;
+    beat(1.2, function () { bigLine('four letters', '', '#e8e2ee', 2.4); });
+    beat(3.6, function () { bigLine('scratched out of a stone', '', '#e8e2ee', 2.4); });
+    beat(6.2, function () {
+        bigLine('and out of a man', '', '#8a6ad0', 3);
+        say('It is not that nobody remembers her. It is that the remembering was taken out, once, properly, by somebody who had the time.', 'good');
+    });
+    beat(9.6, function () { RT.realising2 = 0; grantFragment(2); });
+}
+
+/* FRAGMENT III — the lamp. Every house in Wick sets one out on the
+   ninth night for the man who walked out past the fence. You have
+   stood at the stone. You know who did the walking. The lamps have
+   been pointed at the wrong person for four hundred years. */
+function checkSill() {
+    if (S.frags[3] || RT.realising3 || !S.frags[2]) return;
+    if (!S.heard.widow || !S.seen.markstone) return;
+    RT.realising3 = 1;
+    beat(1.2, function () { bigLine('set one on the sill', '', '#e8e2ee', 2.4); });
+    beat(3.6, function () { bigLine('for the man who walked out past the fence', '', '#e8e2ee', 2.6); });
+    beat(6.4, function () {
+        bigLine('he never went past the fence', '', '#6fd4ff', 3);
+        say('Four hundred years of lamps, every one of them set out for the man who came back down. Nobody has ever lit one for the girl who did not.', 'good');
+    });
+    beat(10.0, function () { RT.realising3 = 0; grantFragment(3); });
+}
+
+/* the loop still calls this each frame: run queued beats, keep the
+   dev arena stocked, and notice when a place goes quiet. */
 function stepScene(dt) {
     for (var i = RT.beats.length - 1; i >= 0; i--) {
         var b = RT.beats[i]; b.t -= dt;
         if (b.t <= 0) { RT.beats.splice(i, 1); try { b.fn(); } catch (e) {} }
     }
-    var sc = SCENES[RT.scene];
-    if (!sc) return;
-    var alive = RT.foes.filter(function (f) { return !f.dead; }).length;
-    if (sc.endless) {                                  // free arena: keep it populated
+    var p = place(), alive = RT.foes.filter(function (f) { return !f.dead; }).length;
+    if (p.endless) {
         RT.waveT -= dt;
         if (alive < 6 && RT.waveT <= 0) {
             RT.waveT = 2.5;
             var a = rnd(0, TAU);
-            spawnFoe(pick(['mouth', 'mouth', 'thief', 'droner', 'deaf']), GRID / 2 + Math.cos(a) * 6, GRID / 2 + Math.sin(a) * 6);
+            spawnFoe(pick(['mouth', 'mouth', 'thief', 'droner', 'deaf']), pw() / 2 + Math.cos(a) * 6, ph() / 2 + Math.sin(a) * 6);
         }
         return;
     }
-    if (!sc.waves) return;
-    if (RT.phase === 'fight' && alive === 0) {
+    // the wave has to go with it, or the next frame decides the place
+    // is quiet all over again and the timer never runs out. S.draws is
+    // what the rehearsed gate counts now, so zeroing this is safe.
+    if (RT.cleared && (RT.quietT -= dt) <= 0) { RT.cleared = false; RT.wave = 0; }
+    if (!RT.cleared && RT.wave > 0 && alive === 0) {     // the place goes quiet again
+        RT.cleared = true;
         if (!RT.tookHit) ach('nohit');
-        RT.wave++;
-        if (RT.wave >= sc.waves.length) { RT.phase = 'done'; onSceneClear(); }
-        else { RT.phase = 'gap'; RT.waveT = 2.6; }
-    } else if (RT.phase === 'gap') {
-        RT.waveT -= dt;
-        if (RT.waveT <= 0) startWave(RT.wave);
+        coin(irnd(2, 5));
+        say('Quiet again.', 'dim');
+        RT.quietT = 6;                          // sim seconds, like everything else
     }
 }
-function startWave(n) {
-    var sc = SCENES[RT.scene], w = sc.waves[n]; if (!w) return;
-    RT.phase = 'fight'; RT.tookHit = false;
-    bigLine('rehearsal ' + (n + 1) + ' of ' + sc.waves.length, '', '#c9a94a', 1.4);
-    for (var i = 0; i < w.length; i += 2) {
-        var kind = w[i], count = w[i + 1];
-        for (var j = 0; j < count; j++) {
-            var a = rnd(0, TAU), rr = rnd(5, 7.5);
-            spawnFoe(kind, GRID / 2 + Math.cos(a) * rr, GRID / 2 + Math.sin(a) * rr);
+function beat(after, fn) { RT.beats.push({ t: after, fn: fn }); }
+
+/* ═══════════════ WORLD SYSTEMS ═══════════════
+   Travel, solid things, people you can walk up to, and the rule
+   that draws hearsay: speaking. */
+
+function place() { return PLACES[RT.place] || PLACES.square; }
+function pw() { return place().w || GRID; }
+function ph() { return place().h || GRID; }
+
+/* solid props: simple AABB rejection so you slide along walls */
+function blocked(x, y, r) {
+    var ps = place().props || [];
+    for (var i = 0; i < ps.length; i++) {
+        var b = ps[i].b;
+        if (x + r > b[0] && x - r < b[0] + b[2] && y + r > b[1] && y - r < b[1] + b[3]) return true;
+    }
+    return false;
+}
+function moveActor(nx, ny, r) {
+    r = r || 0.3;
+    var W = pw(), H = ph();
+    nx = clamp(nx, 0.5, W - 0.5); ny = clamp(ny, 0.5, H - 0.5);
+    if (!blocked(nx, RT.py, r)) RT.px = nx;          // axis-separated, so walls slide
+    if (!blocked(RT.px, ny, r)) RT.py = ny;
+}
+
+/* ─────────────── travel ─────────────── */
+function exitAt(x, y) {
+    var xs = place().exits || [];
+    for (var i = 0; i < xs.length; i++) {
+        var e = xs[i], w = e.w || 0.9, h = e.h || 0.9;
+        if (x > e.x - w / 2 && x < e.x + w / 2 && y > e.y - h / 2 && y < e.y + h / 2) return e;
+    }
+    return null;
+}
+/* You leave a place by walking off the side of it. The arm flag
+   stops you bouncing straight back through the door you came in:
+   the exit you arrive standing on does nothing until you have
+   stepped off it once. */
+function stepTravel() {
+    if (RT.dialog || RT.mapOpen || RT.dead) return;
+    var e = exitAt(RT.px, RT.py);
+    if (!e) { RT.armed = true; RT.nagged = null; return; }
+    if (!RT.armed) return;
+    if (exitOpen(e)) { gotoPlace(e.to, false); return; }
+    if (RT.nagged !== e.n) { RT.nagged = e.n; say(e.shut || 'Not yet.', 'dim'); hudNudge('breath'); }
+}
+/* never wake up inside a wall */
+function unstick() {
+    if (!blocked(RT.px, RT.py, 0.3)) return;
+    for (var r = 0.5; r <= 8; r += 0.5) {
+        for (var a = 0; a < 16; a++) {
+            var x = RT.px + Math.cos(a / 16 * TAU) * r, y = RT.py + Math.sin(a / 16 * TAU) * r;
+            if (x > 0.5 && y > 0.5 && x < pw() - 0.5 && y < ph() - 0.5 && !blocked(x, y, 0.3)) { RT.px = x; RT.py = y; return; }
         }
     }
 }
-function onSceneClear() {
-    var sc = SCENES[RT.scene];
-    coin(irnd(6, 12));
-    if (RT.scene === 'mill') {
-        say('The mill is quiet again. You got through it without dropping a line.', 'good');
-        bigLine('the loft is up the ladder', '', '#c9a94a', 2.4);
-        beat(2.6, function () { gotoScene('loft', true); });
-    } else if (RT.scene === 'yard') {
-        say('The sword lies there being a piece of wood. It was never in the song.', 'dim');
-        beat(2.2, function () { gotoScene('mill', true); });
-    } else {
-        say('Nothing left to rehearse with.', 'dim');
-    }
+function exitOpen(e) {
+    if (!e.needs) return true;
+    return !!S.seen.openAll || !!S.seen[e.needs];
 }
-
-function gotoScene(id, fresh) {
-    if (!SCENES[id]) id = 'arena';
-    RT.scene = id; S.scene = id; sSave();
+function gotoPlace(id, fresh) {
+    if (!PLACES[id]) id = 'square';
+    var prev = RT.place;
+    RT.place = id; S.place = id; S.seen['been_' + id] = 1; sSave();
+    if (RT.realising) landRealisation();      // you walked out on it; you still heard it
+    if (RT.realising2) { RT.realising2 = 0; grantFragment(2); }
+    if (RT.realising3) { RT.realising3 = 0; grantFragment(3); }
     RT.foes.length = 0; RT.fproj.length = 0; RT.calls.length = 0;
-    RT.beats = []; RT.wave = 0; RT.phase = 'idle'; RT.waveT = 0;
-    RT.slams.length = 0; RT.lines.length = 0; RT.typo.length = 0;
-    RT.px = GRID / 2; RT.py = GRID / 2 + 2.5; RT.moveTo = null;
-    RT.hp = RT.hpm; RT.breath = stats().breathMax; RT.winded = 0; RT.dead = false; RT.echo = 0;
-    buildFloor(SCENES[id].floor);
+    RT.beats = []; RT.typo.length = 0; RT.slams.length = 0; RT.lines.length = 0;
+    RT.dialog = null; RT.pressure = 0; RT.cleared = false;
+    RT.wave = 0; RT.tookHit = false;                       // per place, not per session
+    RT.verseCast = 0; RT.recital = null; RT.dilate = 0; RT.timeScale = 1;
+    RT.timers.forEach(function (t) { clearTimeout(t); }); RT.timers.length = 0;
+    // those timers were what faded the narration out. Clear the log with them,
+    // and shut the dialogue panel the nulled RT.dialog used to own.
+    var sayEl = RT.root.querySelector('.nn-say'); while (sayEl.firstChild) sayEl.removeChild(sayEl.firstChild);
+    RT.root.querySelector('.nn-dlg').hidden = true;
+    var p = PLACES[id];
+    // walk in from the exit that points back where you came from
+    var back = (p.exits || []).filter(function (e) { return e.to === prev; })[0];
+    var W = p.w || GRID, H = p.h || GRID;
+    if (back) { RT.px = clamp(back.x, 1, W - 1); RT.py = clamp(back.y, 1, H - 1);
+        // step INTO the room, which is toward its middle — not toward wherever
+        // tile 2 happens to be. An exit partway along a wall used to shove you
+        // further into the wall.
+        RT.px += back.h ? (back.x < W / 2 ? 1.2 : -1.2) : 0;
+        RT.py += back.h ? 0 : (back.y < H / 2 ? 1.2 : -1.2); }
+    else { RT.px = W / 2; RT.py = H - 2.2; }
+    RT.moveTo = null; RT.armed = false; RT.nagged = null;
+    unstick();
+    RT.hp = RT.hpm; RT.breath = stats().breathMax; RT.winded = 0; RT.dead = false;
+    buildFloor(p.floor, p.w || GRID, p.h || GRID);
     updateHud(0);
-    var sc = SCENES[id];
-    bigLine(sc.n, '', '#e8e2ee', 2.2);
-    if (fresh) delete S.seen[id];
-    if (sc.script && SCRIPTS[sc.script]) SCRIPTS[sc.script]();
-    else if (sc.waves) { RT.phase = 'gap'; RT.waveT = 1.8; }
-    else if (sc.boss) beat(1.8, function () { spawnFoe(sc.boss, GRID / 2, GRID / 2 - 4); });
+    bigLine(p.n, '', '#e8e2ee', 2.2);
+    if (fresh && p.script) delete S.seen[p.script + 'Intro'];
+    if (p.script && SCRIPTS[p.script]) SCRIPTS[p.script]();
+    else if (p.boss) { /* handled by script */ }
+    RT.phase = p.endless ? 'fight' : p.calm ? 'calm' : 'world';
+    beat(1.6, checkRealisation); // idempotent: catches anything a doorway interrupted
+    beat(1.8, checkMark);
+    beat(2.0, checkSill);
 }
 
-/* ─────────────── the beats ───────────────
-   Short. The design doc is right that a fight is the wrong place
-   to make somebody read, so all of this lives between them. */
-var SCRIPTS = {
-    prologue: function () {
-        say('<b>Twelve years ago.</b> You are nine, and the mask is too big.', 'big');
-        beat(2.4, function () { say('Your whole part is to walk across the stage and be the thing that ate the light.'); });
-        beat(5.0, function () { say('You trip. The hall laughs, kindly. Your mother crouches down and fixes the mask.', 'dim'); });
-        beat(8.0, function () { bigLine('twelve years later', '', '#c9a94a', 2.6); });
-        beat(10.4, function () { gotoScene('wick', true); });
-    },
-    wick: function () {
-        say('<b>Bern</b> has played the man for thirty years. His father played him before that.', 'big');
-        beat(2.6, function () { say('He puts the tin crown in your hands like it weighs something, and he is <i>delighted</i> for you.'); });
-        beat(5.6, function () { say('"Learn your lines by the ninth night. That is the whole job."'); });
-        beat(8.2, function () {
-            say('A line that does not close does nothing. That is the only rule, and nobody says it twice.', 'dim');
-            bigLine('LEFT CLICK TO CALL. RIGHT CLICK TO ANSWER.', '', '#9fe0c8', 3);
-        });
-        beat(11, function () {
-            say('Bern sets up a straw man for you. He is very pleased with the straw man.');
-            for (var i = 0; i < 3; i++) spawnFoe('mouth', GRID / 2 + rnd(-2, 2), GRID / 2 - 4 + rnd(-1, 1));
-        });
-        beat(13, function () { say('<i>Call</i> puts a rhyme on a thing. <i>Answer</i> with the same sound and every one of them goes off at once.', 'dim'); });
-    },
-    mill: function () {
-        say('<b>The mill.</b> Bern sends you here to rehearse because nobody can hear you, because you are bad.', 'big');
-        beat(3.0, function () { say('In the play it is a day\'s walk. It is fifty feet from the last house.', 'dim'); });
-        beat(6.0, function () { say('You start the third stanza and something in the dark starts saying it back.'); RT.phase = 'gap'; RT.waveT = 1.4; });
-    },
-    yard: function () {
-        say('<b>The yard.</b> Somebody left a prop sword out in the rain.', 'big');
-        beat(2.6, function () { say('Nothing rhymes with sword. Not one word in the song. You cannot put a rhyme on it and you cannot set one off.', 'dim'); });
-        beat(5.2, function () { say('You will have to hit it until it stops, like an idiot, while everything else on screen explodes beautifully.'); RT.phase = 'gap'; RT.waveT = 1.2; });
-    },
-    loft: function () {
-        say('<b>The grain loft.</b> A crowd of voices with no bodies, saying the refrain in unison.', 'big');
-        beat(2.8, function () { say('It strips the rhyme off everything on a pulse. You cannot build slowly here.', 'dim'); });
-        beat(5.0, function () { bigLine('THE CHORUS', 'burst between pulses', '#d2c8e1', 2.4); spawnFoe('chorus', GRID / 2, GRID / 2 - 4); });
-    },
-    quiet: function () {
-        say('The loft is quiet. The refrain is still going in your head, the way it does after.', 'big');
-        beat(3.0, function () { bigLine('he spoke and we all heard', '', '#e8e2ee', 2.6); });
-        beat(5.4, function () { bigLine('and he went alone', '', '#e8e2ee', 2.6); });
-        beat(8.0, function () {
-            bigLine('those are not a rhyme', '', '#ffe66e', 3);
-            ach('hear');
-            say('Somebody snapped the end off the song and nailed a lie onto it. Four hundred years ago. And you just heard it.', 'good');
-        });
-        beat(11.5, function () {
-            grantFragment(1);
-            say('You go back down the ladder for the busker who was doing the play wrong. He is gone.', 'dim');
-        });
-    }
-};
-
-/* headless capture states. rAF is frozen in a headless shot, so
-   every one of these advances the sim by hand and draws once. */
-function devDemo() {
-    var m = /ndev=(\w+)/.exec(location.search), mode = m ? m[1] : 'demo';
-    if (mode === 'loft') return capLoft();
-    if (mode === 'menu') return capMenu();
-    if (mode === 'stanza') return capStanza();
-    gotoScene('arena', true);
-    S.owned.word = 1; S.fams.erd = 1; S.stanzas[1] = 1;
-    beat(0.01, function () {
-        for (var i = 0; i < 7; i++) { var a = i / 7 * TAU; spawnFoe(i === 3 ? 'thief' : i === 5 ? 'droner' : 'mouth', GRID / 2 + Math.cos(a) * 3.4, GRID / 2 + Math.sin(a) * 3.4); }
+/* ─────────────── things you can interact with ─────────────── */
+function interactables() {
+    var out = [], p = place();
+    (p.npcs || []).forEach(function (id) {
+        var n = NPCS[id]; if (!n) return;
+        out.push({ k: 'npc', id: id, x: n.x, y: n.y, label: 'talk to ' + n.n, n: n });
     });
-    for (var q = 0; q < 26; q++) step(1 / 60);
-    RT.foes.forEach(function (f) { for (var k = 0; k < 4; k++) addStack(f, 'eat'); });
-    RT.mouse.wx = GRID / 2; RT.mouse.wy = GRID / 2 - 3;
-    doCall();
-    for (var q2 = 0; q2 < 8; q2++) step(1 / 60);
-    doAnswer();
-    for (var q3 = 0; q3 < 6; q3++) step(1 / 60);
-    draw();
+    (p.looks || []).forEach(function (l, i) {
+        out.push({ k: 'look', i: i, x: l.x, y: l.y, label: 'look at ' + l.n, l: l });
+    });
+    (p.exits || []).forEach(function (e) {
+        out.push({ k: 'exit', x: e.x, y: e.y, label: exitOpen(e) ? 'go to ' + e.n : 'not yet', e: e, shut: !exitOpen(e) });
+    });
+    return out;
 }
-function capLoft() {
-    gotoScene('loft', true);
-    RT.beats = [];
-    spawnFoe('chorus', GRID / 2, GRID / 2 - 4);
-    for (var i = 0; i < 4; i++) spawnFoe('mouth', GRID / 2 + rnd(-3, 3), GRID / 2 + rnd(-2, 2));
-    for (var q = 0; q < 40; q++) step(1 / 60);
-    RT.foes.forEach(function (f) { if (!f.def.boss) { for (var k = 0; k < 3; k++) addStack(f, 'eat'); } });
-    var b = RT.foes.filter(function (f) { return f.def.boss; })[0];
-    if (b) { b.hp = b.hpm * 0.55; b.pulseT = 0.8; }
-    for (var q2 = 0; q2 < 20; q2++) step(1 / 60);
-    draw();
+function nearestInteract() {
+    if (RT.dialog) return null;
+    var best = null, bd = 1.9;
+    interactables().forEach(function (o) {
+        var d = Math.hypot(o.x - RT.px, o.y - RT.py);
+        if (d < bd) { bd = d; best = o; }
+    });
+    return best;
 }
-function capStanza() {
-    gotoScene('arena', true);
-    S.stanzas[1] = 1; S.fams.erd = 1; RT.beats = [];
-    for (var i = 0; i < 6; i++) { var a = i / 6 * TAU; spawnFoe('mouth', GRID / 2 + Math.cos(a) * 2.6, GRID / 2 + Math.sin(a) * 2.6); }
-    for (var q = 0; q < 20; q++) step(1 / 60);
-    doStanza(1);
-    for (var q2 = 0; q2 < 34; q2++) step(1 / 60);
-    draw();
+function doInteract() {
+    if (!RT || RT.dead || RT.devOpen || RT.mapOpen) return;
+    var o = RT.prompt;
+    if (RT.dialog) { advanceDialog(); return; }
+    if (!o) return;
+    if (o.k === 'npc') openDialog(o.n.talk(), o.n.n);
+    else if (o.k === 'look') {
+        S.looked = S.looked || {};
+        S.looked[RT.place + ':' + o.i] = 1;
+        openDialog([['', o.l.d]], o.l.n, o.l.key);
+    }
+    else if (o.k === 'exit') {
+        if (o.shut) { say(o.e.shut || 'Not that way. Not yet.', 'dim'); return; }
+        gotoPlace(o.e.to, false);
+    }
 }
-function capMenu() {
-    gotoScene('arena', true);
-    RT.beats = [];
-    for (var i = 0; i < 4; i++) spawnFoe('mouth', GRID / 2 + rnd(-3, 3), GRID / 2 + rnd(-2, 2));
-    for (var q = 0; q < 30; q++) step(1 / 60);
+
+/* ─────────────── dialogue ───────────────
+   The slow channel. Full lines are allowed here because nothing
+   is trying to kill you while you read them. */
+function openDialog(lines, who, key) {
+    RT.dialog = { lines: lines, i: 0, who: who, key: key };
+    RT.moveTo = null;
+    showDialog();
+    sfx('ui');
+}
+function showDialog() {
+    var d = RT.dialog, el = RT.root.querySelector('.nn-dlg');
+    if (!d) { el.hidden = true; return; }
+    var ln = d.lines[d.i];
+    el.hidden = false;
+    el.querySelector('.nn-dlg-who').textContent = ln[0] || d.who || '';
+    el.querySelector('.nn-dlg-tx').innerHTML = esc(ln[1]).replace(/\n/g, '<br>');
+    el.querySelector('.nn-dlg-more').textContent = d.i < d.lines.length - 1 ? 'E — more' : 'E — done';
+}
+function closeDialog() {
+    if (!RT.dialog) return;
+    var key = RT.dialog.key;
+    RT.dialog = null;
+    RT.root.querySelector('.nn-dlg').hidden = true;
+    if (key === 'markstone') { S.seen.markstone = 1; }
+    checkRealisation(); checkMark(); checkSill(); sSave();
+}
+function advanceDialog() {
+    var d = RT.dialog; if (!d) return;
+    d.i++;
+    if (d.i >= d.lines.length) {
+        var key = d.key;
+        RT.dialog = null;
+        RT.root.querySelector('.nn-dlg').hidden = true;
+        if (key === 'markstone') { S.seen.markstone = 1; sSave(); }
+        checkRealisation();
+        checkMark();
+        checkSill();
+        sSave();
+        return;
+    }
+    showDialog();
+    sfx('ui');
+}
+
+/* ─────────────── hearsay is drawn by SPEAKING ───────────────
+   You can cross most of this world without a fight. Say the lines
+   out loud somewhere that does not want them said, and the loose
+   bits of the story come to see who is talking. */
+function speakPressure() {
+    var p = place();
+    if (!p.speakDraws || RT.cleared || RT.dialog) return;
+    RT.pressure += 1;
+    var need = 6 + RT.wave * 2;
+    if (RT.pressure < need) return;
+    RT.pressure = 0; RT.wave++;
+    var n = Math.min(p.speakDraws, 1 + RT.wave);
+    say(pick(['Something in the dark starts saying it back.', 'The dark has opinions about your delivery.', 'Somewhere behind you, your own line, slightly wrong.']), 'bad');
+    for (var i = 0; i < n; i++) {
+        var a = rnd(0, TAU), rr = rnd(4.5, 6.5);
+        spawnFoe(RT.wave >= 3 && i === 0 ? 'thief' : 'mouth',
+            clamp(RT.px + Math.cos(a) * rr, 1, pw() - 1), clamp(RT.py + Math.sin(a) * rr, 1, ph() - 1));
+    }
+    S.draws = (S.draws || 0) + 1;                   // counted in the save, not in a frame counter
+    if (RT.place === 'mill' && S.draws >= 2 && !S.seen.rehearsed) {
+        S.seen.rehearsed = 1; sSave();
+        say('Something up in the loft is saying your part along with you.', 'big');
+    }
+}
+
+/* ─────────────── drawing the world ─────────────── */
+function drawProps(cx, layer) {
+    var ps = place().props || [];
+    for (var i = 0; i < ps.length; i++) {
+        var o = ps[i], b = o.b;
+        var cxp = b[0] + b[2] / 2, cyp = b[1] + b[3] / 2;
+        if (layer === 'back' && (cxp + cyp) > RT.px + RT.py) continue;
+        if (layer === 'front' && (cxp + cyp) <= RT.px + RT.py) continue;
+        drawProp(cx, o);
+    }
+}
+function drawProp(cx, o) {
+    var b = o.b, t = o.t;
+    var x0 = isoX(b[0], b[1]), x1 = isoX(b[0] + b[2], b[1]), x2 = isoX(b[0] + b[2], b[1] + b[3]), x3 = isoX(b[0], b[1] + b[3]);
+    var y0 = isoY(b[0], b[1]), y1 = isoY(b[0] + b[2], b[1]), y2 = isoY(b[0] + b[2], b[1] + b[3]), y3 = isoY(b[0], b[1] + b[3]);
+    var hgt = t === 'house' ? 78 : t === 'mill' ? 96 : t === 'curtain' ? 120 : t === 'stagewip' ? 26
+        : t === 'tree' ? 62 : t === 'well' ? 26 : t === 'markstone' ? 40 : t === 'wheel' ? 70
+        : t === 'fence' ? 22 : t === 'beam' ? 16 : t === 'cart' ? 22 : t === 'crate' ? 20 : t === 'sack' ? 14 : t === 'foot' ? 6 : 18;
+    var pal = t === 'house' ? ['#3b3340', '#2c2532', '#4a4150']
+        : t === 'mill' ? ['#4a3f30', '#37301f', '#5c5040']
+        : t === 'tree' ? ['#243626', '#1a2a1c', '#2f4632']
+        : t === 'curtain' ? ['#3a1c22', '#2a1218', '#4a262e']
+        : t === 'markstone' ? ['#4a4a52', '#3a3a42', '#5c5c66']
+        : t === 'fence' || t === 'beam' ? ['#3a2f24', '#2c231a', '#4a3d2e']
+        : ['#43392e', '#332b22', '#544738'];
+    // top face
+    cx.beginPath(); cx.moveTo(x0, y0 - hgt); cx.lineTo(x1, y1 - hgt); cx.lineTo(x2, y2 - hgt); cx.lineTo(x3, y3 - hgt); cx.closePath();
+    cx.fillStyle = pal[2]; cx.fill();
+    // two visible walls
+    cx.beginPath(); cx.moveTo(x3, y3 - hgt); cx.lineTo(x2, y2 - hgt); cx.lineTo(x2, y2); cx.lineTo(x3, y3); cx.closePath();
+    cx.fillStyle = pal[0]; cx.fill();
+    cx.beginPath(); cx.moveTo(x1, y1 - hgt); cx.lineTo(x2, y2 - hgt); cx.lineTo(x2, y2); cx.lineTo(x1, y1); cx.closePath();
+    cx.fillStyle = pal[1]; cx.fill();
+    if (t === 'house') {
+        // a roof, so it reads as somewhere people sleep and not as a box
+        var rh = 26, mx = (x0 + x2) / 2, my = (y0 + y2) / 2 - hgt;
+        cx.fillStyle = '#241d29';
+        cx.beginPath(); cx.moveTo(x3, y3 - hgt); cx.lineTo(x2, y2 - hgt); cx.lineTo(mx, my - rh); cx.closePath(); cx.fill();
+        cx.fillStyle = '#1b1520';
+        cx.beginPath(); cx.moveTo(x1, y1 - hgt); cx.lineTo(x2, y2 - hgt); cx.lineTo(mx, my - rh); cx.closePath(); cx.fill();
+        cx.fillStyle = '#332a3a';
+        cx.beginPath(); cx.moveTo(x0, y0 - hgt); cx.lineTo(x3, y3 - hgt); cx.lineTo(mx, my - rh); cx.closePath(); cx.fill();
+        // a door on the face you can see
+        var dx = x3 + (x2 - x3) * 0.5, dy = y3 + (y2 - y3) * 0.5;
+        cx.fillStyle = '#191320'; cx.fillRect(dx - 6, dy - 30, 12, 30);
+        cx.fillStyle = '#2e2436'; cx.fillRect(dx - 6, dy - 30, 12, 3);
+        // one lit window: the ninth night is a lamp on every sill
+        cx.fillStyle = 'rgba(255,196,110,.2)'; cx.fillRect(x3 + 8, y3 - hgt + 16, 17, 19);
+        cx.fillStyle = 'rgba(255,196,110,.8)'; cx.fillRect(x3 + 12, y3 - hgt + 20, 9, 11);
+        cx.strokeStyle = 'rgba(20,14,26,.9)'; cx.lineWidth = 1.5;
+        cx.beginPath(); cx.moveTo(x3 + 16.5, y3 - hgt + 20); cx.lineTo(x3 + 16.5, y3 - hgt + 31); cx.stroke();
+    }
+    if (t === 'tree') {
+        // three overlapping blobs read as a canopy; one ellipse reads as a lozenge
+        var tx = (x0 + x2) / 2, ty = (y0 + y2) / 2 - hgt;
+        cx.fillStyle = '#1c2c1f';
+        cx.beginPath(); cx.ellipse(tx - 12, ty + 4, 19, 13, 0, 0, TAU); cx.fill();
+        cx.beginPath(); cx.ellipse(tx + 13, ty + 2, 17, 12, 0, 0, TAU); cx.fill();
+        cx.fillStyle = '#2c4430';
+        cx.beginPath(); cx.ellipse(tx, ty - 9, 24, 16, 0, 0, TAU); cx.fill();
+        cx.fillStyle = '#3a5840';
+        cx.beginPath(); cx.ellipse(tx - 6, ty - 15, 13, 8, 0, 0, TAU); cx.fill();
+    }
+    if (t === 'stagewip') {                               // the play, half built
+        cx.strokeStyle = '#6a5638'; cx.lineWidth = 2;
+        for (var pz = 0; pz < 3; pz++) {
+            var qx = x3 + (x2 - x3) * (0.2 + pz * 0.3), qy = y3 + (y2 - y3) * (0.2 + pz * 0.3);
+            cx.beginPath(); cx.moveTo(qx, qy - hgt); cx.lineTo(qx + 2, qy - hgt - 30); cx.stroke();
+        }
+    }
+    if (t === 'markstone') {                              // two names, one scratched out
+        cx.fillStyle = '#7a7a86'; cx.fillRect((x0 + x2) / 2 - 9, (y0 + y2) / 2 - hgt + 6, 18, 2);
+        cx.fillStyle = '#2a2a30'; cx.fillRect((x0 + x2) / 2 - 9, (y0 + y2) / 2 - hgt + 13, 18, 3);
+        cx.strokeStyle = '#6a6a76'; cx.lineWidth = 1;
+        for (var s = 0; s < 4; s++) { cx.beginPath(); cx.moveTo((x0 + x2) / 2 - 9 + s * 5, (y0 + y2) / 2 - hgt + 11); cx.lineTo((x0 + x2) / 2 - 4 + s * 5, (y0 + y2) / 2 - hgt + 17); cx.stroke(); }
+    }
+    if (t === 'well') { cx.fillStyle = '#12101a'; cx.beginPath(); cx.ellipse((x0 + x2) / 2, (y0 + y2) / 2 - hgt, 14, 7, 0, 0, TAU); cx.fill(); }
+}
+/* Something you can look at has to be visible before you are told
+   you can look at it. A small mark, brighter once you are close,
+   duller once you have read it. */
+function drawLooks(cx) {
+    (place().looks || []).forEach(function (l, i) {
+        var sx = isoX(l.x, l.y), sy = isoY(l.x, l.y) + TILE_H / 2;
+        var near = Math.hypot(l.x - RT.px, l.y - RT.py) < 2.4;
+        var read = !!(S.looked && S.looked[RT.place + ':' + i]);
+        var pu = 0.5 + Math.sin(RT.t * 2.2 + i * 1.7) * 0.5;
+        cx.save();
+        cx.globalAlpha = (read ? 0.22 : near ? 0.85 : 0.45 + pu * 0.25);
+        cx.translate(sx, sy - 16 - pu * 2);
+        cx.fillStyle = read ? '#6a6278' : '#c9a94a';
+        cx.beginPath(); cx.moveTo(0, -5); cx.lineTo(4, 0); cx.lineTo(0, 5); cx.lineTo(-4, 0); cx.closePath(); cx.fill();
+        if (!read) {
+            cx.globalAlpha *= 0.3; cx.beginPath(); cx.arc(0, 0, 9 + pu * 3, 0, TAU); cx.fill();
+        }
+        cx.restore();
+    });
+}
+function drawExits(cx) {
+    (place().exits || []).forEach(function (e) {
+        var open = exitOpen(e);
+        var sx = isoX(e.x, e.y), sy = isoY(e.x, e.y) + TILE_H / 2;
+        cx.save(); cx.translate(sx, sy); cx.scale(1, 0.5);
+        var pul = 0.35 + Math.sin(RT.t * 2.4) * 0.12;
+        cx.strokeStyle = open ? 'rgba(201,169,74,' + pul + ')' : 'rgba(120,110,130,.22)';
+        cx.lineWidth = 2.5;
+        cx.beginPath(); cx.arc(0, 0, 22, 0, TAU); cx.stroke();
+        cx.restore();
+        if (open) {                                       // a little lamp marking the way out
+            cx.globalCompositeOperation = 'lighter';
+            var g = cx.createRadialGradient(sx, sy - 8, 2, sx, sy - 8, 30);
+            g.addColorStop(0, 'rgba(255,200,110,.18)'); g.addColorStop(1, 'rgba(255,190,90,0)');
+            cx.fillStyle = g; cx.beginPath(); cx.arc(sx, sy - 8, 30, 0, TAU); cx.fill();
+            cx.globalCompositeOperation = 'source-over';
+        }
+    });
+}
+function drawNpc(cx, n) {
+    var sx = isoX(n.x, n.y), sy = isoY(n.x, n.y) + TILE_H / 2;
+    var bob = Math.sin(RT.t * 1.8 + n.x) * 0.9;
+    var h = n.small ? 26 : 40, w = n.small ? 7 : 9;
+    cx.save(); cx.translate(sx, sy - bob);
+    cx.fillStyle = 'rgba(0,0,0,.4)'; cx.beginPath(); cx.ellipse(0, bob, 9, 3.6, 0, 0, TAU); cx.fill();
+    cx.fillStyle = n.col[0]; cx.beginPath();
+    cx.moveTo(-w, 0); cx.lineTo(-w * 0.7, -h * 0.7); cx.lineTo(w * 0.7, -h * 0.7); cx.lineTo(w, 0); cx.closePath(); cx.fill();
+    cx.fillStyle = n.col[1]; cx.fillRect(-w * 0.7, -h * 0.72, w * 1.4, h * 0.24);
+    cx.fillStyle = n.col[2]; cx.beginPath(); cx.arc(0, -h * 0.86, w * 0.62, 0, TAU); cx.fill();
+    if (n.hat) { cx.fillStyle = '#2a2018'; cx.fillRect(-w * 0.95, -h * 1.06, w * 1.9, 3); cx.fillRect(-w * 0.55, -h * 1.22, w * 1.1, 4); }
+    cx.restore();
+    // a quiet mark so you know they will talk to you
+    cx.save(); cx.globalAlpha = 0.5 + Math.sin(RT.t * 2.6 + n.y) * 0.2;
+    cx.fillStyle = '#c9a94a'; cx.font = 'bold 9px "Press Start 2P", monospace'; cx.textAlign = 'center';
+    cx.fillText('·', sx, sy - h - 12); cx.restore(); cx.textAlign = 'left';
+}
+function drawPrompt(cx) {
+    var o = RT.prompt; if (!o || RT.dialog) return;
+    var sx = isoX(o.x, o.y), sy = isoY(o.x, o.y) + TILE_H / 2;
+    var txt = (o.shut ? '' : 'E — ') + o.label;
+    cx.save(); cx.textAlign = 'center'; cx.font = '11px "Pixelify Sans"';
+    var w = cx.measureText(txt).width + 16;
+    cx.fillStyle = 'rgba(8,6,14,.86)'; cx.fillRect(sx - w / 2, sy - 74, w, 19);
+    cx.fillStyle = o.shut ? '#6a6278' : '#c9a94a'; cx.fillRect(sx - w / 2, sy - 74, 2, 19);
+    cx.fillStyle = o.shut ? '#8a8296' : '#f0e9df';
+    cx.fillText(txt, sx, sy - 61); cx.restore(); cx.textAlign = 'left';
+}
+
+/* ─────────────── the map ───────────────
+   Places you have been, and what joins them. */
+/* the stage is a memory and the arena is furniture: neither is
+   somewhere you can walk, so neither belongs on a map of where
+   you have been. */
+var MAP_HIDE = { arena: 1, stage: 1 };
+var MAP_POS = { stage: [1, 4], square: [2, 3], lane: [2, 2], mill: [2, 1], loft: [2, 0], village: [3, 2], mark: [4, 2], arena: [0, 0] };
+function drawMap(cx) {
+    if (!RT.mapOpen) return;
+    cx.fillStyle = 'rgba(6,4,10,.9)'; cx.fillRect(0, 0, VW, VH);
+    cx.textAlign = 'center';
+    cx.fillStyle = '#d8cfa8'; cx.font = '16px "Press Start 2P", monospace';
+    cx.fillText('WHERE YOU HAVE BEEN', VW / 2, 70);
+    var ox = VW / 2 - 250, oy = 128, cell = 100;
+    // links first
+    cx.lineWidth = 2;
+    PLACE_IDS.forEach(function (id) {
+        if (!MAP_POS[id] || !S.seen['been_' + id] || MAP_HIDE[id]) return;
+        (PLACES[id].exits || []).forEach(function (e) {
+            if (!MAP_POS[e.to] || MAP_HIDE[e.to]) return;
+            // a road you have walked is solid; one you have only heard of is dashed
+            var known = S.seen['been_' + e.to];
+            cx.strokeStyle = known ? 'rgba(140,130,160,.4)' : 'rgba(120,110,145,.18)';
+            cx.setLineDash(known ? [] : [4, 6]);
+            cx.beginPath();
+            cx.moveTo(ox + MAP_POS[id][0] * cell, oy + MAP_POS[id][1] * cell);
+            cx.lineTo(ox + MAP_POS[e.to][0] * cell, oy + MAP_POS[e.to][1] * cell);
+            cx.stroke();
+        });
+    });
+    cx.setLineDash([]);
+    PLACE_IDS.forEach(function (id) {
+        var m = MAP_POS[id]; if (!m || MAP_HIDE[id]) return;
+        var seen = S.seen['been_' + id], here = RT.place === id;
+        var x = ox + m[0] * cell, y = oy + m[1] * cell;
+        cx.fillStyle = here ? '#c9a94a' : seen ? '#3d3350' : '#1a1620';
+        cx.beginPath(); cx.arc(x, y, here ? 12 : 9, 0, TAU); cx.fill();
+        cx.strokeStyle = here ? '#ffe66e' : seen ? '#6a5f82' : '#241f2e'; cx.lineWidth = 2; cx.stroke();
+        cx.fillStyle = seen ? (here ? '#ffe66e' : '#b9b0c6') : '#3a3446';
+        cx.font = '10px "Pixelify Sans"';
+        cx.fillText(seen ? PLACES[id].n.split('—')[0].trim() : '?', x, y + 26);
+    });
+    cx.fillStyle = '#6a6278'; cx.font = '10px "Pixelify Sans"';
+    cx.fillText('M to close', VW / 2, VH - 40);
+    cx.textAlign = 'left';
+}
+
+/* ─────────────── capture harness ───────────────
+   ?dev=ninth&ndev=<place>[&nfr=frames][&nat=x,y][&nfoes=n][&ndlg=npc]
+   Headless Chrome never runs rAF, so every frame here is stepped by
+   hand. This exists so screenshots are of a known frame, not of
+   whatever the scheduler felt like. */
+function devDemo() {
+    var q = {};
+    location.search.slice(1).split('&').forEach(function (kv) { var a = kv.split('='); q[a[0]] = decodeURIComponent(a[1] || ''); });
+    var id = q.ndev || 'square';
+    if (q.nwipe) {                       // wipe AND rebuild, or the old save is still in S
+        try { localStorage.removeItem('comp_ninth'); } catch (e) {}
+        S = null; sLoad();
+    }
+    if (q.nfrag) for (var i = 1; i <= +q.nfrag; i++) grantFragment(i);
+    if (PLACES[id]) gotoPlace(id, true);
+    if (q.nat) { var xy = q.nat.split(','); RT.px = +xy[0]; RT.py = +xy[1]; RT.armed = false; unstick(); }
+    if (q.nfoes) for (var j = 0; j < +q.nfoes; j++) {
+        var a = j / +q.nfoes * TAU;
+        spawnFoe(j === 0 ? 'thief' : 'mouth', clamp(RT.px + Math.cos(a) * 4, 1, pw() - 1), clamp(RT.py + Math.sin(a) * 4, 1, ph() - 1));
+    }
+    var fr = q.nfr ? +q.nfr : 90;
+    for (var f = 0; f < fr; f++) { try { step(1 / 60); draw(); } catch (e) { console.error('devDemo step', e); break; } }
+    if (q.ndlg && NPCS[q.ndlg]) { var n = NPCS[q.ndlg]; openDialog(n.talk(), n.n); }
+    if (q.nmap) RT.mapOpen = true;
+    if (q.npanel) panel(q.npanel);
     draw();
-    RT.devTab = 'FEEL'; toggleDev();
+    window.__nnReady = true;
 }
 
 /* ─────────────── lifecycle ─────────────── */
