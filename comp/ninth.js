@@ -357,7 +357,7 @@ var DEV = [
           rows.push({ k: 'btn', t: PLACES[id].n, sub: PLACES[id].sub, on: function () { gotoPlace(id, true); } });
       });
       rows.push({ k: 'btn', t: 'Replay this place script', on: function () { var p = place(); if (p.script) delete S.seen[p.script + 'Intro']; gotoPlace(RT.place, true); } });
-      rows.push({ k: 'btn', t: 'Open every exit (ignore gates)', on: function () { S.seen.rehearsed = 1; S.seen.chorusDown = 1; sSave(); } });
+      rows.push({ k: 'btn', t: 'Open every exit (ignore gates)', on: function () { S.seen.rehearsed = 1; S.seen.openAll = 1; sSave(); } });
       return rows;
   } },
   { tab: 'PEOPLE', rows: function () {
@@ -641,7 +641,7 @@ function init(el) {
         dialog: null, prompt: null, pressure: 0, cleared: false, mapOpen: false,
         shake: 0, chroma: 0, flash: 0, dilate: 0, mono: 0, timeScale: 1,
         stanzaCd: [0, 0, 0], casting: null, recital: null, verseCast: 0,
-        toasts: [], panel: null, devTab: 'SCENE', devOpen: false,
+        toasts: [], panel: null, devTab: 'WORLD', devOpen: false,
         god: 0, infBreath: 0, holdStacks: 0, oneShot: 0,
         dbgStacks: 0, dbgAI: 0, dbgHit: 0, dbgPerf: 0,
         fps: 0, _fc: 0, _ft: 0, ac: null, tookHit: false
@@ -714,7 +714,15 @@ function wireInput(root, cv) {
         if (!RT || e.altKey || e.ctrlKey || e.metaKey) return;
         var k = e.key.toLowerCase();
         if (k === '`' || k === '~') { toggleDev(); e.preventDefault(); return; }
-        if (k === 'escape') { if (RT.devOpen) toggleDev(); else if (RT.mapOpen) RT.mapOpen = false; else if (RT.dialog) closeDialog(); else if (RT.panel) panel(null); e.stopPropagation(); e.preventDefault(); return; }
+        if (k === 'escape') {
+            // only eat it if it actually closed something, or the desktop
+            // never sees Escape while the game holds focus
+            var had = RT.devOpen || RT.mapOpen || RT.dialog || RT.panel;
+            if (RT.devOpen) toggleDev(); else if (RT.mapOpen) RT.mapOpen = false;
+            else if (RT.dialog) closeDialog(); else if (RT.panel) panel(null);
+            if (had) { e.stopPropagation(); e.preventDefault(); }
+            return;
+        }
         RT.keys[k] = true;
         if (e.repeat) { e.preventDefault(); return; }
         // interact first, always. It used to sit after the stanza chain,
@@ -804,12 +812,16 @@ function hurtPlayer(n, src) {
     RT.shake = shake(4);
     typo(RT.px, RT.py, '-' + Math.round(n), '#ff5a6a', 0.7, 13, 'drift');
     sfx('hurt');
-    if (RT.hp <= 0) {
-        RT.hp = 0; RT.dead = true; RT.deadT = 2.2;
-        bigLine('you lose your place', '', '#ff5a6a', 2);
-        say('You lose your place in the line. Bern would tell you to take it from the top.', 'bad');
-        sfx('down');
-    }
+    if (RT.hp <= 0) downPlayer();
+}
+/* going down is not the same as being hit: a stack going sour while
+   you have i-frames used to leave you at zero and still standing. */
+function downPlayer() {
+    if (RT.dead) return;
+    RT.hp = 0; RT.dead = true; RT.deadT = 2.2;
+    bigLine('you lose your place', '', '#ff5a6a', 2);
+    say('You lose your place in the line. Bern would tell you to take it from the top.', 'bad');
+    sfx('down');
 }
 function revive() {
     RT.dead = false; RT.hp = RT.hpm; RT.breath = stats().breathMax; RT.iframe = 1.6;
@@ -965,7 +977,7 @@ function breakStack(f, s) {
     part({ x: f.x, y: f.y, z: 34, vx: 0, vy: 0, vz: -6, life: 0.5, size: 3, col: '106,95,114', add: 0, grav: 0 });
     RT.sourN = (RT.sourN || 0) + 1;
     if (RT.sourN >= 4) ach('sour');
-    if (RT.hp <= 0 && !RT.dead) hurtPlayer(0);
+    if (RT.hp <= 0) downPlayer();
 }
 
 /* ─────────────── ANSWER ───────────────
@@ -1207,6 +1219,13 @@ function spawnFoe(kind, x, y) {
         anim: rnd(0, TAU), steal: def.steal || 0, drone: def.drone || 0, pulse: def.pulse || 0, said: 0,
         so: irnd(0, 2) * 9          // stack-row stagger: piled enemies must stay readable
     };
+    if (blocked(f.x, f.y, f.r * 0.7)) {           // never spawn inside a wall
+        for (var a2 = 0; a2 < 24; a2++) {
+            var rr2 = 1 + (a2 >> 3), xx = clamp(f.x + Math.cos(a2 / 8 * TAU) * rr2, 0.8, pw() - 0.8),
+                yy = clamp(f.y + Math.sin(a2 / 8 * TAU) * rr2, 0.8, ph() - 0.8);
+            if (!blocked(xx, yy, f.r * 0.7)) { f.x = xx; f.y = yy; break; }
+        }
+    }
     if (RT.foes.length < 70) RT.foes.push(f);
     burst(f.x, f.y, 10, 8, { col: '160,150,175', sp0: 0.4, sp1: 1.6, l0: 0.2, l1: 0.5, add: 0 });
     return f;
@@ -1272,8 +1291,12 @@ function stepFoes(dt) {
                 if (od > 0.01 && od < f.r + o.r + 0.25) { sx2 += ox / od; sy2 += oy / od; }
             }
             var mx = dx / d + sx2 * 0.55, my = dy / d + sy2 * 0.55, ml = Math.hypot(mx, my) || 1;
-            f.x = clamp(f.x + mx / ml * f.def.spd * dt, 0.7, pw() - 0.7);
-            f.y = clamp(f.y + my / ml * f.def.spd * dt, 0.7, ph() - 0.7);
+            // axis-separated, same as the player: they used to drift straight
+            // through the mill wall and bite you from inside the building
+            var nx2 = clamp(f.x + mx / ml * f.def.spd * dt, 0.7, pw() - 0.7);
+            var ny2 = clamp(f.y + my / ml * f.def.spd * dt, 0.7, ph() - 0.7);
+            if (!blocked(nx2, f.y, f.r * 0.7)) f.x = nx2;
+            if (!blocked(f.x, ny2, f.r * 0.7)) f.y = ny2;
             f.state = 'walk';
         } else if (f.atkT <= 0 && f.state === 'walk') { f.state = 'tell'; f.tell = f.def.tell; }
         if (f.state === 'tell') {
@@ -1511,7 +1534,7 @@ function frame(now) {
     // time thickens while a stanza writes itself
     var scale = RT.timeScale * (RT.dilate > 0 ? T('dilation') : 1);
     step(real * scale, real);
-    draw();
+    draw(real);
     RT.raf = requestAnimationFrame(frame);
 }
 function step(dt, real) {
@@ -1541,8 +1564,10 @@ function step(dt, real) {
     RT.hudT = (RT.hudT || 0) - (real || dt);
     if (RT.hudT <= 0) { RT.hudT = 0.05; updateHud(0.05); }
 }
-function draw() {
-    var cx = RT.cx, dt = 1 / 60;
+function draw(rdt) {
+    // was hard-coded to 1/60: on a 144Hz screen every typographic
+    // effect outlived its intent by more than double
+    var cx = RT.cx, dt = Math.min(0.05, rdt || 1 / 60);
     cx.save();
     if (S.opts.shake && RT.shake > 0.2) cx.translate(rnd(-RT.shake, RT.shake) * 0.5, rnd(-RT.shake, RT.shake) * 0.35);
     cx.clearRect(-30, -30, VW + 60, VH + 60);
@@ -1809,7 +1834,13 @@ function fillShop() {
             (owned ? '<button class="nn-mini" data-sell="' + id + '">sell ◦' + c.sell + '</button>'
                    : '<button class="nn-mini' + (S.coin < c.cost ? ' poor' : '') + '" data-buy="' + id + '">◦' + c.cost + '</button>') + '</div>';
     });
-    var forSale = ['street', 'wheat', 'night', 'right'];
+    // every word of a family you have opened, minus the one the
+    // fragment already gave you. Nine words used to be unbuyable.
+    var forSale = [];
+    FAM_IDS.forEach(function (fid) {
+        if (!famOwned(fid)) return;
+        FAMS[fid].words.forEach(function (w) { if (!S.owned[w]) forSale.push(w); });
+    });
     html += '<h4>WORDS <i>· he found them written on things</i></h4>';
     forSale.forEach(function (w) {
         if (S.owned[w] || !famOwned(WORDS[w])) return;
@@ -2167,12 +2198,20 @@ function checkRealisation() {
     RT.realising = 1;
     beat(1.0, function () { bigLine('he spoke and we all heard', '', '#e8e2ee', 2.4); });
     beat(3.4, function () { bigLine('and he went alone', '', '#e8e2ee', 2.4); });
-    beat(6.0, function () {
-        bigLine('those are not a rhyme', '', '#ffe66e', 3);
-        ach('hear');
-        say('Somebody snapped the end off the song and nailed a lie onto it, four hundred years ago, and you have just heard the join.', 'good');
-    });
-    beat(9.4, function () { RT.realising = 0; grantFragment(1); });
+    beat(6.0, function () { bigLine('those are not a rhyme', '', '#ffe66e', 3); });
+    beat(9.4, function () { landRealisation(); });
+}
+
+/* The point of the realisation is the sentence, not the item. If a
+   doorway interrupts the sequence you still get both — losing the
+   only line that explains what you understood, and an achievement
+   that is granted nowhere else, is worse than losing the ceremony. */
+function landRealisation() {
+    if (S.frags[1]) { RT.realising = 0; return; }
+    RT.realising = 0;
+    ach('hear');
+    say('Somebody snapped the end off the song and nailed a lie onto it, four hundred years ago, and you have just heard the join.', 'good');
+    grantFragment(1);
 }
 
 /* FRAGMENT II — the mark. The stone has a name scratched off it.
@@ -2224,12 +2263,16 @@ function stepScene(dt) {
         }
         return;
     }
+    // the wave has to go with it, or the next frame decides the place
+    // is quiet all over again and the timer never runs out. S.draws is
+    // what the rehearsed gate counts now, so zeroing this is safe.
+    if (RT.cleared && (RT.quietT -= dt) <= 0) { RT.cleared = false; RT.wave = 0; }
     if (!RT.cleared && RT.wave > 0 && alive === 0) {     // the place goes quiet again
         RT.cleared = true;
         if (!RT.tookHit) ach('nohit');
         coin(irnd(2, 5));
         say('Quiet again.', 'dim');
-        RT.timers.push(setTimeout(function () { if (RT) { RT.cleared = false; RT.wave = 0; } }, 6000));
+        RT.quietT = 6;                          // sim seconds, like everything else
     }
 }
 function beat(after, fn) { RT.beats.push({ t: after, fn: fn }); }
@@ -2292,20 +2335,25 @@ function unstick() {
 }
 function exitOpen(e) {
     if (!e.needs) return true;
-    return !!S.seen[e.needs];
+    return !!S.seen.openAll || !!S.seen[e.needs];
 }
 function gotoPlace(id, fresh) {
     if (!PLACES[id]) id = 'square';
     var prev = RT.place;
     RT.place = id; S.place = id; S.seen['been_' + id] = 1; sSave();
-    if (RT.realising) { RT.realising = 0; grantFragment(1); }   // you walked out on it; you still heard it
+    if (RT.realising) landRealisation();      // you walked out on it; you still heard it
     if (RT.realising2) { RT.realising2 = 0; grantFragment(2); }
     if (RT.realising3) { RT.realising3 = 0; grantFragment(3); }
     RT.foes.length = 0; RT.fproj.length = 0; RT.calls.length = 0;
     RT.beats = []; RT.typo.length = 0; RT.slams.length = 0; RT.lines.length = 0;
     RT.dialog = null; RT.pressure = 0; RT.cleared = false;
     RT.wave = 0; RT.tookHit = false;                       // per place, not per session
+    RT.verseCast = 0; RT.recital = null; RT.dilate = 0; RT.timeScale = 1;
     RT.timers.forEach(function (t) { clearTimeout(t); }); RT.timers.length = 0;
+    // those timers were what faded the narration out. Clear the log with them,
+    // and shut the dialogue panel the nulled RT.dialog used to own.
+    var sayEl = RT.root.querySelector('.nn-say'); while (sayEl.firstChild) sayEl.removeChild(sayEl.firstChild);
+    RT.root.querySelector('.nn-dlg').hidden = true;
     var p = PLACES[id];
     // walk in from the exit that points back where you came from
     var back = (p.exits || []).filter(function (e) { return e.to === prev; })[0];
@@ -2357,13 +2405,14 @@ function nearestInteract() {
     return best;
 }
 function doInteract() {
+    if (!RT || RT.dead || RT.devOpen || RT.mapOpen) return;
     var o = RT.prompt;
     if (RT.dialog) { advanceDialog(); return; }
     if (!o) return;
     if (o.k === 'npc') openDialog(o.n.talk(), o.n.n);
     else if (o.k === 'look') {
-        RT.looked = RT.looked || {};
-        RT.looked[RT.place + ':' + o.i] = 1;
+        S.looked = S.looked || {};
+        S.looked[RT.place + ':' + o.i] = 1;
         openDialog([['', o.l.d]], o.l.n, o.l.key);
     }
     else if (o.k === 'exit') {
@@ -2388,7 +2437,7 @@ function showDialog() {
     el.hidden = false;
     el.querySelector('.nn-dlg-who').textContent = ln[0] || d.who || '';
     el.querySelector('.nn-dlg-tx').innerHTML = esc(ln[1]).replace(/\n/g, '<br>');
-    el.querySelector('.nn-dlg-more').textContent = d.i < d.lines.length - 1 ? 'E / click — more' : 'E / click — done';
+    el.querySelector('.nn-dlg-more').textContent = d.i < d.lines.length - 1 ? 'E — more' : 'E — done';
 }
 function closeDialog() {
     if (!RT.dialog) return;
@@ -2434,7 +2483,8 @@ function speakPressure() {
         spawnFoe(RT.wave >= 3 && i === 0 ? 'thief' : 'mouth',
             clamp(RT.px + Math.cos(a) * rr, 1, pw() - 1), clamp(RT.py + Math.sin(a) * rr, 1, ph() - 1));
     }
-    if (RT.place === 'mill' && RT.wave >= 2 && !S.seen.rehearsed) {
+    S.draws = (S.draws || 0) + 1;                   // counted in the save, not in a frame counter
+    if (RT.place === 'mill' && S.draws >= 2 && !S.seen.rehearsed) {
         S.seen.rehearsed = 1; sSave();
         say('Something up in the loft is saying your part along with you.', 'big');
     }
@@ -2525,7 +2575,7 @@ function drawLooks(cx) {
     (place().looks || []).forEach(function (l, i) {
         var sx = isoX(l.x, l.y), sy = isoY(l.x, l.y) + TILE_H / 2;
         var near = Math.hypot(l.x - RT.px, l.y - RT.py) < 2.4;
-        var read = !!(RT.looked && RT.looked[RT.place + ':' + i]);
+        var read = !!(S.looked && S.looked[RT.place + ':' + i]);
         var pu = 0.5 + Math.sin(RT.t * 2.2 + i * 1.7) * 0.5;
         cx.save();
         cx.globalAlpha = (read ? 0.22 : near ? 0.85 : 0.45 + pu * 0.25);
@@ -2599,7 +2649,7 @@ function drawMap(cx) {
     cx.textAlign = 'center';
     cx.fillStyle = '#d8cfa8'; cx.font = '16px "Press Start 2P", monospace';
     cx.fillText('WHERE YOU HAVE BEEN', VW / 2, 70);
-    var ox = VW / 2 - 150, oy = 128, cell = 100;
+    var ox = VW / 2 - 250, oy = 128, cell = 100;
     // links first
     cx.lineWidth = 2;
     PLACE_IDS.forEach(function (id) {
