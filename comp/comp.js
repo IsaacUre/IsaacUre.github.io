@@ -423,6 +423,7 @@ var FS = {
         { n: 'About Isaac', t: 'ure', app: 'about' },
         { n: 'Steam', t: 'steam', app: 'steam' },
         { n: 'Minecraft Launcher', t: 'mclauncher', app: 'mclauncher' },
+        { n: 'NINTH NIGHT', t: 'ninth', app: 'ninth' },
         { n: 'URE BOY', t: 'ureboy', app: 'ureboy' },
         { n: 'the room', t: 'room', app: 'room' },
         { n: 'Recycle Bin', t: 'bin', app: 'bin', sys: 1 }
@@ -459,7 +460,7 @@ var FS_ICON = {
     zip: 'ic-zip', code: 'ic-code', js: 'ic-js', html: 'ic-html', css: 'ic-css', font: 'ic-font', sav: 'ic-sav',
     drive: 'ic-drive', usb: 'ic-usb', disc: 'ic-disc', edge: 'ic-edge', terminal: 'ic-terminal', calc: 'ic-calc',
     cookie: 'ic-cookie', terraria: 'ic-terraria', explorer: 'ic-explorer', settings: 'ic-settings',
-    mclauncher: 'ic-mc', mcjar: 'ic-mc'
+    mclauncher: 'ic-mc', mcjar: 'ic-mc', ninth: 'ic-ninth'
 };
 var KIND = {
     folder: 'File folder', pc: 'Local disk', notepad: 'Text document', room: 'PNG image', gti: 'PNG image',
@@ -471,7 +472,7 @@ var KIND = {
     css: 'CSS document', font: 'TrueType font file', sav: 'Save file', drive: 'Local disk', usb: 'USB drive', disc: 'CD Drive',
     edge: 'Application', terminal: 'Application', calc: 'Application', cookie: 'Application', terraria: 'Application',
     explorer: 'Application', settings: 'Application',
-    mclauncher: 'Application', mcjar: 'Executable Jar File'
+    mclauncher: 'Application', mcjar: 'Executable Jar File', ninth: 'Shortcut'
 };
 // extension → item type. Anything unlisted is a plain 'file'.
 var EXT_T = {
