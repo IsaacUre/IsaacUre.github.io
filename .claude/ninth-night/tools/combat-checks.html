@@ -120,19 +120,22 @@ function run() {
 
     /* ── 6. HIGH: every authored slot has to be reachable in normal play ── */
     (function () {
-        var rt = clean();
-        var met = {}, waves = 0;
-        for (var w = 0; w < 6; w++) {
-            rt.foes.length = 0;
-            rt.wave = w; rt.pressure = 999; rt.cleared = false; rt.dialog = null;
-            rt.callCd = 0; rt.breath = 999; rt.winded = 0;
-            N.call();                                     // a real Call is what draws a wave
-            if (rt.foes.length) waves++;
-            rt.foes.forEach(function (f) { met[f.kind] = 1; });
-        }
-        ok('the mill ladder shows the Sword, the Deaf and the Droner',
-            met.sword && met.deaf && met.droner && met.thief && waves >= 5,
-            'kinds=' + Object.keys(met).sort().join(',') + ' waves=' + waves);
+        // every place that draws hearsay has to show its whole authored cast
+        ['mill', 'road', 'hollow'].forEach(function (pl) {
+            N.place(pl);
+            var rt = clean(), met = {}, waves = 0;
+            for (var w = 0; w < 6; w++) {
+                rt.foes.length = 0;
+                rt.wave = w; rt.pressure = 999; rt.cleared = false; rt.dialog = null;
+                rt.callCd = 0; rt.breath = 999; rt.winded = 0;
+                N.call();                                 // a real Call is what draws a wave
+                if (rt.foes.length) waves++;
+                rt.foes.forEach(function (f) { met[f.kind] = 1; });
+            }
+            ok('the ' + pl + ' ladder shows its whole cast',
+                met.sword && met.deaf && met.droner && met.thief && waves >= 5,
+                'kinds=' + Object.keys(met).sort().join(',') + ' waves=' + waves);
+        });
     })();
 
     /* ── 7. MED: clearing a room costs one rung, and cannot farm the reward ── */
@@ -205,7 +208,7 @@ function run() {
 
     /* ── 11. the critical path, after all of the above ── */
     (function () {
-        var ids = ['stage', 'square', 'lane', 'mill', 'loft', 'village', 'mark', 'arena'];
+        var ids = ['stage', 'square', 'bernhouse', 'chandler', 'lane', 'mill', 'loft', 'village', 'mark', 'road', 'hollow', 'arena'];
         var loaded = 0, tried = 0;
         ids.forEach(function (id) {
             try { N.place(id); tried++; if (N.state().place === id) loaded++; N.tick(30, DT); } catch (e) { errs.push('place ' + id + ': ' + e.message); }

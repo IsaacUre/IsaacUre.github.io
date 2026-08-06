@@ -1580,7 +1580,7 @@ function stepFoes(dt) {
    the next person, not shown to the player.
 
    A wave is a list of [kind, count, mod]. mod may be null, a modifier
-   id, or '?' to roll one at the place's elite rate.
+   id, or '?' to roll one at TUNE.eliteChance.
 
    Put the enemy the wave exists to TEACH in the first slot. A place's
    speakDraws caps the wave, spawnWave spends that cap one-per-slot, and
@@ -1606,6 +1606,22 @@ var ENCOUNTERS = {
         { teach: 'the sword: no rhyme on it at all, and that is the joke', w: [['sword', 1], ['mouth', 2]] },
         { teach: 'shut up and let breath ramp, or you get caught winded', w: [['thief', 1, 'quick'], ['mouth', 3]] },
         { teach: 'everything at once', w: [['deaf', 1], ['droner', 1], ['sword', 1], ['thief', 1], ['mouth', 2]] }
+    ],
+    /* Job 3's road north. You are past the fence with the whole kit, and the
+       road is long enough that range finally means something. */
+    road: [
+        { teach: 'out here it answers with more of itself than the town did', w: [['thief', 1], ['mouth', 2]] },
+        { teach: 'two droners on a road with nowhere to stand still', w: [['droner', 2], ['mouth', 1]] },
+        { teach: 'a wall that also hits: -ight first, then -ill', w: [['deaf', 1, 'loud'], ['mouth', 2]] },
+        { teach: 'everything the town taught you, on the way out of it', w: [['sword', 1], ['thief', 1, 'quick'], ['droner', 1], ['mouth', 1]] }
+    ],
+    /* The hollow. Job 3's brief for it is "the one place that should feel
+       wrong", so nothing ordinary spawns here after the first wave. */
+    hollow: [
+        { teach: 'it is already answering before you have finished', w: [['deaf', 1, 'sealed'], ['droner', 1], ['mouth', 2]] },
+        { teach: 'the dark is full of hands', w: [['thief', 2, 'quick'], ['mouth', 2]] },
+        { teach: 'nothing out here is ordinary any more', w: [['deaf', 1, 'droning'], ['sword', 1, 'loud'], ['thief', 1]] },
+        { teach: 'the whole cast, and all of it wrong', w: [['sword', 1, '?'], ['deaf', 1, '?'], ['droner', 1, '?'], ['thief', 1, '?'], ['mouth', 2, '?']] }
     ],
     // The square, Grelling and the mark do not draw hearsay today (no
     // speakDraws on their PLACES entry, which is job 3's to set; the square is
