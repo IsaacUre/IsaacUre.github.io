@@ -52,6 +52,7 @@ var P = {
     red: '#d81e05', red2: '#8f1305',
     wall: '#d6ccb6', wallDk: '#bdb39c',           // warm greige, not white
     trim: '#8f8778', trimLt: '#a49c8c',           // door casing + baseboards
+    doorW: '#f4f1e9', doorP: '#dedacf',           // the white raised-panel leaves
     fl: '#96552a', flLt: '#b8703c',               // cherry hardwood
     ceil: '#cfc9b8',
     carp: '#b3a082', carp2: '#9c8a6c',            // bedroom carpet
@@ -128,16 +129,24 @@ function buildMap() {
     setWall(21, 0, 31, 0, 2);                    // living window band
     setWall(15, 51, 19, 51, 4);                  // front door
 
-    setWall(18, 1, 18, 19, 1);                   // bedroom/living divider (the desk+TV wall)
-    setWall(1, 19, 8, 19, 1);                    // bedroom south wall, west of the door
-    setWall(12, 19, 17, 19, 1);                  // ...and east of it (door gap x 9-11)
+    /* The divider carries the desk and the TV, and the BEDROOM DOOR sits at its
+       south end right beside the desk — exactly the wall in image0.jpg, where
+       the doorway, the light switch and the desk run left to right.
+       Door openings are left OPEN here: the swinging leaves in DOORS do the
+       blocking, so a shut door stops you and an open one does not. */
+    setWall(18, 1, 18, 13, 1);                   // (rows 14-17 = the bedroom door)
+    setWall(18, 18, 18, 19, 1);
+    setWall(1, 19, 17, 19, 1);                   // bedroom south wall, solid
 
-    /* the walk-in closet: interior x14-17, west door gap z23-25, and the
-       slant stepping (18,25)→(14,29) so the room narrows toward the hall.
-       the corridor west of it runs 4 cells wide (x9-12) so the body AABB
-       can make the dogleg south past the bathroom corner. */
-    setWall(13, 20, 13, 22, 1);
-    setWall(13, 26, 13, 30, 1);
+    /* the linen closet (west), the tiled dressing corridor (x6-12), the
+       walk-in (east) with its stair-stepped 45° slant */
+    setWall(1, 20, 5, 20, 1);                    // linen closet north
+    setWall(5, 21, 5, 21, 1);                    // ...east wall (rows 22-25 = its door)
+    setWall(5, 26, 5, 28, 1);
+    setWall(1, 29, 4, 29, 1);                    // ...south
+
+    setWall(13, 20, 13, 21, 1);                  // walk-in west wall (rows 22-25 = its door)
+    setWall(13, 26, 13, 29, 1);
     setWall(18, 20, 18, 24, 1);
     setWall(18, 25, 18, 25, 1);                  // the slanted wall, stair-stepped
     setWall(17, 26, 17, 26, 1);
@@ -145,9 +154,10 @@ function buildMap() {
     setWall(15, 28, 15, 28, 1);
     setWall(14, 29, 14, 29, 1);
 
-    /* bathroom SW: interior x1-8 z31-50; door = the 3-cell gap x6-8 in
-       row 30. tiled faces on its exterior walls, like the old map did. */
-    setWall(1, 30, 5, 30, 3);                    // bath north wall
+    /* bathroom SW. Its door is straight ahead at the foot of the corridor
+       (row 30, x5-8) so you walk right at it — the old map made you dogleg
+       around a corner, which read as a wall across the entrance. */
+    setWall(1, 30, 4, 30, 3);                    // bath north wall
     setWall(9, 31, 9, 50, 1);                    // bath east wall (nook's back)
     setWall(0, 30, 0, 51, 3);                    // west outer, tiled
     setWall(1, 51, 8, 51, 3);                    // south outer behind the tub, tiled
@@ -160,6 +170,77 @@ function buildMap() {
 
     /* the kitchen's structural notch in the east wall */
     setWall(31, 32, 38, 34, 1);
+}
+
+/* ============================================================
+   DOORS — real leaves on real hinges.
+   The opening is never a wall in MAP (the DDA sees straight
+   through it, so you get a proper cased hole in the wall);
+   instead solidCell() asks the doors, so a shut leaf stops you
+   and an open one does not. They swing themselves as you come
+   near — no way to shut yourself in, and no key to fumble for
+   while the two E-prompts on the desk keep that key.
+   Modelled on the real ones: white raised-panel leaves, greige
+   jambs and casings, satin-nickel lever handles.
+   ============================================================ */
+var DOORH = 10.0;                                  // 203 cm leaf, at 20 cm a cell
+var DOORT = 0.2;                                   // ~4 cm thick
+var DOORS = [];
+/* vert:true  -> the hole is a column: cell c, rows [r0,r1)
+   vert:false -> the hole is a row:    cell r, cols [c0,c1)
+   hinge 'lo'/'hi' picks which jamb it hangs on, swing ±1 which way it opens */
+function door(o) { o.open = 0; o.want = 0; DOORS.push(o); }
+function buildDoors() {
+    DOORS.length = 0;
+    /* the bedroom, off the living room right beside the desk. The photo is shot
+       from the living room and the hinges show on the far jamb, so it hangs on
+       the north side and swings back into the bedroom. */
+    door({ name: 'bedroom', vert: true, c: 18, r0: 14, r1: 18, hinge: 'lo', swing: -1 });
+    /* the bathroom, straight ahead at the foot of the corridor */
+    door({ name: 'bath', vert: false, r: 30, c0: 5, c1: 9, hinge: 'hi', swing: 1 });
+    /* the two closets off the corridor, both swinging out into it like the plan */
+    door({ name: 'linen', vert: true, c: 5, r0: 22, r1: 26, hinge: 'lo', swing: 1 });
+    door({ name: 'walkin', vert: true, c: 13, r0: 22, r1: 26, hinge: 'hi', swing: -1 });
+}
+/* where the leaf is right now: hinge point, along-leaf unit vector, face normal */
+function doorAxes(d) {
+    var t = d.open * Math.PI / 2, s = Math.sin(t), c = Math.cos(t);
+    var H, dir, w;
+    if (d.vert) {
+        w = d.r1 - d.r0;
+        var sg = d.hinge === 'lo' ? 1 : -1;
+        H = [d.c + 0.5, d.hinge === 'lo' ? d.r0 : d.r1];
+        dir = [d.swing * s, sg * c];
+    } else {
+        w = d.c1 - d.c0;
+        var sh = d.hinge === 'lo' ? 1 : -1;
+        H = [d.hinge === 'lo' ? d.c0 : d.c1, d.r + 0.5];
+        dir = [sh * c, d.swing * s];
+    }
+    return { H: H, dir: dir, nrm: [-dir[1], dir[0]], w: w };
+}
+function doorCentre(d) {
+    return d.vert ? [d.c + 0.5, (d.r0 + d.r1) / 2] : [(d.c0 + d.c1) / 2, d.r + 0.5];
+}
+/* a shut leaf fills its hole; past a third open you can walk through */
+function doorBlocks(d, c, r) {
+    if (d.open > 0.34) return false;
+    return d.vert ? (c === d.c && r >= d.r0 && r < d.r1)
+                  : (r === d.r && c >= d.c0 && c < d.c1);
+}
+/* they open for you as you come near and fall shut behind you. The reach is
+   generous on purpose: the leaf has to be out of the way before your 2.5-cell
+   body reaches the hole, or you would walk into a door that is still opening. */
+function stepDoors(dt) {
+    for (var i = 0; i < DOORS.length; i++) {
+        var d = DOORS[i], m = doorCentre(d);
+        var dx = m[0] - PL.x, dz = m[1] - PL.z;
+        d.want = (dx * dx + dz * dz) < 16 ? 1 : 0;             // within 4 cells
+        if (d.open === d.want) continue;
+        var v = (reduce ? 8 : 2.6) * dt;                        // ~0.4 s to swing
+        d.open += d.want > d.open ? Math.min(v, d.want - d.open) : -Math.min(v, d.open - d.want);
+        needsDraw = true;
+    }
 }
 
 /* ─────────────────────── textures ─────────────────────────── */
@@ -522,9 +603,11 @@ function buildFurniture() {
     circ(18, 122, 1.5);
     /* the ceiling fan, centered over the bed */
     var fbx = 60, fbz = 76;
-    fbox(fbx - 22, fbz - 3, fbx + 22, fbz + 3, 11.3, 11.45, P.esp);
-    fbox(fbx - 3, fbz - 22, fbx + 3, fbz + 22, 11.3, 11.45, P.esp2);
-    fbox(fbx - 18, fbz + 8, fbx + 2, fbz + 20, 11.3, 11.42, P.esp);
+    /* the blades sit at staggered heights: level with each other they share an
+       underside plane, and you look at a ceiling fan from below */
+    fbox(fbx - 22, fbz - 3, fbx + 22, fbz + 3, 11.30, 11.45, P.esp);
+    fbox(fbx - 3, fbz - 22, fbx + 3, fbz + 22, 11.34, 11.49, P.esp2);
+    fbox(fbx - 18, fbz + 8, fbx + 2, fbz + 20, 11.38, 11.50, P.esp);
     fbox(fbx - 6, fbz - 6, fbx + 6, fbz + 6, 11.2, 11.7, '#a88a52');
     fbox(fbx - 4, fbz - 4, fbx + 4, fbz + 4, 10.9, 11.2, P.amber, true);   // bowl light BELOW the motor
     /* the dresser on the south wall, east of the door */
@@ -533,6 +616,40 @@ function buildFurniture() {
     fbox(118, 137.4, 126, 138, 1.5, 2.1, '#2a2622');
     fbox(130, 137.4, 138, 138, 1.5, 2.1, '#2a2622');
     rectC(98, 136, 142, 152);
+
+    /* ── cased openings: a greige jamb lining each reveal, a flat casing
+          standing proud on both wall faces, and the head across the top.
+          Generated from DOORS so a door and its trim can never drift apart. ── */
+    var di, dd, X0, X1, Z0, Z1;
+    var JW = 1.4, CW = 3.0, CP = 1.0;            // jamb depth, casing width, how proud
+    for (di = 0; di < DOORS.length; di++) {
+        dd = DOORS[di];
+        if (dd.vert) {
+            X0 = dd.c * 8; X1 = (dd.c + 1) * 8;
+            Z0 = dd.r0 * 8; Z1 = dd.r1 * 8;
+            fbox(X0, Z0, X1, Z0 + JW, 0, DOORH, P.trim);                 // jambs
+            fbox(X0, Z1 - JW, X1, Z1, 0, DOORH, P.trim);
+            fbox(X0, Z0, X1, Z1, DOORH, DOORH + JW, P.trim);             // head
+            fbox(X0 - CP, Z0 - CW, X0, Z0, 0, DOORH + CW, P.trimLt);     // casing, west face
+            fbox(X0 - CP, Z1, X0, Z1 + CW, 0, DOORH + CW, P.trimLt);
+            fbox(X0 - CP, Z0 - CW, X0, Z1 + CW, DOORH + JW, DOORH + CW, P.trimLt);
+            fbox(X1, Z0 - CW, X1 + CP, Z0, 0, DOORH + CW, P.trimLt);     // casing, east face
+            fbox(X1, Z1, X1 + CP, Z1 + CW, 0, DOORH + CW, P.trimLt);
+            fbox(X1, Z0 - CW, X1 + CP, Z1 + CW, DOORH + JW, DOORH + CW, P.trimLt);
+        } else {
+            Z0 = dd.r * 8; Z1 = (dd.r + 1) * 8;
+            X0 = dd.c0 * 8; X1 = dd.c1 * 8;
+            fbox(X0, Z0, X0 + JW, Z1, 0, DOORH, P.trim);
+            fbox(X1 - JW, Z0, X1, Z1, 0, DOORH, P.trim);
+            fbox(X0, Z0, X1, Z1, DOORH, DOORH + JW, P.trim);
+            fbox(X0 - CW, Z0 - CP, X0, Z0, 0, DOORH + CW, P.trimLt);     // casing, north face
+            fbox(X1, Z0 - CP, X1 + CW, Z0, 0, DOORH + CW, P.trimLt);
+            fbox(X0 - CW, Z0 - CP, X1 + CW, Z0, DOORH + JW, DOORH + CW, P.trimLt);
+            fbox(X0 - CW, Z1, X0, Z1 + CP, 0, DOORH + CW, P.trimLt);     // casing, south face
+            fbox(X1, Z1, X1 + CW, Z1 + CP, 0, DOORH + CW, P.trimLt);
+            fbox(X0 - CW, Z1, X1 + CW, Z1 + CP, DOORH + JW, DOORH + CW, P.trimLt);
+        }
+    }
 
     /* ============ THE CORE ============ */
     /* walk-in closet: rail + hanging clothes along the north wall, shoes
@@ -545,16 +662,18 @@ function buildFurniture() {
     fbox(115, 176, 125, 184, 0, 1.2, P.porc);                    // shoes on the floor
     fbox(128, 176, 136, 183, 0, 1.1, P.slate);
 
-    /* reach-in closet west of the corridor: the washer/dryer stack up top,
-       linen shelves below */
-    fbox(20, 162, 46, 188, 0, 6.0, P.porc);                      // W/D stack
-    fbox(46, 166, 46.8, 178, 1.2, 2.8, P.slate);                 // dryer drum faces the corridor
-    fbox(46, 166, 46.8, 178, 3.4, 5.0, P.slate);                 // washer drum above
-    fbox(20, 196, 46, 232, 0, 5.6, '#cbb89a');                   // shelf tower
-    fbox(46, 200, 46.6, 228, 1.6, 1.8, P.trim);                  // shelf lips
-    fbox(46, 200, 46.6, 228, 3.2, 3.4, P.trim);
-    fbox(46, 200, 46.6, 228, 4.8, 5.0, P.trim);
-    rectC(18, 160, 48, 234);
+    /* the reach-in closet: washer/dryer stack and linen shelves, all held back
+       clear of the door column (col 5 starts at px 40) so the leaf has room to
+       swing and the drums face out through the opening. You look in rather than
+       walk in — it is only 4 cells deep — so its collider fills the whole box. */
+    fbox(10, 168, 38, 196, 0, 6.0, P.porc);                      // W/D stack
+    fbox(38, 172, 38.8, 192, 1.2, 2.8, P.slate);                 // dryer drum faces the door
+    fbox(38, 172, 38.8, 192, 3.4, 5.0, P.slate);                 // washer drum above
+    fbox(10, 200, 38, 222, 0, 5.6, '#cbb89a');                   // shelf tower
+    fbox(38, 203, 38.6, 219, 1.6, 1.8, P.trim);                  // shelf lips
+    fbox(38, 203, 38.6, 219, 3.2, 3.4, P.trim);
+    fbox(38, 203, 38.6, 219, 4.8, 5.0, P.trim);
+    rectC(8, 166, 39, 224);
 
     /* ============ BATHROOM ============
        vanity north on the west wall, toilet mid, tub along the south. */
@@ -659,7 +778,9 @@ var PR = 1.25;                                     // player collision radius; d
 
 function solidCell(c, r) {
     if (c < 0 || r < 0 || c >= MW || r >= MH) return true;
-    return MAP[r][c] > 0;
+    if (MAP[r][c] > 0) return true;
+    for (var i = 0; i < DOORS.length; i++) if (doorBlocks(DOORS[i], c, r)) return true;
+    return false;
 }
 function tryMove(nx, nz) {
     /* axis-separated slide against wall cells */
@@ -842,6 +963,52 @@ function collectFaces(o, faces, horizon) {
     else if (EYE < o.y0) put([[o.x0, o.y0, o.z0], [o.x1, o.y0, o.z0], [o.x1, o.y0, o.z1], [o.x0, o.y0, o.z1]], LIGHT.bot);
 }
 
+/* the swinging leaves. quadPoly already takes arbitrary world corners, so a
+   leaf at any angle is just a handful of quads — nothing here has to stay
+   axis-aligned the way fbox does. */
+var DTOP = faceLight(0, 1, 0);
+function collectDoorFaces(d, faces, horizon) {
+    var a = doorAxes(d), w = a.w;
+    var hx = a.H[0], hz = a.H[1];
+    var dx = a.dir[0], dz = a.dir[1], nx = a.nrm[0], nz = a.nrm[1];
+    var t = DOORT / 2;
+    var rx = hx + dx * w / 2 - PL.x, rz = hz + dz * w / 2 - PL.z;
+    var d2 = rx * rx + rz * rz;
+    if (d2 > 3136) return;
+    if (rx * PL.dirX + rz * PL.dirZ < -(w / 2 + 2)) return;      // fully behind us
+    var dist = Math.sqrt(d2), fog = clamp(dist / 46, 0, 1) * 0.62;
+    var sgn = ((PL.x - hx) * nx + (PL.z - hz) * nz) >= 0 ? 1 : -1;   // the face we see
+    /* painted white joinery bounces a lot of fill, so keep the shaded side of a
+       leaf from sinking to the greige the walls use — these read as WHITE doors */
+    var lFace = Math.max(0.94, faceLight(nx * sgn, 0, nz * sgn) / DTOP);
+
+    function pt(al, off, y) { return [hx + dx * al + nx * sgn * off, y, hz + dz * al + nz * sgn * off]; }
+    function put(c0, c1, c2, c3, lit, col) {
+        var p = quadPoly([c0, c1, c2, c3], horizon);
+        if (p) faces.push({ p: p, c: mix(shade(col, lit), fog), d: dist });
+    }
+    /* the leaf face, then two raised panels a hair proud of it */
+    put(pt(0, t, 0), pt(w, t, 0), pt(w, t, DOORH), pt(0, t, DOORH), lFace, P.doorW);
+    function panel(a0, a1, y0, y1) {
+        var o = t + 0.035;
+        put(pt(a0, o, y0), pt(a1, o, y0), pt(a1, o, y1), pt(a0, o, y1), lFace * 0.93, P.doorP);
+    }
+    panel(w * 0.17, w * 0.83, DOORH * 0.55, DOORH * 0.90);
+    panel(w * 0.17, w * 0.83, DOORH * 0.10, DOORH * 0.45);
+
+    /* the free edge, and the top when you are tall enough to see it */
+    put([hx + dx * w - nx * t, 0, hz + dz * w - nz * t], [hx + dx * w + nx * t, 0, hz + dz * w + nz * t],
+        [hx + dx * w + nx * t, DOORH, hz + dz * w + nz * t], [hx + dx * w - nx * t, DOORH, hz + dz * w - nz * t],
+        faceLight(dx, 0, dz) / DTOP, P.doorW);
+
+    /* satin-nickel lever + rose, at handle height near the free edge */
+    var la = w * 0.85, ly = DOORH * 0.47;
+    put(pt(la - 0.16, t + 0.05, ly - 0.17), pt(la + 0.16, t + 0.05, ly - 0.17),
+        pt(la + 0.16, t + 0.05, ly + 0.30), pt(la - 0.16, t + 0.05, ly + 0.30), 1.1, P.chrome);
+    put(pt(la - 0.04, t + 0.17, ly), pt(la + 0.36, t + 0.17, ly),
+        pt(la + 0.36, t + 0.17, ly + 0.15), pt(la - 0.04, t + 0.17, ly + 0.15), 1.3, P.chrome);
+}
+
 /* ============================================================
    RENDER
    ============================================================ */
@@ -925,6 +1092,7 @@ function render() {
        overdraw (nearest writes depth first, farther pixels fail fast) */
     var faces = [];
     for (i = 0; i < FURN.length; i++) collectFaces(FURN[i], faces, horizon);
+    for (i = 0; i < DOORS.length; i++) collectDoorFaces(DOORS[i], faces, horizon);
     faces.sort(function (a, b) { return a.d - b.d; });
     for (i = 0; i < faces.length; i++) drawPoly(faces[i].p, faces[i].c);
 
@@ -1130,6 +1298,19 @@ function buildMapScene() {
         var er = r;
         while (er + 1 < MH && MAP[er + 1][c] === 2) er++;
         if (er > r) mbox(c * 8 - 0.75, r * 8 + 2, 9.5, (er - r + 1) * 8 - 4, 12, 14, M3.glass, M3.glass, true);
+    }
+
+    /* the door leaves, snapped to whichever of shut/open they are nearer — the
+       dollhouse boxes are axis-aligned, and at 0° and 90° a leaf is too */
+    for (i = 0; i < DOORS.length; i++) {
+        var dr = DOORS[i], swung = dr.open > 0.5;
+        var ax = doorAxes(dr), lw = ax.w * 8, T = DOORT * 8;
+        var hxp = ax.H[0] * 8, hzp = ax.H[1] * 8;
+        var ex = hxp + (swung ? (dr.vert ? dr.swing * lw : (dr.hinge === 'lo' ? lw : -lw)) : (dr.vert ? 0 : (dr.hinge === 'lo' ? lw : -lw)));
+        var ez = hzp + (swung ? (dr.vert ? 0 : dr.swing * lw) : (dr.vert ? (dr.hinge === 'lo' ? lw : -lw) : 0));
+        mbox(Math.min(hxp, ex) - (ex === hxp ? T / 2 : 0), Math.min(hzp, ez) - (ez === hzp ? T / 2 : 0),
+             Math.abs(ex - hxp) || T, Math.abs(ez - hzp) || T,
+             0, DOORH * HSQ, P.doorW, P.doorW);
     }
 
     /* the furniture, straight from the raycaster's boxes: plan px footprints,
@@ -1592,6 +1773,7 @@ function frame(ts) {
         needsDraw = true;
     }
 
+    stepDoors(dt);
     checkPrompt();
     if (TRANS.on) { TRANS.t += dt; needsDraw = true; }
     if (!reduce) needsDraw = true;                 // the glow pulses + led blinks
@@ -1612,6 +1794,7 @@ function boot() {
     dctx = disp.getContext('2d');
 
     buildMap();
+    buildDoors();
     buildTextures();
     buildFurniture();
     buildMapScene();
@@ -1649,6 +1832,16 @@ function boot() {
                 mapMs: function (n) { var t = performance.now(); for (var i = 0; i < (n || 100); i++) renderMap(); return (performance.now() - t) / (n || 100); },
                 prompt: function () { checkPrompt(); return promptTgt ? promptTgt.href : null; },
                 walk: function (x, z) { return !hitsWall(x, z); },
+                doors: function (v) {
+                    var out = [], i;
+                    for (i = 0; i < DOORS.length; i++) {
+                        if (isFinite(v)) DOORS[i].open = clamp(v, 0, 1);
+                        out.push(DOORS[i].name + '=' + DOORS[i].open.toFixed(2));
+                    }
+                    return out.join(' ');
+                },
+                step: function (dt) { stepDoors(dt || 0.05); },
+                boxes: function () { return FURN; },            // every built box, loops included
                 cell: function (c, r) { return solidCell(c, r) ? MAP[r][c] : 0; },
                 map: {
                     open: openMap, close: closeMap,
