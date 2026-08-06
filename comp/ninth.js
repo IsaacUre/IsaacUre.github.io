@@ -857,7 +857,7 @@ function wireInput(root, cv) {
         else if (k === 'b') panel('book');
         else if (k === 'c') panel('kit');
         else if (k === 'v') panel('shop');
-        else if (KEYS[k]) KEYS[k]();
+        else if (KEYS[k]) { if (KEYS[k]() === false) return; }   // a registered key may decline and let the event through
         else return;
         e.preventDefault(); e.stopPropagation();
     });
@@ -2797,6 +2797,9 @@ function showDialog() {
     var d = RT.dialog, el = RT.root.querySelector('.nn-dlg');
     if (!d) { el.hidden = true; return; }
     var ln = d.lines[d.i], ask = ln && ln.ask ? ln : null;
+    // a question whose every answer is conditioned out is not a question.
+    // job 1 writes the conditions here, and a dead end reads as a hang.
+    if (ask && !dlgOpts(ask).length) ask = null;
     el.hidden = false;
     var opts = el.querySelector('.nn-dlg-opts');
     if (ask) {
@@ -2810,8 +2813,8 @@ function showDialog() {
         }).join('');
         el.querySelector('.nn-dlg-more').textContent = 'up / down — E to answer';
     } else {
-        el.querySelector('.nn-dlg-who').textContent = (ln && ln[0]) || d.who || '';
-        el.querySelector('.nn-dlg-tx').innerHTML = esc((ln && ln[1]) || '').replace(/\n/g, '<br>');
+        el.querySelector('.nn-dlg-who').textContent = (ln && (ln.who || ln[0])) || d.who || '';
+        el.querySelector('.nn-dlg-tx').innerHTML = esc((ln && (ln.ask || ln[1])) || '').replace(/\n/g, '<br>');
         opts.hidden = true; opts.innerHTML = '';
         el.querySelector('.nn-dlg-more').textContent = d.i < d.lines.length - 1 ? 'E — more' : 'E — done';
     }
@@ -2827,10 +2830,10 @@ function endDialog() {
 }
 function closeDialog() { endDialog(); }
 /* Up and down pick an answer. They are registered rather than wired into
-   the keydown chain, and they do nothing at all unless a question is on
-   screen, so they stay out of everyone else's way. */
-bindKey('arrowup', function () { moveDlgSel(-1); });
-bindKey('arrowdown', function () { moveDlgSel(1); });
+   the keydown chain, and they return false when no question is on screen,
+   which is what stops the chain swallowing the arrow keys game wide. */
+bindKey('arrowup', function () { return moveDlgSel(-1); });
+bindKey('arrowdown', function () { return moveDlgSel(1); });
 function moveDlgSel(dir) {
     var a = dlgAsk(); if (!a) return false;
     var n = dlgOpts(a).length; if (!n) return false;
@@ -2854,7 +2857,8 @@ function pickDlgOpt(i) {
 }
 function advanceDialog() {
     var d = RT.dialog; if (!d) return;
-    if (dlgAsk()) { pickDlgOpt(); return; }     // E answers the question you are being asked
+    var a = dlgAsk();
+    if (a && dlgOpts(a).length) { pickDlgOpt(); return; }   // E answers the question you are being asked
     d.i++;
     if (d.i >= d.lines.length) { endDialog(); return; }
     showDialog();
