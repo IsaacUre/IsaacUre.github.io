@@ -37,8 +37,65 @@ function fmtN(n) { n = Math.round(n); return n >= 10000 ? (n / 1000).toFixed(1) 
 var VW = 1120, VH = 580;                    // world canvas
 var TILE_W = 58, TILE_H = 29, GRID = 17;
 var ORX = VW / 2, ORY = 84;
-function isoX(x, y) { return ORX + (x - y) * (TILE_W / 2); }
-function isoY(x, y) { return ORY + (x + y) * (TILE_H / 2); }
+/* ─────────────── the camera ───────────────
+   isoXB/isoYB are the fixed projection: world tile to a point in an
+   imaginary sheet that is as big as the place. isoX/isoY are that
+   minus wherever the camera is looking, which is what everything
+   draws with. A place smaller than the canvas centres and never
+   scrolls, so the small rooms stay composed the way they were.
+   Anything that converts the other way (the mouse) has to add the
+   camera back: use screenToWorld, do not re-derive it. */
+var CAM0 = { x: 0, y: 0 };
+function cam() { return (RT && RT.world) ? RT.world.cam : CAM0; }
+function isoXB(x, y) { return ORX + (x - y) * (TILE_W / 2); }
+function isoYB(x, y) { return ORY + (x + y) * (TILE_H / 2); }
+function isoX(x, y) { return ORX + (x - y) * (TILE_W / 2) - cam().x; }
+function isoY(x, y) { return ORY + (x + y) * (TILE_H / 2) - cam().y; }
+function screenToWorld(sx, sy) {
+    var c = cam();
+    var a = (sx + c.x - ORX) / (TILE_W / 2), b = (sy + c.y - ORY) / (TILE_H / 2);
+    return { wx: (a + b) / 2, wy: (b - a) / 2 };
+}
+/* The rectangle the place occupies in base-projection space, with a
+   margin so the floor bitmap has room for the prop that overhangs it. */
+var FLOOR_PAD = 64;
+function placeBox(gw, gh) {
+    var x0 = isoXB(0, gh) - FLOOR_PAD, x1 = isoXB(gw, 0) + FLOOR_PAD;
+    var y0 = isoYB(0, 0) - FLOOR_PAD, y1 = isoYB(gw, gh) + TILE_H + FLOOR_PAD;
+    return { x: x0, y: y0, w: Math.ceil(x1 - x0), h: Math.ceil(y1 - y0) };
+}
+/* Where the camera is allowed to be, so you never see past the floor.
+   Smaller than the viewport on an axis means centre it and hold still. */
+function camBounds(gw, gh) {
+    var b = placeBox(gw, gh);
+    return {
+        x0: b.w <= VW ? b.x + (b.w - VW) / 2 : b.x,
+        x1: b.w <= VW ? b.x + (b.w - VW) / 2 : b.x + b.w - VW,
+        y0: b.h <= VH ? b.y + (b.h - VH) / 2 : b.y,
+        y1: b.h <= VH ? b.y + (b.h - VH) / 2 : b.y + b.h - VH
+    };
+}
+/* Dead zone follow. The camera does not move until you push out of a
+   box in the middle of the screen, so walking around a room does not
+   swim, and walking down a road does. */
+var DEAD_W = 300, DEAD_H = 150;
+function camTarget(px, py) {
+    var c = cam(), sx = isoXB(px, py) - c.x, sy = isoYB(px, py) + TILE_H / 2 - c.y;
+    var nx = c.x, ny = c.y;
+    var l = (VW - DEAD_W) / 2, r = VW - l, t = (VH - DEAD_H) / 2, bm = VH - t;
+    if (sx < l) nx -= (l - sx); else if (sx > r) nx += (sx - r);
+    if (sy < t) ny -= (t - sy); else if (sy > bm) ny += (sy - bm);
+    return { x: nx, y: ny };
+}
+function stepCamera(dt, snap) {
+    var w = RT.world, bd = camBounds(pw(), ph());
+    var tg = camTarget(RT.px, RT.py);
+    tg.x = clamp(tg.x, bd.x0, bd.x1); tg.y = clamp(tg.y, bd.y0, bd.y1);
+    if (snap) { w.cam.x = tg.x; w.cam.y = tg.y; return; }
+    var k = 1 - Math.pow(0.0016, dt);              // frame-rate independent ease
+    w.cam.x += (tg.x - w.cam.x) * k;
+    w.cam.y += (tg.y - w.cam.y) * k;
+}
 
 /* ─────────────── the ballad ───────────────
    Both versions live here. The town's version is what you know;
@@ -305,7 +362,7 @@ function render() {
 
         // narration: the slow channel. full lines are only ever allowed here.
         '<div class="nn-say"></div>' +
-        '<div class="nn-dlg" hidden><b class="nn-dlg-who"></b><p class="nn-dlg-tx"></p><i class="nn-dlg-more"></i></div>' +
+        '<div class="nn-dlg" hidden><b class="nn-dlg-who"></b><p class="nn-dlg-tx"></p><div class="nn-dlg-opts" hidden></div><i class="nn-dlg-more"></i></div>' +
 
         // bottom: breath, the two slotted words, the stanza bar
         '<div class="nn-hud">' +
@@ -445,21 +502,34 @@ var DEV = [
    Prerendered per scene. Wick is lamplight and cobbles, the mill
    is dirt and chaff, the loft is boards and dark, the prologue is
    a plank stage with footlights and an audience you cannot see. */
-var FLOORS = {};
+/* Bitmaps are the size of the PLACE now, not of the canvas, so a road
+   can be longer than one screen. They are also the memory story of the
+   game, so the cache is bounded and close() empties it. */
+var FLOORS = {}, FLOOR_LRU = [], FLOOR_MAX = 5;
+var FLOOR_PAL = {
+    stage:  ['#3a2a1c', '#2c1f14', '#4a3524'],
+    town:   ['#2a2630', '#211d28', '#37323f'],
+    loft:   ['#241c16', '#1a1410', '#332720'],
+    mill:   ['#2e2620', '#241d19', '#3b312a'],
+    road:   ['#2b2822', '#22201b', '#39342b'],   // packed dirt going north
+    hollow: ['#1a1720', '#141119', '#221d2b'],   // the place that is wrong
+    room:   ['#33291f', '#281f18', '#443626']    // boards, indoors
+};
+function floorOf(kind) { return FLOOR_PAL[kind] ? kind : 'mill'; }
 function buildFloor(kind, gw, gh) {
     gw = gw || GRID; gh = gh || GRID;
+    kind = floorOf(kind);
     var key = kind + gw + 'x' + gh;
-    if (FLOORS[key]) return FLOORS[key];
-    var cv = document.createElement('canvas'); cv.width = VW; cv.height = VH;
+    var hit = FLOORS[key];
+    if (hit) { touchFloor(key); return hit; }
+    var box = placeBox(gw, gh);
+    var cv = document.createElement('canvas'); cv.width = box.w; cv.height = box.h;
     var g = cv.getContext('2d');
     var seed = 9; function fr() { seed = (seed * 1103515245 + 12345) >>> 0; return (seed >>> 8) / 16777216; }
-    var pal = kind === 'stage' ? ['#3a2a1c', '#2c1f14', '#4a3524']
-            : kind === 'town'  ? ['#2a2630', '#211d28', '#37323f']
-            : kind === 'loft'  ? ['#241c16', '#1a1410', '#332720']
-            :                    ['#2e2620', '#241d19', '#3b312a'];
-    g.fillStyle = '#07060a'; g.fillRect(0, 0, VW, VH);
+    var pal = FLOOR_PAL[kind];
+    g.fillStyle = '#07060a'; g.fillRect(0, 0, box.w, box.h);
     for (var y = 0; y < gh; y++) for (var x = 0; x < gw; x++) {
-        var sx = isoX(x, y), sy = isoY(x, y);
+        var sx = isoXB(x, y) - box.x, sy = isoYB(x, y) - box.y;
         var edge = Math.min(x, y, gw - 1 - x, gh - 1 - y);
         g.beginPath();
         g.moveTo(sx, sy); g.lineTo(sx + TILE_W / 2, sy + TILE_H / 2);
@@ -467,25 +537,45 @@ function buildFloor(kind, gw, gh) {
         var base = pal[(x + y) % 2 ? 0 : 1];
         g.fillStyle = base; g.fill();
         g.strokeStyle = 'rgba(0,0,0,.4)'; g.lineWidth = 1; g.stroke();
-        if (kind === 'stage' && y % 2 === 0) {   // plank seams run one way
+        if ((kind === 'stage' || kind === 'room') && y % 2 === 0) {   // plank seams run one way
             g.strokeStyle = 'rgba(0,0,0,.3)';
             g.beginPath(); g.moveTo(sx - TILE_W / 2, sy + TILE_H / 2); g.lineTo(sx + TILE_W / 2, sy + TILE_H / 2); g.stroke();
         }
         if (fr() < 0.22) { g.fillStyle = pal[2]; g.globalAlpha = 0.35; g.fillRect(sx - 8 + fr() * 16, sy + 8 + fr() * 10, 3 + fr() * 5, 2); g.globalAlpha = 1; }
         if (kind === 'mill' && fr() < 0.14) { g.fillStyle = 'rgba(190,170,110,.3)'; g.fillRect(sx - 6 + fr() * 12, sy + 10 + fr() * 8, 2, 2); }
+        if (kind === 'road') {                    // a rut worn up the middle by four hundred years of nobody
+            var mid = Math.abs((x - y) - (gw - gh) / 2);
+            if (mid < 1.6) { g.fillStyle = 'rgba(0,0,0,.16)'; g.fill(); }
+        }
+        if (kind === 'hollow' && fr() < 0.3) { g.fillStyle = 'rgba(8,6,14,.5)'; g.fill(); }
         if (edge === 0) { g.fillStyle = 'rgba(4,3,8,.5)'; g.fill(); }
     }
     // a ring of light where the scene wants you to stand
-    var cx0 = isoX(gw / 2, gh / 2), cy0 = isoY(gw / 2, gh / 2);
+    var cx0 = isoXB(gw / 2, gh / 2) - box.x, cy0 = isoYB(gw / 2, gh / 2) - box.y;
     g.save(); g.translate(cx0, cy0); g.scale(1, 0.5);
     var rg = g.createRadialGradient(0, 0, 20, 0, 0, 330);
     rg.addColorStop(0, kind === 'stage' ? 'rgba(255,190,90,.16)' : 'rgba(255,200,120,.07)');
     rg.addColorStop(1, 'rgba(255,190,90,0)');
     g.fillStyle = rg; g.beginPath(); g.arc(0, 0, 330, 0, TAU); g.fill(); g.restore();
-    var vg = g.createRadialGradient(VW / 2, VH / 2 - 30, 150, VW / 2, VH / 2, 560);
-    vg.addColorStop(0, 'rgba(4,3,8,0)'); vg.addColorStop(1, 'rgba(4,3,8,.97)');
-    g.fillStyle = vg; g.fillRect(0, 0, VW, VH);
-    FLOORS[key] = cv; return cv;
+    // the vignette used to be baked here. With a camera it has to follow
+    // the eye, not the ground, so it moved to drawVignette in screen space.
+    FLOORS[key] = { cv: cv, box: box };
+    touchFloor(key); trimFloors();
+    return FLOORS[key];
+}
+function touchFloor(key) {
+    var i = FLOOR_LRU.indexOf(key); if (i >= 0) FLOOR_LRU.splice(i, 1);
+    FLOOR_LRU.push(key);
+}
+function trimFloors() {
+    while (FLOOR_LRU.length > FLOOR_MAX) {
+        var k = FLOOR_LRU.shift(), f = FLOORS[k];
+        if (f) { f.cv.width = f.cv.height = 0; delete FLOORS[k]; }   // drop the backing store, not just the reference
+    }
+}
+function freeFloors() {
+    Object.keys(FLOORS).forEach(function (k) { FLOORS[k].cv.width = FLOORS[k].cv.height = 0; delete FLOORS[k]; });
+    FLOOR_LRU.length = 0;
 }
 
 /* ─────────────── particles ─────────────── */
@@ -653,7 +743,8 @@ function init(el) {
         toasts: [], panel: null, devTab: 'WORLD', devOpen: false,
         god: 0, infBreath: 0, holdStacks: 0, oneShot: 0,
         dbgStacks: 0, dbgAI: 0, dbgHit: 0, dbgPerf: 0,
-        fps: 0, _fc: 0, _ft: 0, ac: null, tookHit: false
+        fps: 0, _fc: 0, _ft: 0, ac: null, tookHit: false,
+        world: { cam: { x: 0, y: 0 }, npc: {}, seenLine: null }
     };
     wireInput(root, cv);
     wireHud(root);
@@ -695,10 +786,19 @@ function wireInput(root, cv) {
         var sc = Math.min(r.width / VW, r.height / VH) || 1;
         var ox = (r.width - VW * sc) / 2, oy = (r.height - VH * sc) / 2;
         var mx = (e.clientX - r.left - ox) / sc, my = (e.clientY - r.top - oy) / sc;
-        var a = (mx - ORX) / (TILE_W / 2), b = (my - ORY) / (TILE_H / 2);
-        return { x: mx, y: my, wx: (a + b) / 2, wy: (b - a) / 2 };
+        var w = screenToWorld(mx, my);          // adds the camera back; do not re-derive it here
+        return { x: mx, y: my, wx: w.wx, wy: w.wy };
     }
     root.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+    // answering a question with the mouse, since the whole world layer is
+    // otherwise reachable both ways
+    root.addEventListener('click', function (e) {
+        var b = e.target.closest && e.target.closest('.nn-opt');
+        if (!b || !RT || !RT.dialog) return;
+        e.stopPropagation();
+        pickDlgOpt(+b.getAttribute('data-opt'));
+        root.focus();
+    });
     cv.addEventListener('pointermove', function (e) {
         if (!RT) return; var p = toWorld(e);
         RT.mouse.x = p.x; RT.mouse.y = p.y; RT.mouse.wx = p.wx; RT.mouse.wy = p.wy;
@@ -710,7 +810,7 @@ function wireInput(root, cv) {
         if (e.button === 2) { RT.mouse.rdown = true; doAnswer(); }
         else if (e.button === 0) {
             RT.mouse.down = true;
-            if (!S.opts.wasd && !e.shiftKey && !foeNear(p.wx, p.wy, 1.2)) RT.moveTo = { x: clamp(p.wx, 0.7, GRID - 0.7), y: clamp(p.wy, 0.7, GRID - 0.7) };
+            if (!S.opts.wasd && !e.shiftKey && !foeNear(p.wx, p.wy, 1.2)) RT.moveTo = { x: clamp(p.wx, 0.7, pw() - 0.7), y: clamp(p.wy, 0.7, ph() - 0.7) };
             else doCall();
         }
     });
@@ -1566,7 +1666,9 @@ function step(dt, real) {
         stepParts(dt);
         stepRecital(real || dt);
         stepScene(dt);
+        stepNpcs(dt);
     }
+    stepCamera(real || dt);          // the eye keeps moving while you are dead, and while time is thick
     RT.shake = Math.max(0, RT.shake - dt * 24);
     RT.chroma = Math.max(0, RT.chroma - dt * 2.4);
     RT.flash = Math.max(0, RT.flash - dt * 2.2);
@@ -1581,7 +1683,9 @@ function draw(rdt) {
     cx.save();
     if (S.opts.shake && RT.shake > 0.2) cx.translate(rnd(-RT.shake, RT.shake) * 0.5, rnd(-RT.shake, RT.shake) * 0.35);
     cx.clearRect(-30, -30, VW + 60, VH + 60);
-    cx.drawImage(buildFloor(place().floor, pw(), ph()), 0, 0);
+    var fl = buildFloor(place().floor, pw(), ph()), c0 = cam();
+    cx.fillStyle = '#07060a'; cx.fillRect(0, 0, VW, VH);
+    cx.drawImage(fl.cv, Math.round(fl.box.x - c0.x), Math.round(fl.box.y - c0.y));
     // during a recital the world drains away until the letters are the only light
     if (RT.dilate > 0) {
         cx.fillStyle = 'rgba(6,4,10,' + (0.55 * clamp(RT.dilate / T('dilationT'), 0, 1)).toFixed(3) + ')';
@@ -1590,21 +1694,26 @@ function draw(rdt) {
     drawExits(cx);
     drawLooks(cx);
     drawRings(cx, dt);
-    drawProps(cx, 'back');
     if (RT.moveTo && !S.opts.wasd) {
         var mx = isoX(RT.moveTo.x, RT.moveTo.y), my = isoY(RT.moveTo.x, RT.moveTo.y) + TILE_H / 2;
         cx.save(); cx.translate(mx, my); cx.scale(1, 0.5);
         cx.strokeStyle = 'rgba(200,190,220,.4)'; cx.lineWidth = 1.5;
         cx.beginPath(); cx.arc(0, 0, 7 + Math.sin(RT.t * 8) * 2, 0, TAU); cx.stroke(); cx.restore();
     }
-    // painter-sorted world
+    /* painter-sorted world. Props are IN this list now: they used to be
+       two crude passes split on the player's depth alone, which is why
+       every NPC and every foe drew straight through a house. */
     var ents = [];
     RT.foes.forEach(function (f) { if (!f.dead) ents.push({ k: f.x + f.y, fn: function () { drawFoe(cx, f); } }); });
-    (place().npcs || []).forEach(function (id) { var n = NPCS[id]; if (n) ents.push({ k: n.x + n.y, fn: function () { drawNpc(cx, n); } }); });
+    (place().npcs || []).forEach(function (id) { var n = NPCS[id]; if (n) ents.push({ k: npcX(n) + npcY(n), fn: function () { drawNpc(cx, n); } }); });
+    (place().props || []).forEach(function (o) {
+        ents.push({ k: o.b[0] + o.b[2] / 2 + o.b[1] + o.b[3] / 2, fn: function () { drawProp(cx, o); } });
+    });
     ents.push({ k: RT.px + RT.py, fn: function () { drawActor(cx); } });
     ents.sort(function (a, b) { return a.k - b.k; });
     ents.forEach(function (e) { e.fn(); });
-    drawProps(cx, 'front');
+    drawLights(cx);
+    drawVignette(cx);
     drawCalls(cx);
     drawFproj(cx);
     drawParts(cx);
@@ -1961,20 +2070,61 @@ var PLACES = {
     },
     square: {
         n: 'Wick — the square', sub: 'they have given you the crown and the lantern',
-        floor: 'town', calm: 1, script: 'wick', w: 17, h: 15,
+        floor: 'town', calm: 1, script: 'wick', w: 17, h: 15, night: 1,
         props: [
             { t: 'house', b: [0, 0, 4, 3.4] }, { t: 'house', b: [5.2, 0, 3.6, 2.8] }, { t: 'house', b: [13, 0, 4, 3.6] },
             { t: 'house', b: [0, 11.6, 4.2, 3.4] }, { t: 'house', b: [13.4, 11, 3.6, 4] },
             { t: 'stagewip', b: [6.4, 3.6, 4.6, 2.6] },
             { t: 'well', b: [8, 9.4, 1.6, 1.6] },
-            { t: 'cart', b: [3.4, 8.2, 2.2, 1.2] }
+            { t: 'cart', b: [3.4, 8.2, 2.2, 1.2] },
+            { t: 'lamp', b: [11.8, 7.6, 0.5, 0.5] }, { t: 'lamp', b: [4.6, 5.2, 0.5, 0.5] }
         ],
         npcs: ['bern', 'child', 'widow'],
         looks: [
             { x: 12.4, y: 8.2, n: 'A lamp on a sill', d: 'Set out on the ninth night for the man who walked out past the fence. Every house on the square has one. Nobody has ever set out a second.' },
             { x: 7.2, y: 6.6, n: 'The playbill', d: 'THE NINTH NIGHT. A true account. The same four hundredth time.\n\nUnder the cast list somebody has pencilled your name, and then gone over it twice, harder.' }
         ],
-        exits: [{ x: 8.5, y: 14.3, w: 3, to: 'lane', n: 'the lane, north' }]
+        exits: [
+            { x: 8.5, y: 14.3, w: 3, to: 'lane', n: 'the lane, north' },
+            { x: 2.1, y: 3.6, w: 1.6, to: 'bernhouse', n: 'Bern\'s door' },
+            { x: 15, y: 3.8, w: 1.6, to: 'chandler', n: 'the chandler\'s shop' }
+        ]
+    },
+    /* ── interiors. Somewhere with a roof on it, and one lamp that is
+          not for anybody, which is the only one in the game that is not. ── */
+    bernhouse: {
+        n: 'Bern\'s house', sub: 'he has kept the part for forty years and never played it',
+        floor: 'room', calm: 1, mends: 1, w: 11, h: 9, night: 1, indoor: 1,
+        props: [
+            { t: 'wall', b: [0, 0, 11, 0.6] }, { t: 'wall', b: [0, 0, 0.6, 9] }, { t: 'wall', b: [10.4, 0, 0.6, 9] },
+            { t: 'table', b: [4.2, 3.4, 2.6, 1.6] },
+            { t: 'bed', b: [8.2, 1.2, 1.8, 3.2] },
+            { t: 'shelf', b: [1, 1.2, 2.4, 0.8] },
+            { t: 'lamp', b: [5.3, 3.0, 0.5, 0.5] },
+            { t: 'crate', b: [1.2, 6.4, 1.2, 1.2] }
+        ],
+        looks: [
+            { x: 5.4, y: 5.2, n: 'His script', d: 'Forty years of it. The paper has gone soft as cloth at the corner he turns.\n\nEvery closing line is marked in the margin with the number of syllables. Six. Eight. Seven. Six.\n\nAnd on the third page, and again on the last, the number is five, and it is circled, and beside it he has written nothing at all.', key: 'bernscript' },
+            { x: 2.2, y: 2.6, n: 'The shelf', d: 'Cups, a jar of nails, and a child\'s wooden crown with the gilt worn off the points.\n\nHe was cast once too, then. Nobody has ever mentioned it.' }
+        ],
+        exits: [{ x: 5.5, y: 8.3, w: 2.4, to: 'square', n: 'out to the square' }]
+    },
+    chandler: {
+        n: 'The chandler\'s shop', sub: 'she sells the lamps the whole town sets out',
+        floor: 'room', calm: 1, mends: 1, w: 12, h: 9, night: 1, indoor: 1,
+        props: [
+            { t: 'wall', b: [0, 0, 12, 0.6] }, { t: 'wall', b: [0, 0, 0.6, 9] }, { t: 'wall', b: [11.4, 0, 0.6, 9] },
+            { t: 'counter', b: [3.4, 4.4, 4.8, 1.2] },
+            { t: 'shelf', b: [1, 1.2, 3.2, 0.8] }, { t: 'shelf', b: [7.4, 1.2, 3.4, 0.8] },
+            { t: 'vat', b: [1.2, 6.2, 1.8, 1.8] },
+            { t: 'lamp', b: [9.4, 4.8, 0.5, 0.5] }, { t: 'lamp', b: [2.2, 3.4, 0.5, 0.5] },
+            { t: 'barrel', b: [9.8, 6.6, 1.2, 1.2] }
+        ],
+        npcs: ['chandler'],
+        looks: [
+            { x: 6, y: 6.2, n: 'The ledger', d: 'Lamps sold, by the year, in a hand that does not waste ink.\n\nThis year: four hundred and eleven. Same as the count of houses, near enough.\n\nFour hundred years of it, and the number at the top of every page is the number of houses. Never one more.', key: 'ledger' }
+        ],
+        exits: [{ x: 6, y: 8.3, w: 2.4, to: 'square', n: 'out to the square' }]
     },
     lane: {
         n: 'The lane out of Wick', sub: 'in the play it is a day\'s walk',
@@ -2021,7 +2171,7 @@ var PLACES = {
         ],
         exits: [{ x: 6, y: 12.3, w: 3, to: 'mill', n: 'back down', needs: 'chorusDown',
               shut: 'It is still going. You are not walking out on it.' }],
-        script: 'loft', boss: 'chorus'
+        script: 'loft'
     },
     village: {
         n: 'Grelling — the next village', sub: 'an empty hat and a bad performance',
@@ -2047,11 +2197,62 @@ var PLACES = {
         ],
         looks: [{ x: 6.7, y: 6.6, n: 'The marker stone', d: 'Two names cut into it. The upper one is HAL, and it has been recut so many times it is nearly through the stone.\n\nThe lower one has been scratched out. Not weathered. Scratched, with something hard, by somebody who took their time.\n\nYou cannot read it. You get the shape of four letters and nothing else.', key: 'markstone' }],
         npcs: ['hal'],
-        exits: [{ x: 0.7, y: 5.4, h: 3, to: 'village', n: 'back west' }]
+        exits: [
+            { x: 0.7, y: 5.4, h: 3, to: 'village', n: 'back west' },
+            { x: 6.6, y: 0.7, w: 3, to: 'road', n: 'north, the way she went' }
+        ]
+    },
+    /* ── the road north. In the play it is a night's walk. It has never
+          been longer than one screen before, which is the whole reason
+          the camera exists. ── */
+    road: {
+        n: 'The road north', sub: 'past the mill, the well, the mark, and then past the fence',
+        floor: 'road', w: 11, h: 34, night: 1,
+        props: [
+            { t: 'lamp', b: [8.2, 30.4, 0.5, 0.5] },                       // the last lamp in the world, off the walking line
+            { t: 'fence', b: [0.8, 23.6, 0.5, 8.4] }, { t: 'fence', b: [9.7, 23.6, 0.5, 8.4] },
+            { t: 'post', b: [0.9, 22.4, 0.6, 0.6] }, { t: 'post', b: [9.6, 22.4, 0.6, 0.6] },
+            { t: 'tree', b: [1.5, 18.4, 1.4, 1.4] }, { t: 'tree', b: [8.1, 15.2, 1.4, 1.4] },
+            { t: 'tree', b: [1.3, 12.2, 1.4, 1.4] }, { t: 'hedge', b: [8.4, 20.2, 1.6, 1.2] },
+            { t: 'cairn', b: [6.0, 9.4, 1.2, 1.2] },
+            { t: 'stone', b: [2.4, 6.8, 1, 1] }, { t: 'stone', b: [7.8, 4.4, 1, 1] },
+            { t: 'cairn', b: [3.6, 2.6, 1.2, 1.2] }
+        ],
+        looks: [
+            { x: 7.4, y: 30.2, n: 'The last lamp', d: 'The furthest one out. Somebody walks up here on the ninth night and lights it and walks back.\n\nIt faces the town. All of them face the town.' },
+            { x: 5.2, y: 22.2, n: 'Where the fence ends', d: 'Two posts and nothing between them. The fence does not carry on. It stops here because this is as far as anyone goes.\n\nIn the song he walks out past the fence. He is the only one in it who is ever said to have done that.\n\nYou are standing past it now. It took nine steps.', key: 'fenceend' },
+            { x: 5.0, y: 10.4, n: 'A cairn', d: 'A heap of stones the height of your knee, on the west side of the road, where somebody kneeling would have had their back to Wick.\n\nThere is no name on it. There is no name on any of them. There are four before the hollow and you will count them without meaning to.' },
+            { x: 4.4, y: 2.4, n: 'The road, ahead', d: 'It stops being a road about here. It goes on being a way through, which is not the same thing.\n\nThe ground ahead is lower. You can feel it in your knees before you can see it.' }
+        ],
+        exits: [
+            { x: 5.4, y: 33.3, w: 3, to: 'mark', n: 'back south, to the mark' },
+            { x: 5.4, y: 0.7, w: 3, to: 'hollow', n: 'the hollow, north' }
+        ],
+        speakDraws: 3      // say it out loud out here and the loose bits come to look
+    },
+    /* ── the hollow. The one place in the game that should feel wrong.
+          Job 1 puts the ending here; this is the ground it stands on. ── */
+    hollow: {
+        n: 'The hollow', sub: 'at the world\'s north end',
+        floor: 'hollow', w: 15, h: 13, night: 2, dark: 1,   // no lamp out here. That is the whole point of out here.
+        props: [
+            { t: 'cairn', b: [7.0, 5.4, 1.4, 1.4] },
+            { t: 'stone', b: [4.2, 3.6, 1, 1] }, { t: 'stone', b: [10.2, 4.2, 1, 1] },
+            { t: 'stone', b: [3.8, 8.2, 1, 1] }, { t: 'stone', b: [10.6, 8.4, 1, 1] },
+            { t: 'stone', b: [7.2, 2.2, 1, 1] },
+            { t: 'tree', b: [1.4, 1.6, 1.4, 1.4] }, { t: 'tree', b: [12.2, 10.2, 1.4, 1.4] }
+        ],
+        looks: [
+            { x: 7.6, y: 7.2, n: 'The ground', d: 'The stones are not scattered. They are set, in a ring, with the gap facing south, facing the road, facing the town.\n\nSomebody sat down in the middle of this and made it tidy, and then it snowed for four hundred years.', key: 'hollowground' },
+            { x: 5.4, y: 4.2, n: 'The cold', d: 'It is not colder here. That is the wrong thing about it. You walked north all night and the air stopped getting colder about a mile back and it has been exactly this ever since.\n\nSomething took the difference.' },
+            { x: 11.2, y: 6.4, n: 'North of here', d: 'Nothing. Not a view, not a drop, not a wall. The ground goes on being ground and the dark goes on being dark and there is no line where one ends.\n\nShe would have had to decide to stop. Nothing here would have stopped her.' }
+        ],
+        exits: [{ x: 7.4, y: 12.3, w: 3, to: 'road', n: 'back down the road' }],
+        speakDraws: 4
     },
     arena: {
         n: 'Dev — free arena', sub: 'nothing here means anything. hit things.',
-        floor: 'mill', w: 17, h: 17, arena: 1, endless: 1, props: [], exits: []
+        floor: 'mill', w: 17, h: 17, endless: 1, props: [], exits: []
     }
 };
 var PLACE_IDS = Object.keys(PLACES);
@@ -2087,6 +2288,8 @@ var NPCS = {
     },
     child: {
         n: 'A child with a skipping rope', x: 10.6, y: 9.8, col: ['#4a5a7a', '#6a7a9a', '#e8c8a0'], small: 1,
+        // she is described as skipping in her own dialogue, so she skips
+        skip: 1, speed: 1.9, path: [[10.6, 9.8], [10.6, 12.6], [7.4, 12.6], [7.4, 10.0]],
         talk: function () {
             S.heard.child = 1;
             if (!S.seen.child1) {
@@ -2114,7 +2317,7 @@ var NPCS = {
         }
     },
     shepherd: {
-        n: 'A shepherd', x: 9.2, y: 5.6, col: ['#4a4a38', '#6a6a50', '#d8b48c'],
+        n: 'A shepherd', x: 9.2, y: 5.6, col: ['#4a4a38', '#6a6a50', '#d8b48c'], wander: 1.7, speed: 0.85,
         talk: function () {
             S.heard.shepherd = 1;
             if (!S.seen.shep1) {
@@ -2162,8 +2365,53 @@ var NPCS = {
                     ['Hal', 'She talked to it. That is the whole story. She was the only one of us who would say anything to it.'],
                     ['', 'He does not expand on it. He never will.']];
         }
+    },
+    /* She sells the lamp every house sets out, so she is the only person
+       in Wick who has ever counted them, and the count is the thing. */
+    chandler: {
+        n: 'The chandler', x: 5.8, y: 3.2, col: ['#4a3a4a', '#63506a', '#e0bc94'], wander: 1.1, speed: 0.7,
+        talk: function () {
+            S.heard.chandler = 1; sSave();
+            if (!S.seen.chandler1) {
+                S.seen.chandler1 = 1;
+                return [['', 'She is trimming wicks with a knife older than the shop.'],
+                        ['The chandler', 'You are the new one. Mind the crown, the gilt comes off on your hands.'],
+                        ['You', 'How many lamps do you make for the ninth night?'],
+                        ['The chandler', 'One a house. Four hundred and eleven this year.'],
+                        { ask: 'One a house. She says it like a measurement.', who: 'You',
+                          opts: [
+                            { t: 'And if somebody wanted two?',
+                              do: function (S) { S.seen.askedTwo = 1; },
+                              go: [['', 'The knife stops.'],
+                                   ['The chandler', 'Nobody wants two. There is one man to remember, and he has got one.'],
+                                   ['You', 'For somebody else, then.'],
+                                   ['The chandler', 'There is no somebody else. That is what a count is for.'],
+                                   ['', 'She goes back to the wicks. She is not being careful with you. She has simply never had the thought, and it did not fit anywhere when it arrived.']] },
+                            { t: 'Has it always been one?',
+                              go: [['The chandler', 'Since there were houses. My mother sold four hundred and six.'],
+                                   ['You', 'And before her?'],
+                                   ['The chandler', 'Before her it is not a number, it is a song. Ask Bern, he keeps the words.'],
+                                   ['', 'She has told you the shape of it without once looking up.']] },
+                            { t: 'Who lights the one out past the fence?',
+                              if: function (S) { return !!S.seen.been_road; },
+                              do: function (S) { S.seen.askedLastLamp = 1; },
+                              go: [['', 'She looks up. This is the first thing you have said that she has to think about.'],
+                                   ['The chandler', 'I do. Walk up, light it, walk back.'],
+                                   ['You', 'Why that far out?'],
+                                   ['The chandler', 'Because that is where the fence stops. You put the last one where the last one goes.'],
+                                   ['You', 'It faces the town.'],
+                                   ['The chandler', 'They all face the town.'],
+                                   ['', 'She says it without hearing it. A lamp set out for a man who walked away, turned so it lights the way back, by somebody who has never once walked past it.']] }
+                          ] }];
+            }
+            return [['The chandler', 'One a house. It has been one a house since there were houses.'],
+                    ['', 'She says it the way you say a line you have never once had to check.']];
+        }
     }
 };
+/* every person carries their own key, so their live position can be
+   looked up from the def alone */
+Object.keys(NPCS).forEach(function (k) { NPCS[k].id = k; });
 
 /* ─────────────── scripts ─────────────── */
 var SCRIPTS = {
@@ -2350,9 +2598,24 @@ function unstick() {
         }
     }
 }
+/* keyed by what a thing IS, not by where it happens to sit in an array */
+function lookKey(l) { return RT.place + ':' + l.n; }
+/* `needs` understood exactly one predicate, "is this S.seen key truthy",
+   which is not enough to gate an ending on. It now takes:
+     needs: 'flagName'                a save flag, as before
+     needs: ['a', 'b']                all of them
+     needs: function (S) { ... }      anything at all
+   The dev flag still opens everything. */
 function exitOpen(e) {
     if (!e.needs) return true;
-    return !!S.seen.openAll || !!S.seen[e.needs];
+    if (S.seen.openAll) return true;
+    return testNeed(e.needs);
+}
+function testNeed(n) {
+    if (!n) return true;
+    if (typeof n === 'function') { try { return !!n(S); } catch (err) { return false; } }
+    if (Array.isArray(n)) return n.every(testNeed);
+    return !!S.seen[n];
 }
 function gotoPlace(id, fresh) {
     if (!PLACES[id]) id = 'square';
@@ -2384,18 +2647,69 @@ function gotoPlace(id, fresh) {
         RT.py += back.h ? 0 : (back.y < H / 2 ? 1.2 : -1.2); }
     else { RT.px = W / 2; RT.py = H - 2.2; }
     RT.moveTo = null; RT.armed = false; RT.nagged = null;
+    RT.world.npc = {};                       // everybody back to their own doorstep
     unstick();
-    RT.hp = RT.hpm; RT.breath = stats().breathMax; RT.winded = 0; RT.dead = false;
+    stepCamera(0, true);                     // the eye arrives with you, it does not pan in from the last place
+    /* This used to be a full heal on every transition, which made
+       walking next door and back a free rest and meant nothing north of
+       the fence could ever wear you down. Somewhere safe still mends
+       you; a road does not. */
+    if (p.calm || p.mends) RT.hp = RT.hpm;
+    else RT.hp = clamp(RT.hp, RT.hpm * 0.35, RT.hpm);
+    RT.breath = stats().breathMax; RT.winded = 0; RT.dead = false;
     buildFloor(p.floor, p.w || GRID, p.h || GRID);
     updateHud(0);
     bigLine(p.n, '', '#e8e2ee', 2.2);
     if (fresh && p.script) delete S.seen[p.script + 'Intro'];
     if (p.script && SCRIPTS[p.script]) SCRIPTS[p.script]();
-    else if (p.boss) { /* handled by script */ }
     RT.phase = p.endless ? 'fight' : p.calm ? 'calm' : 'world';
     beat(1.6, checkRealisation); // idempotent: catches anything a doorway interrupted
     beat(1.8, checkMark);
     beat(2.0, checkSill);
+}
+
+/* ─────────────── people who are not furniture ───────────────
+   The def's x/y is where a person lives; RT.world.npc holds where they
+   actually are this second. The audit still reads the def, so a walker
+   has to be reachable from home as well as on the day.
+     path  a loop they walk, in tiles
+     wander r  they drift within r of home
+   Nobody moves while they are talking to you. */
+function npcRT(id) {
+    var w = RT.world.npc[id];
+    if (!w) { var n = NPCS[id]; w = RT.world.npc[id] = { x: n.x, y: n.y, hx: n.x, hy: n.y, i: 0, wait: rnd(0.4, 2.2), bob: rnd(0, TAU), face: 1, moving: 0 }; }
+    return w;
+}
+function npcX(n) { return n.id && RT.world.npc[n.id] ? RT.world.npc[n.id].x : n.x; }
+function npcY(n) { return n.id && RT.world.npc[n.id] ? RT.world.npc[n.id].y : n.y; }
+function stepNpcs(dt) {
+    var p = place(), ids = p.npcs || [];
+    for (var i = 0; i < ids.length; i++) {
+        var id = ids[i], n = NPCS[id]; if (!n) continue;
+        var w = npcRT(id);
+        w.bob += dt * (n.skip ? 7.5 : 2.4);
+        var talking = RT.dialog && RT.dialog.who === n.n;
+        if (talking || (!n.path && !n.wander)) { w.moving = Math.max(0, w.moving - dt * 4); continue; }
+        if (w.wait > 0) { w.wait -= dt; w.moving = Math.max(0, w.moving - dt * 4); continue; }
+        var tx, ty;
+        if (n.path && n.path.length) { var pt = n.path[w.i % n.path.length]; tx = pt[0]; ty = pt[1]; }
+        else {
+            if (w.tx == null) { var a = rnd(0, TAU), r = rnd(0.6, n.wander); w.tx = w.hx + Math.cos(a) * r; w.ty = w.hy + Math.sin(a) * r; }
+            tx = w.tx; ty = w.ty;
+        }
+        var dx = tx - w.x, dy = ty - w.y, d = Math.hypot(dx, dy);
+        if (d < 0.16) {
+            w.i++; w.tx = null; w.wait = n.skip ? rnd(0.2, 0.8) : rnd(1.2, 3.4); w.moving = 0; continue;
+        }
+        var sp = (n.speed || 1.5) * dt;
+        var nx = w.x + dx / d * sp, ny = w.y + dy / d * sp;
+        // people do not walk through walls either
+        if (!blocked(nx, w.y, 0.28)) w.x = nx;
+        if (!blocked(w.x, ny, 0.28)) w.y = ny;
+        w.x = clamp(w.x, 0.6, pw() - 0.6); w.y = clamp(w.y, 0.6, ph() - 0.6);
+        w.face = dx >= 0 ? 1 : -1; w.moving = 1;
+        if (Math.hypot(tx - w.x, ty - w.y) > d - 0.001) { w.i++; w.tx = null; w.wait = 0.6; }   // stuck against a wall: give up on this leg
+    }
 }
 
 /* ─────────────── things you can interact with ─────────────── */
@@ -2403,7 +2717,8 @@ function interactables() {
     var out = [], p = place();
     (p.npcs || []).forEach(function (id) {
         var n = NPCS[id]; if (!n) return;
-        out.push({ k: 'npc', id: id, x: n.x, y: n.y, label: 'talk to ' + n.n, n: n });
+        var w = npcRT(id);
+        out.push({ k: 'npc', id: id, x: w.x, y: w.y, label: 'talk to ' + n.n, n: n });
     });
     (p.looks || []).forEach(function (l, i) {
         out.push({ k: 'look', i: i, x: l.x, y: l.y, label: 'look at ' + l.n, l: l });
@@ -2430,8 +2745,8 @@ function doInteract() {
     if (o.k === 'npc') openDialog(o.n.talk(), o.n.n);
     else if (o.k === 'look') {
         S.looked = S.looked || {};
-        S.looked[RT.place + ':' + o.i] = 1;
-        openDialog([['', o.l.d]], o.l.n, o.l.key);
+        S.looked[lookKey(o.l)] = 1;          // by name, not by index: reordering a place's looks used to
+        openDialog([['', o.l.d]], o.l.n, o.l.key);   // silently rewrite which ones you had read
     }
     else if (o.k === 'exit') {
         if (o.shut) { say(o.e.shut || 'Not that way. Not yet.', 'dim'); return; }
@@ -2442,43 +2757,95 @@ function doInteract() {
 /* ─────────────── dialogue ───────────────
    The slow channel. Full lines are allowed here because nothing
    is trying to kill you while you read them. */
+/* ─────────────── talking ───────────────
+   A line is ['Who', 'what they say']. A line can also be a question:
+
+     { ask: 'what you are choosing between', who: 'You',
+       opts: [ { t: 'the reply', if: fn, do: fn, go: [ ...more lines ] } ] }
+
+   and any entry may carry `if: function () { return ... }`, which is
+   read against the save when the conversation opens. That is what job 1
+   needs to write an ending you can talk your way through.
+
+   Escape and "press E past the last line" used to be two different code
+   paths that both had to remember to run the fragment checks, and they
+   had already drifted apart. There is one ending now: endDialog. */
+function dlgLines(lines) {
+    return (lines || []).filter(function (l) { return !l || !l.if || !!l.if(S); });
+}
 function openDialog(lines, who, key) {
-    RT.dialog = { lines: lines, i: 0, who: who, key: key };
+    RT.dialog = { lines: dlgLines(lines), i: 0, who: who, key: key, sel: 0 };
     RT.moveTo = null;
+    if (!RT.dialog.lines.length) { RT.dialog = null; return; }
     showDialog();
     sfx('ui');
 }
+function dlgAsk() { var d = RT.dialog; if (!d) return null; var l = d.lines[d.i]; return (l && l.ask) ? l : null; }
+function dlgOpts(a) { return (a.opts || []).filter(function (o) { return !o.if || !!o.if(S); }); }
 function showDialog() {
     var d = RT.dialog, el = RT.root.querySelector('.nn-dlg');
     if (!d) { el.hidden = true; return; }
-    var ln = d.lines[d.i];
+    var ln = d.lines[d.i], ask = ln && ln.ask ? ln : null;
     el.hidden = false;
-    el.querySelector('.nn-dlg-who').textContent = ln[0] || d.who || '';
-    el.querySelector('.nn-dlg-tx').innerHTML = esc(ln[1]).replace(/\n/g, '<br>');
-    el.querySelector('.nn-dlg-more').textContent = d.i < d.lines.length - 1 ? 'E — more' : 'E — done';
+    var opts = el.querySelector('.nn-dlg-opts');
+    if (ask) {
+        el.querySelector('.nn-dlg-who').textContent = ask.who || d.who || '';
+        el.querySelector('.nn-dlg-tx').innerHTML = esc(ask.ask).replace(/\n/g, '<br>');
+        var os = dlgOpts(ask);
+        d.sel = clamp(d.sel, 0, Math.max(0, os.length - 1));
+        opts.hidden = false;
+        opts.innerHTML = os.map(function (o, i) {
+            return '<button class="nn-opt' + (i === d.sel ? ' on' : '') + '" data-opt="' + i + '">' + esc(o.t) + '</button>';
+        }).join('');
+        el.querySelector('.nn-dlg-more').textContent = 'up / down — E to answer';
+    } else {
+        el.querySelector('.nn-dlg-who').textContent = (ln && ln[0]) || d.who || '';
+        el.querySelector('.nn-dlg-tx').innerHTML = esc((ln && ln[1]) || '').replace(/\n/g, '<br>');
+        opts.hidden = true; opts.innerHTML = '';
+        el.querySelector('.nn-dlg-more').textContent = d.i < d.lines.length - 1 ? 'E — more' : 'E — done';
+    }
 }
-function closeDialog() {
-    if (!RT.dialog) return;
-    var key = RT.dialog.key;
+/* the one place a conversation ends, whichever way it ended */
+function endDialog() {
+    var d = RT.dialog; if (!d) return;
+    var key = d.key;
     RT.dialog = null;
     RT.root.querySelector('.nn-dlg').hidden = true;
-    if (key === 'markstone') { S.seen.markstone = 1; }
+    if (key) S.seen[key] = 1;                 // a look with a key is a fact you now hold
     checkRealisation(); checkMark(); checkSill(); sSave();
+}
+function closeDialog() { endDialog(); }
+/* Up and down pick an answer. They are registered rather than wired into
+   the keydown chain, and they do nothing at all unless a question is on
+   screen, so they stay out of everyone else's way. */
+bindKey('arrowup', function () { moveDlgSel(-1); });
+bindKey('arrowdown', function () { moveDlgSel(1); });
+function moveDlgSel(dir) {
+    var a = dlgAsk(); if (!a) return false;
+    var n = dlgOpts(a).length; if (!n) return false;
+    RT.dialog.sel = (RT.dialog.sel + dir + n) % n;
+    showDialog(); sfx('ui');
+    return true;
+}
+function pickDlgOpt(i) {
+    var a = dlgAsk(); if (!a) return;
+    var os = dlgOpts(a), o = os[i == null ? RT.dialog.sel : i];
+    if (!o) return;
+    if (o.do) { try { o.do(S); } catch (e) {} }
+    var d = RT.dialog;
+    var rest = d.lines.slice(d.i + 1);
+    d.lines = d.lines.slice(0, d.i).concat(dlgLines(o.go || []), o.end ? [] : rest);
+    d.i = Math.max(0, d.i);
+    d.sel = 0;
+    sfx('ui');
+    if (d.i >= d.lines.length) { endDialog(); return; }
+    showDialog();
 }
 function advanceDialog() {
     var d = RT.dialog; if (!d) return;
+    if (dlgAsk()) { pickDlgOpt(); return; }     // E answers the question you are being asked
     d.i++;
-    if (d.i >= d.lines.length) {
-        var key = d.key;
-        RT.dialog = null;
-        RT.root.querySelector('.nn-dlg').hidden = true;
-        if (key === 'markstone') { S.seen.markstone = 1; sSave(); }
-        checkRealisation();
-        checkMark();
-        checkSill();
-        sSave();
-        return;
-    }
+    if (d.i >= d.lines.length) { endDialog(); return; }
     showDialog();
     sfx('ui');
 }
@@ -2509,30 +2876,49 @@ function speakPressure() {
 }
 
 /* ─────────────── drawing the world ─────────────── */
-function drawProps(cx, layer) {
-    var ps = place().props || [];
-    for (var i = 0; i < ps.length; i++) {
-        var o = ps[i], b = o.b;
-        var cxp = b[0] + b[2] / 2, cyp = b[1] + b[3] / 2;
-        if (layer === 'back' && (cxp + cyp) > RT.px + RT.py) continue;
-        if (layer === 'front' && (cxp + cyp) <= RT.px + RT.py) continue;
-        drawProp(cx, o);
-    }
-}
+/* (the old two-pass drawProps is gone: props are entities in the one
+   painter sort now, which is what stopped people walking through walls) */
+/* Every prop type in one table. It used to be two ternary chains, which
+   is how `stone` ended up matching neither of them and drawing as an
+   anonymous brown box in the middle of the lane. Unknown types now fall
+   to `_` on purpose rather than by accident. */
+var PROP = {
+    house:     { h: 78, pal: ['#3b3340', '#2c2532', '#4a4150'] },
+    mill:      { h: 96, pal: ['#4a3f30', '#37301f', '#5c5040'] },
+    curtain:   { h: 120, pal: ['#3a1c22', '#2a1218', '#4a262e'] },
+    stagewip:  { h: 26, pal: ['#43392e', '#332b22', '#544738'] },
+    tree:      { h: 62, pal: ['#243626', '#1a2a1c', '#2f4632'] },
+    well:      { h: 26, pal: ['#43392e', '#332b22', '#544738'] },
+    markstone: { h: 40, pal: ['#4a4a52', '#3a3a42', '#5c5c66'] },
+    wheel:     { h: 70, pal: ['#43392e', '#332b22', '#544738'] },
+    fence:     { h: 22, pal: ['#3a2f24', '#2c231a', '#4a3d2e'] },
+    beam:      { h: 16, pal: ['#3a2f24', '#2c231a', '#4a3d2e'] },
+    cart:      { h: 22, pal: ['#43392e', '#332b22', '#544738'] },
+    crate:     { h: 20, pal: ['#4a3d2c', '#382e21', '#5c4c38'] },
+    sack:      { h: 14, pal: ['#5a4f36', '#463d29', '#6c5f44'] },
+    foot:      { h: 6,  pal: ['#4a4030', '#3a3224', '#5c5040'] },
+    stone:     { h: 20, pal: ['#4a4a52', '#3a3a42', '#5c5c66'] },
+    lamp:      { h: 34, pal: ['#2e2a26', '#232019', '#3c3630'] },
+    post:      { h: 30, pal: ['#3a2f24', '#2c231a', '#4a3d2e'] },
+    cairn:     { h: 26, pal: ['#454550', '#35353f', '#565662'] },
+    hedge:     { h: 24, pal: ['#22301f', '#182417', '#2c3f28'] },
+    table:     { h: 20, pal: ['#4a3a28', '#382c1e', '#5e4a34'] },
+    shelf:     { h: 46, pal: ['#413224', '#31261b', '#54412f'] },
+    counter:   { h: 24, pal: ['#4a3a28', '#382c1e', '#5e4a34'] },
+    bed:       { h: 14, pal: ['#3e3446', '#2f2836', '#4e4258'] },
+    barrel:    { h: 22, pal: ['#46372a', '#352a20', '#584636'] },
+    wall:      { h: 68, pal: ['#332b30', '#272026', '#42383e'] },
+    vat:       { h: 26, pal: ['#3e3a34', '#2f2c27', '#514c44'] },
+    _:         { h: 18, pal: ['#43392e', '#332b22', '#544738'] }
+};
+function propDef(t) { return PROP[t] || PROP._; }
 function drawProp(cx, o) {
     var b = o.b, t = o.t;
     var x0 = isoX(b[0], b[1]), x1 = isoX(b[0] + b[2], b[1]), x2 = isoX(b[0] + b[2], b[1] + b[3]), x3 = isoX(b[0], b[1] + b[3]);
     var y0 = isoY(b[0], b[1]), y1 = isoY(b[0] + b[2], b[1]), y2 = isoY(b[0] + b[2], b[1] + b[3]), y3 = isoY(b[0], b[1] + b[3]);
-    var hgt = t === 'house' ? 78 : t === 'mill' ? 96 : t === 'curtain' ? 120 : t === 'stagewip' ? 26
-        : t === 'tree' ? 62 : t === 'well' ? 26 : t === 'markstone' ? 40 : t === 'wheel' ? 70
-        : t === 'fence' ? 22 : t === 'beam' ? 16 : t === 'cart' ? 22 : t === 'crate' ? 20 : t === 'sack' ? 14 : t === 'foot' ? 6 : 18;
-    var pal = t === 'house' ? ['#3b3340', '#2c2532', '#4a4150']
-        : t === 'mill' ? ['#4a3f30', '#37301f', '#5c5040']
-        : t === 'tree' ? ['#243626', '#1a2a1c', '#2f4632']
-        : t === 'curtain' ? ['#3a1c22', '#2a1218', '#4a262e']
-        : t === 'markstone' ? ['#4a4a52', '#3a3a42', '#5c5c66']
-        : t === 'fence' || t === 'beam' ? ['#3a2f24', '#2c231a', '#4a3d2e']
-        : ['#43392e', '#332b22', '#544738'];
+    if (Math.max(x0, x1, x2, x3) < -80 || Math.min(x0, x1, x2, x3) > VW + 80) return;   // off camera
+    if (Math.min(y0, y1, y2, y3) - 130 > VH + 40 || Math.max(y0, y1, y2, y3) < -160) return;
+    var d = propDef(t), hgt = d.h, pal = d.pal;
     // top face
     cx.beginPath(); cx.moveTo(x0, y0 - hgt); cx.lineTo(x1, y1 - hgt); cx.lineTo(x2, y2 - hgt); cx.lineTo(x3, y3 - hgt); cx.closePath();
     cx.fillStyle = pal[2]; cx.fill();
@@ -2585,6 +2971,200 @@ function drawProp(cx, o) {
         for (var s = 0; s < 4; s++) { cx.beginPath(); cx.moveTo((x0 + x2) / 2 - 9 + s * 5, (y0 + y2) / 2 - hgt + 11); cx.lineTo((x0 + x2) / 2 - 4 + s * 5, (y0 + y2) / 2 - hgt + 17); cx.stroke(); }
     }
     if (t === 'well') { cx.fillStyle = '#12101a'; cx.beginPath(); cx.ellipse((x0 + x2) / 2, (y0 + y2) / 2 - hgt, 14, 7, 0, 0, TAU); cx.fill(); }
+    /* ── the nine that used to be coloured boxes, plus the indoor set ── */
+    var tx = (x0 + x2) / 2, ty = (y0 + y2) / 2 - hgt;        // centre of the top face
+    var fw = Math.hypot(x2 - x3, y2 - y3) || 1;              // the south-west face, in px
+    function plank(n, col) {                                  // n seams across the south face
+        cx.strokeStyle = col; cx.lineWidth = 1;
+        for (var i = 1; i < n; i++) {
+            var q = i / n, ax = x3 + (x2 - x3) * q, ay = y3 + (y2 - y3) * q;
+            cx.beginPath(); cx.moveTo(ax, ay - hgt); cx.lineTo(ax, ay); cx.stroke();
+        }
+    }
+    if (t === 'fence') {                                      // pickets and a rail, not a wall
+        var long = b[2] >= b[3], n = Math.max(2, Math.round((long ? b[2] : b[3]) * 1.6));
+        cx.strokeStyle = '#5a4a36'; cx.lineWidth = 2;
+        for (var fi = 0; fi <= n; fi++) {
+            var q2 = fi / n;
+            var px = long ? isoX(b[0] + b[2] * q2, b[1] + b[3] / 2) : isoX(b[0] + b[2] / 2, b[1] + b[3] * q2);
+            var py = long ? isoY(b[0] + b[2] * q2, b[1] + b[3] / 2) : isoY(b[0] + b[2] / 2, b[1] + b[3] * q2);
+            cx.beginPath(); cx.moveTo(px, py + TILE_H / 2); cx.lineTo(px, py + TILE_H / 2 - hgt - 6); cx.stroke();
+        }
+        cx.strokeStyle = '#463a2a'; cx.lineWidth = 2.5;
+        cx.beginPath(); cx.moveTo(x3, y3 - hgt - 2); cx.lineTo(x2, y2 - hgt - 2); cx.stroke();
+        cx.beginPath(); cx.moveTo(x3, y3 - hgt + 8); cx.lineTo(x2, y2 - hgt + 8); cx.stroke();
+    }
+    if (t === 'beam' || t === 'post') { plank(3, 'rgba(0,0,0,.35)'); cx.fillStyle = 'rgba(255,240,210,.06)'; cx.fillRect(tx - fw * 0.3, ty - 1, fw * 0.6, 2); }
+    if (t === 'crate' || t === 'barrel') {
+        plank(t === 'barrel' ? 4 : 3, 'rgba(0,0,0,.4)');
+        cx.strokeStyle = '#6a5a40'; cx.lineWidth = 1.5;
+        cx.beginPath(); cx.moveTo(x3, y3 - hgt * 0.55); cx.lineTo(x2, y2 - hgt * 0.55); cx.stroke();
+        if (t === 'crate') { cx.strokeStyle = 'rgba(120,100,70,.5)'; cx.beginPath(); cx.moveTo(x3, y3); cx.lineTo(x2, y2 - hgt); cx.stroke(); }
+    }
+    if (t === 'sack') {                                       // a grain sack slumps, it is not a cube
+        cx.fillStyle = '#6c5f44';
+        cx.beginPath(); cx.ellipse(tx, ty + 2, fw * 0.42, hgt * 0.5, 0, 0, TAU); cx.fill();
+        cx.fillStyle = '#7d6e4f'; cx.beginPath(); cx.ellipse(tx - 2, ty - 2, fw * 0.24, hgt * 0.3, 0, 0, TAU); cx.fill();
+        cx.fillStyle = '#463d29'; cx.fillRect(tx - 3, ty - hgt * 0.5 - 1, 6, 4);
+    }
+    if (t === 'cart') {                                       // two wheels and a bed with rails
+        cx.fillStyle = '#2a2118';
+        [[-0.3, 0.34], [0.32, 0.3]].forEach(function (w) {
+            cx.beginPath(); cx.arc(tx + fw * w[0], ty + hgt * 0.9, 7, 0, TAU); cx.fill();
+        });
+        cx.strokeStyle = '#5c4a32'; cx.lineWidth = 2;
+        cx.beginPath(); cx.moveTo(x3, y3 - hgt - 10); cx.lineTo(x2, y2 - hgt - 10); cx.stroke();
+        cx.beginPath(); cx.moveTo(x3, y3 - hgt); cx.lineTo(x3, y3 - hgt - 10); cx.stroke();
+        cx.beginPath(); cx.moveTo(x2, y2 - hgt); cx.lineTo(x2, y2 - hgt - 10); cx.stroke();
+    }
+    if (t === 'mill') {                                       // roof, door, and the sails behind it
+        var rh2 = 30, mmx = tx, mmy = ty;
+        cx.fillStyle = '#2a2318';
+        cx.beginPath(); cx.moveTo(x3, y3 - hgt); cx.lineTo(x2, y2 - hgt); cx.lineTo(mmx, mmy - rh2); cx.closePath(); cx.fill();
+        cx.fillStyle = '#221c12';
+        cx.beginPath(); cx.moveTo(x1, y1 - hgt); cx.lineTo(x2, y2 - hgt); cx.lineTo(mmx, mmy - rh2); cx.closePath(); cx.fill();
+        cx.fillStyle = '#1a1410'; cx.fillRect(tx - 7, ty + hgt * 0.42, 14, hgt * 0.58);
+        cx.fillStyle = '#3a2f1e'; cx.fillRect(tx - 7, ty + hgt * 0.42, 14, 3);
+        plank(5, 'rgba(0,0,0,.28)');
+    }
+    if (t === 'wheel') {                                      // the mill wheel, spokes and all
+        var wr = Math.min(34, hgt * 0.46);
+        cx.strokeStyle = '#4a3d2a'; cx.lineWidth = 4;
+        cx.beginPath(); cx.arc(tx, ty + hgt * 0.42, wr, 0, TAU); cx.stroke();
+        cx.lineWidth = 2; cx.strokeStyle = '#5c4c34';
+        for (var sp = 0; sp < 8; sp++) {
+            var an = sp / 8 * TAU + RT.t * 0.25;
+            cx.beginPath(); cx.moveTo(tx, ty + hgt * 0.42);
+            cx.lineTo(tx + Math.cos(an) * wr, ty + hgt * 0.42 + Math.sin(an) * wr); cx.stroke();
+        }
+    }
+    if (t === 'stone' || t === 'cairn') {                     // a boulder, not a crate
+        cx.fillStyle = pal[2];
+        cx.beginPath(); cx.ellipse(tx, ty + 3, fw * 0.44, hgt * 0.55, 0, 0, TAU); cx.fill();
+        cx.fillStyle = pal[0];
+        cx.beginPath(); cx.ellipse(tx + fw * 0.12, ty + 7, fw * 0.3, hgt * 0.4, 0, 0, TAU); cx.fill();
+        cx.fillStyle = 'rgba(200,200,220,.10)';
+        cx.beginPath(); cx.ellipse(tx - fw * 0.14, ty - 3, fw * 0.18, hgt * 0.22, 0, 0, TAU); cx.fill();
+        if (t === 'cairn') { cx.fillStyle = pal[1]; cx.beginPath(); cx.ellipse(tx, ty - hgt * 0.45, fw * 0.22, hgt * 0.26, 0, 0, TAU); cx.fill(); }
+    }
+    if (t === 'hedge') {
+        cx.fillStyle = '#22331f';
+        for (var hb = 0; hb < 4; hb++) {
+            var hq = hb / 3, hx = x3 + (x2 - x3) * hq, hy = y3 + (y2 - y3) * hq;
+            cx.beginPath(); cx.ellipse(hx, hy - hgt, 13, 9, 0, 0, TAU); cx.fill();
+        }
+        cx.fillStyle = '#2f4429'; cx.beginPath(); cx.ellipse(tx, ty - 5, fw * 0.4, 8, 0, 0, TAU); cx.fill();
+    }
+    if (t === 'curtain') {                                    // heavy folds, and it hangs
+        cx.strokeStyle = 'rgba(0,0,0,.35)'; cx.lineWidth = 3;
+        for (var cf = 1; cf < 14; cf++) {
+            var cq = cf / 14, ax2 = x3 + (x2 - x3) * cq, ay2 = y3 + (y2 - y3) * cq;
+            cx.beginPath(); cx.moveTo(ax2, ay2 - hgt + 4);
+            cx.lineTo(ax2 + Math.sin(cf * 1.7) * 2, ay2 - 2); cx.stroke();
+        }
+        cx.fillStyle = '#5c3038'; cx.fillRect(Math.min(x3, x2), Math.min(y3, y2) - hgt, Math.abs(x2 - x3), 5);
+    }
+    if (t === 'foot') {                                       // footlights, the reason the stage is lit
+        for (var fl = 0; fl < 9; fl++) {
+            var lq = (fl + 0.5) / 9, lx = x3 + (x2 - x3) * lq, ly = y3 + (y2 - y3) * lq;
+            cx.fillStyle = '#1a1410'; cx.fillRect(lx - 3, ly - hgt - 4, 6, 5);
+            cx.globalCompositeOperation = 'lighter';
+            var fg = cx.createRadialGradient(lx, ly - hgt - 4, 1, lx, ly - hgt - 4, 22);
+            fg.addColorStop(0, 'rgba(255,190,90,.5)'); fg.addColorStop(1, 'rgba(255,190,90,0)');
+            cx.fillStyle = fg; cx.beginPath(); cx.arc(lx, ly - hgt - 4, 22, 0, TAU); cx.fill();
+            cx.globalCompositeOperation = 'source-over';
+        }
+    }
+    if (t === 'lamp') {                                       // the whole title of the game
+        cx.strokeStyle = '#2a2620'; cx.lineWidth = 3;
+        cx.beginPath(); cx.moveTo(tx, ty + hgt); cx.lineTo(tx, ty - 6); cx.stroke();
+        var flick = 0.82 + Math.sin(RT.t * 7 + b[0]) * 0.18;
+        cx.fillStyle = 'rgba(30,24,18,.95)'; cx.fillRect(tx - 6, ty - 18, 12, 13);
+        cx.fillStyle = 'rgba(255,206,120,' + (0.55 + flick * 0.4).toFixed(2) + ')'; cx.fillRect(tx - 4, ty - 16, 8, 9);
+        cx.globalCompositeOperation = 'lighter';
+        var lg = cx.createRadialGradient(tx, ty - 11, 2, tx, ty - 11, 34);
+        lg.addColorStop(0, 'rgba(255,200,110,' + (0.3 * flick).toFixed(2) + ')'); lg.addColorStop(1, 'rgba(255,190,90,0)');
+        cx.fillStyle = lg; cx.beginPath(); cx.arc(tx, ty - 11, 34, 0, TAU); cx.fill();
+        cx.globalCompositeOperation = 'source-over';
+    }
+    if (t === 'table' || t === 'counter') {
+        plank(4, 'rgba(0,0,0,.3)');
+        cx.fillStyle = 'rgba(255,240,210,.05)'; cx.beginPath();
+        cx.moveTo(x0, y0 - hgt); cx.lineTo(x1, y1 - hgt); cx.lineTo(x2, y2 - hgt); cx.lineTo(x3, y3 - hgt); cx.closePath(); cx.fill();
+        if (t === 'counter') { cx.fillStyle = '#2a2118'; cx.fillRect(tx - fw * 0.36, ty + 4, fw * 0.72, 3); }
+    }
+    if (t === 'shelf') {
+        cx.strokeStyle = 'rgba(0,0,0,.4)'; cx.lineWidth = 2;
+        for (var sh = 1; sh < 3; sh++) {
+            cx.beginPath(); cx.moveTo(x3, y3 - hgt * sh / 3); cx.lineTo(x2, y2 - hgt * sh / 3); cx.stroke();
+        }
+        var jars = ['#6a5a3a', '#4a5a5a', '#6a4a4a', '#5a5a3a'];
+        for (var jr = 0; jr < 5; jr++) {
+            var jq = (jr + 0.5) / 5, jx = x3 + (x2 - x3) * jq, jy = y3 + (y2 - y3) * jq;
+            cx.fillStyle = jars[jr % 4]; cx.fillRect(jx - 3, jy - hgt + 4, 6, 8);
+            cx.fillStyle = jars[(jr + 1) % 4]; cx.fillRect(jx - 3, jy - hgt * 2 / 3 + 3, 6, 7);
+        }
+    }
+    if (t === 'bed') {
+        cx.fillStyle = '#514463';
+        cx.beginPath(); cx.moveTo(x0, y0 - hgt); cx.lineTo(x1, y1 - hgt); cx.lineTo(x2, y2 - hgt); cx.lineTo(x3, y3 - hgt); cx.closePath(); cx.fill();
+        cx.fillStyle = '#d8cfc0';
+        var hx2 = x3 + (x0 - x3) * 0.72, hy2 = y3 + (y0 - y3) * 0.72;
+        cx.beginPath(); cx.ellipse(hx2, hy2 - hgt - 1, 9, 5, 0, 0, TAU); cx.fill();
+    }
+    if (t === 'vat') {
+        cx.fillStyle = '#1b1a16';
+        cx.beginPath(); cx.ellipse(tx, ty, fw * 0.4, fw * 0.2, 0, 0, TAU); cx.fill();
+        cx.fillStyle = 'rgba(230,220,190,.5)';
+        cx.beginPath(); cx.ellipse(tx, ty + 1, fw * 0.33, fw * 0.16, 0, 0, TAU); cx.fill();
+    }
+    if (t === 'wall') { plank(Math.max(2, Math.round(fw / 26)), 'rgba(0,0,0,.3)'); }
+}
+/* ─────────────── light ───────────────
+   Every house sets a lamp on the sill. That is the name of the game, so
+   it gets a pass of its own: darkness laid down flat, then punched back
+   out around every flame in the place and around the lantern they put
+   in your hand. */
+function lightsOf(p) {
+    var out = [];
+    (p.props || []).forEach(function (o) {
+        var b = o.b;
+        if (o.t === 'house') out.push({ x: b[0] + b[2] * 0.18, y: b[1] + b[3] + 0.2, r: 3.6, c: '255,196,110', i: 0.95 });
+        else if (o.t === 'lamp') out.push({ x: b[0] + b[2] / 2, y: b[1] + b[3] / 2, r: 3.2, c: '255,206,120', i: 1 });
+        else if (o.t === 'foot') out.push({ x: b[0] + b[2] / 2, y: b[1] + b[3] / 2, r: 4.4, c: '255,190,90', i: 0.7 });
+        else if (o.t === 'mill') out.push({ x: b[0] + b[2] / 2, y: b[1] + b[3] + 0.3, r: 2.4, c: '255,190,120', i: 0.45 });
+    });
+    (p.lights || []).forEach(function (l) { out.push(l); });
+    return out;
+}
+function drawLights(cx) {
+    var p = place(); if (!p.night) return;
+    cx.fillStyle = 'rgba(6,5,14,' + (p.night >= 2 ? 0.62 : 0.42) + ')';
+    cx.fillRect(0, 0, VW, VH);
+    var ls = lightsOf(p);
+    if (!RT.dead) ls.push({ x: RT.px, y: RT.py, r: 3.4, c: '255,214,150', i: 0.8, self: 1 });
+    cx.globalCompositeOperation = 'lighter';
+    for (var i = 0; i < ls.length; i++) {
+        var l = ls[i], sx = isoX(l.x, l.y), sy = isoY(l.x, l.y) + TILE_H / 2;
+        var rad = l.r * 30;
+        if (sx < -rad || sx > VW + rad || sy < -rad * 2 || sy > VH + rad * 2) continue;
+        var fk = l.self ? 1 : 0.88 + Math.sin(RT.t * 6.2 + l.x * 2.7 + l.y) * 0.12;
+        cx.save(); cx.translate(sx, sy - (l.self ? 14 : 10)); cx.scale(1, 0.62);
+        var g = cx.createRadialGradient(0, 0, 2, 0, 0, rad);
+        g.addColorStop(0, 'rgba(' + l.c + ',' + (0.3 * l.i * fk).toFixed(3) + ')');
+        g.addColorStop(0.45, 'rgba(' + l.c + ',' + (0.11 * l.i * fk).toFixed(3) + ')');
+        g.addColorStop(1, 'rgba(' + l.c + ',0)');
+        cx.fillStyle = g; cx.beginPath(); cx.arc(0, 0, rad, 0, TAU); cx.fill(); cx.restore();
+    }
+    cx.globalCompositeOperation = 'source-over';
+}
+/* The vignette used to be baked into the floor bitmap, which meant it
+   sat under every prop and, with a camera, scrolled away off the side
+   of the screen. It belongs to the eye. */
+function drawVignette(cx) {
+    var vg = cx.createRadialGradient(VW / 2, VH / 2 - 30, 210, VW / 2, VH / 2, 620);
+    vg.addColorStop(0, 'rgba(4,3,8,0)'); vg.addColorStop(1, 'rgba(4,3,8,.92)');
+    cx.fillStyle = vg; cx.fillRect(0, 0, VW, VH);
 }
 /* Something you can look at has to be visible before you are told
    you can look at it. A small mark, brighter once you are close,
@@ -2593,7 +3173,7 @@ function drawLooks(cx) {
     (place().looks || []).forEach(function (l, i) {
         var sx = isoX(l.x, l.y), sy = isoY(l.x, l.y) + TILE_H / 2;
         var near = Math.hypot(l.x - RT.px, l.y - RT.py) < 2.4;
-        var read = !!(S.looked && S.looked[RT.place + ':' + i]);
+        var read = !!(S.looked && S.looked[lookKey(l)]);
         var pu = 0.5 + Math.sin(RT.t * 2.2 + i * 1.7) * 0.5;
         cx.save();
         cx.globalAlpha = (read ? 0.22 : near ? 0.85 : 0.45 + pu * 0.25);
@@ -2626,21 +3206,34 @@ function drawExits(cx) {
     });
 }
 function drawNpc(cx, n) {
-    var sx = isoX(n.x, n.y), sy = isoY(n.x, n.y) + TILE_H / 2;
-    var bob = Math.sin(RT.t * 1.8 + n.x) * 0.9;
+    var w2 = n.id ? npcRT(n.id) : { x: n.x, y: n.y, bob: RT.t * 2.4, moving: 0, face: 1 };
+    var sx = isoX(w2.x, w2.y), sy = isoY(w2.x, w2.y) + TILE_H / 2;
+    if (sx < -70 || sx > VW + 70 || sy < -90 || sy > VH + 90) return;
+    // standing still is a slow breath; walking is a step; the child skips
+    var stride = w2.moving ? (n.skip ? 5.5 : 2.2) : 0.9;
+    var bob = Math.abs(Math.sin(w2.bob)) * stride + (w2.moving ? 0 : Math.sin(w2.bob) * 0.4);
+    var lean = w2.moving ? Math.sin(w2.bob) * 0.09 * (n.skip ? 2 : 1) : 0;
     var h = n.small ? 26 : 40, w = n.small ? 7 : 9;
     cx.save(); cx.translate(sx, sy - bob);
     cx.fillStyle = 'rgba(0,0,0,.4)'; cx.beginPath(); cx.ellipse(0, bob, 9, 3.6, 0, 0, TAU); cx.fill();
+    cx.rotate(lean);
     cx.fillStyle = n.col[0]; cx.beginPath();
     cx.moveTo(-w, 0); cx.lineTo(-w * 0.7, -h * 0.7); cx.lineTo(w * 0.7, -h * 0.7); cx.lineTo(w, 0); cx.closePath(); cx.fill();
     cx.fillStyle = n.col[1]; cx.fillRect(-w * 0.7, -h * 0.72, w * 1.4, h * 0.24);
+    // legs, so a walk reads as a walk
+    if (w2.moving) {
+        var sw = Math.sin(w2.bob) * w * 0.55;
+        cx.strokeStyle = n.col[0]; cx.lineWidth = 2.4;
+        cx.beginPath(); cx.moveTo(-w * 0.25, -1); cx.lineTo(-w * 0.25 + sw, 3); cx.stroke();
+        cx.beginPath(); cx.moveTo(w * 0.25, -1); cx.lineTo(w * 0.25 - sw, 3); cx.stroke();
+    }
     cx.fillStyle = n.col[2]; cx.beginPath(); cx.arc(0, -h * 0.86, w * 0.62, 0, TAU); cx.fill();
     if (n.hat) { cx.fillStyle = '#2a2018'; cx.fillRect(-w * 0.95, -h * 1.06, w * 1.9, 3); cx.fillRect(-w * 0.55, -h * 1.22, w * 1.1, 4); }
     cx.restore();
     // a quiet mark so you know they will talk to you
-    cx.save(); cx.globalAlpha = 0.5 + Math.sin(RT.t * 2.6 + n.y) * 0.2;
+    cx.save(); cx.globalAlpha = 0.5 + Math.sin(RT.t * 2.6 + w2.y) * 0.2;
     cx.fillStyle = '#c9a94a'; cx.font = 'bold 9px "Press Start 2P", monospace'; cx.textAlign = 'center';
-    cx.fillText('·', sx, sy - h - 12); cx.restore(); cx.textAlign = 'left';
+    cx.fillText('·', sx, sy - h - 12 - bob); cx.restore(); cx.textAlign = 'left';
 }
 function drawPrompt(cx) {
     var o = RT.prompt; if (!o || RT.dialog) return;
@@ -2660,23 +3253,69 @@ function drawPrompt(cx) {
    somewhere you can walk, so neither belongs on a map of where
    you have been. */
 var MAP_HIDE = { arena: 1, stage: 1 };
-var MAP_POS = {          // one per line: every new place needs a row here or it vanishes from the map
-    stage:   [1, 4],
-    square:  [2, 3],
-    lane:    [2, 2],
-    mill:    [2, 1],
-    loft:    [2, 0],
-    village: [3, 2],
-    mark:    [4, 2],
-    arena:   [0, 0]
-};
+/* The map used to be a hand maintained table, and any place you forgot
+   to add vanished from it silently, along with every road leading to
+   it. It is derived from the exit graph now: which wall an exit sits on
+   says which way the next place lies, and a breadth first walk from the
+   square lays them all out. MAP_SEED only pins the root and anything
+   the graph cannot reach. */
+var MAP_SEED = { square: [2, 3], stage: [1, 4], arena: [0, 0] };
+function exitDir(p, e) {
+    var W = p.w || GRID, H = p.h || GRID;
+    var dx = e.x < W * 0.25 ? -1 : e.x > W * 0.75 ? 1 : 0;
+    var dy = e.y < H * 0.25 ? -1 : e.y > H * 0.75 ? 1 : 0;
+    if (dx && dy) { if (Math.abs(e.x - W / 2) / W > Math.abs(e.y - H / 2) / H) dy = 0; else dx = 0; }
+    if (!dx && !dy) dy = -1;                      // a door in the middle of a room leads "in"
+    return [dx, dy];
+}
+function buildMap() {
+    var pos = {}, taken = {}, k;
+    for (k in MAP_SEED) if (PLACES[k]) { pos[k] = MAP_SEED[k].slice(); taken[pos[k].join(',')] = k; }
+    var q = ['square'], guard = 0;
+    while (q.length && guard++ < 400) {
+        var id = q.shift(), p = PLACES[id]; if (!p || !pos[id]) continue;
+        (p.exits || []).forEach(function (e) {
+            if (!PLACES[e.to] || pos[e.to]) return;
+            var d = exitDir(p, e), c = [pos[id][0] + d[0], pos[id][1] + d[1]], slip = 0;
+            // an occupied cell slides along the axis it did not travel on
+            while (taken[c.join(',')] && slip < 12) {
+                slip++;
+                if (d[0]) c[1] = pos[id][1] + (slip % 2 ? 1 : -1) * Math.ceil(slip / 2);
+                else c[0] = pos[id][0] + (slip % 2 ? 1 : -1) * Math.ceil(slip / 2);
+            }
+            pos[e.to] = c; taken[c.join(',')] = e.to; q.push(e.to);
+        });
+    }
+    // anything the graph never reached still gets a cell, off to one side
+    var spare = 0;
+    PLACE_IDS.forEach(function (id) {
+        if (pos[id] || MAP_HIDE[id]) return;
+        while (taken[(-1) + ',' + spare] && spare < 40) spare++;
+        pos[id] = [-1, spare]; taken[pos[id].join(',')] = id; spare++;
+    });
+    return pos;
+}
+var MAP_POS = buildMap();
 function drawMap(cx) {
     if (!RT.mapOpen) return;
     cx.fillStyle = 'rgba(6,4,10,.9)'; cx.fillRect(0, 0, VW, VH);
     cx.textAlign = 'center';
     cx.fillStyle = '#d8cfa8'; cx.font = '16px "Press Start 2P", monospace';
     cx.fillText('WHERE YOU HAVE BEEN', VW / 2, 70);
-    var ox = VW / 2 - 250, oy = 128, cell = 100;
+    /* derived coordinates are not hand tuned to fit the panel, so the
+       panel fits itself around them */
+    var lo = [1e9, 1e9], hi = [-1e9, -1e9], any = false;
+    PLACE_IDS.forEach(function (id) {
+        var m = MAP_POS[id]; if (!m || MAP_HIDE[id] || !S.seen['been_' + id]) return;
+        any = true;
+        lo[0] = Math.min(lo[0], m[0]); lo[1] = Math.min(lo[1], m[1]);
+        hi[0] = Math.max(hi[0], m[0]); hi[1] = Math.max(hi[1], m[1]);
+    });
+    if (!any) { lo = [0, 0]; hi = [0, 0]; }
+    var spanX = hi[0] - lo[0], spanY = hi[1] - lo[1];
+    var cell = Math.min(100, Math.floor(Math.min(spanX ? 620 / spanX : 100, spanY ? 330 / spanY : 100)));
+    cell = Math.max(46, cell);
+    var ox = VW / 2 - (lo[0] + spanX / 2) * cell, oy = 150 + 130 - (lo[1] + spanY / 2) * cell;
     // links first
     cx.lineWidth = 2;
     PLACE_IDS.forEach(function (id) {
@@ -2733,6 +3372,15 @@ function devDemo() {
     var fr = q.nfr ? +q.nfr : 90;
     for (var f = 0; f < fr; f++) { try { step(1 / 60); draw(); } catch (e) { console.error('devDemo step', e); break; } }
     if (q.ndlg && NPCS[q.ndlg]) { var n = NPCS[q.ndlg]; openDialog(n.talk(), n.n); }
+    /* nkey=e,e,arrowdown drives the real keydown chain rather than calling
+       the handlers, because the one bug this harness exists to catch was
+       E being bound to something else entirely. */
+    if (q.nkey) q.nkey.split(',').forEach(function (k) {
+        if (!k) return;
+        RT.root.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
+        RT.root.dispatchEvent(new KeyboardEvent('keyup', { key: k, bubbles: true }));
+        draw();
+    });
     if (q.nmap) RT.mapOpen = true;
     if (q.npanel) panel(q.npanel);
     draw();
@@ -2749,6 +3397,7 @@ function close() {
         if (RT.ac) { try { RT.ac.close(); } catch (e) {} }
         RT = null;
     }
+    freeFloors();       // the cache is megabytes of prerendered ground; it does not outlive the window
     if (S) sSave();
     if (window.__ninth) delete window.__ninth;
     return hrs;
