@@ -1277,6 +1277,9 @@
         if ((gone || B[id].cross) && wy + 1 < CH) {
             var above = getB(wx, wy + 1, wz);
             if (above === SAND || above === GRAVEL) fallStart(wx, wy + 1, wz, above);
+            // a ladder hangs off the WALL beside it, not the block underneath — only pop it when
+            // it has lost every support, or breaking one rung took the whole climb down with it
+            else if (gone && above === LADDER) { if (!torchSupported(wx, wy + 1, wz)) popCross(wx, wy + 1, wz); }
             else if (gone && B[above] && B[above].cross) popCross(wx, wy + 1, wz);
             else if (gone && above === CACTUS) popCactus(wx, wy + 1, wz);
         }
@@ -1931,7 +1934,8 @@
     function cactusTouch() {   // pressed against a cactus face (it's solid, so this is the adjacency test)
         var e = HW + 0.05;
         var x0 = Math.floor(S.px - e), x1 = Math.floor(S.px + e);
-        var y0 = Math.floor(S.py), y1 = Math.floor(S.py + PH - 0.001);
+        // start one cell low so STANDING on a cactus stings too, not just brushing its side
+        var y0 = Math.floor(S.py - 0.05), y1 = Math.floor(S.py + PH - 0.001);
         var z0 = Math.floor(S.pz - e), z1 = Math.floor(S.pz + e);
         for (var x = x0; x <= x1; x++) for (var y = y0; y <= y1; y++) for (var z = z0; z <= z1; z++) if (getB(x, y, z) === CACTUS) return true;
         return false;
@@ -2142,6 +2146,16 @@
             if (s) dropItem(S.px, S.py + 1, S.pz, s.id, s.c, s.dur, true, s.ench, s.name);
             S.inv[i] = null;
         }
+        for (i = 0; i < 4; i++) {   // worn armour drops too — you don't respawn still wearing it
+            var a = S.armor[i];
+            if (a) dropItem(S.px, S.py + 1, S.pz, a.id, a.c, a.dur, true, a.ench, a.name);
+            S.armor[i] = null;
+        }
+        // experience spills out, capped the way the real game caps it
+        var spill = Math.min(100, 7 * S.xpl);
+        S.xpl = 0; S.xp = 0;
+        if (spill > 0) spawnXp(S.px, S.py + 0.5, S.pz, spill);
+        paintXp(); paintArmorBar();
         S.deaths++;
         unlockCursor();
         showDeath();
@@ -2162,7 +2176,7 @@
         var cp = Math.cos(S.pitch);
         return [Math.sin(S.yaw) * cp, -Math.sin(S.pitch), -Math.cos(S.yaw) * cp];
     }
-    function raycast() {
+    function raycast(fluids) {   // fluids=true also stops on water/lava (bucket scooping)
         var d = look(), ox = S.px, oy = S.py + EYE, oz = S.pz;
         var x = Math.floor(ox), y = Math.floor(oy), z = Math.floor(oz);
         var stx = d[0] > 0 ? 1 : -1, sty = d[1] > 0 ? 1 : -1, stz = d[2] > 0 ? 1 : -1;
@@ -2178,7 +2192,7 @@
             else { z += stz; t = tz; tz += tdz; }
             if (t > REACH) return null;
             var b = getB(x, y, z);
-            if (b > 0 && b !== WATER && b !== LAVA) return { x: x, y: y, z: z, b: b, px: px, py: py, pz: pz, dist: t };
+            if (b > 0 && (fluids || (b !== WATER && b !== LAVA))) return { x: x, y: y, z: z, b: b, px: px, py: py, pz: pz, dist: t };
         }
         return null;
     }
@@ -2223,7 +2237,12 @@
         if (b === PUMPKIN) return [['pumpkin', 1]];
         if (!n || n.charAt(0) === '?') return [];
         if (def.mul) return [[n, def.mul[0] + ((Math.random() * (def.mul[1] - def.mul[0] + 1)) | 0) + (fortune ? (Math.random() * (fortune + 1) | 0) : 0)]];
-        return [[n, def.tier ? fbonus : 1]];   // fortune only multiplies ore-tier drops (coal/diamond/emerald)
+        // Fortune multiplies ORES ONLY. `def.tier` is not the test — it is also set on stone,
+        // cobble, furnaces, brick/sandstone variants, the enchanting table, the anvil and
+        // obsidian, so keying off it duplicated all of those (mine an anvil, get three).
+        // Iron and gold drop raw ore for smelting and are not multiplied, same as the real game.
+        var oreDrop = b === ORE_COAL || b === ORE_DIA || b === ORE_EMERALD;
+        return [[n, oreDrop ? fbonus : 1]];
     }
     function breakBlock(x, y, z) {
         var b = getB(x, y, z);
@@ -2307,10 +2326,14 @@
             S.armor[def.armor.slot] = { id: h.id, c: 1, dur: h.dur, ench: h.ench, name: h.name };
             S.inv[S.sel] = null; paintHotbar(); paintVitals(); snd('click'); unlock('armor'); return;
         }
-        // buckets: scoop, pour, and obsidian-forming
-        if (h.id === 'bucket' && t) {
-            if (t.b === WATER) { setB(t.x, t.y, t.z, AIR, true); relight(t.x, t.z); dirtyAround(t.x, t.y, t.z); swapHeld('water_bucket'); snd('pop'); return; }
-            if (t.b === LAVA) { setB(t.x, t.y, t.z, AIR, true); relight(t.x, t.z); dirtyAround(t.x, t.y, t.z); swapHeld('lava_bucket'); snd('pop'); return; }
+        // buckets: scoop, pour, and obsidian-forming.
+        // The normal target skips fluids (you can't mine water), so scooping needs its own
+        // fluid-aware cast — without it a bucket could never be filled, which also made
+        // obsidian (water on lava) and therefore the enchanting table unobtainable.
+        if (h.id === 'bucket') {
+            var ft = raycast(true);
+            if (ft && ft.b === WATER) { setB(ft.x, ft.y, ft.z, AIR, true); relight(ft.x, ft.z); dirtyAround(ft.x, ft.y, ft.z); swapHeld('water_bucket'); snd('pop'); return; }
+            if (ft && ft.b === LAVA) { setB(ft.x, ft.y, ft.z, AIR, true); relight(ft.x, ft.z); dirtyAround(ft.x, ft.y, ft.z); swapHeld('lava_bucket'); snd('pop'); return; }
         }
         if ((h.id === 'water_bucket' || h.id === 'lava_bucket') && t) {
             var bx0 = t.px, by0 = t.py, bz0 = t.pz;
@@ -2562,6 +2585,12 @@
             }
         }
         if (f.mateCd > 0) f.mateCd -= dt;
+        // chickens lay — the only source of eggs, without which cake and pumpkin pie
+        // are uncraftable (they were dead recipes before this)
+        if (f.k === 'chicken' && !f.baby) {
+            f.layT = (f.layT || 20 + Math.random() * 40) - dt;
+            if (f.layT <= 0) { f.layT = 20 + Math.random() * 40; dropItem(f.x, f.y + 0.3, f.z, 'egg', 1); snd('pop'); }
+        }
         // fully-custom movers take over here (they run their own physics + contact)
         if (f.k === 'enderman') return endermanUpdate(f, dt, px, pz, dist);
         if (f.k === 'squid') return squidUpdate(f, dt);
@@ -2803,39 +2832,47 @@
     function trySpawn(hostile, st) {
         var keys = RT.ckeys;
         if (!keys.length) return;
-        var c = RT.chunks[keys[(Math.random() * keys.length) | 0]];
-        if (!c) return;
-        var lx = (Math.random() * CW) | 0, lz = (Math.random() * CW) | 0;
-        var wx = c.cx * CW + lx, wz = c.cz * CW + lz;
-        var y = hostile ? 3 + ((Math.random() * (CH - 10)) | 0) : heightAt(wx, wz) + 1;
-        if (y < 1 || y >= CH - 2) return;
-        // needs: solid floor, two air cells, nobody inside a wall (the Terraria lesson)
-        if (!solidAt(wx, y - 1, wz)) return;
-        if (getB(wx, y, wz) !== AIR || getB(wx, y + 1, wz) !== AIR) return;
-        if (getB(wx, y - 1, wz) === -1) return;
-        var dx = wx + 0.5 - S.px, dz = wz + 0.5 - S.pz, dist = Math.sqrt(dx * dx + dz * dz);
-        if (dist < 20 || dist > 52) return;
-        var kind;
-        if (hostile) {
-            var sky = getSky(wx, y, wz), blk = getBlk(wx, y, wz);
-            if (blk >= 8) return;                                   // torchlight keeps them out
-            if (sky > 0 && (st.day || sky * st.dayF > 5)) return;   // surface spawns only in darkness
-            var r = Math.random();
-            if (y < 40 && r < 0.14) kind = 'slime';                 // slimes deep down
-            else if (r < 0.36) kind = 'zombie';
-            else if (r < 0.55) kind = 'skeleton';
-            else if (r < 0.72) kind = 'spider';
-            else if (r < 0.9) kind = 'creeper';
-            else kind = 'enderman';
-        } else {
-            if (getB(wx, y - 1, wz) !== GRASS) return;
-            if (getSky(wx, y, wz) < 9) return;
-            var r2 = Math.random();
-            kind = r2 < 0.3 ? 'pig' : r2 < 0.55 ? 'cow' : r2 < 0.8 ? 'sheep' : 'chicken';
+        // Several candidate sites per tick, like the real game's spawn attempts. A hostile's Y is a
+        // blind pick over the whole 96-block column, so a single try lands on a floor-with-headroom
+        // barely 2% of the time — one attempt per second left nights all but empty while passives
+        // (whose Y is the surface) filled their cap immediately. The gameplay gates below are
+        // unchanged; only the number of sites sampled is.
+        for (var att = 0; att < 24; att++) {
+            var c = RT.chunks[keys[(Math.random() * keys.length) | 0]];
+            if (!c) continue;
+            var lx = (Math.random() * CW) | 0, lz = (Math.random() * CW) | 0;
+            var wx = c.cx * CW + lx, wz = c.cz * CW + lz;
+            var y = hostile ? 3 + ((Math.random() * (CH - 10)) | 0) : heightAt(wx, wz) + 1;
+            if (y < 1 || y >= CH - 2) continue;
+            // needs: solid floor, two air cells, nobody inside a wall (the Terraria lesson)
+            if (!solidAt(wx, y - 1, wz)) continue;
+            if (getB(wx, y, wz) !== AIR || getB(wx, y + 1, wz) !== AIR) continue;
+            if (getB(wx, y - 1, wz) === -1) continue;
+            var dx = wx + 0.5 - S.px, dz = wz + 0.5 - S.pz, dist = Math.sqrt(dx * dx + dz * dz);
+            if (dist < 20 || dist > 52) continue;
+            var kind;
+            if (hostile) {
+                var sky = getSky(wx, y, wz), blk = getBlk(wx, y, wz);
+                if (blk >= 8) continue;                                   // torchlight keeps them out
+                if (sky > 0 && (st.day || sky * st.dayF > 5)) continue;   // surface spawns only in darkness
+                var r = Math.random();
+                if (y < 40 && r < 0.14) kind = 'slime';                   // slimes deep down
+                else if (r < 0.36) kind = 'zombie';
+                else if (r < 0.55) kind = 'skeleton';
+                else if (r < 0.72) kind = 'spider';
+                else if (r < 0.9) kind = 'creeper';
+                else kind = 'enderman';
+            } else {
+                if (getB(wx, y - 1, wz) !== GRASS) continue;
+                if (getSky(wx, y, wz) < 9) continue;
+                var r2 = Math.random();
+                kind = r2 < 0.3 ? 'pig' : r2 < 0.55 ? 'cow' : r2 < 0.8 ? 'sheep' : 'chicken';
+            }
+            var nf = mkFoe(kind, wx + 0.5, y, wz + 0.5);
+            if (kind === 'slime') { nf.sz = 1 + ((Math.random() * 3) | 0); applySlimeSize(nf); }
+            RT.foes.push(nf);
+            return;
         }
-        var nf = mkFoe(kind, wx + 0.5, y, wz + 0.5);
-        if (kind === 'slime') { nf.sz = 1 + ((Math.random() * 3) | 0); applySlimeSize(nf); }
-        RT.foes.push(nf);
     }
     function trySpawnSquid() {   // squid live in water, ignore land rules
         var keys = RT.ckeys; if (!keys.length) return;
@@ -3436,7 +3473,7 @@
         var k = tentKey(x, y, z), t = S.tents[k];
         if (!t) return;
         var all = t.k === 'chest' ? t.inv : t.k === 'furnace' ? [t.fin, t.fuel, t.out] : [];
-        for (var i = 0; i < all.length; i++) if (all[i]) dropItem(x + 0.5, y + 0.5, z + 0.5, all[i].id, all[i].c, all[i].dur);
+        for (var i = 0; i < all.length; i++) if (all[i]) dropItem(x + 0.5, y + 0.5, z + 0.5, all[i].id, all[i].c, all[i].dur, false, all[i].ench, all[i].name);
         delete S.tents[k];
         if (RT && RT.panel && RT.panel.key === k) closePanel();
     }
@@ -3547,17 +3584,22 @@
         return null;
     }
     function enchantable(st) { return !!enchCategory(st) && (st.c === 1) && !(st.ench && Object.keys(st.ench).length); }
-    function rollEnchants(st, level) {
+    // rnd defaults to Math.random, but the enchanting table passes its SEEDED rng: the offered
+    // enchantments have to stay put while the item sits on the table. Rolling them with
+    // Math.random() let you pull the item out and drop it back to reroll until Silk Touch or
+    // Fortune III came up at option-1 prices.
+    function rollEnchants(st, level, rnd) {
+        rnd = rnd || Math.random;
         var cat = enchCategory(st); if (!cat) return null;
         var pool = ENCH_POOL[cat].slice(), res = {}, count = 0;
         while (pool.length && count < 3) {
-            var e = pool.splice((Math.random() * pool.length) | 0, 1)[0];
+            var e = pool.splice((rnd() * pool.length) | 0, 1)[0];
             var maxL = ENCH_MAX[e];
-            var lvl = Math.max(1, Math.min(maxL, Math.round(level / 30 * maxL * (0.5 + Math.random() * 0.5))));
+            var lvl = Math.max(1, Math.min(maxL, Math.round(level / 30 * maxL * (0.5 + rnd() * 0.5))));
             res[e] = lvl; count++;
             if (e === 'silk') pool = pool.filter(function (x) { return x !== 'fortune'; });
             if (e === 'fortune') pool = pool.filter(function (x) { return x !== 'silk'; });
-            if (Math.random() > 0.35 + level / 45) break;   // higher levels → more enchants
+            if (rnd() > 0.35 + level / 45) break;   // higher levels → more enchants
         }
         return res;
     }
@@ -3582,7 +3624,7 @@
         var lv = [Math.max(1, Math.floor(b / 3)), Math.floor(b * 2 / 3) + 1, Math.max(b, shelves * 2)];
         RT.enchOpts = [];
         for (var i = 0; i < 3; i++) {
-            var er = rollEnchants(it, lv[i]);
+            var er = rollEnchants(it, lv[i], rng);
             var main = er ? Object.keys(er)[0] : null;
             RT.enchOpts.push({ level: lv[i], lapis: i + 1, ench: er, label: main ? ENCH_NAME[main] + ' ' + (ROMAN[er[main]] || er[main]) + (Object.keys(er).length > 1 ? ' …' : '') : '—' });
         }
@@ -3607,7 +3649,7 @@
         var a = RT.anvilA, b = RT.anvilB;
         if (!a) return null;
         var out = { id: a.id, c: a.c, dur: a.dur, ench: a.ench ? JSON.parse(JSON.stringify(a.ench)) : null };
-        var cost = 0, did = false;
+        var cost = 0, did = false, usedB = false;
         if (RT.anvilName && RT.anvilName !== (a.name || '')) { out.name = RT.anvilName; cost += 1; did = true; }
         if (b) {
             var da = I[a.id], db = I[b.id];
@@ -3616,15 +3658,17 @@
                 if (b.id === a.id && b.dur != null) {   // combine two of the same: repair + merge enchants
                     var maxd = da.tool ? da.tool.dur : da.armor ? da.armor.dur : da.dur;
                     out.dur = Math.min(maxd, a.dur + b.dur + Math.floor(maxd * 0.12));
-                    out.ench = mergeEnch(a.ench, b.ench); cost += 2; did = true;
+                    out.ench = mergeEnch(a.ench, b.ench); cost += 2; did = true; usedB = true;
                 } else if (b.id === 'ench_book' && b.ench) {   // apply an enchanted book
-                    out.ench = mergeEnch(a.ench, b.ench); cost += 2; did = true;
+                    out.ench = mergeEnch(a.ench, b.ench); cost += 2; did = true; usedB = true;
                 }
             }
         }
         if (!did) return null;
         cost += enchLevelCost(out.ench) - enchLevelCost(a.ench);
-        return { out: out, cost: Math.max(1, cost) };
+        // usedB tells applyAnvil whether slot B was actually consumed — a rename-only result
+        // must leave B alone instead of deleting whatever is sitting in it
+        return { out: out, cost: Math.max(1, cost), usedB: usedB };
     }
     function mergeEnch(x, y) {
         var r = {}; var k;
@@ -3640,7 +3684,13 @@
         if (S.xpl < res.cost) { toast('Not enough experience'); return; }
         takeXpLevels(res.cost);
         var out = res.out; if (RT.anvilName) out.name = RT.anvilName;
-        RT.anvilA = null; RT.anvilB = null; RT.anvilName = '';
+        RT.anvilA = null;
+        if (res.usedB) RT.anvilB = null;   // a rename-only apply must not eat slot B
+        RT.anvilName = '';
+        // clear the visible name box too, or it keeps showing the old text while RT.anvilName is
+        // empty and the next rename silently produces nothing until the player retypes
+        var nameIn = RT.el && RT.el.querySelector('.mc-anvin');
+        if (nameIn) nameIn.value = '';
         var left = invGive(out.id, out.c, out.dur, out.ench, out.name);   // hand back the whole stack, enchant + name intact
         if (left > 0) dropItem(S.px, S.py + 1, S.pz, out.id, left, out.dur, false, out.ench, out.name);
         snd('anvil'); unlock('anvil2');
@@ -3696,7 +3746,12 @@
         wrap.innerHTML = '<div class="mc-panel">' + panelHTML(kind) + '</div><div class="mc-cur"></div>';
         wrap.style.display = '';
         unlockCursor();
-        wirePanel(wrap);
+        // .mc-panelwrap is a PERSISTENT node — only its innerHTML is replaced per open. Re-running
+        // wirePanel on it stacked another set of delegated listeners every time, so after N opens a
+        // single slot click ran slotClick N times (items silently duplicated, vanished, or the click
+        // appeared to do nothing at all on an even count).
+        if (!wrap._wired) { wirePanel(wrap); wrap._wired = 1; }
+        wirePanelFields(wrap);   // the anvil name box is inside the fresh markup, so it re-wires
         paintPanel();
         if (kind === 'inv' || kind === 'table') unlock('inventory');
         snd('click');
@@ -3772,7 +3827,12 @@
                 if (RT.cur) RT.cur.c += r.n;
                 else {
                     RT.cur = { id: r.out, c: r.n };
-                    if (I[r.out] && (I[r.out].tool || I[r.out].dur)) RT.cur.dur = I[r.out].tool ? I[r.out].tool.dur : I[r.out].dur;
+                    // itemMaxDur covers tools, ARMOUR (dur lives under .armor) and plain dur items.
+                    // The old .tool||.dur test missed armour, so a crafted helmet came off the
+                    // output slot with no dur at all: never wore out, no durability bar, and the
+                    // anvil refused it (repair needs a.dur != null).
+                    var cmd = itemMaxDur(r.out);
+                    if (cmd != null) RT.cur.dur = cmd;
                 }
             }
             for (var i = 0; i < 9; i++) if (RT.craft[i]) { RT.craft[i].c--; if (!RT.craft[i].c) RT.craft[i] = null; }
@@ -3893,10 +3953,17 @@
             cur.style.left = (e.clientX - r.left + 6) + 'px';
             cur.style.top = (e.clientY - r.top + 6) + 'px';
         });
+    }
+    function wirePanelFields(wrap) {   // per-render nodes: re-wired on every open (fresh innerHTML)
         var nameIn = wrap.querySelector('.mc-anvin');
         if (nameIn) {
             nameIn.addEventListener('input', function () { RT.anvilName = nameIn.value; paintPanel(); });
-            nameIn.addEventListener('keydown', function (e) { e.stopPropagation(); });   // typing must not drive the game
+            // typing must not drive the game — but Esc still has to close the panel, or the
+            // name box swallows the only key that gets you out
+            nameIn.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape') { nameIn.blur(); closePanel(); return; }
+                e.stopPropagation();
+            });
             nameIn.addEventListener('mousedown', function (e) { e.stopPropagation(); });
         }
     }
