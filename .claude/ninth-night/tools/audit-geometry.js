@@ -201,8 +201,8 @@ Object.keys(PLACES).forEach(function (id) {
         if (blocked(p, px, py, R)) {
             bad(id + ': arriving from ' + oid + ' lands inside a prop at ' + px.toFixed(2) + ',' + py.toFixed(2) + '. unstick() should catch it, but do not rely on that.');
         }
-        if (!back) {
-            bad(id + ': you can walk here from ' + oid + ' but there is no exit back. One way trip.');
+        if (!back && !p.oneway) {
+            bad(id + ': you can walk here from ' + oid + ' but there is no exit back. One way trip. (Set oneway:1 if a script returns the player.)');
         }
     });
 

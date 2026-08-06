@@ -188,6 +188,8 @@ var FOES = {
     sword:  { n: 'The Sword', hp: 150, dmg: 16, spd: 2.1, r: 0.6, atk: 1.3, tell: 0.45, xp: 40, coin: [3, 6], norhyme: 1, elite: 1,
               ai: 'walk', draw: 'sword',
               d: 'Carries no rhyme at all. Cannot be stacked. Cannot be detonated. Kill it with raw call damage, slowly, like an idiot, while everything else on screen explodes beautifully.' },
+    folk:   { n: 'Wick', hp: 1, dmg: 0, spd: 0, r: 0.4, atk: 99, tell: 0, xp: 0, coin: [0, 0], folk: 1, norhyme: 1, draw: 'folk',
+              d: 'A person in the audience. Cannot be hurt, cannot be moved, cannot be rhymed with. Carries one open line that nobody has ever answered.' },
     chorus: { n: 'THE CHORUS', hp: 900, dmg: 12, spd: 0, r: 1.6, atk: 2.2, tell: 0.8, xp: 300, coin: [20, 30], boss: 1, pulse: 5.5,
               ai: 'chorus', draw: 'chorus', onDown: 'chorus',
               d: 'A crowd of voices, no bodies, saying the refrain in unison. It strips rhyme off everything on a pulse. Burst between pulses.' }
@@ -230,7 +232,11 @@ var ACH = [
     ['hear', 'You Heard It', 'Notice what does not rhyme'],
     ['reprise', 'Again', 'Spend a full Echo on a Reprise'],
     ['elite', 'Worse Than Usual', 'Put down an elite'],
-    ['allsix', 'The Whole Cast', 'Meet all six of them']
+    ['allsix', 'The Whole Cast', 'Meet all six of them'],
+    ['written', 'The Four Hundredth', 'Perform it the way it is written'],
+    ['answered', 'The Answer', 'Close the couplet nobody closed'],
+    ['silence', 'Nothing', 'Say neither version of it'],
+    ['verse', 'The Whole Song', 'Sing the true one all the way to the end']
 ];
 
 /* ─────────────── charms ───────────────
@@ -432,6 +438,7 @@ function sLoad() {
     S.items = S.items || { inv: { mask: 1 }, lamps: {}, wearing: 0 };
     if (!S.items.inv) S.items.inv = {}; if (!S.items.lamps) S.items.lamps = {};
     if (S.items.wearing == null) S.items.wearing = 0;
+    S.a3 = S.a3 || {};                               // job 1: read, ending, verseSpent
     return S;
 }
 function sSave() { try { localStorage.setItem('comp_ninth', JSON.stringify(S)); } catch (e) {} }
@@ -654,6 +661,13 @@ function deathToll() {
     coin(-lost);
     say('You come round with your pockets lighter by <b>' + lost + '</b>. Somebody was very quick about it.', 'dim');
 }
+
+/* the third fragment is the one that sends you back to the text */
+function fragAllThree() {
+    if (fragCount() !== 3 || S.a3.told) return;
+    S.a3.told = 1; sSave();
+    beat(2.4, function () { say('You have all of it. <b>Read it from the top.</b>', 'good'); });
+}
 function grantFragment(n) {
     var map = { 1: ['erd', 'word'], 2: ['ark', 'dark'], 3: ['ill', 'will'] };
     var f = map[n]; if (!f || S.frags[n]) return;
@@ -662,6 +676,7 @@ function grantFragment(n) {
     sSave();
     sfx('frag');
     bigLine('FRAGMENT ' + ['I', 'II', 'III'][n - 1], f[1].toUpperCase(), FAMS[f[0]].col);
+    fragAllThree();
     say('The line closes. <b style="color:' + FAMS[f[0]].col + '">' + f[1].toUpperCase() + '</b> is yours, and so is Stanza ' + ['I', 'II', 'III'][n - 1] + '.', 'good');
 }
 
@@ -765,6 +780,29 @@ function resetGame() {
      note   — a line of text */
 var wipeArmed = 0;              // one click arms it, the next one means it
 var DEV = [
+  { tab: 'STORY', rows: function () {
+      var rows = [{ k: 'note', t: 'The ninth night. Any beat, any ending, in two clicks.' }];
+      rows.push({ k: 'note', t: 'ending so far: ' + (S.a3.ending || 'not yet') + '   verse: ' + (S.verse ? 'lit' : 'dark') });
+      rows.push({ k: 'btn', t: 'Give all three fragments', on: function () { for (var n = 1; n <= 3; n++) grantFragment(n); } });
+      rows.push({ k: 'btn', t: 'Open the steps (skip Bern)', on: function () { S.a3.read = 1; S.seen.a3ready = 1; sSave(); } });
+      rows.push({ k: 'btn', t: 'Run the performance from the top', on: function () { toggleDev(); delete S.a3.ending; sSave(); gotoPlace('a3sq', true); } });
+      rows.push({ k: 'btn', t: 'Jump to the last cue', on: function () {
+          toggleDev(); delete S.a3.ending; sSave(); gotoPlace('a3sq', true);
+          RT.beats = []; RT.story = { cue: 0, holding: 0, tries: 0, waitT: 0, done: 0, sawCall: 0 };
+          a3Crowd(); a3Mark(); a3CueLast(); a3Watch();
+      } });
+      ['written', 'true', 'silence'].forEach(function (e) {
+          rows.push({ k: 'btn', t: 'Force ending: ' + e, on: function () {
+              toggleDev();
+              if (RT.place !== 'a3sq') { delete S.a3.ending; gotoPlace('a3sq', true); RT.beats = []; a3Crowd(); a3Mark(); }
+              RT.story = { cue: 3, holding: 0, tries: 0, waitT: 0, done: 0, sawCall: 0 };
+              a3End(e);
+          } });
+      });
+      rows.push({ k: 'btn', t: 'Light R by hand', on: function () { S.verse = 1; delete S.a3.verseSpent; sSave(); updateHud(0); } });
+      rows.push({ k: 'btn', t: 'Wipe the ending (replay it)', danger: 1, on: function () { delete S.a3.ending; delete S.a3.verseSpent; delete S.a3.told; S.verse = 0; sSave(); } });
+      return rows;
+  } },
   { tab: 'WORLD', rows: function () {
       var rows = [{ k: 'note', t: 'Walk anywhere. Scripts replay from the top.' }];
       PLACE_IDS.forEach(function (id) {
@@ -1082,17 +1120,26 @@ function drawSlams(cx, dt) {
 
 /* tier 3 — a line writing itself across the screen. used by the
    stanzas while time is at thirty percent, and by story beats. */
-function bigLine(txt, sub, col, dur) {
-    RT.lines.push({ txt: txt, sub: sub || '', col: col || '#f0e9df', t: dur || 2.2, max: dur || 2.2 });
+function bigLine(txt, sub, col, dur, pin) {
+    RT.lines.push({ txt: txt, sub: sub || '', col: col || '#f0e9df', t: dur || 2.2, max: dur || 2.2, pin: pin ? 1 : 0, age: 0 });
 }
+/* the held cue sits in its own slot and does not expire, so it cannot
+   reflow when a line under it dies. Nothing else pins. */
+function unpin() { RT.lines = RT.lines.filter(function (l) { return !l.pin; }); }
 function drawLines(cx, dt) {
     for (var i = RT.lines.length - 1; i >= 0; i--) {
-        var L = RT.lines[i]; L.t -= dt;
-        if (L.t <= 0) { RT.lines.splice(i, 1); continue; }
-        var k = 1 - L.t / L.max;
+        var L = RT.lines[i], k, a, y;
+        if (L.pin) {
+            L.age += dt;
+            k = clamp(L.age / 0.5, 0, 1); a = 1; y = VH * 0.2;
+        } else {
+            L.t -= dt;
+            if (L.t <= 0) { RT.lines.splice(i, 1); continue; }
+            k = 1 - L.t / L.max;
+            a = clamp(L.t / 0.5, 0, 1);
+            y = VH * 0.3 + i * 44;
+        }
         var chars = Math.ceil(L.txt.length * clamp(k / 0.35, 0, 1));      // typewriter in
-        var a = clamp(L.t / 0.5, 0, 1);
-        var y = VH * 0.3 + i * 44;
         cx.save(); cx.globalAlpha = a; cx.textAlign = 'center';
         cx.font = '30px "VT323", monospace';
         cx.fillStyle = '#08060c'; cx.fillText(L.txt.slice(0, chars), VW / 2 + 2, y + 2);
@@ -1157,6 +1204,8 @@ function init(el) {
         shake: 0, chroma: 0, flash: 0, dilate: 0, mono: 0, timeScale: 1,
         stanzaCd: [0, 0, 0], casting: null, recital: null, verseCast: 0,
         toasts: [], panel: null, devTab: 'WORLD', devOpen: false,
+        nCalls: 0, nAnswers: 0,          // monotonic: a beat cannot observe RT.calls, see stepScene order
+        story: { cue: 0, holding: 0, tries: 0, waitT: 0, done: 0 },
         god: 0, infBreath: 0, holdStacks: 0, oneShot: 0,
         dbgStacks: 0, dbgAI: 0, dbgHit: 0, dbgPerf: 0,
         fps: 0, _fc: 0, _ft: 0, ac: null, tookHit: false,
@@ -1450,6 +1499,7 @@ function doCall() {
     RT.casting = { t: 0.13, max: 0.13 };
     var fam = callFam(), word = S.call;
     var a = Math.atan2(RT.mouse.wy - RT.py, RT.mouse.wx - RT.px);
+    RT.nCalls++;
     RT.calls.push({ x: RT.px + Math.cos(a) * 0.5, y: RT.py + Math.sin(a) * 0.5,
         vx: Math.cos(a) * 13, vy: Math.sin(a) * 13, life: T('callRange') / 13,
         word: word.toUpperCase(), fam: fam, hit: [] });
@@ -1548,6 +1598,7 @@ function doAnswer() {
     var st = stats();
     if (!spendBreath(st.answerCost)) { hudNudge('breath'); return; }
     RT.answerCd = 0.34;
+    RT.nAnswers++;
     RT.casting = { t: 0.22, max: 0.22 };
     var fam = answerFam(), word = S.answer.toUpperCase();
     RT.lastWord = word; RT.lastFam = fam;          // the Reprise says the last thing you said
@@ -1704,7 +1755,7 @@ function famEffect(f, fam, n, noHeal) {
 /* ─────────────── damage into an enemy ─────────────── */
 function hurtFoe(f, dmg, fam, o) {
     o = o || {};
-    if (f.dead) return 0;
+    if (f.dead || f.def.folk) return 0;      // you cannot hurt the town. The Verse finds them and does nothing.
     if (RT.oneShot) dmg = f.hp + 1;
     if (f.revealed > 0) dmg *= 1.25;
     if (f.armor && !o.exec) dmg = Math.max(1, dmg - f.armor);
@@ -1798,8 +1849,14 @@ function doVerse() {
         return;
     }
     if (RT.verseCast) return;
+    if (S.a3.verseSpent) {                    // it lights up once. It does not keep going off.
+        say('<i>You have sung it. It stays sung.</i>', 'dim');
+        return;
+    }
     RT.verseCast = 1;
-    RT.dilate = 6; RT.mono = 6;
+    if (RT.place === 'a3sq') S.a3.verseSpent = 1;
+    sSave();
+    RT.dilate = 6; RT.mono = 8.4;             // mono now runs the length of the recital
     var i = 0;
     BALLAD.forEach(function (st, k) {
         st.r.forEach(function (ln, j) {
@@ -1809,11 +1866,24 @@ function doVerse() {
                 if (j === 3) {
                     RT.foes.forEach(function (f) { if (!f.dead) hurtFoe(f, 999, 'ight', { answer: 1, closed: 1, n: 4 }); });
                     RT.shake = shake(12);
+                    // hurtFoe is a no-op on folk. The most lethal thing in
+                    // the game, cast at the climax of the game, finds four
+                    // hundred people and does nothing to any of them.
+                    // What it does instead: they stand up. By the last
+                    // line the whole town is on its feet, which is the
+                    // opposite of the one stanza both versions agree on.
+                    var sitting = RT.foes.filter(function (f) { return f.def.folk && f.seat && !f.isHal; });
+                    for (var q = 0; q < 4 && sitting.length; q++) sitting.splice(irnd(0, sitting.length - 1), 1)[0].seat = 0;
                 }
             }, (i++) * 260));
         });
     });
-    RT.timers.push(setTimeout(function () { if (RT) { RT.verseCast = 0; say('The ballad closes. Every rhyme lands.', 'good'); } }, i * 260 + 1200));
+    RT.timers.push(setTimeout(function () {
+        if (!RT) return;
+        RT.verseCast = 0;
+        if (RT.place === 'a3sq') { ach('verse'); a3Hal(); }
+        else say('The ballad closes. Every rhyme lands.', 'good');
+    }, i * 260 + 1200));
     sfx('verse');
 }
 
@@ -1884,6 +1954,7 @@ function stepFoes(dt) {
         f.spawn = Math.max(0, f.spawn - dt); f.anim += dt;
         f.revealed = Math.max(0, f.revealed - dt);
         f.silence = Math.max(0, f.silence - dt);
+        if (f.def.folk) { alive++; continue; }   // they sit. That is the whole of their AI.
         f.frozen = Math.max(0, f.frozen - dt);
         if (f.dead) { RT.foes.splice(i, 1); continue; }
         alive++;
@@ -2268,6 +2339,25 @@ function onChorusDown(f) {
 /* ─────────────── drawing them ───────────────
    Cheap shapes, strong silhouettes. The stacks floating above are
    the important part: they must read at a glance, at speed. */
+/* a person in the audience. Seated until the Verse stands them up. */
+function drawFolk(cx, f) {
+    var seat = f.seat ? 1 : 0, h = seat ? 17 : 27, w = 7;
+    var sway = Math.sin(RT.t * 1.1 + f.x * 2.3) * (seat ? 0.6 : 1.4);
+    cx.save(); cx.translate(sway, 0);
+    cx.fillStyle = f.isHal ? '#2a2434' : '#3a3346';
+    cx.beginPath();
+    cx.moveTo(-w, 0); cx.lineTo(-w * 0.68, -h); cx.lineTo(w * 0.68, -h); cx.lineTo(w, 0);
+    cx.closePath(); cx.fill();
+    cx.fillStyle = f.isHal ? '#c8b8a8' : '#8a8296';
+    cx.beginPath(); cx.arc(0, -h - 4.6, 4.4, 0, TAU); cx.fill();
+    if (!seat) {                                    // lamplight catches them standing
+        cx.globalAlpha = 0.5;
+        cx.fillStyle = '#ffc271';
+        cx.fillRect(-w * 0.7, -h, w * 1.4, 2);
+        cx.globalAlpha = 1;
+    }
+    cx.restore();
+}
 function drawFoe(cx, f) {
     var sx = isoX(f.x, f.y), sy = isoY(f.x, f.y) + TILE_H / 2;
     var pop = f.spawn > 0 ? 0.5 + (0.45 - f.spawn) : 1;
@@ -2445,7 +2535,7 @@ function drawChorus(cx, f, tell) {
 
 /* name → body. A new archetype brings its own drawer and registers it
    here; drawFoe never grows another branch. */
-var FOE_DRAW = { mouth: drawMouth, thief: drawThief, droner: drawDroner, deaf: drawDeaf, sword: drawSword, chorus: drawChorus };
+var FOE_DRAW = { mouth: drawMouth, thief: drawThief, droner: drawDroner, deaf: drawDeaf, sword: drawSword, chorus: drawChorus, folk: drawFolk };
 
 /* the cut-off line left behind by a death. The word is drawn, then the
    canvas is clipped mid-letter and a hard caesura bar sits on the cut:
@@ -2569,6 +2659,18 @@ function draw(rdt) {
     if (RT.flash > 0) { cx.fillStyle = 'rgba(255,250,235,' + (RT.flash * 0.5) + ')'; cx.fillRect(0, 0, VW, VH); }
     if (RT.hurt > 0 || RT.dead) { cx.fillStyle = 'rgba(150,10,25,' + (RT.dead ? 0.34 : RT.hurt * 0.3) + ')'; cx.fillRect(0, 0, VW, VH); }
     drawPrompt(cx);
+    // The world drains away until the letters are the only light. mono has
+    // been set by the Verse and read by nothing since it was written; the
+    // big typographic lines are drawn after this restore, so they keep
+    // their colour while everything behind them goes grey.
+    if (RT.mono > 0) {
+        cx.save();
+        cx.globalCompositeOperation = 'saturation';
+        cx.globalAlpha = clamp(RT.mono / 1.4, 0, 1);
+        cx.fillStyle = 'hsl(0,0%,50%)';
+        cx.fillRect(0, 0, VW, VH);
+        cx.restore();
+    }
     cx.restore();
     drawSlams(cx, dt);
     drawLines(cx, dt);
@@ -3374,10 +3476,14 @@ function chandlerNear() {
 /* THE PLAY — the ballad as you currently know it. Full lines are
    allowed here because nothing is trying to kill you. */
 function fillBook() {
+    if (fragCount() === 3 && !S.a3.read) { S.a3.read = 1; sSave(); }
     var b = RT.root.querySelector('.nn-p-book .nn-pb');
     var html = '<p class="nn-note">The play, as Wick performs it. Learning a line is learning a spell. Something in it does not rhyme.</p>';
     BALLAD.forEach(function (st, i) {
-        var known = S.frags[1] && i === 2 || S.frags[2] && i === 3 || S.frags[3] && i === 6;
+        // each fragment fixes its own stanza. Hold all three and the whole
+        // song resolves, including 5 and 6, which carry the reveal and had
+        // no fragment of their own to unlock them.
+        var known = fragCount() === 3 || S.frags[1] && i === 2 || S.frags[2] && i === 3 || S.frags[3] && i === 6;
         var lines = known ? st.r : st.t;
         html += '<div class="nn-stanza' + (known ? ' fixed' : '') + '"><b>' + (i + 1) + '</b><div>' +
             lines.map(function (l, j) {
@@ -3385,7 +3491,9 @@ function fillBook() {
                 return '<i class="' + (isBreak ? 'nn-broken' : '') + '">' + esc(l) + (isBreak ? ' <s>?</s>' : '') + '</i>';
             }).join('') + '</div></div>';
     });
-    html += '<p class="nn-note dim">Every closing line runs six to eight syllables. "And he went alone" is five. Something was taken out and you can hear the hole.</p>';
+    html += fragCount() === 3
+        ? '<p class="nn-note dim">All of it, then. Four hundred years of a song about a man who stood at a fence.</p>'
+        : '<p class="nn-note dim">Every closing line runs six to eight syllables. "And he went alone" is five. Something was taken out and you can hear the hole.</p>';
     b.innerHTML = html;
 }
 /* WORDS AND CHARMS — the build layer. One call word, one answer
@@ -3652,7 +3760,12 @@ var PLACES = {
         exits: [
             { x: 8.5, y: 14.3, w: 3, to: 'lane', n: 'the lane, north' },
             { x: 2.1, y: 3.6, w: 1.6, to: 'bernhouse', n: 'Bern\'s door' },
-            { x: 15, y: 3.8, w: 1.6, to: 'chandler', n: 'the chandler\'s shop' }
+            { x: 15, y: 3.8, w: 1.6, to: 'chandler', n: 'the chandler\'s shop' },
+            { x: 8.7, y: 6.6, w: 2.4, to: 'a3sq', n: 'up the steps, onto the stage', needs: 'a3ready', over: 1,
+              shut: function () {
+                  return S.a3.ending ? 'They have the boards up on the cart already. It was last night now.'
+                                     : 'They are still building it. It is not tonight yet.';
+              } }
         ]
     },
     /* ── interiors. Somewhere with a roof on it, and one lamp that is
@@ -3815,6 +3928,17 @@ var PLACES = {
         exits: [{ x: 7.4, y: 12.3, w: 3, to: 'road', n: 'back down the road' }],
         speakDraws: 4
     },
+    a3sq: {
+        n: 'Wick — the ninth night', sub: 'the four hundredth performance',
+        floor: 'town', w: 17, h: 15, script: 'a3', a3: 1, oneway: 1,
+        props: [
+            { t: 'house', b: [0, 0, 3.4, 2.6] }, { t: 'house', b: [13.6, 0, 3.4, 2.8] },
+            { t: 'house', b: [0, 12.4, 3.6, 2.6] }, { t: 'house', b: [13.4, 12.2, 3.6, 2.8] },
+            { t: 'stagewip', b: [4.6, 1.0, 8, 3.2] },
+            { t: 'foot', b: [4.6, 4.3, 8, 0.35] }
+        ],
+        exits: []
+    },
     arena: {
         n: 'Dev — free arena', sub: 'nothing here means anything. hit things.',
         floor: 'mill', w: 17, h: 17, endless: 1, props: [], exits: []
@@ -3835,6 +3959,21 @@ var NPCS = {
     bern: {
         n: 'Bern', x: 7.4, y: 7.2, col: ['#6a4f3a', '#8a6a4a', '#d8b48c'], hat: 1,
         talk: function () {
+            if (fragCount() === 3 && !S.a3.ending && !S.seen.a3ready) {
+                if (!S.a3.read && !S.seen.bernA3) {
+                    S.seen.bernA3 = 1; sSave();
+                    return [['Bern', "They finished it at four o'clock. Forty years I have watched them finish it at four o'clock."],
+                            ['Bern', 'Go over your last verse. You have until dark.'],
+                            ['You', 'I have been over it.'],
+                            ['Bern', 'Go over it again. Read it from the top.']];
+                }
+                S.seen.a3ready = 1; sSave();
+                return [['Bern', 'It is tonight.'],
+                        ['You', 'I know the lines.'],
+                        ['Bern', 'That is what I said.'],
+                        ['', 'He goes to look for his hat. He has worn the same hat for thirty years and he loses it every year.'],
+                        ['', 'The steps up to the stage are open.']];
+            }
             if (!S.seen.bern1) {
                 S.seen.bern1 = 1;
                 return [['Bern', 'There he is. The new Emberwright.'],
@@ -3984,6 +4123,7 @@ Object.keys(NPCS).forEach(function (k) { NPCS[k].id = k; });
 
 /* ─────────────── scripts ─────────────── */
 var SCRIPTS = {
+    a3: function () { a3Start(); },
     prologue: function () {
         say('<b>Twelve years ago.</b> You are nine, and the mask is too big.', 'big');
         beat(3.0, function () { say('Your whole part is to walk across the stage and be the thing that ate the light. Walk to the far side.'); });
@@ -3992,6 +4132,7 @@ var SCRIPTS = {
         beat(13.4, function () { gotoPlace('square', true); });
     },
     wick: function () {
+        a3After();
         say('<b>Wick.</b> They are building the stage in the square. You have been given the crown and the lantern.', 'big');
         beat(3.4, function () { say('Talk to people. Look at things. Nothing here wants to hurt you.', 'dim'); });
         beat(6.4, function () { say('When you are ready, the lane runs north to the mill.', 'dim'); });
@@ -4012,6 +4153,281 @@ var SCRIPTS = {
         beat(4.6, function () { bigLine('THE CHORUS', 'burst between pulses', '#d2c8e1', 2.4); spawnFoe('chorus', 6.5, 6.2); });
     }
 };
+
+
+/* ═══════════════ THE NINTH NIGHT ═══════════════
+   The four hundredth performance. The town is a crowd of foes with a
+   folk flag, so every part of the combat system points at them
+   unmodified: the Call projectile, the stack renderer, the Answer
+   sweep, the detonation. Nothing here reimplements anything.
+
+   One rule holds the whole act together. Every person in this square
+   is carrying one open rhyme that was put on them before they could
+   walk, and nothing has ever answered it. The player has spent twenty
+   minutes learning that an open stack is a thing you close. */
+
+var A3_ROWS = [[5.4, 6.4], [7.0, 6.9], [8.6, 6.4], [10.2, 6.9], [11.8, 6.4],
+               [4.8, 8.2], [6.4, 8.7], [8.0, 8.2], [9.6, 8.7], [11.2, 8.2], [12.6, 8.7],
+               [5.2, 10.1], [6.8, 10.6], [8.4, 10.1], [10.0, 10.6], [11.6, 10.1],
+               [4.4, 12.0], [6.2, 12.4], [8.0, 12.0], [9.8, 12.4], [11.6, 12.0], [13.2, 12.4],
+               [7.2, 13.6], [9.4, 13.6]];
+
+function a3Folk() { return RT.foes.filter(function (f) { return !f.dead && f.def.folk; }); }
+function a3Open() { return a3Folk().reduce(function (a, f) { return a + f.stacks.length; }, 0); }
+
+/* the crowd, and the one man standing outside the lamps at the back */
+function a3Crowd() {
+    A3_ROWS.forEach(function (xy, i) {
+        var f = spawnFoe('folk', xy[0], xy[1]);
+        if (f) { f.spawn = 0; f.so = (i % 3) * 4; f.seat = 1; }
+    });
+    var hal = spawnFoe('folk', 8.6, 14.4);
+    if (hal) { hal.spawn = 0; hal.isHal = 1; hal.seat = 1; }
+}
+
+/* one open line on every person in the square. Pushed straight onto the
+   stack array: addStack refuses norhyme foes, and the refusal is the
+   point everywhere else in this act. */
+function a3Mark() {
+    RT.holdStacks = 1;
+    a3Folk().forEach(function (f) { f.stacks.push({ fam: 'ill', t: 999, max: 999, born: RT.t, aged: 1 }); });
+}
+
+function a3Say(t, cls) { say(t, cls || 'dim'); }
+
+/* a cue is three lines that land on their own and a fourth that holds
+   with a hole in it. */
+function a3Cue(lines, blank, then) {
+    RT.story.holding = 0;
+    lines.forEach(function (ln, i) { beat(i * 1.7, function () { bigLine(ln, '', '#d8d2e0', 2.6); }); });
+    beat(lines.length * 1.7, function () {
+        unpin();
+        bigLine(blank, '', '#e8e2ee', 999, 1);
+        RT.story.holding = 1;
+        RT.story.sawCall = 0;
+        RT.story.waitT = 0;
+        RT.story.lastT = null;
+        RT.story.callMark = RT.nCalls;
+        if (then) then();
+    });
+}
+
+function a3Start() {
+    if (S.a3.ending) { a3After(); return; }
+    RT.story = { cue: 0, holding: 0, tries: 0, waitT: 0, done: 0, sawCall: 0 };
+    RT.px = 8.6; RT.py = 5.4;
+    bigLine('the ninth night', 'THE FOUR HUNDREDTH', '#c9a94a', 3.2);
+    beat(3.4, function () { a3Say('Every sill in the square has a lamp on it. They light them before the play, not after, so the man has something to come back to.'); });
+    beat(6.0, function () { a3Crowd(); sfx('ui'); });
+    beat(7.4, function () {
+        a3Mark();
+        bigLine('one open line on every person in the square', '', '#6fd4ff', 3.4);
+    });
+    beat(11.0, function () { a3Say('None of them put it there. It was on them before they could walk.'); });
+    beat(14.0, function () { a3Say('Nothing has ever answered it.', 'big'); });
+    beat(17.5, function () { say('<b>Bern:</b> Emberwright. You are on.', 'big'); });
+    beat(20.0, function () { a3CueOne(); a3Watch(); });
+}
+
+function a3CueOne() {
+    RT.story.cue = 1;
+    a3Cue(['He stood up in the empty square,', 'he spoke and we all heard.', 'He asked us for a single coal,'], 'and ______');
+}
+function a3CueTwo() {
+    RT.story.cue = 2;
+    a3Cue(['He walked out past the mill, the well,', 'he walked out past the mark,', 'and he held the last coal in the town,'], 'and he ______', function () {
+        beat(2.0, function () {
+            a3Say('At the back of the square, outside the lamps, there is a man carrying the same open line as everybody else.');
+        });
+        beat(5.2, function () { a3Say('He has been standing there the whole time.'); });
+    });
+}
+function a3CueLast() {
+    RT.story.cue = 3;
+    a3Cue(['So light your lamps on the ninth night', 'and set one on the sill,', 'for the man who walked out past the fence,'], 'and ______', function () {
+        beat(1.6, function () { a3Say('The same hole as the third stanza. They patched two stanzas with one cheap line.'); });
+    });
+}
+
+/* the dead call: the word lands on somebody and builds nothing, because
+   folk carry norhyme. addStack already owns that path. */
+function a3DeadCall() {
+    RT.story.holding = 0;
+    unpin();
+    var lie = RT.story.cue === 2 ? 'and he carried it out of sight.' : 'and he went alone.';
+    bigLine(lie, '', '#8a8090', 2.8);
+    beat(1.2, function () { a3Say('They say it back, a half beat behind you.'); });
+}
+
+function a3Watch() {
+    if (!RT || RT.place !== 'a3sq' || RT.story.done) return;
+    var st = RT.story;
+    // every frame, not every tenth of a second: a Call fired into the front
+    // row lives about five frames before it lands, and a 10Hz poll misses it
+    if (st.holding) {
+        if (RT.nCalls > st.callMark) st.sawCall = 1;
+        if (st.cue < 3) {
+            if (st.sawCall) {
+                st.sawCall = 0; st.callMark = RT.nCalls;
+                a3DeadCall();
+                beat(4.0, st.cue === 1 ? a3CueTwo : a3CueLast);
+            }
+        } else {
+            if (st.sawCall) { st.sawCall = 0; a3End('written'); }
+            else if (a3Open() === 0) { a3Answered(); }
+            else {
+                // the clock only runs once you could afford to speak, so
+                // being winded can never pick the ending for you
+                // dt-correct, so the wait is the same at 60Hz and 144Hz, and
+                // the clock only runs once you could afford to speak
+                var el = RT.t - (st.lastT == null ? RT.t : st.lastT);
+                st.lastT = RT.t;
+                if (RT.breath >= T('answerCost')) st.waitT += el;
+                if (st.waitT > 4.5 && !st.n1) { st.n1 = 1; say('<b>Bern:</b> <i>(from the wings)</i> and ______', 'dim'); }
+                if (st.waitT > 9.0 && !st.n2) { st.n2 = 1; say('<b>Bern:</b> Say the line, lad.', 'dim'); }
+                if (st.waitT > 14.0) { a3End('silence'); return; }
+            }
+        }
+    }
+    beat(0, a3Watch);
+}
+
+/* every stack in the square went to zero. Only doAnswer can do that.
+   answerFam() has not changed since the click, so it tells closed from
+   slant without hooking anything. */
+function a3Answered() {
+    var st = RT.story;
+    if (answerFam() === 'ill') { a3End('true'); return; }
+    st.holding = 0; st.tries++;
+    slam(S.answer.toUpperCase(), '#6a5f72', 'slant');
+    beat(0.9, function () {
+        a3Mark();
+        st.holding = 1; st.waitT = 0; st.sawCall = 0; st.callMark = RT.nCalls; st.lastT = null;
+        if (st.tries === 1) say('<b>Bern:</b> <i>(from the wings)</i> Wrong sound. It has to be the sound of the line before it.', 'dim');
+        else if (st.tries === 2) say('<b>Bern:</b> Sill. Still. <i>Will.</i>', 'dim');
+        else {
+            S.answer = 'will'; sSave(); updateHud(0);
+            say('You slot it without deciding to.', 'dim');
+        }
+    });
+}
+
+
+
+/* Hal is the only one still sitting. Bern's first line in the game is
+   "There he is. The new Emberwright." This is that line with the
+   pronoun corrected and the title given back. */
+function a3Hal() {
+    var hal = RT.foes.filter(function (f) { return f.isHal && !f.dead; })[0];
+    beat(1.6, function () { a3Say('Everybody in the square is standing except one man at the back, outside the lamps.'); });
+    beat(5.0, function () {
+        if (hal) { hal.seat = 0; hal.walk = 1; }
+        a3Say('Then he stands, and he is the last one, and he comes up the square to the front of the stage. It takes him a while.');
+    });
+    beat(9.5, function () { a3Say('Four letters come out. The air does not take them.'); });
+    beat(12.5, function () { bigLine('Jill.', '', '#6fd4ff', 3.4); });
+    beat(16.0, function () { bigLine('There she is.', '', '#c9a94a', 3.6); });
+    beat(20.0, function () { a3Say('You are still wearing the crown.'); });
+    beat(23.5, function () {
+        a3Credits(['THE EMBERWRIGHT ....... JILL', 'THE MAN AT THE FENCE ....... HAL']);
+    });
+}
+
+/* ─────────────── the three endings ─────────────── */
+function a3End(which) {
+    var st = RT.story;
+    if (st.done) return;
+    st.done = 1; st.holding = 0;
+    unpin();
+    S.a3.ending = which; sSave();
+    ach(which === 'true' ? 'answered' : which);
+    if (which === 'written') a3Written();
+    else if (which === 'silence') a3Silence();
+    else a3True();
+}
+
+/* the line the town wrote, delivered on time, into people who have
+   never heard it any other way. Bern means every word of it. */
+function a3Written() {
+    bigLine('and he went alone.', '', '#8a8090', 3);
+    beat(2.6, function () { a3Say('Four hundred people say it back. They have been waiting all year to say it back.'); });
+    beat(5.6, function () { say('<b>Bern:</b> Word perfect, lad.', 'good'); });
+    beat(9.0, function () { a3Say('They do it again next year.'); });
+    beat(12.0, function () { a3Credits(['THE EMBERWRIGHT ....... HAL']); });
+}
+
+/* you did not tell the lie and you did not perform her either */
+function a3Silence() {
+    a3Say('You do not say it.');
+    beat(2.4, function () { a3Say('Four hundred people watch a man in a crown not say a line. It goes on longer than you would think.'); });
+    beat(6.4, function () { a3Say('Somebody at the back starts it for you, and stops.'); });
+    beat(10.0, function () {
+        // the crown comes off, and it is a real build change: one fewer
+        // stack and 1.5s less on every one of them for the rest of the save
+        delete S.charms.crown;
+        S.worn = (S.worn || []).filter(function (c) { return c !== 'crown'; });
+        sSave(); updateHud(0);
+        a3Say('You put the crown on the boards and go down the steps at the side.');
+    });
+    beat(13.6, function () { bigLine('You did not say his line.', '', '#8a8090', 3); });
+    beat(16.4, function () { bigLine('You did not say hers either.', '', '#8a8090', 3.2); });
+    beat(20.0, function () { a3Credits(['THE EMBERWRIGHT .......................']); });
+}
+
+/* four hundred years of open couplet, closed at once */
+function a3True() {
+    beat(0.0, function () {
+        bigLine('but for the girl who never will.', '', '#6fd4ff', 3.4);
+        RT.shake = shake(10);
+    });
+    beat(2.0, function () { a3Say('The square stops. Bern stops. The curtain stops halfway down.'); });
+    beat(5.2, function () { a3Say('That is the end of the song. It has been the end of the song the whole time.'); });
+    beat(8.6, function () {
+        S.verse = 1; sSave();                 // the only non-dev writer in the file
+        updateHud(0);
+        hudNudge('verse');
+        say('<i>R</i>', 'big');
+    });
+}
+
+/* ─────────────── the cast list ─────────────── */
+function a3Credits(extra) {
+    RT.story.done = 2;
+    RT.holdStacks = 0;
+    beat(0.0, function () { bigLine('THE NINTH NIGHT', '', '#c9a94a', 3.4); });
+    beat(2.4, function () { bigLine('the four hundredth performance', '', '#8a8090', 3.2); });
+    (extra || []).forEach(function (ln, i) {
+        beat(5.0 + i * 3.0, function () { bigLine(ln, '', '#d8d2e0', 3.4); });
+    });
+    beat(5.0 + (extra || []).length * 3.0 + 3.4, function () { a3Home(); });
+}
+
+/* back into the square by daylight. The save is not a dead end. */
+function a3Home() {
+    S.place = 'square'; sSave();
+    gotoPlace('square', false);
+    beat(1.2, function () {
+        if (S.a3.ending === 'true') a3Say('They are taking the stage down. Nobody is talking much.');
+        else if (S.a3.ending === 'silence') a3Say('They are taking the stage down. Bern has your crown and does not mention it.');
+        else a3Say('They are taking the stage down. Somebody says it was the best one in years.');
+    });
+}
+
+/* the world after. Called on arrival, idempotent, so no other job's
+   code has to be reopened to mutate a place. */
+function a3After() {
+    if (!S.a3.ending) return;
+    if (S.a3.ending === 'true') {
+        PLACES.mark.npcs = [];                       // the fence is empty
+        // found by name, not by index: job 3 owns these arrays and may reorder them
+        reLook('mark', 'The marker stone', 'Two names cut into it. The upper one is HAL.\n\nThe lower one is JILL.\n\nIt is not freshly cut. It has been there the whole time.');
+        reLook('square', 'A lamp on a sill', 'Two lamps on the sill.\n\nThere are two on every sill in the square, and nobody here could tell you when that started.');
+    }
+}
+function reLook(id, name, d) {
+    var ls = (PLACES[id] || {}).looks || [];
+    for (var i = 0; i < ls.length; i++) if (ls[i].n === name) { ls[i].d = d; return; }
+}
 
 /* ─────────────── the realisation ───────────────
    Fragment 1 is NOT a boss drop. You get it when you have heard
@@ -4894,7 +5310,7 @@ function drawPrompt(cx) {
 /* the stage is a memory and the arena is furniture: neither is
    somewhere you can walk, so neither belongs on a map of where
    you have been. */
-var MAP_HIDE = { arena: 1, stage: 1 };
+var MAP_HIDE = { arena: 1, stage: 1, a3sq: 1 };
 /* The map used to be a hand maintained table, and any place you forgot
    to add vanished from it silently, along with every road leading to
    it. It is derived from the exit graph now: which wall an exit sits on
@@ -5025,6 +5441,15 @@ function devDemo() {
         RT.root.dispatchEvent(new KeyboardEvent('keyup', { key: k, bubbles: true }));
         draw();
     });
+    if (q.na3) {                       // na3=crowd|cue|verse|written|true|silence
+        RT.beats = [];
+        RT.story = { cue: 0, holding: 0, tries: 0, waitT: 0, done: 0, sawCall: 0 };
+        a3Crowd(); a3Mark();
+        if (q.na3 === 'cue') { a3CueLast(); }
+        else if (q.na3 === 'verse') { S.verse = 1; RT.story.cue = 3; a3End('true'); for (var v = 0; v < 400; v++) step(1 / 60); doVerse(); }
+        else if (q.na3 !== 'crowd') { RT.story.cue = 3; a3End(q.na3); }
+        for (var b3 = 0; b3 < (+q.na3fr || 90); b3++) { step(1 / 60); draw(1 / 60); }
+    }
     if (q.nmap) RT.mapOpen = true;
     // the shop is gated on standing at the chandler; a capture has no legs
     if (q.npanel === 'shop') RT.items.atShop = true;
