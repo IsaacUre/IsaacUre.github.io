@@ -229,6 +229,20 @@ function run() {
         ok('240 frames of key-mashing with the whole roster in flight', errs.length === 0, errs.slice(0, 3).join(' | ') || 'no errors');
     })();
 
+    /* ── 13. the story path: dialogue, three fragments, the boss ── */
+    (function () {
+        var rt = clean();
+        N.place('square');
+        N.talk('bern');
+        var dlg = !!N.state().dialog;
+        frames[0].document.dispatchEvent(new frames[0].KeyboardEvent('keydown', { key: 'e', bubbles: true }));
+        N.tick(6, DT);
+        for (var i = 1; i <= 3; i++) N.frag(i);
+        var frags = [1, 2, 3].filter(function (n) { return S.frags[n]; }).length;
+        var stanzas = [1, 2, 3].filter(function (n) { return S.stanzas[n]; }).length;
+        ok('dialogue opens and all three fragments land', dlg && frags === 3 && stanzas === 3,
+            'dialog=' + dlg + ' fragments=' + frags + '/3 stanzas=' + stanzas + '/3');
+    })();
     log('');
     log('RESULT  ' + PASS + ' passed, ' + FAIL + ' failed');
     document.title = FAIL ? 'CHECKS FAIL ' + FAIL : 'CHECKS PASS ' + PASS;
