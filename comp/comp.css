@@ -3070,3 +3070,15 @@ button.nn-drow:hover { background: rgba(30,60,48,.5); }
    one too and has been dead since it was written. */
 .nn-echo.deny { animation: nnDeny .3s; }
 .nn-verse.deny { animation: nnDeny .3s; }
+
+/* NINTH NIGHT: what you carry (job 5) */
+.nn-bag-coin { margin-left: auto; margin-right: 8px; font-size: .62rem; color: #ffe66e; letter-spacing: .08em; }
+.nn-bagbtns { display: flex; flex-direction: column; gap: 4px; flex: 0 0 auto; }
+.nn-bag-x { font-style: normal; color: #c9a94a; font-size: .6rem; }
+.nn-bag-note { display: block; font-style: normal; font-size: .54rem; color: #c9a94a; margin-top: 3px; }
+.nn-buy.got { opacity: .72; }
+.nn-have { font-size: .56rem; font-style: normal; color: #6a6278; letter-spacing: .1em; }
+.nn-writ { font-style: normal; font-size: .58rem; letter-spacing: .12em; }
+@media (max-width: 720px) {
+  .nn-bagbtns { flex-direction: row; }
+}
