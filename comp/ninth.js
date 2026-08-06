@@ -2588,6 +2588,10 @@ function drawPrompt(cx) {
 
 /* ─────────────── the map ───────────────
    Places you have been, and what joins them. */
+/* the stage is a memory and the arena is furniture: neither is
+   somewhere you can walk, so neither belongs on a map of where
+   you have been. */
+var MAP_HIDE = { arena: 1, stage: 1 };
 var MAP_POS = { stage: [1, 4], square: [2, 3], lane: [2, 2], mill: [2, 1], loft: [2, 0], village: [3, 2], mark: [4, 2], arena: [0, 0] };
 function drawMap(cx) {
     if (!RT.mapOpen) return;
@@ -2599,9 +2603,9 @@ function drawMap(cx) {
     // links first
     cx.lineWidth = 2;
     PLACE_IDS.forEach(function (id) {
-        if (!MAP_POS[id] || !S.seen['been_' + id] || id === 'arena') return;
+        if (!MAP_POS[id] || !S.seen['been_' + id] || MAP_HIDE[id]) return;
         (PLACES[id].exits || []).forEach(function (e) {
-            if (!MAP_POS[e.to]) return;
+            if (!MAP_POS[e.to] || MAP_HIDE[e.to]) return;
             // a road you have walked is solid; one you have only heard of is dashed
             var known = S.seen['been_' + e.to];
             cx.strokeStyle = known ? 'rgba(140,130,160,.4)' : 'rgba(120,110,145,.18)';
@@ -2614,7 +2618,7 @@ function drawMap(cx) {
     });
     cx.setLineDash([]);
     PLACE_IDS.forEach(function (id) {
-        var m = MAP_POS[id]; if (!m || id === 'arena') return;
+        var m = MAP_POS[id]; if (!m || MAP_HIDE[id]) return;
         var seen = S.seen['been_' + id], here = RT.place === id;
         var x = ox + m[0] * cell, y = oy + m[1] * cell;
         cx.fillStyle = here ? '#c9a94a' : seen ? '#3d3350' : '#1a1620';
