@@ -453,6 +453,23 @@ function render() {
     '</div>';
 }
 
+/* Start over, properly. Wiping the save is only half of it: the save
+   holds the story, and the runtime holds the run. `gotoPlace` clears
+   foes and breath and the wave, but Echo and the cheat switches are per
+   session and it never touches them, so the old button dropped you into
+   the prologue with a full Verse meter and, if you had been testing with
+   it, still invincible. */
+function resetGame() {
+    try { localStorage.removeItem('comp_ninth'); } catch (e) {}
+    S = null; sLoad();
+    RT.echo = 0; RT.dash = 0; RT.pressure = 0;
+    RT.god = 0; RT.infBreath = 0; RT.holdStacks = 0; RT.oneShot = 0;
+    RT.panel = null; RT.mapOpen = false; RT.prompt = null;
+    RT.root.querySelectorAll('.nn-panel').forEach(function (p) { p.hidden = true; });
+    gotoPlace('stage', true);
+    refreshStanzaKeys();          // the options went back to their defaults with everything else
+    updateHud(0);
+}
 /* ─────────────── dev menu data ───────────────
    Adding a control later is ONE line in here. That is the point:
    this thing is meant to grow with the game.
@@ -461,6 +478,7 @@ function render() {
      num    — live number with -/+ and a readout (combat feel)
      pick   — choose one of a list
      note   — a line of text */
+var wipeArmed = 0;              // one click arms it, the next one means it
 var DEV = [
   { tab: 'WORLD', rows: function () {
       var rows = [{ k: 'note', t: 'Walk anywhere. Scripts replay from the top.' }];
@@ -550,7 +568,14 @@ var DEV = [
       rows.push({ k: 'tgl', t: 'Verse (R) unlocked', get: function () { return !!S.verse; }, set: function (v) { S.verse = v ? 1 : 0; sSave(); } });
       rows.push({ k: 'btn', t: 'Grant every charm', on: function () { CHARM_IDS.forEach(function (c) { S.charms[c] = 1; }); sSave(); } });
       rows.push({ k: 'num', t: 'Coin', get: function () { return S.coin; }, set: function (v) { S.coin = Math.max(0, Math.round(v)); }, step: 25 });
-      rows.push({ k: 'btn', t: 'Wipe save (start over)', danger: 1, on: function () { try { localStorage.removeItem('comp_ninth'); } catch (e) {} S = null; sLoad(); gotoPlace('stage', true); } });
+      rows.push({ k: 'btn', danger: 1, wipe: 1,
+          t: wipeArmed ? 'Wipe save — click again to confirm' : 'Wipe save (reset everything, start over)',
+          sub: wipeArmed ? 'story, words, charms, coin, achievements and cheats. Any other control backs out.'
+                         : 'back to the prologue with nothing, as if you had never opened it',
+          on: function () {
+              if (!wipeArmed) { wipeArmed = 1; return; }   // it is one click from losing a real playthrough
+              wipeArmed = 0; resetGame();
+          } });
       return rows;
   } },
   { tab: 'CHEAT', rows: function () { return [
@@ -2477,6 +2502,7 @@ function fillShop() {
    The ask: test any aspect, jump anywhere, and grow with the
    game. Every control is one line in the DEV table above. */
 function toggleDev() {
+    wipeArmed = 0;                   // an armed wipe does not survive closing the menu
     RT.devOpen = !RT.devOpen;
     RT.root.querySelector('.nn-dev').hidden = !RT.devOpen;
     if (RT.devOpen) fillDev();
@@ -2503,13 +2529,14 @@ function fillDev() {
         return '';
     }).join('');
     tabs.querySelectorAll('[data-dtab]').forEach(function (b) {
-        b.addEventListener('click', function () { RT.devTab = b.getAttribute('data-dtab'); fillDev(); RT.root.focus(); });
+        b.addEventListener('click', function () { wipeArmed = 0; RT.devTab = b.getAttribute('data-dtab'); fillDev(); RT.root.focus(); });
     });
     body.querySelectorAll('[data-di]').forEach(function (b) {
         b.addEventListener('click', function (e) {
             e.stopPropagation();
             var r = rows[+b.getAttribute('data-di')];
             if (!r) return;
+            if (!r.wipe) wipeArmed = 0;             // touching anything else backs out of the confirm
             if (r.k === 'btn') r.on();
             else if (r.k === 'tgl') r.set(!r.get());
             else if (r.k === 'num') r.set(+(r.get() + (r.step || 1) * (+b.getAttribute('data-dd'))).toFixed(4));
@@ -3933,6 +3960,7 @@ function devDemo() {
     if (q.nfrag) for (var i = 1; i <= +q.nfrag; i++) grantFragment(i);
     if (PLACES[id]) gotoPlace(id, true);
     if (q.nat) { var xy = q.nat.split(','); RT.px = +xy[0]; RT.py = +xy[1]; RT.armed = false; unstick(); }
+    if (q.ndevtab) RT.devTab = q.ndevtab.toUpperCase();   // which dev tab nkey=` should land on
     if (q.nfoes) for (var j = 0; j < +q.nfoes; j++) {
         var a = j / +q.nfoes * TAU;
         spawnFoe(j === 0 ? 'thief' : 'mouth', clamp(RT.px + Math.cos(a) * 4, 1, pw() - 1), clamp(RT.py + Math.sin(a) * 4, 1, ph() - 1));
