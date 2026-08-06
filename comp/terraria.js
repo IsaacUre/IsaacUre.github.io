@@ -48,7 +48,7 @@ var T_AIR = 0, T_DIRT = 1, T_GRASS = 2, T_STONE = 3, T_PLANK = 4, T_TRUNK = 5, T
     T_AMETHYST = 27, T_TOPAZ = 28, T_SAPPHIRE = 29, T_EMERALD = 30, T_RUBY = 31, T_DIAMOND = 32,
     T_TORCH = 33, T_BENCH = 34, T_FURNACE = 35, T_ANVIL = 36, T_TABLE = 37, T_CHAIR = 38, T_DOOR = 39,
     T_POT = 40, T_HEARTC = 41, T_MANAC = 42, T_CHEST = 43, T_PLATFORM = 44, T_SAPLING = 45,
-    T_HELLFORGE = 46, T_BOTTLE = 47, T_WOODWALLB = 48;
+    T_HELLFORGE = 46, T_BOTTLE = 47, T_WOODWALLB = 48, T_DOOROPEN = 49;
 
 var GEMS = [T_AMETHYST, T_TOPAZ, T_SAPPHIRE, T_EMERALD, T_RUBY, T_DIAMOND];
 var ORES = [T_COPPER, T_IRON, T_SILVER, T_GOLD, T_DEMONITE, T_METEOR, T_HELLSTONE];
@@ -96,7 +96,7 @@ HARD[T_COPPER] = 4; HARD[T_IRON] = 5; HARD[T_SILVER] = 6; HARD[T_GOLD] = 7; HARD
 GEMS.forEach(function (g) { HARD[g] = 4; });
 HARD[T_TORCH] = 0.4; HARD[T_BENCH] = 2; HARD[T_FURNACE] = 3; HARD[T_ANVIL] = 3; HARD[T_TABLE] = 2; HARD[T_CHAIR] = 1;
 HARD[T_DOOR] = 2; HARD[T_POT] = 0.4; HARD[T_HEARTC] = 4; HARD[T_MANAC] = 4; HARD[T_CHEST] = 2.5;
-HARD[T_PLATFORM] = 1; HARD[T_SAPLING] = 0.3; HARD[T_HELLFORGE] = 4; HARD[T_BOTTLE] = 0.4; HARD[T_WOODWALLB] = 0.6;
+HARD[T_DOOROPEN] = 2; HARD[T_PLATFORM] = 1; HARD[T_SAPLING] = 0.3; HARD[T_HELLFORGE] = 4; HARD[T_BOTTLE] = 0.4; HARD[T_WOODWALLB] = 0.6;
 
 /* ─────────────── walls (background) ─────────────── */
 var WL_NONE = 0, WL_DIRT = 1, WL_STONE = 2, WL_WOOD = 3, WL_ASH = 4, WL_SAND = 5, WL_SNOW = 6, WL_JUNGLE = 7, WL_EBON = 8;
@@ -226,7 +226,7 @@ TILE_ITEM[T_PLANK] = 'wood'; TILE_ITEM[T_SAND] = 'sand'; TILE_ITEM[T_SNOW] = 'sn
 TILE_ITEM[T_MUD] = 'dirt'; TILE_ITEM[T_JGRASS] = 'dirt'; TILE_ITEM[T_CLAY] = 'stone'; TILE_ITEM[T_ASH] = 'ash';
 TILE_ITEM[T_OBSIDIAN] = 'stone'; TILE_ITEM[T_CLOUD] = 'snowb'; TILE_ITEM[T_TORCH] = 'torch'; TILE_ITEM[T_BENCH] = 'bench';
 TILE_ITEM[T_FURNACE] = 'furnace'; TILE_ITEM[T_ANVIL] = 'anvil'; TILE_ITEM[T_TABLE] = 'table'; TILE_ITEM[T_CHAIR] = 'chair';
-TILE_ITEM[T_DOOR] = 'door'; TILE_ITEM[T_PLATFORM] = 'platform'; TILE_ITEM[T_HELLFORGE] = 'hforge'; TILE_ITEM[T_BOTTLE] = 'bottle';
+TILE_ITEM[T_DOOR] = 'door'; TILE_ITEM[T_DOOROPEN] = 'door'; TILE_ITEM[T_PLATFORM] = 'platform'; TILE_ITEM[T_HELLFORGE] = 'hforge'; TILE_ITEM[T_BOTTLE] = 'bottle';
 TILE_ITEM[T_SILT] = 'stone'; TILE_ITEM[T_EBON] = 'stone'; TILE_ITEM[T_CGRASS] = 'dirt';
 
 /* ─────────────── recipes ───────────────
@@ -483,10 +483,13 @@ function genWorld(seed) {
                 }
             }
         });
-    for (var gi = 0; gi < GEMS.length; gi++) {   // gems: single sparkles, deeper = rarer top tiers
-        var cnt = [70, 60, 40, 34, 22, 12][gi];
+    // gems: single sparkles, deeper = rarer top tiers. Counts are ATTEMPTS and only land on stone,
+    // so they must be generous — the gem staves cost 8, and the old numbers left most worlds with
+    // too few diamonds (often zero) to ever craft one.
+    for (var gi = 0; gi < GEMS.length; gi++) {
+        var cnt = [190, 170, 140, 120, 100, 90][gi];
         for (var gg = 0; gg < cnt; gg++) {
-            var gx2 = 3 + Math.floor(R() * (W - 6)), gy2 = 80 + Math.floor(R() * (HELL - 84));
+            var gx2 = 3 + Math.floor(R() * (W - 6)), gy2 = 76 + Math.floor(R() * (HELL - 80));
             if (get(gx2, gy2) === T_STONE) set(gx2, gy2, GEMS[gi]);
         }
     }
@@ -512,6 +515,13 @@ function genWorld(seed) {
         }
     }
     for (c = 0; c < 60; c++) { var hx = 2 + Math.floor(R() * (W - 4)), hy = HELL + 2 + Math.floor(R() * (H - HELL - 4)); if (get(hx, hy) === T_ASH) set(hx, hy, T_HELLSTONE); }
+    // hellforges: the ONLY source of the 'hellforge' station, and demonite/hellstone bars (and so
+    // the Nightmare Pickaxe and Light's Bane) are gated behind it — the underworld must supply them
+    var forges = 0, fguard = 0;
+    while (forges < 7 && fguard++ < 3000) {
+        var fx = 6 + Math.floor(R() * (W - 12)), fy = HELL + 2 + Math.floor(R() * (H - HELL - 6));
+        if (get(fx, fy) === T_AIR && SOLID[get(fx, fy + 1)] && lq[fy * W + fx] === 0) { set(fx, fy, T_HELLFORGE); forges++; }
+    }
 
     // 7. ocean water on both shores
     [oceanW, W - oceanW].forEach(function (edgeX, side) {
@@ -580,15 +590,48 @@ function genWorld(seed) {
         x = 10 + Math.floor(R() * (W - 20)); y = 84 + Math.floor(R() * (HELL - 92));
         var floor = get(x, y + 3);
         if (!SOLID[floor]) continue;
-        var clear = true;
-        for (oy = 0; oy < 3; oy++) for (ox = 0; ox < 6; ox++) if (SOLID[get(x + ox, y + oy)]) { clear = false; }
+        // never carve over an existing chest — hollowing a cabin on top of one used to delete the
+        // tile while its record survived, silently costing the world a promised treasure
+        var overlaps = false;
+        for (oy = -1; oy <= 3 && !overlaps; oy++) for (ox = -1; ox <= 6; ox++) if (get(x + ox, y + oy) === T_CHEST) { overlaps = true; break; }
+        if (overlaps) continue;
         // hollow a room
         for (oy = -1; oy <= 3; oy++) for (ox = -1; ox <= 6; ox++) { if (oy === 3 || oy === -1 || ox === -1 || ox === 6) { if (get(x + ox, y + oy) === T_AIR) set(x + ox, y + oy, T_PLANK); } else set(x + ox, y + oy, T_AIR); wall[(y + oy) * W + x + ox] = WL_WOOD; }
         set(x, y + 2, T_CHEST); chests.push({ x: x, y: y + 2, biome: 'cabin', loot: null });
         set(x + 5, y + 1, T_TORCH); placed++;
     }
 
+    // safety net: a chest record must always name a real chest tile (sky-island and cabin
+    // placement both write into shared terrain, so never trust that blindly)
+    chests = chests.filter(function (c) { return w[c.y * W + c.x] === T_CHEST; });
+
     return { w: w, wall: wall, lq: lq, lk: lk, surf: surf, chests: chests };
+}
+
+/* a spawn you can actually stand in: solid footing with a clear body-height column above it, dry
+   and tree-free. Sky islands and trees generate over the world centre, so the naive
+   "3 tiles above surf[middle]" could bury the player in dirt — and respawn returns there forever. */
+function findSpawn(w, lq, surf) {
+    var mid = Math.floor(W / 2);
+    for (var d = 0; d < 90; d++) {
+        for (var s = 0; s < 2; s++) {
+            var x = mid + (s ? -d : d);
+            if (x < 6 || x > W - 7) continue;
+            var from = Math.max(3, Math.round(surf[x]) - 10);
+            for (var y = from; y < HELL - 2; y++) {
+                if (!SOLID[w[y * W + x]]) continue;                      // find the first floor
+                var head = y - 3, clear = true;
+                for (var k = 1; k <= 3; k++) {
+                    var t = w[(y - k) * W + x];
+                    if (SOLID[t] || t === T_TRUNK || t === T_LEAF || t === T_CHEST) clear = false;
+                    if (lq[(y - k) * W + x] > 20) clear = false;          // don't spawn in water
+                }
+                if (clear && head > 2) return { x: x, y: head };
+                break;                                                    // this column is taken; try the next
+            }
+        }
+    }
+    return { x: mid, y: Math.max(3, Math.round(surf[mid]) - 3) };
 }
 
 /* chest loot tables, rolled lazily on first open (so a fresh look is deterministic per chest index) */
@@ -710,8 +753,8 @@ function init(el) {
         var gen = genWorld(S.seed);
         w = gen.w; wa = gen.wall; lqp = { lq: gen.lq, lk: gen.lk }; RT.surf = gen.surf; RT.chests = gen.chests;
         S.chests = gen.chests.map(function (c) { return { x: c.x, y: c.y, biome: c.biome, loot: null }; });
-        var sx = Math.floor(W / 2);
-        S.px = sx * TS; S.py = (Math.round(gen.surf[sx]) - 3) * TS;
+        var sp = findSpawn(w, gen.lq, gen.surf);
+        S.px = sp.x * TS; S.py = sp.y * TS;
         S.spawnx = S.px; S.spawny = S.py;
         S.inv = startInv();
     }
@@ -767,6 +810,7 @@ function worldName() { return 'World of Ure (' + (S.seed % 10000) + ')'; }
 function actionFor(key) { for (var a in BINDS) if (BINDS[a] === key) return a; return null; }
 function wireInput(root) {
     root.addEventListener('keydown', function (e) {
+        if (!RT) return;
         var key = e.key.length === 1 ? e.key.toLowerCase() : e.key.toLowerCase();
         if (RT.rebinding) { finishRebind(key === 'escape' ? null : e.key === ' ' ? ' ' : key); e.preventDefault(); e.stopPropagation(); return; }
         // Escape closes overlays; only a fully-unconsumed Escape reaches the desktop
@@ -792,14 +836,16 @@ function wireInput(root) {
         if (!isNaN(n) && e.key.length === 1) { S.sel = (n + 9) % 10; paintHotbar(); }
         e.stopPropagation();
     });
-    root.addEventListener('keyup', function (e) { RT.keys[(e.key.length === 1 ? e.key.toLowerCase() : e.key.toLowerCase())] = false; if (actionFor(e.key.toLowerCase()) === 'grapple') releaseGrapple(); e.stopPropagation(); });
+    root.addEventListener('keyup', function (e) { if (!RT) return; RT.keys[(e.key.length === 1 ? e.key.toLowerCase() : e.key.toLowerCase())] = false; if (actionFor(e.key.toLowerCase()) === 'grapple') releaseGrapple(); e.stopPropagation(); });
     root.addEventListener('blur', function () { RT.keys = {}; RT.mouse.l = RT.mouse.r = false; });
     RT.cv.addEventListener('pointermove', function (e) {
+        if (!RT) return;
         var r = RT.cv.getBoundingClientRect();
         RT.mouse.x = (e.clientX - r.left) / (r.width / RT.cv.width);
         RT.mouse.y = (e.clientY - r.top) / (r.height / RT.cv.height);
     });
     RT.cv.addEventListener('pointerdown', function (e) {
+        if (!RT) return;
         root.focus();
         if (e.button === 0) { RT.mouse.l = true; RT.mouse.lEdge = true; }
         if (e.button === 2) { RT.mouse.r = true; RT.mouse.rEdge = true; }
@@ -807,7 +853,7 @@ function wireInput(root) {
     window.addEventListener('pointerup', RT.mup = function (e) { if (e.button === 0) RT.mouse.l = false; if (e.button === 2) RT.mouse.r = false; });
     RT.cv.addEventListener('contextmenu', function (e) { e.preventDefault(); });
     RT.cv.addEventListener('wheel', function (e) { e.preventDefault(); S.sel = (S.sel + (e.deltaY > 0 ? 1 : 9)) % 10; paintHotbar(); }, { passive: false });
-    root.addEventListener('click', onPanelClick);
+    root.addEventListener('click', function (e) { if (RT) onPanelClick(e); });
     root.addEventListener('contextmenu', function (e) { var slot = e.target.closest('.tr-slot[data-slot]'); if (slot) { e.preventDefault(); onSlotRight(slot.getAttribute('data-slot')); } });
     root.querySelector('.tr-map').addEventListener('wheel', function (e) { e.preventDefault(); RT.mapZoom = clamp((RT.mapZoom || 2) + (e.deltaY < 0 ? 0.5 : -0.5), 1, 6); paintMap(); }, { passive: false });
     root.querySelector('.tr-mini').addEventListener('click', function () { toggleMap(true); });
@@ -883,6 +929,7 @@ function step() {
     stepParticles();
     for (i = RT.dmgs.length - 1; i >= 0; i--) { var g = RT.dmgs[i]; g.y -= 0.5; g.t--; if (g.t <= 0) RT.dmgs.splice(i, 1); }
     markExplored();
+    RT.mouse.lEdge = false; RT.mouse.rEdge = false;   // edges live for exactly one step
     RT.anim = (RT.anim || 0) + 1;
 }
 function uiOpen() { return RT.panel || RT.mapOpen || RT.shopOpen || RT.setOpen; }
@@ -890,7 +937,12 @@ function tileAt(px, py) { var x = Math.floor(px / TS), y = Math.floor(py / TS); 
 function liqAt(px, py) { var x = Math.floor(px / TS), y = Math.floor(py / TS); if (x < 0 || x >= W || y < 0 || y >= H) return 0; return RT.lq[y * W + x]; }
 function liqKindAt(px, py) { var x = Math.floor(px / TS), y = Math.floor(py / TS); if (x < 0 || x >= W || y < 0 || y >= H) return 0; return RT.lk[y * W + x]; }
 function inWater() { return liqAt(S.px + 5, S.py + 12) > 30 && liqKindAt(S.px + 5, S.py + 12) === LQ_WATER; }
-function inLava() { return liqAt(S.px + 5, S.py + 12) > 20 && liqKindAt(S.px + 5, S.py + 12) === LQ_LAVA; }
+// lava burns on CONTACT — sample the feet as well as the torso, or wading through a shallow
+// pool (the common case: lava spreads thin) would be completely harmless
+function inLava() {
+    return (liqAt(S.px + 5, S.py + 12) > 20 && liqKindAt(S.px + 5, S.py + 12) === LQ_LAVA) ||
+           (liqAt(S.px + 5, S.py + 19) > 10 && liqKindAt(S.px + 5, S.py + 19) === LQ_LAVA);
+}
 function headUnderWater() { return liqAt(S.px + 5, S.py + 2) > 40 && liqKindAt(S.px + 5, S.py + 2) === LQ_WATER; }
 
 /* ─────────────── player physics ─────────────── */
@@ -940,9 +992,10 @@ function playerPhysics() {
     // fall damage
     if (RT.ground && RT.fallY != null) {
         var fell = (S.py - RT.fallY) / TS;
-        if (fell > 25 && !accHas('nofall') && !water && RT.iframe <= 0) { hurt(Math.floor((fell - 25) * 5), 0, true); }
+        if (fell > 25 && !accHas('nofall') && !water) { hurt(Math.floor((fell - 25) * 5), 0, true); }   // iframes must not void a fall
         RT.fallY = null;
     }
+    if (RT.vy < 0) RT.fallY = null;                                   // rising: forget the old anchor
     if (!RT.ground && RT.vy > 0 && RT.fallY == null) RT.fallY = S.py;
     if (RT.vy <= 0 || RT.ground) { if (RT.ground) RT.fallY = null; }
 
@@ -969,7 +1022,16 @@ function moveBody() {
         var platTop = platformCross(prevPy);   // one-way platform: land ON the surface (snap up), even at terminal velocity
         if (platTop != null) { S.py = platTop - 20; RT.ground = true; RT.landedVy = RT.vy; RT.vy = 0; }
     }
+    // the snap above can leave a sub-pixel gap, so a resting player would flicker in and out of
+    // "grounded" every other frame — and a tapped jump landing on an off frame was silently dropped.
+    // Standing still IS standing: while not rising, ground truly means "solid within a pixel of the feet".
+    if (!RT.ground && RT.vy >= 0 && footing()) { RT.ground = true; RT.vy = 0; }
     S.px = clamp(S.px, TS, (W - 2) * TS); S.py = clamp(S.py, TS, (H - 3) * TS);
+}
+// solid (or a door) within ~1px under the feet — the tolerance that makes standing stable
+function footing() {
+    for (var ox = 1; ox <= 9; ox += 4) { var t = tileAt(S.px + ox, S.py + 20 + 1); if (SOLID[t] || t === T_DOOR) return true; }
+    return false;
 }
 // returns the pixel-Y of the platform surface the feet crossed this frame while descending, else null
 function platformCross(prevPy) {
@@ -983,6 +1045,10 @@ function platformCross(prevPy) {
         }
     }
     return null;
+}
+function tileRectHitsPlayer(tx, ty) {
+    var px0 = tx * TS, py0 = ty * TS;
+    return px0 < S.px + 10 && px0 + TS > S.px && py0 < S.py + 20 && py0 + TS > S.py;
 }
 function hitSolid() {
     for (var ox = 1; ox <= 9; ox += 4) for (var oy = 0; oy <= 20; oy += 5) { var t = tileAt(S.px + ox, S.py + oy); if (SOLID[t] || t === T_DOOR) return true; }
@@ -1014,7 +1080,11 @@ function tickLiquids() {
         if (ro && lq[ri] < m - 1) { if (lq[ri] === 0) lk[ri] = kind; var t2 = Math.floor((m - lq[ri]) / (kind === LQ_LAVA ? 4 : 2)); if (t2 > 0) { lq[ri] += t2; lq[i] -= t2; } }
         if (lq[i] <= 1 && !SOLID[w[(y + 1) * W + x]]) { /* trace amounts evaporate to avoid endless churn */ }
         // water+lava meet → obsidian
-        if (kind === LQ_LAVA && (lk[li] === LQ_WATER && lq[li] > 0 || lk[ri] === LQ_WATER && lq[ri] > 0 || lk[di] === LQ_WATER && lq[di] > 0)) { w[i] = T_OBSIDIAN; lq[i] = 0; puff(x * TS + 4, y * TS + 4); }
+        var ui = (y - 1) * W + x;
+        if (kind === LQ_LAVA && ((lk[li] === LQ_WATER && lq[li] > 0) || (lk[ri] === LQ_WATER && lq[ri] > 0) ||
+                                 (lk[di] === LQ_WATER && lq[di] > 0) || (lk[ui] === LQ_WATER && lq[ui] > 0))) {
+            w[i] = T_OBSIDIAN; lq[i] = 0; puff(x * TS + 4, y * TS + 4);
+        }
     }
 }
 
@@ -1039,7 +1109,14 @@ function useHeld(edgeOnly) {
     if (RT.w[ty * W + tx] === T_CHEST) { if (RT.mouse.lEdge) { RT.mouse.lEdge = false; openChest(tx, ty); } return; }
     if (def && def.kind === 'hammer') { if (RT.wall[ty * W + tx]) { hammerWall(tx, ty); return; } if (RT.w[ty * W + tx] === T_PLATFORM) { /* fall through to break */ } }
     var t = RT.w[ty * W + tx];
-    if (t === T_AIR) { if (def && def.dmg) swing(def.dmg, 3); return; }
+    // swinging at air: only TOOLS connect (and on a cooldown). Ammo and blocks carry a dmg
+    // field for their own systems — letting them melee gave arrows unlimited cooldown-free DPS.
+    if (t === T_AIR) {
+        if (def && (def.kind === 'pick' || def.kind === 'axe' || def.kind === 'hammer') && RT.useT <= 0) {
+            swing(Math.max(3, Math.round((def.pow || 1) * 4)), 2); RT.useT = 20;
+        }
+        return;
+    }
     var isTree = (t === T_TRUNK || t === T_LEAF);
     var isSoft = (t === T_POT || t === T_TORCH || t === T_HEARTC || t === T_MANAC || t === T_SAPLING || t === T_BOTTLE || STATION[t] || t === T_DOOR || t === T_PLATFORM);
     var pow = 0.5;
@@ -1092,12 +1169,12 @@ function potLoot(tx, ty) {
     else if (r < 0.55) drop(tx, ty, 'torch', 3 + (Math.random() * 4 | 0));
     else if (r < 0.72) drop(tx, ty, 'gel', 2 + (Math.random() * 3 | 0));
     else if (r < 0.86) drop(tx, ty, deep ? 'lheal' : 'lheal', 1 + (Math.random() * 2 | 0));
-    else drop(tx, ty, deep ? 'lmana' : 'warrow', deep ? 1 : 5 + (Math.random() * 6 | 0));
+    else drop(tx, ty, deep ? (Math.random() < 0.4 ? 'heal' : 'lmana') : 'warrow', deep ? 1 : 5 + (Math.random() * 6 | 0));
 }
 function openChest(tx, ty) {
     var chest = null; for (var i = 0; i < RT.chests.length; i++) { var c = RT.chests[i]; if (c.x === tx && c.y === ty) { chest = c; chest._i = i; break; } }
     if (!chest) { RT.w[ty * W + tx] = T_AIR; drop(tx, ty, 'wood', 8); return; }   // stray chest tile
-    if (!chest.loot) chest.loot = rollChestLoot(chest, chest._i);
+    if (!chest.loot) chest.loot = rollChestLoot(chest, chest.x * 7919 + chest.y);   // stable per location
     var gotAll = true;
     chest.loot = chest.loot.filter(function (it) {
         if (it.id === 'coin') { S.coins += it.c; return false; }
@@ -1112,10 +1189,27 @@ function openChest(tx, ty) {
     if (S.coins >= 10000) unlock('loaded');
 }
 function rightUse() {
-    // right-click: place block/platform/wall, or place liquid-safe items; else use tile (chest/door)
+    // right-click: talk to an NPC, else place block/platform/wall
     if (uiOpen() || RT.dead) return;
+    var mw = mouseWorld();
+    var dtx = Math.floor(mw.x / TS), dty = Math.floor(mw.y / TS);
+    if (dtx > 0 && dtx < W && dty > 0 && dty < H && inReach(dtx, dty)) {
+        var dt = RT.w[dty * W + dtx];
+        // a placed door used to be a permanent wall — right-click swings it open and shut
+        if (dt === T_DOOR) { RT.w[dty * W + dtx] = T_DOOROPEN; return; }
+        if (dt === T_DOOROPEN) {
+            if (!tileRectHitsPlayer(dtx, dty)) RT.w[dty * W + dtx] = T_DOOR;   // never shut it on yourself
+            return;
+        }
+    }
+    var npc = npcAt(mw.x, mw.y);   // the Merchant and Nurse are only reachable this way
+    if (npc && Math.abs((npc.x + 4) - (S.px + 5)) < 90 && Math.abs((npc.y + 8) - (S.py + 10)) < 70) {
+        if (npc.kind === 'merchant') { openShop('merchant'); return; }
+        if (npc.kind === 'nurse') { openShop('nurse'); return; }
+        guideTalk(); return;
+    }
     var h = held(); if (!h) return;
-    var def = ITEMS[h.id]; var m = mouseWorld(), tx = Math.floor(m.x / TS), ty = Math.floor(m.y / TS);
+    var def = ITEMS[h.id]; var tx = Math.floor(mw.x / TS), ty = Math.floor(mw.y / TS);
     if (tx < 1 || tx >= W - 1 || ty < 1 || ty >= H - 1 || !inReach(tx, ty)) return;
     if (def.kind === 'wall') { if (!RT.wall[ty * W + tx] && (RT.w[ty * W + tx] === T_AIR)) { RT.wall[ty * W + tx] = def.place; invTake(h.id, 1); paintHotbar(); checkHouse(); } return; }
     if (def.kind !== 'block' && def.kind !== 'platform') return;
@@ -1137,7 +1231,7 @@ function swing(dmg, knock) {
     RT.swing = 12; RT.useT = RT.useT;
     var reach = 24, cx = S.px + 5 + RT.face * 15, cy = S.py + 8;
     RT.foes.forEach(function (f) { var dx = f.x - cx, dy = f.y - cy; if (dx * dx + dy * dy < reach * reach) hitFoe(f, dmg, RT.face, knock); });
-    if (RT.boss) { var bdx = RT.boss.x - cx, bdy = RT.boss.y - cy; if (bdx * bdx + bdy * bdy < (reach + 16) * (reach + 16)) hitBoss(dmg, RT.face); }
+    if (RT.boss && bossHit(cx, cy, reach + 16)) hitBoss(dmg, RT.face);
     // hit a torch/enemy? light nothing; melee also cuts cobweb quickly (handled by mining path)
 }
 function fireArrow(def) {
@@ -1171,7 +1265,7 @@ function stepShots() {
             if (!hit && RT.iframe <= 0 && !RT.dead && Math.abs((S.px + 5) - s.x) < 8 && Math.abs((S.py + 8) - s.y) < 11) { hurt(s.dmg, s.vx > 0 ? 1 : -1); hit = true; }
         } else {
             for (var j = 0; j < RT.foes.length && !hit; j++) { var f = RT.foes[j]; if (Math.abs(f.x + 4 - s.x) < 8 && Math.abs(f.y + 5 - s.y) < 9) { hitFoe(f, s.dmg, s.vx > 0 ? 1 : -1, s.knock); hit = true; } }
-            if (!hit && RT.boss) { var b = RT.boss; if (Math.abs(b.x - s.x) < b.r + 4 && Math.abs(b.y - s.y) < b.r + 4) { hitBoss(s.dmg, s.vx > 0 ? 1 : -1); hit = true; } }
+            if (!hit && RT.boss && bossHit(s.x, s.y, RT.boss.r + 4)) { hitBoss(s.dmg, s.vx > 0 ? 1 : -1); hit = true; }
         }
         if (hit || s.t <= 0) RT.shots.splice(i, 1);
     }
@@ -1341,8 +1435,9 @@ function hurt(dmg, dir, fall) {
     if (S.hp <= 0) die();
 }
 function die() {
-    RT.dead = 300; togglePanel(false);
+    RT.dead = 300; RT.grapple = null; togglePanel(false);
     var lost = Math.floor(S.coins / 2); S.coins -= lost;
+    if (lost > 0) drop(Math.floor((S.px + 5) / TS), Math.floor((S.py + 10) / TS), 'coin', lost);   // actually dropped, as the message claims
     RT.root.querySelector('.tr-death').hidden = false;
     RT.root.querySelector('.tr-death span').textContent = lost ? 'and dropped ' + coinFmt(lost) + ' on the way down.' : 'The dirt sends its regards.';
     if (RT.boss) { RT.boss = null; RT.root.querySelector('.tr-bosshp').hidden = true; }
@@ -1362,6 +1457,20 @@ function spawnBoss(kind) {
     RT.root.querySelector('.tr-bosshp').hidden = false;
     RT.root.querySelector('.tr-bosshp b').textContent = kind === 'eye' ? 'Eye of Cthulhu' : kind === 'king' ? 'King Slime' : 'Eater of Worlds';
     toast('You feel an evil presence watching you…');
+}
+/* is (x,y) within `pad` of the boss's body? the Eater is a worm with no single centre —
+   every segment is a target, so hit tests must walk the body instead of reading b.x/b.y */
+function bossHit(x, y, pad) {
+    var b = RT.boss; if (!b) return false;
+    if (b.seg) {
+        for (var i = 0; i < b.seg.length; i++) {
+            var dx = b.seg[i].x - x, dy = b.seg[i].y - y;
+            if (dx * dx + dy * dy < pad * pad) return true;
+        }
+        return false;
+    }
+    var bx = b.x - x, by = b.y - y;
+    return bx * bx + by * by < pad * pad;
 }
 function hitBoss(dmg, dir) {
     var b = RT.boss; var real = Math.max(1, dmg + ((Math.random() * 3 | 0) - 1)); var crit = Math.random() < 0.08; if (crit) real *= 2;
@@ -1386,7 +1495,11 @@ function bossStep() {
         b.vy = Math.min(b.vy + 0.2, 6);
         if (SOLID[tileAt(b.x, b.y + b.r)]) { b.vy = 0; if (b.t % 70 === 0) { b.vy = -5.5; b.vx = ((S.px - b.x) > 0 ? 1 : -1) * (1.6 + Math.random()); } b.vx *= 0.7; }
         b.x += b.vx; if (SOLID[tileAt(b.x + (b.vx > 0 ? b.r : -b.r), b.y)]) { b.x -= b.vx; b.vx = -b.vx; }
-        b.y += b.vy; if (SOLID[tileAt(b.x, b.y + b.r)]) { while (SOLID[tileAt(b.x, b.y + b.r)]) b.y -= 0.5; b.vy = 0; }
+        // out-of-bounds reads as solid, so an unguarded push-up loop spins forever (a frozen tab)
+        // if the king is ever above the world — keep it bounded and inside the world.
+        b.x = clamp(b.x, TS * 2, (W - 3) * TS); b.y = clamp(b.y, TS * 2, (H - 3) * TS);
+        b.y += b.vy;
+        if (SOLID[tileAt(b.x, b.y + b.r)]) { var kg = 0; while (SOLID[tileAt(b.x, b.y + b.r)] && kg++ < 80) b.y -= 0.5; b.vy = 0; }
         bossContact(b.x, b.y, b.r, 24);
     } else if (b.kind === 'eater') {
         var head = b.seg[0], dx2 = (S.px + 5) - head.x, dy2 = (S.py + 10) - head.y, d2 = Math.max(1, Math.sqrt(dx2 * dx2 + dy2 * dy2));
@@ -1441,7 +1554,24 @@ function stepNPCs() {
         if (Math.abs(n.x - S.spawnx) > 200) { n.face = n.x > S.spawnx ? -1 : 1; n.wander = 40; }
     });
 }
-function npcAt(px, py) { for (var i = 0; i < RT.npcs.length; i++) { var n = RT.npcs[i]; if (Math.abs(px - (n.x + 4)) < 10 && Math.abs(py - (n.y + 8)) < 14) return n; } return null; }
+function npcAt(px, py) { for (var i = 0; i < RT.npcs.length; i++) { var n = RT.npcs[i]; if (Math.abs(px - (n.x + 4)) < 12 && Math.abs(py - (n.y + 8)) < 16) return n; } return null; }
+/* the Guide does what the Guide does: tells you the obvious, warmly */
+var GUIDE_LINES = [
+    'Try chopping a tree — wood is the start of everything.',
+    'Ten wood makes a Work Bench. Place it, then stand near it to craft.',
+    'Torches keep the dark honest. Wood plus gel.',
+    'A furnace smelts ore into bars; an anvil turns bars into gear.',
+    'Crystal hearts hide underground. Each one is twenty more life.',
+    'Fallen stars land at night. Three of them become a mana crystal.',
+    'Build a room with walls, a door, a light and some furniture, and someone will move in.',
+    'The Merchant arrives once you are carrying a bit of coin.',
+    'Six lenses make something suspicious. Use it at night, if you are brave.',
+    'That grappling hook changes everything. Try it on a cliff.'
+];
+function guideTalk() {
+    RT.guideTip = ((RT.guideTip || 0) + 1) % GUIDE_LINES.length;
+    toast('Guide: “' + GUIDE_LINES[RT.guideTip] + '”');
+}
 
 /* housing validity (Terraria's real rules, bounded flood-fill): an enclosed room with background
    walls throughout, a door entrance, a light source, and furniture. Cheap — only runs on placement. */
@@ -1460,7 +1590,7 @@ function validRoom(sx, sy) {
         if (seen[k]) continue; seen[k] = 1;
         if (x < 1 || x >= W - 1 || y < 1 || y >= H - 1) { enclosed = false; break; }
         var t = RT.w[k];
-        if (t === T_DOOR) { hasDoor = true; continue; }                         // door is a valid boundary/entrance
+        if (t === T_DOOR || t === T_DOOROPEN) { hasDoor = true; continue; }                         // door is a valid boundary/entrance
         if (SOLID[t]) { if (t === T_TABLE || t === T_BENCH) hasFurn = true; continue; }   // wall/furniture boundary
         cells++; if (cells > MAX) { enclosed = false; break; }                   // too large / open to the world
         if (t === T_TORCH) hasTorch = true;
@@ -1512,8 +1642,12 @@ function tickBuffs() {
 
 /* ─────────────── fallen stars ─────────────── */
 function stepStars() {
-    if (isNight() && !uiOpen() && Math.random() < 0.006 && (RT.starT || 0) <= 0) {
+    // stars fall from the SKY: only near the surface, and only down a column that is open to it
+    if (isNight() && !uiOpen() && S.py / TS < 70 && Math.random() < 0.006 && (RT.starT || 0) <= 0) {
         var sx = RT.cam.x + Math.random() * RT.cv.width;
+        var scol = Math.floor(sx / TS), skyOpen = scol > 0 && scol < W;
+        for (var sy2 = 0; skyOpen && sy2 < Math.floor(RT.cam.y / TS); sy2++) if (SOLID[RT.w[sy2 * W + scol]]) skyOpen = false;
+        if (!skyOpen) { RT.starT = 30; return; }
         RT.parts.push({ star: 1, x: sx, y: RT.cam.y - 10, vx: (Math.random() - 0.5) * 0.6, vy: 2 + Math.random() * 1.5, t: 400, c: '#fff2a0', r: 2 });
         RT.starT = 120;
     }
@@ -1714,6 +1848,7 @@ function drawTile(x, t, sx, sy, tx, ty) {
     if (t === T_TABLE) { x.fillStyle = '#9c7040'; x.fillRect(sx, sy + 2, TS, 2); x.fillRect(sx + 1, sy + 4, 1, 4); x.fillRect(sx + 6, sy + 4, 1, 4); return; }
     if (t === T_CHAIR) { x.fillStyle = '#9c7040'; x.fillRect(sx + 2, sy, 2, 8); x.fillRect(sx + 2, sy + 4, 4, 2); return; }
     if (t === T_DOOR) { x.fillStyle = '#7f5a33'; x.fillRect(sx + 1, sy, 6, 8); x.fillStyle = '#5f4426'; x.fillRect(sx + 5, sy + 4, 1, 1); return; }
+    if (t === T_DOOROPEN) { x.fillStyle = '#7f5a33'; x.fillRect(sx, sy, 2, 8); x.fillStyle = '#5f4426'; x.fillRect(sx + 1, sy, 1, 8); return; }
     if (t === T_BOTTLE) { x.fillStyle = '#b0d8e8'; x.fillRect(sx + 3, sy + 3, 2, 4); x.fillRect(sx + 2, sy + 5, 4, 2); return; }
     if (t === T_POT) return drawPot(x, sx, sy);
     if (t === T_HEARTC) return drawHeart(x, sx, sy);
@@ -1957,6 +2092,7 @@ function paintMini() {
 }
 
 /* full inventory / crafting / equip panel */
+function refocus() { if (RT && RT.root && RT.root.focus) RT.root.focus(); }
 function paintPanel() {
     var el = RT.root.querySelector('.tr-panel');
     var st = stationsNear();
@@ -1998,19 +2134,21 @@ function paintCursor() {
 }
 function onPanelClick(e) {
     if (RT.rebinding) return;
-    var shopx = e.target.closest('[data-shopx]'); if (shopx) { closeShop(); return; }
-    var buy = e.target.closest('[data-buy]'); if (buy) { shopBuy(RT.shopOpen, +buy.getAttribute('data-buy')); return; }
+    var shopx = e.target.closest('[data-shopx]'); if (shopx) { closeShop(); refocus(); return; }
+    var buy = e.target.closest('[data-buy]'); if (buy) { shopBuy(RT.shopOpen, +buy.getAttribute('data-buy')); refocus(); return; }
     if (e.target.closest('[data-heal]')) { var missing = S.maxhp - S.hp, cost = missing * 3; if (S.coins >= cost && missing > 0) { S.coins -= cost; S.hp = S.maxhp; paintHearts(); paintCoins(); openShop('nurse'); } return; }
-    var setBtn = e.target.closest('[data-set]'); if (setBtn) { settingsAction(setBtn.getAttribute('data-set')); return; }
+    var setBtn = e.target.closest('[data-set]'); if (setBtn) { settingsAction(setBtn.getAttribute('data-set')); if (!RT.rebinding) refocus(); return; }
     var guideBtn = e.target.closest('[data-guide]'); if (guideBtn) { RT.shopOpen = null; RT.root.querySelector('.tr-shop').hidden = true; return; }
-    var rec = e.target.closest('.tr-rec[data-r]'); if (rec) { craft(+rec.getAttribute('data-r')); return; }
-    var slot = e.target.closest('.tr-slot[data-slot], .tr-trash[data-slot]'); if (slot) onSlotClick(slot.getAttribute('data-slot'));
+    var rec = e.target.closest('.tr-rec[data-r]'); if (rec) { craft(+rec.getAttribute('data-r')); refocus(); return; }
+    var slot = e.target.closest('.tr-slot[data-slot], .tr-trash[data-slot]'); if (slot) { onSlotClick(slot.getAttribute('data-slot')); refocus(); }
 }
 function slotArr(kind) { return kind === 'inv' ? S.inv : kind === 'arm' ? S.arm : kind === 'acc' ? S.acc : kind === 'ammo' ? S.ammo : null; }
-function slotAccepts(kind, item) {
+var ARM_SLOT = ['head', 'chest', 'legs'];
+function slotAccepts(kind, item, idx) {
     if (!item) return true; var d = ITEMS[item.id];
     if (kind === 'inv') return true;
-    if (kind === 'arm') return d.kind === 'armor';
+    // head/chest/legs each take their own piece — without this you could wear three helmets
+    if (kind === 'arm') return d.kind === 'armor' && (idx == null || d.slot === ARM_SLOT[idx]);
     if (kind === 'acc') return d.kind === 'accessory';
     if (kind === 'ammo') return d.kind === 'ammo';
     return false;
@@ -2023,9 +2161,9 @@ function onSlotClick(ref) {
     if (!cur) {   // pick up
         if (here) { RT.cursor = here; arr[i] = null; }
     } else {
-        if (!slotAccepts(kind, cur)) { if (kind !== 'inv') { toast('That doesn’t go there.'); return; } }
+        if (!slotAccepts(kind, cur, i)) { if (kind !== 'inv') { toast('That doesn’t go there.'); return; } }
         if (here && here.id === cur.id && ITEMS[cur.id].max > 1) { var max = ITEMS[cur.id].max, room = max - here.c, mv = Math.min(room, cur.c); here.c += mv; cur.c -= mv; if (!cur.c) RT.cursor = null; }
-        else if (slotAccepts(kind, cur)) { arr[i] = cur; RT.cursor = here; if (!slotAccepts(RT.cursor ? kind : kind, RT.cursor) && RT.cursor) { /* swapped-out item type may not fit; it's fine, goes to cursor */ } }
+        else if (slotAccepts(kind, cur, i)) { arr[i] = cur; RT.cursor = here; if (!slotAccepts(RT.cursor ? kind : kind, RT.cursor) && RT.cursor) { /* swapped-out item type may not fit; it's fine, goes to cursor */ } }
     }
     // equipping updates stats
     if (kind === 'acc') { if (accHas('hook')) unlock('hooked'); }
@@ -2108,14 +2246,18 @@ function settingsAction(a) {
     if (a === 'reset') { BINDS = {}; for (var k in DEFBINDS) BINDS[k] = DEFBINDS[k]; saveBinds(); paintSettings(); paintHint(); return; }
     if (a === 'newworld') {
         if (RT._confirmNew) { newWorld(); RT._confirmNew = false; }
-        else { RT._confirmNew = true; var b = RT.root.querySelector('[data-set="newworld"]'); if (b) b.textContent = 'Click again to confirm — this erases the world'; setTimeout(function () { RT._confirmNew = false; if (b && RT.setOpen) b.textContent = 'Generate a new world…'; }, 4000); }
+        else { RT._confirmNew = true; var b = RT.root.querySelector('[data-set="newworld"]'); if (b) b.textContent = 'Click again to confirm — this erases the world'; RT.timers.push(setTimeout(function () { if (!RT) return; RT._confirmNew = false; if (b && RT.setOpen) b.textContent = 'Generate a new world…'; }, 4000)); }
         return;
     }
     if (a.indexOf('bind:') === 0) { RT.rebinding = a.slice(5); paintSettings(); }
 }
 function finishRebind(key) {
     var a = RT.rebinding; RT.rebinding = null;
-    if (key && a) { for (var k in BINDS) if (BINDS[k] === key && k !== a) BINDS[k] = ''; BINDS[a] = key; saveBinds(); }
+    if (key && a) {
+        var prev = BINDS[a];
+        for (var k in BINDS) if (BINDS[k] === key && k !== a) BINDS[k] = prev;   // swap, never leave an action unbound
+        BINDS[a] = key; saveBinds();
+    }
     paintSettings(); paintHint();
 }
 function newWorld() {
@@ -2126,7 +2268,8 @@ function newWorld() {
     RT.w = gen.w; RT.wall = gen.wall; RT.lq = gen.lq; RT.lk = gen.lk; RT.surf = gen.surf; RT.chests = gen.chests.map(function (c) { return { x: c.x, y: c.y, biome: c.biome, loot: null }; });
     S.chests = RT.chests; RT.explored = new Uint8Array(W * H); S.explored = '';
     var sx = Math.floor(W / 2); S.px = sx * TS; S.py = (Math.round(gen.surf[sx]) - 3) * TS; S.spawnx = S.px; S.spawny = S.py; S.inv = startInv();
-    RT.foes = []; RT.drops = []; RT.shots = []; RT.parts = []; RT.boss = null; RT.npcs = []; spawnNPC('guide');
+    RT.foes = []; RT.drops = []; RT.shots = []; RT.parts = []; RT.boss = null; RT.grapple = null; RT.npcs = []; spawnNPC('guide');
+    RT.root.querySelector('.tr-bosshp').hidden = true;
     toggleSettings(false); sSave(); paintAll();
     toast('A new World of Ure spins into being.');
 }
@@ -2156,6 +2299,7 @@ function close() {
         RT.timers.forEach(function (t) { clearTimeout(t); clearInterval(t); });
         window.removeEventListener('pointerup', RT.mup);
         if (RT._curMove) RT.root.removeEventListener('mousemove', RT._curMove);
+        if (RT.cursor) { invGive(RT.cursor.id, RT.cursor.c); RT.cursor = null; }   // never pocket-vanish a lifted stack
         S.tiles = packBytes(RT.w); S.walls = packBytes(RT.wall); S.liq = packLiq(RT.lq, RT.lk); S.explored = packBytes(RT.explored);
         RT = null;
     }
@@ -2182,6 +2326,8 @@ window.__terra = {
     aimTile: function (tx, ty) { if (RT) { RT.mouse.x = tx * TS + 4 - RT.cam.x; RT.mouse.y = ty * TS + 4 - RT.cam.y; } },
     hold: function (l, r) { if (RT) { RT.mouse.l = !!l; RT.mouse.r = !!r; if (l) RT.mouse.lEdge = true; if (r) RT.mouse.rEdge = true; } },
     panel: function (on) { togglePanel(on); }, checkHouse: function () { checkHouse(); },
+    slot: function (ref) { onSlotClick(ref); }, slotRight: function (ref) { onSlotRight(ref); },
+    potLoot: function (tx, ty) { potLoot(tx, ty); },
     TID: { AIR: T_AIR, STONE: T_STONE, PLATFORM: T_PLATFORM, PLANK: T_PLANK, DOOR: T_DOOR, TORCH: T_TORCH, TABLE: T_TABLE, CHAIR: T_CHAIR },
     biomeAtX: biomeAtX, unlock: unlock, ACH: ACH, ITEMS: ITEMS, RECIPES: RECIPES
 };
