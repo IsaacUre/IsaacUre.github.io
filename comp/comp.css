@@ -3064,3 +3064,9 @@ button.nn-drow:hover { background: rgba(30,60,48,.5); }
 .nn-opt:hover { color: #e8e2ee; border-color: #5a4d72; }
 .nn-opt.on { color: #ffe66e; border-color: #c9a94a; background: rgba(44,34,20,.9); }
 .nn-opt.on::before { content: "> "; color: #c9a94a; }
+/* NINTH NIGHT: what you fight (job 4) */
+/* hudNudge() flashes .deny on the bar you cannot afford. The echo bar had no
+   rule, so the Reprise's "not yet" had nothing to show; .nn-verse was missing
+   one too and has been dead since it was written. */
+.nn-echo.deny { animation: nnDeny .3s; }
+.nn-verse.deny { animation: nnDeny .3s; }

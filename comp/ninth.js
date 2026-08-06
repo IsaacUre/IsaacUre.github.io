@@ -161,7 +161,9 @@ var TUNE = {
     /* job 4 */
     deafMul: 0.2,        // what the Deaf takes from anything that is not -ill
     eliteChance: 0.18,   // odds an authored encounter slot rolls a modifier
-    eliteHp: 1.7, eliteCoin: 3,
+    eliteHp: 1,          // scales EVERY elite's hp on top of its modifier's own
+    eliteCoin: 3,
+    echoBreak: 6,        // echo lost when one of YOUR stacks goes sour
     repriseCost: 100,    // a full Echo bar
     repriseHits: 3, repriseMul: 0.85, repriseGap: 0.34,
     droneSelfHurt: 0     // 0 = a Droner's own words never hurt YOU. see the PR.
@@ -290,6 +292,11 @@ function sLoad() {
     if (S.opts.bigtext == null) S.opts.bigtext = true;
     S.tune = S.tune || {};                           // dev-menu overrides, persisted so tuning survives a reload
     S.combat = S.combat || {};                       // job 4: { met: {kind:1} } — who you have actually faced
+    S.combat.met = S.combat.met || {};
+    // a save from before this existed has met nobody, and the loft refuses to
+    // put the Chorus back once it is down, so the roster would be permanently
+    // one short. You were there. Backfill it.
+    if (S.seen && S.seen.chorusDown) S.combat.met.chorus = 1;
     return S;
 }
 function sSave() { try { localStorage.setItem('comp_ninth', JSON.stringify(S)); } catch (e) {} }
@@ -490,7 +497,7 @@ var DEV = [
       });
       rows.push({ k: 'note', t: 'Authored encounters, dropped around you.' });
       rows.push({ k: 'btn', t: 'Next wave for this place', sub: 'walks the ladder in ENCOUNTERS',
-          on: function () { RT.combat.encI = (RT.combat.encI || 0) + 1; var e = encounterFor(RT.place, RT.combat.encI - 1); RT.combat.enc = e; spawnWave(e, RT.px, RT.py); } });
+          on: function () { RT.combat.encI = (RT.combat.encI || 0) + 1; spawnWave(encounterFor(RT.place, RT.combat.encI - 1), RT.px, RT.py); } });
       rows.push({ k: 'btn', t: 'The whole cast, at once', sub: 'one of everything, for reading them side by side',
           on: function () { spawnWave({ w: [['mouth', 1], ['thief', 1], ['droner', 1], ['deaf', 1], ['sword', 1]] }, RT.px, RT.py, [3.5, 6]); } });
       rows.push({ k: 'btn', t: 'Kill everything', on: function () { RT.foes.forEach(function (f) { if (!f.dead) foeDie(f, true); }); } });
@@ -520,16 +527,18 @@ var DEV = [
       /* job 4: every number this job added, and the four that never had a row */
       { k: 'note', t: 'What you fight.' },
       { k: 'num', t: 'Deaf damage taken (not -ill)', get: function () { return T('deafMul'); }, set: function (v) { S.tune.deafMul = clamp(v, 0, 1); }, step: 0.05, fix: 2 },
-      { k: 'num', t: 'Elite HP multiplier', get: function () { return T('eliteHp'); }, set: function (v) { S.tune.eliteHp = clamp(v, 1, 6); }, step: 0.1, fix: 2 },
+      { k: 'num', t: 'Elite HP multiplier (on top of the modifier)', get: function () { return T('eliteHp'); }, set: function (v) { S.tune.eliteHp = clamp(v, 0.2, 6); }, step: 0.1, fix: 2 },
       { k: 'num', t: 'Elite bonus coin', get: function () { return T('eliteCoin'); }, set: function (v) { S.tune.eliteCoin = clamp(v, 0, 50); }, step: 1 },
       { k: 'num', t: 'Reprise cost (echo)', get: function () { return T('repriseCost'); }, set: function (v) { S.tune.repriseCost = clamp(v, 10, 100); }, step: 5 },
       { k: 'num', t: 'Reprise hits', get: function () { return T('repriseHits'); }, set: function (v) { S.tune.repriseHits = clamp(v, 1, 8); }, step: 1 },
       { k: 'num', t: 'Reprise damage x', get: function () { return T('repriseMul'); }, set: function (v) { S.tune.repriseMul = clamp(v, 0.1, 3); }, step: 0.05, fix: 2 },
+      { k: 'num', t: 'Reprise gap between beats (s)', get: function () { return T('repriseGap'); }, set: function (v) { S.tune.repriseGap = clamp(v, 0.05, 2); }, step: 0.02, fix: 2 },
       { k: 'tgl', t: 'Droner stacks hurt YOU when they lapse', get: function () { return !!T('droneSelfHurt'); }, set: function (v) { S.tune.droneSelfHurt = v ? 1 : 0; sSave(); } },
       { k: 'num', t: 'Echo per stack', get: function () { return T('echoPerStack'); }, set: function (v) { S.tune.echoPerStack = clamp(v, 0, 50); }, step: 1 },
       { k: 'num', t: 'Echo decay / s', get: function () { return T('echoDecay'); }, set: function (v) { S.tune.echoDecay = clamp(v, 0, 40); }, step: 0.5, fix: 1 },
       { k: 'num', t: 'Call range', get: function () { return T('callRange'); }, set: function (v) { S.tune.callRange = clamp(v, 1, 30); }, step: 0.5, fix: 1 },
-      { k: 'num', t: 'Winded lockout is above; stanza cost below', get: function () { return T('dilationT'); }, set: function (v) { S.tune.dilationT = clamp(v, 0.2, 6); }, step: 0.1, fix: 1 },
+      { k: 'num', t: 'Echo lost per sour stack', get: function () { return T('echoBreak'); }, set: function (v) { S.tune.echoBreak = clamp(v, 0, 50); }, step: 1 },
+      { k: 'num', t: 'Stanza dilation length (s)', get: function () { return T('dilationT'); }, set: function (v) { S.tune.dilationT = clamp(v, 0.2, 6); }, step: 0.1, fix: 1 },
       { k: 'btn', t: 'Reset every number to default', on: function () { S.tune = {}; sSave(); } }
   ]; } },
   { tab: 'KIT', rows: function () {
@@ -813,7 +822,7 @@ function init(el) {
         dbgStacks: 0, dbgAI: 0, dbgHit: 0, dbgPerf: 0,
         fps: 0, _fc: 0, _ft: 0, ac: null, tookHit: false,
         world: { cam: { x: 0, y: 0 }, npc: {}, seenLine: null },
-        combat: { cuts: [], rep: null, enc: null, encI: 0 }
+        combat: { cuts: [], rep: null, encI: 0, lull: 0 }
     };
     wireInput(root, cv);
     wireHud(root);
@@ -830,7 +839,7 @@ function init(el) {
             aim: function (x, y) { RT.mouse.wx = x; RT.mouse.wy = y; RT.mouse.x = isoX(x, y); RT.mouse.y = isoY(x, y); },
             aimFoe: function (i) { var f = RT.foes.filter(function (q) { return !q.dead; })[i || 0]; if (f) window.__ninth.aim(f.x, f.y); return !!f; },
             spawn: function (k, x, y, mod) { return spawnFoe(k, x == null ? GRID / 2 : x, y == null ? GRID / 2 - 3 : y, mod); },
-            wave: function (n) { var e = encounterFor(RT.place, n == null ? RT.wave : n); RT.combat.enc = e; return spawnWave(e, RT.px, RT.py); },
+            wave: function (n) { return spawnWave(encounterFor(RT.place, n == null ? RT.wave : n), RT.px, RT.py); },
             reprise: function () { doReprise(); },
             place: function (id) { gotoPlace(id, true); },
             talk: function (id) { var n = NPCS[id]; if (n) openDialog(n.talk(), n.n); },
@@ -1008,6 +1017,10 @@ function revive() {
     RT.dead = false; RT.hp = RT.hpm; RT.breath = stats().breathMax; RT.iframe = 1.6;
     RT.px = pw() / 2; RT.py = ph() - 2;
     RT.foes.forEach(function (f) { f.stacks.length = 0; });
+    // going down cuts the line off, the same way a doorway does: a reprise
+    // must not resume after the respawn and fire its last beats into an
+    // empty room, seconds after the line that started it
+    if (RT.combat) { RT.combat.rep = null; RT.combat.cuts.length = 0; }
     say('Take it from the top.', 'dim');
 }
 
@@ -1160,14 +1173,17 @@ function stepStacks(dt) {
    statement of Hal's entire condition, and it is what stops you
    spamming call forever. */
 function breakStack(f, s) {
-    RT.echo = Math.max(0, RT.echo - 6);
     // A sour line is YOUR unfinished line. A Droner's own words are not
     // yours and never were, so they cost you nothing when they lapse. The
     // Droner is a race to overwrite, not an aura that bills you 3 HP a
     // second for standing near it, untelegraphed, through the i-frames.
+    // NOTHING is billed above this guard: the Echo drain used to sit up
+    // here, which quietly taxed a lone Droner's owner 2.6 Echo a second for
+    // words they never said, on the bar the Reprise now costs all of.
     var mine = !s.drone || T('droneSelfHurt');
-    if (!RT.god && mine) { RT.hp -= T('breakSelfDmg'); RT.hurt = Math.max(RT.hurt, 0.25); }
     if (!mine) { typo(f.x, f.y, 'lapses', '#6a5f72', 0.5, 8, 'drift'); return; }
+    RT.echo = Math.max(0, RT.echo - T('echoBreak'));
+    if (!RT.god) { RT.hp -= T('breakSelfDmg'); RT.hurt = Math.max(RT.hurt, 0.25); }
     typo(f.x, f.y, 'sour', '#6a5f72', 0.7, 9, 'drift');
     part({ x: f.x, y: f.y, z: 34, vx: 0, vy: 0, vz: -6, life: 0.5, size: 3, col: '106,95,114', add: 0, grav: 0 });
     RT.sourN = (RT.sourN || 0) + 1;
@@ -1250,7 +1266,7 @@ function doReprise() {
     slam(word, FAMS[fam].col, 'reprise');
     bigLine('again', 'and again, and again', FAMS[fam].col, 2);
     RT.shake = shake(9); RT.chroma = 1;
-    sfx('reprise');
+    sfx('reprise'); sfx('verse');   // 'reprise' is job 2's to write; 'verse' carries it until then
     ach('reprise');
 }
 function stepReprise(dt) {
@@ -1258,6 +1274,12 @@ function stepReprise(dt) {
     r.t -= dt;
     if (r.t > 0) return;
     r.t = r.gap; r.n--;
+    // The line comes back THREE times, so the rhyme has to still be there for
+    // the second and third. Wiping the stacks on beat one meant beats two and
+    // three found nothing on anything and detonated air: a full Echo bar
+    // bought 0.85 of a single Answer, which costs fifteen breath and no Echo
+    // at all. Only the last beat takes the words away.
+    var last = r.n <= 0;
     var st = stats(), hit = 0;
     RT.foes.forEach(function (f) {
         if (f.dead || !f.stacks.length) return;
@@ -1266,7 +1288,7 @@ function stepReprise(dt) {
         var dmg = (st.answerBase + st.answerPerStack * n) * T('repriseMul') * famDmgMul(r.fam) * deafMul(f, r.fam);
         hurtFoe(f, dmg, r.fam, { answer: 1, closed: 1, n: n });
         famEffect(f, r.fam, n, 1);
-        f.stacks.length = 0;
+        if (last) f.stacks.length = 0;
         snapStacks(f, FAMS[r.fam].col, n);
         hit++;
     });
@@ -1284,7 +1306,7 @@ function combatBoot() {
     // than carrying a half-finished detonation into the next place
     onPlaceChange(function () {
         if (!RT || !RT.combat) return;
-        RT.combat.rep = null; RT.combat.cuts.length = 0; RT.combat.enc = null; RT.combat.encI = 0;
+        RT.combat.rep = null; RT.combat.cuts.length = 0; RT.combat.encI = 0; RT.combat.lull = 0;
     });
 }
 
@@ -1479,7 +1501,7 @@ function spawnFoe(kind, x, y, mod) {
         so: irnd(0, 2) * 9          // stack-row stagger: piled enemies must stay readable
     };
     if (m) {                                   // an elite is the same archetype, bent
-        f.hp = f.hpm = Math.round(f.hpm * (m.hp || 1));
+        f.hp = f.hpm = Math.round(f.hpm * (m.hp || 1) * T('eliteHp'));
         f.spd *= m.spd || 1; f.dmg = Math.round(f.dmg * (m.dmg || 1)); f.atk *= m.atk || 1;
         if (m.armor) f.armor += m.armor;
         if (m.drone) f.drone = f.drone || m.drone;
@@ -1500,7 +1522,7 @@ function spawnFoe(kind, x, y, mod) {
     if (S.combat) {                          // the roster you have actually faced
         if (!S.combat.met) S.combat.met = {};
         if (!S.combat.met[kind]) {
-            S.combat.met[kind] = 1;
+            S.combat.met[kind] = 1; sSave();   // a first sighting has to survive a reload on its own
             if (Object.keys(FOES).every(function (k) { return S.combat.met[k]; })) ach('allsix');
         }
     }
@@ -1525,7 +1547,13 @@ function stepFoes(dt) {
                 part({ x: f.x, y: f.y, z: rnd(10, 40), vx: 0, vy: 0, vz: rnd(6, 16), life: 0.4, size: 2, col: '255,140,60', add: 1, grav: 0 }); }
             if (f.burn.t <= 0) f.burn = null;
         }
-        if (f.frozen > 0 || f.silence > 0) continue;   // -ill holds it, -erd shuts it up
+        // its own burn just finished it: a corpse does not get to complete the
+        // steal it was winding up. This guard has to sit ABOVE stepSpecials.
+        if (f.dead) continue;
+        if (f.frozen > 0 || f.silence > 0) {           // -ill holds it, -erd shuts it up
+            if (f.sp) cancelSpecial(f);                // interrupted means interrupted, not paused
+            continue;
+        }
         var dx = RT.px - f.x, dy = RT.py - f.y, d = Math.hypot(dx, dy) || 0.001;
         f.face = Math.atan2(dy, dx);
         f.atkT = Math.max(0, f.atkT - dt);
@@ -1552,7 +1580,11 @@ function stepFoes(dt) {
    the next person, not shown to the player.
 
    A wave is a list of [kind, count, mod]. mod may be null, a modifier
-   id, or '?' to roll one at the place's elite rate. */
+   id, or '?' to roll one at the place's elite rate.
+
+   Put the enemy the wave exists to TEACH in the first slot. A place's
+   speakDraws caps the wave, spawnWave spends that cap one-per-slot, and
+   what does not fit falls off the end. */
 var ENCOUNTERS = {
     square: [
         { teach: 'call, answer, nothing else', w: [['mouth', 2]] },
@@ -1561,17 +1593,23 @@ var ENCOUNTERS = {
     ],
     lane: [
         { teach: 'a droner holds the back and writes over itself', w: [['mouth', 2], ['droner', 1]] },
-        { teach: 'two shapes at once: one closes, one will not', w: [['mouth', 1], ['thief', 1], ['droner', 1]] },
+        { teach: 'two shapes at once: one closes, one will not', w: [['droner', 1], ['thief', 1], ['mouth', 1]] },
         { teach: 'the first elite', w: [['mouth', 2], ['mouth', 1, 'quick']] }
     ],
     mill: [
         { teach: 'the wall: -ill or nothing', w: [['deaf', 1], ['mouth', 2]] },
         { teach: 'armour wants -ight before anything else', w: [['mouth', 2], ['deaf', 1, 'sealed']] },
-        { teach: 'shut up and let breath ramp, or you get caught winded', w: [['mouth', 3], ['thief', 1, 'quick']] },
-        { teach: 'everything at once', w: [['deaf', 1], ['droner', 1], ['thief', 1], ['mouth', 2]] }
+        // The Sword has to be met SOMEWHERE on the critical path or its whole
+        // joke never lands. The mill is the only place before the loft that
+        // draws hearsay at all, so it is here or nowhere — and early enough
+        // in the ladder that a player who fights at all will reach it.
+        { teach: 'the sword: no rhyme on it at all, and that is the joke', w: [['sword', 1], ['mouth', 2]] },
+        { teach: 'shut up and let breath ramp, or you get caught winded', w: [['thief', 1, 'quick'], ['mouth', 3]] },
+        { teach: 'everything at once', w: [['deaf', 1], ['droner', 1], ['sword', 1], ['thief', 1], ['mouth', 2]] }
     ],
-    // Grelling and the mark do not draw hearsay today (no speakDraws on their
-    // PLACES entry, which is job 3's to set). These are authored and waiting.
+    // The square, Grelling and the mark do not draw hearsay today (no
+    // speakDraws on their PLACES entry, which is job 3's to set; the square is
+    // deliberately `calm`). These are authored and waiting for that field.
     village: [
         { teach: 'droners in a pair force you to move', w: [['droner', 2], ['mouth', 1]] },
         { teach: 'a loud one hits hard enough to respect', w: [['mouth', 2], ['mouth', 1, 'loud']] },
@@ -1615,15 +1653,24 @@ function slotMod(mod) {
    mill's fourth wave quietly becomes six enemies in a grain loft. */
 function spawnWave(enc, cx0, cy0, spread, cap) {
     if (!enc) return 0;
-    var n = 0, room = cap == null ? 99 : cap;
-    enc.w.forEach(function (slot) {
-        var kind = slot[0], count = Math.min(slot[1] || 1, Math.max(0, room - n)), mod = slotMod(slot[2]);
-        for (var i = 0; i < count; i++) {
+    var n = 0, room = cap == null ? 99 : cap, want = [];
+    enc.w.forEach(function (slot) { want.push({ kind: slot[0], left: slot[1] || 1, mod: slotMod(slot[2]) }); });
+    // Spend the budget one-per-slot and go round again, rather than draining
+    // it in slot order. Slot order truncates the tail, and the tail is where
+    // the interesting enemy usually is: the lane's speakDraws of 2 meant its
+    // two mouths ate the whole wave and its authored Droner and its first
+    // elite could never spawn at all, in any wave, ever.
+    for (var pass = 0; n < room && pass < 40; pass++) {
+        var moved = 0;
+        for (var s = 0; s < want.length && n < room; s++) {
+            if (!want[s].left) continue;
+            want[s].left--; moved = 1;
             var a = rnd(0, TAU), rr = spread ? rnd(spread[0], spread[1]) : rnd(4.5, 6.5);
-            var f = spawnFoe(kind, clamp(cx0 + Math.cos(a) * rr, 1, pw() - 1), clamp(cy0 + Math.sin(a) * rr, 1, ph() - 1), mod);
+            var f = spawnFoe(want[s].kind, clamp(cx0 + Math.cos(a) * rr, 1, pw() - 1), clamp(cy0 + Math.sin(a) * rr, 1, ph() - 1), want[s].mod);
             if (f) n++;
         }
-    });
+        if (!moved) break;
+    }
     return n;
 }
 
@@ -1707,11 +1754,26 @@ var AI = {
    Both of these used to just happen. A special the player cannot see
    coming is not difficulty, it is noise. Each one now winds up, says
    what it is doing, and can be interrupted by -erd or -ill like
-   anything else. */
+   anything else.
+
+   `f.sp` is a LOCK, not a mode flag. One body can carry both specials
+   (a droning Thief, a light-fingered Droner), and when both blocks
+   guarded on `f.sp !== <their own name>` they overwrote each other's
+   windup every frame: neither ever reached zero, neither cooldown ever
+   reset, and the foe stood rooted under a telegraph that could never
+   close, forever. Enter only when the lock is free. Whichever special
+   loses the race keeps its already-negative timer and takes the next
+   opening. */
+function cancelSpecial(f) {
+    if (f.sp === 'steal') f.stealT = f.steal;
+    else if (f.sp === 'drone') f.droneT = f.drone;
+    f.sp = null; f.wind = 0;
+    typo(f.x, f.y, 'cut off', '#6a5f72', 0.45, 8, 'drift');
+}
 function stepSpecials(f, dt, d) {
     if (f.steal) {
         f.stealT = (f.stealT == null ? f.steal : f.stealT) - dt;
-        if (f.stealT <= 0 && f.sp !== 'steal') {
+        if (f.stealT <= 0 && !f.sp) {
             var pool0 = RT.foes.filter(function (q) { return !q.dead && q.stacks.length; });
             if (RT.conceal > 0) { typo(f.x, f.y, '???', FAMS.ark.col, 0.5, 9, 'drift'); f.stealT = f.steal * 0.5; }
             else if (pool0.length) { f.sp = 'steal'; f.wind = f.def.stealTell || 0.8; f.windMax = f.wind; }
@@ -1737,7 +1799,7 @@ function stepSpecials(f, dt, d) {
     }
     if (f.drone) {
         f.droneT = (f.droneT == null ? f.drone : f.droneT) - dt;
-        if (f.droneT <= 0 && f.sp !== 'drone') { f.sp = 'drone'; f.wind = f.def.droneTell || 0.7; f.windMax = f.wind; }
+        if (f.droneT <= 0 && !f.sp) { f.sp = 'drone'; f.wind = f.def.droneTell || 0.7; f.windMax = f.wind; }
         if (f.sp === 'drone') {
             f.wind -= dt;
             if (f.wind <= 0) {
@@ -1747,7 +1809,7 @@ function stepSpecials(f, dt, d) {
                 f.stacks.push({ fam: pick(other), t: st.stackLife, max: st.stackLife, drone: 1 });
                 while (f.stacks.length > st.stackMax) f.stacks.shift();
                 typo(f.x, f.y, 'ON AND ON', '#c9a94a', 0.45, 9, 'drift');
-                sfx('drone');
+                sfx('drone'); sfx('voice');   // same: 'drone' is job 2's, 'voice' carries it
             }
         }
     }
@@ -1821,7 +1883,10 @@ function foeDie(f, quiet) {
     if (f.kind === 'sword' && f.callDmg && !f.otherDmg) ach('sword');
     if (f.m) ach('elite');
     if (f.def.onDown && BOSS_DOWN[f.def.onDown]) BOSS_DOWN[f.def.onDown](f);
-    if (!quiet) sfx(boss ? 'bossdie' : 'die');
+    // 'bossdie' is a name job 2 has not written a case for yet, and sfx()
+    // silently ignores unknown kinds — so 'die' still fires underneath it,
+    // or killing the Chorus would be the one death in the game with no sound.
+    if (!quiet) { sfx('die'); if (boss) sfx('bossdie'); }
     if (RT.trial) RT.trial.killed++;
     sSave();
 }
@@ -2934,16 +2999,22 @@ function stepScene(dt) {
             RT.waveT = 2.5;
             RT.combat.encI = (RT.combat.encI || 0) + 1;
             var lad = ARENA_LADDER[Math.min(RT.combat.encI - 1, ARENA_LADDER.length - 1)];
-            RT.combat.enc = lad;
             spawnWave(lad, pw() / 2, ph() / 2, [5, 7]);
         }
         return;
     }
-    // the wave has to go with it, or the next frame decides the place
-    // is quiet all over again and the timer never runs out. S.draws is
-    // what the rehearsed gate counts now, so zeroing this is safe.
-    if (RT.cleared && (RT.quietT -= dt) <= 0) { RT.cleared = false; RT.wave = 0; }
-    if (!RT.cleared && RT.wave > 0 && alive === 0) {     // the place goes quiet again
+    // Going quiet costs the place ONE rung now, not the whole ladder. Zeroing
+    // it meant no place could ever send its third wave: you cleared the room,
+    // the counter went back to nothing, and every authored late encounter in
+    // the game — the mill's Sword, its everything-at-once, every '?' elite
+    // slot — was content no player could reach. `lull` is what the zero used
+    // to do incidentally: stop an empty room re-triggering the reward every
+    // six seconds forever. speakPressure clears it when something answers.
+    if (RT.cleared && (RT.quietT -= dt) <= 0) {
+        RT.cleared = false; RT.combat.lull = 1;
+        RT.wave = Math.max(0, RT.wave - 1);
+    }
+    if (!RT.cleared && !RT.combat.lull && RT.wave > 0 && alive === 0) {  // the place goes quiet again
         RT.cleared = true;
         if (!RT.tookHit) ach('nohit');
         coin(irnd(2, 5));
@@ -3282,12 +3353,11 @@ function speakPressure() {
     RT.pressure += 1;
     var need = 6 + RT.wave * 2;
     if (RT.pressure < need) return;
-    RT.pressure = 0; RT.wave++;
+    RT.pressure = 0; RT.wave++; RT.combat.lull = 0;   // the room is answering again
     say(pick(['Something in the dark starts saying it back.', 'The dark has opinions about your delivery.', 'Somewhere behind you, your own line, slightly wrong.']), 'bad');
     // the roster is authored per place now (ENCOUNTERS), not one hardcoded
     // pair. speakDraws still caps how much a place is willing to send.
     var enc = encounterFor(RT.place, RT.wave - 1);
-    RT.combat.enc = enc;
     // the place's own ceiling still applies, and it still opens up as the
     // waves go on, exactly as the hardcoded roster did
     var sent = spawnWave(enc, RT.px, RT.py, null, Math.min(p.speakDraws, 1 + RT.wave));
