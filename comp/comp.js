@@ -3616,7 +3616,8 @@ webPage('open-meteo.com', {
                     return;
                 }
                 var g = j.results[0];
-                crNav('open-meteo.com/forecast?q=' + encodeURIComponent(g.name + (g.admin1 ? ', ' + g.admin1 : '') + '@' + g.latitude + ',' + g.longitude));
+                // replace, don't push: this IS the same page, just resolved
+                crNav('open-meteo.com/forecast?q=' + encodeURIComponent(g.name + (g.admin1 ? ', ' + g.admin1 : '') + '@' + g.latitude + ',' + g.longitude), { replace: true });
             });
         }
         if (at) show(at[1], +at[2], +at[3]);
@@ -3708,7 +3709,12 @@ function crNav(url, opts) {
     if (!CR || !url) return;
     opts = opts || {};
     var t = crTab();
-    if (!opts.nopush) { t.hist = t.hist.slice(0, t.hi + 1); t.hist.push(url); t.hi = t.hist.length - 1; }
+    /* replace: swap the current entry instead of pushing. A page that resolves
+       itself into a canonical URL (the weather geocode) must not leave the
+       pre-resolution URL behind, or Back lands on it, it resolves again, and
+       the user is trapped bouncing forward forever. */
+    if (opts.replace) { t.hist[t.hi] = url; }
+    else if (!opts.nopush) { t.hist = t.hist.slice(0, t.hi + 1); t.hist.push(url); t.hi = t.hist.length - 1; }
     t.url = url;
     var s = crSite(url);
     if (!CR.incog && s !== WEB.__err && !s.nohist && s.host !== 'chrome://history')          // incognito keeps its word
