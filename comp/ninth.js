@@ -2637,20 +2637,36 @@ function drawToasts(cx) {
     }
 }
 
-/* ─────────────── sound ───────────────
-   Small, dry, close. Voices and paper, not synths pretending to
-   be an orchestra. */
 /* ═══════════════ SOUND ═══════════════
    A game about rhyme, meter, a refrain and a crowd of voices.
+   Small, dry, close. Voices and paper, not an orchestra.
 
    WHICH CLOCK (the rule for the whole file, because this is the
-   area that has to pick one): game logic runs on the sim `dt` that
-   step() receives, which is multiplied by the dilation factor and
-   crawls at 30% during a stanza recital. Anything that must not
-   slow down with it takes `real`. Anything AUDIBLE schedules
-   against `ac.currentTime` and nothing else, because a scheduler
-   driven off `dt` slows the music down with the game, and a tune
-   that rubatos every time you cast is not a tune.
+   area that has to pick one). There are four, not three:
+
+   `dt`, the sim clock step() receives. Multiplied by the dilation
+   factor, so it crawls at 30% during a recital. Game logic.
+
+   `real`, wall time. Anything that must not slow down when somebody
+   casts: ambience, and the audio frame itself.
+
+   `ac.currentTime`. Anything AUDIBLE schedules against this and
+   nothing else. A scheduler driven off dt slows the music down with
+   the game, and a tune that rubatos every time you cast is not a
+   tune.
+
+   beat(), the story sequencer, which every scripted sequence in the
+   file already uses. Its timers are decremented inside stepScene,
+   which takes the sim dt, so BEATS ARE DILATED. doVerse holds
+   RT.dilate at 6 for six seconds: a beat(2, fn) queued in that
+   window fires at about 6.2 real seconds, while the text beside it
+   runs on setTimeout and the music beside that runs on currentTime,
+   both at full speed. Sequencing an ending against audio means
+   real time or currentTime, not beat().
+
+   Distance is not a clock but it is the fourth answer: footsteps
+   pace off the ground actually covered, because that is the only
+   quantity that stays right under both dilation and a wall.
 
    Everything lives on RT.audio, never at module scope: close()
    closes the context and nulls RT, so state parked outside would
@@ -2764,23 +2780,32 @@ function famOf(kind) {
 function voxCall(f) {
     if (f === 'eat')       { snd({ bus: 'voice', type: 'sawtooth', f0: 300, f1: 168, dur: 0.14, vol: 0.075, cut: 1500, cut1: 430, q: 5 });
                              snd({ bus: 'voice', noise: 1, dur: 0.06, vol: 0.022, cut: 800 }); }
-    else if (f === 'ight') { snd({ bus: 'voice', type: 'triangle', f0: 1180, f1: 1460, dur: 0.10, vol: 0.055, atk: 0.002, cut: 5200, cutType: 'highpass' });
+    /* struck glass. The tone carries this one, so it is not filtered:
+       a highpass above the fundamental would take the note away and
+       leave only the tick. The tick is highpassed, the tone is not. */
+    else if (f === 'ight') { snd({ bus: 'voice', type: 'triangle', f0: 1180, f1: 1460, dur: 0.10, vol: 0.055, atk: 0.002 });
                              snd({ bus: 'voice', noise: 1, dur: 0.05, vol: 0.02, cut: 4200, cutType: 'highpass' }); }
     /* flat, no slide: -erd is a word said plainly, and a spoken word
        does not glissando. It is the only family with no pitch move. */
     else if (f === 'erd')  { snd({ bus: 'voice', type: 'square', f0: 232, dur: 0.11, vol: 0.06, cut: 760, cutType: 'bandpass', q: 7, atk: 0.004 }); }
     else if (f === 'ark')  { snd({ bus: 'voice', type: 'triangle', f0: 430, f1: 205, dur: 0.24, vol: 0.06, cut: 1250, cut1: 300, q: 3, atk: 0.02 }); }
     /* -ill stops. Short, hard, and then nothing: the silence after it
-       is the effect, so it gets no tail at all. */
-    else if (f === 'ill')  { snd({ bus: 'voice', type: 'sine', f0: 1520, dur: 0.055, vol: 0.06, atk: 0.001 });
+       is the effect, so it gets no tail at all. It sits in the middle
+       register and stays dry, which is what keeps it clear of -ight:
+       one of them rings and the other one is cut off. */
+    else if (f === 'ill')  { snd({ bus: 'voice', type: 'square', f0: 660, dur: 0.05, vol: 0.055, cut: 1400, atk: 0.001 });
                              snd({ bus: 'voice', noise: 1, dur: 0.03, vol: 0.03, cut: 6000, cutType: 'highpass' }); }
 }
 function voxLand(f) {
     if (f === 'eat')       { snd({ bus: 'world', type: 'sawtooth', f0: 215, f1: 145, dur: 0.10, vol: 0.05, cut: 900, cut1: 300, q: 4 }); }
-    else if (f === 'ight') { snd({ bus: 'world', type: 'sine', f0: 1620, dur: 0.07, vol: 0.04, atk: 0.001 }); }
+    /* the glass rings, with a partial well off the harmonic series so
+       it reads as struck rather than played */
+    else if (f === 'ight') { snd({ bus: 'world', type: 'sine', f0: 1620, dur: 0.22, vol: 0.04, atk: 0.001 });
+                             snd({ bus: 'world', type: 'sine', f0: 4471, dur: 0.13, vol: 0.014, atk: 0.001 }); }
     else if (f === 'erd')  { snd({ bus: 'world', type: 'square', f0: 196, dur: 0.075, vol: 0.045, cut: 700, cutType: 'bandpass', q: 6 }); }
     else if (f === 'ark')  { snd({ bus: 'world', type: 'sine', f0: 300, f1: 176, dur: 0.20, vol: 0.045, cut: 900, cut1: 260 }); }
-    else if (f === 'ill')  { snd({ bus: 'world', type: 'sine', f0: 1790, dur: 0.04, vol: 0.045, atk: 0.001 }); }
+    /* and this one does not ring. Same event, opposite behaviour. */
+    else if (f === 'ill')  { snd({ bus: 'world', type: 'square', f0: 520, dur: 0.03, vol: 0.05, cut: 1200, atk: 0.001 }); }
     snd({ bus: 'world', noise: 1, dur: 0.04, vol: 0.025, cut: 1800 });
 }
 function voxAnswer(f, flat) {
@@ -2804,8 +2829,12 @@ function voxAnswer(f, flat) {
         snd({ bus: 'voice', type: 'sawtooth', f0: 205, f1: 46, dur: 0.78, vol: 0.085 * v, voices: 2, det: 9, cut: 950, cut1: 140, q: 2 });
         snd({ bus: 'world', noise: 1, dur: 0.85, vol: 0.05 * v, cut: 700, cut1: 160, atk: 0.09 });
     } else if (f === 'ill') {
-        snd({ bus: 'voice', type: 'sine', f0: 1240, dur: 0.10, vol: 0.06 * v, atk: 0.001 });
-        snd({ bus: 'voice', type: 'sine', f0: 1860, dur: 0.09, vol: 0.045 * v, atk: 0.001 });
+        /* everything stops, and then the floor goes. The top half is
+           cut off short on purpose so the gap before the sub is
+           audible: the silence is the sound. Squares rather than the
+           sines -ight uses, or the two families meet in the middle. */
+        snd({ bus: 'voice', type: 'square', f0: 660, dur: 0.07, vol: 0.06 * v, cut: 1500, atk: 0.001 });
+        snd({ bus: 'voice', type: 'square', f0: 990, dur: 0.05, vol: 0.035 * v, cut: 1900, atk: 0.001 });
         snd({ bus: 'world', noise: 1, dur: 0.05, vol: 0.045 * v, cut: 5200, cutType: 'highpass' });
         snd({ bus: 'world', type: 'sine', f0: 84, f1: 58, dur: 0.5, vol: 0.07 * v, atk: 0.004, delay: 0.14 });
     }
@@ -2836,6 +2865,12 @@ var MEL = {
     lie: [[5, 1], [4, 1], [3, 1], [2, 2]]                                   // the nailed-on ending: a note short, stops on 2
 };
 var MEL_LINES = ['a', 'b', 'c', 'd'];
+/* doVerse lays every BALLAD line this far apart. The number is job
+   1's, written as 260 inside doVerse; this is the music's copy of it.
+   Everything else about the Verse score is derived from BALLAD, so
+   adding a stanza cannot run the words past the end of the tune. If
+   doVerse's 260 ever moves, this moves with it. */
+var VERSE_SPL = 0.26;
 /* schedule one line. Returns how long it runs, so a caller can lay
    the next line straight after it without a timer. */
 function sing(mel, at, o) {
@@ -2869,32 +2904,55 @@ function singStanza(at, trueEnd, o) {
    a mile behind by the end of the Verse. So where the text sets the
    pace, the skeleton is what plays: same contour, same crucial last
    note, locked to the line it belongs to.
-   The fourth note is the whole point. 1 resolves. 2 does not. */
+   The fourth line is NOT reduced, and that is the point of the whole
+   job. The Chorus hammers the town's last line at the player every
+   5.5 seconds, so that descent is the only tune they actually learn.
+   If the true version answered it with a single held note they would
+   have nothing to compare, and the ending would land on nobody. So
+   line four plays the real phrase at both endings, on the same five
+   slots at the same speed. The true one walks 5 4 3 2 1 and fills
+   them. The town's one walks 5 4 3 2 and leaves the last slot empty,
+   which is the hole in the song, in the song. */
 function singReduced(at, secPerLine, trueEnd, o) {
     o = o || {};
-    var degs = [5, 2, 7, trueEnd ? 1 : 2];
-    for (var i = 0; i < 4; i++) {
-        snd({ bus: 'music', at: at + i * secPerLine, type: o.type || 'triangle',
-              f0: deg(degs[i], o.oct || 0), dur: secPerLine * 0.9,
-              vol: o.vol == null ? 0.055 : o.vol, atk: o.atk == null ? 0.02 : o.atk,
+    var degs = [5, 2, 7], i;
+    function note(d, tAt, dur) {
+        snd({ bus: 'music', at: tAt, type: o.type || 'triangle', f0: deg(d, o.oct || 0),
+              dur: dur, vol: o.vol == null ? 0.055 : o.vol,
+              atk: Math.min(o.atk == null ? 0.02 : o.atk, dur * 0.25),
               cut: o.cut || 2400, q: o.q, voices: o.voices || 1, det: o.det || 0 });
     }
+    for (i = 0; i < 3; i++) note(degs[i], at + i * secPerLine, secPerLine * 0.9);
+    var end = trueEnd ? MEL.d : MEL.lie, sp = secPerLine / 5;
+    for (i = 0; i < end.length; i++) note(end[i][0], at + 3 * secPerLine + i * sp, sp * 0.9);
     return secPerLine * 4;
 }
 
 /* ─────────────── ambience ───────────────
    Between discrete events this game used to be completely silent.
    Each place gets a bed: a drone, a filtered noise layer, and its
-   own occasional one-shots. The mark's entry is deliberately almost
-   nothing, because the mark should be uncomfortable to stand in. */
+   own occasional one-shots.
+
+   dhz multiplies the base drone, which is deg(1, -1) = 73.4 Hz. Keep
+   every product above about 50 Hz. Below that a laptop reproduces
+   nothing and below 20 Hz nobody hears anything at all, so a place
+   tuned down there reads as the audio having failed rather than as
+   atmosphere. The mark used to sit at 18 Hz for exactly that reason
+   and it was silent, not uneasy.
+
+   d2 is the second drone's ratio and d2v its relative level. The loft
+   puts one a tritone above the other. The mark puts one 1.2 Hz off
+   the other at equal level, so the pair beats against itself about
+   once a second: audible, and unpleasant to stand in the way the
+   place is supposed to be. */
 var AMB = {
     stage:   { drone: 1, dhz: 1, dvol: 0.014, cut: 460, hiss: 0.010, ev: 'crowd', evT: [2.2, 5.0] },
     square:  { drone: 1, dhz: 1, dvol: 0.010, cut: 700, hiss: 0.013, ev: 'town',  evT: [3.0, 7.5] },
     lane:    { drone: 0,          dvol: 0,     cut: 900, hiss: 0.018, ev: 'bird',  evT: [4.5, 11] },
-    mill:    { drone: 1, dhz: 0.5, dvol: 0.010, cut: 820, hiss: 0.017, ev: 'wheel', evT: [1.5, 1.9] },
-    loft:    { drone: 2, dhz: 1, dvol: 0.020, cut: 330, hiss: 0.007, ev: 'creak', evT: [3.5, 9] },
+    mill:    { drone: 1, dhz: 1.5, dvol: 0.010, cut: 820, hiss: 0.017, ev: 'wheel', evT: [1.5, 1.9] },
+    loft:    { drone: 2, dhz: 1, d2: 1.414, dvol: 0.020, cut: 330, hiss: 0.007, ev: 'creak', evT: [3.5, 9] },
     village: { drone: 1, dhz: 1, dvol: 0.008, cut: 650, hiss: 0.011, ev: 'town',  evT: [4.5, 11] },
-    mark:    { drone: 1, dhz: 0.25, dvol: 0.013, cut: 190, hiss: 0.003, ev: 'tick', evT: [6, 15] },
+    mark:    { drone: 2, dhz: 1, d2: 1.0163, d2v: 1, dvol: 0.011, cut: 190, hiss: 0.003, ev: 'tick', evT: [6, 15] },
     arena:   { drone: 0, dvol: 0, cut: 600, hiss: 0.006, ev: '', evT: [9, 9] }
 };
 function ambStop(fade) {
@@ -2937,10 +2995,10 @@ function ambStart(kind) {
         for (var i = 0; i < (spec.drone || 0); i++) {
             var o = ac.createOscillator(), og = ac.createGain();
             o.type = 'sine';
-            /* the loft's second drone is a tritone under the first. It is
+            /* the loft's second drone is a tritone above the first. It is
                the only interval in the game that is wrong on purpose. */
-            o.frequency.value = deg(1, -1) * (spec.dhz || 1) * (i === 1 ? 1.414 : 1);
-            og.gain.value = spec.dvol / (i + 1);
+            o.frequency.value = deg(1, -1) * (spec.dhz || 1) * (i === 1 ? (spec.d2 || 1.414) : 1);
+            og.gain.value = i === 1 ? spec.dvol * (spec.d2v == null ? 0.5 : spec.d2v) : spec.dvol;
             o.connect(og); og.connect(g); o.start(t);
             nodes.push(o);
         }
@@ -2963,6 +3021,7 @@ function ambEvent(ev) {
 /* footsteps. sfx('step') fires only from the dash and never was one;
    this is the real thing, off RT.walking, with the surface under it. */
 var SURF = { stage: 'wood', town: 'stone', mill: 'grass', loft: 'wood' };
+var STEP_TILES = 2.38;                       // one stride, in world tiles
 function footstep() {
     var p = typeof place === 'function' ? place() : null;
     var s = SURF[(p && p.floor) || 'town'] || 'stone';
@@ -2978,29 +3037,70 @@ function footstep() {
    down because somebody cast a stanza. */
 function stepAudio(real) {
     var A = RT && RT.audio; if (!A) return;
-    if (!S.opts.sound) { if (A.amb) ambStop(0.2); return; }
+    /* Sound off has to stop what is already on the timeline, not only
+       what has not started yet. A stanza runs 1.5s, the Chorus refrain
+       2.3s and the Verse drone 7.6s, so gating new calls alone leaves
+       the ballad playing under a setting that reads OFF. */
+    if (!S.opts.sound) {
+        if (A.amb) ambStop(0.2);
+        if (A.ready && !A.muted && RT.ac) {
+            A.muted = 1;
+            try { ramp(A.master.gain, 0.0001, RT.ac.currentTime + 0.12); } catch (e) { audioErr(e); }
+        }
+        return;
+    }
+    if (A.muted) { A.muted = 0; audioVolume(volNow()); }
     if (!audioRig()) return;
-    if (A.ambKind !== RT.place) ambStart(RT.place);
+    if (A.ambKind !== RT.place) { ambStart(RT.place); A.settle = 0.35; }
     if (A.amb && A.amb.spec.ev) {
         A.evT -= real;
         if (A.evT <= 0) { A.evT = rnd(A.amb.spec.evT[0], A.amb.spec.evT[1]); ambEvent(A.amb.spec.ev); }
     }
-    /* footsteps, paced by distance rather than time so they stay with
-       the legs whatever the move speed is tuned to */
-    if (RT.walking && !RT.dead && !RT.dialog) {
-        A.stepT -= real * (typeof T === 'function' ? T('moveSpd') : 4) * 0.42;
-        if (A.stepT <= 0) { A.stepT = 1; footstep(); }
-    } else A.stepT = 0.35;
+    /* footsteps, paced by the ground actually covered.
+       Reading RT.walking alone is not enough: stepPlayer sets it from
+       the keys held, before moveActor decides whether the move was
+       legal, so holding W against a wall walks on the spot forever.
+       And pacing off real time is wrong the moment anything dilates:
+       the Verse holds RT.dilate at 6 for six seconds, over which the
+       legs run at 30% and the feet would run at 100%, about three
+       steps for every one stride. The distance is the only thing that
+       knows both, so the distance is what counts. */
+    if (RT.dead || RT.dialog || !RT.walking) { A.stepT = STEP_TILES * 0.35; A.lx = RT.px; A.ly = RT.py; }
+    else {
+        var ddx = RT.px - (A.lx == null ? RT.px : A.lx), ddy = RT.py - (A.ly == null ? RT.py : A.ly);
+        A.lx = RT.px; A.ly = RT.py;
+        var moved = Math.sqrt(ddx * ddx + ddy * ddy);
+        if (moved > 1.5) moved = 0;                    // a doorway, not a stride
+        if (moved > 0) {
+            A.stepT -= moved;
+            if (A.stepT <= 0) { A.stepT = STEP_TILES; footstep(); }
+        }
+    }
     /* getting your breath back, read off the runtime rather than by
        putting a call into stepPlayer, which is not mine to edit */
     if (RT.winded > 0) A.wasWinded = 1;
     else if (A.wasWinded) { A.wasWinded = 0; sfx('breath'); }
-    /* the Chorus telegraphs its pulse: stepChorus already sets f.warn
-       1.1s out, so there is a sound to hear before there is a ring to
-       see. Rising edge only. */
+    /* one pass over the foes, doing two things.
+       Arrivals get a sound. They are tagged here rather than in
+       spawnFoe, whose object literal is job 4's and is the single line
+       in the file they are most certain to rewrite.
+       And the Chorus telegraphs its pulse: stepChorus sets f.warn 1.1s
+       out, so there is something to hear before there is a ring to
+       see. Rising edge only, and no field initialiser needed for it
+       because !undefined is already true on the first frame. */
+    if (A.settle > 0) A.settle -= real;
+    var heard = 0;
     for (var i = 0; i < RT.foes.length; i++) {
         var f = RT.foes[i];
-        if (!f || f.dead || !f.def || !f.def.boss) continue;
+        if (!f) continue;
+        if (!f._as) {
+            f._as = 1;
+            /* a wave draws all at once, and walking into a room means
+               meeting everything already in it. One sound between
+               them, and none at all until the room has settled. */
+            if (!heard && !f.dead && !(A.settle > 0)) { heard = 1; sfx('spawn'); }
+        }
+        if (f.dead || !f.def || !f.def.boss) continue;
         if (f.warn && !f._aw) { f._aw = 1; sfx('pulsewarn'); }
         else if (!f.warn && f._aw) f._aw = 0;
     }
@@ -3051,14 +3151,15 @@ function sfx(kind) {
         /* the whole corrected ballad, sung under the 28 lines. 27 of
            them used to land in silence. */
         else if (kind === 'verse') {
-            /* doVerse lays its 28 lines 260ms apart, so the music does too.
-               Seven stanzas, every one of them ending on the note the town's
-               version never reaches, and the last one an octave up. */
-            var t0 = RT.ac.currentTime + 0.05, k;
-            for (k = 0; k < 7; k++) {
-                t0 += singReduced(t0, 0.26, true, { vol: 0.05, voices: 3, det: 8, cut: 2800, oct: k === 6 ? 1 : 0 });
+            /* the music runs on doVerse's own grid, counted off BALLAD.
+               Every stanza ends on the note the town's version never
+               reaches, and the last one goes up an octave. */
+            var t0 = RT.ac.currentTime + 0.05, k, n = BALLAD.length, lines = 0;
+            for (k = 0; k < n; k++) lines += BALLAD[k].r.length;
+            for (k = 0; k < n; k++) {
+                t0 += singReduced(t0, VERSE_SPL, true, { vol: 0.05, voices: 3, det: 8, cut: 2800, oct: k === n - 1 ? 1 : 0 });
             }
-            snd({ bus: 'music', type: 'sine', f0: deg(1, -1), dur: 7.6, vol: 0.03, atk: 0.5 });
+            snd({ bus: 'music', type: 'sine', f0: deg(1, -1), dur: lines * VERSE_SPL + 0.4, vol: 0.03, atk: 0.5 });
         }
         /* ---- the Chorus ---- */
         else if (kind === 'pulsewarn') {
