@@ -1961,7 +1961,11 @@ function spawnFoe(kind, x, y, mod) {
         if (!S.combat.met) S.combat.met = {};
         if (!S.combat.met[kind]) {
             S.combat.met[kind] = 1; sSave();   // a first sighting has to survive a reload on its own
-            if (Object.keys(FOES).every(function (k) { return S.combat.met[k]; })) ach('allsix');
+            // the audience are in FOES because that is the only way to put
+            // people on the floor, but they are not one of the six and you do
+            // not "meet" them. Counting them made the roster unfinishable
+            // until the last scene of the game.
+            if (Object.keys(FOES).every(function (k) { return FOES[k].folk || S.combat.met[k]; })) ach('allsix');
         }
     }
     burst(f.x, f.y, 10, 8, { col: '160,150,175', sp0: 0.4, sp1: 1.6, l0: 0.2, l1: 0.5, add: 0 });
