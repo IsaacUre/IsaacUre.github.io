@@ -269,7 +269,7 @@ var CHARM_IDS = Object.keys(CHARMS);
    `keep` items are never consumed by use. */
 var ITEMS = {
     coal: {
-        n: 'A Cold Coal', tag: 'keep', keep: 1,
+        n: 'A Cold Coal', tag: 'keep', keep: 1, one: 1,
         d: 'Burnt through and gone out. It is not the prop from the play; the prop is whole and painted. Somebody carried this one a long way and did not bring it back.',
         use: function () { return 'You turn it over. Cold all the way through. Whoever put it out did it a long time before you were born.'; }
     },
@@ -282,29 +282,46 @@ var ITEMS = {
     },
     // you have carried this since the prologue; it is granted to a new save
     mask: {
-        n: 'The Mask', tag: 'keep', keep: 1,
+        n: 'The Mask', tag: 'keep', keep: 1, one: 1,
         d: 'The one you wore when you were nine. It was too big then and it is too big now, which tells you something about how long they have been handing it down.',
+        // worn state lives on the save, not the runtime: a mask you put on
+        // should still be on after you walk through a door. Job 1 can read
+        // S.items.wearing for the ending.
         use: function () {
-            var worn = RT.items.mask = !RT.items.mask;
-            return worn ? 'You put it on. The eyeholes sit too high, the way they always did. Everything narrows.'
+            var worn = S.items.wearing = S.items.wearing ? 0 : 1;
+            sSave();
+            return worn ? 'You put it on. The eyeholes sit too high, the way they always did. You have to turn your head to see anything.'
                         : 'You take it off. The square is wider than it was a moment ago.';
         }
     },
     wax: {
         n: 'A Stub of Wax', tag: 'use', cost: 18,
         d: 'Off the chandler\'s bench. Warm it in your hand and a mismatched pair holds for a while: slants land in full.',
-        use: function () { RT.items.freeSlant = 22; return 'You work the wax soft. For a little while a slant will not fall flat.'; }
+        // stacks rather than resets, so a second stub is never worth less
+        // than the seconds it wipes off the first
+        use: function () {
+            RT.items.freeSlant = Math.min(44, RT.items.freeSlant + 22);
+            return 'You work the wax soft. For a little while a slant will not fall flat.';
+        }
     },
     pitch: {
+        // names the refrain on purpose. The thief strips a stack too and this
+        // does not stop him: a description that said "one thing that would
+        // strip them" would be lying about the thief.
         n: 'A Thumb of Pitch', tag: 'use', cost: 26,
-        d: 'Black, sticky, smells like the mill. Stacks it holds survive one thing that would strip them.',
-        use: function () { RT.items.tack = 1; return 'You thumb it onto your palm. The next rhyme you set will stick through one stripping.'; }
+        d: 'Black, sticky, smells like the mill. Thumb it on and the refrain will not strip your rhymes off, once.',
+        use: function () {
+            if (RT.items.tack) return { no: 'You already have pitch on your palm. It has not been used up yet.' };
+            RT.items.tack = 1;
+            return 'You thumb it onto your palm. The next refrain goes through and your rhymes stay where you put them.';
+        }
     },
     breath: {
         n: 'A Held Breath', tag: 'use', cost: 22,
         d: 'A stoppered jar with nothing visible in it. The chandler sells them cheap and will not explain.',
         use: function () {
             if (!RT) return false;
+            if (RT.breath >= stats().breathMax - 0.5) return { no: 'You are not short of breath. It keeps.' };
             RT.breath = stats().breathMax; RT.winded = 0;
             return 'You unstopper it and somebody else\'s breath goes into you. It is not pleasant. It works.';
         }
@@ -411,8 +428,9 @@ function sLoad() {
     // one short. You were there. Backfill it.
     if (S.seen && S.seen.chorusDown) S.combat.met.chorus = 1;
     // the mask is yours already: you wore it in the prologue
-    S.items = S.items || { inv: { mask: 1 }, lamps: {}, read: {} };
-    if (!S.items.inv) S.items.inv = {}; if (!S.items.lamps) S.items.lamps = {}; if (!S.items.read) S.items.read = {};
+    S.items = S.items || { inv: { mask: 1 }, lamps: {}, wearing: 0 };
+    if (!S.items.inv) S.items.inv = {}; if (!S.items.lamps) S.items.lamps = {};
+    if (S.items.wearing == null) S.items.wearing = 0;
     return S;
 }
 function sSave() { try { localStorage.setItem('comp_ninth', JSON.stringify(S)); } catch (e) {} }
@@ -510,6 +528,10 @@ function itemCount(id) { return inv()[id] || 0; }
 function hasItem(id) { return itemCount(id) > 0; }
 function giveItem(id, n) {
     if (!ITEMS[id]) { if (window.console) console.warn('NINTH: giveItem("' + id + '") is not in ITEMS'); return false; }
+    // there is one coal, one mask and one slate. Nothing consumes them, so a
+    // second copy is dead weight in the bag forever. The boss can be respawned
+    // from the dev menu and would otherwise hand out a coal every time.
+    if (ITEMS[id].one && hasItem(id)) return false;
     n = n || 1;
     inv()[id] = itemCount(id) + n;
     sSave();
@@ -548,9 +570,8 @@ function readWrit(id) {
         return false;
     }
     if (S.owned[it.writ]) { say('You already have that one.', 'dim'); return false; }
+    if (!learnWord(it.writ)) return false;            // spend the object only once the word has landed
     takeItem(id, 1);
-    S.items.read[it.writ] = 1;
-    learnWord(it.writ);
     sfx('learn');
     fillBag();
     return true;
@@ -625,9 +646,10 @@ function dropLoot(f) {
    punishing, this is not that kind of game, but it should cost
    something, and coin is the thing the game already counts. */
 function deathToll() {
+    if (RT.place === 'arena') return;                  // the arena pays nothing, so it takes nothing
     var lost = Math.floor(S.coin * 0.15);
     if (lost <= 0) return;
-    S.coin -= lost; sSave();
+    coin(-lost);
     say('You come round with your pockets lighter by <b>' + lost + '</b>. Somebody was very quick about it.', 'dim');
 }
 function grantFragment(n) {
@@ -833,7 +855,7 @@ var DEV = [
       ITEM_IDS.forEach(function (id) {
           rows.push({ k: 'btn', t: ITEMS[id].n + (itemCount(id) ? ' (' + itemCount(id) + ')' : ''), sub: ITEMS[id].writ ? 'writes ' + ITEMS[id].writ.toUpperCase() : ITEMS[id].tag, on: function () { giveItem(id); } });
       });
-      rows.push({ k: 'btn', t: 'Clear the bag', danger: 1, on: function () { S.items.inv = {}; S.items.lamps = {}; if (RT) { RT.items.mask = 0; RT.items.freeSlant = 0; RT.items.tack = 0; } sSave(); } });
+      rows.push({ k: 'btn', t: 'Clear the bag', danger: 1, on: function () { S.items.inv = {}; S.items.lamps = {}; S.items.wearing = 0; if (RT) { RT.items.freeSlant = 0; RT.items.tack = 0; } sSave(); } });
       rows.push({ k: 'btn', danger: 1, wipe: 1,
           t: wipeArmed ? 'Wipe save — click again to confirm' : 'Wipe save (reset everything, start over)',
           sub: wipeArmed ? 'story, words, charms, coin, achievements and cheats. Any other control backs out.'
@@ -1113,7 +1135,7 @@ function init(el) {
         dbgStacks: 0, dbgAI: 0, dbgHit: 0, dbgPerf: 0,
         fps: 0, _fc: 0, _ft: 0, ac: null, tookHit: false,
         combat: { cuts: [], rep: null, encI: 0, lull: 0 },
-        items: { mask: 0, freeSlant: 0, tack: 0, atShop: false },
+        items: { freeSlant: 0, tack: 0, atShop: false },
         world: { cam: { x: 0, y: 0 }, npc: {}, seenLine: null }
     };
     wireInput(root, cv);
@@ -2445,7 +2467,7 @@ function step(dt, real) {
     RT.callCd = Math.max(0, (RT.callCd || 0) - dt);
     RT.answerCd = Math.max(0, (RT.answerCd || 0) - dt);
     RT.conceal = Math.max(0, (RT.conceal || 0) - dt);
-    RT.items.freeSlant = Math.max(0, RT.items.freeSlant - dt);   // the wax goes cold
+    stepItems(dt);                                          // job 5: the wax goes cold, the bench closes behind you
     if (RT.dead) {
         RT.deadT -= (real || dt);
         stepParts(dt);
@@ -2698,6 +2720,16 @@ function panel(name) {
     else if (open === 'bag') fillBag();
     sfx('ui');
 }
+/* Per-frame item upkeep. The shop closing is not decoration: the open
+   check alone was bypassable, because panel() pauses nothing and you can
+   walk out of earshot with the bench still on screen and keep buying. */
+function stepItems(dt) {
+    RT.items.freeSlant = Math.max(0, RT.items.freeSlant - dt);   // the wax goes cold
+    if (RT.panel === 'shop' && !chandlerNear()) {
+        panel(null);
+        say('You have walked away from the bench. He waits.', 'dim');
+    }
+}
 /* his bench is on the square: close enough to talk, or standing on it */
 function chandlerNear() {
     if (!RT) return false;
@@ -2778,7 +2810,7 @@ function fillBag() {
             var label = it.writ ? 'read' : 'use';
             var extra = '';
             if (id === 'lamp' && lampsOut()) extra = '<em class="nn-bag-note">' + lampsOut() + ' set down elsewhere</em>';
-            if (id === 'mask' && RT.items.mask) extra = '<em class="nn-bag-note">on your face</em>';
+            if (id === 'mask' && S.items.wearing) extra = '<em class="nn-bag-note">on your face</em>';
             html += '<div class="nn-buy"><div><b>' + esc(it.n) + (n > 1 ? ' <i class="nn-bag-x">x' + n + '</i>' : '') + '</b><i>' + esc(it.d) + '</i>' + extra + '</div>' +
                 '<span class="nn-bagbtns"><button class="nn-mini" data-use="' + id + '">' + label + '</button>' +
                 (it.sell ? '<button class="nn-mini" data-give="' + id + '">give ◦' + it.sell + '</button>' : '') + '</span></div>';
@@ -4362,7 +4394,7 @@ function devDemo() {
         S = null; sLoad();
     }
     if (q.nfrag) for (var i = 1; i <= +q.nfrag; i++) grantFragment(i);
-    if (q.nitems) { ITEM_IDS.forEach(function (it) { giveItem(it); }); S.coin = Math.max(S.coin, +q.nitems || 250); }
+    if (q.nitems) { ITEM_IDS.forEach(function (it) { giveItem(it); }); S.coin = Math.max(S.coin, +q.nitems || 250); sSave(); }
     if (PLACES[id]) gotoPlace(id, true);
     if (q.nat) { var xy = q.nat.split(','); RT.px = +xy[0]; RT.py = +xy[1]; RT.armed = false; unstick(); }
     if (q.ndevtab) RT.devTab = q.ndevtab.toUpperCase();   // which dev tab nkey=` should land on
@@ -4411,11 +4443,12 @@ combatBoot();          // job 4: keybind + travel reset, once every var above ex
    RESETS, and those are plain `var`s that are still undefined higher up
    the file. Registering next to ITEMS threw on load. */
 bindKey('i', function () { panel('bag'); });
-/* the mask comes off and soft wax goes cold in a doorway. The pitch is
-   on your palm and stays there until something strips a stack. */
+/* Soft wax goes cold in a doorway and the bench is behind you. The pitch
+   stays on your palm until something tries to strip a stack, and the mask
+   stays on your face: it lives on the save, not the runtime. */
 onPlaceChange(function () {
     if (!RT) return;
-    RT.items.mask = 0; RT.items.freeSlant = 0; RT.items.atShop = false;
+    RT.items.freeSlant = 0; RT.items.atShop = false;   // the wax and the bench do not follow you; the mask does
 });
 
 window.NINTH = { render: render, init: init, close: close, steamAch: steamAch };
