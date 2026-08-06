@@ -1992,6 +1992,7 @@ var PLACES = {
             { t: 'tree', b: [10.2, 2.4, 1.4, 1.4] }
         ],
         looks: [{ x: 6.7, y: 6.6, n: 'The marker stone', d: 'Two names cut into it. The upper one is HAL, and it has been recut so many times it is nearly through the stone.\n\nThe lower one has been scratched out. Not weathered. Scratched, with something hard, by somebody who took their time.\n\nYou cannot read it. You get the shape of four letters and nothing else.', key: 'markstone' }],
+        npcs: ['hal'],
         exits: [{ x: 0.7, y: 5.4, h: 3, to: 'village', n: 'back west' }]
     },
     arena: {
@@ -2095,8 +2096,9 @@ var NPCS = {
         }
     },
     hal: {
-        n: 'A man at the fence', x: 9.6, y: 3.2, col: ['#2a2434', '#3d3350', '#c8b8a8'],
+        n: 'A man at the fence', x: 2.8, y: 6.2, col: ['#2a2434', '#3d3350', '#c8b8a8'],
         talk: function () {
+            S.heard.hal = 1; sSave();
             return [['', 'He is older than he should be. He has the look of somebody who has been trying to finish a sentence for a very long time.'],
                     ['You', 'Who was she?'],
                     ['', 'He opens his mouth. Four letters start to come out, and the air takes them and turns them over, and what you hear is:'],
@@ -2153,6 +2155,21 @@ function checkRealisation() {
         say('Somebody snapped the end off the song and nailed a lie onto it, four hundred years ago, and you have just heard the join.', 'good');
     });
     beat(9.4, function () { RT.realising = 0; grantFragment(1); });
+}
+
+/* FRAGMENT II — the mark. The stone has a name scratched off it.
+   Hal cannot say a name. Neither fact is a clue on its own. */
+function checkMark() {
+    if (S.frags[2] || !S.frags[1]) return;
+    if (!S.seen.markstone || !S.heard.hal) return;
+    RT.realising2 = 1;
+    beat(1.2, function () { bigLine('four letters', '', '#e8e2ee', 2.4); });
+    beat(3.6, function () { bigLine('scratched out of a stone', '', '#e8e2ee', 2.4); });
+    beat(6.2, function () {
+        bigLine('and out of a man', '', '#8a6ad0', 3);
+        say('It is not that nobody remembers her. It is that the remembering was taken out, once, properly, by somebody who had the time.', 'good');
+    });
+    beat(9.6, function () { RT.realising2 = 0; grantFragment(2); });
 }
 
 /* the loop still calls this each frame: run queued beats, keep the
@@ -2247,6 +2264,7 @@ function gotoPlace(id, fresh) {
     var prev = RT.place;
     RT.place = id; S.place = id; S.seen['been_' + id] = 1; sSave();
     if (RT.realising) { RT.realising = 0; grantFragment(1); }   // you walked out on it; you still heard it
+    if (RT.realising2) { RT.realising2 = 0; grantFragment(2); }
     RT.foes.length = 0; RT.fproj.length = 0; RT.calls.length = 0;
     RT.beats = []; RT.typo.length = 0; RT.slams.length = 0; RT.lines.length = 0;
     RT.dialog = null; RT.pressure = 0; RT.cleared = false;
@@ -2267,6 +2285,7 @@ function gotoPlace(id, fresh) {
     else if (p.boss) { /* handled by script */ }
     if (p.endless) { RT.phase = 'fight'; }
     beat(1.6, checkRealisation); // idempotent: catches anything a doorway interrupted
+    beat(1.8, checkMark);
 }
 
 /* ─────────────── things you can interact with ─────────────── */
@@ -2336,6 +2355,7 @@ function advanceDialog() {
         RT.root.querySelector('.nn-dlg').hidden = true;
         if (key === 'markstone') { S.seen.markstone = 1; sSave(); }
         checkRealisation();
+        checkMark();
         sSave();
         return;
     }
@@ -2524,17 +2544,22 @@ function drawMap(cx) {
     cx.fillText('WHERE YOU HAVE BEEN', VW / 2, 70);
     var ox = VW / 2 - 160, oy = 150, cell = 118;
     // links first
-    cx.strokeStyle = 'rgba(140,130,160,.4)'; cx.lineWidth = 2;
+    cx.lineWidth = 2;
     PLACE_IDS.forEach(function (id) {
-        if (!MAP_POS[id] || !S.seen['been_' + id]) return;
+        if (!MAP_POS[id] || !S.seen['been_' + id] || id === 'arena') return;
         (PLACES[id].exits || []).forEach(function (e) {
-            if (!MAP_POS[e.to] || !S.seen['been_' + e.to]) return;
+            if (!MAP_POS[e.to]) return;
+            // a road you have walked is solid; one you have only heard of is dashed
+            var known = S.seen['been_' + e.to];
+            cx.strokeStyle = known ? 'rgba(140,130,160,.4)' : 'rgba(120,110,145,.18)';
+            cx.setLineDash(known ? [] : [4, 6]);
             cx.beginPath();
             cx.moveTo(ox + MAP_POS[id][0] * cell, oy + MAP_POS[id][1] * cell);
             cx.lineTo(ox + MAP_POS[e.to][0] * cell, oy + MAP_POS[e.to][1] * cell);
             cx.stroke();
         });
     });
+    cx.setLineDash([]);
     PLACE_IDS.forEach(function (id) {
         var m = MAP_POS[id]; if (!m || id === 'arena') return;
         var seen = S.seen['been_' + id], here = RT.place === id;
