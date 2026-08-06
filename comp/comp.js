@@ -584,7 +584,8 @@ var TREE_C = {
                     'Terraria': { $when: 'inst:terraria', 'Terraria.exe': '@terraria', 'ReLogic.Native.dll': 0, 'Content': { 'Images': { $: { e: 'Every tree you have ever chopped, as .xnb files.' } }, 'Sounds': {} }, 'changelog.txt': 0 },
                     'Cookie Clicker': { $when: 'inst:cookie', 'Cookie Clicker.exe': '@cookie', 'resources': { 'app.asar': ['142 MB'] }, 'LICENSE.txt': 0 },
                     'URE QUEST': { $when: 'inst:urequest', 'urequest.exe': '@ureboy', 'quest.pak': 0, 'readme.txt': 'URE QUEST v4 — the party rebuild.\nIf the game asks you to install an intercooler mid-boss, that is not a bug. That is the plot.' },
-                    'VEILFALL': { $when: 'inst:veilfall', 'veilfall.exe': '@arpg', 'Content': { 'spells.pak': 0, 'arena.pak': 0 }, 'story.txt': '[this file intentionally left blank]\n\n(the writer says it is coming. the writer says it will be short but sweet. the dummy waits.)' }
+                    'VEILFALL': { $when: 'inst:veilfall', 'veilfall.exe': '@arpg', 'Content': { 'spells.pak': 0, 'arena.pak': 0 }, 'story.txt': '[this file intentionally left blank]\n\n(the writer says it is coming. the writer says it will be short but sweet. the dummy waits.)' },
+                    'NINTH NIGHT': { $when: 'inst:ninthnight', 'ninthnight.exe': '@ninth', 'Content': { 'ballad.txt': 'In the ninth year of the thin sun\nthere was nothing left to eat.\nWe burned the doors, we burned the pews,\nwe burned the market street.\n\n[...]\n\nSo light your lamps on the ninth night\nand set one on the sill\nfor the man who walked out past the fence,\nand he went alone.\n\n(five syllables. every other closing line runs six to eight. something was taken out and you can hear the hole.)', 'families.cfg': '; words that rhyme share a nature\neat  = hunger, burn, drain\night = reveal, strip armour, true damage\nerd  = command, silence, counter\nark  = shadow, damage over time, conceal\nill  = stun, freeze, execute\n\n; nothing rhymes with sword. this is deliberate.' }, 'readme.txt': 'NINTH NIGHT — proof of concept.\n\nTwo verbs. Call leaves a rhyme. Answer detonates every rhyme that matches its sound.\n\nPress ` for the dev menu.' }
                 },
                 'workshop': {}
             },
@@ -4734,6 +4735,17 @@ var STG = [
     ach: [0, 14],
     news: [['v0.1 — the proving grounds', "VEILFALL enters Early Access with a test arena, nine spells and a dummy that respawns with fresh optimism. The story arrives when it arrives. The meteor arrives in 1.1 seconds.", 'Jul 17']] },
 
+  // the story arrived. window.NINTH, comp/ninth.js — proof of concept.
+  { id: 'ninthnight', t: 'NINTH NIGHT', dev: 'URE Softworks', pub: 'URE Softworks', yr: 2026,
+    tags: ['Action RPG', 'Story Rich', 'Folk Horror', 'Typography', 'Prototype'],
+    s: "Every year the town performs a play about the man who saved them. You have been cast as him. Learning your lines teaches you magic, because rhyme is how the world checks whether something is true.",
+    d: "A spell is a line of verse. CALL leaves a rhyme stuck to a thing; ANSWER detonates every rhyme on screen that matches its sound. Close the couplet and the whole room goes off at once. Get the sound wrong and it falls flat. Let a line hang and it goes sour, which is exactly the condition the man in the crowd has been living in for four hundred years. Proof of concept: the prologue, the mill and the Chorus.",
+    price: 0, disc: 0, free: true, owned: true, inst: true, hrs: 0, hrs2w: 0, ea: true,
+    rev: ['Very Positive', 94, 61], art: ['#0e0a16', '#c9a94a', 'IX'], sc: 'dungeon', trend: true, feat: true,
+    app: 'ninth', live: 'NINTH',
+    ach: [0, 14],
+    news: [['v0.1 — proof of concept', "Two verbs, five rhyme families, one boss made of voices. Press ` for the dev menu: jump to any scene, spawn anything, and move every combat number live while you play. The last line of the song is still missing.", 'Jul 23']] },
+
   // runs IN the desktop (like Terraria below) — window.COOKIE, comp/cookie.js.
   // installed = playable on this Steam: only games with a real build (app: in a
   // window, launch: on the URE BOY) ship installed; the shelf games are library-only
@@ -8012,6 +8024,11 @@ var APPS = {
         init: function (el) { if (window.ARPG) window.ARPG.init(el); },
         onFocus: function (el) { var r = el.querySelector('.ar'); if (r) r.focus(); },   // keys follow the window
         onClose: function () { if (window.ARPG) bankPlaytime('veilfall', window.ARPG.close() || 0); } },
+    ninth: { title: 'NINTH NIGHT', icon: 'ic-ninth', w: 1160, h: 720,
+        render: function () { return window.NINTH ? window.NINTH.render() : '<p style="padding:24px">Nobody said anything (ninth.js missing).</p>'; },
+        init: function (el) { if (window.NINTH) window.NINTH.init(el); },
+        onFocus: function (el) { var r = el.querySelector('.nn'); if (r) r.focus(); },
+        onClose: function () { if (window.NINTH) bankPlaytime('ninthnight', window.NINTH.close() || 0); } },
     terraria: { title: 'Terraria', icon: 'ic-terraria', w: 1040, h: 640,
         render: function () { return window.TERRA ? window.TERRA.render() : '<p style="padding:24px">World generation failed to start (terraria.js missing).</p>'; },
         init: function (el) { if (window.TERRA) window.TERRA.init(el); },
@@ -8532,6 +8549,7 @@ if (location.search.indexOf('dev=bin') >= 0) {
 if (location.search.indexOf('dev=cookie') >= 0) openApp('cookie');   // + &ckdev seeds a mature bakery
 if (location.search.indexOf('dev=terra') >= 0) openApp('terraria');   // + &tdev=night|cave|boss|kit
 if (location.search.indexOf('dev=arpg') >= 0) openApp('arpg');        // VEILFALL proving grounds (window.__arpg test handle)
+if (location.search.indexOf('dev=ninth') >= 0) openApp('ninth');      // NINTH NIGHT (+ &ndev=demo, window.__ninth handle)
 if (location.search.indexOf('dev=mc') >= 0) openApp('minecraft');   // + &mcdev=kit,night,dusk,cave,mobs (&mcseed=N)
 if (location.search.indexOf('dev=dnd') >= 0) {   // a file moved Downloads→Desktop + a repositioned icon, in Explorer's Desktop view
     var __d = fsAddFile('Downloads', chromeSetupItem());
