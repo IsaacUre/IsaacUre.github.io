@@ -3755,7 +3755,13 @@ function crCloseTab(i) {
     var wasActive = i === CR.active;
     CR.closed.push(CR.tabs[i].url);                                   // Alt+Shift+T can bring it back
     CR.tabs.splice(i, 1);
-    if (!CR.tabs.length) { closeWin('chrome'); return; }
+    if (!CR.tabs.length) {
+        /* closing the LAST incognito tab must not take the window — and with it
+           the regular tabs parked in CR.held, which the swap toast explicitly
+           promises are "waiting where you left them". Drop back instead. */
+        if (CR.incog && CR.held && CR.held.tabs && CR.held.tabs.length) { crIncogSwap(); return; }
+        closeWin('chrome'); return;
+    }
     if (CR.active >= CR.tabs.length) CR.active = CR.tabs.length - 1;
     else if (i < CR.active) CR.active--;
     crChrome(); crTabs();
@@ -4088,9 +4094,15 @@ function crBubble(msg) {
 // swap whole sessions, like a separate window: regular tabs park and return untouched
 function crIncogSwap() {
     var held = CR.held || null;
-    CR.held = { tabs: CR.tabs, active: CR.active, closed: CR.closed };
+    /* park the session you are LEAVING — unless it is the private one. Keeping
+       incognito tabs around to be resurrected on the next swap is precisely the
+       thing incognito is supposed not to do. */
+    CR.held = CR.incog ? null : { tabs: CR.tabs, active: CR.active, closed: CR.closed };
     CR.incog = !CR.incog;
-    if (held) { CR.tabs = held.tabs; CR.active = Math.min(held.active, held.tabs.length - 1); CR.closed = held.closed; crChrome(); crTabs(); crPage(); }
+    if (held && held.tabs && held.tabs.length) {
+        CR.tabs = held.tabs; CR.active = Math.min(Math.max(held.active, 0), held.tabs.length - 1); CR.closed = held.closed;
+        crChrome(); crTabs(); crPage();
+    }
     else { CR.tabs = []; CR.closed = []; CR.active = 0; crNewTab(); }
     toast(CR.incog ? 'Incognito: history is off. Your regular tabs are waiting where you left them.' : 'Back to regular browsing. The record resumes.');
 }
