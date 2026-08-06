@@ -3139,7 +3139,7 @@ function lightsOf(p) {
 }
 function drawLights(cx) {
     var p = place(); if (!p.night) return;
-    cx.fillStyle = 'rgba(6,5,14,' + (p.night >= 2 ? 0.62 : 0.42) + ')';
+    cx.fillStyle = 'rgba(6,5,14,' + (p.night >= 2 ? 0.66 : 0.5) + ')';
     cx.fillRect(0, 0, VW, VH);
     var ls = lightsOf(p);
     if (!RT.dead) ls.push({ x: RT.px, y: RT.py, r: 3.4, c: '255,214,150', i: 0.8, self: 1 });
@@ -3151,8 +3151,8 @@ function drawLights(cx) {
         var fk = l.self ? 1 : 0.88 + Math.sin(RT.t * 6.2 + l.x * 2.7 + l.y) * 0.12;
         cx.save(); cx.translate(sx, sy - (l.self ? 14 : 10)); cx.scale(1, 0.62);
         var g = cx.createRadialGradient(0, 0, 2, 0, 0, rad);
-        g.addColorStop(0, 'rgba(' + l.c + ',' + (0.3 * l.i * fk).toFixed(3) + ')');
-        g.addColorStop(0.45, 'rgba(' + l.c + ',' + (0.11 * l.i * fk).toFixed(3) + ')');
+        g.addColorStop(0, 'rgba(' + l.c + ',' + (0.24 * l.i * fk).toFixed(3) + ')');
+        g.addColorStop(0.45, 'rgba(' + l.c + ',' + (0.085 * l.i * fk).toFixed(3) + ')');
         g.addColorStop(1, 'rgba(' + l.c + ',0)');
         cx.fillStyle = g; cx.beginPath(); cx.arc(0, 0, rad, 0, TAU); cx.fill(); cx.restore();
     }
