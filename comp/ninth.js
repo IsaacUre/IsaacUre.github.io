@@ -1265,7 +1265,7 @@ function stepReprise(dt) {
         // everything counts as closed, whatever sound it was
         var dmg = (st.answerBase + st.answerPerStack * n) * T('repriseMul') * famDmgMul(r.fam) * deafMul(f, r.fam);
         hurtFoe(f, dmg, r.fam, { answer: 1, closed: 1, n: n });
-        famEffect(f, r.fam, n);
+        famEffect(f, r.fam, n, 1);
         f.stacks.length = 0;
         snapStacks(f, FAMS[r.fam].col, n);
         hit++;
@@ -1309,10 +1309,12 @@ function drawSnaps(cx, dt) {
 /* ─────────────── what each family DOES ───────────────
    Words that rhyme share a nature. The detonation is where the
    nature shows up. */
-function famEffect(f, fam, n) {
+function famEffect(f, fam, n, noHeal) {
     if (fam === 'eat') {                              // hunger, burn, drain
         f.burn = { dps: 5 * n, t: 3 };
-        if (!RT.god) RT.hp = Math.min(RT.hpm, RT.hp + n * 1.5);
+        // noHeal: a Reprise hits every enemy three times, and -eat's drain
+        // would turn one button into a full heal. It is a detonation, not a meal.
+        if (!RT.god && !noHeal) RT.hp = Math.min(RT.hpm, RT.hp + n * 1.5);
         typo(f.x, f.y, 'BURN', FAMS.eat.col, 0.5, 10, 'drift');
     } else if (fam === 'ight') {                      // reveal, strip armour, true damage
         f.revealed = 5; f.armor = 0;
@@ -1607,12 +1609,15 @@ function slotMod(mod) {
     if (mod !== '?') return MODS[mod] ? mod : null;
     return Math.random() < T('eliteChance') ? pick(MOD_IDS) : null;
 }
-/* spawn one authored wave in a ring around the player */
-function spawnWave(enc, cx0, cy0, spread) {
+/* spawn one authored wave in a ring around the player.
+   `cap` is the place's own speakDraws: how much noise it is willing to
+   answer with. The old roster respected it and so does this one, or the
+   mill's fourth wave quietly becomes six enemies in a grain loft. */
+function spawnWave(enc, cx0, cy0, spread, cap) {
     if (!enc) return 0;
-    var n = 0;
+    var n = 0, room = cap == null ? 99 : cap;
     enc.w.forEach(function (slot) {
-        var kind = slot[0], count = slot[1] || 1, mod = slotMod(slot[2]);
+        var kind = slot[0], count = Math.min(slot[1] || 1, Math.max(0, room - n)), mod = slotMod(slot[2]);
         for (var i = 0; i < count; i++) {
             var a = rnd(0, TAU), rr = spread ? rnd(spread[0], spread[1]) : rnd(4.5, 6.5);
             var f = spawnFoe(kind, clamp(cx0 + Math.cos(a) * rr, 1, pw() - 1), clamp(cy0 + Math.sin(a) * rr, 1, ph() - 1), mod);
@@ -3283,7 +3288,9 @@ function speakPressure() {
     // pair. speakDraws still caps how much a place is willing to send.
     var enc = encounterFor(RT.place, RT.wave - 1);
     RT.combat.enc = enc;
-    var sent = spawnWave(enc, RT.px, RT.py);
+    // the place's own ceiling still applies, and it still opens up as the
+    // waves go on, exactly as the hardcoded roster did
+    var sent = spawnWave(enc, RT.px, RT.py, null, Math.min(p.speakDraws, 1 + RT.wave));
     if (!sent) spawnFoe('mouth', clamp(RT.px + 5, 1, pw() - 1), RT.py);
     S.draws = (S.draws || 0) + 1;                   // counted in the save, not in a frame counter
     if (RT.place === 'mill' && S.draws >= 2 && !S.seen.rehearsed) {
