@@ -296,7 +296,7 @@ var ITEMS = {
     },
     wax: {
         n: 'A Stub of Wax', tag: 'use', cost: 18,
-        d: 'Off the chandler\'s bench. Warm it in your hand and a mismatched pair holds for a while: slants land in full.',
+        d: 'Off the chandler\'s counter. Warm it in your hand and a mismatched pair holds for a while: slants land in full.',
         // stacks rather than resets, so a second stub is never worth less
         // than the seconds it wipes off the first
         use: function () {
@@ -365,7 +365,7 @@ var ITEMS = {
     writ_third:  { n: 'A Prompt Card', tag: 'writ', cost: 36, writ: 'third',
         d: 'THIRD, and under it "wait for the hall to go quiet". Somebody has crossed that out.' },
     writ_mark:   { n: 'A Fence Post Chip', tag: 'writ', cost: 38, writ: 'mark',
-        d: 'MARK, cut deep, on a chip of post from out past the fence. He does not say who brought it in.' },
+        d: 'MARK, cut deep, on a chip of post from out past the fence. She does not say who brought it in.' },
     writ_spark:  { n: 'A Flint Wrap', tag: 'writ', cost: 38, writ: 'spark',
         d: 'SPARK, on the rag the flint was wrapped in, in something that is not ink.' },
     writ_stark:  { n: 'A Surveyor\'s Peg', tag: 'writ', cost: 40, writ: 'stark',
@@ -495,7 +495,7 @@ function sellCharm(id) {
     delete S.charms[id];
     S.worn = S.worn.filter(function (w) { return w !== id; });
     coin(c.sell); sSave();
-    say('The chandler pays <b>' + c.sell + '</b> coin for a piece of stage furniture and looks pleased with himself.', 'good');
+    say('The chandler pays <b>' + c.sell + '</b> coin for a piece of stage furniture and looks pleased with herself.', 'good');
     return true;
 }
 function wearCharm(id) {
@@ -2467,7 +2467,7 @@ function step(dt, real) {
     RT.callCd = Math.max(0, (RT.callCd || 0) - dt);
     RT.answerCd = Math.max(0, (RT.answerCd || 0) - dt);
     RT.conceal = Math.max(0, (RT.conceal || 0) - dt);
-    stepItems(dt);                                          // job 5: the wax goes cold, the bench closes behind you
+    stepItems(dt);                                          // job 5: the wax goes cold, the shop closes behind you
     if (RT.dead) {
         RT.deadT -= (real || dt);
         stepParts(dt);
@@ -2703,11 +2703,11 @@ function panel(name) {
     // openable anywhere on purpose: consumables exist to be used under
     // pressure, and a pause would take that away.
     if (name === 'shop' && RT.panel !== 'shop' && !chandlerNear()) {
-        // two different refusals: standing in his square and not bothering to
-        // walk over is not the same as being somewhere he has never been
+        // two different refusals: standing in her shop and not bothering to
+        // walk to the counter is not the same as being somewhere she is not
         say((place().npcs || []).indexOf('chandler') >= 0
-            ? 'He is at his bench, across the square. You would have to walk over.'
-            : 'The chandler is not here. He keeps a bench on the square.', 'dim');
+            ? 'She is behind the counter. You would have to walk over.'
+            : 'The chandler is not here. Her shop is off the east side of the square.', 'dim');
         sfx('ui');
         return;
     }
@@ -2722,21 +2722,22 @@ function panel(name) {
 }
 /* Per-frame item upkeep. The shop closing is not decoration: the open
    check alone was bypassable, because panel() pauses nothing and you can
-   walk out of earshot with the bench still on screen and keep buying. */
+   walk out of earshot with the counter still on screen and keep buying. */
 function stepItems(dt) {
     RT.items.freeSlant = Math.max(0, RT.items.freeSlant - dt);   // the wax goes cold
     if (RT.panel === 'shop' && !chandlerNear()) {
         panel(null);
-        say('You have walked away from the bench. He waits.', 'dim');
+        say('You have walked away from the counter. She waits.', 'dim');
     }
 }
-/* his bench is on the square: close enough to talk, or standing on it */
+/* her counter, in her own shop: close enough to talk across it */
 function chandlerNear() {
     if (!RT) return false;
     if (RT.items.atShop) return true;
     var n = NPCS.chandler;
     if (!n || (place().npcs || []).indexOf('chandler') < 0) return false;
-    return Math.hypot(n.x - RT.px, n.y - RT.py) < 2.6;
+    var w = RT.world.npc.chandler;                 // she wanders behind the counter, so use where she actually is
+    return Math.hypot((w ? w.x : n.x) - RT.px, (w ? w.y : n.y) - RT.py) < 2.6;
 }
 /* THE PLAY — the ballad as you currently know it. Full lines are
    allowed here because nothing is trying to kill you. */
@@ -2840,7 +2841,7 @@ function fillBag() {
             if (!chandlerNear()) { say('There is nobody here to give it to.', 'dim'); return; }
             if (!takeItem(id, 1)) return;
             coin(ITEMS[id].sell);
-            say('You hand over <b>' + esc(ITEMS[id].n) + '</b>. He does not ask where it came from.', 'good');
+            say('You hand over <b>' + esc(ITEMS[id].n) + '</b>. She does not ask where it came from.', 'good');
             sfx('coin'); fillBag(); RT.root.focus();
         });
     });
@@ -2849,7 +2850,7 @@ function fillBag() {
 function fillShop() {
     var b = RT.root.querySelector('.nn-p-shop .nn-pb');
     RT.root.querySelector('.nn-shop-coin').textContent = '◦ ' + S.coin;
-    var html = '<p class="nn-note">He sells wax, wick and small objects out of other people\'s attics. He does not ask what you want them for.</p>';
+    var html = '<p class="nn-note">She sells wax, wick and small objects out of other people\'s attics. She does not ask what you want them for.</p>';
     html += '<h4>CHARMS <i>· wear two</i></h4>';
     CHARM_IDS.forEach(function (id) {
         var c = CHARMS[id], owned = !!S.charms[id];
@@ -2860,9 +2861,9 @@ function fillShop() {
             (owned ? (c.sell ? '<button class="nn-mini" data-sell="' + id + '">sell ◦' + c.sell + '</button>' : '<em class="nn-have">yours</em>')
                    : '<button class="nn-mini' + (S.coin < c.cost ? ' poor' : '') + '" data-buy="' + id + '">◦' + c.cost + '</button>') + '</div>';
     });
-    // Stock, and the word market. He does not sell words: he sells the
+    // Stock, and the word market. She does not sell words: she sells the
     // things people wrote them on, and reading one is how you learn it.
-    html += '<h4>OFF THE BENCH <i>· wax, wick and small objects</i></h4>';
+    html += '<h4>OFF THE COUNTER <i>· wax, wick and small objects</i></h4>';
     var stock = ITEM_IDS.filter(function (id) { return ITEMS[id].cost && !ITEMS[id].writ; });
     stock.forEach(function (id) {
         var it = ITEMS[id], got = it.one && hasItem(id);   // there is only one slate
@@ -2876,7 +2877,7 @@ function fillShop() {
         return famOwned(WORDS[it.writ]);              // he will not sell you a sound you cannot make
     });
     html += '<h4>WRITTEN ON THINGS <i>· somebody had to remember it</i></h4>';
-    if (!writs.length) html += '<p class="nn-note dim">Nothing on the bench you can read. He shrugs. Open another family and come back.</p>';
+    if (!writs.length) html += '<p class="nn-note dim">Nothing on the counter you can read. She shrugs. Open another family and come back.</p>';
     writs.forEach(function (id) {
         var it = ITEMS[id], fam = FAMS[WORDS[it.writ]], got = hasItem(id);   // bought, not read yet
         html += '<div class="nn-buy' + (got ? ' got' : '') + '"><div><b>' + esc(it.n) + ' <i class="nn-writ" style="color:' + fam.col + '">' + it.writ.toUpperCase() + '</i></b><i>' + esc(it.d) + '</i></div>' +
@@ -3011,7 +3012,7 @@ var PLACES = {
             { t: 'cart', b: [3.4, 8.2, 2.2, 1.2] },
             { t: 'lamp', b: [11.8, 7.6, 0.5, 0.5] }, { t: 'lamp', b: [4.6, 5.2, 0.5, 0.5] }
         ],
-        npcs: ['bern', 'child', 'widow', 'chandler'],
+        npcs: ['bern', 'child', 'widow'],
         looks: [
             { x: 12.4, y: 8.2, n: 'A lamp on a sill', d: 'Set out on the ninth night for the man who walked out past the fence. Every house on the square has one. Nobody has ever set out a second.' },
             { x: 7.2, y: 6.6, n: 'The playbill', d: 'THE NINTH NIGHT. A true account. The same four hundredth time.\n\nUnder the cast list somebody has pencilled your name, and then gone over it twice, harder.' }
@@ -3195,32 +3196,10 @@ var PLACE_IDS = Object.keys(PLACES);
    thing out loud, in plain words, for anybody who does not hear
    meter. */
 var NPCS = {
-    /* The chandler. He was a panel header, a tooltip, a comment and one
-       line of sell flavour. He keeps a bench on the square, and the shop
-       opens because you are standing in front of him. */
-    chandler: {
-        n: 'The chandler', x: 4.6, y: 5.4, col: ['#4a3a2a', '#6a5238', '#d8b48c'], hat: 1,
-        talk: function () {
-            S.heard.chandler = 1; sSave();
-            if (!S.seen.chandler1) {
-                S.seen.chandler1 = 1;
-                return [['The chandler', 'Wax, wick, and whatever comes out of other people\'s attics.'],
-                        ['You', 'Do you sell words?'],
-                        ['The chandler', 'I sell what they were written on. The word comes free with the object. That is not the same as selling words.'],
-                        ['You', 'Who writes them down?'],
-                        ['The chandler', 'People who are worried about forgetting.'],
-                        ['', 'He turns a cask lid over so you can see the underside, and waits. Press V while you are standing here to look over the bench.']];
-            }
-            if (hasItem('coal')) {
-                return [['The chandler', 'That is a real one.'],
-                        ['You', 'How can you tell?'],
-                        ['The chandler', 'The prop is painted. That one is burnt. I am not buying it and I would put it away before Bern sees it.'],
-                        ['', 'Press V to look over the bench.']];
-            }
-            return [['The chandler', 'Have a look. I do not ask what you want it for.'],
-                    ['', 'Press V while you are standing here.']];
-        }
-    },
+    /* The chandler used to be a panel header, a tooltip, a comment and one
+       line of sell flavour. Job 3 gave her a shop off the square and a
+       ledger four hundred years long, so job 5 only hangs the stock on
+       her: see chandlerNear and fillShop. */
     bern: {
         n: 'Bern', x: 7.4, y: 7.2, col: ['#6a4f3a', '#8a6a4a', '#d8b48c'], hat: 1,
         talk: function () {
@@ -4443,12 +4422,12 @@ combatBoot();          // job 4: keybind + travel reset, once every var above ex
    RESETS, and those are plain `var`s that are still undefined higher up
    the file. Registering next to ITEMS threw on load. */
 bindKey('i', function () { panel('bag'); });
-/* Soft wax goes cold in a doorway and the bench is behind you. The pitch
+/* Soft wax goes cold in a doorway and the counter is behind you. The pitch
    stays on your palm until something tries to strip a stack, and the mask
    stays on your face: it lives on the save, not the runtime. */
 onPlaceChange(function () {
     if (!RT) return;
-    RT.items.freeSlant = 0; RT.items.atShop = false;   // the wax and the bench do not follow you; the mask does
+    RT.items.freeSlant = 0; RT.items.atShop = false;   // the wax and the shop do not follow you; the mask does
 });
 
 window.NINTH = { render: render, init: init, close: close, steamAch: steamAch };
