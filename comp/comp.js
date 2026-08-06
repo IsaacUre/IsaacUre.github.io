@@ -2877,13 +2877,39 @@ function liveSanitize(html, linkFn) {
             if (n.nodeType === 3) { dst.appendChild(document.createTextNode(n.nodeValue)); continue; }
             if (n.nodeType !== 1) continue;
             var tag = n.nodeName.toUpperCase();
-            if (LIVE_DROP[tag]) continue;
+            if (LIVE_DROP[tag]) {
+                /* A dropped node usually has nothing worth keeping — but Wikipedia
+                   ships every formula as <math> plus an <img> fallback, with the
+                   TeX sitting in alttext/alt. Dropping the subtree silently deleted
+                   it, so "defined as <formula> for <formula>" became "defined as
+                   for" on every maths article. Keep the text, drop the markup. */
+                var alt = n.getAttribute && (n.getAttribute('alttext') || n.getAttribute('alt'));
+                if (alt) {
+                    alt = String(alt).replace(/^\{\\displaystyle\s*/, '').replace(/\}$/, '').trim();
+                    // the <math> and its <img> fallback carry the SAME TeX, so
+                    // emitting both would print every formula twice
+                    var prev = dst.lastChild;
+                    var dupe = prev && prev.nodeType === 1 && prev.nodeName === 'CODE' && prev.textContent === alt;
+                    if (alt && alt.length < 400 && !dupe) {
+                        var code = document.createElement('code');
+                        code.appendChild(document.createTextNode(alt));
+                        dst.appendChild(code);
+                    }
+                }
+                continue;
+            }
             if (tag === 'A') {
                 var to = linkFn ? linkFn(n.getAttribute('href') || '') : null;
                 if (!to) { walk(n, dst, depth + 1); continue; }        // unroutable link: keep its text
                 var a = document.createElement('a');
                 a.className = 'cr-l cr-lva';
                 a.setAttribute('data-href', to);
+                /* a bare <a> with no href is not a link to the keyboard or a
+                   screen reader — it is unfocusable and unannounced. Give it a
+                   real href for semantics; the delegated handler still routes
+                   the click inside the sim, and preventDefault stops the browser
+                   from actually leaving the page. */
+                a.setAttribute('href', 'https://' + String(to).replace(/^https?:\/\//i, ''));
                 walk(n, a, depth + 1);
                 dst.appendChild(a);
                 continue;
@@ -2918,6 +2944,14 @@ function liveFail(err, what, r) {
             '<p>GitHub gives anonymous museums 60 requests an hour. They ran out.</p>' +
             '<p class="cr-errcode">Resets ' + (reset ? 'around ' + fmtTime(new Date(reset)) : 'within the hour') + '</p>' +
             '<div class="cr-errbtns"><button class="cr-btn" id="crErrBack">Go back</button></div></div>';
+    }
+    /* a 404 is not "strange" — it is the single most ordinary answer on the web,
+       and saying so is the difference between "you typo'd" and "this is broken" */
+    if (err === 'http404' || err === 'empty') {
+        return '<div class="cr-err"><span class="cr-errdino">🔎</span><h2>Nothing here by that name</h2>' +
+            '<p>' + esc(what) + ' has no page at that address. Check the spelling, or search for it instead.</p>' +
+            '<div class="cr-errbtns"><button class="cr-btn" id="crErrBack">Go back</button>' +
+            crLink('google.com/search?q=' + encodeURIComponent(String(liveUrl()).split('/').pop().replace(/_/g, ' ')), 'Search for it', 'cr-btn ghost') + '</div></div>';
     }
     return '<div class="cr-err"><span class="cr-errdino">🦖</span><h2>That didn’t load</h2>' +
         '<p>' + esc(what) + ' answered strangely (' + esc(String(err)) + '). The real web does that sometimes.</p>' +
@@ -4017,7 +4051,10 @@ function initChrome(el) {
         if (!e.target.closest('#crMenu') && !e.target.closest('#crMore')) menu.hidden = true;
         if (!e.target.closest('#crOmni')) { suggest.hidden = true; }
         var l = e.target.closest('.cr-l');
-        if (l) { var t = crTab(); t.scroll = 0; crNav(l.getAttribute('data-href')); return; }
+        // preventDefault: reader-mode links carry a real href (so they are
+        // focusable and announced as links), and without this the click would
+        // navigate the sim AND take the whole page to the external site
+        if (l) { e.preventDefault(); var t = crTab(); t.scroll = 0; crNav(l.getAttribute('data-href')); return; }
         var tx = e.target.closest('.cr-tabx');
         if (tx) { e.stopPropagation(); crCloseTab(+tx.getAttribute('data-tx')); return; }
         var tab = e.target.closest('.cr-tab');

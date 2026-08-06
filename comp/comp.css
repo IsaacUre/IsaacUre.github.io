@@ -1716,7 +1716,11 @@ span.st-newsart .ic { width: 40px; height: 40px; }
 .cr-snip b { font-size: .92rem; }
 .cr-snip p { font-size: .78rem; color: #4d5156; margin: 6px 0; line-height: 1.5; }
 .cr-snipl { color: #1a73e8; font-size: .74rem; }
-.cr-res { margin-bottom: 18px; display: flex; flex-direction: column; }
+/* min-width:0 + wrap: a single unbroken token in a snippet (a long URL, a
+   chemical name) otherwise widens the flex column and pushes the whole
+   results page into horizontal scroll */
+.cr-res { margin-bottom: 18px; display: flex; flex-direction: column; min-width: 0; }
+.cr-res, .cr-resdesc, .cr-restitle, .cr-resurl, .cr-featsnip { overflow-wrap: anywhere; word-break: break-word; }
 .cr-resurl { display: flex; align-items: center; gap: 6px; font-size: .7rem; color: #202124; }
 .cr-restitle { display: block; font-size: .95rem; color: #1a0dab; margin-top: 2px; }
 .cr-res .cr-l:hover .cr-restitle { text-decoration: underline; }
