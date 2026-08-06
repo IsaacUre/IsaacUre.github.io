@@ -151,7 +151,7 @@ var CHARMS = {
               m: { slantMul: 0.3 } },
     lamp:   { n: 'The Sill Lamp', cost: 85, d: 'Set out every year for a man who was never out there. -eat and -ight land 30% harder.',
               m: { famDmg: { eat: 0.3, ight: 0.3 } } },
-    hilt:   { n: 'A Sword Hilt', cost: 0, sell: 120, joke: 1, d: 'Prop, not weapon. Nothing rhymes with sword, so it does nothing at all, in any hand, forever. The chandler will give you good coin for it.',
+    hilt:   { n: 'A Sword Hilt', cost: 140, sell: 12, joke: 1, d: 'Prop, not weapon. Nothing rhymes with sword, so it does nothing at all, in any hand, forever. He is asking a great deal for it.',
               m: {} }
 };
 var CHARM_IDS = Object.keys(CHARMS);
@@ -162,6 +162,11 @@ function sLoad() {
     if (S) return;
     try { S = JSON.parse(localStorage.getItem('comp_ninth') || 'null'); } catch (e) { S = null; }
     if (!S) S = {};
+    // saves written before places existed carried S.scene instead
+    if (!S.place && S.scene) {
+        S.place = { prologue: 'stage', wick: 'square', mill: 'mill', yard: 'lane', loft: 'loft', quiet: 'mill', arena: 'arena' }[S.scene] || 'square';
+        delete S.scene;
+    }
     S.place = S.place || 'stage';
     S.heard = S.heard || {};        // refrain / child / busker / shepherd — understanding, not loot
     S.fams = S.fams || { eat: 1, ight: 1 };          // the town's version is your starting kit
@@ -603,12 +608,14 @@ function say(html, cls) {
     d.innerHTML = html;
     el.appendChild(d);
     while (el.children.length > 5) el.removeChild(el.firstChild);
-    setTimeout(function () { if (d.parentNode) { d.classList.add('out'); setTimeout(function () { if (d.parentNode) d.remove(); }, 700); } }, 5200);
+    RT.timers.push(setTimeout(function () {
+        if (d.parentNode) { d.classList.add('out'); RT.timers.push(setTimeout(function () { if (d.parentNode) d.remove(); }, 700)); }
+    }, 5200));
 }
 
 /* ─────────────── runtime ─────────────── */
 var RT = null;
-function stanzaKeys() { return S.opts.wasd ? ['q', 'e', 'f'] : ['q', 'w', 'e']; }
+function stanzaKeys() { return ['1', '2', '3']; }   // E is interact, in every scheme
 function refreshStanzaKeys() {
     if (!RT) return;
     var k = stanzaKeys();
@@ -707,18 +714,20 @@ function wireInput(root, cv) {
         if (!RT || e.altKey || e.ctrlKey || e.metaKey) return;
         var k = e.key.toLowerCase();
         if (k === '`' || k === '~') { toggleDev(); e.preventDefault(); return; }
-        if (k === 'escape') { if (RT.devOpen) toggleDev(); else if (RT.panel) panel(null); e.stopPropagation(); e.preventDefault(); return; }
+        if (k === 'escape') { if (RT.devOpen) toggleDev(); else if (RT.mapOpen) RT.mapOpen = false; else if (RT.dialog) closeDialog(); else if (RT.panel) panel(null); e.stopPropagation(); e.preventDefault(); return; }
         RT.keys[k] = true;
         if (e.repeat) { e.preventDefault(); return; }
+        // interact first, always. It used to sit after the stanza chain,
+        // which bound E to Stanza II and made the entire world layer
+        // unreachable from the keyboard.
         var sk = stanzaKeys();
-        if (k === sk[0]) doStanza(1);
+        if (k === 'e') doInteract();
+        else if (k === sk[0]) doStanza(1);
         else if (k === sk[1]) doStanza(2);
         else if (k === sk[2]) doStanza(3);
         else if (k === 'r') doVerse();
         else if (k === ' ') doDash();
-        else if (k === 'e' && !S.opts.wasd) doInteract();
-        else if (k === 'f' && S.opts.wasd && !S.stanzas[3]) doInteract();
-        else if (k === 'm') { RT.mapOpen = !RT.mapOpen; }
+        else if (k === 'm') { if (!RT.dialog) RT.mapOpen = !RT.mapOpen; }
         else if (k === 'b') panel('book');
         else if (k === 'c') panel('kit');
         else if (k === 'v') panel('shop');
@@ -778,10 +787,13 @@ function stepPlayer(dt) {
     if (RT.mouse.down && S.opts.wasd) doCall();
 }
 function doDash() {
-    if (RT.dead || RT.dash > 0) return;
+    if (RT.dead || RT.dash > 0 || RT.dialog || RT.mapOpen) return;
     var a = Math.atan2(RT.mouse.wy - RT.py, RT.mouse.wx - RT.px);
     var d = Math.min(Math.hypot(RT.mouse.wx - RT.px, RT.mouse.wy - RT.py), T('dashDist'));
-    moveActor(RT.px + Math.cos(a) * d, RT.py + Math.sin(a) * d);
+    // walked in steps, not teleported: a dash used to pass clean through
+    // fences, beams and house walls whenever the far side happened to be clear
+    var steps = Math.max(1, Math.ceil(d / 0.2));
+    for (var i = 0; i < steps; i++) moveActor(RT.px + Math.cos(a) * (d / steps), RT.py + Math.sin(a) * (d / steps));
     RT.dash = T('dashCd'); RT.iframe = Math.max(RT.iframe, 0.3); RT.moveTo = null;
     burst(RT.px, RT.py, 8, 10, { col: '200,190,220', sp0: 0.3, sp1: 1.4, l0: 0.2, l1: 0.5, add: 0 });
     sfx('step');
@@ -1095,7 +1107,7 @@ var STANZAS = [
       lines: ['So light your lamps on the ninth night', 'and set one on the sill,', 'not for the man who came back down', 'but for the girl who never will.'] }
 ];
 function doStanza(n) {
-    if (!RT || RT.dead || RT.devOpen) return;
+    if (!RT || RT.dead || RT.devOpen || RT.dialog || RT.mapOpen) return;
     var sz = STANZAS[n - 1]; if (!sz) return;
     if (!S.stanzas[n]) { hudNudge('stanza' + n); say('You do not have that stanza yet.', 'dim'); return; }
     if (RT.stanzaCd[n - 1] > 0) { hudNudge('stanza' + n); return; }
@@ -1141,7 +1153,7 @@ function stanzaWave(sz, big) {
    the last fight. Four hours of a promise the UI is making. You
    press it once, ever, and it is the corrected ballad. */
 function doVerse() {
-    if (!RT || RT.devOpen) return;
+    if (!RT || RT.devOpen || RT.dialog || RT.mapOpen) return;
     if (!S.verse) {
         hudNudge('verse');
         var lines = ['Not yet.', 'You do not have all of it.', 'Something is still missing from the end.'];
@@ -1859,7 +1871,7 @@ function fillDev() {
             sSave(); fillDev(); updateHud(0); sfx('ui'); RT.root.focus();
         });
     });
-    d.querySelector('.nn-dev-foot').textContent = 'scene ' + RT.scene + ' · foes ' + RT.foes.filter(function (f) { return !f.dead; }).length +
+    d.querySelector('.nn-dev-foot').textContent = place().n + ' · foes ' + RT.foes.filter(function (f) { return !f.dead; }).length +
         ' · breath ' + Math.round(RT.breath) + ' · echo ' + Math.round(RT.echo) + ' · coin ' + S.coin + ' · ` to close';
 }
 
@@ -1927,7 +1939,7 @@ var PLACES = {
         n: 'The lane out of Wick', sub: 'in the play it is a day\'s walk',
         floor: 'mill', w: 13, h: 17,
         props: [
-            { t: 'fence', b: [0.6, 4, 0.5, 9] }, { t: 'fence', b: [11.6, 3, 0.5, 10] },
+            { t: 'fence', b: [0.6, 4, 0.5, 9] }, { t: 'fence', b: [11.6, 3, 0.5, 3.2] }, { t: 'fence', b: [11.6, 10.2, 0.5, 2.8] },
             { t: 'tree', b: [2.2, 6.4, 1.4, 1.4] }, { t: 'tree', b: [9.4, 10.2, 1.4, 1.4] },
             { t: 'stone', b: [4.6, 12.6, 1, 1] }
         ],
@@ -1952,7 +1964,7 @@ var PLACES = {
         looks: [{ x: 8, y: 5.4, n: 'The mill door', d: 'Bern told you to rehearse out here because the loft carries sound and the town does not need to hear you learn.\n\nHe meant it kindly. He is like that.' }],
         exits: [
             { x: 6.8, y: 12.3, w: 3, to: 'lane', n: 'back down the lane' },
-            { x: 7.9, y: 4.9, w: 1.6, to: 'loft', n: 'up the ladder, into the loft', needs: 'rehearsed',
+            { x: 7.9, y: 5.6, w: 1.8, to: 'loft', n: 'up the ladder, into the loft', needs: 'rehearsed',
               shut: 'A ladder into the dark. There is no reason to climb it. Rehearse first.' }
         ],
         speakDraws: 4,
@@ -1962,7 +1974,8 @@ var PLACES = {
         n: 'The grain loft', sub: 'a crowd of voices with no bodies',
         floor: 'loft', w: 13, h: 13,
         props: [
-            { t: 'beam', b: [0, 3.2, 13, 0.6] }, { t: 'beam', b: [0, 9.2, 13, 0.6] },
+            { t: 'beam', b: [0, 3.2, 4.8, 0.6] }, { t: 'beam', b: [8.2, 3.2, 4.8, 0.6] },
+            { t: 'beam', b: [0, 9.2, 4.4, 0.6] }, { t: 'beam', b: [8.6, 9.2, 4.4, 0.6] },
             { t: 'sack', b: [1.4, 5.4, 1.2, 1] }, { t: 'sack', b: [10.4, 6.6, 1.2, 1] }
         ],
         exits: [{ x: 6, y: 12.3, w: 3, to: 'mill', n: 'back down', needs: 'chorusDown',
@@ -1988,7 +2001,7 @@ var PLACES = {
         floor: 'mill', calm: 1, w: 13, h: 11,
         props: [
             { t: 'markstone', b: [6, 4.6, 1.4, 1.6] },
-            { t: 'fence', b: [0.6, 1, 0.5, 9] },
+            { t: 'fence', b: [0.6, 1, 0.5, 2.4] }, { t: 'fence', b: [0.6, 7.6, 0.5, 2.4] },
             { t: 'tree', b: [10.2, 2.4, 1.4, 1.4] }
         ],
         looks: [{ x: 6.7, y: 6.6, n: 'The marker stone', d: 'Two names cut into it. The upper one is HAL, and it has been recut so many times it is nearly through the stone.\n\nThe lower one has been scratched out. Not weathered. Scratched, with something hard, by somebody who took their time.\n\nYou cannot read it. You get the shape of four letters and nothing else.', key: 'markstone' }],
@@ -2051,6 +2064,7 @@ var NPCS = {
     widow: {
         n: 'A woman setting out a lamp', x: 12.2, y: 8.6, col: ['#3a3448', '#4e465e', '#d8b48c'],
         talk: function () {
+            S.heard.widow = 1; sSave();
             return [['', 'She sets the lamp on the sill and squares it up, twice.'],
                     ['The woman', 'For the man who went out. My mother did it, her mother did it.'],
                     ['You', 'Do you ever set out two?'],
@@ -2131,9 +2145,13 @@ var SCRIPTS = {
         beat(3.2, function () { say('Rehearse. <i>Say the lines out loud</i> — left click — and see what the dark does with them.', 'dim'); });
     },
     loft: function () {
+        if (S.seen.chorusDown) {                       // it is over; the room is just a room
+            say('The loft is quiet. Dust, sacks, and the shape of where a crowd was.', 'dim');
+            return;
+        }
         say('<b>The grain loft.</b> Something up here is already saying your part.', 'big');
         beat(2.6, function () { say('It strips the rhyme off everything on a pulse. You cannot build slowly here.', 'dim'); });
-        beat(4.6, function () { bigLine('THE CHORUS', 'burst between pulses', '#d2c8e1', 2.4); spawnFoe('chorus', 6.5, 3.5); });
+        beat(4.6, function () { bigLine('THE CHORUS', 'burst between pulses', '#d2c8e1', 2.4); spawnFoe('chorus', 6.5, 6.2); });
     }
 };
 
@@ -2143,7 +2161,7 @@ var SCRIPTS = {
    true line, and the two rub together in your head. Understanding,
    not looting. */
 function checkRealisation() {
-    if (S.frags[1] || !S.heard.refrain) return;
+    if (S.frags[1] || RT.realising || !S.heard.refrain) return;
     var src = S.heard.child || S.heard.busker || S.heard.shepherd;
     if (!src) return;
     RT.realising = 1;
@@ -2160,7 +2178,7 @@ function checkRealisation() {
 /* FRAGMENT II — the mark. The stone has a name scratched off it.
    Hal cannot say a name. Neither fact is a clue on its own. */
 function checkMark() {
-    if (S.frags[2] || !S.frags[1]) return;
+    if (S.frags[2] || RT.realising2 || !S.frags[1]) return;
     if (!S.seen.markstone || !S.heard.hal) return;
     RT.realising2 = 1;
     beat(1.2, function () { bigLine('four letters', '', '#e8e2ee', 2.4); });
@@ -2170,6 +2188,23 @@ function checkMark() {
         say('It is not that nobody remembers her. It is that the remembering was taken out, once, properly, by somebody who had the time.', 'good');
     });
     beat(9.6, function () { RT.realising2 = 0; grantFragment(2); });
+}
+
+/* FRAGMENT III — the lamp. Every house in Wick sets one out on the
+   ninth night for the man who walked out past the fence. You have
+   stood at the stone. You know who did the walking. The lamps have
+   been pointed at the wrong person for four hundred years. */
+function checkSill() {
+    if (S.frags[3] || RT.realising3 || !S.frags[2]) return;
+    if (!S.heard.widow || !S.seen.markstone) return;
+    RT.realising3 = 1;
+    beat(1.2, function () { bigLine('set one on the sill', '', '#e8e2ee', 2.4); });
+    beat(3.6, function () { bigLine('for the man who walked out past the fence', '', '#e8e2ee', 2.6); });
+    beat(6.4, function () {
+        bigLine('he never went past the fence', '', '#6fd4ff', 3);
+        say('Four hundred years of lamps, every one of them set out for the man who came back down. Nobody has ever lit one for the girl who did not.', 'good');
+    });
+    beat(10.0, function () { RT.realising3 = 0; grantFragment(3); });
 }
 
 /* the loop still calls this each frame: run queued beats, keep the
@@ -2247,11 +2282,11 @@ function stepTravel() {
 }
 /* never wake up inside a wall */
 function unstick() {
-    if (!blocked(RT.px, RT.py)) return;
+    if (!blocked(RT.px, RT.py, 0.3)) return;
     for (var r = 0.5; r <= 8; r += 0.5) {
         for (var a = 0; a < 16; a++) {
             var x = RT.px + Math.cos(a / 16 * TAU) * r, y = RT.py + Math.sin(a / 16 * TAU) * r;
-            if (x > 0.5 && y > 0.5 && x < pw() - 0.5 && y < ph() - 0.5 && !blocked(x, y)) { RT.px = x; RT.py = y; return; }
+            if (x > 0.5 && y > 0.5 && x < pw() - 0.5 && y < ph() - 0.5 && !blocked(x, y, 0.3)) { RT.px = x; RT.py = y; return; }
         }
     }
 }
@@ -2265,15 +2300,23 @@ function gotoPlace(id, fresh) {
     RT.place = id; S.place = id; S.seen['been_' + id] = 1; sSave();
     if (RT.realising) { RT.realising = 0; grantFragment(1); }   // you walked out on it; you still heard it
     if (RT.realising2) { RT.realising2 = 0; grantFragment(2); }
+    if (RT.realising3) { RT.realising3 = 0; grantFragment(3); }
     RT.foes.length = 0; RT.fproj.length = 0; RT.calls.length = 0;
     RT.beats = []; RT.typo.length = 0; RT.slams.length = 0; RT.lines.length = 0;
     RT.dialog = null; RT.pressure = 0; RT.cleared = false;
+    RT.wave = 0; RT.tookHit = false;                       // per place, not per session
+    RT.timers.forEach(function (t) { clearTimeout(t); }); RT.timers.length = 0;
     var p = PLACES[id];
     // walk in from the exit that points back where you came from
     var back = (p.exits || []).filter(function (e) { return e.to === prev; })[0];
-    if (back) { RT.px = clamp(back.x, 1, (p.w || GRID) - 1); RT.py = clamp(back.y, 1, (p.h || GRID) - 1);
-        RT.px += back.h ? (back.x < 2 ? 1.2 : -1.2) : 0; RT.py += back.h ? 0 : (back.y < 2 ? 1.2 : -1.2); }
-    else { RT.px = (p.w || GRID) / 2; RT.py = (p.h || GRID) - 2.2; }
+    var W = p.w || GRID, H = p.h || GRID;
+    if (back) { RT.px = clamp(back.x, 1, W - 1); RT.py = clamp(back.y, 1, H - 1);
+        // step INTO the room, which is toward its middle — not toward wherever
+        // tile 2 happens to be. An exit partway along a wall used to shove you
+        // further into the wall.
+        RT.px += back.h ? (back.x < W / 2 ? 1.2 : -1.2) : 0;
+        RT.py += back.h ? 0 : (back.y < H / 2 ? 1.2 : -1.2); }
+    else { RT.px = W / 2; RT.py = H - 2.2; }
     RT.moveTo = null; RT.armed = false; RT.nagged = null;
     unstick();
     RT.hp = RT.hpm; RT.breath = stats().breathMax; RT.winded = 0; RT.dead = false;
@@ -2283,9 +2326,10 @@ function gotoPlace(id, fresh) {
     if (fresh && p.script) delete S.seen[p.script + 'Intro'];
     if (p.script && SCRIPTS[p.script]) SCRIPTS[p.script]();
     else if (p.boss) { /* handled by script */ }
-    if (p.endless) { RT.phase = 'fight'; }
+    RT.phase = p.endless ? 'fight' : p.calm ? 'calm' : 'world';
     beat(1.6, checkRealisation); // idempotent: catches anything a doorway interrupted
     beat(1.8, checkMark);
+    beat(2.0, checkSill);
 }
 
 /* ─────────────── things you can interact with ─────────────── */
@@ -2346,6 +2390,14 @@ function showDialog() {
     el.querySelector('.nn-dlg-tx').innerHTML = esc(ln[1]).replace(/\n/g, '<br>');
     el.querySelector('.nn-dlg-more').textContent = d.i < d.lines.length - 1 ? 'E / click — more' : 'E / click — done';
 }
+function closeDialog() {
+    if (!RT.dialog) return;
+    var key = RT.dialog.key;
+    RT.dialog = null;
+    RT.root.querySelector('.nn-dlg').hidden = true;
+    if (key === 'markstone') { S.seen.markstone = 1; }
+    checkRealisation(); checkMark(); checkSill(); sSave();
+}
 function advanceDialog() {
     var d = RT.dialog; if (!d) return;
     d.i++;
@@ -2356,6 +2408,7 @@ function advanceDialog() {
         if (key === 'markstone') { S.seen.markstone = 1; sSave(); }
         checkRealisation();
         checkMark();
+        checkSill();
         sSave();
         return;
     }
@@ -2542,7 +2595,7 @@ function drawMap(cx) {
     cx.textAlign = 'center';
     cx.fillStyle = '#d8cfa8'; cx.font = '16px "Press Start 2P", monospace';
     cx.fillText('WHERE YOU HAVE BEEN', VW / 2, 70);
-    var ox = VW / 2 - 160, oy = 150, cell = 118;
+    var ox = VW / 2 - 150, oy = 128, cell = 100;
     // links first
     cx.lineWidth = 2;
     PLACE_IDS.forEach(function (id) {
@@ -2585,7 +2638,10 @@ function devDemo() {
     var q = {};
     location.search.slice(1).split('&').forEach(function (kv) { var a = kv.split('='); q[a[0]] = decodeURIComponent(a[1] || ''); });
     var id = q.ndev || 'square';
-    if (q.nwipe) { try { localStorage.removeItem('comp_ninth'); } catch (e) {} }
+    if (q.nwipe) {                       // wipe AND rebuild, or the old save is still in S
+        try { localStorage.removeItem('comp_ninth'); } catch (e) {}
+        S = null; sLoad();
+    }
     if (q.nfrag) for (var i = 1; i <= +q.nfrag; i++) grantFragment(i);
     if (PLACES[id]) gotoPlace(id, true);
     if (q.nat) { var xy = q.nat.split(','); RT.px = +xy[0]; RT.py = +xy[1]; RT.armed = false; unstick(); }
