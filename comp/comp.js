@@ -3046,7 +3046,14 @@ function serpIntent(q) {
        a year range. Those two shapes are common enough as real queries that the
        calculator must not swallow them (1-800-273-8255 is not -9327). */
     var phoneish = /^\+?\d{1,4}([-\s.]\d{2,5}){2,}$/.test(s) || /^\d{4}\s*-\s*\d{4}$/.test(s);
-    if (!phoneish && /^[-+.\d\s()*/^%]+$/.test(s) && /[+\-*/^%]/.test(s) && /\d/.test(s)) return { kind: 'math' };
+    /* A bare d/d is a date far more often than a division when it is a VALID
+       month/day — "9/11" and "10/4" are queries, not sums. Validity is what
+       keeps real arithmetic working: 1/0 (day 0) and 100/7 (no such month)
+       are not dates, so they still calculate. Anything with a second operator
+       or spaces is arithmetic regardless. */
+    var dm = s.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/);
+    var dateish = !!dm && +dm[1] >= 1 && +dm[1] <= 12 && +dm[2] >= 1 && +dm[2] <= 31;
+    if (!phoneish && !dateish && /^[-+.\d\s()*/^%]+$/.test(s) && /[+\-*/^%]/.test(s) && /\d/.test(s)) return { kind: 'math' };
     var u = l.match(/^([-+]?[\d.,]+)\s*([a-z°"']+)\s+(?:in|to|as)\s+([a-z°"']+)\??$/);
     if (u && /^[-+]?(\d{1,3}(,\d{3})+|\d*)(\.\d+)?$/.test(u[1]) && /\d/.test(u[1])) {
         // 1,5 (European decimal) and 1.5.2 are malformed here, not silently reinterpreted
@@ -3056,7 +3063,16 @@ function serpIntent(q) {
     if (t) return { kind: 'time', place: t[1] };
     var d = l.match(/^(?:define|definition of|meaning of|what does)\s+(.+?)(?:\s+mean)?\??$/);
     if (d && /^[a-z][a-z' -]{1,30}$/.test(d[1])) return { kind: 'define', word: d[1].trim() };
-    var w = l.match(/^weather(?:\s+(?:in|at|for))?\s+(.+?)\??$/) || l.match(/^(.+?)\s+weather$/);
+    /* "<place> weather" only counts when the prefix could actually BE a place:
+       short, and free of the function words that mark a question. The old
+       pattern turned "is the weather" and "what causes extreme weather" into a
+       geocode and showed a real forecast for somewhere never asked about. */
+    var w = l.match(/^weather(?:\s+(?:in|at|for))?\s+(.+?)\??$/);
+    if (!w) {
+        var tail = l.match(/^([a-z][a-z .'-]{1,28})\s+weather\??$/);
+        if (tail && !/\b(is|are|was|the|a|an|of|for|what|why|how|when|does|do|causes?|extreme|severe|bad|good|todays?|tomorrows?)\b/.test(tail[1]))
+            w = tail;
+    }
     if (w) return { kind: 'weather', place: w[1] };
     var m = l.match(/^(?:where is|map of|directions to)\s+(.+?)\??$/);
     if (m) return { kind: 'map', place: m[1] };
@@ -3128,7 +3144,9 @@ var UNITS = {
            qt: 0.946352946, quart: 0.946352946, quarts: 0.946352946, pt: 0.473176473, pint: 0.473176473, pints: 0.473176473,
            cup: 0.2365882365, cups: 0.2365882365, floz: 0.0295735295625 },
     data: { b: 1, byte: 1, bytes: 1, kb: 1024, mb: 1048576, gb: 1073741824, tb: 1099511627776 },
-    speed: { mps: 1, kph: 0.277777778, kmh: 0.277777778, mph: 0.44704, knot: 0.514444, knots: 0.514444 },
+    /* exact ratios, not hand-truncated decimals: 0.277777778 made "1 mps in kph"
+       answer 3.599999997 once the formatter started showing 10 digits */
+    speed: { mps: 1, kph: 1 / 3.6, kmh: 1 / 3.6, mph: 1609.344 / 3600, knot: 1852 / 3600, knots: 1852 / 3600 },
     time: { s: 1, sec: 1, secs: 1, second: 1, seconds: 1, min: 60, mins: 60, minute: 60, minutes: 60,
             h: 3600, hr: 3600, hrs: 3600, hour: 3600, hours: 3600, day: 86400, days: 86400,
             week: 604800, weeks: 604800, year: 31557600, years: 31557600 }
