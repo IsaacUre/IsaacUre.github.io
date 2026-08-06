@@ -5214,16 +5214,31 @@ function stSeed() {
         sjSet('wish', ['eldenring', 'cities', 'obradinn', 'dysonsphere', 'rimworld']);
         sjSet('cart', []);
         sjSet('hrs', sjGet('hrs', {}));   // don't wipe hours a desktop game banked before Steam first opened
+        sjSet('seen', STG.map(function (g) { return g.id; }));   // every id offered once; later additions fold in
         store('steam_wishv2', '1');
         store('steam_instv2', '1');       // fresh seeds are already installed=playable
         fsDirty = true;
     } else {
-        // catalogue grew: fold any new default-owned games into an existing save
+        /* Catalogue grew: fold any NEW default-owned game into an existing save.
+           "New" has to mean new, though — this used to re-add every default on
+           every open, so uninstalling one of the shipped-installed games looked
+           like it worked and then silently came back the next time Steam
+           started. 'seen' records the ids a save has already been offered, so a
+           deliberate uninstall stands and only genuinely-new entries arrive. */
         var o = stOwned(), n = stInst(), ch = false;
-        STG.forEach(function (g) {
-            if (g.owned && o.indexOf(g.id) < 0) { o.push(g.id); ch = true; }
-            if (g.owned && g.inst && n.indexOf(g.id) < 0) { n.push(g.id); ch = true; }
-        });
+        var seenIds = sjGet('seen', null);
+        if (seenIds === null) {                       // save predates this list: adopt the current catalogue
+            sjSet('seen', STG.map(function (g) { return g.id; }));
+        } else {
+            var sch = false;
+            STG.forEach(function (g) {
+                if (seenIds.indexOf(g.id) >= 0) return;
+                seenIds.push(g.id); sch = true;
+                if (g.owned && o.indexOf(g.id) < 0) { o.push(g.id); ch = true; }
+                if (g.owned && g.inst && n.indexOf(g.id) < 0) { n.push(g.id); ch = true; }
+            });
+            if (sch) sjSet('seen', seenIds);
+        }
         if (ch) { sjSet('owned', o); sjSet('inst', n); fsDirty = true; }
         if (recall('steam_wishv2', null) == null) {                       // one-shot: v2's new wishlist seeds, unless already bought
             var w = stWish();
