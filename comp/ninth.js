@@ -269,7 +269,7 @@ var CHARM_IDS = Object.keys(CHARMS);
    `keep` items are never consumed by use. */
 var ITEMS = {
     coal: {
-        n: 'A Cold Coal', tag: 'keep', keep: 1, cost: 0,
+        n: 'A Cold Coal', tag: 'keep', keep: 1,
         d: 'Burnt through and gone out. It is not the prop from the play; the prop is whole and painted. Somebody carried this one a long way and did not bring it back.',
         use: function () { return 'You turn it over. Cold all the way through. Whoever put it out did it a long time before you were born.'; }
     },
@@ -280,8 +280,9 @@ var ITEMS = {
         d: 'Wick, tallow, a tin shade with a dent in it. The kind every house sets on the sill, before anybody decided which sill mattered. You can put it down somewhere.',
         use: function () { return setLamp(); }
     },
+    // you have carried this since the prologue; it is granted to a new save
     mask: {
-        n: 'The Mask', tag: 'keep', keep: 1, sell: 0,
+        n: 'The Mask', tag: 'keep', keep: 1,
         d: 'The one you wore when you were nine. It was too big then and it is too big now, which tells you something about how long they have been handing it down.',
         use: function () {
             var worn = RT.items.mask = !RT.items.mask;
@@ -315,15 +316,15 @@ var ITEMS = {
         n: 'A Cracked Horn', tag: 'use', cost: 34,
         d: 'It will not sound. Hold it while a room is still ringing and it takes the ringing instead, and gives it back as breath.',
         use: function () {
-            if (!RT || RT.echo < 20) return false;
+            if (!RT || RT.echo < 20) return { no: 'Nothing is ringing. The horn wants a room that is still going.' };
             var got = Math.round(RT.echo * 0.55); RT.echo = 0;
             RT.breath = Math.min(stats().breathMax, RT.breath + got); RT.winded = 0;
             return 'The horn takes the ring out of the room. You get ' + got + ' breath back and the quiet is very sudden.';
         }
     },
     slate: {
-        n: 'Hal\'s Slate', tag: 'keep', keep: 1,
-        d: 'He kneels and writes her name in the dirt and then rubs it out with his boot, every time. This is a slate. Writing on a slate stays until somebody wipes it.',
+        n: 'Hal\'s Slate', tag: 'keep', keep: 1, cost: 45, one: 1,
+        d: 'The chandler had it off Hal years ago and never asked why. Hal kneels and writes her name in the dirt and rubs it out with his boot, every time. Writing on a slate stays until somebody wipes it.',
         use: function () { return 'You keep it in your coat. Nothing is written on it yet. That is the point of it.'; }
     },
     // the word market: he found them written on things, which is what the
@@ -409,7 +410,8 @@ function sLoad() {
     // put the Chorus back once it is down, so the roster would be permanently
     // one short. You were there. Backfill it.
     if (S.seen && S.seen.chorusDown) S.combat.met.chorus = 1;
-    S.items = S.items || { inv: {}, lamps: {}, read: {} };   // what you carry, where you left lamps, what you have read
+    // the mask is yours already: you wore it in the prologue
+    S.items = S.items || { inv: { mask: 1 }, lamps: {}, read: {} };
     if (!S.items.inv) S.items.inv = {}; if (!S.items.lamps) S.items.lamps = {}; if (!S.items.read) S.items.read = {};
     return S;
 }
@@ -521,14 +523,16 @@ function takeItem(id, n) {
     sSave();
     return true;
 }
-/* Using a thing. `use` returning false means "not here, not now": the
-   item stays in the bag and nothing is spent. */
+/* Using a thing. `use` returns the line to say, or `{ no: 'reason' }` to
+   refuse: the item stays in the bag, nothing is spent, and the player is
+   told why rather than getting a flat "not here". */
 function useItem(id) {
     var it = ITEMS[id];
     if (!it || !hasItem(id)) return false;
     if (it.writ) return readWrit(id);
     var msg = it.use ? it.use() : false;
-    if (msg === false) { say('Not here.', 'dim'); sfx('ui'); return false; }
+    if (msg && msg.no) { say(msg.no, 'dim'); sfx('ui'); return false; }
+    if (msg === false) { say('Not now.', 'dim'); sfx('ui'); return false; }
     if (!it.keep) takeItem(id, 1);
     say(msg, 'big');
     sfx('use');
@@ -1109,7 +1113,7 @@ function init(el) {
         dbgStacks: 0, dbgAI: 0, dbgHit: 0, dbgPerf: 0,
         fps: 0, _fc: 0, _ft: 0, ac: null, tookHit: false,
         combat: { cuts: [], rep: null, encI: 0, lull: 0 },
-        items: { mask: 0, freeSlant: 0, tack: 0, paid: 0, atShop: false },
+        items: { mask: 0, freeSlant: 0, tack: 0, atShop: false },
         world: { cam: { x: 0, y: 0 }, npc: {}, seenLine: null }
     };
     wireInput(root, cv);
@@ -2677,7 +2681,11 @@ function panel(name) {
     // openable anywhere on purpose: consumables exist to be used under
     // pressure, and a pause would take that away.
     if (name === 'shop' && RT.panel !== 'shop' && !chandlerNear()) {
-        say('The chandler is not here. He keeps a bench on the square.', 'dim');
+        // two different refusals: standing in his square and not bothering to
+        // walk over is not the same as being somewhere he has never been
+        say((place().npcs || []).indexOf('chandler') >= 0
+            ? 'He is at his bench, across the square. You would have to walk over.'
+            : 'The chandler is not here. He keeps a bench on the square.', 'dim');
         sfx('ui');
         return;
     }
@@ -2825,9 +2833,10 @@ function fillShop() {
     html += '<h4>OFF THE BENCH <i>· wax, wick and small objects</i></h4>';
     var stock = ITEM_IDS.filter(function (id) { return ITEMS[id].cost && !ITEMS[id].writ; });
     stock.forEach(function (id) {
-        var it = ITEMS[id];
-        html += '<div class="nn-buy"><div><b>' + esc(it.n) + '</b><i>' + esc(it.d) + '</i></div>' +
-            '<button class="nn-mini' + (S.coin < it.cost ? ' poor' : '') + '" data-item="' + id + '">◦' + it.cost + '</button></div>';
+        var it = ITEMS[id], got = it.one && hasItem(id);   // there is only one slate
+        html += '<div class="nn-buy' + (got ? ' got' : '') + '"><div><b>' + esc(it.n) + '</b><i>' + esc(it.d) + '</i></div>' +
+            (got ? '<em class="nn-have">yours</em>'
+                 : '<button class="nn-mini' + (S.coin < it.cost ? ' poor' : '') + '" data-item="' + id + '">◦' + it.cost + '</button>') + '</div>';
     });
     var writs = ITEM_IDS.filter(function (id) {
         var it = ITEMS[id];
@@ -2837,9 +2846,10 @@ function fillShop() {
     html += '<h4>WRITTEN ON THINGS <i>· somebody had to remember it</i></h4>';
     if (!writs.length) html += '<p class="nn-note dim">Nothing on the bench you can read. He shrugs. Open another family and come back.</p>';
     writs.forEach(function (id) {
-        var it = ITEMS[id], fam = FAMS[WORDS[it.writ]];
-        html += '<div class="nn-buy"><div><b>' + esc(it.n) + ' <i class="nn-writ" style="color:' + fam.col + '">' + it.writ.toUpperCase() + '</i></b><i>' + esc(it.d) + '</i></div>' +
-            '<button class="nn-mini' + (S.coin < it.cost ? ' poor' : '') + '" data-item="' + id + '">◦' + it.cost + '</button></div>';
+        var it = ITEMS[id], fam = FAMS[WORDS[it.writ]], got = hasItem(id);   // bought, not read yet
+        html += '<div class="nn-buy' + (got ? ' got' : '') + '"><div><b>' + esc(it.n) + ' <i class="nn-writ" style="color:' + fam.col + '">' + it.writ.toUpperCase() + '</i></b><i>' + esc(it.d) + '</i></div>' +
+            (got ? '<em class="nn-have">in your bag</em>'
+                 : '<button class="nn-mini' + (S.coin < it.cost ? ' poor' : '') + '" data-item="' + id + '">◦' + it.cost + '</button>') + '</div>';
     });
     b.innerHTML = html;
     b.querySelectorAll('[data-buy]').forEach(function (el) { el.addEventListener('click', function () { if (buyCharm(el.getAttribute('data-buy'))) { sfx('coin'); fillShop(); } }); });
@@ -2856,6 +2866,10 @@ function buyItem(id) {
     if (!it || !it.cost) return false;
     if (S.coin < it.cost) { say('Not enough coin.', 'dim'); return false; }
     if (it.writ && S.owned[it.writ]) { say('You already have that word.', 'dim'); return false; }
+    // a second copy would be dead weight: a writ is read once, and there is
+    // only one slate
+    if (it.writ && hasItem(id)) { say('You are already carrying that one. Read it first.', 'dim'); return false; }
+    if (it.one && hasItem(id)) { say('You have one of those already.', 'dim'); return false; }
     if (!giveItem(id)) return false;                  // refuses before the coin moves
     coin(-it.cost);
     say('You take <b>' + esc(it.n) + '</b>' + (it.writ ? '. Read it when you have a moment.' : '.'), 'good');
