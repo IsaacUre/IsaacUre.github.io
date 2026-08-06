@@ -266,7 +266,7 @@ function learnWord(w) {
     return true;
 }
 function grantFragment(n) {
-    var map = { 1: ['erd', 'word', 'frag1'], 2: ['ark', 'dark', 'frag2'], 3: ['ill', 'will', 'frag3'] };
+    var map = { 1: ['erd', 'word'], 2: ['ark', 'dark'], 3: ['ill', 'will'] };
     var f = map[n]; if (!f || S.frags[n]) return;
     S.frags[n] = 1; S.fams[f[0]] = 1; S.owned[f[1]] = 1; S.stanzas[n] = 1;
     if (n === 1) ach('frag1');
@@ -278,9 +278,13 @@ function grantFragment(n) {
 /* ─────────────── achievements ─────────────── */
 function ach(id) {
     if (!S || S.ach[id]) return;
-    S.ach[id] = 1; sSave();
     var a = null; ACH.forEach(function (x) { if (x[0] === id) a = x; });
-    if (a && RT) RT.toasts.push({ t: 3.4, n: a[1], d: a[2] });
+    // an id that is not in ACH used to set the save flag anyway, so when
+    // somebody added the entry later it was already unlocked, silently,
+    // with no toast. Refuse the unknown id instead.
+    if (!a) { if (window.console) console.warn('NINTH: ach("' + id + '") is not in ACH'); return; }
+    S.ach[id] = 1; sSave();
+    if (RT) RT.toasts.push({ t: 3.4, n: a[1], d: a[2] });
 }
 function steamAch() {
     sLoad();
@@ -615,6 +619,11 @@ function say(html, cls) {
 
 /* ─────────────── runtime ─────────────── */
 var RT = null;
+/* Extra keybinds register here rather than reopening the chain above.
+   The chain wins on conflict, and w/a/s/d must keep falling through to
+   `else return` so movement never calls preventDefault. */
+var KEYS = {};
+function bindKey(k, fn) { KEYS[k.toLowerCase()] = fn; }
 function stanzaKeys() { return ['1', '2', '3']; }   // E is interact, in every scheme
 function refreshStanzaKeys() {
     if (!RT) return;
@@ -739,6 +748,7 @@ function wireInput(root, cv) {
         else if (k === 'b') panel('book');
         else if (k === 'c') panel('kit');
         else if (k === 'v') panel('shop');
+        else if (KEYS[k]) KEYS[k]();
         else return;
         e.preventDefault(); e.stopPropagation();
     });
@@ -2277,6 +2287,13 @@ function stepScene(dt) {
 }
 function beat(after, fn) { RT.beats.push({ t: after, fn: fn }); }
 
+/* Anything that must not survive a doorway registers a callback here,
+   next to its own code, instead of editing gotoPlace's reset block.
+   Five people adding features to one file all want that block; this is
+   how they get it without touching the same nine lines. */
+var RESETS = [];
+function onPlaceChange(fn) { RESETS.push(fn); }
+
 /* ═══════════════ WORLD SYSTEMS ═══════════════
    Travel, solid things, people you can walk up to, and the rule
    that draws hearsay: speaking. */
@@ -2344,6 +2361,7 @@ function gotoPlace(id, fresh) {
     if (RT.realising) landRealisation();      // you walked out on it; you still heard it
     if (RT.realising2) { RT.realising2 = 0; grantFragment(2); }
     if (RT.realising3) { RT.realising3 = 0; grantFragment(3); }
+    RESETS.forEach(function (fn) { try { fn(); } catch (e) {} });
     RT.foes.length = 0; RT.fproj.length = 0; RT.calls.length = 0;
     RT.beats = []; RT.typo.length = 0; RT.slams.length = 0; RT.lines.length = 0;
     RT.dialog = null; RT.pressure = 0; RT.cleared = false;
@@ -2642,7 +2660,16 @@ function drawPrompt(cx) {
    somewhere you can walk, so neither belongs on a map of where
    you have been. */
 var MAP_HIDE = { arena: 1, stage: 1 };
-var MAP_POS = { stage: [1, 4], square: [2, 3], lane: [2, 2], mill: [2, 1], loft: [2, 0], village: [3, 2], mark: [4, 2], arena: [0, 0] };
+var MAP_POS = {          // one per line: every new place needs a row here or it vanishes from the map
+    stage:   [1, 4],
+    square:  [2, 3],
+    lane:    [2, 2],
+    mill:    [2, 1],
+    loft:    [2, 0],
+    village: [3, 2],
+    mark:    [4, 2],
+    arena:   [0, 0]
+};
 function drawMap(cx) {
     if (!RT.mapOpen) return;
     cx.fillStyle = 'rgba(6,4,10,.9)'; cx.fillRect(0, 0, VW, VH);
