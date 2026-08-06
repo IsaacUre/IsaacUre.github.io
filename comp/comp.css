@@ -1699,9 +1699,12 @@ span.st-newsart .ic { width: 40px; height: 40px; }
 
 /* SERP */
 .cr-serp { padding: 14px 22px 30px; max-width: 660px; }
-.cr-serphead { display: flex; align-items: center; gap: 18px; margin-bottom: 10px; }
+/* wrap + min-width:0 so the row can actually shrink on a phone. Without them the
+   search box refuses to go below its content width and shoves the live chip
+   clean out of the page (62px of horizontal scroll at a 380px viewport). */
+.cr-serphead { display: flex; align-items: center; gap: 10px 18px; margin-bottom: 10px; flex-wrap: wrap; }
 .cr-serplogo { font-family: var(--f-pixel); font-size: .95rem; letter-spacing: 1px; flex: 0 0 auto; }
-.cr-serpbox { flex: 1 1 auto; display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 16px; border-radius: 18px;
+.cr-serpbox { flex: 1 1 160px; min-width: 0; display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 16px; border-radius: 18px;
     border: 1px solid #dfe1e5; box-shadow: 0 1px 4px rgba(60,64,67,.12); }
 .cr-serpbox .ic { width: 15px; height: 15px; color: #4285f4; }
 .cr-serpq { flex: 1 1 auto; min-width: 0; border: 0; outline: 0; font-family: var(--f-ui); font-size: .8rem; color: #202124; }

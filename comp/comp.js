@@ -21,6 +21,20 @@ function ic(id, cls) { return '<svg class="ic' + (cls ? ' ' + cls : '') + '"><us
 var PREFIX = 'comp_';
 function store(k, v) { try { localStorage.setItem(PREFIX + k, v); } catch (e) {} }
 function recall(k, d) { try { var v = localStorage.getItem(PREFIX + k); return v === null ? d : v; } catch (e) { return d; } }
+/* Parse stored JSON, but only accept it if it is the SHAPE the caller expects.
+   JSON.parse succeeding says nothing about type: a stored '{"a":1}' where a list
+   belongs sails through and then dies in the first .some()/.indexOf() that
+   touches it — which took out the whole browser render, not just bookmarks.
+   Anything of the wrong shape is treated as absent. */
+function jsonAs(raw, d) {
+    var v;
+    try { v = JSON.parse(raw); } catch (e) { return d; }
+    if (v == null) return d;
+    var wantArr = {}.toString.call(d) === '[object Array]';
+    if (wantArr !== ({}.toString.call(v) === '[object Array]')) return d;
+    if (!wantArr && d !== null && typeof d === 'object' && typeof v !== 'object') return d;
+    return v;
+}
 
 /* ────────────────────────── accent ─────────────────────────── */
 var ACCENTS = [
@@ -2350,7 +2364,7 @@ function initEdge(el) {
    shell; this is the one that feels like home. State: comp_chrome_*.
    ───────────────────────────────────────────────────────────────────── */
 var CR = null;                                   // live window state (single-instance, like ST)
-function crj(k, d) { try { var v = JSON.parse(recall('chrome_' + k, 'null')); return v == null ? d : v; } catch (e) { return d; } }
+function crj(k, d) { return jsonAs(recall('chrome_' + k, 'null'), d); }
 function crjSet(k, v) { store('chrome_' + k, JSON.stringify(v)); }
 function crBM() { return crj('bm', [['isaacure.com', 'isaacure.com'], ['GitHub', 'github.com/IsaacUre'], ['Golf GTI — Wikipedia', 'en.wikipedia.org/wiki/Volkswagen_Golf_GTI'], ['The Thresher', 'thresher.rice.edu'], ['Rice FSAE', 'fsae.rice.edu'], ['Steam', 'store.steampowered.com'], ['dino', 'chrome://dino'], ['Minecraft', 'minecraft.net']]); }
 function crHist() { return crj('hist', []); }
@@ -2431,7 +2445,7 @@ webPage('google.com/search', {
         // a pure calculator/unit query answers offline, so it paints no live
         // sections at all: three spinners under a finished answer is a lie, and
         // github's anonymous search budget is 10/min.
-        var offline = has && /^(math|unit)$/.test(serpIntent(q).kind);
+        var offline = has && !!serpOffline(q);   // only skip the live sections when an answer actually exists
         var sections = has && !offline ? (snippet + local +
             '<div class="cr-serpslot" id="crSerpKp"></div>' +
             '<div class="cr-serpsec cr-serpfeatslot" id="crSerpFeat"></div>' +
@@ -2463,14 +2477,11 @@ webPage('google.com/search', {
 
         /* read the query's shape first; only the packs that fit get to fetch */
         var intent = serpIntent(query);
-        if (intent.kind === 'math') {
-            var mv = mathEval(query);
-            if (mv !== null) addAns(serpAnswer('Calculator', fmtNum(mv), query.replace(/\s+/g, ' ') + ' ='));
-            return;                                                   // answered offline: no live sections exist to fill
-        }
-        if (intent.kind === 'unit') {
-            var uc = unitConvert(intent.n, intent.from, intent.to);
-            if (uc) addAns(serpAnswer('Unit conversion', fmtNum(uc.v) + ' ' + uc.unit, fmtNum(intent.n) + ' ' + intent.from + ' ='));
+        var off = serpOffline(query);
+        if (off) {                                                    // answered offline: render() painted no live sections
+            addAns(serpAnswer(off.label, off.big, off.sub));
+            var sOff = view.querySelector('#crSerpStat');
+            if (sOff) sOff.textContent = 'Answered without touching the network.';
             return;
         }
         if (intent.kind === 'time') serpTime(intent.place, addAns);
@@ -3137,8 +3148,28 @@ function fmtNum(v) {
     if (!isFinite(v)) return '—';
     var a = Math.abs(v);
     if (a !== 0 && (a < 1e-9 || a >= 1e15)) return v.toExponential(6).replace(/e([+-])/, ' × 10^$1');
+    // an exact integer prints exactly: rounding to 10 significant figures turned
+    // 123456789012 into 123,456,789,000, which is simply a wrong answer
+    if (v === Math.round(v)) return v.toLocaleString();
     var s = String(+v.toPrecision(10));
     return s.indexOf('.') < 0 && s.indexOf('e') < 0 ? (+s).toLocaleString() : s;
+}
+/* Can this query be answered with no network at all? ONE function, so render()
+   and init() can never disagree — render() skips the live sections only when an
+   answer really exists, and init() falls through to a normal web search when the
+   evaluator refuses (1/0, 2^5000, "5 kg in m"). Deciding that twice is how a
+   failed calculation ended up rendering a completely blank page. */
+function serpOffline(q) {
+    var intent = serpIntent(q);
+    if (intent.kind === 'math') {
+        var v = mathEval(q);
+        return v === null ? null : { label: 'Calculator', big: fmtNum(v), sub: String(q).replace(/\s+/g, ' ') + ' =' };
+    }
+    if (intent.kind === 'unit') {
+        var u = unitConvert(intent.n, intent.from, intent.to);
+        return u ? { label: 'Unit conversion', big: fmtNum(u.v) + ' ' + u.unit, sub: fmtNum(intent.n) + ' ' + intent.from + ' =' } : null;
+    }
+    return null;
 }
 /* the big answer box at the top of the page */
 function serpAnswer(title, big, sub) {
@@ -5167,7 +5198,7 @@ function stPrice(c) { return c === 0 ? 'Free' : '$' + (c / 100).toFixed(2); }
 function stRevClass(pct) { return pct >= 80 ? 'pos' : pct >= 40 ? 'mix' : 'neg'; }
 
 /* ── persistence: owned / installed / wishlist / cart / stats ── */
-function sjGet(k, d) { try { var v = JSON.parse(recall('steam_' + k, 'null')); return v == null ? d : v; } catch (e) { return d; } }
+function sjGet(k, d) { return jsonAs(recall('steam_' + k, 'null'), d); }
 function sjSet(k, v) { store('steam_' + k, JSON.stringify(v)); }
 function stSeed() {
     var fsDirty = false;                  // any 'inst' write here changes steamapps/common: redraw Explorer once at the end
