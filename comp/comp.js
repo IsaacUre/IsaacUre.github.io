@@ -8158,6 +8158,10 @@ var APPS = {
         render: function () { return window.NINTH ? window.NINTH.render() : '<p style="padding:24px">Nobody said anything (ninth.js missing).</p>'; },
         init: function (el) { if (window.NINTH) window.NINTH.init(el); },
         onFocus: function (el) { var r = el.querySelector('.nn'); if (r) r.focus(); },
+        // rAF keeps running behind a minimized window, so the ambience would
+        // carry on playing out of a window nobody can see
+        onMinimize: function () { if (window.NINTH && window.NINTH.suspend) window.NINTH.suspend(); },
+        onRestore: function (el) { if (window.NINTH && window.NINTH.resume) window.NINTH.resume(); var r = el.querySelector('.nn'); if (r) r.focus(); },
         onClose: function () { if (window.NINTH) bankPlaytime('ninthnight', window.NINTH.close() || 0); } },
     terraria: { title: 'Terraria', icon: 'ic-terraria', w: 1040, h: 640,
         render: function () { return window.TERRA ? window.TERRA.render() : '<p style="padding:24px">World generation failed to start (terraria.js missing).</p>'; },
@@ -8252,16 +8256,30 @@ byId('clock').addEventListener('click', function (e) { e.stopPropagation(); togg
 quickPanel.addEventListener('click', function (e) { e.stopPropagation(); });
 calPanel.addEventListener('click', function (e) { e.stopPropagation(); });
 
+/* The taskbar volume is the system volume as far as the player is
+   concerned, so it drives whatever app owns sound. NINTH persists it
+   in its own save, which is why it survives without a store here. */
+function sysVolume() {
+    if (window.NINTH && window.NINTH.volume) { try { return Math.round(window.NINTH.volume() * 100); } catch (e) {} }
+    return 65;
+}
+function setSysVolume(pct) {
+    if (window.NINTH && window.NINTH.volume) { try { window.NINTH.volume(clamp(pct, 0, 100) / 100); } catch (e) {} }
+}
 function buildQuick() {
     var tiles = [['ic-wifi', 'Wi-Fi', 1], ['ic-bt', 'Bluetooth', 0], ['ic-plane', 'Airplane', 0], ['ic-batt', 'Battery saver', 0], ['ic-moon', 'Night light', 0], ['ic-access', 'Accessibility', 0]];
     quickPanel.innerHTML = '<div class="qs-grid">' + tiles.map(function (t) {
         return '<button class="qs-tile' + (t[2] ? ' on' : '') + '">' + ic(t[0]) + '<span>' + t[1] + '</span></button>';
     }).join('') + '</div>' +
         '<div class="qs-slider">' + ic('ic-moon') + '<input type="range" min="20" max="100" value="80" aria-label="Brightness"></div>' +
-        '<div class="qs-slider">' + ic('ic-vol') + '<input type="range" min="0" max="100" value="65" aria-label="Volume"></div>' +
+        '<div class="qs-slider">' + ic('ic-vol') + '<input type="range" min="0" max="100" value="' + sysVolume() + '" aria-label="Volume"></div>' +
         '<div class="qs-foot"><span>' + ic('ic-batt') + ' 87%</span><button class="qs-gear" data-app="settings" aria-label="All settings">' + ic('ic-settings') + '</button></div>';
     quickPanel.querySelectorAll('.qs-tile').forEach(function (t) { t.addEventListener('click', function () { t.classList.toggle('on'); }); });
     quickPanel.querySelector('.qs-gear').addEventListener('click', function () { openApp('settings'); });
+    // the volume slider was decoration. It is the game's master volume now,
+    // which is where a player will actually look for it.
+    var vs = quickPanel.querySelectorAll('.qs-slider input')[1];
+    if (vs) vs.addEventListener('input', function () { setSysVolume(+vs.value); });
 }
 
 var calView = null;
