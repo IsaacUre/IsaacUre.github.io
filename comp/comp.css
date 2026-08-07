@@ -3235,7 +3235,11 @@ body.fs-app .windows { z-index: 51; }
 .win.fs.peek > .win-bar { transform: none; }
 /* the strip you aim at to get it back. Under the bar in z, so once the bar is
    down it takes the pointer and the top 6px of the caption buttons still work */
-.win-fsedge { position: absolute; left: 0; right: 0; top: 0; height: 6px; z-index: 59; }
+.win-fsedge { display: none; }
+/* scoped to .fs on purpose: the div is created once and left in the DOM, and
+   unscoped it would keep sitting over the top 6px of an ordinary title bar
+   at z-index 59, quietly eating the drag you started up there */
+.win.fs .win-fsedge { display: block; position: absolute; left: 0; right: 0; top: 0; height: 6px; z-index: 59; }
 /* maximize means nothing when you already have the screen */
 .win.fs .cap[data-cap="max"] { display: none; }
 .win.fs .win-title::after { content: " — full screen"; color: var(--ink-faint); }
@@ -3285,3 +3289,9 @@ body.tb-auto .toast { bottom: 20px; }
    because this overlay paints at z-index 900, which is over a full-screen
    game, so "turn it off" has to actually turn it off. */
 body.no-crt .screen::after { display: none; }
+
+/* a 5px strip is a mouse target, not a thumb target */
+@media (hover: none) {
+    .tb-edge { height: 16px; }
+    .win-fsedge { height: 16px; }
+}

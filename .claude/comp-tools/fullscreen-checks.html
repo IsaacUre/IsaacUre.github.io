@@ -208,6 +208,28 @@ function run() {
     key('Escape');
     if (w.classList.contains('fs')) key('F11');
 
+    /* the reveal strip must not outlive full screen: the div is created once
+       and left in the DOM, and unscoped it sat over the top of an ordinary
+       title bar at z-index 59, eating any drag started up there */
+    (function () {
+        var e = w.querySelector('.win-fsedge');
+        var wasFs = w.classList.contains('fs');
+        if (wasFs) key('F11');
+        ok('the top-edge strip is inert once the window is not full screen',
+            !!e && css(e, 'display') === 'none',
+            e ? 'display=' + css(e, 'display') : 'strip never created');
+        // and the title bar takes its own pointer events back. closeTaskView
+        // removes its overlay on a 180ms timer, so it is still hit-testable
+        // here and would answer elementFromPoint instead of the window.
+        var ov = D.getElementById('taskView'); if (ov) ov.remove();
+        w.style.left = '0px'; w.style.top = '0px';
+        var atTop = D.elementFromPoint(300, 2);
+        var inBar = atTop && atTop.closest && atTop.closest('.win-bar');
+        ok('the top of the title bar can be grabbed again',
+            !!inBar && !atTop.classList.contains('win-fsedge'),
+            atTop ? (atTop.className || atTop.tagName) + (inBar ? ' (inside .win-bar)' : ' (NOT the bar)') : 'nothing there');
+    })();
+
     /* ══ layer C: the taskbar gets out of the way ══ */
     var tb = D.getElementById('taskbar'), desk = D.getElementById('desktop');
     var rowsBefore = D.querySelectorAll('.dicon').length;

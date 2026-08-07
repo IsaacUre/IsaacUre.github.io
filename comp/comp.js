@@ -596,6 +596,11 @@ function winSysMenu(id, e) {
 }
 
 /* ─── a taskbar that gets out of the way ─── */
+/* A finger has no hover: it enters the strip on touchdown and leaves on
+   release, so the 420ms a mouse needs would shut the bar before a thumb
+   could travel to a button. Give a touch long enough to actually arrive. */
+var TB_HOVER = !(window.matchMedia && window.matchMedia('(hover: none)').matches);
+var TB_GRACE = TB_HOVER ? 420 : 2600;
 var tbPeekT = 0;
 function setTbAuto(on, save) {
     document.body.classList.toggle('tb-auto', !!on);
@@ -611,9 +616,9 @@ function tbPeek(on) {
         // anything hanging off the taskbar keeps it up, same as the real one
         if (startMenu.classList.contains('open')) return;
         if (!quickPanel.hidden || !calPanel.hidden) return;
-        if (taskbar.matches(':hover')) return;
+        if (TB_HOVER && taskbar.matches(':hover')) return;   // :hover is a lie on a touchscreen
         document.body.classList.remove('tb-peek');
-    }, 420);
+    }, TB_GRACE);
 }
 byId('tbEdge').addEventListener('pointerenter', function () { tbPeek(true); });
 byId('tbEdge').addEventListener('pointerleave', function () { tbPeek(false); });
