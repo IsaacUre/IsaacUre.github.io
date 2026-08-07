@@ -2237,10 +2237,42 @@ span.st-newsart .ic { width: 40px; height: 40px; }
 .mc-bar i { display: block; height: 100%; width: 0; background: #4be04b; transition: width 120ms linear; }
 .mc-load h3 { color: #d8d0c4; }
 
+/* ── Minecraft: creative mode ──
+   The four bars that only mean anything in survival come off in creative;
+   spectator loses the hotbar and crosshair on top of that. */
+.mc.mc-nohud .mc-vitals,
+.mc.mc-nohud .mc-armor,
+.mc.mc-nohud .mc-air,
+.mc.mc-nohud .mc-xpbar { display: none !important; }
+.mc.mc-spect .mc-hotbar, .mc.mc-spect .mc-cross, .mc.mc-spect .mc-tip { display: none !important; }
+.mc.mc-nohud .mc-tip { bottom: 58px; }
+/* the creative screen: tab strip, catalogue, scrollbar */
+.mc-cpanel { padding-top: 34px; }
+.mc-ctabs { position: absolute; left: -3px; top: -30px; display: flex; gap: 2px; }
+.mc-ctab { width: 40px; height: 30px; padding: 0; background-color: #9a9a9a; background-size: 24px 24px; background-position: center 5px; background-repeat: no-repeat; image-rendering: pixelated;
+    border: 3px solid; border-color: #ffffff #555555 transparent #ffffff; cursor: pointer; }
+.mc-ctab:hover { background-color: #b4b4b4; }
+.mc-ctab.on { background-color: #c6c6c6; height: 33px; margin-top: -3px; }
+.mc-crow { display: flex; align-items: stretch; gap: 6px; }
+.mc-cbar { width: 14px; background: #3f3f3f; border: 2px solid; border-color: #373737 #ffffff #ffffff #373737; position: relative; margin-bottom: 8px; cursor: pointer; }
+.mc-cbar i { position: absolute; left: 0; right: 0; top: 0; height: 20%; background: #c6c6c6; border: 2px solid; border-color: #ffffff #555555 #555555 #ffffff; box-sizing: border-box; }
+.mc-csearchin { width: 100%; box-sizing: border-box; height: 24px; margin-bottom: 6px; background: #8b8b8b; border: 2px solid; border-color: #373737 #fff #fff #373737; color: #26261e; font: inherit; font-size: 12px; padding: 0 8px; outline: none; }
+/* the destroy-item slot, drawn rather than set in an emoji nobody is guaranteed to have */
+.mc-slot.ctrash { background-color: #7d5a5a; border-color: #4a2f2f #d8a8a8 #d8a8a8 #4a2f2f; margin-left: 14px; position: relative; }
+.mc-slot.ctrash::before { content: ''; position: absolute; left: 50%; top: 12px; width: 22px; height: 4px; margin-left: -11px; background: #f0e4e4; box-shadow: 0 -4px 0 -1px #f0e4e4; }
+.mc-slot.ctrash::after { content: ''; position: absolute; left: 50%; top: 18px; width: 18px; height: 20px; margin-left: -9px; background: #e8d4d4;
+    border-left: 3px solid #b08c8c; border-right: 3px solid #b08c8c; box-sizing: border-box; }
+/* hovering any slot names what is in it */
+.mc-ptip { position: absolute; z-index: 14; pointer-events: none; background: rgba(16, 4, 24, 0.94); border: 2px solid #2b0f45;
+    color: #f0e8ff; font-size: 12px; padding: 3px 7px; white-space: nowrap; }
+
 @media (max-width: 900px) {
     .mc-vitals, .mc-air { width: 340px; }
     .mc-pgrid.g9 { grid-template-columns: repeat(9, 34px); }
     .mc-panel .mc-slot, .mc-hotbar .mc-slot { width: 34px; height: 34px; background-size: 26px 26px; }
+    .mc-ctab { width: 34px; height: 26px; background-size: 20px 20px; }
+    .mc-ctabs { top: -26px; }
+    .mc-cpanel { padding-top: 30px; }
 }
 
 /* ═══════════ the deep file system: Explorer chrome ═══════════ */

@@ -22,6 +22,8 @@
     var DAY_MS = 7 * 60000, NIGHT_MS = 5 * 60000, CYCLE = DAY_MS + NIGHT_MS;
     var GRAV = 32, JUMP = 8.94, TERMV = 78;
     var WALK = 4.317, SPRINT = 5.612, SNEAK = 1.31, SWIM = 2.2;
+    var FLY = 10.89, FLY_SPRINT = 21.78, FLY_SINK = 0.4;   // creative flight, at the real game's speeds
+    var FLY_VY = 7.5;                      // Space/Shift climb rate while flying
     var REACH = 5;
     var PW = 0.6, PH = 1.8, EYE = 1.62;   // player box + eye height
 
@@ -52,6 +54,7 @@
             snd: true, mus: true,
             deaths: 0,
             gm: 0,                         // 0 survival · 1 creative · 2 adventure · 3 spectator
+            fly: false,                    // creative/spectator flight, remembered across a reload
             diff: 2,                       // 0 peaceful · 1 easy · 2 normal · 3 hard
             eff: {},                       // 'speed' → { amp, t } · t in seconds remaining (1e9 = infinite)
             rules: null                    // gamerules; filled from GR_DEF on load
@@ -70,15 +73,34 @@
        expects. Safe to call more than once. */
     function normalizeCmdState() {
         if (S.gm == null) S.gm = 0;
+        // only creative and spectator can be airborne, so a stale flag from a
+        // gamemode-swapped save must not leave a survival player hovering
+        if (S.gm !== 1 && S.gm !== 3) S.fly = false;
         if (S.diff == null) S.diff = 2;
         if (!S.eff || typeof S.eff !== 'object' || S.eff instanceof Array) S.eff = {};
         if (!S.rules || typeof S.rules !== 'object' || S.rules instanceof Array) S.rules = {};
         for (var k in GR_DEF) if (S.rules[k] === undefined) S.rules[k] = GR_DEF[k];
     }
+    /* ── the creative abilities ─────────────────────────────
+       The real game does not have one "if creative" branch; it has a small
+       set of ability flags that the rest of the code reads where it matters.
+       Same here, so each rule is enforced at the one place it belongs:
+         instaBuild  — stacks never shrink, blocks break in one hit
+         mayFly      — Space-Space takes off
+         invulnerable— nothing can hurt you
+         unseen      — hostile mobs act as though you aren't there */
     function isCreative() { return S.gm === 1; }
     function isSpectator() { return S.gm === 3; }
     function noClip() { return S.gm === 3; }
     function invulnerable() { return S.gm === 1 || S.gm === 3; }
+    function instaBuild() { return S.gm === 1; }
+    function mayFly() { return S.gm === 1 || S.gm === 3; }
+    function unseen() { return S.gm === 1 || S.gm === 3; }
+    function setFly(on) {
+        RT.fly = !!on && mayFly();
+        S.fly = RT.fly;
+        if (RT.fly) { RT.vy = 0; RT.fallY = S.py; }
+    }
     /* ── status effects ─────────────────────────────────────
        Only the effects whose behaviour this engine can honestly express. */
     var EFFECTS = {
@@ -355,6 +377,35 @@
                 fuel: tier === 1 ? 10 : 0
             };
         }
+    })();
+    /* ── blocks the world grows but survival could never hold ──
+       Grass, leaves, the ores and bedrock had no item that places them, so a
+       creative list built from I{} would have been missing half the world.
+       Giving them one also fixes Silk Touch, whose whole job is to hand back
+       the block itself: grass stays grass, coal ore stays coal ore. */
+    I.grass_block = { t: 'Grass Block', place: GRASS };
+    I.grass_snow = { t: 'Snowy Grass Block', place: SNOWGRASS };
+    I.leaves = { t: 'Oak Leaves', place: LEAVES };
+    I.tallgrass = { t: 'Grass', place: TALLGRASS };
+    I.ore_coal = { t: 'Coal Ore', place: ORE_COAL };
+    I.ore_diamond = { t: 'Diamond Ore', place: ORE_DIA };
+    I.ore_redstone = { t: 'Redstone Ore', place: ORE_RED };
+    I.ore_lapis = { t: 'Lapis Lazuli Ore', place: ORE_LAPIS };
+    I.ore_emerald = { t: 'Emerald Ore', place: ORE_EMERALD };
+    I.clay = { t: 'Clay', place: CLAY };
+    I.bedrock = { t: 'Bedrock', place: BEDROCK };
+    /* ── spawn eggs ─────────────────────────────────────────
+       One per mob, right-click to summon. The colours are the real game's.
+       They are painted procedurally in iconURL rather than burning eleven
+       slots of an atlas that is already sixteen tiles wide. */
+    var EGG_COL = {
+        pig: ['#f0a5a2', '#db635f'], cow: ['#443626', '#a1a1a1'], sheep: ['#e7e7e7', '#ffb5b5'],
+        chicken: ['#a1a1a1', '#ff0000'], squid: ['#223b4d', '#708899'],
+        zombie: ['#00afaf', '#799c65'], skeleton: ['#c1c1c1', '#494949'], creeper: ['#0da70b', '#000000'],
+        spider: ['#342d27', '#a80e0e'], enderman: ['#161616', '#000000'], slime: ['#51a03e', '#7ebf6e']
+    };
+    (function () {
+        for (var mk in EGG_COL) I['egg_' + mk] = { t: mk.charAt(0).toUpperCase() + mk.slice(1) + ' Spawn Egg', egg: mk };
     })();
     function stkMax(id) { return I[id] && I[id].stk || 64; }
     function ench(st, id) { return (st && st.ench && st.ench[id]) || 0; }   // enchant level on a stack, 0 if none
@@ -1935,8 +1986,19 @@
         }
     }
     function held() { return S.inv[S.sel]; }
-    function useOne() { var h = held(); if (h) { h.c--; if (!h.c) S.inv[S.sel] = null; } }
-    function swapHeld(id) {   // consume 1 of the held item, hand back one of `id`
+    function useOne() { if (instaBuild()) return; var h = held(); if (h) { h.c--; if (!h.c) S.inv[S.sel] = null; } }
+    /* Consume 1 of the held item, hand back one of `id`.
+       Creative spends nothing, and the real game splits the two directions:
+       FILLING a bucket leaves the empty one in hand and quietly adds the full
+       one to your inventory (only if you don't already have it), while
+       EMPTYING one leaves the full bucket in hand and hands back nothing at
+       all. Pass fill=true for the first kind. */
+    function swapHeld(id, fill) {
+        if (instaBuild()) {
+            if (fill && invCount(id) < 1) invGive(id, 1);
+            paintHotbar();
+            return;
+        }
         var h = held();
         if (h && h.c === 1) S.inv[S.sel] = { id: id, c: 1 };
         else { useOne(); invGive(id, 1); }
@@ -1969,7 +2031,7 @@
         paintHotbar();
     }
     function wearItem(st, n) {   // unbreaking gives each point a chance to not count
-        if (!st || st.dur == null) return;
+        if (!st || st.dur == null || instaBuild()) return;   // creative tools never wear out
         var u = ench(st, 'unbreaking');
         for (var i = 0; i < n; i++) if (!u || Math.random() < 1 / (u + 1)) st.dur--;
     }
@@ -2041,12 +2103,15 @@
         var k = (RT.panel || RT.chat) ? EMPTY_KEYS : RT.keys, water = inFluid(WATER), lava = inFluid(LAVA), fluid = water || lava;
         var fwd = (k.w ? 1 : 0) - (k.s ? 1 : 0), str = (k.d ? 1 : 0) - (k.a ? 1 : 0);
         var sneak = k.shift && !fluid;
-        RT.sprint = RT.sprint && fwd > 0 && S.food > 6 && !sneak;
+        // an empty stomach only stops a survival sprint — creative can always run
+        RT.sprint = RT.sprint && fwd > 0 && (S.food > 6 || mayFly()) && !sneak;
         var sp = fluid ? SWIM : sneak ? SNEAK : RT.sprint ? SPRINT : WALK;
         if (lava) sp *= 0.45;
+        // flight replaces the walk table outright rather than scaling it:
+        // 10.89 m/s, doubled while sprinting, throttled while sinking
+        if (RT.fly) sp = (RT.sprint ? FLY_SPRINT : FLY) * (k.shift ? FLY_SINK : 1);
         sp *= 1 + 0.2 * effLvl('speed') - 0.15 * effLvl('slowness');   // MC's ±20%/−15% per level
         if (sp < 0.05) sp = 0.05;
-        if (RT.fly) sp *= RT.keys.shift ? 1.4 : 2.4;                   // creative flight is quicker than walking
         var len = Math.sqrt(fwd * fwd + str * str) || 1;
         var mx = (fwd / len) * Math.sin(S.yaw) + (str / len) * Math.cos(S.yaw);
         var mz = (fwd / len) * -Math.cos(S.yaw) + (str / len) * Math.sin(S.yaw);
@@ -2068,7 +2133,7 @@
             /* creative/spectator flight: no gravity, Space rises, Shift sinks,
                and letting go parks you in the air instead of dropping you */
             var climb = (k[' '] ? 1 : 0) - (k.shift ? 1 : 0);
-            RT.vy = climb * (isSpectator() ? 11 : 7.5);
+            RT.vy = climb * (isSpectator() ? 11 : FLY_VY);
             RT.fallY = S.py;
         } else {
             RT.vy -= GRAV * dt;
@@ -2104,6 +2169,9 @@
                     var fdmg = Math.floor((fall - 3) * (1 - ff * 0.12));
                     if (fdmg > 0) { hurt(fdmg, null, false, true); snd('fall'); }
                 }
+                // touching down ends creative flight, exactly like the real game.
+                // Spectators never land, so they keep theirs.
+                if (RT.fly && !isSpectator()) setFly(false);
                 RT.fallY = S.py;
             }
             RT.vy = 0;
@@ -2114,8 +2182,9 @@
         addExh(Math.sqrt(dx * dx + dz * dz) * (RT.sprint ? 0.1 : 0.01));
         // head bob drives the hand sway
         if ((dx || dz) && RT.ground) RT.bob += dt * (RT.sprint ? 11 : 7);
-        // drowning
-        var headWater = getB(Math.floor(S.px), Math.floor(S.py + EYE), Math.floor(S.pz)) === WATER;
+        // drowning — creative and spectator hold their breath forever, so the
+        // bubble row never appears for them
+        var headWater = getB(Math.floor(S.px), Math.floor(S.py + EYE), Math.floor(S.pz)) === WATER && !invulnerable();
         if (headWater) {
             S.air -= dt;
             if (S.air <= 0) { S.air = 0; RT.drownT = (RT.drownT || 0) + dt; if (RT.drownT > 1) { RT.drownT = 0; hurt(2, null, false, true); } }
@@ -2134,7 +2203,8 @@
     }
 
     /* ── hunger, health ─────────────────────────────────────── */
-    function addExh(n) { RT.exh += n; }
+    // creative and spectator never tire, so the hunger bar never moves for them
+    function addExh(n) { if (!invulnerable()) RT.exh += n; }
     /* ── status effect tick ─────────────────────────────────
        Counts every active effect down and applies the ones with an
        ongoing behaviour. Effects survive in the save, so /effect give
@@ -2303,6 +2373,7 @@
     /* ── mining ─────────────────────────────────────────────── */
     function breakTime(b) {
         var def = B[b];
+        if (instaBuild()) return 0;        // creative ignores hardness entirely
         if (def.hard < 0) return Infinity;
         if (def.hard === 0) return 0.05;
         var h = held(), tool = h && I[h.id] && I[h.id].tool;
@@ -2349,8 +2420,12 @@
     }
     function breakBlock(x, y, z) {
         var b = getB(x, y, z);
-        if (b <= 0 || B[b].hard < 0) return;
-        var harvest = canHarvest(b);
+        // hardness is what stops a pickaxe, not what makes a block sacred: creative
+        // takes bedrock out too. (y<0 still reads as bedrock, so the floor holds.)
+        var creative = instaBuild();
+        if (b <= 0 || (B[b].hard < 0 && !creative)) return;
+        // creative earns nothing for the swing — no drops, no ore xp, no tool wear
+        var harvest = !creative && canHarvest(b);
         var h = held();
         var fortune = ench(h, 'fortune'), silk = ench(h, 'silk');
         snd('dig', b);
@@ -2368,7 +2443,7 @@
         if (h && I[h.id] && I[h.id].tool && B[b].hard > 0) wearHeld(1);
         addExh(0.005);
         if (b === LOG) {
-            unlock('wood');
+            if (harvest) unlock('wood');   // the achievement is for HAVING the log, and creative gets none
             // chopping wood schedules the orphaned canopy for a quick decay (random ticks alone take minutes)
             for (var dx = -4; dx <= 4; dx++) for (var dy = -4; dy <= 4; dy++) for (var dz = -4; dz <= 4; dz++) {
                 if (Math.abs(dx) + Math.abs(dy) + Math.abs(dz) > 5) continue;
@@ -2377,14 +2452,35 @@
         }
         if (b === ORE_DIA && harvest) unlock('diamonds');
     }
+    /* A fresh left-click in creative breaks whatever is under the crosshair at
+       once. Holding the button is still rate-limited by RT.digCd — the real
+       game's startDestroyBlock ignores the delay while continueDestroyBlock
+       obeys it, which is why click-spam out-mines a held button. */
+    function creativeInstaBreak() {
+        if (!instaBuild() || RT.dead || RT.panel || RT.paused || RT.chat) return;
+        if (entRay()) return;                  // that was a swing at a mob
+        var t = RT.target;
+        if (!t) return;
+        breakBlock(t.x, t.y, t.z);
+        RT.digT = 0; RT.digAt = null; RT.digCd = 0.25;
+    }
     function digTick(dt) {
         if (!RT.mouse.l || RT.dead || RT.panel || RT.paused || RT.chat) { RT.digT = 0; return; }
         var hitEnt = entRay();
         if (hitEnt) { RT.digT = 0; return; }   // swinging at a mob, not a block
         var t = RT.target;
         if (!t) { RT.digT = 0; return; }
-        if (!RT.digAt || RT.digAt[0] !== t.x || RT.digAt[1] !== t.y || RT.digAt[2] !== t.z) {
-            RT.digAt = [t.x, t.y, t.z]; RT.digT = 0;
+        /* Re-time on the block ID and the held item as well as the position.
+           Keying on position alone let a stale break time stick: aim at bedrock
+           (digNeed = Infinity), have that cell become stone — /setblock, a
+           creeper, falling gravel, a crop growing a stage — and the new block
+           was unmineable until you looked away and back. Swapping from a fist
+           to a pickaxe mid-dig kept the fist's timing for the same reason;
+           the real game restarts the swing on both. */
+        var hid = (held() && held().id) || '';
+        if (!RT.digAt || RT.digAt[0] !== t.x || RT.digAt[1] !== t.y || RT.digAt[2] !== t.z ||
+            RT.digAt[3] !== t.b || RT.digAt[4] !== hid) {
+            RT.digAt = [t.x, t.y, t.z, t.b, hid]; RT.digT = 0;
             RT.digNeed = breakTime(t.b);
         }
         if (RT.digCd > 0) return;
@@ -2405,7 +2501,7 @@
         // a mob under the crosshair takes priority (feed / breed / milk)
         var ef = entRay();
         if (ef && h) {
-            if (ef.k === 'cow' && !ef.baby && h.id === 'bucket') { if (h.c > 1 && invFree('milk_bucket') < 1) return; swapHeld('milk_bucket'); snd('pop'); return; }
+            if (ef.k === 'cow' && !ef.baby && h.id === 'bucket') { if (h.c > 1 && invFree('milk_bucket') < 1) return; swapHeld('milk_bucket', 1); snd('pop'); return; }
             var food = BREED[ef.k];
             if (food && h.id === food) {
                 if (ef.baby > 0) { ef.baby = Math.max(0, ef.baby - 6); heartParticles(ef); useOne(); snd('eat'); return; }
@@ -2435,8 +2531,8 @@
         // obsidian (water on lava) and therefore the enchanting table unobtainable.
         if (h.id === 'bucket') {
             var ft = raycast(true);
-            if (ft && ft.b === WATER) { setB(ft.x, ft.y, ft.z, AIR, true); relight(ft.x, ft.z); dirtyAround(ft.x, ft.y, ft.z); swapHeld('water_bucket'); snd('pop'); return; }
-            if (ft && ft.b === LAVA) { setB(ft.x, ft.y, ft.z, AIR, true); relight(ft.x, ft.z); dirtyAround(ft.x, ft.y, ft.z); swapHeld('lava_bucket'); snd('pop'); return; }
+            if (ft && ft.b === WATER) { setB(ft.x, ft.y, ft.z, AIR, true); relight(ft.x, ft.z); dirtyAround(ft.x, ft.y, ft.z); swapHeld('water_bucket', 1); snd('pop'); return; }
+            if (ft && ft.b === LAVA) { setB(ft.x, ft.y, ft.z, AIR, true); relight(ft.x, ft.z); dirtyAround(ft.x, ft.y, ft.z); swapHeld('lava_bucket', 1); snd('pop'); return; }
         }
         if ((h.id === 'water_bucket' || h.id === 'lava_bucket') && t) {
             var bx0 = t.px, by0 = t.py, bz0 = t.pz;
@@ -2468,6 +2564,13 @@
         if (def.crop && def.place != null && t && getB(t.px, t.py, t.pz) === AIR && getB(t.px, t.py - 1, t.pz) === FARMLAND) {
             setB(t.px, t.py, t.pz, def.place); useOne(); paintHotbar(); snd('place', def.place); return;
         }
+        // spawn eggs drop a mob onto the face you clicked
+        if (def.egg && t) {
+            if (!MOBS[def.egg] || RT.foes.length >= 64) return;
+            RT.foes.push(mkFoe(def.egg, t.px + 0.5, t.py, t.pz + 0.5));
+            snd('pop'); useOne(); paintHotbar();
+            return;
+        }
         // food & bow are hold-to-use (handled in useTick); block placement is instant
         if (def.food || h.id === 'bow') return;
         if (def.place == null || !t) return;
@@ -2497,13 +2600,46 @@
         if (id === FURN) tentInit(bx, by, bz, 'furnace');
         if (id === CHEST) tentInit(bx, by, bz, 'chest');
         snd('place', id);
-        h.c--; if (!h.c) S.inv[S.sel] = null;
+        if (!instaBuild()) { h.c--; if (!h.c) S.inv[S.sel] = null; }   // creative stacks never run down
         paintHotbar();
         if (id === TABLE) unlock('table');
         if (id === FURN) unlock('furnace');
     }
     function boxOverlapsCell(px, py, pz, hw, hgt, bx, by, bz) {
         return px + hw > bx && px - hw < bx + 1 && py + hgt > by && py < by + 1 && pz + hw > bz && pz - hw < bz + 1;
+    }
+    /* ── pick block (middle mouse) ───────────────────────────
+       Aim at a block and you get the item that places it; aim at a mob and you
+       get its spawn egg. Already holding it? Just select that slot. Already own
+       it? Pull it up into the hotbar. Otherwise creative conjures one, and
+       survival — which may not conjure anything — comes away empty-handed. */
+    function pickBlock() {
+        if (!RT.ready || RT.dead || RT.panel || RT.paused || RT.chat) return;
+        var f = entRay(), id = null, i;
+        if (f) id = 'egg_' + f.k;
+        else if (RT.target) id = PLACE2ITEM[RT.target.b];
+        if (id == null || !I[id]) return;
+        for (i = 0; i < 9; i++) if (S.inv[i] && S.inv[i].id === id) { S.sel = i; paintHotbar(); return; }
+        for (i = 9; i < 36; i++) if (S.inv[i] && S.inv[i].id === id) {   // in the backpack: swap it up
+            var swap = S.inv[S.sel];
+            S.inv[S.sel] = S.inv[i]; S.inv[i] = swap;
+            paintHotbar(); snd('click');
+            return;
+        }
+        if (!instaBuild()) return;
+        var slot = -1;
+        for (i = 0; i < 9; i++) if (!S.inv[i]) { slot = i; break; }   // an empty hotbar slot wins
+        if (slot < 0) {
+            slot = S.sel;
+            var old = S.inv[slot];
+            if (old) { S.inv[slot] = null; if (invGive(old.id, old.c, old.dur, old.ench, old.name)) S.inv[slot] = old; }
+        }
+        if (S.inv[slot]) return;   // nowhere for the displaced stack to go; leave things alone
+        var md = itemMaxDur(id);
+        S.inv[slot] = { id: id, c: 1 };
+        if (md != null) S.inv[slot].dur = md;
+        S.sel = slot;
+        paintHotbar(); snd('click');
     }
     function useTick(dt) {   // held-down right mouse: eating, bow
         var h = held(), def = h && I[h.id];
@@ -2517,15 +2653,15 @@
                 S.sat = Math.min(S.food, S.sat + def.food.sat);
                 if (def.heal) S.hp = Math.min(20, S.hp + def.heal);   // golden apple heals
                 var wasId = h.id, wasBowl = def.bowl;
-                h.c--; if (!h.c) S.inv[S.sel] = null;
-                if (wasBowl) invGive('bowl', 1);                       // stew leaves the bowl
+                if (!instaBuild()) { h.c--; if (!h.c) S.inv[S.sel] = null; }
+                if (wasBowl && !instaBuild()) invGive('bowl', 1);       // stew leaves the bowl
                 RT.eatT = 0; snd('burp');
                 paintHotbar(); paintVitals();
                 if (wasId === 'bread') unlock('bread');
                 if (wasId === 'golden_apple') unlock('gapple');
             }
         } else if (h.id === 'bow') {
-            if (invCount('arrow') < 1 && RT.bowT === 0) return;
+            if (invCount('arrow') < 1 && RT.bowT === 0 && !instaBuild()) return;   // creative never runs out of arrows
             RT.bowT = Math.min(1, RT.bowT + dt);
         } else if (def.place != null || (def.tool && def.tool.k === 'hoe') || h.id === 'bonemeal') {
             // hold-to-build: repeat placement like the real game (mousedown already fired the first one)
@@ -2534,7 +2670,7 @@
         }
     }
     function finishUse() {
-        var hb0 = held(), infinite = hb0 && hb0.id === 'bow' && ench(hb0, 'infinity') > 0;
+        var hb0 = held(), infinite = (hb0 && hb0.id === 'bow' && ench(hb0, 'infinity') > 0) || instaBuild();
         if (RT.bowT > 0.15 && (invCount('arrow') > 0 || infinite) && !RT.dead && !RT.panel && !RT.paused) {
             var d = look(), pw = RT.bowT;
             if (!infinite) invTake('arrow', 1);
@@ -2708,7 +2844,9 @@
         // intent
         var want = null, sp = d.sp;
         if (f.flee > 0) { f.flee -= dt; want = Math.atan2(-px, pz) + Math.PI; sp *= 1.4; }
-        else if (f.hostile && dist < 18 && !RT.dead) {
+        // hostiles look straight through a creative or spectator player: no chase,
+        // no arrows, no creeper hiss. Exactly what the real game does.
+        else if (f.hostile && dist < 18 && !RT.dead && !unseen()) {
             want = Math.atan2(-px, pz);   // face the player: movement dir is (-sin yaw, cos yaw)
             if (d.ranged) {
                 if (dist < 7) want += Math.PI;                       // skeletons keep their distance
@@ -2760,7 +2898,7 @@
         if (getB(Math.floor(f.x), Math.floor(f.y), Math.floor(f.z)) === LAVA) { f.hp -= 4 * dt * 2; f.hurtF = 0.2; }
         // contact damage
         var cdmg = f.dmg != null ? f.dmg : d.dmg;
-        if (f.hostile && cdmg && f.ifr <= 0 && !RT.dead &&
+        if (f.hostile && cdmg && f.ifr <= 0 && !RT.dead && !unseen() &&
             Math.abs(f.x - S.px) < f.hw + HW + 0.1 && Math.abs(f.z - S.pz) < f.hw + HW + 0.1 &&
             S.py < f.y + f.h && S.py + PH > f.y) {
             f.ifr = 1;
@@ -2820,14 +2958,15 @@
         var inRain = S.weather >= 1 && getSky(Math.floor(f.x), Math.floor(f.y + f.h), Math.floor(f.z)) >= 14;
         var inWater = getB(Math.floor(f.x), Math.floor(f.y + 1), Math.floor(f.z)) === WATER;
         if (inRain || inWater) { f.waterT = (f.waterT || 0) + dt; if (f.waterT > 0.4) { f.waterT = 0; f.hp -= 1; f.hurtF = 0.25; fireParticles(f); if (!teleportEnder(f) && f.hp <= 0) { foeDie(f); return true; } } }
-        // provoked by a direct look at close range, or when struck
-        if (!f.aggro && dist < 24) {
+        // provoked by a direct look at close range, or when struck — but a
+        // creative player isn't there to stare at
+        if (!f.aggro && dist < 24 && !unseen()) {
             var la = look(), t = rayBox(S.px, S.py + EYE, S.pz, la, f.x - f.hw, f.y + f.h * 0.55, f.z - f.hw, f.x + f.hw, f.y + f.h, f.z + f.hw);
             if (t != null && (!RT.target || RT.target.dist > t)) { f.aggro = 12; snd('endermad'); }
         }
         if (f.hurtF > 0.24 && Math.random() < 0.35) { teleportEnder(f); f.aggro = 12; }   // flickers away when hit
         var want = null, sp = MOBS.enderman.sp;
-        if (f.aggro > 0 && !RT.dead) {
+        if (f.aggro > 0 && !RT.dead && !unseen()) {
             f.aggro = Math.max(0, f.aggro - dt); want = Math.atan2(-px, pz); sp *= 1.5;
             if (dist > 20 && Math.random() < 0.02) teleportEnder(f);   // close the gap
         } else { f.wt -= dt; if (f.wt <= 0) { f.wt = 2 + Math.random() * 4; f.wd = Math.random() < 0.5 ? Math.random() * 6.28 : null; } want = f.wd; sp *= 0.5; }
@@ -3374,6 +3513,24 @@
             face([0.72, 0.36, -0.72, 0.36, 16, 2.5], top, 0);
             face([0.72, 0.36, 0, 0.82, 4.5, 8.5], side, 0.28);
             face([0.72, -0.36, 0, 0.82, 16, 14.2], side, 0.45);
+        } else if (def && def.egg) {
+            // a fat oval in the mob's base colour, speckled with its spot colour.
+            // Same shape for every mob, same as the real item; the speckle pattern
+            // is hashed off the mob name so an egg looks identical every session.
+            var col = EGG_COL[def.egg] || ['#c8c8c8', '#8a8a8a'];
+            var band = [8, 14, 18, 20, 22, 22, 20, 14], bi;
+            c.fillStyle = col[0];
+            for (bi = 0; bi < band.length; bi++) c.fillRect(16 - band[bi] / 2, 4 + bi * 3, band[bi], 3);
+            var eh = 0;
+            for (bi = 0; bi < def.egg.length; bi++) eh = (Math.imul(eh, 31) + def.egg.charCodeAt(bi)) | 0;
+            var ernd = mulb(eh ^ 0x9E3779B9);
+            c.fillStyle = col[1];
+            for (bi = 0; bi < 7; bi++) {
+                var eb = 1 + ((ernd() * 6) | 0), ew = band[eb] - 6;
+                c.fillRect(16 - ew / 2 + ((ernd() * ew) | 0), 5 + eb * 3, 3, 3);
+            }
+            c.fillStyle = 'rgba(255,255,255,0.28)';
+            c.fillRect(12, 7, 3, 4);
         } else {
             var tid = def && def.tile != null ? def.tile : (def && def.place != null ? texTop(TEX[def.place]) : TILE.i_stick);
             var s = tsrc(tid);
@@ -3448,6 +3605,15 @@
         var el = RT.el, fill = el.querySelector('.mc-xpfill'), lvl = el.querySelector('.mc-xplvl');
         if (fill) fill.style.width = Math.round(xpBarFrac() * 100) + '%';
         if (lvl) lvl.textContent = S.xpl > 0 ? S.xpl : '';
+    }
+    /* Creative hides the four bars that only mean something in survival —
+       hearts, hunger, armour, experience — and spectator drops the hotbar and
+       crosshair on top of that. Done with a class rather than four display
+       flags so nothing can paint one of them back on the next tick. */
+    function paintHudMode() {
+        if (!RT || !RT.el) return;
+        RT.el.classList.toggle('mc-nohud', S.gm === 1 || S.gm === 3);
+        RT.el.classList.toggle('mc-spect', S.gm === 3);
     }
 
     /* ── toasts + achievements ──────────────────────────────── */
@@ -3801,10 +3967,136 @@
         paintPanel(); paintHotbar();
     }
 
+    /* ═══════════════ the creative inventory ═══════════════
+       The real screen: a tab strip, a scrolling grid of every item in the
+       game, a search tab, your hotbar along the bottom, and a survival tab
+       carrying the 2×2 grid, the armour column and a bin. The grid is a
+       CATALOGUE, not a container — taking from it costs nothing and anything
+       dropped onto it is destroyed, which is exactly how the real one behaves
+       and is why it can't reuse the ordinary slot plumbing. */
+    var CCOLS = 9, CROWS = 5, CGRID = CCOLS * CROWS;
+    var CTABS = [
+        { id: 'build',  t: 'Building Blocks',    ic: 'stonebrick' },
+        { id: 'deco',   t: 'Decorations',        ic: 'poppy' },
+        { id: 'tools',  t: 'Tools',              ic: 'iron_pick' },
+        { id: 'combat', t: 'Combat',             ic: 'iron_sword' },
+        { id: 'food',   t: 'Foodstuffs',         ic: 'apple' },
+        { id: 'mat',    t: 'Materials',          ic: 'iron' },
+        { id: 'misc',   t: 'Miscellaneous',      ic: 'lava_bucket' },
+        { id: 'search', t: 'Search Items',       ic: 'table' },
+        { id: 'inv',    t: 'Survival Inventory', ic: 'chest' }
+    ];
+    var CLIST = null;
+    function creativeTables() {
+        if (CLIST) return CLIST;
+        var i, k;
+        var tools = [], combat = [], misc = ['bucket', 'water_bucket', 'lava_bucket', 'flint_steel', 'ench_book', 'egg'];
+        for (k = 0; k < 4; k++) for (i = 1; i <= 5; i++) tools.push(TIER_N[i] + '_' + ['pick', 'axe', 'shovel', 'hoe'][k]);
+        tools.push('bucket', 'flint_steel');
+        for (i = 1; i <= 5; i++) combat.push(TIER_N[i] + '_sword');
+        for (i = 0; i < ARM_TIERS.length; i++) for (k = 0; k < 4; k++) combat.push(ARM_TIERS[i] + '_' + ['helm', 'chest', 'legs', 'boots'][k]);
+        combat.push('bow', 'arrow');
+        for (k in EGG_COL) misc.push('egg_' + k);
+        CLIST = {
+            build: ['stone', 'cobble', 'stonebrick', 'bricks', 'sandstone', 'grass_block', 'grass_snow', 'dirt', 'sand',
+                    'gravel', 'clay', 'log', 'planks', 'leaves', 'glass', 'wool', 'obsidian', 'bedrock',
+                    'ore_coal', 'ore_iron', 'ore_gold', 'ore_diamond', 'ore_redstone', 'ore_lapis', 'ore_emerald'],
+            deco: ['torch', 'rlamp', 'ladder', 'table', 'furnace', 'chest', 'bookshelf', 'etable', 'anvil', 'bed',
+                   'cake', 'tnt', 'dandelion', 'poppy', 'tallgrass', 'mushroom', 'mushroom_r', 'cactus',
+                   'sugarcane', 'pumpkin', 'melon'],
+            tools: tools,
+            combat: combat,
+            food: ['apple', 'bread', 'cookie', 'melon_slice', 'pumpkin_pie', 'mushroom_stew', 'carrot', 'golden_carrot',
+                   'potato', 'baked_potato', 'golden_apple', 'pork_raw', 'pork', 'beef_raw', 'beef', 'mutton_raw',
+                   'mutton', 'chicken_raw', 'chicken', 'flesh', 'milk_bucket'],
+            mat: ['stick', 'coal', 'charcoal', 'iron', 'gold', 'diamond', 'emerald', 'redstone', 'lapis', 'flint',
+                  'feather', 'leather', 'string', 'gunpowder', 'bone', 'bonemeal', 'paper', 'book', 'sugar',
+                  'slimeball', 'ink_sac', 'ender_pearl', 'clay_ball', 'brick', 'wheat', 'seeds', 'seeds_pumpkin',
+                  'seeds_melon', 'bowl'],
+            misc: misc
+        };
+        // a rename anywhere in I{} must leave a shorter list, never a hole in the grid
+        for (k in CLIST) CLIST[k] = CLIST[k].filter(function (id) { return !!I[id]; });
+        return CLIST;
+    }
+    function creativeItems() {
+        var tab = CTABS[RT.cTab] || CTABS[0];
+        if (tab.id !== 'search') return creativeTables()[tab.id] || [];
+        var q = String(RT.cSearch || '').trim().toLowerCase(), all = Object.keys(I);
+        if (!q) return all;
+        return all.filter(function (id) {   // matches the label a player reads and the id a command takes
+            return id.indexOf(q) >= 0 || String(I[id].t || '').toLowerCase().indexOf(q) >= 0;
+        });
+    }
+    function creativeStack(id) {
+        if (!id || !I[id]) return null;
+        var st = { id: id, c: stkMax(id) }, md = itemMaxDur(id);
+        if (md != null) st.dur = md;
+        return st;
+    }
+    function creativeRows() { return Math.max(CROWS, Math.ceil(((RT.cList || []).length) / CCOLS)); }
+    function creativeMaxScroll() { return Math.max(0, creativeRows() - CROWS); }
+    function creativeRefresh() {
+        RT.cList = creativeItems();
+        RT.cScroll = Math.max(0, Math.min(creativeMaxScroll(), RT.cScroll || 0));
+    }
+    function creativeScroll(d) {
+        if (!RT.panel || RT.panel.kind !== 'creative') return;
+        var was = RT.cScroll;
+        RT.cScroll = Math.max(0, Math.min(creativeMaxScroll(), RT.cScroll + d));
+        if (RT.cScroll !== was) paintPanel();
+    }
+    function creativeBarTo(bar, clientY) {
+        var max = creativeMaxScroll();
+        if (max <= 0) return;
+        var r = bar.getBoundingClientRect();
+        var v = Math.max(0, Math.min(max, Math.round((clientY - r.top) / Math.max(1, r.height) * max)));
+        if (v !== RT.cScroll) { RT.cScroll = v; paintPanel(); }
+    }
+    function creativeTab(i) {
+        i = Math.max(0, Math.min(CTABS.length - 1, i | 0));
+        if (i === RT.cTab) return;
+        RT.cTab = i;
+        RT.cScroll = 0;
+        creativeRefresh();
+        creativeRender();
+        snd('click');
+    }
+    function creativeRender() {   // a tab switch replaces the markup; the carried stack survives it
+        var wrap = RT.el.querySelector('.mc-panelwrap');
+        if (!wrap) return;
+        var old = wrap.querySelector('.mc-cur');
+        var pos = old ? [old.style.left, old.style.top] : null;
+        wrap.innerHTML = '<div class="mc-panel mc-cpanel">' + panelHTML('creative') + '</div><div class="mc-cur"></div><div class="mc-ptip" style="display:none"></div>';
+        wirePanelFields(wrap);
+        var cur = wrap.querySelector('.mc-cur');
+        if (pos && cur) { cur.style.left = pos[0]; cur.style.top = pos[1]; }
+        paintPanel();
+        var sb = wrap.querySelector('.mc-csearchin');
+        if (sb) { sb.focus(); sb.setSelectionRange(sb.value.length, sb.value.length); }
+    }
+    function creativeClick(idx, right, shift) {
+        var id = (RT.cList || [])[RT.cScroll * CCOLS + idx];
+        // carrying something onto the catalogue throws it away — even over a gap
+        // in the last row, which is what the real screen does too
+        if (RT.cur) { RT.cur = null; snd('click'); paintPanel(); paintHotbar(); return; }
+        if (!id) return;
+        var st = creativeStack(id);
+        if (right) st.c = 1;                        // right-click takes exactly one
+        if (shift) {                                 // shift-click posts a full stack straight into the bar
+            if (invGive(st.id, st.c, st.dur) === st.c) return;
+            snd('pop');
+        } else { RT.cur = st; snd('click'); }
+        paintPanel(); paintHotbar();
+    }
+
     /* ── panels ─────────────────────────────────────────────── */
     function slotGroup(g) {
         var t;
         if (g === 'inv') return { get: function (i) { return S.inv[i]; }, set: function (i, v) { S.inv[i] = v; } };
+        // the creative catalogue: reads out of the item list, writes nowhere
+        if (g === 'creat') return { get: function (i) { return creativeStack((RT.cList || [])[RT.cScroll * CCOLS + i]); }, set: function () {} };
+        if (g === 'ctrash') return { get: function () { return null; }, set: function () {} };
         if (g === 'armor') return { get: function (i) { return S.armor[i]; }, set: function (i, v) { S.armor[i] = v; } };
         if (g === 'craft') return { get: function (i) { return RT.craft[i]; }, set: function (i, v) { RT.craft[i] = v; } };
         if (g === 'ein') return { get: function () { return RT.enchItem; }, set: function (i, v) { RT.enchItem = v; genEnchOptions(); } };
@@ -3835,6 +4127,23 @@
             '<button class="mc-enchopt" data-o="0"></button><button class="mc-enchopt" data-o="1"></button><button class="mc-enchopt" data-o="2"></button></div></div>' + inv;
         if (kind === 'anvil') return head + 'Repair &amp; Name</div><div class="mc-craftrow"><div class="mc-slot" data-g="anvA" data-i="0"></div><div class="mc-slot" data-g="anvB" data-i="0"></div><span class="mc-arrow">➜</span><div class="mc-slot big anvOut" data-g="anvOut" data-i="0"></div></div>' +
             '<div class="mc-anvname"><input class="mc-anvin" maxlength="24" placeholder="Item name"><span class="mc-anvcost"></span></div>' + inv;
+        if (kind === 'creative') {
+            var tab = CTABS[RT.cTab] || CTABS[0], ti, tabs = '';
+            for (ti = 0; ti < CTABS.length; ti++)
+                tabs += '<button class="mc-ctab' + (ti === RT.cTab ? ' on' : '') + '" data-ct="' + ti + '"' +
+                        ' title="' + escHtml(CTABS[ti].t) + '" style="background-image:url(' + iconURL(CTABS[ti].ic) + ')"></button>';
+            tabs = '<div class="mc-ctabs">' + tabs + '</div>';
+            // the survival tab is the ordinary inventory plus a bin
+            if (tab.id === 'inv') return tabs + head + 'Survival Inventory</div>' +
+                '<div class="mc-craftrow"><div class="mc-pgrid g2">' + slotsHTML('craft', 0, 4) + '</div><span class="mc-arrow">➜</span>' +
+                '<div class="mc-slot big" data-g="cout" data-i="0"></div>' + armorCol +
+                '<div class="mc-slot big ctrash" data-g="ctrash" data-i="0" title="Destroy item"></div></div>' + inv;
+            return tabs + head + escHtml(tab.t) + '</div>' +
+                (tab.id === 'search' ? '<input class="mc-csearchin" maxlength="32" spellcheck="false" autocomplete="off" placeholder="Search" value="' + escHtml(RT.cSearch || '') + '">' : '') +
+                '<div class="mc-crow"><div class="mc-pgrid g9">' + slotsHTML('creat', 0, CGRID) + '</div>' +
+                '<div class="mc-cbar"><i></i></div></div>' +
+                '<div class="mc-plabel">Inventory</div><div class="mc-pgrid g9 hb">' + slotsHTML('inv', 0, 9) + '</div>';
+        }
         return head + 'Chest</div><div class="mc-pgrid g9">' + slotsHTML('chest', 0, 27) + '</div>' + inv;
     }
     function openPanel(kind, t) {
@@ -3846,8 +4155,10 @@
         RT.craft = [null, null, null, null, null, null, null, null, null];
         if (kind === 'ench') { RT.enchItem = null; RT.enchLapis = null; RT.enchOpts = null; RT.enchSeed = (Math.random() * 1e9) | 0; }
         if (kind === 'anvil') { RT.anvilA = null; RT.anvilB = null; RT.anvilName = ''; }
+        // the catalogue has to exist before panelHTML asks it how many rows it has
+        if (kind === 'creative') { if (RT.cTab == null) RT.cTab = 0; RT.cScroll = 0; creativeRefresh(); }
         var wrap = RT.el.querySelector('.mc-panelwrap');
-        wrap.innerHTML = '<div class="mc-panel">' + panelHTML(kind) + '</div><div class="mc-cur"></div>';
+        wrap.innerHTML = '<div class="mc-panel' + (kind === 'creative' ? ' mc-cpanel' : '') + '">' + panelHTML(kind) + '</div><div class="mc-cur"></div><div class="mc-ptip" style="display:none"></div>';
         wrap.style.display = '';
         unlockCursor();
         // .mc-panelwrap is a PERSISTENT node — only its innerHTML is replaced per open. Re-running
@@ -3909,6 +4220,15 @@
             var cs = wrap.querySelector('.mc-anvcost');
             if (cs) cs.textContent = anv ? ('Cost: ' + anv.cost + (S.xpl >= anv.cost ? '' : ' (need level ' + anv.cost + ')')) : '';
         }
+        if (RT.panel.kind === 'creative') {
+            var th = wrap.querySelector('.mc-cbar i');
+            if (th) {
+                var rows = creativeRows(), mx = creativeMaxScroll();
+                var hp = Math.max(14, CROWS / rows * 100);
+                th.style.height = hp + '%';
+                th.style.top = (mx ? (RT.cScroll / mx) * (100 - hp) : 0) + '%';
+            }
+        }
     }
     function esc(s) { return String(s).replace(/[<>&]/g, function (c) { return { '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]; }); }
     function paintFurnaceBits(t) {
@@ -3947,6 +4267,12 @@
     function quickMove(g, idx) {
         var grp = slotGroup(g), st = grp.get(idx);
         if (!st) return;
+        // shift-clicking your own stack while the catalogue is up throws it away.
+        // There is nowhere for it to go, and the real screen deletes it too.
+        if (RT.panel.kind === 'creative' && (CTABS[RT.cTab] || CTABS[0]).id !== 'inv') {
+            grp.set(idx, null); snd('click'); paintPanel();
+            return;
+        }
         var left;
         if (g === 'inv') {
             // shift-click armour → equip into its slot
@@ -4007,6 +4333,8 @@
     function slotClick(g, idx, right, shift) {
         if (g === 'cout') { takeCraft(shift); paintPanel(); paintHotbar(); return; }
         if (g === 'anvOut') { applyAnvil(); return; }
+        if (g === 'creat') { creativeClick(idx, right, shift); return; }
+        if (g === 'ctrash') { if (RT.cur) { RT.cur = null; snd('click'); } paintPanel(); paintHotbar(); return; }
         if (shift) { quickMove(g, idx); paintHotbar(); return; }
         var grp = slotGroup(g), st = grp.get(idx);
         if (RT.cur && !slotAccepts(g, idx, RT.cur)) return;   // wrong item for this special slot
@@ -4041,24 +4369,74 @@
     function wirePanel(wrap) {
         function handler(e) {
             var el = e.target;
-            while (el && el !== wrap && el.getAttribute && !el.getAttribute('data-g') && el.getAttribute('data-o') == null) el = el.parentNode;
+            while (el && el !== wrap && el.getAttribute && !el.getAttribute('data-g') &&
+                   el.getAttribute('data-o') == null && el.getAttribute('data-ct') == null) el = el.parentNode;
             if (!el || el === wrap) return;
+            var ct = el.getAttribute && el.getAttribute('data-ct');
+            if (ct != null) { creativeTab(ct | 0); e.preventDefault(); e.stopPropagation(); return; }
             var eo = el.getAttribute && el.getAttribute('data-o');
             if (eo != null) { applyEnchOption(eo | 0); e.preventDefault(); e.stopPropagation(); return; }
             slotClick(el.getAttribute('data-g'), el.getAttribute('data-i') | 0, e.type === 'contextmenu', e.shiftKey);
             e.preventDefault(); e.stopPropagation();
         }
-        wrap.addEventListener('mousedown', function (e) { if (e.button === 0) handler(e); });
+        function barAt(t) { return t && t.closest ? t.closest('.mc-cbar') : null; }
+        wrap.addEventListener('mousedown', function (e) {
+            if (e.button !== 0) return;
+            var bar = barAt(e.target);
+            if (bar) { RT.cDrag = 1; creativeBarTo(bar, e.clientY); e.preventDefault(); e.stopPropagation(); return; }
+            handler(e);
+        });
         wrap.addEventListener('contextmenu', handler);
         wrap.addEventListener('mousemove', function (e) {
+            if (RT.cDrag) { var bar = wrap.querySelector('.mc-cbar'); if (bar) creativeBarTo(bar, e.clientY); }
             var cur = wrap.querySelector('.mc-cur');
             if (!cur) return;
             var r = wrap.getBoundingClientRect();
             cur.style.left = (e.clientX - r.left + 6) + 'px';
             cur.style.top = (e.clientY - r.top + 6) + 'px';
+            /* name whatever is under the pointer. The real game does this in every
+               screen, and the catalogue needs it badly: at 32px, stone, cobblestone
+               and stone bricks are three grey squares. */
+            var tip = wrap.querySelector('.mc-ptip');
+            if (!tip) return;
+            var st = null, el = e.target;
+            while (el && el !== wrap && el.getAttribute && !el.getAttribute('data-g')) el = el.parentNode;
+            if (el && el !== wrap && el.getAttribute) {
+                var g = el.getAttribute('data-g'), i = el.getAttribute('data-i') | 0, rr;
+                if (g === 'cout') { rr = matchRecipe(RT.craft, RT.craftW); st = rr ? { id: rr.out, c: rr.n } : null; }
+                else if (g === 'anvOut') { rr = anvilResult(); st = rr ? rr.out : null; }
+                else { var gp = slotGroup(g); st = gp ? gp.get(i) : null; }
+            }
+            if (st && !RT.cur) {
+                tip.textContent = st.name || (I[st.id] ? I[st.id].t : st.id);
+                tip.style.display = '';
+                tip.style.left = (e.clientX - r.left + 14) + 'px';
+                tip.style.top = (e.clientY - r.top - 8) + 'px';
+            } else tip.style.display = 'none';
+        });
+        wrap.addEventListener('mouseleave', function () {
+            var tip = wrap.querySelector('.mc-ptip');
+            if (tip) tip.style.display = 'none';
         });
     }
     function wirePanelFields(wrap) {   // per-render nodes: re-wired on every open (fresh innerHTML)
+        var srch = wrap.querySelector('.mc-csearchin');
+        if (srch) {
+            srch.addEventListener('input', function () {
+                RT.cSearch = srch.value;
+                RT.cScroll = 0;
+                creativeRefresh();
+                paintPanel();
+            });
+            // the box owns the keyboard while it has focus, or typing "e" would
+            // slam the inventory shut mid-search. Esc still gets you out.
+            srch.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape') { srch.blur(); closePanel(); return; }
+                e.stopPropagation();
+            });
+            srch.addEventListener('keyup', function (e) { e.stopPropagation(); });
+            srch.addEventListener('mousedown', function (e) { e.stopPropagation(); });
+        }
         var nameIn = wrap.querySelector('.mc-anvin');
         if (nameIn) {
             nameIn.addEventListener('input', function () { RT.anvilName = nameIn.value; paintPanel(); });
@@ -4310,7 +4688,7 @@
                 RT.fallY = S.py; RT.vy = 0;
                 RT.el.querySelector('.mc-load').style.display = 'none';
                 restoreEnts();
-                paintHotbar(); paintVitals();
+                paintHotbar(); paintVitals(); paintHudMode();
                 if (RT.onReady) { try { RT.onReady(); } catch (e) {} RT.onReady = null; }
                 if (!RT.devFree) showPause();
             }
@@ -4422,7 +4800,7 @@
             '<button class="mc-btn mc-resume">Back to Game</button>' +
             '<button class="mc-btn mc-achbtn">Achievements</button>' +
             '<div class="mc-optrow"><button class="mc-btn half mc-snd">Sound: ON</button><button class="mc-btn half mc-mus">Music: ON</button></div>' +
-            '<p class="mc-hint">WASD move · Space jump · double-tap W sprints · Shift sneak<br>LMB mine · RMB place/use · E inventory · Q drop · F3 debug</p>' +
+            '<p class="mc-hint">WASD move · Space jump · double-tap W sprints · Shift sneak<br>LMB mine · RMB place/use · MMB pick block · E inventory · Q drop · F3 debug<br>T chat · /gamemode creative · double-tap Space to fly</p>' +
             '<div class="mc-achs" style="display:none"><div class="mc-achn"></div><div class="mc-achrows"></div></div>' +
             '</div></div>' +
             '<div class="mc-death" style="display:none"><div class="mc-menu"><h3>You died!</h3><div class="mc-dscore"></div>' +
@@ -5081,11 +5459,18 @@
     }
     function spawnXpDirect(n) { addXp(n); }
     function setGamemode(g) {
+        var was = S.gm;
         S.gm = g;
-        RT.fly = (g === 1 && RT.fly) || g === 3;   // spectators always fly; creative keeps whatever it had
-        if (g !== 1 && g !== 3) RT.fly = false;
-        if (g === 3) { RT.dead = false; hideDeath && hideDeath(); }
-        paintHotbar();
+        // spectators are always airborne, creative keeps whatever it had, and
+        // everyone else falls out of the sky
+        setFly(g === 3 ? true : g === 1 ? RT.fly : false);
+        if (g === 3) { RT.dead = false; hideDeath(); }
+        // the catalogue belongs to creative and the survival screen to everyone
+        // else, so a mode change while one is open closes it rather than leaving
+        // a survival player shopping from an infinite list
+        if (RT.panel && (RT.panel.kind === 'creative') !== (g === 1)) closePanel(true);
+        if (was !== g) { RT.digT = 0; RT.digAt = null; }   // a half-mined block re-times under new rules
+        paintHudMode(); paintHotbar(); paintVitals(); paintXp();
     }
     function applyEffect(id, secs, amp) {
         var d = EFFECTS[id];
@@ -5278,11 +5663,12 @@
             chunks: {}, ckeys: [], genQ: [], meshQ: [], decayQ: [],
             foes: [], drops: [], arrows: [], tnts: [], parts: [], entV: [], orbs: [],
             keys: {}, mouse: { l: false, r: false },
-            chat: null, chatLog: [], chatHist: [], now: 0, fly: false,
+            chat: null, chatLog: [], chatHist: [], now: 0, fly: !!S.fly && (S.gm === 1 || S.gm === 3),
             vy: 0, ground: false, fallY: S.py, sprint: false,
             exh: 0, regenT: 0, starveT: 0, iframe: 0, digT: 0, digCd: 0, digNeed: 1, digAt: null, atkCd: 0,
             eatT: 0, bowT: 0, swing: 0, bob: 0, flash: 0, shake: 0, sleep: 0, placeCd: 0,
             target: null, panel: null, cur: null, craft: [null, null, null, null, null, null, null, null, null], craftW: 2,
+            cTab: 0, cScroll: 0, cSearch: '', cList: [], cDrag: 0,
             paused: false, dead: S.hp <= 0, ready: false, lit: false, expectUnlock: false,
             worldMs: 0, playT: 0, baseHrs: S.hrs || 0, lastT: 0, secT: 0, hudT: 0, saveT: 0,
             fps: 0, fpsN: 0, fpsT: 0, f3: false, musT: 25, tipT: 0, tipId: null, devFree: !!devModes, raf: 0, timers: []
@@ -5414,12 +5800,15 @@
             // sprint is double-tap W only — holding real Ctrl arms Ctrl+W (closes the tab!)
             if (k === 'w' && RT.lastW && performance.now() - RT.lastW < 280) RT.sprint = true;
             if (k === 'w') RT.lastW = performance.now();
-            if (k === ' ' && (isCreative() || isSpectator())) {
-                if (RT.lastSp && performance.now() - RT.lastSp < 320) { RT.fly = !RT.fly; RT.vy = 0; }
-                RT.lastSp = performance.now();
+            if (k === ' ' && mayFly()) {
+                // the real game clears the double-tap window the moment it fires, so a
+                // third quick tap opens a fresh one instead of toggling straight back —
+                // without that, mashing Space makes flight flicker on and off
+                if (RT.lastSp && performance.now() - RT.lastSp < 320) { setFly(!RT.fly); RT.lastSp = 0; }
+                else RT.lastSp = performance.now();
             }
             if (k === ' ') e.preventDefault();
-            if (k === 'e' && RT.ready && !RT.dead && !RT.paused) { if (RT.panel) closePanel(); else openPanel('inv'); }
+            if (k === 'e' && RT.ready && !RT.dead && !RT.paused) { if (RT.panel) closePanel(); else openPanel(isCreative() ? 'creative' : 'inv'); }
             if (k === 'q' && !RT.panel && !RT.paused && !RT.dead) {
                 var h = held();
                 if (h) {
@@ -5451,13 +5840,17 @@
                 if (!RT.panel && !RT.paused) lockCursor();
                 return;
             }
-            if (e.button === 0) { RT.mouse.l = true; attack(); }
+            if (e.button === 0) { RT.mouse.l = true; attack(); creativeInstaBreak(); }
+            if (e.button === 1) pickBlock();
             if (e.button === 2) { RT.mouse.r = true; RT.placeCd = 0.3; tryUse(); }
             e.preventDefault();
         });
+        // middle-click otherwise pastes on Linux and auto-scrolls on Windows
+        cv.addEventListener('auxclick', function (e) { if (e.button === 1) e.preventDefault(); });
         cv.addEventListener('contextmenu', function (e) { e.preventDefault(); });
         window.addEventListener('mouseup', RT.mup = function (e) {
             if (!RT) return;
+            RT.cDrag = 0;
             if (e.button === 0) { RT.mouse.l = false; RT.digT = 0; }
             if (e.button === 2) { RT.mouse.r = false; finishUse(); }
         });
@@ -5475,6 +5868,8 @@
         var btns = root.querySelectorAll('.mc-btn');
         for (var bi = 0; bi < btns.length; bi++) btns[bi].addEventListener('mousedown', function (e) { e.preventDefault(); });
         root.addEventListener('wheel', function (e) {
+            // over the creative catalogue the wheel scrolls the list, not the hotbar
+            if (RT.panel && RT.panel.kind === 'creative') { creativeScroll(e.deltaY > 0 ? 1 : -1); e.preventDefault(); return; }
             if (RT.panel || RT.paused || RT.chat) return;
             S.sel = ((S.sel + (e.deltaY > 0 ? 1 : -1)) % 9 + 9) % 9;
             paintHotbar();
@@ -5506,6 +5901,7 @@
         function has(x) { return modes.indexOf(x) >= 0; }
         if (has('night')) S.t = DAY_MS + NIGHT_MS * 0.35;
         if (has('dusk')) S.t = DAY_MS * 0.97;
+        if (has('creative')) { S.gm = 1; S.fly = true; }
         if (has('kit')) {
             invGive('diamond_pick', 1); invGive('diamond_sword', 1); invGive('diamond_axe', 1);
             invGive('iron_shovel', 1); invGive('wood_hoe', 1); invGive('bow', 1); invGive('arrow', 32);
@@ -5531,6 +5927,11 @@
         if (lk) { S.yaw = +lk[1]; S.pitch = +lk[2]; }
         var onReady = [];
         if (has('inv')) onReady.push(function () { openPanel('inv'); });
+        if (has('creative')) onReady.push(function () {
+            var ct = location.search.match(/mctab=(\d+)/);
+            if (ct) RT.cTab = ct[1] | 0;
+            openPanel('creative');
+        });
         if (has('table')) onReady.push(function () {
             var x = Math.floor(S.px) + 1, y = Math.floor(S.py), z = Math.floor(S.pz) - 2;
             setB(x, y, z, TABLE);
@@ -5586,7 +5987,7 @@
             spawnMob: function (k, dx, dz, sz) { var nf = mkFoe(k, S.px + (dx || 3), S.py + 2, S.pz + (dz || 0)); if (k === 'slime' && sz) { nf.sz = sz; applySlimeSize(nf); } RT.foes.push(nf); return nf; },
             foeCount: function (k) { var n = 0; for (var i = 0; i < RT.foes.length; i++) if (!k || RT.foes[i].k === k) n++; return n; },
             key: function (k, down) { RT.keys[k] = !!down; },
-            mouse: function (btn, down) { if (btn === 0) { RT.mouse.l = !!down; if (down) attack(); } else { RT.mouse.r = !!down; if (down) tryUse(); else finishUse(); } },
+            mouse: function (btn, down) { if (btn === 0) { RT.mouse.l = !!down; if (down) { attack(); creativeInstaBreak(); } } else if (btn === 1) { if (down) pickBlock(); } else { RT.mouse.r = !!down; if (down) tryUse(); else finishUse(); } },
             openInv: function () { openPanel('inv'); },
             chat: function (line) { runChatLine(line); return (RT.chatLog || []).slice(-6).map(function (m) { return (m.c === 'err' ? '! ' : '') + m.t; }); },
             chatOpen: function (pre) { openChat(pre); return !!RT.chat; },
@@ -5594,6 +5995,23 @@
             chatState: function () { return { open: !!RT.chat, lines: (RT.chatLog || []).length, last: (RT.chatLog || []).slice(-1)[0] || null }; },
             complete: function (t) { return tabComplete(t); },
             gm: function () { return S.gm; }, diff: function () { return S.diff; },
+            /* creative: everything a test needs to see without touching the DOM */
+            creat: function () {
+                return { gm: S.gm, fly: !!RT.fly, savedFly: !!S.fly, panel: RT.panel ? RT.panel.kind : null,
+                    tab: RT.cTab, tabId: (CTABS[RT.cTab] || CTABS[0]).id, scroll: RT.cScroll, rows: creativeRows(),
+                    listN: (RT.cList || []).length, search: RT.cSearch || '',
+                    cur: RT.cur ? RT.cur.id + ':' + RT.cur.c : null, food: S.food, air: Math.round(S.air * 10) / 10,
+                    nohud: RT.el.classList.contains('mc-nohud') };
+            },
+            creatAt: function (i) { var st = slotGroup('creat').get(i); return st ? st.id + ':' + st.c : null; },
+            cTab: function (i) { creativeTab(i); },
+            cSearch: function (q) { RT.cSearch = q; RT.cScroll = 0; creativeRefresh(); paintPanel(); },
+            cScroll: function (d) { creativeScroll(d); },
+            slotClick: function (g, i, right, shift) { slotClick(g, i, !!right, !!shift); },
+            pick: function () { pickBlock(); },
+            setFly: function (on) { setFly(on); },
+            breakTime: function (b) { return breakTime(b); },
+            heldStack: function () { var h = held(); return h ? { id: h.id, c: h.c, dur: h.dur } : null; },
             eff: function () { return JSON.parse(JSON.stringify(S.eff || {})); },
             rules: function () { return JSON.parse(JSON.stringify(S.rules || {})); },
             flying: function () { return !!RT.fly; },
