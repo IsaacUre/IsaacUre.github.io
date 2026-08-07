@@ -2150,14 +2150,16 @@ span.st-newsart .ic { width: 40px; height: 40px; }
 .mc-cv { display: block; width: 100%; height: 100%; image-rendering: pixelated; image-rendering: crisp-edges; }
 .mc-vig { position: absolute; inset: 0; pointer-events: none; z-index: 2; transition: background 80ms linear; }
 .mc-hud { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
-.mc-cross { position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; transform: translate(-50%, -50%); mix-blend-mode: difference; }
+/* a direct child of .mc, not of .mc-hud — see render(): the blend needs the world
+   behind it, and .mc-hud's z-index would isolate it away */
+.mc-cross { position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; z-index: 4; pointer-events: none; transform: translate(-50%, -50%); mix-blend-mode: difference; }
 .mc-cross i { position: absolute; left: 0; top: 8px; width: 18px; height: 2px; background: #ddd; }
 .mc-cross i.v { left: 8px; top: 0; width: 2px; height: 18px; }
 .mc-ico { display: inline-block; width: 18px; height: 18px; background-size: 288px 288px; background-repeat: no-repeat; image-rendering: pixelated; }
 .mc-vitals { position: absolute; bottom: 76px; left: 50%; transform: translateX(-50%); width: 408px; display: flex; justify-content: space-between; }
 .mc-hearts, .mc-food { display: flex; gap: 1px; }
 .mc-air { position: absolute; bottom: 94px; left: 50%; transform: translateX(-50%); width: 408px; display: flex; gap: 1px; justify-content: flex-end; }
-.mc-armor { position: absolute; bottom: 94px; left: 50%; transform: translateX(-204px); display: flex; gap: 1px; }
+.mc-armor { position: absolute; bottom: 94px; left: 50%; width: 408px; transform: translateX(-50%); display: flex; justify-content: flex-start; gap: 1px; }
 .mc-xpbar { position: absolute; bottom: 58px; left: 50%; transform: translateX(-50%); width: 182px; height: 6px; background: #0a1a08; border: 1px solid #050a04; }
 .mc-xpfill { display: block; height: 100%; width: 0; background: #7fe23a; }
 .mc-xplvl { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); color: #80ff20; font-size: 13px; text-shadow: 1px 1px 0 #1a3a08, -1px 0 0 #1a3a08, 0 -1px 0 #1a3a08; }
@@ -2232,7 +2234,7 @@ span.st-newsart .ic { width: 40px; height: 40px; }
 .mc-achrow.got b { color: #8ae08a; }
 .mc-achrow span { color: #9a9aa8; font-size: 11px; }
 .mc-debug { position: absolute; top: 8px; left: 8px; z-index: 4; color: #fff; font-size: 11px; line-height: 1.6; text-shadow: 1px 1px 0 #000; background: rgba(0, 0, 0, 0.3); padding: 6px 8px; pointer-events: none; }
-.mc-sleepov { position: absolute; inset: 0; z-index: 8; background: #000; opacity: 0; display: flex; align-items: center; justify-content: center; color: #cfd6e6; font-size: 14px; transition: opacity 300ms; }
+.mc-sleepov { position: absolute; inset: 0; z-index: 8; pointer-events: none; background: #000; opacity: 0; display: flex; align-items: center; justify-content: center; color: #cfd6e6; font-size: 14px; transition: opacity 300ms; }
 .mc-bar { width: 260px; height: 12px; border: 2px solid #8b8b8b; background: #26201a; }
 .mc-bar i { display: block; height: 100%; width: 0; background: #4be04b; transition: width 120ms linear; }
 .mc-load h3 { color: #d8d0c4; }
@@ -2269,7 +2271,7 @@ span.st-newsart .ic { width: 40px; height: 40px; }
     color: #f0e8ff; font-size: 12px; padding: 3px 7px; white-space: nowrap; }
 
 @media (max-width: 900px) {
-    .mc-vitals, .mc-air { width: 340px; }
+    .mc-vitals, .mc-air, .mc-armor { width: 340px; }
     .mc-pgrid.g9 { grid-template-columns: repeat(9, 34px); }
     .mc-panel .mc-slot, .mc-hotbar .mc-slot { width: 34px; height: 34px; background-size: 26px 26px; }
     .mc-ctab { width: 34px; height: 26px; background-size: 20px 20px; }
@@ -2582,8 +2584,8 @@ span.st-newsart .ic { width: 40px; height: 40px; }
 .cr-lv p { margin: 6px 0; }
 .cr-lv ul, .cr-lv ol { margin: 6px 0 6px 20px; }
 .cr-lv blockquote { border-left: 3px solid #c9c8bf; margin: 8px 0; padding: 2px 10px; opacity: .85; }
-.cr-lv pre { background: #17181c; color: #d5e3d5; padding: 8px 10px; overflow-x: auto; font-family: var(--font-term); font-size: 13px; margin: 8px 0; }
-.cr-lv code { background: rgba(127,127,127,.16); padding: 0 4px; font-family: var(--font-term); }
+.cr-lv pre { background: #17181c; color: #d5e3d5; padding: 8px 10px; overflow-x: auto; font-family: var(--f-term); font-size: 13px; margin: 8px 0; }
+.cr-lv code { background: rgba(127,127,127,.16); padding: 0 4px; font-family: var(--f-term); }
 .cr-lva { color: #2a6fd6; text-decoration: none; cursor: pointer; background: none; border: 0; padding: 0; font: inherit; }
 .cr-lva:hover { text-decoration: underline; }
 .cr-lvchip { font-size: 10px; font-weight: 800; color: #1d7a34; background: rgba(29,122,52,.12); border: 1px solid rgba(29,122,52,.4); padding: 1px 6px; border-radius: 8px; letter-spacing: .06em; vertical-align: middle; }
@@ -2599,7 +2601,7 @@ span.st-newsart .ic { width: 40px; height: 40px; }
 .cr-lvtry { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; }
 /* wikipedia */
 .cr-lwhead { text-align: center; padding: 18px 0 6px; }
-.cr-lwball { display: inline-flex; align-items: center; justify-content: center; width: 42px; height: 42px; border: 2px solid currentColor; border-radius: 50%; font-family: var(--font-pixel); font-size: 20px; }
+.cr-lwball { display: inline-flex; align-items: center; justify-content: center; width: 42px; height: 42px; border: 2px solid currentColor; border-radius: 50%; font-family: var(--f-pixel); font-size: 20px; }
 .cr-lwball.sm { width: 18px; height: 18px; font-size: 10px; border-width: 1px; }
 .cr-lwbar, .cr-hnbar, .cr-lgbar, .cr-wxbar { display: flex; align-items: center; gap: 10px; border-bottom: 1px solid rgba(127,127,127,.35); padding-bottom: 8px; margin-bottom: 10px; }
 .cr-lwhome, .cr-hnhome, .cr-lghome, .cr-wxhome { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; }
@@ -2611,7 +2613,7 @@ span.st-newsart .ic { width: 40px; height: 40px; }
 .cr-wsugrow:hover { background: rgba(127,127,127,.12); }
 /* hacker news */
 .cr-hn { max-width: 780px; }
-.cr-hny { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; background: #ff6600; color: #fff; font-family: var(--font-pixel); font-size: 10px; }
+.cr-hny { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; background: #ff6600; color: #fff; font-family: var(--f-pixel); font-size: 10px; }
 .cr-hnrow { display: flex; gap: 8px; padding: 5px 0; }
 .cr-hnrank { opacity: .45; min-width: 22px; text-align: right; }
 .cr-hnmain { display: flex; flex-direction: column; }
@@ -3065,8 +3067,8 @@ button.nn-drow:hover { background: rgba(30,60,48,.5); }
 .nn-dlg-more { display: block; text-align: right; font-size: .54rem; font-style: normal; color: #6a6278; margin-top: 7px; }
 
 /* ═══════════════ Minecraft: chat & command console ═══════════════ */
-.mc-chat { position: absolute; left: 0; bottom: 0; width: min(640px, 78%); z-index: 40;
-    display: flex; flex-direction: column; pointer-events: none; font-family: var(--font-term), monospace; }
+.mc-chat { position: absolute; left: 0; bottom: 126px; width: min(640px, 78%); z-index: 4;
+    display: flex; flex-direction: column; pointer-events: none; font-family: var(--f-term), monospace; }
 .mc-chatlog { max-height: 168px; overflow-y: auto; overflow-x: hidden; padding: 2px 4px 2px 6px;
     display: flex; flex-direction: column; justify-content: flex-end; scrollbar-width: none; }
 .mc-chatlog::-webkit-scrollbar { width: 0; }
@@ -3085,8 +3087,8 @@ button.nn-drow:hover { background: rgba(30,60,48,.5); }
     padding: 3px 6px; text-shadow: 1px 1px 0 rgba(0,0,0,.8); word-break: break-word; }
 .mc-chat.open .mc-chattab:not(:empty) { display: block; }
 /* active status effects, top-right like the real HUD */
-.mc-effects { position: absolute; right: 8px; top: 8px; z-index: 30; display: flex;
-    flex-direction: column; gap: 3px; pointer-events: none; font-family: var(--font-term), monospace; }
+.mc-effects { position: absolute; right: 8px; top: 46px; z-index: 5; display: flex;
+    flex-direction: column; gap: 3px; pointer-events: none; font-family: var(--f-term), monospace; }
 .mc-eff { display: flex; align-items: center; gap: 6px; background: rgba(0,0,0,.55);
     padding: 3px 8px 3px 4px; min-width: 132px; }
 .mc-eff i { width: 14px; height: 14px; display: block; border: 1px solid rgba(0,0,0,.5); }

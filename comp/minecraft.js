@@ -2306,6 +2306,7 @@
                 var red = Math.min(20, Math.max(a / 5, a - n / (2 + tough / 4))) / 25;   // MC armor formula
                 n = Math.round(n * (1 - red));
                 for (var i = 0; i < 4; i++) if (S.armor[i]) { wearItem(S.armor[i], 1); if (S.armor[i].dur != null && S.armor[i].dur <= 0) { S.armor[i] = null; snd('break'); } }
+                RT.panelDirty = 1;   // durability bars and a shattered piece both show in the panel
             }
         }
         if (dir) { RT.vy = Math.max(RT.vy, 4.5); axisMove(dir[0] * 0.35, 0, dir[1] * 0.35); }   // knockback fires even on a fully-absorbed hit
@@ -2337,8 +2338,13 @@
         var spill = keep ? 0 : Math.min(100, 7 * S.xpl);
         if (!keep) { S.xpl = 0; S.xp = 0; }
         if (spill > 0) spawnXp(S.px, S.py + 0.5, S.pz, spill);
-        paintXp(); paintArmorBar();
+        // the bar under the death screen was still showing the gear you just dropped
+        paintXp(); paintArmorBar(); paintHotbar();
         S.deaths++;
+        // dying mid-sentence left the command line open and focused on top of the
+        // death screen, so Respawn handed you back a locked pointer and a WASD that
+        // typed into a box you could not see
+        closeChat(false);
         unlockCursor();
         showDeath();
         snd('die');
@@ -2523,8 +2529,8 @@
             if (ef.k === 'cow' && !ef.baby && h.id === 'bucket') { if (h.c > 1 && invFree('milk_bucket') < 1) return; swapHeld('milk_bucket', 1); snd('pop'); return; }
             var food = BREED[ef.k];
             if (food && h.id === food) {
-                if (ef.baby > 0) { ef.baby = Math.max(0, ef.baby - 6); heartParticles(ef); useOne(); snd('eat'); return; }
-                if (ef.mateCd <= 0 && ef.love <= 0) { ef.love = 30; heartParticles(ef); useOne(); snd('eat'); unlock('breed2'); return; }
+                if (ef.baby > 0) { ef.baby = Math.max(0, ef.baby - 6); heartParticles(ef); useOne(); snd('eat'); paintHotbar(); return; }
+                if (ef.mateCd <= 0 && ef.love <= 0) { ef.love = 30; heartParticles(ef); useOne(); snd('eat'); paintHotbar(); return; }
             }
         }
         // interactive blocks come first (sneak-place overrides)
@@ -2851,7 +2857,9 @@
         // are uncraftable (they were dead recipes before this)
         if (f.k === 'chicken' && !f.baby) {
             f.layT = (f.layT || 20 + Math.random() * 40) - dt;
-            if (f.layT <= 0) { f.layT = 20 + Math.random() * 40; dropItem(f.x, f.y + 0.3, f.z, 'egg', 1); snd('pop'); }
+            // 'pop' is the cue that means "you picked something up"; a chicken two
+            // hundred blocks away kept firing it, and there is no distance attenuation
+            if (f.layT <= 0) { f.layT = 20 + Math.random() * 40; dropItem(f.x, f.y + 0.3, f.z, 'egg', 1); if (dist < 16) snd('chicken'); }
         }
         // fully-custom movers take over here (they run their own physics + contact)
         if (f.k === 'enderman') return endermanUpdate(f, dt, px, pz, dist);
@@ -3083,6 +3091,13 @@
     /* ── spawning ───────────────────────────────────────────── */
     function spawnTick() {
         if (!rule('doMobSpawning')) return;
+        /* Peaceful used to be a lie: /difficulty wrote S.diff, the hostiles already
+           standing there were culled, and the very next spawn tick put them back.
+           Nothing else in the file ever read the value. */
+        if (S.diff === 0) {
+            for (var pk = RT.foes.length - 1; pk >= 0; pk--) if (RT.foes[pk].hostile) RT.foes.splice(pk, 1);
+            return;
+        }
         // only NEARBY animals count toward the cap, or eight sheep back at spawn starve every new biome of wildlife
         var hostiles = 0, passives = 0, i;
         for (i = 0; i < RT.foes.length; i++) {
@@ -3166,6 +3181,7 @@
         if (leveled) snd(S.xpl % 5 === 0 ? 'levelbig' : 'level');
         if (S.xpl >= 30) unlock('xp30');
         paintXp();
+        if (leveled) RT.panelDirty = 1;   // enchant options go affordable as levels arrive
     }
     function takeXpLevels(n) {   // spend whole levels (anvil/enchant); returns true if affordable
         if (S.xpl < n) return false;
@@ -3201,7 +3217,10 @@
 
     /* ── item drops, arrows, TNT, particles ─────────────────── */
     function dropItem(x, y, z, id, c, dur, isDeath, enchObj, name) {
-        if (RT.drops.length > 200) return;
+        // the cap keeps blast rubble bounded, but die() nulls your slots whether or
+        // not the drop landed — so a death with a busy world silently ATE your gear.
+        // Death scatters at most 40 stacks; let it through.
+        if (RT.drops.length > 200 && !isDeath) return;
         var a = Math.random() * 6.28, v = isDeath ? 2.2 : 1.1;
         RT.drops.push({ x: x, y: y, z: z, vx: Math.cos(a) * v * Math.random(), vy: 2.6, vz: Math.sin(a) * v * Math.random(),
             it: id, c: c, dur: dur, ench: enchObj || null, iname: name || null, age: 0, hw: 0.12, h: 0.24 });
@@ -3228,6 +3247,7 @@
             if (left === d.c) return false;         // no room at all: it stays
             snd('pop');
             paintHotbar();
+            RT.panelDirty = 1;   // an open screen shows the same slots; keep it honest
             if (d.it === 'leather') unlock('cow');
             if (left) { d.c = left; return false; } // partial fit: the rest stays
             return true;
@@ -3481,6 +3501,7 @@
 
     /* ── first-person hand (view space) ─────────────────────── */
     function handGeo() {
+        if (isSpectator()) return [];   // a CSS class cannot reach WebGL: the hand was still there
         if (RT.dead || RT.sleep) return [];
         var v = [], h = held(), def = h && I[h.id];
         var L = cellLight(S.px, S.py + EYE, S.pz);
@@ -3690,6 +3711,13 @@
     function showPause() {
         if (RT.dead || RT.paused) return;
         RT.paused = true;
+        /* Pausing mid-sleep used to freeze the black sheet at whatever opacity it had
+           reached — sleepTick is the only thing that clears it and only runs while
+           the sim does. It sits above the menu and eats clicks, so Back to Game,
+           Achievements and both toggles all became dead buttons. Waking on pause is
+           what the real game does anyway. */
+        if (RT.sleep) { RT.sleep = 0; RT.el.querySelector('.mc-sleepov').style.display = 'none'; }
+        closeChat(false);   // a half-typed command must not float over the menu
         sSave();
         var p = RT.el.querySelector('.mc-pause');
         p.querySelector('.mc-snd').textContent = 'Sound: ' + (S.snd ? 'ON' : 'OFF');
@@ -3778,10 +3806,12 @@
             var x = pos[0] | 0, y = pos[1] | 0, z = pos[2] | 0;
             if (!chunkAt(x, z)) continue;   // unloaded furnaces wait patiently
             var cookable = t.fin && SMELTS[t.fin.id] && (!t.out || (t.out.id === SMELTS[t.fin.id] && t.out.c < stkMax(t.out.id)));
+            var slotsMoved = false;   // did anything a SLOT shows actually change?
             if (t.burn > 0) t.burn -= dt;
             if (t.burn <= 0 && cookable && t.fuel && I[t.fuel.id] && I[t.fuel.id].fuel) {
                 t.burnMax = t.burn = I[t.fuel.id].fuel;
                 t.fuel.c--; if (!t.fuel.c) t.fuel = null;
+                slotsMoved = true;
             }
             if (t.burn > 0 && cookable) {
                 t.prog += dt;
@@ -3790,11 +3820,17 @@
                     var outId = SMELTS[t.fin.id];
                     if (t.out) t.out.c++; else t.out = { id: outId, c: 1 };
                     t.fin.c--; if (!t.fin.c) t.fin = null;
+                    slotsMoved = true;
                 }
             } else if (t.prog > 0) t.prog = Math.max(0, t.prog - dt * 2);
             var want = t.burn > 0 ? FURN_LIT : FURN;
             if (getB(x, y, z) !== want && (getB(x, y, z) === FURN || getB(x, y, z) === FURN_LIT)) setB(x, y, z, want);
-            if (RT.panel && RT.panel.key === k) paintFurnaceBits(t);
+            if (RT.panel && RT.panel.key === k) {
+                paintFurnaceBits(t);
+                // paintFurnaceBits only moves the flame and the arrow; the SLOTS
+                // need the panel repaint (see RT.panelDirty in frame)
+                if (slotsMoved) RT.panelDirty = 1;
+            }
         }
     }
 
@@ -3941,7 +3977,9 @@
     function anvilResult() {   // {out, cost} or null
         var a = RT.anvilA, b = RT.anvilB;
         if (!a) return null;
-        var out = { id: a.id, c: a.c, dur: a.dur, ench: a.ench ? JSON.parse(JSON.stringify(a.ench)) : null };
+        // carry the existing name forward, or a repair with the name box left empty
+        // silently threw away the rename you had already paid a level for
+        var out = { id: a.id, c: a.c, dur: a.dur, ench: a.ench ? JSON.parse(JSON.stringify(a.ench)) : null, name: a.name };
         var cost = 0, did = false, usedB = false;
         if (RT.anvilName && RT.anvilName !== (a.name || '')) { out.name = RT.anvilName; cost += 1; did = true; }
         if (b) {
@@ -4089,15 +4127,16 @@
     function creativeRender() {   // a tab switch replaces the markup; the carried stack survives it
         var wrap = RT.el.querySelector('.mc-panelwrap');
         if (!wrap) return;
-        var old = wrap.querySelector('.mc-cur');
-        var pos = old ? [old.style.left, old.style.top] : null;
         wrap.innerHTML = '<div class="mc-panel mc-cpanel">' + panelHTML('creative') + '</div><div class="mc-cur"></div><div class="mc-ptip" style="display:none"></div>';
         wirePanelFields(wrap);
-        var cur = wrap.querySelector('.mc-cur');
-        if (pos && cur) { cur.style.left = pos[0]; cur.style.top = pos[1]; }
-        paintPanel();
+        paintPanel();   // re-places the carried ghost from RT.curXY
+        /* The innerHTML swap above destroys whatever had focus. Switching AWAY from
+           the search tab therefore dropped focus onto <body>, and since the key
+           handlers live on .mc the whole game went keyboard-dead — E, Esc and WASD
+           all stopped, with nothing on screen to explain it. */
         var sb = wrap.querySelector('.mc-csearchin');
         if (sb) { sb.focus(); sb.setSelectionRange(sb.value.length, sb.value.length); }
+        else RT.el.focus();
     }
     function creativeClick(idx, right, shift) {
         var id = (RT.cList || [])[RT.cScroll * CCOLS + idx];
@@ -4121,7 +4160,10 @@
         // the creative catalogue: reads out of the item list, writes nowhere
         if (g === 'creat') return { get: function (i) { return creativeStack((RT.cList || [])[RT.cScroll * CCOLS + i]); }, set: function () {} };
         if (g === 'ctrash') return { get: function () { return null; }, set: function () {} };
-        if (g === 'armor') return { get: function (i) { return S.armor[i]; }, set: function (i, v) { S.armor[i] = v; } };
+        // every route into an armour slot goes through this setter, so the "Suit Up"
+        // award lives here — it used to hang off right-clicking armour in the world
+        // only, and stayed silent for shift-click, drag and right-click-place
+        if (g === 'armor') return { get: function (i) { return S.armor[i]; }, set: function (i, v) { S.armor[i] = v; if (v) unlock('armor'); } };
         if (g === 'craft') return { get: function (i) { return RT.craft[i]; }, set: function (i, v) { RT.craft[i] = v; } };
         if (g === 'ein') return { get: function () { return RT.enchItem; }, set: function (i, v) { RT.enchItem = v; genEnchOptions(); } };
         if (g === 'elapis') return { get: function () { return RT.enchLapis; }, set: function (i, v) { RT.enchLapis = v; } };
@@ -4192,6 +4234,11 @@
         if (!wrap._wired) { wirePanel(wrap); wrap._wired = 1; }
         wirePanelFields(wrap);   // the anvil name box is inside the fresh markup, so it re-wires
         paintPanel();
+        // reopening on the Search tab used to hand you an unfocused box with your old
+        // query still in it, so the first letter you typed went to the world instead:
+        // "emerald" closed the inventory on the e and strafed on the a
+        var sb0 = wrap.querySelector('.mc-csearchin');
+        if (sb0) { sb0.focus(); sb0.setSelectionRange(sb0.value.length, sb0.value.length); }
         if (kind === 'inv' || kind === 'table') unlock('inventory');
         snd('click');
     }
@@ -4225,8 +4272,18 @@
         }
         var cur = wrap.querySelector('.mc-cur');
         if (cur) {
-            if (RT.cur) { cur.style.display = ''; cur.style.backgroundImage = 'url(' + iconURL(RT.cur.id) + ')'; cur.innerHTML = RT.cur.c > 1 ? '<span class="mc-ct">' + RT.cur.c + '</span>' : ''; }
-            else cur.style.display = 'none';
+            /* display:'block', NOT ''. Clearing the inline rule hands the element
+               back to the stylesheet, which declares .mc-cur{display:none} — so
+               for as long as this screen has existed, the stack you picked up
+               vanished off the screen while RT.cur really was holding it. */
+            if (RT.cur) {
+                cur.style.display = 'block';
+                cur.style.backgroundImage = 'url(' + iconURL(RT.cur.id) + ')';
+                cur.innerHTML = RT.cur.c > 1 ? '<span class="mc-ct">' + RT.cur.c + '</span>' : '';
+                // place it before it is ever shown: .mc-panelwrap centres its
+                // children, so an unpositioned ghost would appear over the panel
+                panelCurTo();
+            } else cur.style.display = 'none';
         }
         if (RT.panel.kind === 'furnace') paintFurnaceBits(S.tents[RT.panel.key]);
         if (RT.panel.kind === 'ench') {
@@ -4235,7 +4292,11 @@
                 var op = RT.enchOpts && RT.enchOpts[o];
                 if (!op || !op.ench) { opts[o].style.display = 'none'; continue; }
                 opts[o].style.display = '';
-                var afford = S.xpl >= op.level && RT.enchLapis && RT.enchLapis.c >= op.lapis;
+                /* enchantable() also demands a single item, so two books in the slot
+                   left all three options lit and clicking them did nothing at all —
+                   no sound, no message, no explanation */
+                var single = RT.enchItem && RT.enchItem.c === 1;
+                var afford = single && S.xpl >= op.level && RT.enchLapis && RT.enchLapis.c >= op.lapis;
                 opts[o].className = 'mc-enchopt' + (afford ? '' : ' dim');
                 opts[o].innerHTML = '<span class="eo-lap">' + op.lapis + '</span><span class="eo-txt">' + esc(op.label) + '</span><span class="eo-lvl">' + op.level + '</span>';
             }
@@ -4300,9 +4361,17 @@
         }
         var left;
         if (g === 'inv') {
-            // shift-click armour → equip into its slot
+            /* shift-click armour → equip it, but ONLY from a screen that shows the
+               armour column. Everywhere else this fired first and swallowed the
+               piece: shift-click a chestplate at a chest expecting it to go IN the
+               chest and it vanished from the grid onto your body, off screen. */
             var adef = I[st.id] && I[st.id].armor;
-            if (adef && !S.armor[adef.slot]) { S.armor[adef.slot] = st; grp.set(idx, null); paintVitals(); paintPanel(); return; }
+            var hasArmorCol = RT.panel.kind === 'inv' || RT.panel.kind === 'creative';
+            if (adef && hasArmorCol && !S.armor[adef.slot]) {
+                slotGroup('armor').set(adef.slot, st);   // via the setter, so "Suit Up" fires
+                grp.set(idx, null); paintVitals(); paintPanel();
+                return;
+            }
             if (RT.panel.kind === 'chest') {
                 var t = S.tents[RT.panel.key];
                 left = giveInto(t.inv, 27, st);
@@ -4326,6 +4395,7 @@
             left = invGive(st.id, st.c, st.dur, st.ench, st.name);
         }
         if (left > 0) st.c = left; else grp.set(idx, null);
+        if (g === 'armor') paintVitals();   // shift-clicking a piece OFF changes the bar too
         paintPanel();
     }
     function giveInto(arr, n, st) {
@@ -4336,7 +4406,9 @@
     }
     function mergeSlot(t, field, st) {
         var cur = t[field], max = stkMax(st.id);
-        if (!cur) { t[field] = { id: st.id, c: st.c, dur: st.dur }; return 0; }
+        // carry the enchantments and the name across: shift-clicking an Efficiency
+        // pickaxe into a furnace as fuel and pulling it back used to strip it
+        if (!cur) { t[field] = { id: st.id, c: st.c, dur: st.dur, ench: st.ench, name: st.name }; return 0; }
         if (cur.id === st.id && cur.c < max) { var a = Math.min(max - cur.c, st.c); cur.c += a; return st.c - a; }
         return st.c;
     }
@@ -4372,13 +4444,16 @@
             snd('click'); paintPanel(); paintHotbar();
             return;
         }
-        if (shift) { quickMove(g, idx); paintHotbar(); return; }
+        // shift-click is the most-used gesture in the whole screen and was the only
+        // one that made no sound at all
+        if (shift) { quickMove(g, idx); snd('click'); paintHotbar(); return; }
         var grp = slotGroup(g), st = grp.get(idx);
         if (RT.cur && !slotAccepts(g, idx, RT.cur)) return;   // wrong item for this special slot
         if (g === 'fout') {   // output: take only
             if (!st) return;
             if (!RT.cur) { RT.cur = st; grp.set(idx, null); if (st.id === 'iron') unlock('iron'); }
             else if (RT.cur.id === st.id && RT.cur.c + st.c <= stkMax(st.id)) { RT.cur.c += st.c; grp.set(idx, null); if (st.id === 'iron') unlock('iron'); }
+            snd('click');   // taking a crafted item clicks; taking a smelted one was silent
             paintPanel(); return;
         }
         if (!right) {
@@ -4401,7 +4476,33 @@
             }
         }
         snd('click');
+        // dragging armour in or out changes the defence bar, and shift-clicking it
+        // already repaints on the spot — without this the drag path waited for the
+        // 0.2s HUD tick and the bar lagged behind the click that caused it
+        if (g === 'armor') paintVitals();
         paintPanel(); paintHotbar();
+    }
+    /* Park the carried-item ghost and the tooltip at the pointer. The last
+       position is kept on RT so a repaint, a tab switch or a panel that opens
+       under a stationary mouse all place them correctly rather than letting
+       .mc-panelwrap's flex centring drop them over the middle of the screen. */
+    function panelCurTo(clientX, clientY) {
+        if (!RT || !RT.el) return;
+        if (clientX != null) RT.curXY = [clientX, clientY];
+        var xy = RT.curXY;
+        if (!xy) return;
+        var wrap = RT.el.querySelector('.mc-panelwrap');
+        if (!wrap) return;
+        var r = wrap.getBoundingClientRect(), x = xy[0] - r.left, y = xy[1] - r.top;
+        var cur = wrap.querySelector('.mc-cur');
+        if (cur) { cur.style.left = (x + 6) + 'px'; cur.style.top = (y + 6) + 'px'; }
+        var tip = wrap.querySelector('.mc-ptip');
+        if (tip && tip.style.display !== 'none') {
+            // keep the label on screen when the pointer is near the right edge
+            var tw = tip.offsetWidth || 90;
+            tip.style.left = Math.max(0, Math.min(r.width - tw, x + 14)) + 'px';
+            tip.style.top = (y - 8) + 'px';
+        }
     }
     function wirePanel(wrap) {
         function handler(e) {
@@ -4434,7 +4535,10 @@
             RT.cur = creativeStack(st.id);
             snd('click'); paintPanel();
         }
+        // remember where the pointer is on EVERY mouse event, not just movement:
+        // a click without a preceding mousemove must still put the ghost under it
         wrap.addEventListener('mousedown', function (e) {
+            panelCurTo(e.clientX, e.clientY);
             if (e.button === 1) { cloneSlot(e); e.preventDefault(); e.stopPropagation(); return; }
             if (e.button !== 0) return;
             var bar = barAt(e.target);
@@ -4442,14 +4546,15 @@
             handler(e);
         });
         wrap.addEventListener('auxclick', function (e) { if (e.button === 1) e.preventDefault(); });
-        wrap.addEventListener('contextmenu', handler);
+        wrap.addEventListener('contextmenu', function (e) { panelCurTo(e.clientX, e.clientY); handler(e); });
         wrap.addEventListener('mousemove', function (e) {
+            // a drag whose mouseup was swallowed (alt-tab, screen lock, the shell
+            // minimising us) must not leave the scrollbar stuck to the pointer
+            if (RT.cDrag && !(e.buttons & 1)) RT.cDrag = 0;
             if (RT.cDrag) { var bar = wrap.querySelector('.mc-cbar'); if (bar) creativeBarTo(bar, e.clientY); }
+            panelCurTo(e.clientX, e.clientY);
             var cur = wrap.querySelector('.mc-cur');
             if (!cur) return;
-            var r = wrap.getBoundingClientRect();
-            cur.style.left = (e.clientX - r.left + 6) + 'px';
-            cur.style.top = (e.clientY - r.top + 6) + 'px';
             /* name whatever is under the pointer. The real game does this in every
                screen, and the catalogue needs it badly: at 32px, stone, cobblestone
                and stone bricks are three grey squares. */
@@ -4465,9 +4570,8 @@
             }
             if (st && !RT.cur) {
                 tip.textContent = st.name || (I[st.id] ? I[st.id].t : st.id);
-                tip.style.display = '';
-                tip.style.left = (e.clientX - r.left + 14) + 'px';
-                tip.style.top = (e.clientY - r.top - 8) + 'px';
+                tip.style.display = 'block';
+                panelCurTo(e.clientX, e.clientY);   // re-place now that it has width
             } else tip.style.display = 'none';
         });
         wrap.addEventListener('mouseleave', function () {
@@ -4648,19 +4752,27 @@
     function sSave() {
         if (!S || !RT) return;
         S.hrs = RT.baseHrs + RT.playT / 3600;
-        S.ents = [];
         var i;
-        for (i = 0; i < RT.foes.length && S.ents.length < 40; i++) {
-            var f = RT.foes[i];
-            S.ents.push({ k: f.k, x: Math.round(f.x * 10) / 10, y: Math.round(f.y * 10) / 10, z: Math.round(f.z * 10) / 10, hp: f.hp, sz: f.sz, baby: f.baby > 0 ? 1 : 0 });
+        /* Entities only exist in RT once restoreEnts has run, which happens on the
+           single frame the world finishes loading. Saving before that overwrote
+           S.ents/S.items/S.orbs with three empty arrays — so quitting, refreshing
+           or navigating away while "Building terrain…" was still up permanently
+           erased your death pile and every saved mob. Bank the playtime, leave the
+           entity lists exactly as they were loaded. */
+        if (RT.ready) {
+            S.ents = [];
+            for (i = 0; i < RT.foes.length && S.ents.length < 40; i++) {
+                var f = RT.foes[i];
+                S.ents.push({ k: f.k, x: Math.round(f.x * 10) / 10, y: Math.round(f.y * 10) / 10, z: Math.round(f.z * 10) / 10, hp: f.hp, sz: f.sz, baby: f.baby > 0 ? 1 : 0 });
+            }
+            S.items = [];
+            for (i = RT.drops.length - 1; i >= 0 && S.items.length < 150; i--) {   // newest first: death gear beats old blast rubble
+                var d = RT.drops[i];
+                S.items.push({ it: d.it, c: d.c, dur: d.dur, ench: d.ench, iname: d.iname, x: Math.round(d.x * 10) / 10, y: Math.round(d.y * 10) / 10, z: Math.round(d.z * 10) / 10 });
+            }
+            S.orbs = [];
+            for (i = 0; i < RT.orbs.length && S.orbs.length < 60; i++) { var o = RT.orbs[i]; S.orbs.push({ x: Math.round(o.x * 10) / 10, y: Math.round(o.y * 10) / 10, z: Math.round(o.z * 10) / 10, v: o.v }); }
         }
-        S.items = [];
-        for (i = RT.drops.length - 1; i >= 0 && S.items.length < 150; i--) {   // newest first: death gear beats old blast rubble
-            var d = RT.drops[i];
-            S.items.push({ it: d.it, c: d.c, dur: d.dur, ench: d.ench, iname: d.iname, x: Math.round(d.x * 10) / 10, y: Math.round(d.y * 10) / 10, z: Math.round(d.z * 10) / 10 });
-        }
-        S.orbs = [];
-        for (i = 0; i < RT.orbs.length && S.orbs.length < 60; i++) { var o = RT.orbs[i]; S.orbs.push({ x: Math.round(o.x * 10) / 10, y: Math.round(o.y * 10) / 10, z: Math.round(o.z * 10) / 10, v: o.v }); }
         try { localStorage.setItem('comp_mc', JSON.stringify(S)); } catch (e) {}
     }
     function restoreEnts() {
@@ -4698,7 +4810,15 @@
     function unlockCursor() { if (document.pointerLockElement) { RT.expectUnlock = true; try { document.exitPointerLock(); } catch (e) {} } }
     function onLockChange() {
         if (!RT) return;
-        if (document.pointerLockElement === RT.cv) { RT.expectUnlock = false; if (RT.paused) hidePause(); RT.el.focus(); }
+        if (document.pointerLockElement === RT.cv) {
+            RT.expectUnlock = false;
+            /* A lock request already in flight when a screen opens still resolves,
+               and used to be accepted — leaving the inventory up with the pointer
+               captured and the camera spinning behind it. Hand it straight back. */
+            if (RT.panel || RT.dead || RT.chat) { unlockCursor(); return; }
+            if (RT.paused) hidePause();
+            RT.el.focus();
+        }
         else {
             if (RT.expectUnlock) { RT.expectUnlock = false; return; }
             if (RT.ready && !RT.panel && !RT.dead && !RT.devFree) showPause();
@@ -4806,7 +4926,17 @@
             genStep();
             meshStep(2);
             RT.hudT += dt;
-            if (RT.hudT > 0.2) { RT.hudT = 0; paintVitals(); paintXp(); paintDebug(); tipFade(dt); paintChat(); paintEffects(); }
+            if (RT.hudT > 0.2) {
+                RT.hudT = 0;
+                paintVitals(); paintXp(); paintDebug(); tipFade(dt); paintChat(); paintEffects();
+                /* An open panel is only ever repainted by its own click handlers, so
+                   anything the SIM changed behind it stayed invisible: a furnace's
+                   output, items you walked over, a helmet that shattered mid-fight,
+                   the enchant options going affordable as xp came in. Painted on a
+                   dirty flag rather than every tick — the catalogue is 45 cells and
+                   nothing mutates it from the sim. */
+                if (RT.panelDirty && RT.panel) { RT.panelDirty = 0; paintPanel(); }
+            }
             if (RT.musT > 0) { RT.musT -= dt; if (RT.musT <= 0) playMusic(); }
         }
         entGeo();
@@ -4834,8 +4964,12 @@
         return '<div class="mc" tabindex="0">' +
             '<canvas class="mc-cv"></canvas>' +
             '<div class="mc-vig"></div>' +
-            '<div class="mc-hud">' +
+            /* The crosshair lives OUTSIDE .mc-hud. Inside it, .mc-hud's z-index made
+               a stacking context and mix-blend-mode:difference had nothing but
+               transparent pixels to blend against — so the crosshair was a flat #ddd
+               cross, invisible over snow, sand and bright sky. */
             '<div class="mc-cross"><i></i><i class="v"></i></div>' +
+            '<div class="mc-hud">' +
             '<div class="mc-armor"></div>' +
             '<div class="mc-vitals"><div class="mc-hearts"></div><div class="mc-food"></div></div>' +
             '<div class="mc-air"></div>' +
@@ -5131,10 +5265,8 @@
         var v = DIFFS[stripNs(d).toLowerCase()];
         if (v === undefined) return chatSyntax('Unknown difficulty: ' + d, raw, rd.i);
         S.diff = v;
-        if (v === 0) {   // peaceful clears the hostiles, exactly like the real thing
-            var n = 0;
-            for (var i = RT.foes.length - 1; i >= 0; i--) if (RT.foes[i].hostile) { RT.foes.splice(i, 1); n++; }
-        }
+        // peaceful clears the hostiles, and spawnTick keeps them cleared
+        if (v === 0) for (var i = RT.foes.length - 1; i >= 0; i--) if (RT.foes[i].hostile) RT.foes.splice(i, 1);
         chatSay('Set the difficulty to ' + DIFF_NAME[v]);
     }, function () { return ['peaceful', 'easy', 'normal', 'hard']; });
 
@@ -5724,7 +5856,7 @@
             exh: 0, regenT: 0, starveT: 0, iframe: 0, digT: 0, digCd: 0, digNeed: 1, digAt: null, atkCd: 0,
             eatT: 0, bowT: 0, swing: 0, bob: 0, flash: 0, shake: 0, sleep: 0, placeCd: 0,
             target: null, panel: null, cur: null, craft: [null, null, null, null, null, null, null, null, null], craftW: 2,
-            cTab: 0, cScroll: 0, cSearch: '', cList: [], cDrag: 0,
+            cTab: 0, cScroll: 0, cSearch: '', cList: [], cDrag: 0, panelDirty: 0,
             paused: false, dead: S.hp <= 0, ready: false, lit: false, expectUnlock: false,
             worldMs: 0, playT: 0, baseHrs: S.hrs || 0, lastT: 0, secT: 0, hudT: 0, saveT: 0,
             fps: 0, fpsN: 0, fpsT: 0, f3: false, musT: 25, tipT: 0, tipId: null, devFree: !!devModes, raf: 0, timers: []
@@ -5856,7 +5988,9 @@
             // sprint is double-tap W only — holding real Ctrl arms Ctrl+W (closes the tab!)
             if (k === 'w' && RT.lastW && performance.now() - RT.lastW < 280) RT.sprint = true;
             if (k === 'w') RT.lastW = performance.now();
-            if (k === ' ' && mayFly()) {
+            // every other action key is gated; this one wasn't, so idly double-tapping
+            // Space with a screen up toggled flight behind it
+            if (k === ' ' && mayFly() && !RT.panel && !RT.paused && !RT.dead) {
                 // the real game clears the double-tap window the moment it fires, so a
                 // third quick tap opens a fresh one instead of toggling straight back —
                 // without that, mashing Space makes flight flicker on and off
@@ -5877,7 +6011,9 @@
             }
             if (e.key === 'F3') { RT.f3 = !RT.f3; paintDebug(); e.preventDefault(); }
             var n = parseInt(e.key, 10);
-            if (n >= 1 && n <= 9) { S.sel = n - 1; paintHotbar(); }
+            // ungated, these silently changed what you were holding from behind a
+            // chest, the pause menu, the death screen and the loading screen
+            if (n >= 1 && n <= 9 && RT.ready && !RT.panel && !RT.paused && !RT.dead) { S.sel = n - 1; paintHotbar(); }
             e.stopPropagation();
         });
         root.addEventListener('keyup', function (e) {
@@ -5904,6 +6040,14 @@
         // middle-click otherwise pastes on Linux and auto-scrolls on Windows
         cv.addEventListener('auxclick', function (e) { if (e.button === 1) e.preventDefault(); });
         cv.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+        /* Miss a slot by a few pixels while splitting a stack — the title, a label,
+           the gap between grids, the backdrop — and Chrome's own Back/Reload menu
+           opened over the game. The pause and death screens had no handler at all.
+           Text boxes keep their native paste menu. */
+        root.addEventListener('contextmenu', function (e) {
+            if (e.target && e.target.closest && e.target.closest('input, textarea')) return;
+            e.preventDefault();
+        });
         window.addEventListener('mouseup', RT.mup = function (e) {
             if (!RT) return;
             RT.cDrag = 0;
@@ -5983,6 +6127,15 @@
         if (lk) { S.yaw = +lk[1]; S.pitch = +lk[2]; }
         var onReady = [];
         if (has('inv')) onReady.push(function () { openPanel('inv'); });
+        // ?mccur=<item> parks a stack on the mouse cursor, so the carried-item
+        // ghost can be seen in a headless screenshot
+        if (/mccur=/.test(location.search)) onReady.push(function () {
+            var m = location.search.match(/mccur=([a-z_]+)/);
+            if (!m || !I[m[1]]) return;
+            RT.cur = { id: m[1], c: stkMax(m[1]) };
+            RT.curXY = [window.innerWidth * 0.52, window.innerHeight * 0.42];
+            paintPanel();
+        });
         if (has('creative')) onReady.push(function () {
             var ct = location.search.match(/mctab=(\d+)/);
             if (ct) RT.cTab = ct[1] | 0;
