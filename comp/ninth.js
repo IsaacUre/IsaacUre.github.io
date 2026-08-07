@@ -6280,7 +6280,7 @@ var PROP = {
     foot:      { h: 6,  over: 16, live: 1, pal: ['#4a4030', '#3a3224', '#5c5040'] },
     stone:     { h: 20, vars: 4, body: 'round', pal: ['#4a4a52', '#3a3a42', '#5c5c66'] },
     lamp:      { h: 34, over: 30, live: 1, pal: ['#2e2a26', '#232019', '#3c3630'] },
-    post:      { h: 30, vars: 2, pal: ['#3a2f24', '#2c231a', '#4a3d2e'] },
+    post:      { h: 30, vars: 2, ins: 0.42, over: 10, pal: ['#3a2f24', '#2c231a', '#4a3d2e'] },
     cairn:     { h: 26, vars: 4, body: 'round', pal: ['#454550', '#35353f', '#565662'] },
     hedge:     { h: 24, over: 16, pal: ['#22301f', '#182417', '#2c3f28'] },
     table:     { h: 20, over: 14, pal: ['#4a3a28', '#382c1e', '#5e4a34'] },
@@ -7076,14 +7076,28 @@ PAINT.fence = function (g, c) {
         for (var w3 = 0; w3 < 4; w3++) line(g, m[0] - 4, m[1] - 2 + w3, m[0] + 5, m[1] + 1 + w3, '#6a5c40', 1);
     }
 };
+/* The two posts at the end of the fence, with nothing between them. It
+   is the thing the whole road is about, so it has to read as the end of
+   a fence and not as a crate: a slender squared timber, silvered by
+   weather, with the empty mortise holes the rails came out of. */
 PAINT.post = function (g, c) {
     var hgt = c.hgt, rng = c.rng;
-    var f = body(g, c, ['#4a3d2c', '#33291d', '#5c4d38']);
-    for (var i = 1; i < 4; i++) { var a = qp(f.sw, i / 4, 0), b = qp(f.sw, i / 4, 1); line(g, a[0], a[1], b[0], b[1], 'rgba(0,0,0,.3)', 1); }
-    poly(g, f.top, '#66573e');
-    dither(g, f.top, 'rgba(30,24,16,.6)', 0.3, rng);                           // the sawn end, greyed
-    px(g, c.x3 + 2, c.y3 - hgt * 0.5, 3, 2, '#2a2218');                        // the nail where a rail used to be
-    dither(g, f.sw, 'rgba(86,104,74,.35)', 0.12, rng);
+    var f = body(g, c, ['#5b5243', '#3b352b', '#6d6455']);                     // silvered, not fresh timber
+    for (var i = 1; i < 3; i++) { var a = qp(f.sw, i / 3, 0), b = qp(f.sw, i / 3, 1); line(g, a[0], a[1], b[0], b[1], 'rgba(0,0,0,.35)', 1); }
+    poly(g, f.top, '#7a7263');
+    dither(g, f.top, 'rgba(30,26,18,.5)', 0.34, rng);                          // the sawn end, gone grey
+    // the mortises, empty. This is where the rail was, and it is not here.
+    [0.28, 0.6].forEach(function (v) {
+        var m0 = qp(f.sw, 0.16, v), m1 = qp(f.sw, 0.84, v);
+        poly(g, [m0, m1, [m1[0], m1[1] + 5], [m0[0], m0[1] + 5]], '#181410');
+        line(g, m0[0], m0[1], m1[0], m1[1], 'rgba(150,142,124,.35)', 1);
+        var p0 = qp(f.se, 0.12, v), p1 = qp(f.se, 0.5, v);
+        poly(g, [p0, p1, [p1[0], p1[1] + 5], [p0[0], p0[1] + 5]], '#141110');
+    });
+    var nl = qp(f.sw, 0.3, 0.46);
+    px(g, nl[0], nl[1], 2, 2, '#6d6a62');                                      // one nail left in it
+    dither(g, f.sw, 'rgba(86,104,74,.3)', 0.14, rng);                          // lichen, on the weather side
+    dither(g, f.sw, 'rgba(180,176,164,.16)', 0.1, rng);                        // and the silvering itself
 };
 PAINT.beam = function (g, c) {
     var f = body(g, c);
