@@ -4089,13 +4089,9 @@
     function creativeRender() {   // a tab switch replaces the markup; the carried stack survives it
         var wrap = RT.el.querySelector('.mc-panelwrap');
         if (!wrap) return;
-        var old = wrap.querySelector('.mc-cur');
-        var pos = old ? [old.style.left, old.style.top] : null;
         wrap.innerHTML = '<div class="mc-panel mc-cpanel">' + panelHTML('creative') + '</div><div class="mc-cur"></div><div class="mc-ptip" style="display:none"></div>';
         wirePanelFields(wrap);
-        var cur = wrap.querySelector('.mc-cur');
-        if (pos && cur) { cur.style.left = pos[0]; cur.style.top = pos[1]; }
-        paintPanel();
+        paintPanel();   // re-places the carried ghost from RT.curXY
         var sb = wrap.querySelector('.mc-csearchin');
         if (sb) { sb.focus(); sb.setSelectionRange(sb.value.length, sb.value.length); }
     }
@@ -4225,8 +4221,18 @@
         }
         var cur = wrap.querySelector('.mc-cur');
         if (cur) {
-            if (RT.cur) { cur.style.display = ''; cur.style.backgroundImage = 'url(' + iconURL(RT.cur.id) + ')'; cur.innerHTML = RT.cur.c > 1 ? '<span class="mc-ct">' + RT.cur.c + '</span>' : ''; }
-            else cur.style.display = 'none';
+            /* display:'block', NOT ''. Clearing the inline rule hands the element
+               back to the stylesheet, which declares .mc-cur{display:none} — so
+               for as long as this screen has existed, the stack you picked up
+               vanished off the screen while RT.cur really was holding it. */
+            if (RT.cur) {
+                cur.style.display = 'block';
+                cur.style.backgroundImage = 'url(' + iconURL(RT.cur.id) + ')';
+                cur.innerHTML = RT.cur.c > 1 ? '<span class="mc-ct">' + RT.cur.c + '</span>' : '';
+                // place it before it is ever shown: .mc-panelwrap centres its
+                // children, so an unpositioned ghost would appear over the panel
+                panelCurTo();
+            } else cur.style.display = 'none';
         }
         if (RT.panel.kind === 'furnace') paintFurnaceBits(S.tents[RT.panel.key]);
         if (RT.panel.kind === 'ench') {
@@ -4403,6 +4409,28 @@
         snd('click');
         paintPanel(); paintHotbar();
     }
+    /* Park the carried-item ghost and the tooltip at the pointer. The last
+       position is kept on RT so a repaint, a tab switch or a panel that opens
+       under a stationary mouse all place them correctly rather than letting
+       .mc-panelwrap's flex centring drop them over the middle of the screen. */
+    function panelCurTo(clientX, clientY) {
+        if (!RT || !RT.el) return;
+        if (clientX != null) RT.curXY = [clientX, clientY];
+        var xy = RT.curXY;
+        if (!xy) return;
+        var wrap = RT.el.querySelector('.mc-panelwrap');
+        if (!wrap) return;
+        var r = wrap.getBoundingClientRect(), x = xy[0] - r.left, y = xy[1] - r.top;
+        var cur = wrap.querySelector('.mc-cur');
+        if (cur) { cur.style.left = (x + 6) + 'px'; cur.style.top = (y + 6) + 'px'; }
+        var tip = wrap.querySelector('.mc-ptip');
+        if (tip && tip.style.display !== 'none') {
+            // keep the label on screen when the pointer is near the right edge
+            var tw = tip.offsetWidth || 90;
+            tip.style.left = Math.max(0, Math.min(r.width - tw, x + 14)) + 'px';
+            tip.style.top = (y - 8) + 'px';
+        }
+    }
     function wirePanel(wrap) {
         function handler(e) {
             var el = e.target;
@@ -4434,7 +4462,10 @@
             RT.cur = creativeStack(st.id);
             snd('click'); paintPanel();
         }
+        // remember where the pointer is on EVERY mouse event, not just movement:
+        // a click without a preceding mousemove must still put the ghost under it
         wrap.addEventListener('mousedown', function (e) {
+            panelCurTo(e.clientX, e.clientY);
             if (e.button === 1) { cloneSlot(e); e.preventDefault(); e.stopPropagation(); return; }
             if (e.button !== 0) return;
             var bar = barAt(e.target);
@@ -4442,14 +4473,12 @@
             handler(e);
         });
         wrap.addEventListener('auxclick', function (e) { if (e.button === 1) e.preventDefault(); });
-        wrap.addEventListener('contextmenu', handler);
+        wrap.addEventListener('contextmenu', function (e) { panelCurTo(e.clientX, e.clientY); handler(e); });
         wrap.addEventListener('mousemove', function (e) {
             if (RT.cDrag) { var bar = wrap.querySelector('.mc-cbar'); if (bar) creativeBarTo(bar, e.clientY); }
+            panelCurTo(e.clientX, e.clientY);
             var cur = wrap.querySelector('.mc-cur');
             if (!cur) return;
-            var r = wrap.getBoundingClientRect();
-            cur.style.left = (e.clientX - r.left + 6) + 'px';
-            cur.style.top = (e.clientY - r.top + 6) + 'px';
             /* name whatever is under the pointer. The real game does this in every
                screen, and the catalogue needs it badly: at 32px, stone, cobblestone
                and stone bricks are three grey squares. */
@@ -4465,9 +4494,8 @@
             }
             if (st && !RT.cur) {
                 tip.textContent = st.name || (I[st.id] ? I[st.id].t : st.id);
-                tip.style.display = '';
-                tip.style.left = (e.clientX - r.left + 14) + 'px';
-                tip.style.top = (e.clientY - r.top - 8) + 'px';
+                tip.style.display = 'block';
+                panelCurTo(e.clientX, e.clientY);   // re-place now that it has width
             } else tip.style.display = 'none';
         });
         wrap.addEventListener('mouseleave', function () {
@@ -5983,6 +6011,15 @@
         if (lk) { S.yaw = +lk[1]; S.pitch = +lk[2]; }
         var onReady = [];
         if (has('inv')) onReady.push(function () { openPanel('inv'); });
+        // ?mccur=<item> parks a stack on the mouse cursor, so the carried-item
+        // ghost can be seen in a headless screenshot
+        if (/mccur=/.test(location.search)) onReady.push(function () {
+            var m = location.search.match(/mccur=([a-z_]+)/);
+            if (!m || !I[m[1]]) return;
+            RT.cur = { id: m[1], c: stkMax(m[1]) };
+            RT.curXY = [window.innerWidth * 0.52, window.innerHeight * 0.42];
+            paintPanel();
+        });
         if (has('creative')) onReady.push(function () {
             var ct = location.search.match(/mctab=(\d+)/);
             if (ct) RT.cTab = ct[1] | 0;
