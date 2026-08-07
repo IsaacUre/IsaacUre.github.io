@@ -5010,11 +5010,14 @@ var PLACES = {
     },
     lane: {
         n: 'The lane out of Wick', sub: 'in the play it is a day\'s walk',
-        floor: 'mill', w: 13, h: 17,
+        floor: 'mill', w: 13, h: 17, night: 1,
         props: [
             { t: 'fence', b: [0.6, 4, 0.5, 9] }, { t: 'fence', b: [11.6, 3, 0.5, 3.2] }, { t: 'fence', b: [11.6, 10.2, 0.5, 2.8] },
             { t: 'tree', b: [2.2, 6.4, 1.4, 1.4] }, { t: 'tree', b: [9.4, 10.2, 1.4, 1.4] },
-            { t: 'stone', b: [4.6, 12.6, 1, 1] }
+            { t: 'stone', b: [4.6, 12.6, 1, 1] },
+            // the last lamp of Wick. The town lights the lane as far as it
+            // thinks the town goes, and then it stops.
+            { t: 'lamp', b: [7.6, 14.4, 0.5, 0.5] }
         ],
         npcs: ['shepherd'],
         looks: [{ x: 5.2, y: 12.4, n: 'A milestone', d: 'WICK — 1/4 MILE.\n\nIn the play he walks out past the mill and the well and the mark, and it takes him all night. It is four hundred yards. You can see both ends of it from here.' }],
@@ -5027,7 +5030,7 @@ var PLACES = {
     },
     mill: {
         n: 'The mill', sub: 'rehearse where nobody can hear you, because you are bad',
-        floor: 'mill', w: 15, h: 13,
+        floor: 'mill', w: 15, h: 13, night: 1,
         props: [
             { t: 'mill', b: [5.4, 0.6, 5, 4.4] },
             { t: 'wheel', b: [10.8, 1.6, 1.2, 3.2] },
@@ -5045,7 +5048,7 @@ var PLACES = {
     },
     loft: {
         n: 'The grain loft', sub: 'a crowd of voices with no bodies',
-        floor: 'loft', w: 13, h: 13,
+        floor: 'loft', w: 13, h: 13, night: 1, dark: 1,
         props: [
             { t: 'beam', b: [0, 3.2, 4.8, 0.6] }, { t: 'beam', b: [8.2, 3.2, 4.8, 0.6] },
             { t: 'beam', b: [0, 9.2, 4.4, 0.6] }, { t: 'beam', b: [8.6, 9.2, 4.4, 0.6] },
@@ -5057,7 +5060,7 @@ var PLACES = {
     },
     village: {
         n: 'Grelling — the next village', sub: 'an empty hat and a bad performance',
-        floor: 'town', calm: 1, w: 15, h: 12,
+        floor: 'town', calm: 1, w: 15, h: 12, night: 1,
         props: [
             { t: 'house', b: [0, 0, 3.6, 3] }, { t: 'house', b: [11.4, 0, 3.6, 3.4] }, { t: 'house', b: [0, 9, 4, 3] },
             { t: 'cart', b: [9.6, 7.4, 2.2, 1.2] }, { t: 'well', b: [3.4, 5.6, 1.6, 1.6] }
@@ -5071,7 +5074,7 @@ var PLACES = {
     },
     mark: {
         n: 'The mark', sub: 'she walked out past the mill, the well, the mark',
-        floor: 'mill', calm: 1, w: 13, h: 11,
+        floor: 'mill', calm: 1, w: 13, h: 11, night: 1, dark: 1,
         props: [
             { t: 'markstone', b: [6, 4.6, 1.4, 1.6] },
             { t: 'fence', b: [0.6, 1, 0.5, 2.4] }, { t: 'fence', b: [0.6, 7.6, 0.5, 2.4] },
@@ -6714,10 +6717,16 @@ LIVE.house = function (cx, o, mxc, myc) {
     for (var i = 0; i < 4; i++) {
         var t = (RT.t * 0.34 + i * 0.25 + (o.b[0] % 1)) % 1;
         var a = (1 - t) * 0.16 * (v % 2 ? 1 : 0.7);
+        var px2 = sx + Math.sin(t * 3 + i) * 7 * t, py2 = sy - t * 46;
         cx.fillStyle = 'rgba(150,142,158,' + a.toFixed(3) + ')';
-        cx.beginPath();
-        cx.arc(sx + Math.sin(t * 3 + i) * 7 * t, sy - t * 46, 3 + t * 11, 0, TAU);
-        cx.fill();
+        cx.beginPath(); cx.arc(px2, py2, 3 + t * 11, 0, TAU); cx.fill();
+        // now and then a puff carries an ember up with it. They burned
+        // the doors and the pews nine years ago; they are burning
+        // something now, and it is not seasoned wood.
+        if (t < 0.34 && (Math.floor(RT.t * 0.34 + i * 0.25 + (o.b[0] % 1)) % 14) === (i * 3) % 14) {
+            cx.fillStyle = 'rgba(212,87,31,' + (0.85 - t * 2).toFixed(3) + ')';
+            cx.fillRect(Math.round(px2), Math.round(py2), 1, 1);
+        }
     }
 };
 /* ── the mill: the tallest thing in Wick, and the only one still working ── */
@@ -6808,9 +6817,28 @@ LIVE.wheel = function (cx, o, mxc, myc) {
         cx.strokeStyle = sp % 2 ? '#4a3d2a' : '#5c4c34'; cx.lineWidth = 2;
         cx.beginPath(); cx.moveTo(mxc, cy); cx.lineTo(mxc + Math.cos(an) * wr, cy + Math.sin(an) * wr); cx.stroke();
         // paddles: the part that actually catches the water
-        cx.strokeStyle = '#2e2618'; cx.lineWidth = 4;
         var px2 = mxc + Math.cos(an) * wr, py2 = cy + Math.sin(an) * wr;
+        // One paddle has been mended. It is the only new wood anywhere in
+        // Wick, and it is on the one machine the town still needs.
+        var mended = sp === 4;
+        cx.strokeStyle = mended ? '#6a5535' : '#2e2618'; cx.lineWidth = 4;
         cx.beginPath(); cx.moveTo(px2, py2); cx.lineTo(px2 - Math.sin(an) * 6, py2 + Math.cos(an) * 6); cx.stroke();
+        if (mended) {
+            cx.fillStyle = '#8a8079';
+            cx.fillRect(Math.round(px2 - Math.sin(an) * 2 - 1), Math.round(py2 + Math.cos(an) * 2 - 1), 2, 2);
+            cx.fillRect(Math.round(px2 - Math.sin(an) * 5 - 1), Math.round(py2 + Math.cos(an) * 5 - 1), 2, 2);
+        }
+        // the paddles coming up out of the race are wet, and they drip
+        var lo = Math.sin(an) > 0.55;
+        if (lo) {
+            cx.strokeStyle = 'rgba(150,178,196,.35)'; cx.lineWidth = 1;
+            cx.beginPath(); cx.moveTo(px2, py2); cx.lineTo(px2 - Math.sin(an) * 6, py2 + Math.cos(an) * 6); cx.stroke();
+            if (sp % 4 === 0) {
+                var dt2 = (RT.t * 2.2 + sp) % 1;
+                cx.fillStyle = 'rgba(150,178,196,' + ((1 - dt2) * 0.5).toFixed(3) + ')';
+                cx.fillRect(Math.round(px2), Math.round(py2 + dt2 * 16), 1, 2);
+            }
+        }
     }
     cx.fillStyle = '#241d14'; cx.beginPath(); cx.arc(mxc, cy, 5, 0, TAU); cx.fill();
     cx.fillStyle = '#4a3d2a'; cx.beginPath(); cx.arc(mxc, cy, 2, 0, TAU); cx.fill();
@@ -7177,9 +7205,14 @@ LIVE.foot = function (cx, o, mxc, myc) {
     var x3 = isoX(b[0], b[1] + b[3]), y3 = isoY(b[0], b[1] + b[3]);
     var x2 = isoX(b[0] + b[2], b[1] + b[3]), y2 = isoY(b[0] + b[2], b[1] + b[3]);
     cx.globalCompositeOperation = 'lighter';
+    // Nine oil lamps in a row, and one of them is always going out. The
+    // play has been lit like this for four hundred years.
+    var guttering = Math.floor(RT.t / 3.7) % 9;
+    var gphase = (RT.t / 3.7) % 1;
     for (var fl = 0; fl < 9; fl++) {
         var lq = (fl + 0.5) / 9, lx2 = x3 + (x2 - x3) * lq, ly2 = y3 + (y2 - y3) * lq - hgt - 4;
         var fk = 0.72 + Math.sin(RT.t * 6 + fl * 1.7) * 0.28;
+        if (fl === guttering && gphase < 0.11) fk *= 0.28;
         var fg = cx.createRadialGradient(lx2, ly2, 1, lx2, ly2, 24);
         fg.addColorStop(0, 'rgba(255,190,90,' + (0.45 * fk).toFixed(3) + ')');
         fg.addColorStop(1, 'rgba(255,190,90,0)');
@@ -7200,27 +7233,39 @@ PAINT.lamp = function (g, c) {
     poly(g, [[-7, -hgt - 22], [0, -hgt - 28], [7, -hgt - 22]], '#39312a');
     px(g, -1, -hgt - 30, 2, 3, '#2a241d');                                       // the ring you hang it by
     for (var m = 0; m < 3; m++) px(g, -5 + m * 4, -hgt - 18, 1, 11, '#2f2820');  // glazing bars
+    // four hundred ninth nights scorch a post. This is the only mark in
+    // the game that is evidence of how long the lie has been kept.
+    for (var s = 0; s < 8; s++) {
+        var w = 5 - s * 0.5;
+        px(g, -w / 2, -hgt - 24 - s, w, 1, 'rgba(11,9,18,' + (0.5 - s * 0.05).toFixed(2) + ')');
+    }
 };
 LIVE.lamp = function (cx, o, mxc, myc) {
     var hgt = propDef('lamp').h;
     var fx = mxc, fy = myc - hgt - 12;
+    // Nothing is alive out past the fence. Inside it, every flame has
+    // two or three moths on it; on the road there are none, and that is
+    // the whole difference between the two halves of the world.
+    var wild = RT.place === 'road' || RT.place === 'hollow';
+    var moths = wild ? 0 : 2, bump = 0;
+    for (var m = 0; m < moths; m++) {
+        var a = RT.t * (1.6 + m * 0.7) + m * 2.3 + o.b[0];
+        var mx = fx + Math.cos(a) * (11 + m * 5), my = fy + Math.sin(a * 1.3) * (7 + m * 3);
+        if (Math.abs(mx - fx) < 4 && Math.abs(my - fy) < 4) bump = 1;   // it hit the glass
+        cx.fillStyle = 'rgba(226,214,180,.5)';
+        cx.fillRect(Math.round(mx), Math.round(my), 2, 2);
+    }
     var flick = 0.8 + Math.sin(RT.t * 7 + o.b[0] * 3) * 0.14 + Math.sin(RT.t * 17 + o.b[1]) * 0.06;
     cx.fillStyle = 'rgba(255,206,120,' + (0.55 + flick * 0.4).toFixed(2) + ')';
-    cx.fillRect(Math.round(fx - 3), Math.round(fy - 4), 6, 8);
+    cx.fillRect(Math.round(fx - 3), Math.round(fy - 4 - bump), 6, 8);
     cx.fillStyle = 'rgba(255,246,214,' + (0.5 + flick * 0.5).toFixed(2) + ')';
-    cx.fillRect(Math.round(fx - 1), Math.round(fy - 3 + Math.sin(RT.t * 9) * 0.6), 2, 4);
+    cx.fillRect(Math.round(fx - 1), Math.round(fy - 3 - bump + Math.sin(RT.t * 9) * 0.6), 2, 4);
     cx.globalCompositeOperation = 'lighter';
     var lg = cx.createRadialGradient(fx, fy, 2, fx, fy, 40);
     lg.addColorStop(0, 'rgba(255,200,110,' + (0.34 * flick).toFixed(3) + ')');
     lg.addColorStop(0.4, 'rgba(255,190,90,' + (0.1 * flick).toFixed(3) + ')');
     lg.addColorStop(1, 'rgba(255,190,90,0)');
     cx.fillStyle = lg; cx.beginPath(); cx.arc(fx, fy, 40, 0, TAU); cx.fill();
-    // moths. Nothing else in Wick is having a good night either.
-    for (var m = 0; m < 2; m++) {
-        var a = RT.t * (1.6 + m * 0.7) + m * 2.3 + o.b[0];
-        cx.fillStyle = 'rgba(226,214,180,.5)';
-        cx.fillRect(Math.round(fx + Math.cos(a) * (11 + m * 5)), Math.round(fy + Math.sin(a * 1.3) * (7 + m * 3)), 2, 2);
-    }
     cx.globalCompositeOperation = 'source-over';
 };
 PAINT.table = PAINT.counter = function (g, c) {
@@ -7451,9 +7496,16 @@ function drawLights(cx) {
    sat under every prop and, with a camera, scrolled away off the side
    of the screen. It belongs to the eye. */
 function drawVignette(cx) {
+    /* This used to reach .92 black at radius 620 against a canvas whose
+       corner is at 631, so the corners were all but solid and a house
+       standing in one of them was throwing away every detail painted on
+       it. The falloff still frames the player; it just stops eating the
+       town to do it. */
     var ind = place().indoor;
-    var vg = cx.createRadialGradient(VW / 2, VH / 2 - 30, ind ? 280 : 210, VW / 2, VH / 2, 620);
-    vg.addColorStop(0, 'rgba(4,3,8,0)'); vg.addColorStop(1, ind ? 'rgba(8,5,8,.7)' : 'rgba(4,3,8,.92)');
+    var vg = cx.createRadialGradient(VW / 2, VH / 2 - 30, ind ? 300 : 250, VW / 2, VH / 2, 680);
+    vg.addColorStop(0, 'rgba(4,3,8,0)');
+    vg.addColorStop(0.55, ind ? 'rgba(7,4,7,.2)' : 'rgba(4,3,8,.3)');
+    vg.addColorStop(1, ind ? 'rgba(8,5,8,.6)' : 'rgba(4,3,8,.8)');
     cx.fillStyle = vg; cx.fillRect(0, 0, VW, VH);
 }
 /* Something you can look at has to be visible before you are told
@@ -7495,6 +7547,51 @@ function drawExits(cx) {
         }
     });
 }
+/* ── what each of them does when they think nobody is watching ──
+   One gesture per person, and every one of them is that person's
+   dialogue told again without words. They repeat on their own clock,
+   so you catch them by standing still, which is the only way anybody
+   has ever noticed anything in this town. */
+var GESTURE = {
+    bern: function (cx, w, h, t) {                  // patting his hip for a hat that is on his head
+        var p = (t % 7) < 0.34 ? 1 : 0;
+        cx.strokeStyle = 'rgba(0,0,0,.45)'; cx.lineWidth = 2.2;
+        cx.beginPath(); cx.moveTo(-w * 0.75, -h * 0.62);
+        cx.lineTo(-w * 0.95, -h * (p ? 0.3 : 0.42)); cx.stroke();
+    },
+    widow: function (cx, w, h, t) {                 // reaching for the sill, twice, and never lifting it
+        var q = t % 9, up = (q < 0.7) ? q / 0.7 : (q > 1.3 && q < 2) ? (q - 1.3) / 0.7 : 0;
+        cx.strokeStyle = 'rgba(0,0,0,.45)'; cx.lineWidth = 2.2;
+        cx.beginPath(); cx.moveTo(w * 0.7, -h * 0.62);
+        cx.lineTo(w * (0.9 + up * 0.5), -h * (0.62 + up * 0.28)); cx.stroke();
+    },
+    shepherd: function (cx, w, h, t) {              // whittling, because he has no sheep left to count
+        var q = (t * 1.6) % 1;
+        cx.strokeStyle = 'rgba(0,0,0,.45)'; cx.lineWidth = 2.2;
+        cx.beginPath(); cx.moveTo(-w * 0.6, -h * 0.58); cx.lineTo(-w * 0.2, -h * (0.44 + q * 0.08)); cx.stroke();
+        cx.fillStyle = '#9aa0a8'; cx.fillRect(Math.round(-w * 0.2), Math.round(-h * (0.46 + q * 0.08)), 1, 3);
+        if (q > 0.86) { cx.fillStyle = 'rgba(150,128,88,.7)'; cx.fillRect(Math.round(-w * 0.1), Math.round(-h * 0.34 + (q - 0.86) * 40), 1, 1); }
+    },
+    busker: function (cx, w, h, t) {                // he does the walked-out-past-the-fence arm, to nobody
+        var q = t % 2.4, out = q < 0.8 ? Math.sin(q / 0.8 * Math.PI) : 0;
+        cx.strokeStyle = 'rgba(0,0,0,.45)'; cx.lineWidth = 2.2;
+        cx.beginPath(); cx.moveTo(w * 0.7, -h * 0.6);
+        cx.lineTo(w * (0.7 + out * 1.1), -h * (0.6 + out * 0.22)); cx.stroke();
+        if (out > 0.5) { cx.fillStyle = 'rgba(0,0,0,.4)'; cx.fillRect(Math.round(w * (0.7 + out * 1.1) - 1), Math.round(-h * (0.6 + out * 0.22) - 1), 3, 3); }
+    },
+    hal: function (cx, w, h, t) {                   // his jaw opens, and nothing comes out of it
+        if ((t % 12) > 11.6) { cx.fillStyle = '#0b0912'; cx.fillRect(Math.round(-1), Math.round(-h * 0.78), 2, 1); }
+    },
+    child: function (cx, w, h, t) {                 // barefoot, and the mend is on her knee
+        cx.fillStyle = 'rgba(196,186,168,.4)';
+        cx.fillRect(Math.round(-w * 0.4), Math.round(-h * 0.2), 3, 2);
+    },
+    chandler: function (cx, w, h, t) {              // wax on the apron: the only person in Wick with a trade
+        cx.fillStyle = '#c4b98c'; cx.fillRect(Math.round(-w * 0.3), Math.round(-h * 0.4), 2, 2);
+        cx.fillStyle = '#8e8a80';                   // and tin buttons, which nobody else has
+        for (var b = 0; b < 3; b++) cx.fillRect(0, Math.round(-h * (0.66 - b * 0.08)), 2, 2);
+    }
+};
 function drawNpc(cx, n) {
     var w2 = n.id ? npcRT(n.id) : { x: n.x, y: n.y, bob: RT.t * 2.4, moving: 0, face: 1 };
     var sx = isoX(w2.x, w2.y), sy = isoY(w2.x, w2.y) + TILE_H / 2;
@@ -7535,6 +7632,12 @@ function drawNpc(cx, n) {
         }
     }
     cx.restore();
+    /* The idle gestures survive the move to baked figures: standing
+       still, Bern pats his hip for a hat that is on his head, and the
+       widow reaches for the sill twice and never lifts it. They hang off
+       the figure rather than being part of it, so they stayed hand
+       drawn. Half-width is the sprite's, not the old robe's. */
+    if (!w2.moving && GESTURE[n.id]) GESTURE[n.id](cx, n.small ? 7 : 9, h, RT.t);
     cx.restore();
     // a quiet mark so you know they will talk to you
     cx.save(); cx.globalAlpha = 0.5 + Math.sin(RT.t * 2.6 + w2.y) * 0.2;
