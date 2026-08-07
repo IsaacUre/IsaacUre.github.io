@@ -3209,6 +3209,17 @@ function sfx(kind) {
                                      }); }
         else if (kind === 'ui')    { snd({ bus: 'ui', type: 'square', f0: 530, f1: 620, dur: 0.05, vol: 0.022, cut: 3000 }); }
         /* ---- names the other jobs called for ---- */
+        /* something coming out of the bag and being used. Cloth and a
+           small wooden knock: an object, not a note. */
+        else if (kind === 'use')   { snd({ bus: 'ui', noise: 1, dur: 0.09, vol: 0.024, cut: 1800, cutType: 'bandpass', q: 1.1 });
+                                     snd({ bus: 'ui', type: 'triangle', f0: 260, f1: 210, dur: 0.06, vol: 0.022, cut: 900 }); }
+        /* a word landing in your vocabulary. The same kind of event as
+           a fragment and the same scale, but it stops on the fifth
+           instead of climbing: you have the word, not the whole song. */
+        else if (kind === 'learn') { [3, 5].forEach(function (d, i) {
+                                        snd({ bus: 'music', type: 'triangle', f0: deg(d, 0), dur: 0.5 - i * 0.1, vol: 0.04, atk: 0.015, delay: i * 0.11 });
+                                     });
+                                     snd({ bus: 'music', type: 'sine', f0: deg(1, -1), dur: 0.9, vol: 0.025, atk: 0.12 }); }
         /* The Chorus is a crowd saying the refrain in unison. When it
            goes down the crowd stops, so what you hear is the refrain
            starting and not getting to the end of itself. */
@@ -3247,7 +3258,7 @@ function sfx(kind) {
 }
 /* every name sfx() answers to, for the DEV tester */
 var SFX_NAMES = ['call', 'hit', 'answer', 'slant', 'empty', 'sour', 'winded', 'breath',
-    'bossdie', 'drone', 'reprise',
+    'bossdie', 'drone', 'reprise', 'use', 'learn',
     'stanza', 'wave', 'wave2', 'verse', 'pulsewarn', 'pulse', 'voice', 'bite', 'steal',
     'die', 'spawn', 'hurt', 'down', 'step', 'travel', 'coin', 'frag', 'ach', 'ui'];
 /* solo one bus to hear it on its own */
