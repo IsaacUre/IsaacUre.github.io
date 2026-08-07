@@ -174,7 +174,15 @@ var TUNE = {
     echoBreak: 6,        // echo lost when one of YOUR stacks goes sour
     repriseCost: 100,    // a full Echo bar
     repriseHits: 3, repriseMul: 0.85, repriseGap: 0.34,
-    droneSelfHurt: 0     // 0 = a Droner's own words never hurt YOU. see the PR.
+    droneSelfHurt: 0,    // 0 = a Droner's own words never hurt YOU. see the PR.
+    /* the line: words are dealt, rhymes are yours */
+    lineSize: 4,         // the word on your tongue plus three you can see coming
+    swallowCost: 5,      // breath to bin a word you do not want
+    swallowCd: 0.22,
+    coupletStacks: 1,    // extra stacks for saying two of a sound back to back
+    coupletDmg: 0.35,    // and extra bite on the second one
+    slantShift: 1,       // a slant rhyme drags every other sound over to its own
+    rhymeCost: 15        // what closing a rhyme costs. answerCost is its old name
 };
 
 /* ─────────────── hearsay ───────────────
@@ -431,8 +439,12 @@ function sLoad() {
     S.stanzas = S.stanzas || {};
     S.verse = S.verse || 0;                          // R stays dark for the entire game
     S.owned = S.owned || { heat: 1, street: 1, light: 1, sight: 1 };
+    // The two slotted words are gone: the line deals them now. They are kept
+    // read-only so an old save still knows which sounds it had opened, and
+    // so anything that has not been converted yet does not read undefined.
     S.call = WORDS[S.call] ? S.call : 'heat';
     S.answer = WORDS[S.answer] ? S.answer : 'street';
+    S.poems = S.poems || {};        // the last thing you said in each place, kept
     S.coin = S.coin == null ? 0 : S.coin;
     S.charms = S.charms || { crown: 1 };             // the crown is given, not bought
     S.worn = (S.worn || ['crown']).filter(function (c) { return CHARMS[c] && S.charms[c]; }).slice(0, 2);
@@ -547,6 +559,7 @@ function wearCharm(id) {
 function learnWord(w) {
     if (!WORDS[w] || S.owned[w]) return false;
     S.owned[w] = 1; sSave();
+    if (RT) fillLine(true);            // it is in your mouth by the next draw
     say('You have the word <b style="color:' + FAMS[WORDS[w]].col + '">' + esc(w.toUpperCase()) + '</b>.', 'good');
     return true;
 }
@@ -709,6 +722,7 @@ function grantFragment(n) {
     var map = { 1: ['erd', 'word'], 2: ['ark', 'dark'], 3: ['ill', 'will'] };
     var f = map[n]; if (!f || S.frags[n]) return;
     S.frags[n] = 1; S.fams[f[0]] = 1; S.owned[f[1]] = 1; S.stanzas[n] = 1;
+    if (RT) { fillLine(true); updateHud(0); }      // a new sound, and the words that carry it
     if (n === 1) ach('frag1');
     sSave();
     sfx('frag');
@@ -755,14 +769,14 @@ function render() {
             '<div class="nn-breath"><i></i><em></em><span class="nn-breath-t"></span></div>' +
             '<div class="nn-echo"><i></i><span>ECHO</span></div>' +
           '</div>' +
-          '<div class="nn-slots">' +
-            '<button class="nn-word nn-call" data-nn="slot:call" type="button"><i>CALL · LMB</i><b></b><em></em></button>' +
-            '<button class="nn-word nn-answer" data-nn="slot:answer" type="button"><i>ANSWER · RMB</i><b></b><em></em></button>' +
+          '<div class="nn-mid">' +
+            '<div class="nn-hand" title="LMB says it · RMB swallows it"></div>' +
+            '<div class="nn-rhymes"></div>' +
           '</div>' +
           '<div class="nn-stanzas">' +
-            '<button class="nn-st" data-nn="stanza:1" type="button"><b>Q</b><i>Stanza I</i></button>' +
-            '<button class="nn-st" data-nn="stanza:2" type="button"><b>W</b><i>Stanza II</i></button>' +
-            '<button class="nn-st" data-nn="stanza:3" type="button"><b>E</b><i>Stanza III</i></button>' +
+            '<button class="nn-st" data-nn="stanza:1" type="button"><b>Z</b><i>Stanza I</i></button>' +
+            '<button class="nn-st" data-nn="stanza:2" type="button"><b>X</b><i>Stanza II</i></button>' +
+            '<button class="nn-st" data-nn="stanza:3" type="button"><b>C</b><i>Stanza III</i></button>' +
             '<button class="nn-st nn-verse" data-nn="verse" type="button" disabled><b>R</b><i>Verse</i></button>' +
           '</div>' +
         '</div>' +
@@ -780,7 +794,7 @@ function render() {
 
         '<div class="nn-btns">' +
           '<button class="nn-b" data-nn="p:book" type="button" title="The play (B)">B</button>' +
-          '<button class="nn-b" data-nn="p:kit" type="button" title="Words &amp; charms (C)">C</button>' +
+          '<button class="nn-b" data-nn="p:kit" type="button" title="Your words &amp; charms (K)">K</button>' +
           '<button class="nn-b" data-nn="p:bag" type="button" title="What you carry (I)">I</button>' +
           '<button class="nn-b" data-nn="p:shop" type="button" title="The chandler (V)">V</button>' +
           '<button class="nn-b" data-nn="dev" type="button" title="Dev menu (`)">`</button>' +
@@ -803,6 +817,11 @@ function resetGame() {
     RT.god = 0; RT.infBreath = 0; RT.holdStacks = 0; RT.a3Hold = 0; RT.oneShot = 0;
     RT.panel = null; RT.mapOpen = false; RT.prompt = null;
     RT.story = { cue: 0, holding: 0, tries: 0, waitT: 0, done: 0, sawCall: 0, sawAnswer: 0, callMark: 0, answerMark: 0 };
+    // the mouth starts over too. Without this the gotoPlace below runs the
+    // place-change reset, which stashes the pre-wipe poem into the new save,
+    // and the head card survives as a word from a sound you no longer own.
+    RT.line = []; RT.bag = null; RT.lastSaidFam = null; RT.lastRhyme = null;
+    RT.poem = null; RT.poemPlace = null;
     if (RT.items) { RT.items.freeSlant = 0; RT.items.tack = 0; RT.items.atShop = false; }
     RT.root.querySelectorAll('.nn-panel').forEach(function (p) { p.hidden = true; });
     // and close the menu you pressed it in. The prologue is a timed
@@ -930,6 +949,12 @@ var DEV = [
       { k: 'num', t: 'Reprise damage x', get: function () { return T('repriseMul'); }, set: function (v) { S.tune.repriseMul = clamp(v, 0.1, 3); }, step: 0.05, fix: 2 },
       { k: 'num', t: 'Reprise gap between beats (s)', get: function () { return T('repriseGap'); }, set: function (v) { S.tune.repriseGap = clamp(v, 0.05, 2); }, step: 0.02, fix: 2 },
       { k: 'tgl', t: 'Droner stacks hurt YOU when they lapse', get: function () { return !!T('droneSelfHurt'); }, set: function (v) { S.tune.droneSelfHurt = v ? 1 : 0; sSave(); } },
+      { k: 'num', t: 'Line size (words dealt)', get: function () { return T('lineSize'); }, set: function (v) { S.tune.lineSize = clamp(Math.round(v), 1, 8); if (RT) fillLine(true); }, step: 1 },
+      { k: 'num', t: 'Swallow cost (breath)', get: function () { return T('swallowCost'); }, set: function (v) { S.tune.swallowCost = clamp(v, 0, 40); }, step: 1 },
+      { k: 'num', t: 'Swallow cooldown (s)', get: function () { return T('swallowCd'); }, set: function (v) { S.tune.swallowCd = clamp(v, 0, 2); }, step: 0.02, fix: 2 },
+      { k: 'num', t: 'Couplet extra stacks', get: function () { return T('coupletStacks'); }, set: function (v) { S.tune.coupletStacks = clamp(Math.round(v), 0, 4); }, step: 1 },
+      { k: 'num', t: 'Couplet extra damage x', get: function () { return T('coupletDmg'); }, set: function (v) { S.tune.coupletDmg = clamp(v, 0, 3); }, step: 0.05, fix: 2 },
+      { k: 'tgl', t: 'Slant drags stacks to its sound', get: function () { return !!T('slantShift'); }, set: function (v) { S.tune.slantShift = v ? 1 : 0; } },
       { k: 'num', t: 'Echo per stack', get: function () { return T('echoPerStack'); }, set: function (v) { S.tune.echoPerStack = clamp(v, 0, 50); }, step: 1 },
       { k: 'num', t: 'Echo decay / s', get: function () { return T('echoDecay'); }, set: function (v) { S.tune.echoDecay = clamp(v, 0, 40); }, step: 0.5, fix: 1 },
       { k: 'num', t: 'Call range', get: function () { return T('callRange'); }, set: function (v) { S.tune.callRange = clamp(v, 1, 30); }, step: 0.5, fix: 1 },
@@ -969,6 +994,9 @@ var DEV = [
       { k: 'tgl', t: 'One-shot everything', get: function () { return !!RT.oneShot; }, set: function (v) { RT.oneShot = v; } },
       { k: 'btn', t: 'Fill breath', on: function () { RT.breath = stats().breathMax; RT.winded = 0; } },
       { k: 'btn', t: 'Fill echo', on: function () { RT.echo = T('echoMax'); } },
+      { k: 'btn', t: 'Redeal the line', on: function () { RT.line = []; fillLine(true); updateHud(0); } },
+      { k: 'btn', t: 'Read back the poem so far', on: function () { toggleDev(); poemClose(); } },
+      { k: 'btn', t: 'Forget every poem', danger: 1, on: function () { S.poems = {}; poemStart(); sSave(); } },
       { k: 'btn', t: 'Heal', on: function () { RT.hp = RT.hpm; } },
       { k: 'num', t: 'Time scale', get: function () { return RT.timeScale; }, set: function (v) { RT.timeScale = clamp(v, 0.05, 3); }, step: 0.1, fix: 2 }
   ]; } },
@@ -979,7 +1007,7 @@ var DEV = [
       { k: 'tgl', t: 'Show fps + counts', get: function () { return !!RT.dbgPerf; }, set: function (v) { RT.dbgPerf = v; } },
       { k: 'tgl', t: 'Screen shake', get: function () { return !!S.opts.shake; }, set: function (v) { S.opts.shake = v; sSave(); } },
       { k: 'tgl', t: 'Sound', get: function () { return !!S.opts.sound; }, set: function (v) { S.opts.sound = v; sSave(); } },
-      { k: 'tgl', t: 'WASD movement (stanzas move to Q/E/F)', get: function () { return !!S.opts.wasd; }, set: function (v) { S.opts.wasd = v; sSave(); refreshStanzaKeys(); } },
+      { k: 'tgl', t: 'WASD movement (left click always says the word)', get: function () { return !!S.opts.wasd; }, set: function (v) { S.opts.wasd = v; sSave(); refreshStanzaKeys(); } },
       { k: 'note', t: 'Combat may only ever show single words. If you want the player to read a line, it should not be a fight.' },
       /* ── sound. Appended at the tail of DEBUG rather than taking a tab:
             seven tabs fit across 560px and an eighth does not. ── */
@@ -1232,7 +1260,10 @@ var RT = null;
    `else return` so movement never calls preventDefault. */
 var KEYS = {};
 function bindKey(k, fn) { KEYS[k.toLowerCase()] = fn; }
-function stanzaKeys() { return ['1', '2', '3']; }   // E is interact, in every scheme
+// The number row belongs to the rhymes now: they are the verb you press
+// most, so they get the best keys. Stanzas are big cooldowns and move to
+// the Z row. E is interact in every scheme and always was.
+function stanzaKeys() { return ['z', 'x', 'c']; }
 function refreshStanzaKeys() {
     if (!RT) return;
     var k = stanzaKeys();
@@ -1253,7 +1284,8 @@ function init(el) {
         echo: 0, dash: 0,
         foes: [], fproj: [], parts: [], typo: [], slams: [], lines: [],
         calls: [], snaps: [], rings: [], beats: [],
-        callCd: 0, answerCd: 0, conceal: 0, sourN: 0,
+        callCd: 0, answerCd: 0, swallowCd: 0, conceal: 0, sourN: 0,
+        line: [], bag: null, poem: null, lastSaidFam: null, lastRhyme: null, assembly: null,
         place: S.place, wave: 0, waveT: 0, phase: 'idle', pending: [],
         dialog: null, prompt: null, pressure: 0, cleared: false, mapOpen: false,
         shake: 0, chroma: 0, flash: 0, dilate: 0, mono: 0, timeScale: 1,
@@ -1271,6 +1303,8 @@ function init(el) {
     };
     wireInput(root, cv);
     wireHud(root);
+    poemStart();
+    fillLine(true);
     refreshStanzaKeys();
     gotoPlace(S.place, false);
     updateHud(0);
@@ -1290,6 +1324,13 @@ function init(el) {
             talk: function (id) { var n = NPCS[id]; if (n) openDialog(n.talk(), n.n); },
             interact: function () { RT.prompt = nearestInteract(); doInteract(); },
             slot: function (c, a) { if (c) S.call = c; if (a) S.answer = a; sSave(); updateHud(0); },
+            line: function () { return RT.line.slice(); },
+            deal: function (w) { if (WORDS[w]) { RT.line.unshift(w); RT.line.length = Math.max(1, Math.round(T('lineSize'))); updateLine(); } return RT.line.slice(); },
+            say: function () { doCall(); },
+            swallow: function () { doSwallow(); },
+            rhyme: function (f) { doRhyme(f); },
+            board: function () { var o = {}; FAM_IDS.forEach(function (f) { var n = boardCount(f); if (n) o[f] = n; }); return o; },
+            poem: function () { return RT.poem; },
             frag: function (n) { grantFragment(n); },
             sfx: function (k) { sfx(k); return RT.audio.errs; },
             audio: function () { var A = RT.audio; return { ctx: RT.ac ? RT.ac.state : 'none', rig: !!A.ready, vol: volNow(), amb: A.ambKind, solo: A.solo, errs: A.errs, last: A.lastErr, names: SFX_NAMES }; },
@@ -1334,7 +1375,7 @@ function wireInput(root, cv) {
         if (!RT) return; root.focus();
         var p = toWorld(e);
         RT.mouse.x = p.x; RT.mouse.y = p.y; RT.mouse.wx = p.wx; RT.mouse.wy = p.wy;
-        if (e.button === 2) { RT.mouse.rdown = true; doAnswer(); }
+        if (e.button === 2) { RT.mouse.rdown = true; doSwallow(); }
         else if (e.button === 0) {
             RT.mouse.down = true;
             if (!S.opts.wasd && !e.shiftKey && !foeNear(p.wx, p.wy, 1.2)) RT.moveTo = { x: clamp(p.wx, 0.7, pw() - 0.7), y: clamp(p.wy, 0.7, ph() - 0.7) };
@@ -1364,8 +1405,9 @@ function wireInput(root, cv) {
         // interact first, always. It used to sit after the stanza chain,
         // which bound E to Stanza II and made the entire world layer
         // unreachable from the keyboard.
-        var sk = stanzaKeys();
+        var sk = stanzaKeys(), rk = rhymeKeys().indexOf(k);
         if (k === 'e') doInteract();
+        else if (rk >= 0) doRhyme(FAM_IDS[rk]);
         else if (k === sk[0]) doStanza(1);
         else if (k === sk[1]) doStanza(2);
         else if (k === sk[2]) doStanza(3);
@@ -1373,7 +1415,7 @@ function wireInput(root, cv) {
         else if (k === ' ') doDash();
         else if (k === 'm') { if (!RT.dialog) RT.mapOpen = !RT.mapOpen; }
         else if (k === 'b') panel('book');
-        else if (k === 'c') panel('kit');
+        else if (k === 'k') panel('kit');
         else if (k === 'v') panel('shop');
         else if (KEYS[k]) { if (KEYS[k]() === false) return; }   // a registered key may decline and let the event through
         else return;
@@ -1541,26 +1583,236 @@ function spendBreath(cost) {
     return true;
 }
 
+/* ═══════════════ THE LINE ═══════════════
+   You do not choose your words. You choose your rhymes.
+
+   Every word you own sits in a bag. The line deals you four of them,
+   face up: the one on your tongue and three you can see coming. Left
+   click says the head word at whatever you are pointing at and sticks
+   a syllable of its sound to what it hits. Right click swallows it
+   instead, which costs breath and puts a struck-out word in your poem.
+
+   The rhymes are on the number row and they are the part that is
+   actually yours. Each one answers every syllable of its own sound on
+   the board at once. Which means the board is now a mixture, because
+   your words are, and reading it is the game: three -eat on the big
+   one, one -ill on the runner, a stray -ark you have not closed yet.
+
+   A shuffled bag rather than a die roll. You see every word you own
+   before you see any of them twice, which is the difference between a
+   hand you can plan around and a slot machine. */
+
+function poolWords() {
+    var out = [];
+    for (var w in S.owned) if (S.owned[w] && WORDS[w] && famOwned(WORDS[w])) out.push(w);
+    if (!out.length) out.push('heat');            // never deal from nothing
+    return out;
+}
+function refillBag() {
+    var q = poolWords();
+    for (var i = q.length - 1; i > 0; i--) { var j = irnd(0, i), t = q[i]; q[i] = q[j]; q[j] = t; }
+    RT.bag = q;
+}
+function drawWord(avoid) {
+    if (!RT.bag || !RT.bag.length) refillBag();
+    // Never deal a word that is already face up, or the one just spat out.
+    // The starting bag is four words and the line is four cards, so without
+    // this the hand is full of duplicates and a swallow hands you straight
+    // back the thing you swallowed. Falls through to a plain draw when the
+    // bag genuinely has nothing else, which is the four-word case.
+    for (var i = RT.bag.length - 1; i >= 0; i--) {
+        var w = RT.bag[i];
+        if (w === avoid) continue;
+        if (RT.line && RT.line.indexOf(w) >= 0) continue;
+        return RT.bag.splice(i, 1)[0];
+    }
+    return RT.bag.pop();
+}
+/* `fresh` rebuilds the bag, so a word you just learned is in your mouth
+   by the next draw rather than whenever the bag happens to turn over.
+   The head word survives it: you do not lose the thing you were about
+   to say because you walked past a shop. */
+function fillLine(fresh) {
+    if (!RT.line) RT.line = [];
+    if (fresh) {
+        if (RT.line.length > 1) RT.line.length = 1;
+        refillBag();
+        // whatever is still in your mouth comes out of the new bag, or the
+        // reshuffle deals you the word you are already looking at
+        RT.line.forEach(function (w) { var i = RT.bag.indexOf(w); if (i >= 0) RT.bag.splice(i, 1); });
+    }
+    var want = Math.max(1, Math.round(T('lineSize')));
+    while (RT.line.length < want) RT.line.push(drawWord());
+    if (RT.line.length > want) RT.line.length = want;
+}
+function headWord() { fillLine(); return RT.line[0]; }
+
+/* ─────────────── the poem ───────────────
+   Everything you say goes down. A rhyme ends a line, which is true of
+   verse and happens to be exactly true of this game: the detonation IS
+   the line break. So the shape of your poem is the shape of how you
+   fought, with no scoring rule bolted on top of the play. */
+function poemStart() { RT.poem = { lines: [], cur: [], blots: 0 }; RT.poemPlace = RT.place; }
+/* Leaving mid-verse does not throw it away. It goes in the book under the
+   place you said it, and you start a clean page wherever you turn up. */
+function poemStash() {
+    if (RT.poem && RT.poem.cur.length) poemBreak(null);
+    if (RT.poem && RT.poem.lines.length && RT.poemPlace) poemKeep(RT.poemPlace, RT.poem);
+    poemStart();
+}
+function poemSay(word, fam, couplet) {
+    if (!RT.poem) poemStart();
+    RT.poem.cur.push({ w: word, fam: fam, couplet: couplet ? 1 : 0 });
+    // Talk long enough without closing anything and it breaks anyway, on
+    // nothing. A line that does not end on a sound does not rhyme with
+    // anything, which is the correct punishment for rambling.
+    if (RT.poem.cur.length >= 8) poemBreak(null);
+}
+function poemSwallow(word) {
+    if (!RT.poem) poemStart();
+    RT.poem.blots++;
+    RT.poem.cur.push({ w: word, fam: WORDS[word] || null, cut: 1 });
+}
+function poemBreak(fam) {
+    if (!RT.poem) return;
+    if (!RT.poem.cur.length) {
+        // the eighth word already forced the break, so the rhyme you then
+        // pressed had nothing left to close. It still ended that line.
+        var last = RT.poem.lines[RT.poem.lines.length - 1];
+        if (fam && last && !last.end) last.end = fam;
+        return;
+    }
+    RT.poem.lines.push({ ws: RT.poem.cur, end: fam || null });
+    RT.poem.cur = [];
+}
+/* The book keeps a page, not a transcript: a long grind in one room would
+   otherwise put hundreds of lines in localStorage forever. Blots are
+   recounted from the lines that survive, or the kept page scores worse than
+   the one the game just read out loud. */
+function poemKeep(place, p) {
+    if (!place || !p || !(p.lines || []).length) return;
+    var lines = p.lines.slice(-12), blots = 0;
+    lines.forEach(function (L) { L.ws.forEach(function (w) { if (w.cut) blots++; }); });
+    S.poems[place] = { lines: lines, blots: blots };
+    sSave();
+}
+function poemWords(p) {
+    var n = 0;
+    (p.lines || []).forEach(function (L) { L.ws.forEach(function (w) { if (!w.cut) n++; }); });
+    return n;
+}
+/* Lines ending on the same sound rhyme with each other. Count the
+   pairs, count the couplets, dock the crossings out. */
+function poemScore(p) {
+    var by = {}, pairs = 0, couplets = 0;
+    (p.lines || []).forEach(function (L) {
+        L.ws.forEach(function (w) { if (w.couplet) couplets++; });
+        if (!L.end) return;
+        by[L.end] = (by[L.end] || 0) + 1;
+    });
+    for (var f in by) pairs += Math.floor(by[f] / 2);
+    var lines = (p.lines || []).length;
+    // rhyming lines are worth most: the couplet already pays you in damage
+    // when you say it, so it should not also carry the grade.
+    return { pairs: pairs, couplets: couplets, blots: p.blots || 0, lines: lines,
+             words: poemWords(p), score: pairs * 4 + couplets - (p.blots || 0) };
+}
+function poemGrade(sc) {
+    if (!sc.lines) return 'nothing at all';
+    if (sc.score >= 14) return 'that was a ballad';
+    if (sc.score >= 9) return 'nearly a ballad';
+    if (sc.score >= 5) return 'a serviceable verse';
+    if (sc.score >= 2) return 'doggerel, but it scans';
+    if (sc.score >= 0) return 'doggerel';
+    return 'you were making noise';
+}
+/* Rendered the way the book renders the real ballad, so the two can sit
+   on the same page and you can see how far off you are. */
+function poemHtml(p) {
+    if (!p || !(p.lines || []).length) return '<p class="nn-note dim">Nothing yet. Say something.</p>';
+    var h = '';
+    (p.lines || []).forEach(function (L) {
+        h += '<div class="nn-pline">' + L.ws.map(function (w) {
+            if (w.cut) return '<s>' + esc(w.w) + '</s>';
+            var c = w.fam ? FAMS[w.fam].col : '#8a8296';
+            return '<b style="color:' + c + '">' + esc(w.w) + '</b>' + (w.couplet ? '<sup>&middot;</sup>' : '');
+        }).join(' ') + '</div>';
+    });
+    var sc = poemScore(p);
+    h += '<p class="nn-note">' + sc.lines + ' lines, ' + sc.pairs + ' rhyming, ' + sc.couplets +
+         ' couplet' + (sc.couplets === 1 ? '' : 's') +
+         (sc.blots ? ', ' + sc.blots + ' crossed out' : '') + '. <i>' + esc(poemGrade(sc)) + '</i></p>';
+    return h;
+}
+/* Called when a place goes quiet. Says it back at you, a line at a
+   time, and keeps it. */
+function poemClose() {
+    if (!RT.poem) { poemStart(); return; }
+    poemBreak(null);
+    var p = RT.poem;
+    if (!p.lines.length) { poemStart(); return; }
+    poemKeep(RT.place, p);
+    var sc = poemScore(S.poems[RT.place] || p), shown = p.lines.slice(-4);
+    shown.forEach(function (L, i) {
+        beat(0.5 + i * 0.9, function () {
+            say(L.ws.map(function (w) {
+                return w.cut ? '<s>' + esc(w.w) + '</s>' : esc(w.w);
+            }).join(' ') + (L.end ? ' <b style="color:' + FAMS[L.end].col + '">' + FAMS[L.end].n + '</b>' : ''), 'dim');
+        });
+    });
+    beat(0.5 + shown.length * 0.9 + 0.6, function () {
+        say('<b>' + esc(poemGrade(sc)) + '</b>', sc.score >= 5 ? 'good' : 'dim');
+    });
+    poemStart();
+}
+
 /* ─────────────── CALL ───────────────
    The word itself is the projectile. It flies, it lands, it pops
-   small, and it leaves a syllable stuck to whatever it touched. */
+   small, and it leaves a syllable stuck to whatever it touched. The
+   word is whatever the line dealt you. */
 function doCall() {
-    if (!RT || RT.dead || RT.devOpen || RT.dialog || RT.mapOpen) return;
+    if (!RT || RT.dead || RT.devOpen || RT.dialog || RT.mapOpen || RT.panel) return;
     if (RT.winded > 0) { hudNudge('breath'); return; }
     if (RT.callCd > 0) return;
     var st = stats();
     if (!spendBreath(st.callCost)) { hudNudge('breath'); return; }
     RT.callCd = 0.19;
     RT.casting = { t: 0.13, max: 0.13 };
-    var fam = callFam(), word = S.call;
+    var word = headWord(), fam = WORDS[word] || 'eat';
+    var couplet = RT.lastSaidFam === fam;      // two of a sound in a row bites harder
+    RT.lastSaidFam = fam;
+    RT.line.shift(); fillLine();
     var a = Math.atan2(RT.mouse.wy - RT.py, RT.mouse.wx - RT.px);
     RT.nCalls++;
     RT.calls.push({ x: RT.px + Math.cos(a) * 0.5, y: RT.py + Math.sin(a) * 0.5,
         vx: Math.cos(a) * 13, vy: Math.sin(a) * 13, life: T('callRange') / 13,
-        word: word.toUpperCase(), fam: fam, hit: [] });
+        word: word.toUpperCase(), fam: fam, hit: [], couplet: couplet ? 1 : 0 });
+    poemSay(word, fam, couplet);
+    if (couplet) typo(RT.px, RT.py + 0.5, 'couplet', FAMS[fam].col, 0.6, 10, 'drift');
     ach('firstcall');
     speakPressure();          // saying it out loud is what brings them
     sfx('call');
+    updateLine();
+}
+/* The word you did not want. It costs breath, it goes to the bottom of
+   the bag, and it goes into the poem with a line through it, because
+   the thing you nearly said is part of what you said. */
+function doSwallow() {
+    if (!RT || RT.dead || RT.devOpen || RT.dialog || RT.mapOpen || RT.panel) return;
+    if (RT.swallowCd > 0) return;
+    if (RT.winded > 0) { hudNudge('breath'); return; }
+    var word = headWord();
+    if (!spendBreath(T('swallowCost'))) { hudNudge('breath'); return; }
+    RT.swallowCd = T('swallowCd');
+    RT.line.shift();
+    RT.line.push(drawWord(word));         // the replacement first, and never the same word
+    if (!RT.bag) refillBag();
+    RT.bag.unshift(word);                 // then it goes to the bottom, so you get it back
+    fillLine();
+    poemSwallow(word);
+    typo(RT.px, RT.py + 0.3, word.toUpperCase(), '#6a5f72', 0.55, 11, 'drift');
+    sfx('empty');
+    updateLine();
 }
 function stepCalls(dt) {
     for (var i = RT.calls.length - 1; i >= 0; i--) {
@@ -1587,12 +1839,17 @@ function deafMul(f, fam) { return (f.def.deaf && fam !== 'ill') ? T('deafMul') :
 function landCall(f, c) {
     var st = stats();
     var dmg = st.callDmg * famDmgMul(c.fam) * deafMul(f, c.fam);
+    // said two of a sound in a row: the second one bites, and sticks twice
+    if (c.couplet) dmg *= 1 + T('coupletDmg');
     if (f.def.deaf && c.fam !== 'ill') typo(f.x, f.y, 'deaf', '#6a5f72', 0.4, 8, 'drift');
     hurtFoe(f, dmg, c.fam, { call: 1 });
     // tier 1: a small word pops at the impact point. deliberately underwhelming.
     typo(f.x, f.y, c.word, FAMS[c.fam].col, 0.5, 13, 'pop');
     burst(f.x, f.y, 26, 5, { col: hex2rgb(FAMS[c.fam].col), sp0: 0.3, sp1: 1.3, l0: 0.15, l1: 0.4 });
-    if (!f.dead) addStack(f, c.fam);
+    if (!f.dead) {
+        addStack(f, c.fam);
+        for (var q = 0; q < (c.couplet ? Math.round(T('coupletStacks')) : 0); q++) addStack(f, c.fam);
+    }
     RT.shake = shake(0.7, 4);
     sfx('hit');
 }
@@ -1646,37 +1903,93 @@ function breakStack(f, s) {
    per enemy scales with that enemy's own stack count. Answer a
    stack with the wrong sound and you get a slant: half damage,
    no element, no echo. Weak, not punishing. */
-function doAnswer() {
-    if (!RT || RT.dead || RT.devOpen || RT.dialog || RT.mapOpen) return;
+
+/* How many of a sound are out there right now. The HUD draws this on
+   every rhyme pip, which is the whole readability problem solved: you
+   can see at a glance that there are four -eat on the board and one
+   stray -ark you have not closed. */
+function boardCount(fam) {
+    var n = 0;
+    RT.foes.forEach(function (f) {
+        if (f.dead || heldOpen(f)) return;
+        f.stacks.forEach(function (t) { if (t.fam === fam) n++; });
+    });
+    return n;
+}
+function boardTotal() {
+    var n = 0;
+    RT.foes.forEach(function (f) { if (!f.dead && !heldOpen(f)) n += f.stacks.length; });
+    return n;
+}
+function rhymeReady(fam) { return famOwned(fam); }
+function rhymeKeys() { return ['1', '2', '3', '4', '5']; }
+
+/* ─────────────── THE RHYME ───────────────
+   The verb that is actually yours. It finds every syllable of its own
+   sound on the board and closes all of it at once, wherever it is.
+
+   Miss, and it slants. A slant used to be a slap on the wrist: half
+   damage and nothing else, which meant the only correct play was never
+   to slant. Now a slant DRAGS: it does half damage to everything it
+   touched and pulls all of those syllables over into its own sound.
+   Which makes rhyming badly a real move. The board is three -eat and
+   two -ark, you have -ark up next: slant with -ark to haul the whole
+   lot over, then close -ark on five instead of two. Bad rhyme, good
+   poem. */
+function doRhyme(fam) {
+    // RT.panel matters here in a way it never did for the old doAnswer: that
+    // was on a mouse button, and a panel physically covers the canvas. This
+    // is on the number row, and keydown is on the root.
+    if (!RT || RT.dead || RT.devOpen || RT.dialog || RT.mapOpen || RT.panel) return;
+    if (!FAMS[fam]) return;
+    if (!rhymeReady(fam)) {
+        hudNudge('rhyme:' + fam);
+        say('You do not have that sound yet.', 'dim');
+        return;
+    }
     if (RT.winded > 0) { hudNudge('breath'); return; }
     if (RT.answerCd > 0) return;
     var st = stats();
     if (!spendBreath(st.answerCost)) { hudNudge('breath'); return; }
     RT.answerCd = 0.34;
     RT.nAnswers++;
+    RT.lastRhyme = fam;
     RT.casting = { t: 0.22, max: 0.22 };
-    var fam = answerFam(), word = S.answer.toUpperCase();
+    var word = FAMS[fam].tag;
     RT.lastWord = word; RT.lastFam = fam;          // the Reprise says the last thing you said
     var live = RT.foes.filter(function (f) { return !f.dead && f.stacks.length && !heldOpen(f); });
-    var totalMatched = 0, hitFoes = 0, best = 0, anySlant = false;
+    var totalMatched = 0, hitFoes = 0, best = 0, dragged = 0;
 
     live.forEach(function (f) {
         var match = 0, other = 0;
-        f.stacks.forEach(function (s) { if (s.fam === fam) match++; else other++; });
+        f.stacks.forEach(function (t) { if (t.fam === fam) match++; else other++; });
         if (!match && !other) return;
         var closed = match > 0;
         var n = closed ? match : other;
         var dmg = (st.answerBase + st.answerPerStack * n) * famDmgMul(fam);
         // soft wax holds a mismatched pair together: a slant lands in full
-        if (!closed) { dmg *= (RT.items.freeSlant > 0 ? 1 : st.slantMul); anySlant = true; }
+        if (!closed) { dmg *= (RT.items.freeSlant > 0 ? 1 : st.slantMul); }
         dmg *= deafMul(f, fam);          // the deaf hear nothing: only -ill touches them
         hurtFoe(f, dmg, fam, { answer: 1, closed: closed, n: n });
         if (closed) { totalMatched += match; if (match > best) best = match; famEffect(f, fam, match); }
         hitFoes++;
-        // the stacks are spent either way
-        f.stacks = f.stacks.filter(function (s) { return closed ? s.fam !== fam : false; });
+        if (closed) {
+            f.stacks = f.stacks.filter(function (t) { return t.fam !== fam; });
+        } else if (f.def.folk) {
+            // The town's open line is not draggable. It has been the same
+            // sound for four hundred years and a wrong answer does not move
+            // it: that refusal is the entire act.
+        } else if (T('slantShift')) {
+            // the drag. Nothing is spent: the sounds are pulled over.
+            f.stacks.forEach(function (t) { t.fam = fam; dragged++; });
+        } else {
+            f.stacks.length = 0;
+        }
         snapStacks(f, closed ? FAMS[fam].col : '#6a5f72', n);
     });
+
+    poemBreak(fam);                       // a rhyme is where the line ends
+    assembleLine(fam, totalMatched);
 
     if (totalMatched > 0) {
         RT.echo = Math.min(T('echoMax'), RT.echo + T('echoPerStack') * totalMatched * st.echoGain);
@@ -1685,16 +1998,77 @@ function doAnswer() {
         if (hitFoes >= 8) ach('crowd');
         slam(word, FAMS[fam].col, totalMatched + ' closed');
         sfx('answer');
-    } else if (anySlant) {
+    } else if (dragged > 0) {
+        ach('slant');
+        slam(word, FAMS[fam].col, dragged + ' dragged over');
+        RT.shake = shake(4);
+        sfx('slant');
+    } else if (hitFoes > 0) {
         ach('slant');
         slam(word, '#6a5f72', 'slant');
         RT.shake = shake(3);
         sfx('slant');
     } else {
-        // answering nothing at all: the word goes out and finds no rhyme
+        // a rhyme with nothing to rhyme with: it goes out and finds no sound
         typo(RT.px, RT.py, word, '#4d4757', 0.5, 12, 'pop');
         sfx('empty');
     }
+}
+/* The money shot. Everything you said that matched flies in from where
+   it was stuck and sets itself into one line across the middle of the
+   screen before it goes off. Scattered words becoming a line is the
+   whole idea of the game, so it should be the thing you see. */
+function assembleLine(fam, n) {
+    if (!n) return;
+    var ws = [];
+    (RT.poem && RT.poem.lines.length ? RT.poem.lines[RT.poem.lines.length - 1].ws : []).forEach(function (w) {
+        if (!w.cut && w.fam === fam) ws.push(w.w.toUpperCase());
+    });
+    if (!ws.length) ws = [FAMS[fam].tag];
+    RT.assembly = { ws: ws.slice(-6), fam: fam, t: 0.85, max: 0.85 };
+}
+function drawAssembly(cx, dt) {
+    var a = RT.assembly; if (!a) return;
+    a.t -= dt;
+    if (a.t <= 0) { RT.assembly = null; return; }
+    var k = 1 - a.t / a.max;                       // 0 gathering, 1 gone
+    var ease = k < 0.55 ? (k / 0.55) : 1;
+    var fade = k < 0.7 ? 1 : 1 - (k - 0.7) / 0.3;
+    cx.save();
+    cx.font = 'bold 21px "Press Start 2P", monospace';
+    cx.textAlign = 'center';
+    var gap = 22, total = 0, widths = [];
+    a.ws.forEach(function (w) { var wd = cx.measureText(w).width; widths.push(wd); total += wd + gap; });
+    total -= gap;
+    var x = VW / 2 - total / 2, y = VH * 0.40;
+    a.ws.forEach(function (w, i) {
+        var from = ((i * 97) % 13) / 13, sx = lerp(VW * (0.12 + from * 0.76), x + widths[i] / 2, ease);
+        var sy = lerp(VH * (0.30 + ((i * 53) % 11) / 11 * 0.34), y, ease);
+        cx.globalAlpha = fade * (0.35 + 0.65 * ease);
+        cx.fillStyle = FAMS[a.fam].glow;
+        cx.shadowColor = FAMS[a.fam].col; cx.shadowBlur = 14 * ease;
+        cx.fillText(w, sx, sy);
+        cx.shadowBlur = 0;
+        x += widths[i] + gap;
+    });
+    if (ease >= 1) {                                // the rule under the finished line
+        cx.globalAlpha = fade * 0.8;
+        cx.strokeStyle = FAMS[a.fam].col; cx.lineWidth = 2;
+        cx.beginPath(); cx.moveTo(VW / 2 - total / 2, y + 10); cx.lineTo(VW / 2 + total / 2, y + 10); cx.stroke();
+    }
+    cx.restore(); cx.textAlign = 'left';
+}
+/* Kept for the dev handle, the act, and anything else that just wants
+   "answer with whatever is most worth answering". Picks the sound you
+   have the most of on the board, which is what a player would do. */
+function doAnswer() {
+    var best = null, bn = 0;
+    FAM_IDS.forEach(function (f) {
+        if (!rhymeReady(f)) return;
+        var n = boardCount(f);
+        if (n > bn) { bn = n; best = f; }
+    });
+    doRhyme(best || (rhymeReady(answerFam()) ? answerFam() : FAM_IDS.filter(rhymeReady)[0] || 'eat'));
 }
 /* ─────────────── THE REPRISE ───────────────
    Echo was a fully plumbed resource with no consumer: written from five
@@ -1714,6 +2088,7 @@ function doReprise() {
     var word = (RT.lastWord || S.answer || 'again').toUpperCase();
     var fam = RT.lastFam || answerFam();
     RT.combat.rep = { n: T('repriseHits'), t: 0, gap: T('repriseGap'), word: word, fam: fam };
+    poemBreak(fam);
     RT.dilate = Math.max(RT.dilate, 0.5);
     slam(word, FAMS[fam].col, 'reprise');
     bigLine('again', 'and again, and again', FAMS[fam].col, 2);
@@ -1860,6 +2235,8 @@ function doStanza(n) {
     RT.stanzaCd[n - 1] = sz.cd;
     RT.dilate = T('dilationT');
     RT.recital = { sz: sz, t: 0, line: -1, n: n };
+    RT.lastRhyme = sz.fam;
+    poemBreak(sz.fam);            // four lines of the real thing ends yours
     ach('stanza');
     sfx('stanza');
 }
@@ -2660,6 +3037,7 @@ function step(dt, real) {
     RT.mono = Math.max(0, RT.mono - (real || dt));
     RT.callCd = Math.max(0, (RT.callCd || 0) - dt);
     RT.answerCd = Math.max(0, (RT.answerCd || 0) - dt);
+    RT.swallowCd = Math.max(0, (RT.swallowCd || 0) - dt);
     RT.conceal = Math.max(0, (RT.conceal || 0) - dt);
     stepItems(dt);                                          // job 5: the wax goes cold, the shop closes behind you
     if (RT.dead) {
@@ -2746,6 +3124,7 @@ function draw(rdt) {
         cx.restore();
     }
     cx.restore();
+    drawAssembly(cx, dt);      // the words gathering into a line
     drawSlams(cx, dt);
     drawLines(cx, dt);
     drawBossBar(cx);
@@ -2950,8 +3329,12 @@ function snd(o) {
    The family is read out of game state here rather than passed in,
    so no call site anywhere else in the file has to change. */
 function famOf(kind) {
-    if (kind === 'answer' || kind === 'slant') return typeof answerFam === 'function' ? answerFam() : 'eat';
-    return typeof callFam === 'function' ? callFam() : 'eat';
+    // S.call and S.answer were the verbs when this was written. They are not
+    // any more: the line deals the word and the number row holds the sound,
+    // so reading the old slots gave every Call, every landing and every
+    // Answer in the game the -eat voice. Read what was actually said.
+    if (kind === 'answer' || kind === 'slant') return RT && RT.lastRhyme || 'eat';
+    return RT && RT.lastSaidFam || 'eat';
 }
 function voxCall(f) {
     if (f === 'eat')       { snd({ bus: 'voice', type: 'sawtooth', f0: 300, f1: 168, dur: 0.14, vol: 0.075, cut: 1500, cut1: 430, q: 5 });
@@ -3462,6 +3845,53 @@ function audioVolume(v) {
 }
 
 /* ─────────────── HUD ─────────────── */
+
+/* ─────────────── the line, drawn ───────────────
+   Four cards. The head one is the word in your mouth and it is lit;
+   the three behind it are what is coming, dimming with distance, which
+   is the whole reason the deal is a queue and not a die roll. */
+function updateLine() {
+    if (!RT || !RT.root) return;
+    fillLine();
+    // `.nn-hand`, not `.nn-line`: say() has built every narration div with
+    // class nn-line since the first commit, and .nn-say sits above .nn-hud in
+    // the markup, so querySelector('.nn-line') hands you a story line and the
+    // word queue gets painted into the narration box.
+    var el = RT.root.querySelector('.nn-hand');
+    if (el && el._k !== RT.line.join(',')) {
+        el._k = RT.line.join(',');
+        el.innerHTML = RT.line.map(function (w, i) {
+            var f = FAMS[WORDS[w] || 'eat'];
+            return '<span class="nn-lw' + (i ? '' : ' head') + '" style="--wc:' + f.col + '">' +
+                   '<b>' + esc(w.toUpperCase()) + '</b><em>' + esc(f.n) + '</em></span>';
+        }).join('');
+    }
+    var rz = RT.root.querySelector('.nn-rhymes');
+    if (!rz) return;
+    var keys = rhymeKeys();
+    // Built once, then updated in place. Rebuilding from innerHTML every time
+    // the board count changed threw away hudNudge's `deny` flash mid
+    // animation, and the board count changes several times a second in a
+    // fight: the act's last-resort hint, which flashes the -ill pip and tells
+    // you the key outright, never survived long enough to be seen.
+    if (!rz.children.length) {
+        rz.innerHTML = FAM_IDS.map(function (fam, i) {
+            var f = FAMS[fam];
+            return '<button class="nn-rh" data-nn="rhyme:' + fam + '" type="button" style="--wc:' + f.col +
+                   '" title="' + esc(f.n + ' · ' + f.d) + '">' +
+                   '<u>' + keys[i] + '</u><b>' + f.tag + '</b><span></span></button>';
+        }).join('');
+    }
+    FAM_IDS.forEach(function (fam, i) {
+        var b = rz.children[i]; if (!b) return;
+        var have = rhymeReady(fam), n = have ? boardCount(fam) : 0;
+        b.classList.toggle('off', !have);
+        b.classList.toggle('live', !!n);
+        var txt = have ? (n ? String(n) : '') : '';
+        var sp = b.lastChild;
+        if (sp && sp.textContent !== txt) sp.textContent = txt;
+    });
+}
 function updateHud(dt) {
     if (!RT) return;
     var st = stats(), r = RT.root;
@@ -3472,12 +3902,7 @@ function updateHud(dt) {
     br.classList.toggle('ramp', RT.silence >= st.rampAfter && RT.winded <= 0 && bf < 1);
     br.querySelector('.nn-breath-t').textContent = RT.winded > 0 ? 'WINDED' : Math.ceil(RT.breath) + ' / ' + st.breathMax;
     r.querySelector('.nn-echo i').style.width = clamp(RT.echo / T('echoMax') * 100, 0, 100) + '%';
-    // the two slotted words are the entire build
-    var cw = r.querySelector('.nn-call'), aw = r.querySelector('.nn-answer');
-    var cf = FAMS[callFam()], af = FAMS[answerFam()];
-    if (cw._w !== S.call) { cw._w = S.call; cw.querySelector('b').textContent = S.call.toUpperCase(); cw.querySelector('b').style.color = cf.col; cw.querySelector('em').textContent = cf.n + ' · ' + cf.el; cw.style.borderColor = cf.col; }
-    if (aw._w !== S.answer) { aw._w = S.answer; aw.querySelector('b').textContent = S.answer.toUpperCase(); aw.querySelector('b').style.color = af.col; aw.querySelector('em').textContent = af.n + ' · ' + af.el; aw.style.borderColor = af.col; }
-    aw.classList.toggle('slant', callFam() !== answerFam());
+    updateLine();          // the words you were dealt, and what is on the board
     // stanzas
     for (var i = 0; i < 3; i++) {
         var b = r.querySelectorAll('.nn-st')[i];
@@ -3498,6 +3923,7 @@ function hudNudge(what) {
     var el = what === 'breath' ? RT.root.querySelector('.nn-breath')
         : what === 'echo' ? RT.root.querySelector('.nn-echo')
         : what === 'verse' ? RT.root.querySelector('.nn-verse')
+        : what.indexOf('rhyme:') === 0 ? RT.root.querySelector('.nn-rh[data-nn="rhyme:' + what.slice(6) + '"]')
         : RT.root.querySelector('.nn-st:nth-child(' + (parseInt(what.slice(6), 10) || 1) + ')');
     if (!el) return;
     el.classList.remove('deny'); void el.offsetWidth; el.classList.add('deny');
@@ -3574,21 +4000,56 @@ function fillBook() {
     html += fragCount() === 3
         ? '<p class="nn-note dim">All of it, then. Four hundred years of a song about a man who stood at a fence.</p>'
         : '<p class="nn-note dim">Every closing line runs six to eight syllables. "And he went alone" is five. Something was taken out and you can hear the hole.</p>';
+
+    /* And the other ballad. Four hundred years of careful verse on one
+       page and, on the next, whatever came out of your mouth in a barn.
+       Same book on purpose. */
+    // NOT written into S: a render function that assigns the live RT.poem
+    // into the save aliases them together, so the graded page the game kept
+    // is replaced by whatever scrap is in your mouth, the 12 line cap stops
+    // applying, and every later sSave re-serialises a growing transcript.
+    var live = (RT.poem && RT.poem.lines.length) ? RT.poem : null;
+    // only hide the current place's kept page when there is a live one
+    // standing in for it, or clearing a fight and opening the book straight
+    // afterwards shows you nothing at all
+    var mine = Object.keys(S.poems || {}).filter(function (id) { return !live || id !== RT.place; });
+    mine.sort(function (a2, b2) { return (a2 === RT.place ? -1 : b2 === RT.place ? 1 : 0); });
+    if (live) html += '<h4>WHAT YOU HAVE BEEN SAYING</h4><div class="nn-poem"><header>' +
+                      esc(place().n) + ' <i>· still going</i></header>' + poemHtml(live) + '</div>';
+    else html += '<h4>WHAT YOU HAVE BEEN SAYING</h4>';
+    if (!mine.length && !live) {
+        html += '<p class="nn-note dim">Nothing yet. Every word you say out loud goes down here, and every sound you close ends a line. That is all a stanza is.</p>';
+    } else {
+        // the place you are in first, then the rest, newest work at the top
+        mine.slice(0, 4).forEach(function (id) {
+            var pm = S.poems[id];
+            if (!pm || !(pm.lines || []).length) return;
+            html += '<div class="nn-poem"><header>' + esc((PLACES[id] || {}).n || id) + '</header>' + poemHtml(pm) + '</div>';
+        });
+    }
     b.innerHTML = html;
 }
 /* WORDS AND CHARMS — the build layer. One call word, one answer
    word, two charms. That is the whole thing. */
 function fillKit() {
     var b = RT.root.querySelector('.nn-p-kit .nn-pb');
-    var html = '<p class="nn-note">Slot one word to <b>Call</b> and one to <b>Answer</b>. Matching families close the couplet. Mismatched is a slant: it still works, it just falls flat.</p>';
-    FAM_IDS.forEach(function (fid) {
+    var pool = poolWords(), keys = rhymeKeys();
+    var html = '<p class="nn-note">You do not pick your words. Every word you have learned goes in the bag and the line deals you four at a time: <b>left click</b> says the one on your tongue, <b>right click</b> swallows it. The <b>sounds</b> are yours, on the number row, and each one closes every syllable of itself on the board at once.</p>';
+    html += '<p class="nn-note dim">Learn more words in a sound and you will draw that sound more often. That is the build.</p>';
+    html += '<h4>YOUR BAG <i>· ' + pool.length + ' word' + (pool.length === 1 ? '' : 's') + '</i></h4>';
+    FAM_IDS.forEach(function (fid, i) {
         var fam = FAMS[fid], have = famOwned(fid);
-        html += '<div class="nn-fam' + (have ? '' : ' locked') + '"><header style="color:' + fam.col + '">' + fam.n +
-            '<i>' + fam.d + '</i>' + (have ? '' : '<em>' + fam.from + '</em>') + '</header><div class="nn-wordrow">';
+        var mine = fam.words.filter(function (w) { return !!S.owned[w]; }).length;
+        var share = pool.length ? Math.round(mine / pool.length * 100) : 0;
+        html += '<div class="nn-fam' + (have ? '' : ' locked') + '"><header style="color:' + fam.col + '">' +
+            (have ? '<kbd>' + keys[i] + '</kbd> ' : '') + fam.n +
+            '<i>' + fam.d + '</i>' +
+            (have ? '<em>' + mine + ' in the bag · ' + share + '% of your draws</em>'
+                  : '<em>' + fam.from + '</em>') + '</header><div class="nn-wordrow">';
         fam.words.forEach(function (w) {
             var own = !!S.owned[w];
-            html += '<span class="nn-wchip' + (own ? '' : ' dim') + (S.call === w ? ' iscall' : '') + (S.answer === w ? ' isans' : '') + '" data-w="' + w + '">' +
-                esc(w.toUpperCase()) + (own ? '<i data-slot="call:' + w + '">call</i><i data-slot="answer:' + w + '">answer</i>' : '<i class="nn-lock">not learned</i>') + '</span>';
+            html += '<span class="nn-wchip' + (own ? '' : ' dim') + '">' + esc(w.toUpperCase()) +
+                (own ? '' : '<i class="nn-lock">not learned</i>') + '</span>';
         });
         html += '</div></div>';
     });
@@ -3600,14 +4061,6 @@ function fillKit() {
     });
     html += '</div>';
     b.innerHTML = html;
-    b.querySelectorAll('[data-slot]').forEach(function (el) {
-        el.addEventListener('click', function (e) {
-            e.stopPropagation();
-            var a = el.getAttribute('data-slot').split(':');
-            if (a[0] === 'call') S.call = a[1]; else S.answer = a[1];
-            sSave(); fillKit(); updateHud(0); sfx('ui'); RT.root.focus();
-        });
-    });
     b.querySelectorAll('[data-charm]').forEach(function (el) {
         el.addEventListener('click', function () { wearCharm(el.getAttribute('data-charm')); fillKit(); sfx('ui'); RT.root.focus(); });
     });
@@ -3790,12 +4243,23 @@ function fillDev() {
 }
 
 function wireHud(root) {
+    // The rhyme pips are re-rendered from innerHTML whenever the board
+    // changes, which throws away anything bound directly to them. Delegated,
+    // once, on the container that survives.
+    root.querySelector('.nn-rhymes').addEventListener('click', function (e) {
+        var b = e.target.closest ? e.target.closest('[data-nn]') : null;
+        if (!b) return;
+        e.stopPropagation();
+        doRhyme(b.getAttribute('data-nn').slice(6));
+        root.focus();
+    });
     root.querySelectorAll('[data-nn]').forEach(function (b) {
         b.addEventListener('click', function (e) {
             e.stopPropagation();
             var a = b.getAttribute('data-nn');
             if (a === 'dev') toggleDev();
             else if (a.indexOf('p:') === 0) panel(a.slice(2));
+            else if (a.indexOf('rhyme:') === 0) doRhyme(a.slice(6));
             else if (a.indexOf('slot:') === 0) panel('kit');
             else if (a.indexOf('stanza:') === 0) doStanza(+a.slice(7));
             else if (a === 'verse') doVerse();
@@ -4232,7 +4696,9 @@ var SCRIPTS = {
         if (S.seen.millIntro) return;
         S.seen.millIntro = 1;
         say('<b>The mill.</b> Nobody can hear you out here. That is the point of out here.', 'big');
-        beat(3.2, function () { say('Rehearse. <i>Say the lines out loud</i> — left click — and see what the dark does with them.', 'dim'); });
+        beat(3.2, function () { say('Rehearse. <i>Left click</i> says the word on your tongue. You do not get to pick it: you get the four in front of you and you make them work.', 'dim'); });
+        beat(7.4, function () { say('<i>Right click</i> swallows one you cannot use. It costs breath and it goes in the book with a line through it.', 'dim'); });
+        beat(11.6, function () { say('The <b>numbers</b> are the sounds you know. Press one and every syllable of that sound out there closes at once.', 'dim'); });
     },
     loft: function () {
         if (S.seen.chorusDown) {                       // it is over; the room is just a room
@@ -4270,6 +4736,9 @@ var A3_ROWS = [[5.4, 6.4], [7.0, 6.9], [8.6, 6.4], [10.2, 6.9], [11.8, 6.4],
    on arrival. */
 onPlaceChange(function () {
     RT.a3Hold = 0; unpin();
+    poemStash();                  // the page you were on goes in the book
+    RT.lastSaidFam = null;
+    fillLine(true);               // a fresh hand for a fresh room
     // A doorway clears RT.timers, and the Verse lives in them, including the
     // timer that marks it spent. It was still sung. Without this, casting it
     // and walking through a door leaves R armed for another 7x999 forever.
@@ -4312,7 +4781,12 @@ function a3Crowd() {
    point everywhere else in this act. */
 function a3Mark() {
     RT.a3Hold = 1;
-    a3Folk().forEach(function (f) { f.stacks.push({ fam: 'ill', t: 999, max: 999, born: RT.t, aged: 1 }); });
+    // set, not add. a3Answered re-marks on every slant retry, and pushing
+    // gave everybody in the square a second and a third open line.
+    a3Folk().forEach(function (f) {
+        f.stacks.length = 0;
+        f.stacks.push({ fam: 'ill', t: 999, max: 999, born: RT.t, aged: 1 });
+    });
 }
 
 function a3Say(t, cls) { say(t, cls || 'dim'); }
@@ -4465,11 +4939,11 @@ function a3Watch() {
                 }
             }
         } else {
-            // an Answer, not the absence of open lines. a3Open() is state,
+            // An Answer, not the absence of open lines. a3Open() is state,
             // and state can reach zero for reasons that were not a choice
             // the player made at this cue. The Answer is checked first: in
-            // WASD mode holding left mouse calls every frame, and somebody
-            // who right-clicks at the last cue meant to answer it.
+            // WASD mode holding left mouse says a word every frame, and
+            // somebody who presses a rhyme at the last cue meant to answer.
             // Stanza III is the -ill stanza and its fourth line IS the true
             // line. Reciting it into the hole is answering, and it used to
             // run the silence clock underneath the recital and then tell a
@@ -4496,9 +4970,11 @@ function a3Watch() {
    click, so it tells closed from slant without hooking anything. */
 function a3Answered() {
     var st = RT.story;
-    if (answerFam() === 'ill') { a3End('true'); return; }
+    // the rhyme they actually pressed. There is no slotted answer word any
+    // more: the line deals words and the number row holds the sounds.
+    if (RT.lastRhyme === 'ill') { a3End('true'); return; }
     st.holding = 0; st.tries++;
-    slam(S.answer.toUpperCase(), '#6a5f72', 'slant');
+    slam(FAMS[RT.lastRhyme || 'eat'].tag, '#6a5f72', 'slant');
     beat(0.9, function () {
         a3Mark();
         st.holding = 1; st.waitT = 0; st.lastT = null;
@@ -4508,8 +4984,9 @@ function a3Answered() {
         if (st.tries === 1) say('<b>Bern:</b> <i>(from the wings)</i> Wrong sound. It has to be the sound of the line before it.', 'dim');
         else if (st.tries === 2) say('<b>Bern:</b> Sill. Still. <i>Will.</i>', 'dim');
         else {
-            S.answer = 'will'; sSave(); updateHud(0);
-            say('You slot it without deciding to.', 'dim');
+            var k = rhymeKeys()[FAM_IDS.indexOf('ill')];
+            say('<b>Bern:</b> <i>(not quite whispering)</i> <b style="color:' + FAMS.ill.col + '">' + k + '</b>.', 'good');
+            hudNudge('rhyme:ill');
         }
     });
 }
@@ -4755,6 +5232,8 @@ function stepScene(dt) {
         if (!RT.tookHit) ach('nohit');
         coin(irnd(2, 5));
         say('Quiet again.', 'dim');
+        poemClose();                            // and here is what you said
+        RT.lastSaidFam = null;
         RT.quietT = 6;                          // sim seconds, like everything else
     }
 }
@@ -5721,6 +6200,9 @@ function devDemo() {
 /* ─────────────── lifecycle ─────────────── */
 function close() {
     var hrs = RT ? (Date.now() - RT.started) / 3600000 : 0;
+    // a doorway keeps the page. The close button has to as well, or losing
+    // the verse depends on whether you happened to walk somewhere first.
+    if (RT) { try { poemStash(); } catch (e) {} }
     if (RT) {
         cancelAnimationFrame(RT.raf);
         RT.timers.forEach(function (t) { clearTimeout(t); });
