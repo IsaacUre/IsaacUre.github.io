@@ -770,7 +770,7 @@ function render() {
             '<div class="nn-echo"><i></i><span>ECHO</span></div>' +
           '</div>' +
           '<div class="nn-mid">' +
-            '<div class="nn-line" title="LMB says it · RMB swallows it"></div>' +
+            '<div class="nn-hand" title="LMB says it · RMB swallows it"></div>' +
             '<div class="nn-rhymes"></div>' +
           '</div>' +
           '<div class="nn-stanzas">' +
@@ -817,6 +817,11 @@ function resetGame() {
     RT.god = 0; RT.infBreath = 0; RT.holdStacks = 0; RT.a3Hold = 0; RT.oneShot = 0;
     RT.panel = null; RT.mapOpen = false; RT.prompt = null;
     RT.story = { cue: 0, holding: 0, tries: 0, waitT: 0, done: 0, sawCall: 0, sawAnswer: 0, callMark: 0, answerMark: 0 };
+    // the mouth starts over too. Without this the gotoPlace below runs the
+    // place-change reset, which stashes the pre-wipe poem into the new save,
+    // and the head card survives as a word from a sound you no longer own.
+    RT.line = []; RT.bag = null; RT.lastSaidFam = null; RT.lastRhyme = null;
+    RT.poem = null; RT.poemPlace = null;
     if (RT.items) { RT.items.freeSlant = 0; RT.items.tack = 0; RT.items.atShop = false; }
     RT.root.querySelectorAll('.nn-panel').forEach(function (p) { p.hidden = true; });
     // and close the menu you pressed it in. The prologue is a timed
@@ -1608,8 +1613,19 @@ function refillBag() {
     for (var i = q.length - 1; i > 0; i--) { var j = irnd(0, i), t = q[i]; q[i] = q[j]; q[j] = t; }
     RT.bag = q;
 }
-function drawWord() {
+function drawWord(avoid) {
     if (!RT.bag || !RT.bag.length) refillBag();
+    // Never deal a word that is already face up, or the one just spat out.
+    // The starting bag is four words and the line is four cards, so without
+    // this the hand is full of duplicates and a swallow hands you straight
+    // back the thing you swallowed. Falls through to a plain draw when the
+    // bag genuinely has nothing else, which is the four-word case.
+    for (var i = RT.bag.length - 1; i >= 0; i--) {
+        var w = RT.bag[i];
+        if (w === avoid) continue;
+        if (RT.line && RT.line.indexOf(w) >= 0) continue;
+        return RT.bag.splice(i, 1)[0];
+    }
     return RT.bag.pop();
 }
 /* `fresh` rebuilds the bag, so a word you just learned is in your mouth
@@ -1717,7 +1733,10 @@ function poemClose() {
     poemBreak(null);
     var p = RT.poem;
     if (!p.lines.length) { poemStart(); return; }
-    S.poems[RT.place] = p; sSave();
+    // the book keeps a page, not a transcript: a long grind in one room
+    // would otherwise put hundreds of lines in localStorage forever
+    S.poems[RT.place] = { lines: p.lines.slice(-12), blots: p.blots };
+    sSave();
     var sc = poemScore(p), shown = p.lines.slice(-4);
     shown.forEach(function (L, i) {
         beat(0.5 + i * 0.9, function () {
@@ -1771,8 +1790,9 @@ function doSwallow() {
     if (!spendBreath(T('swallowCost'))) { hudNudge('breath'); return; }
     RT.swallowCd = T('swallowCd');
     RT.line.shift();
+    RT.line.push(drawWord(word));         // the replacement first, and never the same word
     if (!RT.bag) refillBag();
-    RT.bag.unshift(word);                 // to the bottom, so you get it back
+    RT.bag.unshift(word);                 // then it goes to the bottom, so you get it back
     fillLine();
     poemSwallow(word);
     typo(RT.px, RT.py + 0.3, word.toUpperCase(), '#6a5f72', 0.55, 11, 'drift');
@@ -3811,7 +3831,11 @@ function audioVolume(v) {
 function updateLine() {
     if (!RT || !RT.root) return;
     fillLine();
-    var el = RT.root.querySelector('.nn-line');
+    // `.nn-hand`, not `.nn-line`: say() has built every narration div with
+    // class nn-line since the first commit, and .nn-say sits above .nn-hud in
+    // the markup, so querySelector('.nn-line') hands you a story line and the
+    // word queue gets painted into the narration box.
+    var el = RT.root.querySelector('.nn-hand');
     if (el && el._k !== RT.line.join(',')) {
         el._k = RT.line.join(',');
         el.innerHTML = RT.line.map(function (w, i) {
@@ -4174,6 +4198,16 @@ function fillDev() {
 }
 
 function wireHud(root) {
+    // The rhyme pips are re-rendered from innerHTML whenever the board
+    // changes, which throws away anything bound directly to them. Delegated,
+    // once, on the container that survives.
+    root.querySelector('.nn-rhymes').addEventListener('click', function (e) {
+        var b = e.target.closest ? e.target.closest('[data-nn]') : null;
+        if (!b) return;
+        e.stopPropagation();
+        doRhyme(b.getAttribute('data-nn').slice(6));
+        root.focus();
+    });
     root.querySelectorAll('[data-nn]').forEach(function (b) {
         b.addEventListener('click', function (e) {
             e.stopPropagation();

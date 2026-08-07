@@ -3122,9 +3122,8 @@ button.nn-drow:hover { background: rgba(30,60,48,.5); }
 /* the stanza column keeps its width: the line is what gives, not the buttons */
 .nn-hud .nn-stanzas { flex: none; }
 .nn-hud .nn-left { flex: none; }
-.nn-line { flex-wrap: wrap; }
 
-.nn-line { display: flex; align-items: flex-end; gap: 6px; justify-content: center; min-height: 46px; }
+.nn-hand { display: flex; align-items: flex-end; gap: 6px; justify-content: center; min-height: 46px; flex-wrap: wrap; }
 .nn-lw {
   --wc: #8a8296;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
