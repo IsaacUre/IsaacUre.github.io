@@ -3116,3 +3116,81 @@ button.nn-drow:hover { background: rgba(30,60,48,.5); }
 @media (max-width: 720px) {
   .nn-bagbtns { flex-direction: row; }
 }
+
+/* NINTH NIGHT: the line — dealt words, and the sounds that are yours */
+.nn-mid { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: 0 1 auto; min-width: 0; }
+/* the stanza column keeps its width: the line is what gives, not the buttons */
+.nn-hud .nn-stanzas { flex: none; }
+.nn-hud .nn-left { flex: none; }
+.nn-line { flex-wrap: wrap; }
+
+.nn-line { display: flex; align-items: flex-end; gap: 6px; justify-content: center; min-height: 46px; }
+.nn-lw {
+  --wc: #8a8296;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 4px 9px; border: 1px solid color-mix(in srgb, var(--wc) 35%, transparent);
+  border-radius: 3px; background: rgba(10, 8, 16, .72);
+  opacity: .44; transform: scale(.86); transform-origin: bottom center;
+  transition: opacity .16s ease, transform .16s ease, border-color .16s ease;
+}
+.nn-lw b { font-family: "Press Start 2P", monospace; font-size: .52rem; color: var(--wc); letter-spacing: .04em; }
+.nn-lw em { font-style: normal; font-size: .48rem; color: #6a6278; letter-spacing: .08em; margin-top: 3px; }
+.nn-lw + .nn-lw { opacity: .34; }
+.nn-lw + .nn-lw + .nn-lw { opacity: .24; }
+.nn-lw + .nn-lw + .nn-lw + .nn-lw { opacity: .16; }
+.nn-lw.head {
+  opacity: 1; transform: scale(1.12);
+  border-color: var(--wc);
+  box-shadow: 0 0 12px -2px color-mix(in srgb, var(--wc) 60%, transparent), inset 0 0 14px -8px var(--wc);
+  background: rgba(14, 11, 22, .92);
+}
+.nn-lw.head b { font-size: .74rem; text-shadow: 0 0 10px color-mix(in srgb, var(--wc) 70%, transparent); }
+
+.nn-rhymes { display: flex; gap: 5px; justify-content: center; }
+.nn-rh {
+  --wc: #8a8296;
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 1px;
+  min-width: 46px; padding: 4px 6px 5px;
+  border: 1px solid color-mix(in srgb, var(--wc) 30%, transparent); border-radius: 3px;
+  background: rgba(10, 8, 16, .7); cursor: pointer; font: inherit;
+  transition: border-color .14s ease, box-shadow .14s ease, transform .1s ease;
+}
+.nn-rh:hover { transform: translateY(-1px); }
+.nn-rh u { text-decoration: none; font-size: .5rem; color: #6a6278; letter-spacing: .1em; }
+.nn-rh b { font-family: "Press Start 2P", monospace; font-size: .5rem; color: var(--wc); }
+.nn-rh span {
+  position: absolute; top: -6px; right: -5px; min-width: 15px; height: 15px; line-height: 15px;
+  border-radius: 8px; font-size: .5rem; color: #0a0810; background: var(--wc); font-weight: 700;
+}
+.nn-rh span:empty { display: none; }
+.nn-rh.live {
+  border-color: var(--wc);
+  box-shadow: 0 0 12px -3px color-mix(in srgb, var(--wc) 70%, transparent);
+}
+.nn-rh.live b { text-shadow: 0 0 8px color-mix(in srgb, var(--wc) 70%, transparent); }
+.nn-rh.off { opacity: .3; cursor: default; }
+.nn-rh.off:hover { transform: none; }
+.nn-rh.deny { animation: nnDeny .3s; }
+
+/* the bag, in the words panel */
+.nn-fam header kbd {
+  font-family: "Press Start 2P", monospace; font-size: .5rem; padding: 2px 5px;
+  border: 1px solid currentColor; border-radius: 3px; margin-right: 6px; opacity: .8;
+}
+
+/* your ballad, in the same book as the real one */
+.nn-poem { margin: 10px 0 14px; border-left: 2px solid #3d3350; padding-left: 10px; }
+.nn-poem > header {
+  font-family: "Press Start 2P", monospace; font-size: .5rem; color: #8a8296;
+  letter-spacing: .08em; margin-bottom: 6px;
+}
+.nn-pline { font-size: .74rem; line-height: 1.7; color: #b9b0c6; letter-spacing: .02em; }
+.nn-pline b { font-weight: 600; }
+.nn-pline s { color: #4d4757; }
+.nn-pline sup { color: #ffe66e; font-size: .6em; }
+
+@media (max-width: 720px) {
+  .nn-lw em { display: none; }
+  .nn-lw { padding: 3px 6px; }
+  .nn-rh { min-width: 38px; }
+}
