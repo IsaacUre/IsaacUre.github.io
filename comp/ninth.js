@@ -773,9 +773,17 @@ function resetGame() {
     try { localStorage.removeItem('comp_ninth'); } catch (e) {}
     S = null; sLoad();
     RT.echo = 0; RT.dash = 0; RT.pressure = 0;
-    RT.god = 0; RT.infBreath = 0; RT.holdStacks = 0; RT.oneShot = 0;
+    RT.god = 0; RT.infBreath = 0; RT.holdStacks = 0; RT.a3Hold = 0; RT.oneShot = 0;
     RT.panel = null; RT.mapOpen = false; RT.prompt = null;
+    RT.story = { cue: 0, holding: 0, tries: 0, waitT: 0, done: 0, sawCall: 0, sawAnswer: 0, callMark: 0, answerMark: 0 };
+    if (RT.items) { RT.items.freeSlant = 0; RT.items.tack = 0; RT.items.atShop = false; }
     RT.root.querySelectorAll('.nn-panel').forEach(function (p) { p.hidden = true; });
+    // and close the menu you pressed it in. The prologue is a timed
+    // sequence that starts on the next frame and walks itself into the
+    // square about thirteen seconds later: leave the dev panel up over the
+    // top of it and the whole opening plays to nobody, which reads exactly
+    // like the button having done nothing at all.
+    if (RT.devOpen) toggleDev();
     gotoPlace('stage', true);
     refreshStanzaKeys();          // the options went back to their defaults with everything else
     updateHud(0);
