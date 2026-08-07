@@ -3201,3 +3201,87 @@ button.nn-drow:hover { background: rgba(30,60,48,.5); }
    hard edge in the world art arrived as a two pixel gradient. Every other
    pixel canvas on this desktop already asks for this; this one never did. */
 .nn-cv { image-rendering: pixelated; image-rendering: crisp-edges; }
+/* ═══════════ full screen, and a taskbar that gets out of the way ═══════════
+   Three separate things that add up to one feature:
+     .win.fs        one window owns the whole screen, taskbar included
+     body.page-fs   the real browser Fullscreen API is on
+     body.tb-auto   Windows 11's "automatically hide the taskbar"            */
+
+/* ── a window that owns the screen ──
+   Anchored on all four insets rather than 100vw/100vh: .windows is inset:0
+   inside .screen, which is fixed inset:0, so this IS the viewport — and it
+   sidesteps the mobile "100vh includes the URL bar" problem completely. */
+.win.fs {
+    left: 0 !important; top: 0 !important; right: 0 !important; bottom: 0 !important;
+    width: auto !important; height: auto !important;
+    border: 0; clip-path: none; filter: none;
+}
+/* The window layer is a stacking context at z-index 10, so on its own a .win
+   can never out-paint the taskbar at 50. While one window is full screen the
+   whole layer lifts over the taskbar — but stays under Start (55), the
+   flyouts (56), menus, dialogs and the blue screen, which is exactly what a
+   real machine does when you press the Windows key in a full-screen game. */
+body.fs-app .windows { z-index: 51; }
+
+/* The title bar leaves the flow and hangs above the top edge so the content
+   gets the whole screen. Reach for the top edge and it comes back down. */
+.win.fs > .win-bar {
+    position: absolute; left: 0; right: 0; top: 0; z-index: 60;   /* over Steam's in-window toast at 50 */
+    background: linear-gradient(var(--hi), transparent 2px), #1c1d25;
+    border-bottom: 1px solid var(--line); box-shadow: 0 3px 0 rgba(0,0,0,.35);
+    transform: translateY(-100%);
+    transition: transform .16s ease;
+}
+.win.fs.peek > .win-bar { transform: none; }
+/* the strip you aim at to get it back. Under the bar in z, so once the bar is
+   down it takes the pointer and the top 6px of the caption buttons still work */
+.win-fsedge { position: absolute; left: 0; right: 0; top: 0; height: 6px; z-index: 59; }
+/* maximize means nothing when you already have the screen */
+.win.fs .cap[data-cap="max"] { display: none; }
+.win.fs .win-title::after { content: " — full screen"; color: var(--ink-faint); }
+
+/* the caption button, sitting left of the familiar minimize/maximize/close
+   trio so muscle memory for those three is untouched */
+.cap-fs { width: 38px; color: var(--ink-faint); }
+.cap-fs svg { width: 16px; height: 16px; }   /* 1 device pixel per grid unit, or crispEdges eats it */
+.cap-fs:hover { color: var(--ink); }
+
+/* ── the taskbar, hidden ── */
+.taskbar { transition: transform .18s ease; }
+body.tb-auto .taskbar { transform: translateY(100%); }
+body.tb-auto.tb-peek .taskbar { transform: none; }
+/* with the strip gone, the desktop and any maximized window take it back */
+body.tb-auto .desktop { bottom: 0; }
+body.tb-auto .win.maxi { height: 100% !important; }
+.tb-edge { position: absolute; left: 0; right: 0; bottom: 0; height: 5px; z-index: 49; display: none; }
+body.tb-auto .tb-edge { display: block; }
+/* a full-screen window is above the edge strip, so the taskbar cannot peek
+   out from under a game — you leave full screen first, like anywhere else */
+
+/* ── the tray button for real browser full screen ── */
+.tray-fs.on { color: var(--accent); background: rgba(255,255,255,.10); }
+
+/* Phones are where filling the screen matters most, and the tray collapses at
+   520px — this one earns its place back. */
+@media (max-width: 520px) {
+    .tb-tray .tray-fs { display: flex; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .taskbar, .win.fs > .win-bar { transition: none; }
+}
+
+/* the find bar hangs below a title bar that is not there any more */
+.win.fs .findbar { top: 8px; transition: top .16s ease; }
+.win.fs.peek .findbar { top: 48px; }
+
+/* the two overlays that stop short of the taskbar have to stop short of
+   nothing when the taskbar is hidden, or they leave a strip of desktop */
+body.tb-auto .tv-overlay, body.tb-auto .cheat-overlay { bottom: 0; }
+body.tb-auto .toast { bottom: 20px; }
+
+/* Settings has offered a Scanlines switch since the machine shipped and it
+   has never done anything: body.no-crt had no rule anywhere. It matters here
+   because this overlay paints at z-index 900, which is over a full-screen
+   game, so "turn it off" has to actually turn it off. */
+body.no-crt .screen::after { display: none; }

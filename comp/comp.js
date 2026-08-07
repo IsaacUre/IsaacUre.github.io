@@ -146,7 +146,7 @@ function renderWall() {
     wctx.putImageData(img, 0, 0);
 }
 var rTimer = 0;
-window.addEventListener('resize', function () { clearTimeout(rTimer); rTimer = setTimeout(function () { renderWall(); closeFctx(); renderDesktop(); }, 120); });
+window.addEventListener('resize', function () { clearTimeout(rTimer); rTimer = setTimeout(function () { renderWall(); closeFctx(); renderDesktop(); clampWindows(); }, 120); });
 
 /* ─────────────────────────── clock ─────────────────────────── */
 var DOW = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
@@ -186,10 +186,11 @@ function createWindow(id, a, arg) {
     // getting windows clamped to their true width.
     var vw = window.innerWidth > 40 ? window.innerWidth : 1280;
     var vh = window.innerHeight > 40 ? window.innerHeight : 800;
-    w = Math.min(w, vw - 16); h = Math.min(h, vh - BAR - 16);
+    var bs = barSpace();
+    w = Math.min(w, vw - 16); h = Math.min(h, vh - bs - 16);
     var n = Object.keys(openWins).length;
     var left = clamp(Math.round((vw - w) / 2) + (n % 5) * 26 - 52, 8, Math.max(8, vw - w - 8));
-    var top = clamp(Math.round((vh - BAR - h) / 2) + (n % 5) * 22 - 40, 8, Math.max(8, vh - BAR - h - 8));
+    var top = clamp(Math.round((vh - bs - h) / 2) + (n % 5) * 22 - 40, 8, Math.max(8, vh - bs - h - 8));
     var el = document.createElement('section');
     el.className = 'win px-lg lift' + (a.titlebar ? ' win-tabbar' : ''); el.setAttribute('data-app', id); el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', a.title);
     el.style.cssText = 'left:' + left + 'px;top:' + top + 'px;width:' + w + 'px;height:' + h + 'px';
@@ -200,6 +201,8 @@ function createWindow(id, a, arg) {
         '<header class="win-bar">' +
           barLead +
           '<div class="win-caps">' +
+            // left of the familiar trio, so muscle memory for min/max/close is untouched
+            '<button class="cap cap-fs" data-cap="fs" type="button" aria-label="Full screen" title="Full screen · F11"><svg viewBox="0 0 16 16" shape-rendering="crispEdges"><use href="#ic-fs"/></svg></button>' +
             '<button class="cap" data-cap="min" type="button" aria-label="Minimize"><svg viewBox="0 0 10 10" shape-rendering="crispEdges"><rect x="1" y="5" width="8" height="1" fill="currentColor"/></svg></button>' +
             '<button class="cap" data-cap="max" type="button" aria-label="Maximize"><svg viewBox="0 0 10 10" shape-rendering="crispEdges"><rect x="1" y="1" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1"/></svg></button>' +
             '<button class="cap close" data-cap="close" type="button" aria-label="Close"><svg viewBox="0 0 10 10"><path d="M1 1 L9 9 M9 1 L1 9" stroke="currentColor" stroke-width="1.2"/></svg></button>' +
@@ -220,26 +223,49 @@ function wireWindow(id, el) {
         var cap = b.getAttribute('data-cap');
         if (cap === 'close') closeWin(id);
         else if (cap === 'min') minWin(id);
-        else el.classList.toggle('maxi');
+        else if (cap === 'fs') toggleWinFs(id);
+        // maximizing a window that already owns the screen means nothing, and
+        // .maxi's !important would fight .fs for the same four properties
+        else if (!winIsFs(id)) el.classList.toggle('maxi');
     });
-    bar.addEventListener('dblclick', function (e) { if (!e.target.closest('.cap, .cr-tab, .cr-plusbtn')) el.classList.toggle('maxi'); });
+    bar.addEventListener('dblclick', function (e) {
+        if (winIsFs(id)) { exitWinFs(id); return; }        // the way out of full screen everyone tries first
+        if (!e.target.closest('.cap, .cr-tab, .cr-plusbtn')) el.classList.toggle('maxi');
+    });
+    // the classic Alt+Space system menu, where "Full screen" is discoverable
+    bar.addEventListener('contextmenu', function (e) {
+        if (e.target.closest('.cr-tab, .cr-plusbtn')) return;     // Chrome's tabs have their own
+        e.preventDefault(); e.stopPropagation();
+        winSysMenu(id, e);
+    });
     bar.addEventListener('pointerdown', function (e) {
         // Chrome's tabs and new-tab button live in its title bar; they must click, not drag the window
         // (Edge's .br-tab strip is set-dressing, so it stays draggable like the rest of the bar)
         if (e.button !== 0) return;                       // right-click is a menu now, never a drag
-        if (e.target.closest('.cap, .cr-tab, .cr-plusbtn') || el.classList.contains('maxi')) return;
+        // dragging the hover-revealed strip of a full-screen window would write
+        // inline left/top that snap into effect the moment you leave full screen
+        if (e.target.closest('.cap, .cr-tab, .cr-plusbtn') || el.classList.contains('maxi') || el.classList.contains('fs')) return;
         closeBctx();                                      // a menu would ride along with the window
         var r = el.getBoundingClientRect(), ox = e.clientX - r.left, oy = e.clientY - r.top;
         bar.setPointerCapture(e.pointerId);
         function mv(ev) {
             el.style.left = clamp(ev.clientX - ox, 8 - r.width + 90, window.innerWidth - 90) + 'px';
-            el.style.top = clamp(ev.clientY - oy, 0, window.innerHeight - BAR - 36) + 'px';
+            el.style.top = clamp(ev.clientY - oy, 0, window.innerHeight - barSpace() - 36) + 'px';
         }
         function up() { bar.releasePointerCapture(e.pointerId); bar.removeEventListener('pointermove', mv); bar.removeEventListener('pointerup', up); }
         bar.addEventListener('pointermove', mv); bar.addEventListener('pointerup', up);
     });
 }
-function focusWin(id) { var w = openWins[id]; if (!w) return; w.el.style.zIndex = ++zTop; activeApp = id; if (APPS[id].onFocus) APPS[id].onFocus(w.el); syncTaskbar(); }
+function focusWin(id) {
+    var w = openWins[id]; if (!w) return;
+    // Alt-tabbing out of a full-screen game gives you your desktop back. The
+    // window layer is raised as a whole while one window owns the screen, so
+    // leaving another window floating over the taskbar is not an option.
+    if (fsWin && fsWin !== id) exitWinFs(fsWin);
+    w.el.style.zIndex = ++zTop; activeApp = id;
+    if (APPS[id].onFocus) APPS[id].onFocus(w.el);
+    syncFsBody(); syncTaskbar();
+}
 // after the active window goes away, focus falls to the topmost remaining one
 function refocusTop() {
     var ids = Object.keys(openWins).filter(function (id) { return !openWins[id].min; });
@@ -247,9 +273,23 @@ function refocusTop() {
     ids.sort(function (a, b) { return (+openWins[b].el.style.zIndex || 0) - (+openWins[a].el.style.zIndex || 0); });
     activeApp = ids[0];
 }
-function minWin(id) { var w = openWins[id]; if (!w) return; closeBctx(); if (APPS[id].onMinimize) APPS[id].onMinimize(w.el); w.min = true; w.el.classList.add('mini'); if (activeApp === id) refocusTop(); syncTaskbar(); }
-function restoreWin(id) { var w = openWins[id]; if (!w) return; w.min = false; w.el.classList.remove('mini'); if (APPS[id].onRestore) APPS[id].onRestore(w.el); }
-function closeWin(id) { var w = openWins[id]; if (!w) return; if (APPS[id].onClose) APPS[id].onClose(w.el); w.el.remove(); delete openWins[id]; if (activeApp === id) refocusTop(); if (find.appId === id) { find.appId = null; find.marks = []; find.idx = -1; } syncTaskbar(); }
+// A minimized full-screen window keeps w.fs — minimize a game and you want
+// the taskbar back, click it again and you want the game back the way it was
+// — but syncFsBody drops the raised window layer while it is away.
+function minWin(id) { var w = openWins[id]; if (!w) return; closeBctx(); if (APPS[id].onMinimize) APPS[id].onMinimize(w.el); w.min = true; w.el.classList.add('mini'); if (activeApp === id) refocusTop(); syncFsBody(); syncTaskbar(); }
+function restoreWin(id) { var w = openWins[id]; if (!w) return; w.min = false; w.el.classList.remove('mini'); if (APPS[id].onRestore) APPS[id].onRestore(w.el); syncFsBody(); }
+function closeWin(id) {
+    var w = openWins[id]; if (!w) return;
+    if (APPS[id].onClose) APPS[id].onClose(w.el);
+    w.el.remove(); delete openWins[id];
+    // the raised window layer outliving the window that asked for it is how
+    // you end up on a desktop with no taskbar and no way to get it back
+    if (fsWin === id) { fsWin = null; }
+    syncFsBody();
+    if (activeApp === id) refocusTop();
+    if (find.appId === id) { find.appId = null; find.marks = []; find.idx = -1; }
+    syncTaskbar();
+}
 
 function syncTaskbar() {
     PINNED.forEach(function (id) {
@@ -298,9 +338,16 @@ function openTaskView() {
     if (!ids.length) grid.innerHTML = '<p class="tv-empty">No open windows yet. Open something from Start or the taskbar.</p>';
     ids.forEach(function (id) {
         var w = openWins[id], a = APPS[id];
-        var maxi = w.el.classList.contains('maxi');
-        var ww = maxi ? window.innerWidth : (w.el.offsetWidth || parseInt(w.el.style.width, 10) || a.w);
-        var wh = maxi ? window.innerHeight - BAR : (w.el.offsetHeight || parseInt(w.el.style.height, 10) || a.h);
+        // a docked window's inline width/height are its UNDOCKED size, so the
+        // card has to be measured from the screen instead. A full-screen one
+        // measures zero on both if this branch misses it, and Math.min(BW/0,
+        // BH/0) is Infinity, which is a transform: scale(Infinity).
+        var fs = w.el.classList.contains('fs'), maxi = w.el.classList.contains('maxi');
+        var ww = fs || maxi ? window.innerWidth : (w.el.offsetWidth || parseInt(w.el.style.width, 10) || a.w);
+        var wh = fs ? window.innerHeight
+               : maxi ? window.innerHeight - barSpace()
+               : (w.el.offsetHeight || parseInt(w.el.style.height, 10) || a.h);
+        ww = ww || a.w || 560; wh = wh || a.h || 420;
         var scale = Math.min(BW / ww, BH / wh);
         var clone = w.el.cloneNode(true);
         clone.className = 'win';   // drop clip-path/drop-shadow; the card frames it
@@ -353,6 +400,227 @@ function openTaskView() {
     ov.addEventListener('click', function (e) { if (e.target === ov) closeTaskView(); });
 }
 byId('taskviewBtn').addEventListener('click', function (e) { e.stopPropagation(); if (byId('taskView')) closeTaskView(); else openTaskView(); });
+
+/* ═══════════════════════ full screen ══════════════════════════
+   Three things that add up to one feature, and they compose:
+
+     APP FULL SCREEN   one window takes the whole simulated screen. Its own
+                       title bar and the taskbar both get out of the way.
+                       F11, Alt+Enter, the ⛶ caption button, or the title-bar
+                       menu. Reach for the top edge to bring the bar back.
+     PAGE FULL SCREEN  the real browser Fullscreen API, so the simulated
+                       desktop is the only thing on the monitor. Shift+F11,
+                       the tray button, Settings, or the desktop menu.
+     AUTO-HIDE         Windows 11's "automatically hide the taskbar", which
+                       is a different thing and lives in Settings.
+
+   All three at once is the point: a full-screen NINTH NIGHT inside a
+   full-screen page is a game filling a monitor with nothing of either
+   operating system left on the glass.                                   */
+
+/* how much room the taskbar is actually taking. Auto-hidden, it takes none,
+   and every layout sum that used to subtract BAR has to agree with the CSS. */
+function barSpace() { return document.body.classList.contains('tb-auto') ? 0 : BAR; }
+
+/* ─── the real Fullscreen API, behind its vendor prefixes ─── */
+var PFS = {
+    can: function () {
+        var e = document.documentElement;
+        if (!(e.requestFullscreen || e.webkitRequestFullscreen || e.msRequestFullscreen)) return false;
+        // false (not undefined) means a sandboxed iframe or a policy said no
+        return document.fullscreenEnabled !== false && document.webkitFullscreenEnabled !== false;
+    },
+    on: function () { return !!(document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement); },
+    enter: function (cb) {
+        // documentElement, not .screen: toasts, dialogs, the shortcut card and
+        // the blue screen are all children of <body>, and anything outside the
+        // full-screen element simply does not render
+        var e = document.documentElement;
+        var f = e.requestFullscreen || e.webkitRequestFullscreen || e.msRequestFullscreen;
+        if (!f) { if (cb) cb(false); return; }
+        var r;
+        try { r = f.call(e, { navigationUI: 'hide' }); } catch (err) { if (cb) cb(false); return; }
+        if (r && r.then) r.then(function () { if (cb) cb(true); }, function () { if (cb) cb(false); });
+        else if (cb) cb(true);
+    },
+    exit: function () {
+        var f = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
+        if (!f) return;
+        try { var r = f.call(document); if (r && r.catch) r.catch(function () {}); } catch (err) {}
+    }
+};
+function pageFsSync() {
+    var on = PFS.on();
+    document.body.classList.toggle('page-fs', on);
+    var b = byId('fsBtn');
+    if (b) {
+        b.classList.toggle('on', on);
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+        b.setAttribute('aria-label', on ? 'Leave full screen' : 'Full screen');
+        b.title = (on ? 'Leave full screen' : 'Full screen') + ' · Shift+F11';
+        var u = b.querySelector('use'); if (u) u.setAttribute('href', on ? '#ic-fsx' : '#ic-fs');
+    }
+    // Settings may be open behind it, showing a switch that just became a lie
+    var t = document.querySelector('.tgl[data-tgl="pagefs"]');
+    if (t) t.classList.toggle('on', on);
+}
+function togglePageFs() {
+    if (!PFS.can()) { toast('This browser will not give the page the whole screen.', 'ic-pc'); return; }
+    if (PFS.on()) { PFS.exit(); return; }
+    PFS.enter(function (okd) {
+        // the API only answers to a real gesture; a denial is worth explaining
+        if (!okd) toast('The browser turned full screen down.', 'ic-pc');
+    });
+}
+['fullscreenchange', 'webkitfullscreenchange', 'MSFullscreenChange'].forEach(function (ev) {
+    document.addEventListener(ev, pageFsSync);
+});
+
+/* ─── one window, the whole screen ─── */
+var fsWin = null, fsPeekT = 0;
+function winIsFs(id) { var w = openWins[id]; return !!(w && w.fs); }
+/* body.fs-app is what lifts the window layer over the taskbar. A minimized
+   full-screen window must not keep it lifted — minimize a game and you
+   expect your taskbar back, and clicking it in the taskbar expects the game
+   to come back full screen, so w.fs survives the minimize and this does not. */
+function syncFsBody() {
+    var live = fsWin && openWins[fsWin] && openWins[fsWin].fs && !openWins[fsWin].min;
+    document.body.classList.toggle('fs-app', !!live);
+}
+function fsPeek(id, on) {
+    var w = openWins[id]; if (!w || !w.fs) return;
+    clearTimeout(fsPeekT);
+    if (on) { w.el.classList.add('peek'); return; }
+    fsPeekT = setTimeout(function () {
+        var x = openWins[id]; if (x && x.fs) x.el.classList.remove('peek');
+    }, 420);
+}
+function enterWinFs(id) {
+    var w = openWins[id]; if (!w || w.fs) return;
+    if (fsWin && fsWin !== id) exitWinFs(fsWin);            // one screen, one owner
+    if (w.min) restoreWin(id);
+    setStart(false); closeFlyouts(); closeCtx(); closeFctx(); closeBctx(); closeTaskView();
+    w.fs = true;
+    w.fsFrom = w.el.classList.contains('maxi') ? 'maxi' : '';   // put it back where it was
+    w.el.classList.remove('maxi');
+    w.el.classList.add('fs');
+    if (!w.el.querySelector('.win-fsedge')) {
+        var edge = document.createElement('div');
+        edge.className = 'win-fsedge';
+        w.el.appendChild(edge);
+        var bar = w.el.querySelector('.win-bar');
+        edge.addEventListener('pointerenter', function () { fsPeek(id, true); });
+        edge.addEventListener('pointerleave', function () { fsPeek(id, false); });
+        bar.addEventListener('pointerenter', function () { fsPeek(id, true); });
+        bar.addEventListener('pointerleave', function () { fsPeek(id, false); });
+        // a title bar translated off the top is still in the tab order, so
+        // tabbing to a caption button has to bring it back into view
+        w.el.addEventListener('focusin', function (e) { if (e.target.closest && e.target.closest('.win-bar')) fsPeek(id, true); });
+        w.el.addEventListener('focusout', function (e) { if (e.target.closest && e.target.closest('.win-bar')) fsPeek(id, false); });
+    }
+    fsWin = id;
+    syncFsBody();
+    syncFsCap(id);
+    focusWin(id);
+    winResized(id);
+    syncTaskbar();
+    toast('Full screen. Press F11 to leave.', 'ic-fs');
+}
+function exitWinFs(id) {
+    var w = openWins[id]; if (!w || !w.fs) return;
+    w.fs = false;
+    w.el.classList.remove('fs', 'peek');
+    if (w.fsFrom === 'maxi') w.el.classList.add('maxi');
+    w.fsFrom = '';
+    if (fsWin === id) fsWin = null;
+    syncFsBody();
+    syncFsCap(id);
+    winResized(id);
+    syncTaskbar();
+}
+function toggleWinFs(id) { if (winIsFs(id)) exitWinFs(id); else enterWinFs(id); }
+function syncFsCap(id) {
+    var w = openWins[id]; if (!w) return;
+    var b = w.el.querySelector('.cap-fs'); if (!b) return;
+    var on = !!w.fs;
+    var u = b.querySelector('use'); if (u) u.setAttribute('href', on ? '#ic-fsx' : '#ic-fs');
+    b.setAttribute('aria-label', on ? 'Leave full screen' : 'Full screen');
+    b.title = (on ? 'Leave full screen' : 'Full screen') + ' · F11';
+}
+/* An app whose box just changed. Most of the games re-measure every frame or
+   keep a ResizeObserver and need nothing, but this is the seam: an app that
+   lays itself out once should declare onResize rather than poll. */
+function winResized(id) {
+    var w = openWins[id], a = APPS[id];
+    if (!w || !a) return;
+    // the caption button took the keyboard on the way in; a game wants it back
+    if (activeApp === id && a.onFocus) { try { a.onFocus(w.el); } catch (e) {} }
+    if (a.onResize) { try { a.onResize(w.el, id); } catch (e) {} }
+}
+/* Nothing has ever re-clamped windows when the viewport changed, and full
+   screen makes that reachable: place a window near the right edge of a
+   full-screen page, leave full screen, and it is off the side of a smaller
+   desktop with its title bar out of reach. */
+function clampWindows() {
+    var vw = window.innerWidth, vh = window.innerHeight - barSpace();
+    Object.keys(openWins).forEach(function (id) {
+        var el = openWins[id].el;
+        if (el.classList.contains('maxi') || el.classList.contains('fs')) return;
+        var ww = parseInt(el.style.width, 10) || el.offsetWidth || 0;
+        var l = parseInt(el.style.left, 10) || 0, t = parseInt(el.style.top, 10) || 0;
+        el.style.left = clamp(l, Math.min(8, 8 - ww + 90), Math.max(8, vw - 90)) + 'px';
+        el.style.top = clamp(t, 0, Math.max(0, vh - 36)) + 'px';
+    });
+}
+/* the classic Alt+Space system menu, on Alt+Space or a right-click of the
+   title bar. `e` only needs clientX/clientY, so the keyboard can fake one. */
+function winSysMenu(id, e) {
+    var w = openWins[id]; if (!w) return;
+    if (!e) { var wr = w.el.getBoundingClientRect(); e = { clientX: wr.left + 8, clientY: wr.top + 34 }; }
+    var maxi = w.el.classList.contains('maxi');
+    openBctx(w.el, e, [
+        { t: 'Restore', k: 'restore', dis: !maxi && !w.fs },
+        { t: 'Minimize', k: 'min', hint: 'Alt+M' },
+        { t: 'Maximize', k: 'max', dis: maxi || !!w.fs, hint: 'Alt+↑' },
+        'sep',
+        { t: w.fs ? 'Leave full screen' : 'Full screen', k: 'fs', hint: 'F11' },
+        'sep',
+        { t: 'Close', k: 'close', hint: 'Alt+W' }
+    ], function (act) {
+        if (act === 'restore') { if (w.fs) exitWinFs(id); else w.el.classList.remove('maxi'); }
+        else if (act === 'min') minWin(id);
+        else if (act === 'max') { if (w.fs) exitWinFs(id); w.el.classList.add('maxi'); }
+        else if (act === 'fs') toggleWinFs(id);
+        else if (act === 'close') closeWin(id);
+    });
+}
+
+/* ─── a taskbar that gets out of the way ─── */
+var tbPeekT = 0;
+function setTbAuto(on, save) {
+    document.body.classList.toggle('tb-auto', !!on);
+    if (!on) { clearTimeout(tbPeekT); document.body.classList.remove('tb-peek'); }
+    if (save !== false) store('tbauto', on ? 'on' : 'off');
+    renderDesktop();          // the icon grid just gained or lost a row
+}
+function tbPeek(on) {
+    if (!document.body.classList.contains('tb-auto')) return;
+    clearTimeout(tbPeekT);
+    if (on) { document.body.classList.add('tb-peek'); return; }
+    tbPeekT = setTimeout(function () {
+        // anything hanging off the taskbar keeps it up, same as the real one
+        if (startMenu.classList.contains('open')) return;
+        if (!quickPanel.hidden || !calPanel.hidden) return;
+        if (taskbar.matches(':hover')) return;
+        document.body.classList.remove('tb-peek');
+    }, 420);
+}
+byId('tbEdge').addEventListener('pointerenter', function () { tbPeek(true); });
+byId('tbEdge').addEventListener('pointerleave', function () { tbPeek(false); });
+taskbar.addEventListener('pointerenter', function () { tbPeek(true); });
+taskbar.addEventListener('pointerleave', function () { tbPeek(false); });
+taskbar.addEventListener('focusin', function () { tbPeek(true); });     // keyboard reaches it too
+taskbar.addEventListener('focusout', function () { tbPeek(false); });
 
 /* ═══════════════════════════ apps ═══════════════════════════ */
 var ME = {
@@ -1408,7 +1676,10 @@ var dlgs = [];
 function dlgOpen(title, bodyHtml, buttons) {
     var opener = document.activeElement;   // give focus back when we're done
     var veil = document.createElement('div'); veil.className = 'dlg-veil';
-    veil.style.zIndex = ++zTop;
+    // A modal has to cover everything, and ++zTop did not: it starts at 20, so
+    // the veil sat under the taskbar, and it would sit under a full-screen
+    // window's raised layer too — an invisible modal nothing can dismiss.
+    veil.style.zIndex = 1200 + dlgs.length;
     veil.innerHTML = '<div class="dlg px-lg lift" role="alertdialog" aria-modal="true" aria-label="' + esc(title) + '">' +
         '<header class="dlg-bar"><span>' + esc(title) + '</span>' +
           '<button class="cap close dlg-x" type="button" aria-label="Close"><svg viewBox="0 0 10 10"><path d="M1 1 L9 9 M9 1 L1 9" stroke="currentColor" stroke-width="1.2"/></svg></button></header>' +
@@ -1493,7 +1764,7 @@ function deskSave() { try { store('desk', JSON.stringify(deskPos)); } catch (e) 
 function deskDims() {
     return {
         cols: Math.max(1, Math.floor((window.innerWidth - DESK_PAD * 2) / DESK_CW)),
-        rows: Math.max(1, Math.floor((window.innerHeight - BAR - DESK_PAD * 2) / DESK_CH))
+        rows: Math.max(1, Math.floor((window.innerHeight - barSpace() - DESK_PAD * 2) / DESK_CH))
     };
 }
 function deskLayout() {
@@ -1843,11 +2114,19 @@ function initTerminal(el) {
     setTimeout(function () { inp.focus(); }, 30);   // focus isn't motion
 }
 
-/* —— Settings —— */
+/* —— Settings ——
+   One switch row, built the same way every time. role="switch" without
+   aria-checked reads as indeterminate, which is what the hand-written rows
+   used to do. */
+function setToggle(label, hint, key, on) {
+    return '<label class="set-toggle"><span>' + esc(label) + (hint ? ' <i>' + esc(hint) + '</i>' : '') + '</span>' +
+        '<button class="tgl' + (on ? ' on' : '') + '" data-tgl="' + key + '" role="switch" aria-checked="' + (on ? 'true' : 'false') + '" aria-label="' + esc(label) + '"></button></label>';
+}
 function renderSettings() {
     return '<div class="settings">' +
         '<nav class="set-nav">' +
           '<button class="set-navi sel" data-pane="personalization">' + ic('ic-ure') + ' Personalization</button>' +
+          '<button class="set-navi" data-pane="taskbar">' + ic('ic-taskview') + ' Taskbar</button>' +
           '<button class="set-navi" data-pane="system">' + ic('ic-pc') + ' System</button>' +
           '<button class="set-navi" data-pane="about">' + ic('ic-settings') + ' About</button>' +
         '</nav><div class="set-body"></div></div>';
@@ -1861,8 +2140,25 @@ function initSettings(el, id, arg) {
             var sw = ACCENTS.map(function (a) { return '<button class="swatch' + (a.hex === cur ? ' sel' : '') + '" data-hex="' + a.hex + '" style="background:' + a.hex + '" title="' + a.name + '" aria-label="' + a.name + '"></button>'; }).join('');
             body.innerHTML = '<h2 class="set-h2">Personalization</h2>' +
                 '<div class="set-card"><div class="set-row"><span>Accent color</span></div><div class="swatches">' + sw + '</div><p class="set-hint">The whole system follows this. Isaac ships with URE Red.</p></div>' +
-                '<div class="set-card"><label class="set-toggle"><span>Scanlines <i>a faint CRT overlay on the screen</i></span><button class="tgl' + (recall('crt', 'on') === 'on' ? ' on' : '') + '" data-tgl="crt" role="switch"></button></label></div>' +
+                '<div class="set-card">' + setToggle('Scanlines', 'a faint CRT overlay on the screen', 'crt', recall('crt', 'on') === 'on') + '</div>' +
                 '<div class="set-card"><div class="set-row"><span>Wallpaper</span><button class="set-btn" data-act="rebloom">Regenerate Bloom</button></div><p class="set-hint">A fresh pixel Bloom, rendered on the spot.</p></div>';
+        } else if (name === 'taskbar') {
+            body.innerHTML = '<h2 class="set-h2">Personalization &gt; Taskbar</h2>' +
+                '<div class="set-card"><div class="set-row"><span>Taskbar behaviors</span></div>' +
+                  setToggle('Automatically hide the taskbar', 'it slides away; put the pointer on the bottom edge to get it back',
+                            'tbauto', document.body.classList.contains('tb-auto')) +
+                '</div>' +
+                '<div class="set-card">' +
+                  setToggle('Full screen', 'the whole page fills your monitor, browser and all',
+                            'pagefs', PFS.on()) +
+                  '<p class="set-hint">' + (PFS.can()
+                      ? 'Shift+F11 anywhere does the same thing. For one window instead of the whole page, press F11 — or use the ⛶ button in its title bar.'
+                      : 'This browser will not give a page the whole screen, so this switch is inert here.') + '</p></div>' +
+                '<div class="set-card"><div class="set-row"><span>Shortcuts</span></div>' +
+                  '<dl class="specs"><dt>F11</dt><dd>the focused window takes the screen</dd>' +
+                  '<dt>Alt+Enter</dt><dd>the same, the way games have always done it</dd>' +
+                  '<dt>Shift+F11</dt><dd>the whole page</dd>' +
+                  '<dt>Esc</dt><dd>leaves, unless the app wanted the key</dd></dl></div>';
         } else if (name === 'system') {
             var specs = [['Device name', 'URE-PC'], ['Processor', 'Bloom Core @ 60fps'], ['Installed RAM', '640 KB (ought to be enough)'], ['GPU', 'Canvas 2D, pixelated'], ['System type', 'pixel-bit operating system'], ['Pen and touch', 'thumbs supported']];
             body.innerHTML = '<h2 class="set-h2">System &gt; About</h2><div class="set-card"><dl class="specs">' + specs.map(function (s) { return '<dt>' + esc(s[0]) + '</dt><dd>' + esc(s[1]) + '</dd>'; }).join('') + '</dl></div>' +
@@ -1877,11 +2173,26 @@ function initSettings(el, id, arg) {
         var sw = e.target.closest('.swatch');
         if (sw) { var hex = sw.getAttribute('data-hex'); applyAccent(hex); store('accent', hex); body.querySelectorAll('.swatch').forEach(function (x) { x.classList.remove('sel'); }); sw.classList.add('sel'); return; }
         var tgl = e.target.closest('.tgl');
-        if (tgl) { var on = tgl.classList.toggle('on'); document.body.classList.toggle('no-crt', !on); store('crt', on ? 'on' : 'off'); return; }
+        if (tgl) {
+            // this used to ignore data-tgl entirely and always write the CRT
+            // pref, so the second switch on the page would have toggled scanlines
+            var key = tgl.getAttribute('data-tgl'), on = tgl.classList.toggle('on');
+            if (key === 'pagefs') {
+                togglePageFs();                       // the API answers, pageFsSync writes the truth back
+                tgl.classList.toggle('on', PFS.on()); // do not claim it worked before it has
+            } else if (key === 'tbauto') {
+                setTbAuto(on);
+            } else {
+                document.body.classList.toggle('no-crt', !on); store('crt', on ? 'on' : 'off');
+            }
+            tgl.setAttribute('aria-checked', tgl.classList.contains('on') ? 'true' : 'false');
+            return;
+        }
         var act = e.target.closest('[data-act]');
         if (act) { var a = act.getAttribute('data-act'); if (a === 'rebloom') renderWall(); else if (a === 'about') openApp('about'); }
     });
-    pane(arg === 'system' ? 'system' : 'personalization');
+    el._setPane = pane;                     // so a second "Display settings" click can still switch panes
+    pane(arg && (arg === 'system' || arg === 'taskbar' || arg === 'personalization') ? arg : 'personalization');
 }
 
 /* —— Calculator —— */
@@ -7223,7 +7534,9 @@ function mcProfilesText() {
 }
 function mcOptionsText() {
     return ['version:4189', 'lang:en_us', 'fov:0.0', 'gamma:0.5', 'guiScale:0', 'renderDistance:12',
-        'soundCategory_master:1.0', 'soundCategory_music:0.6', 'fullscreen:false', 'enableVsync:true',
+        // this line was decoration until the machine grew a full-screen mode;
+        // now options.txt tells the truth about the window it belongs to
+        'soundCategory_master:1.0', 'soundCategory_music:0.6', 'fullscreen:' + (winIsFs('minecraft') ? 'true' : 'false'), 'enableVsync:true',
         'difficulty:2', 'skin:' + mcSkin().id, 'pixelsAlreadyPerfect:true'].join('\n');
 }
 var MC_MCDIR = 'C:\\Users\\isaac\\AppData\\Roaming\\.minecraft';
@@ -8136,7 +8449,10 @@ var APPS = {
                 focusArg: function (el, arg) { if (arg) plLoad(el, arg); },
                 onClose: function (el) { plStop(el); }, onMinimize: function (el) { var st = el._pl; if (st && st.playing) plToggle(el, false); } },
     terminal: { title: 'URE Shell', icon: 'ic-terminal', w: 620, h: 400, render: renderTerminal, init: initTerminal },
-    settings: { title: 'Settings', icon: 'ic-settings', w: 660, h: 480, render: renderSettings, init: initSettings },
+    settings: { title: 'Settings', icon: 'ic-settings', w: 660, h: 480, render: renderSettings, init: initSettings,
+                // "Display settings" from the desktop menu used to do nothing at
+                // all when Settings was already open on another pane
+                focusArg: function (el, arg) { if (arg && el._setPane) el._setPane(arg); } },
     photos:   { title: 'Photos', icon: 'ic-photos', w: 560, h: 440, render: renderPhotos, init: initPhotos, focusArg: function (el, arg) { if (arg != null) selectPhoto(el, arg | 0); } },
     calc:     { title: 'Calculator', icon: 'ic-calc', w: 300, h: 440, render: renderCalc, init: initCalc },
     edge:     { title: 'Microsoft Edge', icon: 'ic-edge', w: 760, h: 520, titlebar: edgeTitlebar, render: renderEdge, init: initEdge, onClose: function () { if (APPS.edge._gag) APPS.edge._gag.cancel(); }, onMinimize: function () { if (APPS.edge._gag) APPS.edge._gag.cancel(); },
@@ -8197,6 +8513,7 @@ function setStart(open) {
     // queued rAF could land AFTER a close and corrupt the state)
     startMenu.classList.toggle('open', open);
     startBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    tbPeek(open);   // Start hangs off a taskbar that has to be there to hang off
     if (open) { closeFlyouts(); closeCtx(); closeBctx(); closeTaskView(); setTimeout(function () { startSearch.focus(); }, 40); }
     else { startSearch.value = ''; filterStart(''); }
 }
@@ -8250,6 +8567,7 @@ function toggleFlyout(panel, build) {
     var opening = panel.hidden;
     closeFlyouts(); setStart(false); closeCtx(); closeBctx();
     if (opening) { build(); panel.hidden = false; }
+    tbPeek(opening);   // and so does everything else anchored to the bar
 }
 byId('quickBtn').addEventListener('click', function (e) { e.stopPropagation(); toggleFlyout(quickPanel, buildQuick); });
 byId('clock').addEventListener('click', function (e) { e.stopPropagation(); toggleFlyout(calPanel, buildCal); });
@@ -8268,13 +8586,25 @@ function setSysVolume(pct) {
 }
 function buildQuick() {
     var tiles = [['ic-wifi', 'Wi-Fi', 1], ['ic-bt', 'Bluetooth', 0], ['ic-plane', 'Airplane', 0], ['ic-batt', 'Battery saver', 0], ['ic-moon', 'Night light', 0], ['ic-access', 'Accessibility', 0]];
+    // the one tile here that does something. Rebuilt on every open, so it reads
+    // the live state rather than remembering a stale one like its neighbours.
+    if (PFS.can()) tiles.push(['ic-fs', 'Full screen', PFS.on() ? 1 : 0, 'pagefs']);
     quickPanel.innerHTML = '<div class="qs-grid">' + tiles.map(function (t) {
-        return '<button class="qs-tile' + (t[2] ? ' on' : '') + '">' + ic(t[0]) + '<span>' + t[1] + '</span></button>';
+        return '<button class="qs-tile' + (t[2] ? ' on' : '') + '"' + (t[3] ? ' data-qs="' + t[3] + '"' : '') + '>' + ic(t[0]) + '<span>' + t[1] + '</span></button>';
     }).join('') + '</div>' +
         '<div class="qs-slider">' + ic('ic-moon') + '<input type="range" min="20" max="100" value="80" aria-label="Brightness"></div>' +
         '<div class="qs-slider">' + ic('ic-vol') + '<input type="range" min="0" max="100" value="' + sysVolume() + '" aria-label="Volume"></div>' +
         '<div class="qs-foot"><span>' + ic('ic-batt') + ' 87%</span><button class="qs-gear" data-app="settings" aria-label="All settings">' + ic('ic-settings') + '</button></div>';
-    quickPanel.querySelectorAll('.qs-tile').forEach(function (t) { t.addEventListener('click', function () { t.classList.toggle('on'); }); });
+    quickPanel.querySelectorAll('.qs-tile').forEach(function (t) {
+        t.addEventListener('click', function () {
+            if (t.getAttribute('data-qs') === 'pagefs') {
+                togglePageFs();                              // must be inside the gesture, not after a tick
+                t.classList.toggle('on', PFS.on());
+                return;
+            }
+            t.classList.toggle('on');
+        });
+    });
     quickPanel.querySelector('.qs-gear').addEventListener('click', function () { openApp('settings'); });
     // the volume slider was decoration. It is the game's master volume now,
     // which is where a player will actually look for it.
@@ -8331,6 +8661,7 @@ ctx.addEventListener('click', function (e) {
     var a = it.getAttribute('data-act');
     if (a === 'refresh') renderWall();
     else if (a === 'terminal') openApp('terminal');
+    else if (a === 'fullscreen') togglePageFs();
     else if (a === 'display') openApp('settings', 'system');
     else if (a === 'personalize') openApp('settings');
     if (!it.classList.contains('sub')) closeCtx();
@@ -8533,12 +8864,19 @@ var OS_KEYS = {
     'v': function () { if (byId('taskView')) closeTaskView(); else openTaskView(); },
     'm': function () { var id = topAppId(); if (id) minWin(id); },
     'w': function () { var id = topAppId(); if (id) closeWin(id); },
-    'arrowup': function () { var id = topAppId(); if (id) openWins[id].el.classList.add('maxi'); },
+    'arrowup': function () {
+        var id = topAppId(); if (!id) return;
+        if (winIsFs(id)) exitWinFs(id);          // .maxi's !important would fight .fs otherwise
+        openWins[id].el.classList.add('maxi');
+    },
     'arrowdown': function () {
         var id = topAppId(); if (!id) return;
         var el = openWins[id].el;
-        if (el.classList.contains('maxi')) el.classList.remove('maxi'); else minWin(id);
+        // full screen is the top of the ladder: down comes off it first
+        if (winIsFs(id)) exitWinFs(id);
+        else if (el.classList.contains('maxi')) el.classList.remove('maxi'); else minWin(id);
     },
+    ' ': function () { var id = topAppId(); if (id) winSysMenu(id); },   // Alt+Space, since 1985
     '`': cycleWindows, 'tab': cycleWindows,
     '/': function () { toggleCheat(); }
 };
@@ -8589,6 +8927,21 @@ document.addEventListener('keydown', function (e) {
     }
     if (byId('cheatsheet') && e.key === 'Escape') { e.stopPropagation(); closeCheat(); return; }
 
+    // F11 belongs to this machine, not to the browser wrapped around it. It has
+    // to be handled up here, above the "no modifier, so it is the app's" exit
+    // below, or it never fires while a Notepad or Terminal field has focus.
+    //   F11        the focused window takes the screen (nothing open: the page does)
+    //   Shift+F11  the page itself, through the real Fullscreen API
+    //   Alt+Enter  the shortcut every game has used for thirty years
+    if (e.key === 'F11' || (e.key === 'Enter' && e.altKey && !e.ctrlKey && !e.metaKey)) {
+        var f11App = e.key === 'F11' && e.shiftKey ? null : topAppId();
+        if (e.key === 'Enter' && !f11App) return;            // Alt+Enter on bare desktop stays free
+        if (dlgs.length || byId('cheatsheet')) { if (e.key === 'F11') e.preventDefault(); return; }
+        e.preventDefault(); e.stopPropagation();
+        if (f11App) toggleWinFs(f11App); else togglePageFs();
+        return;
+    }
+
     var typing = e.target && /^(INPUT|TEXTAREA)$/.test(e.target.tagName);
     if (!e.altKey && !e.ctrlKey && !e.metaKey && !typing) {
         if (dlgs.length) return;                             // a modal dialog owns plain keys
@@ -8628,7 +8981,8 @@ document.addEventListener('keydown', function (e) {
 /* ── the shortcut map (Alt+/) ── */
 var CHEATS = [
     ['System', [['Alt+F', 'Find in app'], ['Alt+S', 'Start'], ['Alt+E', 'File Explorer'], ['Alt+I', 'Settings'], ['Alt+A', 'Quick settings'], ['Alt+N', 'Calendar'], ['Alt+V', 'Task view'], ['Alt+D', 'Show desktop'], ['Alt+1…9', 'Taskbar apps'], ['Alt+/', 'This card']]],
-    ['Windows', [['Alt+W', 'Close window'], ['Alt+M', 'Minimize'], ['Alt+↑', 'Maximize'], ['Alt+↓', 'Restore / minimize'], ['Alt+`', 'Cycle windows']]],
+    ['Windows', [['Alt+W', 'Close window'], ['Alt+M', 'Minimize'], ['Alt+↑', 'Maximize'], ['Alt+↓', 'Restore / minimize'], ['Alt+`', 'Cycle windows'], ['Alt+Space', 'System menu']]],
+    ['Full screen', [['F11', 'This window takes the screen'], ['Alt+Enter', 'The same thing, the game way'], ['Shift+F11', 'The whole page, real full screen'], ['Esc', 'Leave (if the app is not using it)'], ['Top edge', 'Peek at the title bar']]],
     ['Chrome', [['Alt+T', 'New tab'], ['Alt+W', 'Close tab'], ['Alt+Shift+T', 'Reopen closed tab'], ['Alt+1…9', 'Go to tab'], ['Alt+L', 'Address bar'], ['Alt+R', 'Reload'], ['Alt+←/→', 'Back / forward']]],
     ['Minecraft Launcher', [['Alt+1…4', 'Play / Installations / Skins / Notes'], ['Alt+5', 'Launcher settings'], ['Alt+P', 'Press the big green button'], ['Alt+N', 'New installation']]],
     ['In apps', [['Alt+←/↑', 'Explorer: back / home'], ['Enter', 'Explorer: open selected'], ['Alt+L', 'Terminal: clear'], ['←/→', 'Photos: browse'], ['F3', 'Find: next match'], ['Esc', 'Close find / this card']]]
@@ -8655,11 +9009,32 @@ document.addEventListener('auxclick', closeBctx);   // middle-click closes tabs 
 document.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape') return;
     if (closeTopDlg()) return;   // dialogs eat the first Escape
+    var had = startMenu.classList.contains('open') || !quickPanel.hidden || !calPanel.hidden ||
+              !ctx.hidden || !!bctxEl || (fctx && !fctx.hidden) || !!byId('taskView');
     setStart(false); closeFlyouts(); closeCtx(); closeFctx(); closeBctx(); mcCloseMenu(); closeTaskView();
+    // Last in the chain, and only if Escape had nothing else to close. This
+    // listener is on the bubble, so a game that used Escape for its own pause
+    // menu called stopPropagation and never got here — which is exactly the
+    // priority you want: the game's menu first, the way out second.
+    if (!had && fsWin && openWins[fsWin] && !openWins[fsWin].min) exitWinFs(fsWin);
 });
 
 applyAccent(recall('accent', ACCENTS[0].hex));
 if (recall('crt', 'on') !== 'on') document.body.classList.add('no-crt');
+// before renderDesktop below: with the bar hidden the icon grid gains a row,
+// and barSpace() has to already be telling the truth when the grid is measured
+if (recall('tbauto', 'off') === 'on') document.body.classList.add('tb-auto');
+/* full screen: only show the affordances on a browser that will honour them.
+   Hidden in the markup, revealed here — a dead button is worse than none. */
+(function () {
+    var b = byId('fsBtn');
+    if (PFS.can()) {
+        b.hidden = false;
+        b.addEventListener('click', function (e) { e.stopPropagation(); togglePageFs(); });
+        var ci = ctx.querySelector('[data-fs-item]'); if (ci) ci.hidden = false;
+    }
+    pageFsSync();   // a reload inside an already-full-screen page has to agree
+})();
 try { var chromeSt = JSON.parse(recall('chrome', 'null')); if (chromeSt) installChrome(chromeSt); } catch (e) {}   // reinstate an installed Chrome
 renderWall();
 renderDesktop();

@@ -1,0 +1,350 @@
+<!doctype html><meta charset="utf-8"><title>fullscreen checks</title>
+<style>body{background:#14121a;color:#e6e1f0;font:12px/1.55 monospace;margin:0;padding:10px}
+pre{white-space:pre-wrap}iframe{position:fixed;left:-4000px;width:1280px;height:800px;border:0}</style>
+<pre id="out">booting</pre>
+<iframe id="f" src="/comp/" allow="fullscreen"></iframe>
+<script>
+/* FULL SCREEN CHECKS — /comp/
+   Every state transition of the three fullscreen layers, driven with real
+   DOM events on the real desktop rather than by calling internals: the
+   house rule on this project is that a build once shipped where pressing E
+   did nothing while the dev handle reported everything working.
+
+   Usage: headless chrome --dump-dom "http://localhost:PORT/.claude/comp-tools/fullscreen-checks.html"
+   The real Fullscreen API cannot be exercised without a user gesture, so
+   layer B is checked for wiring and feature-detection only.              */
+var OUT = [], PASS = 0, FAIL = 0;
+function log(s) { OUT.push(s); document.getElementById('out').textContent = OUT.join('\n'); }
+function ok(name, cond, detail) {
+    if (cond) { PASS++; log('PASS  ' + name + (detail ? '   ' + detail : '')); }
+    else { FAIL++; log('FAIL  ' + name + (detail ? '   ' + detail : '')); }
+}
+var tries = 0;
+function ready() { try { var d = frames[0].document; return d.readyState === 'complete' && d.getElementById('taskbar') && frames[0].__compReady !== false && d.querySelector('.tb-btn.app'); } catch (e) { return false; } }
+function wait() { tries++; if (ready()) { setTimeout(run, 250); return; }
+    if (tries > 600) { log('FAIL: desktop never came up'); document.title = 'FS FAIL'; return; }
+    setTimeout(wait, 40); }
+wait();
+
+function run() {
+    var W = frames[0], D = W.document, B = D.body;
+    var errs = [];
+    // Every assertion below measures geometry synchronously, so a 160ms slide
+    // would be measured at frame zero and read as "it never moved".
+    var kill = D.createElement('style');
+    kill.textContent = '*, *::before, *::after { transition: none !important; animation: none !important; }';
+    D.head.appendChild(kill);
+    W.onerror = function (m, s, l) { errs.push('onerror ' + m + ' @' + l); };
+    W.console.error = (function (o) { return function () { errs.push([].slice.call(arguments).join(' ')); o.apply(W.console, arguments); }; })(W.console.error);
+
+    function key(k, opt) {
+        opt = opt || {};
+        var e = new W.KeyboardEvent('keydown', { key: k, code: opt.code || '', bubbles: true, cancelable: true,
+            altKey: !!opt.alt, shiftKey: !!opt.shift, ctrlKey: !!opt.ctrl });
+        (opt.on || D).dispatchEvent(e);
+        D.dispatchEvent(new W.KeyboardEvent('keyup', { key: k, bubbles: true }));
+        return e;
+    }
+    function click(el) { if (el) el.dispatchEvent(new W.MouseEvent('click', { bubbles: true, cancelable: true })); }
+    function pointer(el, type, opt) {
+        opt = opt || {};
+        var E = W.PointerEvent || W.MouseEvent;
+        el.dispatchEvent(new E(type, { bubbles: true, cancelable: true, button: opt.button || 0,
+            clientX: opt.x || 0, clientY: opt.y || 0, pointerId: 1 }));
+    }
+    function win(app) { return D.querySelector('.win[data-app="' + app + '"]'); }
+    // only the five PINNED ids have a taskbar button; everything else needs Start
+    function open(app) {
+        var b = D.querySelector('.tb-btn.app[data-app="' + app + '"]');
+        if (b) { click(b); } else {
+            click(D.getElementById('startBtn'));
+            var pin = D.querySelector('#startMenu [data-app="' + app + '"]');
+            if (pin) click(pin);
+            click(D.getElementById('startBtn'));
+        }
+        var el = win(app);
+        if (!el) { FAIL++; log('FAIL  could not open ' + app + ' — every later check is void'); }
+        return el;
+    }
+    function tbClick(app) { click(D.querySelector('.tb-btn.app[data-app="' + app + '"]')); }
+    function css(el, prop) { return W.getComputedStyle(el).getPropertyValue(prop); }
+    function zOf(sel) { return +css(D.querySelector(sel), 'z-index') || 0; }
+
+    /* ══ layer A: one window takes the screen ══ */
+    var w = open('terminal');
+    ok('a window opens and has the new caption button', !!w && !!w.querySelector('.cap-fs'),
+        w ? 'caps=' + w.querySelectorAll('.cap').length : 'no window');
+
+    key('F11');
+    var fsOn = w.classList.contains('fs') && B.classList.contains('fs-app');
+    ok('F11 puts the focused window full screen', fsOn,
+        'win.fs=' + w.classList.contains('fs') + ' body.fs-app=' + B.classList.contains('fs-app'));
+
+    var r = w.getBoundingClientRect();
+    ok('it covers the whole screen, taskbar included',
+        r.width === W.innerWidth && r.height === W.innerHeight && r.top === 0 && r.left === 0,
+        Math.round(r.width) + 'x' + Math.round(r.height) + ' vs viewport ' + W.innerWidth + 'x' + W.innerHeight);
+
+    ok('the window layer now outranks the taskbar but not Start',
+        zOf('.windows') > zOf('.taskbar') && zOf('.windows') < zOf('#startMenu'),
+        'windows=' + zOf('.windows') + ' taskbar=' + zOf('.taskbar') + ' start=' + zOf('#startMenu'));
+
+    var bar = w.querySelector('.win-bar'), br = bar.getBoundingClientRect();
+    ok('the title bar is off the top edge', br.bottom <= 0.5, 'bar bottom=' + Math.round(br.bottom));
+
+    var content = w.querySelector('.win-content');
+    ok('the content has the whole box', Math.round(content.getBoundingClientRect().height) === W.innerHeight,
+        Math.round(content.getBoundingClientRect().height) + ' of ' + W.innerHeight);
+
+    /* the hover reveal */
+    pointer(w.querySelector('.win-fsedge'), 'pointerenter');
+    var peeked = w.classList.contains('peek') && bar.getBoundingClientRect().top >= -0.5;
+    ok('reaching the top edge brings the bar back', peeked,
+        'peek=' + w.classList.contains('peek') + ' bar top=' + Math.round(bar.getBoundingClientRect().top));
+
+    /* dragging the revealed bar must not write geometry */
+    var before = w.style.left + '/' + w.style.top;
+    pointer(bar, 'pointerdown', { x: 300, y: 10 });
+    pointer(bar, 'pointermove', { x: 700, y: 400 });
+    pointer(bar, 'pointerup', { x: 700, y: 400 });
+    ok('the revealed bar cannot be dragged', before === w.style.left + '/' + w.style.top,
+        before + ' -> ' + w.style.left + '/' + w.style.top);
+
+    key('F11');
+    ok('F11 again gives it back', !w.classList.contains('fs') && !B.classList.contains('fs-app'),
+        'fs=' + w.classList.contains('fs') + ' fs-app=' + B.classList.contains('fs-app'));
+
+    /* full screen has to remember whether it came from maximized */
+    w.classList.add('maxi');
+    key('F11');
+    ok('maximized is not lost on the way in', w.classList.contains('fs') && !w.classList.contains('maxi'));
+    key('F11');
+    ok('and is put back on the way out', w.classList.contains('maxi') && !w.classList.contains('fs'),
+        'maxi=' + w.classList.contains('maxi'));
+    w.classList.remove('maxi');
+
+    /* the caption button and the double-click */
+    click(w.querySelector('.cap-fs'));
+    var byCap = w.classList.contains('fs');
+    bar.dispatchEvent(new W.MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+    ok('the ⛶ button goes in and a double-click comes out', byCap && !w.classList.contains('fs'),
+        'cap=' + byCap + ' afterDbl=' + w.classList.contains('fs'));
+
+    /* the maximize button must not fight the fullscreen rule */
+    key('F11');
+    click(w.querySelector('.cap[data-cap="max"]'));
+    ok('maximize is inert while full screen', w.classList.contains('fs') && !w.classList.contains('maxi'),
+        'fs=' + w.classList.contains('fs') + ' maxi=' + w.classList.contains('maxi'));
+
+    /* the system menu, both ways in */
+    key(' ', { alt: true, code: 'Space' });
+    var kmenu = w.querySelector('.bctx');
+    ok('Alt+Space opens the system menu', !!kmenu && /full screen/i.test(kmenu.textContent),
+        kmenu ? 'ok' : 'no menu');
+    key('Escape');
+    bar.dispatchEvent(new W.MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 200, clientY: 10 }));
+    var menu = w.querySelector('.bctx');
+    var hasFs = menu && /full screen/i.test(menu.textContent);
+    ok('right-clicking the title bar offers the system menu', !!menu && hasFs,
+        menu ? menu.textContent.replace(/\s+/g, ' ').trim().slice(0, 70) : 'no menu');
+    if (menu) click(menu.querySelector('[data-bx="fs"]'));
+    ok('its Full screen item leaves full screen', !w.classList.contains('fs'));
+
+    /* minimize keeps the state but gives the taskbar back */
+    key('F11');
+    tbClick('terminal');      // clicking the active app's button minimizes it
+    var miniOk = w.classList.contains('mini') && w.classList.contains('fs') && !B.classList.contains('fs-app');
+    tbClick('terminal');      // and back
+    ok('minimizing a full-screen window returns the taskbar, restoring returns the game',
+        miniOk && !w.classList.contains('mini') && B.classList.contains('fs-app'),
+        'while mini: fs=' + miniOk + ' | after restore fs-app=' + B.classList.contains('fs-app'));
+
+    /* another window stealing focus drops it out, like alt-tab */
+    var w2 = open('explorer');
+    ok('opening another app drops the full-screen one', !w.classList.contains('fs') && !B.classList.contains('fs-app'),
+        'fs=' + w.classList.contains('fs') + ' fs-app=' + B.classList.contains('fs-app'));
+
+    /* Alt+arrows */
+    tbClick('terminal');                       // explorer has focus now; bring terminal back up
+    key('F11');
+    key('ArrowUp', { alt: true, code: 'ArrowUp' });
+    ok('Alt+↑ out of full screen lands on maximized', !w.classList.contains('fs') && w.classList.contains('maxi'),
+        'fs=' + w.classList.contains('fs') + ' maxi=' + w.classList.contains('maxi'));
+    key('F11');
+    key('ArrowDown', { alt: true, code: 'ArrowDown' });
+    ok('Alt+↓ steps down off full screen first', !w.classList.contains('fs') && w.classList.contains('maxi'));
+    w.classList.remove('maxi');
+
+    /* Alt+Enter, the game shortcut */
+    key('Enter', { alt: true });
+    var altEnter = w.classList.contains('fs');
+    key('Enter', { alt: true });
+    ok('Alt+Enter toggles it too', altEnter && !w.classList.contains('fs'));
+
+    /* Escape, and its priority against a menu that wanted it */
+    key('F11');
+    click(D.getElementById('startBtn'));
+    key('Escape');
+    var startEatIt = w.classList.contains('fs') && !D.getElementById('startMenu').classList.contains('open');
+    key('Escape');
+    ok('Escape closes Start first and only then leaves full screen',
+        startEatIt && !w.classList.contains('fs'),
+        'after 1st: fs=' + startEatIt + ' | after 2nd: fs=' + w.classList.contains('fs'));
+
+    /* a modal must not vanish underneath a full-screen window */
+    key('F11');
+    ok('a dialog outranks a full-screen window',
+        1200 > zOf('.windows'), 'veil z=1200 windows z=' + zOf('.windows'));
+    key('F11');
+
+    /* task view geometry */
+    key('F11');
+    click(D.getElementById('taskviewBtn'));
+    var card = D.querySelector('.tv-item .win');
+    var scale = card ? card.style.transform : '';
+    ok('the task view card of a full-screen window has a finite scale',
+        !!card && !/Infinity|NaN/.test(scale), scale || 'no card');
+    click(D.getElementById('taskView'));
+    key('Escape');
+    if (w.classList.contains('fs')) key('F11');
+
+    /* ══ layer C: the taskbar gets out of the way ══ */
+    var tb = D.getElementById('taskbar'), desk = D.getElementById('desktop');
+    var rowsBefore = D.querySelectorAll('.dicon').length;
+    var deskBottomBefore = desk.getBoundingClientRect().bottom;
+    B.classList.add('tb-auto');
+    void tb.offsetWidth;
+    var hidden = tb.getBoundingClientRect().top >= W.innerHeight - 1;
+    ok('auto-hide slides the taskbar off the bottom', hidden, 'taskbar top=' + Math.round(tb.getBoundingClientRect().top) + ' vh=' + W.innerHeight);
+    ok('the desktop takes the strip back', desk.getBoundingClientRect().bottom > deskBottomBefore,
+        Math.round(deskBottomBefore) + ' -> ' + Math.round(desk.getBoundingClientRect().bottom));
+
+    w.classList.add('maxi');
+    ok('a maximized window takes it too', Math.round(w.getBoundingClientRect().height) === W.innerHeight,
+        Math.round(w.getBoundingClientRect().height) + ' of ' + W.innerHeight);
+    w.classList.remove('maxi');
+
+    var edge = D.getElementById('tbEdge');
+    ok('the reveal strip is reachable', css(edge, 'display') !== 'none' && +css(edge, 'z-index') > zOf('.taskbar') - 2,
+        'display=' + css(edge, 'display') + ' z=' + css(edge, 'z-index'));
+    pointer(edge, 'pointerenter');
+    ok('reaching the bottom edge brings the taskbar back',
+        B.classList.contains('tb-peek') && tb.getBoundingClientRect().top < W.innerHeight - 10,
+        'peek=' + B.classList.contains('tb-peek') + ' top=' + Math.round(tb.getBoundingClientRect().top));
+    B.classList.remove('tb-auto'); B.classList.remove('tb-peek');
+
+    /* ══ Settings: the switch that used to cross-wire ══ */
+    var sw = open('settings');
+    var nav = D.querySelector('.set-navi[data-pane="taskbar"]');
+    ok('Settings has a Taskbar page', !!nav);
+    if (nav) click(nav);
+    var tAuto = D.querySelector('.tgl[data-tgl="tbauto"]');
+    var crtBefore = B.classList.contains('no-crt');
+    if (tAuto) click(tAuto);
+    ok('the auto-hide switch hides the taskbar and does NOT touch scanlines',
+        B.classList.contains('tb-auto') && B.classList.contains('no-crt') === crtBefore,
+        'tb-auto=' + B.classList.contains('tb-auto') + ' no-crt unchanged=' + (B.classList.contains('no-crt') === crtBefore));
+    ok('and it says so to a screen reader', tAuto && tAuto.getAttribute('aria-checked') === 'true',
+        tAuto ? 'aria-checked=' + tAuto.getAttribute('aria-checked') : 'missing');
+    if (tAuto) click(tAuto);
+    ok('and turns back off', !B.classList.contains('tb-auto'));
+
+    /* the scanlines switch, which has never worked */
+    click(D.querySelector('.set-navi[data-pane="personalization"]'));
+    var tCrt = D.querySelector('.tgl[data-tgl="crt"]');
+    var overlay = W.getComputedStyle(D.getElementById('screen'), '::after').display;
+    if (tCrt) click(tCrt);
+    var overlayOff = W.getComputedStyle(D.getElementById('screen'), '::after').display;
+    ok('the Scanlines switch actually removes the overlay now',
+        overlay !== 'none' && overlayOff === 'none', overlay + ' -> ' + overlayOff);
+    if (tCrt) click(tCrt);
+
+    /* ══ layer B: the real API, wiring and detection ══ */
+    var fsBtn = D.getElementById('fsBtn');
+    ok('the tray button appears only where the browser allows it',
+        !!fsBtn && fsBtn.hidden === !(D.fullscreenEnabled !== false && D.documentElement.requestFullscreen),
+        'hidden=' + (fsBtn && fsBtn.hidden) + ' enabled=' + D.fullscreenEnabled);
+    var ctxFs = D.querySelector('#ctx [data-act="fullscreen"]');
+    ok('the desktop menu offers it', !!ctxFs && ctxFs.hidden === (fsBtn ? fsBtn.hidden : true));
+
+    /* Shift+F11 must reach the page path, not the window path */
+    var wasFs = w.classList.contains('fs');
+    var ev = key('F11', { shift: true });
+    ok('Shift+F11 is claimed by the page, never by the window',
+        ev.defaultPrevented && w.classList.contains('fs') === wasFs,
+        'prevented=' + ev.defaultPrevented + ' window unchanged=' + (w.classList.contains('fs') === wasFs));
+    var ev2 = key('F11');
+    ok('plain F11 is claimed too, so the browser never sees it', ev2.defaultPrevented);
+    if (D.querySelector('.win.fs')) key('F11');
+
+    /* ══ layer B, driven: the browser will not grant a synthetic gesture, so
+          stub the API and prove the call and the sync are right ══ */
+    (function () {
+        var called = null, mode = 'ok';
+        var realReq = D.documentElement.requestFullscreen;
+        D.documentElement.requestFullscreen = function (opt) {
+            called = { target: this, opt: opt };
+            return mode === 'ok' ? Promise.resolve() : Promise.reject(new Error('denied'));
+        };
+        click(D.getElementById('fsBtn'));
+        ok('the tray button asks the DOCUMENT for full screen, not just the desktop',
+            called && called.target === D.documentElement,
+            called ? 'target=<' + called.target.tagName.toLowerCase() + '> navigationUI=' + (called.opt && called.opt.navigationUI) : 'never called');
+
+        // fake the browser saying yes, and check every surface agrees
+        var fake = D.documentElement;
+        Object.defineProperty(D, 'fullscreenElement', { configurable: true, get: function () { return fake; } });
+        D.dispatchEvent(new W.Event('fullscreenchange'));
+        var btn = D.getElementById('fsBtn');
+        ok('going full screen syncs the body class, the tray icon and aria',
+            B.classList.contains('page-fs') && btn.classList.contains('on') &&
+            btn.getAttribute('aria-pressed') === 'true' &&
+            btn.querySelector('use').getAttribute('href') === '#ic-fsx',
+            'page-fs=' + B.classList.contains('page-fs') + ' icon=' + btn.querySelector('use').getAttribute('href'));
+
+        // and the user leaving by their own F11 / Esc, which we never hear about directly
+        fake = null;
+        D.dispatchEvent(new W.Event('fullscreenchange'));
+        ok('the browser leaving on its own syncs back',
+            !B.classList.contains('page-fs') && !btn.classList.contains('on') &&
+            btn.querySelector('use').getAttribute('href') === '#ic-fs');
+
+        // a refusal has to say so rather than silently doing nothing
+        mode = 'deny';
+        // earlier steps left their own toasts on screen; "a toast exists" would
+        // have passed without the refusal ever happening
+        D.querySelectorAll('.toast').forEach(function (t) { t.remove(); });
+        click(btn);
+        return new Promise(function (res) { res(); });
+    })();
+
+    /* ══ closing a full-screen window must not strand the desktop ══ */
+    var t2 = open('steam');
+    key('F11');
+    var wasLifted = B.classList.contains('fs-app');
+    click(t2.querySelector('.cap[data-cap="close"]'));
+    ok('closing a full-screen window gives the taskbar back',
+        wasLifted && !B.classList.contains('fs-app') && zOf('.windows') < zOf('.taskbar'),
+        'lifted=' + wasLifted + ' after close fs-app=' + B.classList.contains('fs-app') + ' windows z=' + zOf('.windows'));
+
+    /* ══ a window cannot be lost off the edge ══ */
+    var t3 = win('settings') || open('settings');
+    t3.style.left = (W.innerWidth + 600) + 'px'; t3.style.top = '4000px';
+    W.dispatchEvent(new W.Event('resize'));
+    setTimeout(function () {
+        var l = parseInt(t3.style.left, 10), t = parseInt(t3.style.top, 10);
+        ok('a window parked off-screen is clamped back into reach',
+            l < W.innerWidth && t < W.innerHeight, 'left=' + l + ' top=' + t);
+        // the refusal lands in a microtask, so later synchronous steps get their
+        // toasts in first — scan them all rather than trusting DOM order
+        var all = [].map.call(D.querySelectorAll('.toast'), function (t) { return t.textContent; });
+        ok('a refused full screen explains itself instead of failing silently',
+            all.some(function (t) { return /turned full screen down/i.test(t); }),
+            all.length ? all.join(' | ') : 'no toasts at all');
+        ok('no console errors through any of it', errs.length === 0, errs.slice(0, 3).join(' | ') || 'clean');
+        log('');
+        log('RESULT  ' + PASS + ' passed, ' + FAIL + ' failed');
+        document.title = FAIL ? 'FS FAIL ' + FAIL : 'FS PASS ' + PASS;
+    }, 400);
+}
+</script>
