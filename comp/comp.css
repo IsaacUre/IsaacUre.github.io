@@ -2256,6 +2256,8 @@ span.st-newsart .ic { width: 40px; height: 40px; }
 .mc-crow { display: flex; align-items: stretch; gap: 6px; }
 .mc-cbar { width: 14px; background: #3f3f3f; border: 2px solid; border-color: #373737 #ffffff #ffffff #373737; position: relative; margin-bottom: 8px; cursor: pointer; }
 .mc-cbar i { position: absolute; left: 0; right: 0; top: 0; height: 20%; background: #c6c6c6; border: 2px solid; border-color: #ffffff #555555 #555555 #ffffff; box-sizing: border-box; }
+.mc-cbar.off { cursor: default; }
+.mc-cbar.off i { background: #8b8b8b; border-color: #a0a0a0 #6a6a6a #6a6a6a #a0a0a0; }
 .mc-csearchin { width: 100%; box-sizing: border-box; height: 24px; margin-bottom: 6px; background: #8b8b8b; border: 2px solid; border-color: #373737 #fff #fff #373737; color: #26261e; font: inherit; font-size: 12px; padding: 0 8px; outline: none; }
 /* the destroy-item slot, drawn rather than set in an emoji nobody is guaranteed to have */
 .mc-slot.ctrash { background-color: #7d5a5a; border-color: #4a2f2f #d8a8a8 #d8a8a8 #4a2f2f; margin-left: 14px; position: relative; }

@@ -22,8 +22,10 @@
     var DAY_MS = 7 * 60000, NIGHT_MS = 5 * 60000, CYCLE = DAY_MS + NIGHT_MS;
     var GRAV = 32, JUMP = 8.94, TERMV = 78;
     var WALK = 4.317, SPRINT = 5.612, SNEAK = 1.31, SWIM = 2.2;
-    var FLY = 10.89, FLY_SPRINT = 21.78, FLY_SINK = 0.4;   // creative flight, at the real game's speeds
-    var FLY_VY = 7.5;                      // Space/Shift climb rate while flying
+    var FLY = 10.89, FLY_SPRINT = 21.78;   // creative flight, at the real game's speeds
+    var FLY_VY = 7.5, SPECT_VY = 11;       // Space/Shift climb rate; spectators are quicker
+    var FLY_TAP = 350;                     // double-tap window, the game's 7 ticks
+    var CREATIVE_DIG_CD = 0.3;             // held-button break period: destroyDelay 5 + the tick it is tested on
     var REACH = 5;
     var PW = 0.6, PH = 1.8, EYE = 1.62;   // player box + eye height
 
@@ -75,7 +77,7 @@
         if (S.gm == null) S.gm = 0;
         // only creative and spectator can be airborne, so a stale flag from a
         // gamemode-swapped save must not leave a survival player hovering
-        if (S.gm !== 1 && S.gm !== 3) S.fly = false;
+        if (!mayFly()) S.fly = false;
         if (S.diff == null) S.diff = 2;
         if (!S.eff || typeof S.eff !== 'object' || S.eff instanceof Array) S.eff = {};
         if (!S.rules || typeof S.rules !== 'object' || S.rules instanceof Array) S.rules = {};
@@ -2102,21 +2104,34 @@
         // but keep gravity + collision live so the body still settles
         var k = (RT.panel || RT.chat) ? EMPTY_KEYS : RT.keys, water = inFluid(WATER), lava = inFluid(LAVA), fluid = water || lava;
         var fwd = (k.w ? 1 : 0) - (k.s ? 1 : 0), str = (k.d ? 1 : 0) - (k.a ? 1 : 0);
-        var sneak = k.shift && !fluid;
+        // Shift means "descend" while flying, not "crouch": no sneak speed, no
+        // ledge guard, and it does NOT cancel a sprint, so you really can
+        // sprint-fly diagonally downward at full tilt.
+        var sneak = k.shift && !fluid && !RT.fly;
         // an empty stomach only stops a survival sprint — creative can always run
         RT.sprint = RT.sprint && fwd > 0 && (S.food > 6 || mayFly()) && !sneak;
         var sp = fluid ? SWIM : sneak ? SNEAK : RT.sprint ? SPRINT : WALK;
         if (lava) sp *= 0.45;
         // flight replaces the walk table outright rather than scaling it:
-        // 10.89 m/s, doubled while sprinting, throttled while sinking
-        if (RT.fly) sp = (RT.sprint ? FLY_SPRINT : FLY) * (k.shift ? FLY_SINK : 1);
+        // 10.89 m/s, doubled while sprinting, and unchanged by the descent
+        if (RT.fly) sp = RT.sprint ? FLY_SPRINT : FLY;
         sp *= 1 + 0.2 * effLvl('speed') - 0.15 * effLvl('slowness');   // MC's ±20%/−15% per level
         if (sp < 0.05) sp = 0.05;
         var len = Math.sqrt(fwd * fwd + str * str) || 1;
         var mx = (fwd / len) * Math.sin(S.yaw) + (str / len) * Math.cos(S.yaw);
         var mz = (fwd / len) * -Math.cos(S.yaw) + (str / len) * Math.sin(S.yaw);
         var dx = mx * sp * dt, dz = mz * sp * dt;
-        if (fluid) {
+        /* Flight is tested FIRST. A flying player is not affected by fluids at
+           all in the real game — no buoyancy, no sinking, no lava slowdown —
+           and does not grab ladders. With the fluid branch first, flying into a
+           lake made you bob helplessly at swim speed. */
+        if (RT.fly) {
+            /* creative/spectator flight: no gravity, Space rises, Shift sinks,
+               and letting go parks you in the air instead of dropping you */
+            var climb = (k[' '] ? 1 : 0) - (k.shift ? 1 : 0);
+            RT.vy = climb * (isSpectator() ? SPECT_VY : FLY_VY);
+            RT.fallY = S.py;
+        } else if (fluid) {
             RT.vy += -GRAV * 0.18 * dt;
             if (k[' ']) RT.vy = Math.min(RT.vy + GRAV * 0.5 * dt, lava ? 1.6 : 3.2);
             RT.vy *= Math.pow(0.42, dt * 3);
@@ -2128,12 +2143,6 @@
             if (RT.vy < -2) RT.vy = -2;
             if (k.w || k[' ']) RT.vy = 3;
             else if (k.shift) RT.vy = 0;
-            RT.fallY = S.py;
-        } else if (RT.fly) {
-            /* creative/spectator flight: no gravity, Space rises, Shift sinks,
-               and letting go parks you in the air instead of dropping you */
-            var climb = (k[' '] ? 1 : 0) - (k.shift ? 1 : 0);
-            RT.vy = climb * (isSpectator() ? 11 : FLY_VY);
             RT.fallY = S.py;
         } else {
             RT.vy -= GRAV * dt;
@@ -2456,13 +2465,21 @@
        once. Holding the button is still rate-limited by RT.digCd — the real
        game's startDestroyBlock ignores the delay while continueDestroyBlock
        obeys it, which is why click-spam out-mines a held button. */
+    /* A sword in creative cannot break a block at all — not even a torch. It
+       still swings and still hits mobs at full damage; the block behind them is
+       simply immune. (SwordItem.canAttackBlock returns !isCreative.) */
+    function swordHeld() {
+        var h = held();
+        return !!(h && I[h.id] && I[h.id].tool && I[h.id].tool.k === 'sword');
+    }
     function creativeInstaBreak() {
         if (!instaBuild() || RT.dead || RT.panel || RT.paused || RT.chat) return;
         if (entRay()) return;                  // that was a swing at a mob
+        if (swordHeld()) return;
         var t = RT.target;
         if (!t) return;
         breakBlock(t.x, t.y, t.z);
-        RT.digT = 0; RT.digAt = null; RT.digCd = 0.25;
+        RT.digT = 0; RT.digAt = null; RT.digCd = CREATIVE_DIG_CD;
     }
     function digTick(dt) {
         if (!RT.mouse.l || RT.dead || RT.panel || RT.paused || RT.chat) { RT.digT = 0; return; }
@@ -2486,9 +2503,11 @@
         if (RT.digCd > 0) return;
         RT.digT += dt;
         RT.swing = 0.25;
+        if (instaBuild() && swordHeld()) return;   // a creative sword never lands on the block
         if (RT.digT >= RT.digNeed) {
             breakBlock(t.x, t.y, t.z);
-            RT.digT = 0; RT.digAt = null; RT.digCd = 0.25;
+            RT.digT = 0; RT.digAt = null;
+            RT.digCd = instaBuild() ? CREATIVE_DIG_CD : 0.25;
         }
     }
 
@@ -2615,7 +2634,9 @@
        survival — which may not conjure anything — comes away empty-handed. */
     function pickBlock() {
         if (!RT.ready || RT.dead || RT.panel || RT.paused || RT.chat) return;
-        var f = entRay(), id = null, i;
+        // an entity only yields its egg in creative; survival middle-click on a
+        // mob does nothing at all
+        var f = instaBuild() ? entRay() : null, id = null, i, s;
         if (f) id = 'egg_' + f.k;
         else if (RT.target) id = PLACE2ITEM[RT.target.b];
         if (id == null || !I[id]) return;
@@ -2627,8 +2648,10 @@
             return;
         }
         if (!instaBuild()) return;
+        // an empty hotbar slot wins, scanning forward from the one you're holding
+        // and wrapping — the real game reaches for the nearest free finger, not slot 1
         var slot = -1;
-        for (i = 0; i < 9; i++) if (!S.inv[i]) { slot = i; break; }   // an empty hotbar slot wins
+        for (i = 0; i < 9; i++) { s = (S.sel + i) % 9; if (!S.inv[s]) { slot = s; break; } }
         if (slot < 0) {
             slot = S.sel;
             var old = S.inv[slot];
@@ -3612,8 +3635,8 @@
        flags so nothing can paint one of them back on the next tick. */
     function paintHudMode() {
         if (!RT || !RT.el) return;
-        RT.el.classList.toggle('mc-nohud', S.gm === 1 || S.gm === 3);
-        RT.el.classList.toggle('mc-spect', S.gm === 3);
+        RT.el.classList.toggle('mc-nohud', invulnerable());
+        RT.el.classList.toggle('mc-spect', isSpectator());
     }
 
     /* ── toasts + achievements ──────────────────────────────── */
@@ -4058,6 +4081,7 @@
         if (i === RT.cTab) return;
         RT.cTab = i;
         RT.cScroll = 0;
+        if (CTABS[i].id === 'search') RT.cSearch = '';   // the real one opens the box empty
         creativeRefresh();
         creativeRender();
         snd('click');
@@ -4221,12 +4245,13 @@
             if (cs) cs.textContent = anv ? ('Cost: ' + anv.cost + (S.xpl >= anv.cost ? '' : ' (need level ' + anv.cost + ')')) : '';
         }
         if (RT.panel.kind === 'creative') {
-            var th = wrap.querySelector('.mc-cbar i');
+            var bar = wrap.querySelector('.mc-cbar'), th = bar && bar.querySelector('i');
             if (th) {
                 var rows = creativeRows(), mx = creativeMaxScroll();
                 var hp = Math.max(14, CROWS / rows * 100);
                 th.style.height = hp + '%';
                 th.style.top = (mx ? (RT.cScroll / mx) * (100 - hp) : 0) + '%';
+                bar.classList.toggle('off', mx === 0);   // greyed out when there is nothing to scroll
             }
         }
     }
@@ -4334,7 +4359,19 @@
         if (g === 'cout') { takeCraft(shift); paintPanel(); paintHotbar(); return; }
         if (g === 'anvOut') { applyAnvil(); return; }
         if (g === 'creat') { creativeClick(idx, right, shift); return; }
-        if (g === 'ctrash') { if (RT.cur) { RT.cur = null; snd('click'); } paintPanel(); paintHotbar(); return; }
+        if (g === 'ctrash') {
+            // shift-clicking the bin empties everything you own, the way the real
+            // one does. Gated on creative — it is the most destructive click here.
+            if (shift && instaBuild()) {
+                for (var z = 0; z < 36; z++) S.inv[z] = null;
+                for (z = 0; z < 4; z++) S.armor[z] = null;
+                for (z = 0; z < 9; z++) RT.craft[z] = null;
+                paintVitals(); paintArmorBar();
+            }
+            RT.cur = null;
+            snd('click'); paintPanel(); paintHotbar();
+            return;
+        }
         if (shift) { quickMove(g, idx); paintHotbar(); return; }
         var grp = slotGroup(g), st = grp.get(idx);
         if (RT.cur && !slotAccepts(g, idx, RT.cur)) return;   // wrong item for this special slot
@@ -4380,12 +4417,31 @@
             e.preventDefault(); e.stopPropagation();
         }
         function barAt(t) { return t && t.closest ? t.closest('.mc-cbar') : null; }
+        /* Middle-click any slot in creative and you get a full stack of whatever
+           is in it, leaving the slot alone. Gated on instaBuild(): this listener
+           is attached once and serves every panel kind, so ungated it would be an
+           item duplicator inside a survival chest. */
+        function cloneSlot(e) {
+            if (!instaBuild()) return;
+            var el = e.target;
+            while (el && el !== wrap && el.getAttribute && !el.getAttribute('data-g')) el = el.parentNode;
+            if (!el || el === wrap || !el.getAttribute) return;
+            var g = el.getAttribute('data-g');
+            if (g === 'ctrash' || g === 'anvOut') return;
+            var grp = g === 'creat' ? slotGroup('creat') : slotGroup(g);
+            var st = grp ? grp.get(el.getAttribute('data-i') | 0) : null;
+            if (!st) return;
+            RT.cur = creativeStack(st.id);
+            snd('click'); paintPanel();
+        }
         wrap.addEventListener('mousedown', function (e) {
+            if (e.button === 1) { cloneSlot(e); e.preventDefault(); e.stopPropagation(); return; }
             if (e.button !== 0) return;
             var bar = barAt(e.target);
             if (bar) { RT.cDrag = 1; creativeBarTo(bar, e.clientY); e.preventDefault(); e.stopPropagation(); return; }
             handler(e);
         });
+        wrap.addEventListener('auxclick', function (e) { if (e.button === 1) e.preventDefault(); });
         wrap.addEventListener('contextmenu', handler);
         wrap.addEventListener('mousemove', function (e) {
             if (RT.cDrag) { var bar = wrap.querySelector('.mc-cbar'); if (bar) creativeBarTo(bar, e.clientY); }
@@ -5804,7 +5860,7 @@
                 // the real game clears the double-tap window the moment it fires, so a
                 // third quick tap opens a fresh one instead of toggling straight back —
                 // without that, mashing Space makes flight flicker on and off
-                if (RT.lastSp && performance.now() - RT.lastSp < 320) { setFly(!RT.fly); RT.lastSp = 0; }
+                if (RT.lastSp && performance.now() - RT.lastSp < FLY_TAP) { setFly(!RT.fly); RT.lastSp = 0; }
                 else RT.lastSp = performance.now();
             }
             if (k === ' ') e.preventDefault();
