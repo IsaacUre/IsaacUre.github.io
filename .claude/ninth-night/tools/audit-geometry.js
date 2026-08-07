@@ -36,7 +36,7 @@ function grab(name) {
     /* the literals are plain data plus function-valued talk() fields, so
        evaluating them standalone is safe enough and far more honest than
        a regex. S and sSave are stubbed for the talk bodies. */
-    var S = { heard: {}, seen: {}, frags: {} };
+    var S = { heard: {}, seen: {}, frags: {}, a3: {} };
     var sSave = function () {};
     return eval('(' + src.slice(start, j + 1) + ')');   // eslint-disable-line no-eval
 }
@@ -201,8 +201,8 @@ Object.keys(PLACES).forEach(function (id) {
         if (blocked(p, px, py, R)) {
             bad(id + ': arriving from ' + oid + ' lands inside a prop at ' + px.toFixed(2) + ',' + py.toFixed(2) + '. unstick() should catch it, but do not rely on that.');
         }
-        if (!back) {
-            bad(id + ': you can walk here from ' + oid + ' but there is no exit back. One way trip.');
+        if (!back && !p.oneway) {
+            bad(id + ': you can walk here from ' + oid + ' but there is no exit back. One way trip. (Set oneway:1 if a script returns the player.)');
         }
     });
 
