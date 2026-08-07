@@ -1657,7 +1657,7 @@ function poemStart() { RT.poem = { lines: [], cur: [], blots: 0 }; RT.poemPlace 
    place you said it, and you start a clean page wherever you turn up. */
 function poemStash() {
     if (RT.poem && RT.poem.cur.length) poemBreak(null);
-    if (RT.poem && RT.poem.lines.length && RT.poemPlace) { S.poems[RT.poemPlace] = RT.poem; sSave(); }
+    if (RT.poem && RT.poem.lines.length && RT.poemPlace) poemKeep(RT.poemPlace, RT.poem);
     poemStart();
 }
 function poemSay(word, fam, couplet) {
@@ -1674,9 +1674,27 @@ function poemSwallow(word) {
     RT.poem.cur.push({ w: word, fam: WORDS[word] || null, cut: 1 });
 }
 function poemBreak(fam) {
-    if (!RT.poem || !RT.poem.cur.length) return;
+    if (!RT.poem) return;
+    if (!RT.poem.cur.length) {
+        // the eighth word already forced the break, so the rhyme you then
+        // pressed had nothing left to close. It still ended that line.
+        var last = RT.poem.lines[RT.poem.lines.length - 1];
+        if (fam && last && !last.end) last.end = fam;
+        return;
+    }
     RT.poem.lines.push({ ws: RT.poem.cur, end: fam || null });
     RT.poem.cur = [];
+}
+/* The book keeps a page, not a transcript: a long grind in one room would
+   otherwise put hundreds of lines in localStorage forever. Blots are
+   recounted from the lines that survive, or the kept page scores worse than
+   the one the game just read out loud. */
+function poemKeep(place, p) {
+    if (!place || !p || !(p.lines || []).length) return;
+    var lines = p.lines.slice(-12), blots = 0;
+    lines.forEach(function (L) { L.ws.forEach(function (w) { if (w.cut) blots++; }); });
+    S.poems[place] = { lines: lines, blots: blots };
+    sSave();
 }
 function poemWords(p) {
     var n = 0;
@@ -1733,11 +1751,8 @@ function poemClose() {
     poemBreak(null);
     var p = RT.poem;
     if (!p.lines.length) { poemStart(); return; }
-    // the book keeps a page, not a transcript: a long grind in one room
-    // would otherwise put hundreds of lines in localStorage forever
-    S.poems[RT.place] = { lines: p.lines.slice(-12), blots: p.blots };
-    sSave();
-    var sc = poemScore(p), shown = p.lines.slice(-4);
+    poemKeep(RT.place, p);
+    var sc = poemScore(S.poems[RT.place] || p), shown = p.lines.slice(-4);
     shown.forEach(function (L, i) {
         beat(0.5 + i * 0.9, function () {
             say(L.ws.map(function (w) {
@@ -1756,7 +1771,7 @@ function poemClose() {
    small, and it leaves a syllable stuck to whatever it touched. The
    word is whatever the line dealt you. */
 function doCall() {
-    if (!RT || RT.dead || RT.devOpen || RT.dialog || RT.mapOpen) return;
+    if (!RT || RT.dead || RT.devOpen || RT.dialog || RT.mapOpen || RT.panel) return;
     if (RT.winded > 0) { hudNudge('breath'); return; }
     if (RT.callCd > 0) return;
     var st = stats();
@@ -1922,7 +1937,10 @@ function rhymeKeys() { return ['1', '2', '3', '4', '5']; }
    lot over, then close -ark on five instead of two. Bad rhyme, good
    poem. */
 function doRhyme(fam) {
-    if (!RT || RT.dead || RT.devOpen || RT.dialog || RT.mapOpen) return;
+    // RT.panel matters here in a way it never did for the old doAnswer: that
+    // was on a mouse button, and a panel physically covers the canvas. This
+    // is on the number row, and keydown is on the root.
+    if (!RT || RT.dead || RT.devOpen || RT.dialog || RT.mapOpen || RT.panel) return;
     if (!FAMS[fam]) return;
     if (!rhymeReady(fam)) {
         hudNudge('rhyme:' + fam);
@@ -3311,8 +3329,12 @@ function snd(o) {
    The family is read out of game state here rather than passed in,
    so no call site anywhere else in the file has to change. */
 function famOf(kind) {
-    if (kind === 'answer' || kind === 'slant') return typeof answerFam === 'function' ? answerFam() : 'eat';
-    return typeof callFam === 'function' ? callFam() : 'eat';
+    // S.call and S.answer were the verbs when this was written. They are not
+    // any more: the line deals the word and the number row holds the sound,
+    // so reading the old slots gave every Call, every landing and every
+    // Answer in the game the -eat voice. Read what was actually said.
+    if (kind === 'answer' || kind === 'slant') return RT && RT.lastRhyme || 'eat';
+    return RT && RT.lastSaidFam || 'eat';
 }
 function voxCall(f) {
     if (f === 'eat')       { snd({ bus: 'voice', type: 'sawtooth', f0: 300, f1: 168, dur: 0.14, vol: 0.075, cut: 1500, cut1: 430, q: 5 });
@@ -3846,15 +3868,29 @@ function updateLine() {
     }
     var rz = RT.root.querySelector('.nn-rhymes');
     if (!rz) return;
-    var keys = rhymeKeys(), sig = [];
-    var html = FAM_IDS.map(function (fam, i) {
-        var have = rhymeReady(fam), n = have ? boardCount(fam) : 0, f = FAMS[fam];
-        sig.push(fam + (have ? 1 : 0) + n);
-        return '<button class="nn-rh' + (have ? '' : ' off') + (n ? ' live' : '') +
-               '" data-nn="rhyme:' + fam + '" type="button" style="--wc:' + f.col + '" title="' + esc(f.n + ' · ' + f.d) + '">' +
-               '<u>' + keys[i] + '</u><b>' + f.tag + '</b><span>' + (have ? (n || '') : '') + '</span></button>';
-    }).join('');
-    if (rz._k !== sig.join('|')) { rz._k = sig.join('|'); rz.innerHTML = html; }
+    var keys = rhymeKeys();
+    // Built once, then updated in place. Rebuilding from innerHTML every time
+    // the board count changed threw away hudNudge's `deny` flash mid
+    // animation, and the board count changes several times a second in a
+    // fight: the act's last-resort hint, which flashes the -ill pip and tells
+    // you the key outright, never survived long enough to be seen.
+    if (!rz.children.length) {
+        rz.innerHTML = FAM_IDS.map(function (fam, i) {
+            var f = FAMS[fam];
+            return '<button class="nn-rh" data-nn="rhyme:' + fam + '" type="button" style="--wc:' + f.col +
+                   '" title="' + esc(f.n + ' · ' + f.d) + '">' +
+                   '<u>' + keys[i] + '</u><b>' + f.tag + '</b><span></span></button>';
+        }).join('');
+    }
+    FAM_IDS.forEach(function (fam, i) {
+        var b = rz.children[i]; if (!b) return;
+        var have = rhymeReady(fam), n = have ? boardCount(fam) : 0;
+        b.classList.toggle('off', !have);
+        b.classList.toggle('live', !!n);
+        var txt = have ? (n ? String(n) : '') : '';
+        var sp = b.lastChild;
+        if (sp && sp.textContent !== txt) sp.textContent = txt;
+    });
 }
 function updateHud(dt) {
     if (!RT) return;
@@ -3968,14 +4004,23 @@ function fillBook() {
     /* And the other ballad. Four hundred years of careful verse on one
        page and, on the next, whatever came out of your mouth in a barn.
        Same book on purpose. */
-    var mine = Object.keys(S.poems || {});
-    if (RT.poem && RT.poem.lines.length) { S.poems[RT.place] = RT.poem; if (mine.indexOf(RT.place) < 0) mine.push(RT.place); }
-    html += '<h4>WHAT YOU HAVE BEEN SAYING</h4>';
-    if (!mine.length) {
+    // NOT written into S: a render function that assigns the live RT.poem
+    // into the save aliases them together, so the graded page the game kept
+    // is replaced by whatever scrap is in your mouth, the 12 line cap stops
+    // applying, and every later sSave re-serialises a growing transcript.
+    var live = (RT.poem && RT.poem.lines.length) ? RT.poem : null;
+    // only hide the current place's kept page when there is a live one
+    // standing in for it, or clearing a fight and opening the book straight
+    // afterwards shows you nothing at all
+    var mine = Object.keys(S.poems || {}).filter(function (id) { return !live || id !== RT.place; });
+    mine.sort(function (a2, b2) { return (a2 === RT.place ? -1 : b2 === RT.place ? 1 : 0); });
+    if (live) html += '<h4>WHAT YOU HAVE BEEN SAYING</h4><div class="nn-poem"><header>' +
+                      esc(place().n) + ' <i>· still going</i></header>' + poemHtml(live) + '</div>';
+    else html += '<h4>WHAT YOU HAVE BEEN SAYING</h4>';
+    if (!mine.length && !live) {
         html += '<p class="nn-note dim">Nothing yet. Every word you say out loud goes down here, and every sound you close ends a line. That is all a stanza is.</p>';
     } else {
         // the place you are in first, then the rest, newest work at the top
-        mine.sort(function (a2, b2) { return (a2 === RT.place ? -1 : b2 === RT.place ? 1 : 0); });
         mine.slice(0, 4).forEach(function (id) {
             var pm = S.poems[id];
             if (!pm || !(pm.lines || []).length) return;
@@ -6155,6 +6200,9 @@ function devDemo() {
 /* ─────────────── lifecycle ─────────────── */
 function close() {
     var hrs = RT ? (Date.now() - RT.started) / 3600000 : 0;
+    // a doorway keeps the page. The close button has to as well, or losing
+    // the verse depends on whether you happened to walk somewhere first.
+    if (RT) { try { poemStash(); } catch (e) {} }
     if (RT) {
         cancelAnimationFrame(RT.raf);
         RT.timers.forEach(function (t) { clearTimeout(t); });
