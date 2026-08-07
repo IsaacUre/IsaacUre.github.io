@@ -1269,6 +1269,7 @@ function init(el) {
         items: { freeSlant: 0, tack: 0, atShop: false },
         world: { cam: { x: 0, y: 0 }, npc: {}, seenLine: null }
     };
+    RT.cx.imageSmoothingEnabled = false;    // people are pixels; never interpolate them
     wireInput(root, cv);
     wireHud(root);
     refreshStanzaKeys();
@@ -1299,6 +1300,7 @@ function init(el) {
                          foes: f.length, stacks: f.map(function (q) { return q.stacks.length; }), coin: S.coin,
                          call: S.call, answer: S.answer, dead: RT.dead, phase: RT.phase, wave: RT.wave, dilate: RT.dilate };
             },
+            sprites: function () { return Object.keys(SPR).length; },   // baked figures held
             S: function () { return S; }, RT: function () { return RT; }, TUNE: TUNE
         };
     }
@@ -1472,8 +1474,320 @@ function revive() {
     say('Take it from the top.', 'dim');
 }
 
+/* ═══════════════ PEOPLE ═══════════════
+   Everyone in this town used to be a tapered quad with a circle on
+   top. No face, no hands, no clothes, and the only way to tell the
+   widow from the chandler was the colour of the quad.
+
+   They are sprites now. A sprite is rows of characters, one character
+   per pixel, indexing a palette. PXS is how many screen pixels a
+   sprite pixel occupies, so an adult is 16x20 authored and 32x40 on
+   the canvas, which is the height the old quads were.
+
+   Baking. Filling 320 rects per figure per frame, for a dozen figures,
+   is not free, so each sprite is drawn once into an offscreen canvas
+   and kept. The cache key carries the palette, so recolouring is just
+   another entry. Unlike the audio rig this lives at module scope on
+   purpose: sprites hold no context and no runtime state, they are
+   pixels, and they are still correct after close() throws RT away.
+
+   Palettes. NPCS already stored three colours per person and those
+   still drive everything: coat, trim, skin. The rest of the ramp is
+   derived, so a new person needs no new art.
+
+   o  outline      k  coat shadow   c  coat        C  coat trim
+   s  skin         S  skin shade    T  deep shade  h  hair   H  hair lit
+   e  eye          w  white         b  boot        m  brass  M  brass lit
+   f  cloth        n  wood          N  wood lit    r  red    g  green   */
+var PXS = 2;
+function pxShade(hex, f) {
+    var v = hex2rgb(hex).split(',');
+    function q(i) { return clamp(Math.round(+v[i] * f), 0, 255); }
+    return 'rgb(' + q(0) + ',' + q(1) + ',' + q(2) + ')';
+}
+function pxPal(coat, trim, skin, hair, extra) {
+    var p = {
+        o: '#17121e',
+        k: pxShade(coat, 0.62), c: coat, C: trim, L: pxShade(trim, 1.3),
+        s: skin, S: pxShade(skin, 0.74), T: pxShade(skin, 0.55),
+        h: hair || '#2a2028', H: pxShade(hair || '#2a2028', 1.5),
+        e: '#100c14', w: '#e4dcd0', b: pxShade(coat, 0.45),
+        m: '#c9a94a', M: '#ffe66e', f: '#d8c8a8',
+        n: '#6a5a3a', N: '#9a8258', r: '#8a3a3a', g: '#6a7a4a'
+    };
+    if (extra) for (var q in extra) p[q] = extra[q];
+    return p;
+}
+var SPR = {};
+function bake(key, rows, p) {
+    var c = SPR[key];
+    if (c) return c;
+    var h = rows.length, w = rows[0].length, i, j;
+    c = document.createElement('canvas');
+    c.width = w * PXS; c.height = h * PXS;
+    var g = c.getContext('2d');
+    for (i = 0; i < h; i++) {
+        var row = rows[i];
+        for (j = 0; j < row.length; j++) {
+            var col = p[row.charAt(j)];
+            if (!col) continue;                       // '.' and anything unmapped is air
+            g.fillStyle = col;
+            g.fillRect(j * PXS, i * PXS, PXS, PXS);
+        }
+    }
+    SPR[key] = c;
+    return c;
+}
+/* x is the centre of the figure, y is the ground under its feet.
+   Both are rounded: half a pixel of drift and the whole grid softens.
+   Smoothing is turned off once when the context is made rather than
+   here, so this does not leave a flag flipped on a shared context. */
+function blit(cx, spr, x, y) {
+    cx.drawImage(spr, Math.round(x - spr.width / 2), Math.round(y - spr.height));
+}
+
+/* Rows 0-6 head, 7 neck, 8 lit shoulders, 9-11 chest with the arms on
+   the silhouette edge and the hands at 11, 12 belt, 13-15 coat. The
+   top of the head and the shoulders always carry the light tone: this
+   town is lit by lanterns held low, and a rim on top is what keeps a
+   dark figure off dark ground. */
+var ADULT_TOP = [
+    '......oooo......',
+    '.....ohHHho.....',
+    '....ohhHhhho....',
+    '....ohssssho....',
+    '....osesseso....',
+    '....osssSsso....',
+    '.....osSsso.....',
+    '.....oSssSo.....',
+    '..occCCCCCCcco..',
+    '..okcCffffCcko..',
+    '..okcCCffCCcko..',
+    '..oskcCCCCckso..',
+    '..okbbbmMbbbko..',
+    '..okcccckcccko..',
+    '..okcccckcccko..',
+    '...okccccccko...'
+];
+/* three pairs of legs under the same body: standing, passing, mid
+   stride. Those three and the bob the code already had are a walk. */
+var LEGS_STAND = ['...occcooccco...', '...okkkookkko...', '...obbboobbbo...', '...oooooooooo...'];
+var LEGS_PASS = ['....occoocco....', '....okkookko....', '....obboobbo....', '....oooooooo....'];
+var LEGS_WIDE = ['..occcooooccco..', '..okkkooookkko..', '..obbboooobbbo..', '..ooooo..ooooo..'];
+function fig(top, legs) { return top.concat(legs); }
+
+/* Seven people, not one person in seven colours. Same frame, so the
+   walk is shared; different half, the half you actually look at. */
+
+/* Bern. Thirty years in the same part, and he loses that hat every
+   single year. The brim is wide enough to lose his eyes under. */
+var BERN_TOP = [
+    '................',
+    '.....onnnno.....',
+    '....onnnnnno....',
+    '..onnnnnnnnnno..',
+    '....osesseso....',
+    '....osssSsso....',
+    '....owwwwwwo....',
+    '.....owwwwo.....',
+    '..occCCCCCCcco..',
+    '..okcCffffCcko..',
+    '..okcCCffCCcko..',
+    '..oskcCCCCckso..',
+    '..okbbbmMbbbko..',
+    '..okcccckcccko..',
+    '..okcccckcccko..',
+    '...okccccccko...'
+];
+/* The widow. Headscarf, and nothing showing at the throat: she is not
+   dressed for company, she is dressed to go out and set a lamp down. */
+var WIDOW_TOP = [
+    '................',
+    '.....oCCCCo.....',
+    '....oCCCCCCo....',
+    '....oCssssCo....',
+    '....osesseso....',
+    '....osssSsso....',
+    '....oCsSsCo.....',
+    '....oCCCCCCo....',
+    '..occCCCCCCcco..',
+    '..okcCkkkkCcko..',
+    '..okcCkkkkCcko..',
+    '..oskcCkkCckso..',
+    '..okbbbmMbbbko..',
+    '..okcccckcccko..',
+    '..okcccckcccko..',
+    '...okccccccko...'
+];
+/* The shepherd. Flat cap down, heavy collar up. */
+var SHEP_TOP = [
+    '................',
+    '................',
+    '...onnnnnnno....',
+    '..onnnnnnnnno...',
+    '....ohssssho....',
+    '....osesseso....',
+    '....osssSsso....',
+    '.....oSssSo.....',
+    '..occCCCCCCcco..',
+    '..okCCCffCCCko..',
+    '..okcCCffCCcko..',
+    '..oskcCCCCckso..',
+    '..okbbbmMbbbko..',
+    '..okcccckcccko..',
+    '..okcccckcccko..',
+    '...okccccccko...'
+];
+/* The busker. A band round the head and patches where the coat gave
+   out. Nothing he owns matches anything else he owns. */
+var BUSK_TOP = [
+    '......oooo......',
+    '.....ohhhho.....',
+    '....ohhhhhho....',
+    '....orrrrrro....',
+    '....osesseso....',
+    '....osssSsso....',
+    '.....osSsso.....',
+    '.....oSssSo.....',
+    '..occCCCCCCcco..',
+    '..okgCffffCcko..',
+    '..okcCCffCCgko..',
+    '..oskcCCCCckso..',
+    '..okbbbmMbbbko..',
+    '..okccggkcccko..',
+    '..okcccckcggko..',
+    '...okccccccko...'
+];
+/* Hal, at the fence, arms folded. He has stood like that all evening
+   and he will be standing like that when you come back. */
+var HAL_TOP = [
+    '................',
+    '................',
+    '....okkkkkko....',
+    '...okkkkkkkko...',
+    '....ohssssho....',
+    '....osesseso....',
+    '....osssSsso....',
+    '.....oSssSo.....',
+    '..occCCCCCCcco..',
+    '..okcCCCCCCcko..',
+    '..okcCssssCcko..',
+    '..okcsssssscko..',
+    '..okbbbmMbbbko..',
+    '..okcccckcccko..',
+    '..okcccckcccko..',
+    '...okccccccko...'
+];
+/* The chandler. The apron is the whole of the man. */
+var CHAN_TOP = [
+    '......oooo......',
+    '.....ohHHho.....',
+    '....ohhHhhho....',
+    '....ohssssho....',
+    '....osesseso....',
+    '....osssSsso....',
+    '.....osSsso.....',
+    '.....oSssSo.....',
+    '..occCCCCCCcco..',
+    '..okcCfCCfCcko..',
+    '..okcCffffCcko..',
+    '..oskCffffCkso..',
+    '..okbCffffCbko..',
+    '..okcCffffCcko..',
+    '..okcCffffCcko..',
+    '...okCffffCko...'
+];
+/* the child, whole, because a child is not an adult with short legs */
+var CHILD_SPR = [
+    '................',
+    '................',
+    '................',
+    '................',
+    '.....oooo.......',
+    '....ohHhho......',
+    '....ohsssho.....',
+    '....oseseso.....',
+    '.....ossso......',
+    '.....oSsSo......',
+    '...occCCCcco....',
+    '...oskCCCkso....',
+    '....obmmbo......',
+    '...okcccccko....',
+    '....okcccko.....',
+    '....occooco.....',
+    '....okkooko.....',
+    '....obboobo.....',
+    '....oooooooo....',
+    '................'
+];
+/* the audience: smaller, because they are the back of the room */
+var FOLK_TOP = [
+    '....oooo....',
+    '...ohhhho...',
+    '...oseeso...',
+    '...osssso...',
+    '....oSSo....',
+    '..occCCcco..',
+    '..okcCCcko..',
+    '..okcCCcko..',
+    '..oskCCkso..',
+    '..okbmmbko..'
+];
+var FOLK_LEGS = ['..okccccko..', '..okccccko..', '..occoocco..', '..obboobbo..', '..oooooooo..'];
+var FOLK_LAP = ['..okkkkkko..', '..obboobbo..', '..oooooooo..'];
+
+/* Props live beside the person instead of being crammed into a frame
+   sixteen wide. A crook is taller than a shepherd, and that is the
+   point of a crook. */
+var PROP_CROOK = [
+    '..ooo.', '.oNNNo', 'oNo.oN', 'oN..oN', 'oNo.oN', '.oNNo.',
+    '..No..', '..No..', '..No..', '..No..', '..No..', '..No..',
+    '..No..', '..No..', '..No..', '..No..', '..No..', '..oo..'
+];
+var PROP_LAMP = ['..o..', '.omo.', 'omMmo', 'oMwMo', 'oMwMo', 'omMmo', '.ooo.'];
+var PROP_LUTE = ['....oo.', '...oNo.', '...oNo.', '..oNNo.', '.oNffNo', 'oNfffNo', 'oNfffNo', '.oNNNo.'];
+/* the rope at the top of its arc, wide enough to clear her and hemp
+   coloured, because a bright loop over a child's head reads as a halo */
+var PROP_ROPE = [
+    '....NNNN....',
+    '..NN....NN..',
+    '.N........N.',
+    'N..........N',
+    'N..........N',
+    '.N........N.'
+];
+
+var NPC_TOP = { bern: BERN_TOP, widow: WIDOW_TOP, shepherd: SHEP_TOP, busker: BUSK_TOP, hal: HAL_TOP, chandler: CHAN_TOP };
+/* what each of them is carrying, and where it hangs off them */
+var NPC_PROP = {
+    shepherd: { s: PROP_CROOK, k: 'crook', dx: 13, dy: 2 },
+    widow: { s: PROP_LAMP, k: 'lamp', dx: 13, dy: -12, glow: 1 },
+    busker: { s: PROP_LUTE, k: 'lute', dx: -13, dy: -14 },
+    child: { s: PROP_ROPE, k: 'rope', dx: 0, dy: -17 }
+};
+function npcPal(n) { return pxPal(n.col[0], n.col[1], n.col[2], n.hair || '#2a2028'); }
+
 /* the actor: a young Emberwright in a tin crown, carrying a lantern
    that is the most powerful object in the world and also a prop. */
+var PLAYER_TOP = [
+    '....M.M..M.M....',
+    '....ommmmmmo....',
+    '.....ohhhho.....',
+    '....ohssssho....',
+    '....osesseso....',
+    '....osssSsso....',
+    '.....osSsso.....',
+    '.....oSssSo.....',
+    '..occCCCCCCcco..',
+    '..okcCffffCcko..',
+    '..okcCCffCCcko..',
+    '..oskcCCCCckso..',
+    '..okbbbmMbbbko..',
+    '..okcccckcccko..',
+    '..okcccckcccko..',
+    '...okccccccko...'
+];
+var P_PLAYER = null;                 // built on first draw, so hex2rgb exists
 function drawActor(cx) {
     var sx = isoX(RT.px, RT.py), sy = isoY(RT.px, RT.py) + TILE_H / 2;
     var bob = RT.walking ? Math.sin(RT.t * 12) * 1.8 : Math.sin(RT.t * 2.2) * 0.7;
@@ -1484,19 +1798,17 @@ function drawActor(cx) {
     cx.fillStyle = 'rgba(0,0,0,.45)'; cx.beginPath(); cx.ellipse(0, bob, 10, 4, 0, 0, TAU); cx.fill();
     cx.scale(west, 1);
     if (RT.dead) { cx.rotate(1.2); }
-    // coat
-    cx.fillStyle = '#2b2434'; cx.beginPath();
-    cx.moveTo(-7, 0); cx.lineTo(-5, -19); cx.lineTo(5, -19); cx.lineTo(7, 0); cx.closePath(); cx.fill();
-    cx.fillStyle = '#3a3048'; cx.fillRect(-5, -20, 10, 9);
-    cx.fillStyle = '#8a6a3a'; cx.fillRect(-5, -13, 10, 2);          // belt
-    // head + the tin crown
-    cx.fillStyle = '#d8b48c'; cx.beginPath(); cx.arc(0, -25, 5.4, 0, TAU); cx.fill();
-    cx.fillStyle = '#1c1620'; cx.fillRect(-4, -28, 8, 3);
-    cx.fillStyle = '#c9a94a'; cx.fillRect(-6, -31, 12, 2);
-    for (var i = 0; i < 3; i++) { cx.fillRect(-5 + i * 4, -33, 2, 2); }
+    if (!P_PLAYER) P_PLAYER = pxPal('#2b2434', '#3a3048', '#d8b48c', '#241c26');
+    /* the legs read the same walk the feet do: standing, passing, mid
+       stride, picked off the bob that is already driving the body */
+    var legs = LEGS_STAND, lk = 'S';
+    if (RT.walking && !RT.dead) {
+        if (Math.sin(RT.t * 12) > 0) { legs = LEGS_WIDE; lk = 'W'; } else { legs = LEGS_PASS; lk = 'P'; }
+    }
+    blit(cx, bake('pc' + lk, fig(PLAYER_TOP, legs), P_PLAYER), 0, 0);
     // lantern arm, rises as you cast
     var arm = lerp(0.35, -0.75, 1 - cast);
-    cx.save(); cx.translate(5, -18); cx.rotate(RT.casting ? arm : 0.35);
+    cx.save(); cx.translate(9, -21); cx.rotate(RT.casting ? arm : 0.35);
     cx.fillStyle = '#2b2434'; cx.fillRect(0, -1.5, 8, 3);
     cx.save(); cx.translate(9, 2);
     cx.fillStyle = '#6a5a3a'; cx.fillRect(-3, -8, 6, 8);
@@ -2414,22 +2726,30 @@ function onChorusDown(f) {
    Cheap shapes, strong silhouettes. The stacks floating above are
    the important part: they must read at a glance, at speed. */
 /* a person in the audience. Seated until the Verse stands them up. */
+/* the audience. Smaller than the people you can talk to, because they
+   are the back of the room, but they are people and not posts: the
+   crowd is what the whole game is about. Each one is dealt a coat out
+   of a small set off their own position, so the rows do not repeat. */
+var FOLK_COATS = [
+    ['#3a3346', '#4e465e'], ['#43384a', '#5a4c62'], ['#33384a', '#465066'],
+    ['#4a3a3a', '#63504e'], ['#38423a', '#4c5a4c'], ['#2f2b3e', '#413c54']
+];
+var FOLK_SKINS = ['#d8b48c', '#e8c8a0', '#c8a078', '#e0bc94'];
 function drawFolk(cx, f) {
-    var seat = f.seat ? 1 : 0, h = seat ? 17 : 27, w = 7;
+    var seat = f.seat ? 1 : 0;
     var sway = Math.sin(RT.t * 1.1 + f.x * 2.3) * (seat ? 0.6 : 1.4);
+    /* dealt once and kept on the foe. Deriving it from f.x every frame
+       would be fine today, because folk have spd 0 and never move, but
+       the day somebody gives the audience a shuffle it would mint a
+       new palette and a new baked canvas every frame. */
+    if (f._fv == null) f._fv = Math.abs(Math.round(f.x * 7 + f.y * 3));
+    var i = f._fv;
+    var co = f.isHal ? ['#2a2434', '#3d3350'] : FOLK_COATS[i % FOLK_COATS.length];
+    var sk = f.isHal ? '#c8b8a8' : FOLK_SKINS[(i >> 1) % FOLK_SKINS.length];
+    var key = 'folk' + (f.isHal ? 'H' : i % FOLK_COATS.length + '.' + ((i >> 1) % FOLK_SKINS.length)) + (seat ? 'S' : 'U');
+    var p = pxPal(co[0], co[1], sk, i % 3 ? '#2a2028' : '#4a3a30');
     cx.save(); cx.translate(sway, 0);
-    cx.fillStyle = f.isHal ? '#2a2434' : '#3a3346';
-    cx.beginPath();
-    cx.moveTo(-w, 0); cx.lineTo(-w * 0.68, -h); cx.lineTo(w * 0.68, -h); cx.lineTo(w, 0);
-    cx.closePath(); cx.fill();
-    cx.fillStyle = f.isHal ? '#c8b8a8' : '#8a8296';
-    cx.beginPath(); cx.arc(0, -h - 4.6, 4.4, 0, TAU); cx.fill();
-    if (!seat) {                                    // lamplight catches them standing
-        cx.globalAlpha = 0.5;
-        cx.fillStyle = '#ffc271';
-        cx.fillRect(-w * 0.7, -h, w * 1.4, 2);
-        cx.globalAlpha = 1;
-    }
+    blit(cx, bake(key, FOLK_TOP.concat(seat ? FOLK_LAP : FOLK_LEGS), p), 0, 0);
     cx.restore();
 }
 function drawFoe(cx, f) {
@@ -2437,7 +2757,12 @@ function drawFoe(cx, f) {
     var pop = f.spawn > 0 ? 0.5 + (0.45 - f.spawn) : 1;
     var wob = Math.sin(RT.t * 22) * f.wob * 3;
     var tell = f.state === 'tell' ? 0.5 + 0.5 * Math.sin(RT.t * 30) : 0;
-    var h = f.def.boss ? 130 : 26 + f.r * 68;
+    /* how tall this thing actually is, so the health bar and the rhyme
+       stacks sit just over its head. The old formula was derived from
+       the hit radius and guessed about fifty pixels too high for every
+       archetype, which was invisible while the bodies were flat shapes
+       and is not invisible now they have heads. */
+    var h = f.def.boss ? 130 : (FOE_H[f.def.draw] || 30);
     if (f.state === 'tell' && !f.def.boss) {          // the wind-up ring
         cx.save(); cx.translate(sx, sy); cx.scale(1, 0.5);
         cx.strokeStyle = 'rgba(255,90,80,' + (0.35 + tell * 0.4) + ')'; cx.lineWidth = 2;
@@ -2515,50 +2840,159 @@ function drawStacks(cx, f, sx, sy) {
     }
     cx.restore(); cx.textAlign = 'left';
 }
+/* The bestiary in the same pixels as the cast. These are townspeople
+   who went wrong, mostly, so they are built on the same bones: the
+   Thief still has shoulders, the Sword is still an actor holding a
+   prop. Only the Mouth gave up on having a body. */
+
+/* applause with teeth, and nothing behind it. Two gapes: shut, and
+   the one it opens on the beat it bites. */
+var MOUTH_SHUT = [
+    '......oooooo......',
+    '....ooCCCCCCoo....',
+    '...oCCCCCCCCCCo...',
+    '..oCccccccccccCo..',
+    '..oCccccccccccCo..',
+    '..oCwTwTwTwTwTCo..',
+    '..oCwTwTwTwTwTCo..',
+    '..oCccccccccccCo..',
+    '..oCccccccccccCo..',
+    '...oCCCCCCCCCCo...',
+    '....ooCCCCCCoo....',
+    '......oooooo......'
+];
+var MOUTH_WIDE = [
+    '......oooooo......',
+    '....ooCCCCCCoo....',
+    '...oCCCCCCCCCCo...',
+    '..oCccccccccccCo..',
+    '..oCwTwTwTwTwTCo..',
+    '..oCTTTTTTTTTTCo..',
+    '..oCTTTTTTTTTTCo..',
+    '..oCwTwTwTwTwTCo..',
+    '..oCccccccccccCo..',
+    '...oCCCCCCCCCCo...',
+    '....ooCCCCCCoo....',
+    '......oooooo......'
+];
+/* hood down over the face, and one arm always out. It is not sneaking
+   up on you, it is asking. */
+var THIEF_SPR = [
+    '.....oooooo.........',
+    '....okkkkkko........',
+    '...okkkkkkkko.......',
+    '...okkTTTTTkko......',
+    '...okkTrrTTkko......',
+    '...okkkkkkkko.......',
+    '..occkkkkkkcco......',
+    '..okcCCCCCCcko......',
+    '..okcCCCCCCckkkss...',
+    '..okcCCCCCCcko..o...',
+    '..okbbbbbbbbko......',
+    '..okccccccccko......',
+    '..okccccccccko......',
+    '...okccccccko.......',
+    '...occcooccco.......',
+    '...obbboobbbo.......',
+    '...oooooooooo.......'
+];
+/* it never stops and it never changes pitch. Wide, slumped, and lit
+   from inside by the brass note it will not let go of. */
+var DRONER_SPR = [
+    '.....mmmmmm.......',
+    '....ommmmmmo......',
+    '...oMMMMMMMMo.....',
+    '..occCCCCCCcco....',
+    '..okcCTTTTCcko....',
+    '..okcCTmmTCcko....',
+    '..okcCTTTTCcko....',
+    '..oskcCCCCckso....',
+    '..okbbbbbbbbko....',
+    '..okccccccccko....',
+    '.okccccccccccko...',
+    '.okccccccccccko...',
+    '.occcooooooccco...',
+    '.obbboooooobbbo...',
+    '.oooooooooooooo...'
+];
+/* no ears, and a bar where the face should be. Whatever you say it is
+   not going to hear it, which is the whole of the fight. */
+var DEAF_SPR = [
+    '..oooooooooooo..',
+    '.oCCCCCCCCCCCCo.',
+    '.oCccccccccccco.',
+    '.oCccooooooccco.',
+    '.oCccoTTTToccco.',
+    '.oCccooooooccco.',
+    '.oCccccccccccco.',
+    '.occcccccccccco.',
+    '.okccccccccccko.',
+    '.okbbbbbbbbbbko.',
+    '.okccccccccccko.',
+    '.okccccccccccko.',
+    '.okccccccccccko.',
+    '.occccoooocccco.',
+    '.obbbboooobbbbo.',
+    '.oooooooooooooo.'
+];
+/* an actor with a prop, and no line to say. The sword is tin, like
+   the crown, and it is the only thing he has left of the part. */
+var SWORD_SPR = [
+    '.....oooooo........',
+    '....ohhhhhho.......',
+    '....ohssssho.......',
+    '....osesseso.......',
+    '....osssSsso.......',
+    '.....oSssSo........',
+    '..occCCCCCCcco.....',
+    '..okcCffffCcko.....',
+    '..okcCCffCCckso....',
+    '..oskcCCCCcksomo...',
+    '..okbbbmMbbbkomo...',
+    '..okcccckcccko.mo..',
+    '..okcccckcccko.mo..',
+    '...okccccccko.wwo..',
+    '...occcooccco..wo..',
+    '...okkkookkko..wo..',
+    '...obbboobbbo..wo..',
+    '...oooooooooo...o..'
+];
+/* sprite rows times PXS, kept beside the art so the two cannot drift */
+var FOE_H = { mouth: 24, thief: 34, droner: 30, deaf: 32, sword: 36, folk: 30 };
+var FOE_PAL = {
+    mouth: pxPal('#7d7086', '#8d8096', '#d8b48c', '#2a2028', { T: '#120c17', w: '#efe9f4' }),
+    thief: pxPal('#463a5e', '#57497a', '#d8b48c', '#2a2338', { T: '#191322', r: '#c86a6a' }),
+    thiefT: pxPal('#463a5e', '#57497a', '#d8b48c', '#2a2338', { T: '#191322', r: '#ffd06a' }),
+    droner: pxPal('#584a36', '#6d5c44', '#d8b48c', '#3a3020', { T: '#1d1712' }),
+    deaf: pxPal('#585862', '#6a6a74', '#d8b48c', '#2a2a30', { T: '#1a1a20' }),
+    sword: pxPal('#6a5745', '#7a6a52', '#d8b48c', '#3a2f26', { w: '#b9b2c4' })
+};
 function drawMouth(cx, f, tell) {
-    var w = f.r * 46, h = f.r * 64;
-    cx.fillStyle = '#7d7086'; cx.beginPath(); cx.ellipse(0, -h * 0.62, w, h * 0.56, 0, 0, TAU); cx.fill();
-    cx.fillStyle = '#5b5165'; cx.beginPath(); cx.ellipse(0, -h * 0.62, w, h * 0.56, 0, 0.15, Math.PI - 0.15); cx.fill();
-    var gape = 0.4 + tell * 0.55 + Math.sin(f.anim * 7) * 0.16;
-    cx.fillStyle = '#120c17'; cx.beginPath(); cx.ellipse(0, -h * 0.6, w * 0.68, h * 0.4 * gape, 0, 0, TAU); cx.fill();
-    cx.fillStyle = '#efe9f4';                                   // applause with teeth
-    var ty = h * 0.4 * gape;
-    for (var i = -2; i <= 2; i++) { cx.fillRect(i * 6 - 2, -h * 0.6 - ty, 4, 4.5); cx.fillRect(i * 6 - 2, -h * 0.6 + ty - 4.5, 4, 4.5); }
+    var gape = tell > 0.3 || Math.sin(f.anim * 7) > 0.45;
+    blit(cx, bake(gape ? 'foe.mouthW' : 'foe.mouthS', gape ? MOUTH_WIDE : MOUTH_SHUT, FOE_PAL.mouth), 0, 0);
 }
 function drawThief(cx, f, tell) {
-    var w = f.r * 40, h = f.r * 74;
-    cx.fillStyle = '#463a5e'; cx.beginPath();
-    cx.moveTo(-w, 0); cx.lineTo(-w * 0.55, -h); cx.lineTo(w * 0.55, -h); cx.lineTo(w, 0); cx.closePath(); cx.fill();
-    cx.fillStyle = '#2a2338'; cx.beginPath(); cx.arc(0, -h, w * 0.6, 0, TAU); cx.fill();
-    cx.fillStyle = tell > 0.3 ? '#ffd06a' : '#c86a6a'; cx.fillRect(-4, -h - 1, 8, 2);
-    cx.fillStyle = '#3d3350'; cx.fillRect(w * 0.5, -h * 0.6, w * 0.7, 3);   // a hand out, always reaching
+    var t = tell > 0.3;
+    blit(cx, bake(t ? 'foe.thiefT' : 'foe.thief', THIEF_SPR, t ? FOE_PAL.thiefT : FOE_PAL.thief), 2, 0);
 }
 function drawDroner(cx, f, tell) {
-    var w = f.r * 42, h = f.r * 66;
-    cx.fillStyle = '#584a36'; cx.beginPath();
-    cx.moveTo(-w * 0.4, 0); cx.lineTo(-w, -h); cx.lineTo(w, -h); cx.lineTo(w * 0.4, 0); cx.closePath(); cx.fill();
-    cx.fillStyle = '#c9a94a'; cx.beginPath(); cx.ellipse(0, -h, w, 4, 0, 0, TAU); cx.fill();
-    cx.globalCompositeOperation = 'lighter';
-    cx.fillStyle = 'rgba(200,170,90,' + (0.2 + Math.abs(Math.sin(f.anim * 4)) * 0.3) + ')';
-    cx.beginPath(); cx.ellipse(0, -h, w * 1.5, 8, 0, 0, TAU); cx.fill();
-    cx.globalCompositeOperation = 'source-over';
+    blit(cx, bake('foe.droner', DRONER_SPR, FOE_PAL.droner), 0, 0);
+    cx.save(); cx.globalCompositeOperation = 'lighter';
+    cx.fillStyle = 'rgba(200,170,90,' + (0.16 + Math.abs(Math.sin(f.anim * 4)) * 0.26) + ')';
+    cx.beginPath(); cx.ellipse(0, -28, 26, 7, 0, 0, TAU); cx.fill();
+    cx.restore();
 }
 function drawDeaf(cx, f, tell) {
-    var w = f.r * 40, h = f.r * 70;
-    cx.fillStyle = '#585862'; cx.fillRect(-w, -h, w * 2, h);
-    cx.fillStyle = '#5c5c66'; cx.fillRect(-w, -h, w * 2, h * 0.24);
-    cx.fillStyle = '#1a1a20'; cx.fillRect(-w * 0.6, -h * 0.62, w * 1.2, 4);   // no ears, a sealed face
-    if (tell > 0.3) { cx.fillStyle = 'rgba(255,120,90,' + tell + ')'; cx.fillRect(-w, -h - 4, w * 2, 3); }
+    blit(cx, bake('foe.deaf', DEAF_SPR, FOE_PAL.deaf), 0, 0);
+    if (tell > 0.3) { cx.fillStyle = 'rgba(255,120,90,' + tell + ')'; cx.fillRect(-16, -36, 32, 3); }
 }
 function drawSword(cx, f, tell) {
-    var w = f.r * 38, h = f.r * 76;
-    cx.fillStyle = '#6a5745'; cx.fillRect(-w * 0.7, -h, w * 1.4, h);
-    cx.fillStyle = '#7a6a52'; cx.fillRect(-w * 0.7, -h, w * 1.4, 5);
-    cx.save(); cx.translate(w * 0.8, -h * 0.7); cx.rotate(tell > 0.3 ? -0.9 : -0.2);
-    cx.fillStyle = '#b9b2c4'; cx.fillRect(0, -2.5, 26, 5);                 // the prop itself
-    cx.fillStyle = '#c9a94a'; cx.fillRect(-3, -6, 4, 12); cx.restore();
+    cx.save();
+    if (tell > 0.3) { cx.translate(6, -24); cx.rotate(-0.5); cx.translate(-6, 24); }
+    blit(cx, bake('foe.sword', SWORD_SPR, FOE_PAL.sword), 3, 0);
+    cx.restore();
     cx.fillStyle = '#8a8090'; cx.font = 'bold 8px "Press Start 2P", monospace'; cx.textAlign = 'center';
-    cx.fillText('NO RHYME', 0, -h - 8); cx.textAlign = 'left';
+    cx.fillText('NO RHYME', 0, -54); cx.textAlign = 'left';
 }
 /* one mark per modifier, drawn over whatever it is riding on, so an
    elite reads as "that thing, but wrong" rather than as a new enemy */
@@ -5502,22 +5936,38 @@ function drawNpc(cx, n) {
     var stride = w2.moving ? (n.skip ? 5.5 : 2.2) : 0.9;
     var bob = Math.abs(Math.sin(w2.bob)) * stride + (w2.moving ? 0 : Math.sin(w2.bob) * 0.4);
     var lean = w2.moving ? Math.sin(w2.bob) * 0.09 * (n.skip ? 2 : 1) : 0;
-    var h = n.small ? 26 : 40, w = n.small ? 7 : 9;
+    var h = n.small ? 26 : 40;
     cx.save(); cx.translate(sx, sy - bob);
     cx.fillStyle = 'rgba(0,0,0,.4)'; cx.beginPath(); cx.ellipse(0, bob, 9, 3.6, 0, 0, TAU); cx.fill();
     cx.rotate(lean);
-    cx.fillStyle = n.col[0]; cx.beginPath();
-    cx.moveTo(-w, 0); cx.lineTo(-w * 0.7, -h * 0.7); cx.lineTo(w * 0.7, -h * 0.7); cx.lineTo(w, 0); cx.closePath(); cx.fill();
-    cx.fillStyle = n.col[1]; cx.fillRect(-w * 0.7, -h * 0.72, w * 1.4, h * 0.24);
-    // legs, so a walk reads as a walk
-    if (w2.moving) {
-        var sw = Math.sin(w2.bob) * w * 0.55;
-        cx.strokeStyle = n.col[0]; cx.lineWidth = 2.4;
-        cx.beginPath(); cx.moveTo(-w * 0.25, -1); cx.lineTo(-w * 0.25 + sw, 3); cx.stroke();
-        cx.beginPath(); cx.moveTo(w * 0.25, -1); cx.lineTo(w * 0.25 - sw, 3); cx.stroke();
+    var p = npcPal(n), spr;
+    if (n.small) {
+        spr = bake('npc.' + n.id, CHILD_SPR, p);          // a child is not an adult with short legs
+    } else {
+        /* three leg frames under whichever body this person is */
+        var legs = LEGS_STAND, lk = 'S';
+        if (w2.moving) {
+            if (Math.sin(w2.bob) > 0) { legs = LEGS_WIDE; lk = 'W'; } else { legs = LEGS_PASS; lk = 'P'; }
+        }
+        spr = bake('npc.' + n.id + lk, fig(NPC_TOP[n.id] || ADULT_TOP, legs), p);
     }
-    cx.fillStyle = n.col[2]; cx.beginPath(); cx.arc(0, -h * 0.86, w * 0.62, 0, TAU); cx.fill();
-    if (n.hat) { cx.fillStyle = '#2a2018'; cx.fillRect(-w * 0.95, -h * 1.06, w * 1.9, 3); cx.fillRect(-w * 0.55, -h * 1.22, w * 1.1, 4); }
+    cx.save();
+    if (w2.face < 0) cx.scale(-1, 1);                     // they turn to walk back
+    blit(cx, spr, 0, 0);
+    /* whatever they are carrying, hung off the same grid. The widow's
+       lamp is the only one that gives light back. */
+    var pr = NPC_PROP[n.id];
+    if (pr) {
+        blit(cx, bake('prop.' + pr.k + '.' + n.id, pr.s, p), pr.dx, pr.dy);
+        if (pr.glow) {
+            cx.save(); cx.globalCompositeOperation = 'lighter';
+            var gg = cx.createRadialGradient(pr.dx, pr.dy - 7, 2, pr.dx, pr.dy - 7, 34);
+            gg.addColorStop(0, 'rgba(255,200,110,.30)'); gg.addColorStop(1, 'rgba(255,190,90,0)');
+            cx.fillStyle = gg; cx.beginPath(); cx.arc(pr.dx, pr.dy - 7, 34, 0, TAU); cx.fill();
+            cx.restore();
+        }
+    }
+    cx.restore();
     cx.restore();
     // a quiet mark so you know they will talk to you
     cx.save(); cx.globalAlpha = 0.5 + Math.sin(RT.t * 2.6 + w2.y) * 0.2;
