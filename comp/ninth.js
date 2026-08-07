@@ -266,7 +266,7 @@ var CHARMS = {
               m: { slantMul: 0.3 } },
     lamp:   { n: 'The Sill Lamp', cost: 85, d: 'Set out every year for a man who was never out there. -eat and -ight land 30% harder.',
               m: { famDmg: { eat: 0.3, ight: 0.3 } } },
-    hilt:   { n: 'A Sword Hilt', cost: 140, sell: 12, joke: 1, d: 'Prop, not weapon. Nothing rhymes with sword, so it does nothing at all, in any hand, forever. He is asking a great deal for it.',
+    hilt:   { n: 'A Sword Hilt', cost: 140, sell: 12, joke: 1, d: 'Prop, not weapon. Nothing rhymes with sword, so it does nothing at all, in any hand, forever. She is asking a great deal for it.',
               m: {} }
 };
 var CHARM_IDS = Object.keys(CHARMS);
@@ -311,9 +311,11 @@ var ITEMS = {
     wax: {
         n: 'A Stub of Wax', tag: 'use', cost: 18,
         d: 'Off the chandler\'s counter. Warm it in your hand and a mismatched pair holds for a while: slants land in full.',
-        // stacks rather than resets, so a second stub is never worth less
-        // than the seconds it wipes off the first
+        // stacks rather than resets, so a second stub is never worth less than
+        // the seconds it wipes off the first. Refuses near the ceiling instead
+        // of eating a stub for the two seconds it has room for.
         use: function () {
+            if (RT.items.freeSlant > 30) return { no: 'The wax in your hand is still soft. Use that up first.' };
             RT.items.freeSlant = Math.min(44, RT.items.freeSlant + 22);
             return 'You work the wax soft. For a little while a slant will not fall flat.';
         }
@@ -348,8 +350,15 @@ var ITEMS = {
         d: 'It will not sound. Hold it while a room is still ringing and it takes the ringing instead, and gives it back as breath.',
         use: function () {
             if (!RT || RT.echo < 20) return { no: 'Nothing is ringing. The horn wants a room that is still going.' };
-            var got = Math.round(RT.echo * 0.55); RT.echo = 0;
-            RT.breath = Math.min(stats().breathMax, RT.breath + got); RT.winded = 0;
+            // Echo converts at 0.55 and tops out at 55, but breath tops out at
+            // 40, so the horn used to throw the surplus away and then report
+            // the number it threw away. Spend only the Echo the breath can
+            // take, and say what actually went in.
+            var max = stats().breathMax, room = max - RT.breath;
+            if (room < 1) return { no: 'You are full of breath. The horn would only take the ring out of the room for nothing.' };
+            var got = Math.min(room, Math.round(RT.echo * 0.55));
+            RT.echo = Math.max(0, RT.echo - Math.ceil(got / 0.55));
+            RT.breath = Math.min(max, RT.breath + got); RT.winded = 0;
             return 'The horn takes the ring out of the room. You get ' + got + ' breath back and the quiet is very sudden.';
         }
     },
@@ -393,7 +402,10 @@ var ITEMS = {
     // loot, not stock
     scrap: {
         n: 'A Misremembered Line', tag: 'use',
-        d: 'A scrap of somebody else\'s memory of the play, in the wrong metre. The chandler buys these. Occasionally one has a word on the back.',
+        // used to say "occasionally one has a word on the back", which sent
+        // the player reading scrap after scrap for a payoff that is not on
+        // this item: the word comes up as its own object in the drop table.
+        d: 'A scrap of somebody else\'s memory of the play, in the wrong metre. Nothing on the back of this one. The chandler buys them anyway.',
         sell: 6,
         use: function () { return 'You read it through. It does not scan. Whoever remembered it was remembering something they had only ever heard.'; }
     }
@@ -616,11 +628,18 @@ function setLamp() {
     if (here === 'square') return 'You set it on a sill with all the others. It looks like all the others.';
     return 'You set the lamp down. It throws about a yard of light and the rest of it stays dark.';
 }
-function lampsOut() { return Object.keys(S.items.lamps).length; }
+/* lamps left in OTHER places. Counting the one on the sill in this room made
+   the bag say "1 set down elsewhere" directly above the row offering to take
+   it back off the sill here. */
+function lampsElsewhere() {
+    return Object.keys(S.items.lamps).filter(function (p) { return !RT || p !== RT.place; });
+}
+function lampsOut() { return lampsElsewhere().length; }
 /* a lamp you left here, retrieved when you are carrying none: without this
    the bag shows no lamp row at all and the one on the sill is unreachable */
 function takeLamp() {
-    if (!RT || !S.items.lamps[RT.place]) return false;
+    if (!RT) return false;
+    if (!S.items.lamps[RT.place]) { say('There is no lamp of yours here.', 'dim'); return false; }
     delete S.items.lamps[RT.place];
     giveItem('lamp');
     say('You take the lamp back off the sill.', 'dim');
@@ -636,9 +655,11 @@ function dropLoot(f) {
     if (RT.place === 'arena') return;                  // dev arena rewards nothing
     var k = f.kind, r = Math.random();
     if (f.def.boss) {
-        giveItem('coal');
-        typo(f.x, f.y, 'a coal', '#ffb14e', 1.1, 12, 'drift');
-        say('Something falls out of the noise and hits the boards. A coal, burnt through, cold. It has been up here a long time.', 'big');
+        // giveItem refuses a second coal, so only narrate one that landed
+        if (giveItem('coal')) {
+            typo(f.x, f.y, 'a coal', '#ffb14e', 1.1, 12, 'drift');
+            say('Something falls out of the noise and hits the boards. A coal, burnt through, cold. It has been up here a long time.', 'big');
+        }
         return;
     }
     var chance = k === 'mouth' ? 0.5 : k === 'thief' ? 0.4 : k === 'sword' ? 0.9 : 0.3;
@@ -648,7 +669,13 @@ function dropLoot(f) {
     var open = [];
     FAM_IDS.forEach(function (fid) {
         if (!famOwned(fid)) return;
-        FAMS[fid].words.forEach(function (w) { if (!S.owned[w] && writForWord(w)) open.push(w); });
+        // not one you are already carrying: a second copy cannot be read (the
+        // first read teaches the word) and writs have no sell, so it would sit
+        // in the bag forever with a button that always refuses
+        FAMS[fid].words.forEach(function (w) {
+            var id = writForWord(w);
+            if (!S.owned[w] && id && !hasItem(id)) open.push(w);
+        });
     });
     if (open.length && Math.random() < 0.16) {
         var id = writForWord(pick(open));
@@ -3517,8 +3544,14 @@ function chandlerNear() {
     if (RT.items.atShop) return true;
     var n = NPCS.chandler;
     if (!n || (place().npcs || []).indexOf('chandler') < 0) return false;
-    var w = RT.world.npc.chandler;                 // she wanders behind the counter, so use where she actually is
-    return Math.hypot((w ? w.x : n.x) - RT.px, (w ? w.y : n.y) - RT.py) < 2.6;
+    // Measured to where she LIVES, not to where she has wandered. She drifts
+    // up to 1.1 either way at 0.7 a second, and the counter is 1.2 deep, so a
+    // live-position check flickers in and out while the player stands
+    // perfectly still at the counter: the shop refused to open, then opened,
+    // then shut itself and blamed the player for walking away. Her home spot
+    // does not move, so this does not either. 4.0 reaches the whole customer
+    // side of the counter and still stops well short of the door.
+    return Math.hypot(n.x - RT.px, n.y - RT.py) < 4.0;
 }
 /* THE PLAY — the ballad as you currently know it. Full lines are
    allowed here because nothing is trying to kill you. */
@@ -3609,7 +3642,7 @@ function fillBag() {
             '</b><i>You set this one down here. It is still burning.</i></div>' +
             '<span class="nn-bagbtns"><button class="nn-mini" data-takelamp="1">take</button></span></div>';
     }
-    var elsewhere = Object.keys(S.items.lamps).filter(function (p) { return p !== RT.place; });
+    var elsewhere = lampsElsewhere();
     if (elsewhere.length) {
         html += '<h4>LAMPS YOU HAVE LEFT SOMEWHERE</h4><p class="nn-note">' +
             elsewhere.map(function (p) { return esc((PLACES[p] && PLACES[p].n) || p); }).join(', ') +
@@ -3668,7 +3701,14 @@ function fillShop() {
         return famOwned(WORDS[it.writ]);              // he will not sell you a sound you cannot make
     });
     html += '<h4>WRITTEN ON THINGS <i>· somebody had to remember it</i></h4>';
-    if (!writs.length) html += '<p class="nn-note dim">Nothing on the counter you can read. She shrugs. Open another family and come back.</p>';
+    if (!writs.length) {
+        // two reasons the list is empty, and only one of them is fixable. Once
+        // every word is yours there is no sixth family to go and open.
+        var allWords = Object.keys(WORDS).every(function (w) { return S.owned[w]; });
+        html += '<p class="nn-note dim">' + (allWords
+            ? 'Nothing on the counter you cannot already say. She looks almost sorry about it.'
+            : 'Nothing on the counter you can read. She shrugs. Open another family and come back.') + '</p>';
+    }
     writs.forEach(function (id) {
         var it = ITEMS[id], fam = FAMS[WORDS[it.writ]], got = hasItem(id);   // bought, not read yet
         html += '<div class="nn-buy' + (got ? ' got' : '') + '"><div><b>' + esc(it.n) + ' <i class="nn-writ" style="color:' + fam.col + '">' + it.writ.toUpperCase() + '</i></b><i>' + esc(it.d) + '</i></div>' +
@@ -5709,6 +5749,11 @@ bindKey('i', function () { panel('bag'); });
 onPlaceChange(function () {
     if (!RT) return;
     RT.items.freeSlant = 0; RT.items.atShop = false;   // the wax and the shop do not follow you; the mask does
+    // The bag renders "on a sill HERE" and "left somewhere else" from RT.place
+    // at render time, and you can walk through a door with it open. Left
+    // alone it offers a take button for a lamp in the room you just left, and
+    // hides the one in the room you just entered.
+    if (RT.panel === 'bag') fillBag();
 });
 
 /* Travelling used to be silent. Registered here rather than in
