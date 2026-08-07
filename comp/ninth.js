@@ -1102,25 +1102,44 @@ GROUND.road = function (g, f) {                             // packed dirt, and 
         var u = fr() * f.gw, v = fr() * f.gh;
         blob(g, f.px(u, v), f.py(u, v), 1 + fr() * 2.2, 0.7 + fr() * 1.2, fr() < 0.5 ? 'rgba(96,88,72,.3)' : 'rgba(20,17,13,.4)');
     }
-    [0.34, 0.63].forEach(function (q) {                     // two wheel ruts, worn to the subsoil
-        for (var v2 = f.gh; v2 > 0; v2 -= 0.12) {
-            var fade = clamp((v2 - f.gh * 0.12) / (f.gh * 0.5), 0, 1);   // they give out short of the hollow
-            if (fade <= 0.02) continue;
+    /* The fence ends at v = gh*0.66, two posts and nothing between them.
+       The cart ruts end there too. They break into dashes for the last
+       couple of tiles and then simply stop, and the ground north of the
+       posts has never had a wheel on it, because nobody has ever had a
+       reason to take a cart past the end of the fence. */
+    var fence = f.gh * 0.66;
+    [0.34, 0.63].forEach(function (q) {
+        for (var v2 = f.gh; v2 > fence - 0.6; v2 -= 0.12) {
+            var give = clamp((v2 - fence) / 2.2, 0, 1);     // the last two tiles come apart
+            if (give < 1 && fr() > 0.25 + give * 0.75) continue;
             var u2 = f.gw * q + Math.sin(v2 * 0.4) * 0.22;
             var x = f.px(u2, v2), y = f.py(u2, v2);
-            blob(g, x, y, 7, 3.4, 'rgba(12,10,8,' + (0.3 * fade).toFixed(3) + ')');
-            blob(g, x - 1, y - 1, 4, 1.8, 'rgba(70,62,48,' + (0.12 * fade).toFixed(3) + ')');
+            blob(g, x, y, 7, 3.4, 'rgba(12,10,8,.3)');
+            blob(g, x - 1, y - 1, 4, 1.8, 'rgba(70,62,48,.12)');
         }
     });
-    for (var t = 0; t < 260; t++) {                         // weeds, only at the verge where no wheel goes
+    // and a clean strip straight through the gap, never trodden
+    for (var cu = 0; cu < f.gw; cu += 0.25) {
+        blob(g, f.px(cu, fence - 0.2), f.py(cu, fence - 0.2), 9, 3, 'rgba(120,110,92,.05)');
+    }
+    /* The green gives out as you go north. Living weeds this side of the
+       fence, dead stubs for a while after it, and then nothing at all. */
+    for (var t = 0; t < 320; t++) {
         var u3 = fr() * f.gw, v3 = fr() * f.gh;
         var edge = Math.min(u3, f.gw - u3);
         if (edge > 2.2 && fr() < 0.85) continue;
+        if (v3 < f.gh * 0.24) continue;                     // nothing grows near the hollow
+        var dead = v3 < fence;
         var x2 = f.px(u3, v3), y2 = f.py(u3, v3);
-        g.strokeStyle = fr() < 0.4 ? 'rgba(74,86,54,.5)' : 'rgba(52,58,38,.5)'; g.lineWidth = 1;
-        for (var b = 0; b < 3; b++) {
-            g.beginPath(); g.moveTo(x2, y2);
-            g.lineTo(x2 + (fr() - 0.5) * 7, y2 - 3 - fr() * 5); g.stroke();
+        if (dead) {
+            g.strokeStyle = 'rgba(96,92,80,.4)'; g.lineWidth = 1;
+            g.beginPath(); g.moveTo(x2, y2); g.lineTo(x2 + (fr() - 0.5) * 3, y2 - 2 - fr() * 3); g.stroke();
+        } else {
+            g.strokeStyle = fr() < 0.4 ? 'rgba(74,86,54,.5)' : 'rgba(52,58,38,.5)'; g.lineWidth = 1;
+            for (var b = 0; b < 3; b++) {
+                g.beginPath(); g.moveTo(x2, y2);
+                g.lineTo(x2 + (fr() - 0.5) * 7, y2 - 3 - fr() * 5); g.stroke();
+            }
         }
     }
     for (var s2 = 0; s2 < 26; s2++) {                       // stones the frost pushed up
@@ -6601,6 +6620,20 @@ PAINT.house = function (g, c) {
     plaster(g, sw, true, rng);
     if (v % 2 === 0) bareWattle(g, sw, 0.62, 0.16, 0.88, 0.5, rng);
     else bareWattle(g, se, 0.1, 0.6, 0.36, 0.9, rng);
+    /* Two rectangles, and they are the whole game.
+       Around the sill that still gets a lamp, the plaster is scrubbed
+       clean, in a hard-edged rectangle, because somebody wipes the soot
+       off it once a year and has done for four hundred.
+       Around the sill that does not, the same rectangle is still there,
+       one step lighter than the wall and no more. It was scrubbed too,
+       once. This house used to set out two. */
+    var lampU = 0.3 + (v % 2) * 0.3;
+    var scrub = [qp(se, lampU - 0.05, 0.13), qp(se, lampU + 0.18, 0.13), qp(se, lampU + 0.18, 0.55), qp(se, lampU - 0.05, 0.55)];
+    poly(g, scrub, 'rgba(122,114,132,.22)');
+    dither(g, scrub, 'rgba(150,142,162,.3)', 0.2, rng);
+    var ghostU = v % 3 === 0 ? 0.74 : 0.1;
+    var ghost = [qp(sw, ghostU - 0.05, 0.13), qp(sw, ghostU + 0.18, 0.13), qp(sw, ghostU + 0.18, 0.55), qp(sw, ghostU - 0.05, 0.55)];
+    poly(g, ghost, 'rgba(122,114,132,.07)');
     timberFrame(g, se, rng, false);
     timberFrame(g, sw, rng, true);
 
@@ -6618,6 +6651,22 @@ PAINT.house = function (g, c) {
     px(g, dTop2[0] - 5, (dTop[1] + dBot[1]) / 2, 3, 3, '#6a5c3a');   // a ring handle
     px(g, dBot[0] - 3, dBot[1] - 3, dw + 6, 4, '#3b3542');   // a step, worn hollow in the middle
     px(g, dBot[0] + 3, dBot[1] - 2, dw - 4, 2, '#3b3442');
+    /* The tally on the door post: groups of five, one for each ninth
+       night this house has kept. Exactly one group has been rubbed back
+       out. It is the same hand that scratched the name off the mark. */
+    var tp = qp(sw, 0.37, 0.42), groups = 6 + (v % 6), rubbed = 2 + (v % 3);
+    for (var tg = 0; tg < groups; tg++) {
+        var ty2 = tp[1] + tg * 3.4;
+        if (ty2 > dBot[1] - 8) break;
+        var col = tg === rubbed ? 'rgba(100,78,51,.3)' : 'rgba(154,123,82,.7)';
+        for (var tm = 0; tm < 4; tm++) px(g, tp[0] - 7 + tm * 2, ty2, 1, 3, col);
+        line(g, tp[0] - 8, ty2 + 3, tp[0] - 1, ty2, col, 1);
+    }
+    if (v % 5 === 3) {                                       // a straw cross over the lintel, on one house in five
+        px(g, dTop[0] + dw / 2 - 5, dTop[1] - 12, 10, 1, '#6f6845');
+        px(g, dTop[0] + dw / 2 - 1, dTop[1] - 16, 1, 9, '#6f6845');
+        line(g, dTop[0] + dw / 2 - 5, dTop[1] - 16, dTop[0] + dw / 2 + 5, dTop[1] - 8, '#6f6845', 1);
+    }
 
     /* ── windows, and the one that matters ── */
     function window_(quad, u, wv, lit2) {
@@ -6638,7 +6687,10 @@ PAINT.house = function (g, c) {
     var litIdx = v % 3;
     window_(sw, 0.1, 0.2, litIdx === 0);
     window_(sw, 0.74, 0.2, litIdx === 1);
-    var sill = window_(se, 0.3 + (v % 2) * 0.3, 0.24, true);
+    var sill = window_(se, lampU, 0.24, true);
+    // one pane went years ago and was greased and papered over rather
+    // than replaced, and it is the colour of old fat, not of firelight
+    px(g, sill.a[0] + 1, sill.a[1] + 1, (sill.b[0] - sill.a[0]) / 2 - 1, (sill.d[1] - sill.a[1]) / 2 - 1, '#b8763a');
 
     /* ── the lamp on the sill. This is the name of the game. ── */
     var lx2 = (sill.d[0] + sill.c[0]) / 2, ly2 = sill.d[1];
@@ -6650,6 +6702,10 @@ PAINT.house = function (g, c) {
     lg.addColorStop(0, 'rgba(255,196,104,.4)'); lg.addColorStop(1, 'rgba(255,180,80,0)');
     g.fillStyle = lg; g.beginPath(); g.arc(lx2, ly2 - 4, 26, 0, TAU); g.fill();
     g.globalCompositeOperation = 'source-over';
+    // and the tongue of soot the flame has licked up the plaster, which
+    // is the same mark the lamp post outside the door carries
+    var tw = [6, 6, 4, 4, 2, 2];
+    for (var so = 0; so < 6; so++) px(g, lx2 - tw[so] / 2, ly2 - 12 - so * 2, tw[so], 2, 'rgba(11,9,18,' + (0.4 - so * 0.05).toFixed(2) + ')');
     poly(g, [[lx2 - 7, ly2], [lx2 + 7, ly2], [lx2 + 11, sw[2][1] > se[2][1] ? se[2][1] : se[3][1]], [lx2 - 11, se[3][1]]], 'rgba(255,190,96,.07)');
 
     /* ── the roof ── */
@@ -6664,9 +6720,14 @@ PAINT.house = function (g, c) {
     for (var vv = 0; vv < 3; vv++) px(g, gcx - 4, gcy - 5 + vv * 3, 8, 1, '#332b3c');
     line(g, gable[0][0], gable[0][1], gable[2][0], gable[2][1], '#2b2430', 3);   // barge boards
     line(g, gable[1][0], gable[1][1], gable[2][0], gable[2][1], '#2b2430', 3);
-    // the ridge, capped, and the shadow the eaves throw down the wall
-    line(g, rA[0], rA[1], rB[0], rB[1], thatched ? '#7a6944' : '#3f3e49', 5);
-    line(g, rA[0], rA[1] - 2, rB[0], rB[1] - 2, thatched ? '#8b7a52' : '#585767', 2);
+    // The ridge sags. Every roof over a hungry house dips in the middle,
+    // because the timber under it has not been looked at in nine years.
+    var sag = rh * (0.05 + (v % 4) * 0.03);
+    var rM = [(rA[0] + rB[0]) / 2, (rA[1] + rB[1]) / 2 + sag];
+    line(g, rA[0], rA[1], rM[0], rM[1], thatched ? '#7a6944' : '#3f3e49', 5);
+    line(g, rM[0], rM[1], rB[0], rB[1], thatched ? '#7a6944' : '#3f3e49', 5);
+    line(g, rA[0], rA[1] - 2, rM[0], rM[1] - 2, thatched ? '#8b7a52' : '#585767', 2);
+    line(g, rM[0], rM[1] - 2, rB[0], rB[1] - 2, thatched ? '#8b7a52' : '#585767', 2);
     if (thatched) for (var rp = 0; rp < 9; rp++) {            // the hazel spars that pin the ridge down
         var rq = (rp + 0.5) / 9, rx = rA[0] + (rB[0] - rA[0]) * rq, ry = rA[1] + (rB[1] - rA[1]) * rq;
         line(g, rx - 3, ry - 4, rx + 3, ry + 1, '#463a26', 1);
@@ -6682,6 +6743,12 @@ PAINT.house = function (g, c) {
     for (var br = 0; br < 4; br++) px(g, cp[0] - 7, cp[1] - ch + 3 + br * 5, 14, 1, 'rgba(16,12,22,.5)');
     px(g, cp[0] - 9, cp[1] - ch - 3, 18, 4, '#403a49');       // the cap
     px(g, cp[0] - 5, cp[1] - ch - 2, 10, 2, '#0d0a12');       // soot
+    if (v % 5 === 2) {                                        // a stick nest in the pot. Nothing has been lit here this year.
+        for (var tw2 = 0; tw2 < 8; tw2++) {
+            var ta = -0.4 - tw2 * 0.32;
+            line(g, cp[0] - 1 + tw2 * 0.4, cp[1] - ch - 3, cp[0] - 1 + Math.cos(ta) * 7, cp[1] - ch - 5 + Math.sin(ta) * 3, '#4a3f2e', 1);
+        }
+    }
     poly(g, [[cp[0] + 7, cp[1] - ch], [cp[0] + 13, cp[1] - ch + 5], [cp[0] + 13, cp[1] + 8], [cp[0] + 7, cp[1] + 6]], 'rgba(12,9,18,.35)');
     if (v % 3 === 0) {                                        // kindling stacked against the wall, what is left of it
         var kb = qp(sw, 0.88, 0.98);
