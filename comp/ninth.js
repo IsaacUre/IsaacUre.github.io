@@ -8155,9 +8155,34 @@ function devDemo() {
         for (var b3 = 0; b3 < (+q.na3fr || A3FR[q.na3] || 90); b3++) { step(1 / 60); draw(1 / 60); }
     }
     if (q.nmap) RT.mapOpen = true;
+    /* npoem: say a stanza's worth of words and close it, so the book page and
+       the readback can be captured. The poem is the one built thing that a
+       screenshot could not reach: it only exists after a fight, and devDemo
+       has no way to fight one. Words are drawn from the pool you actually
+       own, so npoem=1 after nfrag=3 reads differently from npoem=1 cold. */
+    if (q.npoem) {
+        poemStart();
+        for (var pw = 0; pw < (+q.npoem || 1) * 3; pw++) {
+            var run = irnd(2, 4), fam = null;
+            for (var pj = 0; pj < run; pj++) {
+                var word = headWord(); RT.line.shift(); fillLine();
+                fam = WORDS[word];
+                if (pj === run - 1 && irnd(0, 5) === 0) poemSwallow(word);
+                else poemSay(word, fam, pj > 0 && WORDS[word] === fam ? 1 : 0);
+            }
+            poemBreak(fam);
+        }
+        if (q.npoem !== 'open') poemKeep(RT.place, RT.poem);
+    }
     // the shop is gated on standing at the chandler; a capture has no legs
     if (q.npanel === 'shop') RT.items.atShop = true;
     if (q.npanel) panel(q.npanel);
+    // the book opens on the ballad and the poem is below the fold, so a
+    // capture of the thing you came to look at needs the scroll doing for it
+    if (q.nscroll) {
+        var pb = RT.root.querySelector('.nn-p-' + (q.npanel || 'book') + ' .nn-pb');
+        if (pb) pb.scrollTop = q.nscroll === 'end' ? pb.scrollHeight : +q.nscroll;
+    }
     /* nsfx: fire every sound name and report what the graph did.
        This cannot tell you whether the game SOUNDS right, and nothing
        automated can. What it does catch is the whole class of failure
