@@ -1899,24 +1899,28 @@ function drawBranch(g, sx, sy, tx, ty) {
     for (var dn = 1; dn <= 3; dn++) {                                  // nor down among the roots
         if (ty + dn >= H || RT.w[(ty + dn) * W + col] !== T_TRUNK) return;
     }
-    if (hsh(col * 9 + 5, ty) < 0.84) return;                           // roughly one row in six
+    // a different seed per side, so a trunk almost never sprouts two branches at the same height
+    if (hsh(col * 9 + (lft ? 5 : 137), ty) < 0.84) return;             // roughly one row in six
     var bm = '#7a5b36', bd = '#4c3620', lf = TCOL[T_LEAF];
     for (var q = 0; q < 5; q++) {
         var qx = lft ? sx + q : sx + TS - 1 - q, qy = sy + 4 - q * 0.5;
         g.fillStyle = q > 2 ? bd : bm; g.fillRect(qx, qy, 1, 1.5);
     }
-    var ex = lft ? sx + 4 : sx + TS - 5, ey = sy + 1.5;
-    g.fillStyle = lf[1]; g.fillRect(ex - 1.5, ey - 1, 4.5, 3);
-    g.fillStyle = lf[0]; g.fillRect(ex - 1, ey - 1.5, 3.5, 2.5);
-    g.fillStyle = lf[2]; g.fillRect(ex - 0.5, ey - 1.5, 2, 1);
+    var ex = lft ? sx + 4 : sx + TS - 5, ey = sy + 1.5;                // a leaf tuft on the end
+    g.fillStyle = lf[1];
+    g.fillRect(ex - 1.5, ey - 0.5, 4, 2.5); g.fillRect(ex - 0.5, ey - 1.5, 3, 3.5);
+    g.fillStyle = lf[0];
+    g.fillRect(ex - 1, ey - 1, 3, 2.5); g.fillRect(ex, ey - 2, 2, 3);
+    g.fillStyle = lf[2]; g.fillRect(ex - 0.5, ey - 1.5, 1.5, 1);
 }
 /* Vines. Any grass block with air under it trails one, longer in the jungle — the single strongest
    silhouette cue that you are looking at Terraria and not a generic side-scroller. Each segment is
    drawn wholly inside its own cell, so the cache's per-cell clearRect never truncates it. */
 var VINEFROM = {}; VINEFROM[T_GRASS] = 1; VINEFROM[T_JGRASS] = 2; VINEFROM[T_CGRASS] = 3;
 function drawVine(g, sx, sy, tx, ty) {
+    if (RT.surf && ty < RT.surf[tx]) return;             // open sky: nothing to hang from, don't walk
     var top = 0, root = 0;
-    for (var up = 1; up <= 9; up++) {                    // how far above is the grass this hangs from?
+    for (var up = 1; up <= 8; up++) {                    // how far above is the grass this hangs from?
         var a = ty - up; if (a < 0) return;
         var ta = RT.w[a * W + tx];
         if (VINEFROM[ta]) { top = up; root = ta; break; }
@@ -3929,7 +3933,7 @@ function spriteClass(id) {
             _spriteCSS.id = 'tr-sprites';
             (document.head || document.body).appendChild(_spriteCSS);
         }
-        _spriteCSS.appendChild(document.createTextNode('.tri.i-' + id + '{background-image:url(' + u + ')}'));
+        _spriteCSS.appendChild(document.createTextNode('.tr .tri.i-' + id + '{background-image:url(' + u + ')}'));
     } catch (e) { return (_spriteDone[id] = null); }
     return (_spriteDone[id] = 'i-' + id);
 }
