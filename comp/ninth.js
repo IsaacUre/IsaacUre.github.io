@@ -1561,7 +1561,7 @@ function init(el) {
         audio: { ready: 0, held: 0, errs: 0, lastErr: '', master: null, bus: null, noise: null, amb: null, ambKind: '', evT: 0, stepT: 0.35, solo: '' },
         combat: { cuts: [], rep: null, encI: 0, lull: 0 },
         items: { freeSlant: 0, tack: 0, atShop: false },
-        world: { cam: { x: 0, y: 0 }, npc: {}, seenLine: null }
+        world: { cam: { x: 0, y: 0 }, npc: {}, seenLine: null, cut: {} }
     };
     RT.cx.imageSmoothingEnabled = false;    // people are pixels; never interpolate them
     wireInput(root, cv);
@@ -3800,9 +3800,17 @@ function draw(rdt) {
        two crude passes split on the player's depth alone, which is why
        every NPC and every foe drew straight through a house. */
     var ents = [];
+    /* Only you. An NPC authored under a roof would hold the cutaway open
+       for the whole scene, and a house that is permanently half there
+       looks like a bug rather than a courtesy. Somebody standing in a
+       place you can never see them is an authoring mistake, and the
+       geometry audit is where that gets caught. */
+    RT.rdt = dt;
+    RT.hide = [{ x: RT.px, y: RT.py, k: RT.px + RT.py, h: 44 }];
     RT.foes.forEach(function (f) { if (!f.dead) ents.push({ k: f.x + f.y, fn: function () { drawFoe(cx, f); } }); });
     (place().npcs || []).forEach(function (id) { var n = NPCS[id]; if (n) ents.push({ k: npcX(n) + npcY(n), fn: function () { drawNpc(cx, n); } }); });
-    (place().props || []).forEach(function (o) {
+    (place().props || []).forEach(function (o, oi) {
+        o._ci = oi;                                          // a stable handle for its cutaway fade
         ents.push({ k: o.b[0] + o.b[2] / 2 + o.b[1] + o.b[3] / 2, fn: function () { drawProp(cx, o); } });
     });
     ents.push({ k: RT.px + RT.py, fn: function () { drawActor(cx); } });
@@ -5281,7 +5289,7 @@ var NPCS = {
         }
     },
     widow: {
-        n: 'A woman setting out a lamp', x: 12.2, y: 8.6, col: ['#3a3448', '#4e465e', '#d8b48c'],
+        n: 'A woman setting out a lamp', x: 14, y: 4.6, col: ['#3a3448', '#4e465e', '#d8b48c'],
         talk: function () {
             S.heard.widow = 1; sSave();
             return [['', 'She sets the lamp on the sill and squares it up, twice.'],
@@ -6409,10 +6417,24 @@ function propSprite(t, bw, bh, v, mayBuild) {
     g.translate(ax, ay);
     var c = spriteCtx(t, bw, bh, v);
     paintProp(g, c);
-    var sp = { cv: cv, ax: ax, ay: ay, bytes: w * h * 4, anchors: c.anchors };
+    var sp = { cv: cv, ax: ax, ay: ay, bytes: w * h * 4, anchors: c.anchors, box: paintedBox(c) };
     SPRITES[key] = sp; SPRITE_BYTES += sp.bytes;
     touchSprite(key); trimSprites();
     return sp;
+}
+/* What the sprite actually painted, in local coordinates, which is not
+   the same as how big its canvas is: a house reserves 74px of headroom
+   for its roof and leaves eighty rows of it empty. Anything asking
+   "is this prop covering that person" has to ask about the paint. */
+/* What the sprite covers, in local coordinates. Derived, not measured:
+   reading the pixels back to find out cost half a megabyte per prop and
+   put the whole game's build cost back where it started. It does not
+   need measuring — `hgt + over` IS where the paint stops, because that
+   is exactly the room the canvas was sized to give it, and the eaves
+   are the only thing that reaches past the footprint sideways. */
+function paintedBox(c) {
+    var over = c.d.over || 0;
+    return { x0: -c.rrx * 1.15, x1: c.rrx * 1.15, y0: -(c.hgt + over), y1: c.rry + 4 };
 }
 /* sprite-local point to screen. Local (0,0) is the footprint centre, and
    the sprite is blitted so that centre lands on (mxc, myc). */
@@ -6494,6 +6516,15 @@ function qp(quad, u, v) {
    hex string every time. Snapping is not a compromise here — a fixed
    number of shades per colour is what makes a palette a palette. */
 var SHADE = {};
+/* A band running across a face, following the face. Every one of these
+   was a level `px()` rect sized off `c.fw`, which is the LENGTH of a
+   sloped iso edge and not a horizontal span — so the band came out too
+   long, level, and sitting on bare wall at one end while the face it
+   belonged to ran away underneath it. Take the points off the quad. */
+function bar(g, quad, u0, u1, v, w, col) {
+    var a = qp(quad, u0, v), b = qp(quad, u1, v);
+    line(g, a[0], a[1], b[0], b[1], col, w);
+}
 function shadeHex(hex, k) {
     var q = Math.round(k * 64), key = hex + '|' + q;
     var hit = SHADE[key];
@@ -6531,9 +6562,50 @@ function drawProp(cx, o) {
         cx.restore();
         return;
     }
+    /* A roof is drawn after anything standing behind it, which is right,
+       and a house is three tiles of roof, which means there is a band of
+       walkable ground where you are simply not on screen. You could
+       stand next to the widow, read "E — talk to A woman setting out a
+       lamp", and see neither her nor yourself. So a prop that is
+       covering somebody thins out over them. It eases, because a roof
+       that snaps to half opacity as you cross a tile line is worse than
+       the problem. */
+    var want = coversSomeone(o, sp, mxc, myc) ? T_CUT : 1;
+    var f = RT.world.cut[o._ci], now;
+    if (f == null) f = want;
+    now = f + (want - f) * (1 - Math.pow(0.004, RT.rdt || 1 / 60));
+    RT.world.cut[o._ci] = now;
+    if (now < 0.995) {
+        cx.save(); cx.globalAlpha = now;
+        cx.drawImage(sp.cv, Math.round(mxc - sp.ax), Math.round(myc - sp.ay));
+        if (propDef(t).live) propLive(cx, o, mxc, myc, sp);
+        cx.restore();
+        return;
+    }
     cx.drawImage(sp.cv, Math.round(mxc - sp.ax), Math.round(myc - sp.ay));
     if (propDef(t).live) propLive(cx, o, mxc, myc, sp);
     return;
+}
+var T_CUT = 0.56;                            // how much of a roof is left when it is in your way
+// the fades are indexed by position in the place's own prop list, so
+// they cannot outlive the place they were measured in
+onPlaceChange(function () { RT.world.cut = {}; });
+/* Only things that sort BEHIND this prop can be hidden by it, and only
+   the part of them that is actually inside the paint. Feet and head are
+   tested separately so a tall figure half behind a wall still counts. */
+function coversSomeone(o, sp, mxc, myc) {
+    var k = o.b[0] + o.b[2] / 2 + o.b[1] + o.b[3] / 2;
+    var lo = sp.box, x0 = mxc + lo.x0, x1 = mxc + lo.x1, y0 = myc + lo.y0, y1 = myc + lo.y1;
+    if (x1 - x0 < 24 || y1 - y0 < 24) return false;          // low things never hide anybody
+    for (var i = 0; i < RT.hide.length; i++) {
+        var a = RT.hide[i];
+        if (a.k >= k) continue;                              // in front of it, or is it
+        var sx = isoX(a.x, a.y), sy = isoY(a.x, a.y) + TILE_H / 2;
+        if (sx < x0 || sx > x1) continue;
+        if (sy > y1 || sy - a.h < y0) continue;
+        return true;
+    }
+    return false;
 }
 /* The one light rule, for every prop in the game: the key is low and
    from the west-north-west, so the SOUTH-WEST face is lit, the
@@ -6742,7 +6814,7 @@ PAINT.house = function (g, c) {
        Around the sill that does not, the same rectangle is still there,
        one step lighter than the wall and no more. It was scrubbed too,
        once. This house used to set out two. */
-    var lampU = 0.3 + (v % 2) * 0.3;
+    var lampU = houseSillU(v);
     var scrub = [qp(se, lampU - 0.05, 0.13), qp(se, lampU + 0.18, 0.13), qp(se, lampU + 0.18, 0.55), qp(se, lampU - 0.05, 0.55)];
     poly(g, scrub, 'rgba(122,114,132,.22)');
     dither(g, scrub, 'rgba(150,142,162,.3)', 0.2, rng);
@@ -6760,12 +6832,12 @@ PAINT.house = function (g, c) {
         var q = pl / 4;
         px(g, dTop[0] + dw * q + 1, dTop[1] + 2, dw / 4 - 1.5, dBot[1] - dTop[1] - 2, pl % 2 ? '#241b2c' : '#2b2134');
     }
-    px(g, dTop[0] - 2, dTop[1] - 3, dw + 4, 4, '#332c3c');   // lintel
-    px(g, dTop[0], dTop[1] + 5, dw, 2, '#3a3142');           // iron strap hinges
-    px(g, dTop[0], dBot[1] - 12, dw, 2, '#3a3142');
+    bar(g, sw, 0.40, 0.62, 0.325, 4, '#332c3c');            // lintel, on the slope the door is on
+    bar(g, sw, 0.42, 0.60, 0.40, 2, '#3a3142');             // iron strap hinges
+    bar(g, sw, 0.42, 0.60, 0.88, 2, '#3a3142');
     px(g, dTop2[0] - 5, (dTop[1] + dBot[1]) / 2, 3, 3, '#6a5c3a');   // a ring handle
-    px(g, dBot[0] - 3, dBot[1] - 3, dw + 6, 4, '#3b3542');   // a step, worn hollow in the middle
-    px(g, dBot[0] + 3, dBot[1] - 2, dw - 4, 2, '#3b3442');
+    bar(g, sw, 0.39, 0.63, 0.985, 4, '#3b3542');            // a step, worn hollow in the middle
+    bar(g, sw, 0.44, 0.58, 0.995, 2, '#3b3442');
     /* The tally on the door post: groups of five, one for each ninth
        night this house has kept. Exactly one group has been rubbed back
        out. It is the same hand that scratched the name off the mark. */
@@ -7224,7 +7296,7 @@ PAINT.post = function (g, c) {
 PAINT.beam = function (g, c) {
     var f = body(g, c);
     for (var i = 1; i < 4; i++) { var a = qp(f.sw, i / 4, 0), b = qp(f.sw, i / 4, 1); line(g, a[0], a[1], b[0], b[1], 'rgba(0,0,0,.35)', 1); }
-    px(g, -c.fw * 0.3, -c.hgt - 1, c.fw * 0.6, 2, 'rgba(255,240,210,.07)');
+    bar(g, f.top, 0.2, 0.8, 0.5, 2, 'rgba(255,240,210,.07)');               // the lit top arris
     var m = qp(f.sw, 0.5, 0.4);
     px(g, m[0] - 2, m[1], 4, 4, '#241c14');                                     // a peg through the joint
 };
@@ -7487,7 +7559,7 @@ PAINT.table = PAINT.counter = function (g, c) {
     dither(g, f.top, 'rgba(24,18,10,.4)', 0.06, rng);
     for (var i = 1; i < 5; i++) { var a2 = qp(f.sw, i / 5, 0), b2 = qp(f.sw, i / 5, 1); line(g, a2[0], a2[1], b2[0], b2[1], 'rgba(0,0,0,.3)', 1); }
     if (c.t === 'counter') {
-        px(g, -c.fw * 0.36, -hgt + 4, c.fw * 0.72, 3, '#2a2118');    // the shadow line under the lip
+        bar(g, f.sw, 0.03, 0.97, 0.055, 3, '#2a2118');                          // the shadow line under the lip
         var sc = qp(f.top, 0.24, 0.5);                                           // scales: she sells by weight
         line(g, sc[0], sc[1] - 14, sc[0], sc[1], '#3a3228', 2);
         line(g, sc[0] - 8, sc[1] - 14, sc[0] + 8, sc[1] - 14, '#3a3228', 1);
@@ -7657,11 +7729,23 @@ PAINT.wall = function (g, c) {
    it gets a pass of its own: darkness laid down flat, then punched back
    out around every flame in the place and around the lantern they put
    in your hand. */
+/* Where the lamp stands on the sill, along the lit east wall. The
+   painter and the light have to agree about this or the pool lands on
+   the wrong side of the house: it used to be pinned near the south-west
+   corner while the lantern was painted up to a hundred and fifty pixels
+   away, which in a game named after a lamp on a sill is the one light
+   that has to be right. One formula, read by both. */
+function houseSillU(v) { return 0.3 + (v % 2) * 0.3; }
 function lightsOf(p) {
     var out = [];
     (p.props || []).forEach(function (o) {
         var b = o.b;
-        if (o.t === 'house') out.push({ x: b[0] + b[2] * 0.18, y: b[1] + b[3] + 0.2, r: 3.6, c: '255,196,110', i: 0.95 });
+        if (o.t === 'house') {
+            // the `se` face runs from the south corner at u 0 to the east
+            // corner at u 1, and the window centre sits just past lampU
+            var u = houseSillU(propVar('house', b)) + 0.07;
+            out.push({ x: b[0] + b[2] + 0.2, y: b[1] + b[3] * (1 - u), r: 3.6, c: '255,196,110', i: 0.95 });
+        }
         else if (o.t === 'lamp') out.push({ x: b[0] + b[2] / 2, y: b[1] + b[3] / 2, r: 3.2, c: '255,206,120', i: 1 });
         else if (o.t === 'foot') out.push({ x: b[0] + b[2] / 2, y: b[1] + b[3] / 2, r: 4.4, c: '255,190,90', i: 0.7 });
         else if (o.t === 'mill') out.push({ x: b[0] + b[2] / 2, y: b[1] + b[3] + 0.3, r: 2.4, c: '255,190,120', i: 0.45 });

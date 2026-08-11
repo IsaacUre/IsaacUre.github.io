@@ -157,6 +157,35 @@ Object.keys(PLACES).forEach(function (id) {
         });
     });
 
+    /* Somebody standing where a roof covers them. A tall prop paints up
+       and to the left of its own footprint, so a person can be authored
+       on open, walkable, reachable ground and still never appear: the
+       widow stood three tiles behind a house for a whole release, and
+       the game happily offered "E — talk to A woman setting out a lamp"
+       over an empty roof. The player gets a cutaway; people do not.
+       Mirrors paintedBox() in the game: x within rrx*1.15, y from
+       -(h + over) to +rry, all in screen pixels about the footprint. */
+    (p.npcs || []).forEach(function (nid) {
+        var n = NPCS[nid]; if (!n) return;
+        var nk = n.x + n.y;
+        (p.props || []).forEach(function (o) {
+            var d = PROP[o.t]; if (!d) return;
+            var b = o.b, pk = b[0] + b[2] / 2 + b[1] + b[3] / 2;
+            if (pk <= nk) return;                         // drawn before them, cannot cover them
+            var rrx = (b[2] + b[3]) * 58 / 4, rry = (b[2] + b[3]) * 29 / 4;
+            var cxw = b[0] + b[2] / 2, cyw = b[1] + b[3] / 2;
+            var dx = ((n.x - n.y) - (cxw - cyw)) * 29;
+            var dy = ((n.x + n.y) - (cxw + cyw)) * 14.5;
+            var top = -(d.h + (d.over || 0));
+            // only flag somebody with nothing showing: a figure stands about
+            // 40px, so a waist-high counter or a well leaves a head visible
+            if (Math.abs(dx) < rrx * 1.15 && dy <= rry + 4 && dy - 40 >= top) {
+                bad(id + ': ' + nid + ' at ' + n.x + ',' + n.y + ' stands where "' + o.t + '" [' + o.b +
+                    '] is painted over them. They are on open ground and still invisible.');
+            }
+        });
+    });
+
     // a place lit only by your own lantern is a deliberate choice; a lit
     // place with nothing to light it is a mistake
     if (p.night) {
