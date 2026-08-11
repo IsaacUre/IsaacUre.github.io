@@ -3294,8 +3294,24 @@ body.tb-auto .toast { bottom: 20px; }
    game, so "turn it off" has to actually turn it off. */
 body.no-crt .screen::after { display: none; }
 
-/* a 5px strip is a mouse target, not a thumb target */
-@media (hover: none) {
+/* A 5px strip is a mouse target, not a thumb target.
+   `any-pointer: coarse` rather than `hover: none`: a Windows touch laptop or
+   an iPad with a keyboard reports a fine primary pointer and its owner still
+   has fingers. And note the .win.fs scope — the base rule is `.win.fs
+   .win-fsedge` at (0,3,0), so an unscoped `.win-fsedge` here loses on
+   specificity no matter how far down the file it sits, and the touch target
+   silently stayed 6px. Which, on a phone, is the ONLY way out of a
+   full-screen window: the title bar is translated off the top and the
+   taskbar is underneath the window layer. */
+@media (any-pointer: coarse) {
     .tb-edge { height: 16px; }
-    .win-fsedge { height: 16px; }
+    .win.fs .win-fsedge { height: 16px; }
 }
+
+/* The skip link is parked at top:-60px, but its text wraps to three lines at
+   phone width, so ~15px of it hangs back inside the viewport at z-index 999 —
+   directly over the top-edge strip above. A tap there did not reveal the
+   title bar, it followed the href and left the desktop entirely. Parked
+   means untouchable; focused means back. */
+.skip-link { pointer-events: none; }
+.skip-link:focus { pointer-events: auto; }

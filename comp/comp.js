@@ -441,7 +441,11 @@ var PFS = {
         var r;
         try { r = f.call(e, { navigationUI: 'hide' }); } catch (err) { if (cb) cb(false); return; }
         if (r && r.then) r.then(function () { if (cb) cb(true); }, function () { if (cb) cb(false); });
-        else if (cb) cb(true);
+        // The prefixed WebKit and IE methods return nothing whether they
+        // worked or not, so "no promise" is not "yes" — assuming success there
+        // made a Safari refusal a completely silent no-op. Ask the document
+        // once the queued task that sets fullscreenElement has had its turn.
+        else if (cb) setTimeout(function () { cb(PFS.on()); }, 80);
     },
     exit: function () {
         var f = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
@@ -460,21 +464,53 @@ function pageFsSync() {
         b.title = (on ? 'Leave full screen' : 'Full screen') + ' · Shift+F11';
         var u = b.querySelector('use'); if (u) u.setAttribute('href', on ? '#ic-fsx' : '#ic-fs');
     }
-    // Settings may be open behind it, showing a switch that just became a lie
+    // Settings may be open behind it, showing a switch that just became a lie.
+    // role="switch" is read off aria-checked, not off a class, so a screen
+    // reader was being told the opposite of the truth.
     var t = document.querySelector('.tgl[data-tgl="pagefs"]');
-    if (t) t.classList.toggle('on', on);
+    if (t) { t.classList.toggle('on', on); t.setAttribute('aria-checked', on ? 'true' : 'false'); }
+    // ...and the quick-settings tile. This is the ONE place that may paint it:
+    // the tile handler used to read PFS.on() on the line after asking, and the
+    // Fullscreen API sets fullscreenElement in a queued task, so that read is
+    // always the previous answer and the tile showed the exact inverse.
+    var q = quickPanel && quickPanel.querySelector('.qs-tile[data-qs="pagefs"]');
+    if (q) { q.classList.toggle('on', on); q.setAttribute('aria-pressed', on ? 'true' : 'false'); }
+}
+/* One explanation per attempt: a refusal can arrive as a rejected promise, as
+   a fullscreenerror event, or as both. */
+var fsDeniedAt = 0;
+function fsDenied() {
+    if (Date.now() - fsDeniedAt < 1200) return;
+    fsDeniedAt = Date.now();
+    toast('The browser turned full screen down.', 'ic-pc');
 }
 function togglePageFs() {
     if (!PFS.can()) { toast('This browser will not give the page the whole screen.', 'ic-pc'); return; }
     if (PFS.on()) { PFS.exit(); return; }
     PFS.enter(function (okd) {
         // the API only answers to a real gesture; a denial is worth explaining
-        if (!okd) toast('The browser turned full screen down.', 'ic-pc');
+        if (!okd) fsDenied();
     });
 }
 ['fullscreenchange', 'webkitfullscreenchange', 'MSFullscreenChange'].forEach(function (ev) {
     document.addEventListener(ev, pageFsSync);
 });
+// the browser saying no out loud, which the promise path does not always do
+['fullscreenerror', 'webkitfullscreenerror', 'MSFullscreenError'].forEach(function (ev) {
+    document.addEventListener(ev, fsDenied);
+});
+
+/* ─── how long a revealed strip stays revealed ───
+   A finger has no hover: it enters a strip on touchdown and leaves it on
+   release, so the 420ms a mouse needs would shut the bar before a thumb could
+   travel to a button. `(hover: none)` was the wrong question — it describes
+   only the PRIMARY pointer, so a Windows touch laptop, a Surface or an iPad
+   with a trackpad all answer "hover" and their owners still have fingers. Ask
+   the EVENT what it was made with instead, every time, so a machine with both
+   gets the right answer for whichever one you actually used. */
+var TB_MOUSE = 420, TB_TOUCH = 2600;
+function graceFor(e) { return (e && e.pointerType && e.pointerType !== 'mouse') ? TB_TOUCH : TB_MOUSE; }
+function isMouse(e) { return !e || !e.pointerType || e.pointerType === 'mouse'; }
 
 /* ─── one window, the whole screen ─── */
 var fsWin = null, fsPeekT = 0;
@@ -487,13 +523,13 @@ function syncFsBody() {
     var live = fsWin && openWins[fsWin] && openWins[fsWin].fs && !openWins[fsWin].min;
     document.body.classList.toggle('fs-app', !!live);
 }
-function fsPeek(id, on) {
+function fsPeek(id, on, grace) {
     var w = openWins[id]; if (!w || !w.fs) return;
     clearTimeout(fsPeekT);
     if (on) { w.el.classList.add('peek'); return; }
     fsPeekT = setTimeout(function () {
         var x = openWins[id]; if (x && x.fs) x.el.classList.remove('peek');
-    }, 420);
+    }, grace || TB_MOUSE);
 }
 function enterWinFs(id) {
     var w = openWins[id]; if (!w || w.fs) return;
@@ -509,10 +545,10 @@ function enterWinFs(id) {
         edge.className = 'win-fsedge';
         w.el.appendChild(edge);
         var bar = w.el.querySelector('.win-bar');
-        edge.addEventListener('pointerenter', function () { fsPeek(id, true); });
-        edge.addEventListener('pointerleave', function () { fsPeek(id, false); });
-        bar.addEventListener('pointerenter', function () { fsPeek(id, true); });
-        bar.addEventListener('pointerleave', function () { fsPeek(id, false); });
+        edge.addEventListener('pointerenter', function (e) { fsPeek(id, true, graceFor(e)); });
+        edge.addEventListener('pointerleave', function (e) { fsPeek(id, false, graceFor(e)); });
+        bar.addEventListener('pointerenter', function (e) { fsPeek(id, true, graceFor(e)); });
+        bar.addEventListener('pointerleave', function (e) { fsPeek(id, false, graceFor(e)); });
         // a title bar translated off the top is still in the tab order, so
         // tabbing to a caption button has to bring it back into view
         w.el.addEventListener('focusin', function (e) { if (e.target.closest && e.target.closest('.win-bar')) fsPeek(id, true); });
@@ -524,7 +560,12 @@ function enterWinFs(id) {
     focusWin(id);
     winResized(id);
     syncTaskbar();
-    toast('Full screen. Press F11 to leave.', 'ic-fs');
+    // Show the title bar on the way in and let it slide away by itself, so the
+    // way out is something you SAW rather than something you had to be told.
+    // On a touchscreen there is no F11 and this strip is the only exit there
+    // is, so it gets the long grace whatever you entered with.
+    fsPeek(id, true); fsPeek(id, false, TB_TOUCH);
+    toast('Full screen. Press F11, or reach for the top edge.', 'ic-fs');
 }
 function exitWinFs(id) {
     var w = openWins[id]; if (!w || !w.fs) return;
@@ -596,43 +637,51 @@ function winSysMenu(id, e) {
 }
 
 /* ─── a taskbar that gets out of the way ─── */
-/* A finger has no hover: it enters the strip on touchdown and leaves on
-   release, so the 420ms a mouse needs would shut the bar before a thumb
-   could travel to a button. Give a touch long enough to actually arrive. */
-var TB_HOVER = !(window.matchMedia && window.matchMedia('(hover: none)').matches);
-var TB_GRACE = TB_HOVER ? 420 : 2600;
 var tbPeekT = 0;
 function setTbAuto(on, save) {
     document.body.classList.toggle('tb-auto', !!on);
     if (!on) { clearTimeout(tbPeekT); document.body.classList.remove('tb-peek'); }
     if (save !== false) store('tbauto', on ? 'on' : 'off');
     renderDesktop();          // the icon grid just gained or lost a row
+    // 48px of usable height just came or went. Without this, auto-hide a
+    // taskbar, drag a window down to where the clamp now legitimately allows,
+    // turn auto-hide back off, and the whole title bar is inside the taskbar:
+    // not draggable, not closable, nothing to grab. Only a window resize
+    // rescued it, which is the same viewport change by a different control.
+    clampWindows();
 }
 /* Press the Windows key in a full-screen game and you get your taskbar back
-   along with Start, not Start floating on its own over the game. While
-   either is up the window layer drops back under the taskbar. */
+   along WITH Start, not Start floating on its own over the game. The same
+   goes for tabbing to it: body.fs-app paints the window layer over the
+   taskbar, so without this a keyboard user walks a whole row of controls
+   that are focused, real, and not on screen anywhere. */
 function fsYield() {
-    var up = startMenu.classList.contains('open') || !quickPanel.hidden || !calPanel.hidden;
+    var up = startMenu.classList.contains('open') || !quickPanel.hidden || !calPanel.hidden
+        || taskbar.contains(document.activeElement);
     document.body.classList.toggle('fs-yield', up);
 }
-function tbPeek(on) {
+function tbPeek(on, e) {
     if (!document.body.classList.contains('tb-auto')) return;
     clearTimeout(tbPeekT);
     if (on) { document.body.classList.add('tb-peek'); return; }
+    var mouse = isMouse(e);
     tbPeekT = setTimeout(function () {
         // anything hanging off the taskbar keeps it up, same as the real one
         if (startMenu.classList.contains('open')) return;
         if (!quickPanel.hidden || !calPanel.hidden) return;
-        if (TB_HOVER && taskbar.matches(':hover')) return;   // :hover is a lie on a touchscreen
+        if (taskbar.contains(document.activeElement)) return;   // the keyboard is still on it
+        if (mouse && taskbar.matches(':hover')) return;         // :hover is a lie for a finger
         document.body.classList.remove('tb-peek');
-    }, TB_GRACE);
+    }, graceFor(e));
 }
-byId('tbEdge').addEventListener('pointerenter', function () { tbPeek(true); });
-byId('tbEdge').addEventListener('pointerleave', function () { tbPeek(false); });
-taskbar.addEventListener('pointerenter', function () { tbPeek(true); });
-taskbar.addEventListener('pointerleave', function () { tbPeek(false); });
-taskbar.addEventListener('focusin', function () { tbPeek(true); });     // keyboard reaches it too
-taskbar.addEventListener('focusout', function () { tbPeek(false); });
+byId('tbEdge').addEventListener('pointerenter', function (e) { tbPeek(true, e); });
+byId('tbEdge').addEventListener('pointerleave', function (e) { tbPeek(false, e); });
+taskbar.addEventListener('pointerenter', function (e) { tbPeek(true, e); });
+taskbar.addEventListener('pointerleave', function (e) { tbPeek(false, e); });
+taskbar.addEventListener('focusin', function () { tbPeek(true); fsYield(); });   // keyboard reaches it too
+// focusout fires BEFORE the next element takes focus, so activeElement is
+// still stale on this tick — ask again once it has settled
+taskbar.addEventListener('focusout', function () { tbPeek(false); setTimeout(fsYield, 0); });
 
 /* ═══════════════════════════ apps ═══════════════════════════ */
 var ME = {
@@ -8602,7 +8651,7 @@ function buildQuick() {
     // the live state rather than remembering a stale one like its neighbours.
     if (PFS.can()) tiles.push(['ic-fs', 'Full screen', PFS.on() ? 1 : 0, 'pagefs']);
     quickPanel.innerHTML = '<div class="qs-grid">' + tiles.map(function (t) {
-        return '<button class="qs-tile' + (t[2] ? ' on' : '') + '"' + (t[3] ? ' data-qs="' + t[3] + '"' : '') + '>' + ic(t[0]) + '<span>' + t[1] + '</span></button>';
+        return '<button class="qs-tile' + (t[2] ? ' on' : '') + '"' + (t[3] ? ' data-qs="' + t[3] + '" aria-pressed="' + (t[2] ? 'true' : 'false') + '"' : '') + '>' + ic(t[0]) + '<span>' + t[1] + '</span></button>';
     }).join('') + '</div>' +
         '<div class="qs-slider">' + ic('ic-moon') + '<input type="range" min="20" max="100" value="80" aria-label="Brightness"></div>' +
         '<div class="qs-slider">' + ic('ic-vol') + '<input type="range" min="0" max="100" value="' + sysVolume() + '" aria-label="Volume"></div>' +
@@ -8610,8 +8659,12 @@ function buildQuick() {
     quickPanel.querySelectorAll('.qs-tile').forEach(function (t) {
         t.addEventListener('click', function () {
             if (t.getAttribute('data-qs') === 'pagefs') {
-                togglePageFs();                              // must be inside the gesture, not after a tick
-                t.classList.toggle('on', PFS.on());
+                // must be inside the gesture, not after a tick. Painting the
+                // tile is pageFsSync's job and only pageFsSync's: reading
+                // PFS.on() here returns the state from BEFORE the request,
+                // because the API sets fullscreenElement in a queued task —
+                // so this tile used to show the exact inverse of the truth.
+                togglePageFs();
                 return;
             }
             t.classList.toggle('on');
