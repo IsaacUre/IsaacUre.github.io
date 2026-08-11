@@ -182,6 +182,8 @@ var TUNE = {
     coupletStacks: 1,    // extra stacks for saying two of a sound back to back
     coupletDmg: 0.35,    // and extra bite on the second one
     slantShift: 1,       // a slant rhyme drags every other sound over to its own
+    dragMul: 0.7,        // what a drag hits for, as a share of one slant of answerBase. FLAT: see doRhyme
+    dragAge: 0.35,       // and the share of their remaining life it costs the sounds it pulls
     rhymeCost: 15        // what closing a rhyme costs. answerCost is its old name
 };
 
@@ -270,7 +272,7 @@ var CHARMS = {
               m: { rampAfter: -0.5 } },
     bell:   { n: 'The Vestry Bell', cost: 70, d: 'Rung on the ninth night, badly. Echo builds 60% faster and decays slower.',
               m: { echoGain: 0.6, echoDecay: -1.5 } },
-    chalk:  { n: 'Rehearsal Chalk', cost: 45, d: 'For marking where to stand. A slant answer keeps 80% of its damage instead of half.',
+    chalk:  { n: 'Rehearsal Chalk', cost: 45, d: 'For marking where to stand. Your drag hits 60% harder, and a slant that does not drag keeps 80% of its damage instead of half.',
               m: { slantMul: 0.3 } },
     lamp:   { n: 'The Sill Lamp', cost: 85, d: 'Set out every year for a man who was never out there. -eat and -ight land 30% harder.',
               m: { famDmg: { eat: 0.3, ight: 0.3 } } },
@@ -318,7 +320,7 @@ var ITEMS = {
     },
     wax: {
         n: 'A Stub of Wax', tag: 'use', cost: 18,
-        d: 'Off the chandler\'s counter. Warm it in your hand and a mismatched pair holds for a while: slants land in full.',
+        d: 'Off the chandler\'s counter. Warm it in your hand and a mismatched pair holds for a while: any sound you answer takes the whole pile with it, at full strength.',
         // stacks rather than resets, so a second stub is never worth less than
         // the seconds it wipes off the first. Refuses near the ceiling instead
         // of eating a stub for the two seconds it has room for.
@@ -955,6 +957,8 @@ var DEV = [
       { k: 'num', t: 'Couplet extra stacks', get: function () { return T('coupletStacks'); }, set: function (v) { S.tune.coupletStacks = clamp(Math.round(v), 0, 4); }, step: 1 },
       { k: 'num', t: 'Couplet extra damage x', get: function () { return T('coupletDmg'); }, set: function (v) { S.tune.coupletDmg = clamp(v, 0, 3); }, step: 0.05, fix: 2 },
       { k: 'tgl', t: 'Slant drags stacks to its sound', get: function () { return !!T('slantShift'); }, set: function (v) { S.tune.slantShift = v ? 1 : 0; } },
+      { k: 'num', t: 'Drag damage (x answer base, flat)', get: function () { return T('dragMul'); }, set: function (v) { S.tune.dragMul = clamp(v, 0, 2); }, step: 0.05, fix: 2 },
+      { k: 'num', t: 'Drag ages what it moves (share of life)', get: function () { return T('dragAge'); }, set: function (v) { S.tune.dragAge = clamp(v, 0, 0.95); }, step: 0.05, fix: 2 },
       { k: 'num', t: 'Echo per stack', get: function () { return T('echoPerStack'); }, set: function (v) { S.tune.echoPerStack = clamp(v, 0, 50); }, step: 1 },
       { k: 'num', t: 'Echo decay / s', get: function () { return T('echoDecay'); }, set: function (v) { S.tune.echoDecay = clamp(v, 0, 40); }, step: 0.5, fix: 1 },
       { k: 'num', t: 'Call range', get: function () { return T('callRange'); }, set: function (v) { S.tune.callRange = clamp(v, 1, 30); }, step: 0.5, fix: 1 },
@@ -1592,7 +1596,7 @@ function init(el) {
             say: function () { doCall(); },
             swallow: function () { doSwallow(); },
             rhyme: function (f) { doRhyme(f); },
-            board: function () { var o = {}; FAM_IDS.forEach(function (f) { var n = boardCount(f); if (n) o[f] = n; }); return o; },
+            board: function () { var o = {}; FAM_IDS.forEach(function (f) { var n = boardCount(f, 1); if (n) o[f] = n; }); return o; },
             poem: function () { return RT.poem; },
             frag: function (n) { grantFragment(n); },
             sfx: function (k) { sfx(k); return RT.audio.errs; },
@@ -2171,8 +2175,10 @@ function spendBreath(cost) {
 /* ═══════════════ THE LINE ═══════════════
    You do not choose your words. You choose your rhymes.
 
-   Every word you own sits in a bag. The line deals you four of them,
-   face up: the one on your tongue and three you can see coming. Left
+   Every word you own sits in a bag. The line deals them face up: the
+   one on your tongue and the ones you can see coming. It always keeps
+   one back, so it is four cards once you know five words and three
+   before that, and swallowing can always hand you something else. Left
    click says the head word at whatever you are pointing at and sticks
    a syllable of its sound to what it hits. Right click swallows it
    instead, which costs breath and puts a struck-out word in your poem.
@@ -2211,6 +2217,10 @@ function drawWord(avoid) {
         if (RT.line && RT.line.indexOf(w) >= 0) continue;
         return RT.bag.splice(i, 1)[0];
     }
+    // Last resort, and the order matters: a duplicate of something already
+    // face up is untidy, handing back the word you just swallowed is a
+    // refund of nothing. Take the duplicate.
+    for (var j = RT.bag.length - 1; j >= 0; j--) if (RT.bag[j] !== avoid) return RT.bag.splice(j, 1)[0];
     return RT.bag.pop();
 }
 /* `fresh` rebuilds the bag, so a word you just learned is in your mouth
@@ -2226,7 +2236,15 @@ function fillLine(fresh) {
         // reshuffle deals you the word you are already looking at
         RT.line.forEach(function (w) { var i = RT.bag.indexOf(w); if (i >= 0) RT.bag.splice(i, 1); });
     }
-    var want = Math.max(1, Math.round(T('lineSize')));
+    // The line never holds every word you know. A new save owns four words
+    // and the line wants four cards, so the bag ran dry every single draw:
+    // swallowing handed you straight back the word you had just paid five
+    // breath to be rid of, because there was nothing else in the world to
+    // deal. Keeping one word in reserve means the swallow always changes
+    // something, and the line growing from three cards to four as you learn
+    // a fifth word reads as your voice getting wider, which it is.
+    var pool = poolWords().length;
+    var want = clamp(Math.round(T('lineSize')), 1, Math.max(1, pool - 1));
     while (RT.line.length < want) RT.line.push(drawWord());
     if (RT.line.length > want) RT.line.length = want;
 }
@@ -2493,10 +2511,15 @@ function breakStack(f, s) {
    every rhyme pip, which is the whole readability problem solved: you
    can see at a glance that there are four -eat on the board and one
    stray -ark you have not closed. */
-function boardCount(fam) {
+/* `withFolk` is for the dev handle's auto-answer, which wants the real best
+   sound. The HUD never passes it: the pip is a combat readout, and at the
+   last cue the whole square is carrying -ill, so it would light up with 25
+   and hand the player the answer to the only question the game asks. */
+function boardCount(fam, withFolk) {
     var n = 0;
     RT.foes.forEach(function (f) {
         if (f.dead || heldOpen(f)) return;
+        if (f.def.folk && !withFolk) return;
         f.stacks.forEach(function (t) { if (t.fam === fam) n++; });
     });
     return n;
@@ -2535,14 +2558,26 @@ function doRhyme(fam) {
     if (RT.winded > 0) { hudNudge('breath'); return; }
     if (RT.answerCd > 0) return;
     var st = stats();
-    if (!spendBreath(st.answerCost)) { hudNudge('breath'); return; }
+    var live = RT.foes.filter(function (f) { return !f.dead && f.stacks.length && !heldOpen(f); });
+    // A rhyme with nothing to rhyme with is a shout in an empty room, and it
+    // is free. Charging for it made the 0.9s gap after a wrong answer in the
+    // act into a trap: Bern tells you the sound, you say it inside a second,
+    // and you are billed fifteen breath for silence.
+    //
+    // Free, but NOT skipped. Returning early here quietly broke two things,
+    // because everything below this line still has to happen: you said the
+    // sound, so it ends your poem line (that is the poem's only player-driven
+    // break), and it counts as an Answer, which is the event the act's watcher
+    // reads. Skip it and a rhyme pressed into an empty square folds three
+    // words into the next line with no end sound, and the last cue can be
+    // made unanswerable.
+    if (live.length && !spendBreath(st.answerCost)) { hudNudge('breath'); return; }
     RT.answerCd = 0.34;
     RT.nAnswers++;
     RT.lastRhyme = fam;
     RT.casting = { t: 0.22, max: 0.22 };
     var word = FAMS[fam].tag;
     RT.lastWord = word; RT.lastFam = fam;          // the Reprise says the last thing you said
-    var live = RT.foes.filter(function (f) { return !f.dead && f.stacks.length && !heldOpen(f); });
     var totalMatched = 0, hitFoes = 0, best = 0, dragged = 0;
 
     live.forEach(function (f) {
@@ -2550,27 +2585,58 @@ function doRhyme(fam) {
         f.stacks.forEach(function (t) { if (t.fam === fam) match++; else other++; });
         if (!match && !other) return;
         var closed = match > 0;
-        var n = closed ? match : other;
-        var dmg = (st.answerBase + st.answerPerStack * n) * famDmgMul(fam);
-        // soft wax holds a mismatched pair together: a slant lands in full
-        if (!closed) { dmg *= (RT.items.freeSlant > 0 ? 1 : st.slantMul); }
+        // Soft wax holds a mismatched pair together, which means it CLOSES:
+        // full damage and the sounds are spent. Two things it must not do.
+        // It must not grant full damage on top of the drag, which was the
+        // same pile hit at full strength over and over for the whole time
+        // the wax was warm. And it must not sit behind `!closed`, which made
+        // pressing a sound the foe was carrying strictly worse than pressing
+        // one it was not: the mixed pile is exactly the pair the wax is for,
+        // so with it warm the whole pile counts as one sound.
+        var waxed = other > 0 && RT.items.freeSlant > 0 && !f.def.folk;
+        var takes = closed || waxed;
+        var n = waxed ? match + other : closed ? match : other;
+        var willDrag = !takes && !f.def.folk && !!T('slantShift');
+        var dmg;
+        if (takes) {
+            dmg = (st.answerBase + st.answerPerStack * n) * famDmgMul(fam);
+        } else if (willDrag) {
+            // The drag is a manoeuvre, not an attack, and it is FLAT: it does
+            // not scale with the pile. Scaling it made gathering a big pile
+            // pay better than closing it (six alternating drags on a pile of
+            // six did 240 and left all six standing, against 95 for the close
+            // that spends them), so the best play in a game about closing the
+            // couplet was to never close one.
+            // Still billed through st.slantMul, because a drag IS a slant and
+            // Rehearsal Chalk buys that number. Give the drag its own constant
+            // and the chalk becomes a 45 coin charm that does nothing.
+            dmg = st.answerBase * st.slantMul * T('dragMul') * famDmgMul(fam);
+        } else {
+            dmg = (st.answerBase + st.answerPerStack * n) * st.slantMul * famDmgMul(fam);
+        }
         dmg *= deafMul(f, fam);          // the deaf hear nothing: only -ill touches them
-        hurtFoe(f, dmg, fam, { answer: 1, closed: closed, n: n });
-        if (closed) { totalMatched += match; if (match > best) best = match; famEffect(f, fam, match); }
+        hurtFoe(f, dmg, fam, { answer: 1, closed: takes, n: n });
+        if (takes) { totalMatched += n; if (n > best) best = n; famEffect(f, fam, n); }
         hitFoes++;
-        if (closed) {
+        if (waxed) {
+            f.stacks.length = 0;              // the wax takes the whole pile, matched or not
+        } else if (closed) {
             f.stacks = f.stacks.filter(function (t) { return t.fam !== fam; });
         } else if (f.def.folk) {
             // The town's open line is not draggable. It has been the same
             // sound for four hundred years and a wrong answer does not move
             // it: that refusal is the entire act.
-        } else if (T('slantShift')) {
-            // the drag. Nothing is spent: the sounds are pulled over.
-            f.stacks.forEach(function (t) { t.fam = fam; dragged++; });
+        } else if (willDrag) {
+            // the drag. Nothing is spent, but a sound pulled over is a sound
+            // wearing out: every drag costs what it moves part of its life,
+            // so you can gather a board onto one rhyme and you cannot do it
+            // forever.
+            var age = clamp(T('dragAge'), 0, 0.95);
+            f.stacks.forEach(function (t) { t.fam = fam; t.t *= (1 - age); dragged++; });
         } else {
             f.stacks.length = 0;
         }
-        snapStacks(f, closed ? FAMS[fam].col : '#6a5f72', n);
+        snapStacks(f, takes ? FAMS[fam].col : '#6a5f72', n);
     });
 
     poemBreak(fam);                       // a rhyme is where the line ends
@@ -2589,12 +2655,14 @@ function doRhyme(fam) {
         RT.shake = shake(4);
         sfx('slant');
     } else if (hitFoes > 0) {
+        // the town, who cannot be dragged, and anyone the drag toggle is off for
         ach('slant');
         slam(word, '#6a5f72', 'slant');
         RT.shake = shake(3);
         sfx('slant');
     } else {
-        // a rhyme with nothing to rhyme with: it goes out and finds no sound
+        // a rhyme with nothing to rhyme with: it goes out and finds no sound.
+        // It cost nothing, and it still ended the line.
         typo(RT.px, RT.py, word, '#4d4757', 0.5, 12, 'pop');
         sfx('empty');
     }
@@ -2650,7 +2718,7 @@ function doAnswer() {
     var best = null, bn = 0;
     FAM_IDS.forEach(function (f) {
         if (!rhymeReady(f)) return;
-        var n = boardCount(f);
+        var n = boardCount(f, 1);          // the town counts here: this is __ninth.answer()
         if (n > bn) { bn = n; best = f; }
     });
     doRhyme(best || (rhymeReady(answerFam()) ? answerFam() : FAM_IDS.filter(rhymeReady)[0] || 'eat'));
@@ -2695,6 +2763,11 @@ function stepReprise(dt) {
     var st = stats(), hit = 0;
     RT.foes.forEach(function (f) {
         if (f.dead || !f.stacks.length) return;
+        // never the town. The Reprise is everything YOU said coming back, and
+        // the town's open line is not something you said. It also used to
+        // clear their stacks on the last beat, which is the one thing in the
+        // game that could empty the square without an Answer.
+        if (heldOpen(f) || f.def.folk) return;
         var n = f.stacks.length;
         // everything counts as closed, whatever sound it was
         var dmg = (st.answerBase + st.answerPerStack * n) * T('repriseMul') * famDmgMul(r.fam) * deafMul(f, r.fam);
@@ -4750,7 +4823,7 @@ function fillBook() {
 function fillKit() {
     var b = RT.root.querySelector('.nn-p-kit .nn-pb');
     var pool = poolWords(), keys = rhymeKeys();
-    var html = '<p class="nn-note">You do not pick your words. Every word you have learned goes in the bag and the line deals you four at a time: <b>left click</b> says the one on your tongue, <b>right click</b> swallows it. The <b>sounds</b> are yours, on the number row, and each one closes every syllable of itself on the board at once.</p>';
+    var html = '<p class="nn-note">You do not pick your words. Every word you have learned goes in the bag and the line deals them out a few at a time, always keeping one back: <b>left click</b> says the one on your tongue, <b>right click</b> swallows it. Learn more words and the line gets longer. The <b>sounds</b> are yours, on the number row, and each one closes every syllable of itself on the board at once.</p>';
     html += '<p class="nn-note dim">Learn more words in a sound and you will draw that sound more often. That is the build.</p>';
     html += '<h4>YOUR BAG <i>· ' + pool.length + ' word' + (pool.length === 1 ? '' : 's') + '</i></h4>';
     FAM_IDS.forEach(function (fid, i) {
@@ -8102,9 +8175,34 @@ function devDemo() {
         for (var b3 = 0; b3 < (+q.na3fr || A3FR[q.na3] || 90); b3++) { step(1 / 60); draw(1 / 60); }
     }
     if (q.nmap) RT.mapOpen = true;
+    /* npoem: say a stanza's worth of words and close it, so the book page and
+       the readback can be captured. The poem is the one built thing that a
+       screenshot could not reach: it only exists after a fight, and devDemo
+       has no way to fight one. Words are drawn from the pool you actually
+       own, so npoem=1 after nfrag=3 reads differently from npoem=1 cold. */
+    if (q.npoem) {
+        poemStart();
+        for (var pw = 0; pw < (+q.npoem || 1) * 3; pw++) {
+            var run = irnd(2, 4), fam = null;
+            for (var pj = 0; pj < run; pj++) {
+                var word = headWord(); RT.line.shift(); fillLine();
+                fam = WORDS[word];
+                if (pj === run - 1 && irnd(0, 5) === 0) poemSwallow(word);
+                else poemSay(word, fam, pj > 0 && WORDS[word] === fam ? 1 : 0);
+            }
+            poemBreak(fam);
+        }
+        if (q.npoem !== 'open') poemKeep(RT.place, RT.poem);
+    }
     // the shop is gated on standing at the chandler; a capture has no legs
     if (q.npanel === 'shop') RT.items.atShop = true;
     if (q.npanel) panel(q.npanel);
+    // the book opens on the ballad and the poem is below the fold, so a
+    // capture of the thing you came to look at needs the scroll doing for it
+    if (q.nscroll) {
+        var pb = RT.root.querySelector('.nn-p-' + (q.npanel || 'book') + ' .nn-pb');
+        if (pb) pb.scrollTop = q.nscroll === 'end' ? pb.scrollHeight : +q.nscroll;
+    }
     /* nsfx: fire every sound name and report what the graph did.
        This cannot tell you whether the game SOUNDS right, and nothing
        automated can. What it does catch is the whole class of failure
