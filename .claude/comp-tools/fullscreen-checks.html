@@ -637,6 +637,60 @@ function run() {
             ' menu hidden=' + (dc && dc.hidden) + ' quick tile=' + (dt ? 'PRESENT' : 'absent'));
     });
 
+    /* ══ and the whole way out, on a phone ══
+       The individual pieces are asserted above, but the HIGH finding was that
+       they did not ADD UP to an exit: 390px wide, a coarse pointer, no
+       keyboard, the title bar clipped off the top and the taskbar under the
+       window layer. Drive the entire escape end to end in a real frame that
+       size — touch the strip, get the bar, leave full screen — because every
+       part of it passing individually is exactly what happened last time. */
+    later(0, function () {
+        var ph = document.createElement('iframe');
+        ph.setAttribute('allow', 'fullscreen');
+        ph.style.cssText = 'position:fixed;left:-4000px;width:390px;height:780px;border:0';
+        ph.src = '/comp/?_=' + Math.floor(Math.random() * 1e9);
+        document.body.appendChild(ph);
+        window.__phone = ph;
+    });
+    later(2600, function () {
+        var P = window.__phone.contentWindow, PD = P.document;
+        if (!PD || !PD.querySelector('.tb-btn.app')) { ok('a phone can get back out of full screen', false, 'the phone frame never booted'); return; }
+        var pk = PD.createElement('style');
+        pk.textContent = '*,*::before,*::after{transition:none!important;animation:none!important}';
+        PD.head.appendChild(pk);
+        // a real coarse pointer cannot be emulated from here, so make the
+        // coarse-pointer rules match and let specificity decide, as above
+        [].forEach.call(PD.styleSheets, function (ss) {
+            var rules; try { rules = ss.cssRules; } catch (e) { return; }
+            [].forEach.call(rules, function (r) {
+                var q = r.type === 4 && (r.conditionText || (r.media && r.media.mediaText) || '');
+                if (q && /any-pointer:\s*coarse|hover:\s*none/.test(q)) { try { r.media.mediaText = '(min-width: 1px)'; } catch (e) {} }
+            });
+        });
+        function ptap(el, type) { el.dispatchEvent(new (P.PointerEvent || P.MouseEvent)(type, { bubbles: true, cancelable: true, pointerId: 1, pointerType: 'touch' })); }
+        PD.querySelector('.tb-btn.app[data-app="terminal"]').dispatchEvent(new P.MouseEvent('click', { bubbles: true }));
+        var pw2 = PD.querySelector('.win[data-app="terminal"]');
+        pw2.querySelector('.cap-fs').dispatchEvent(new P.MouseEvent('click', { bubbles: true, cancelable: true }));
+        pw2.classList.remove('peek');                       // past the teaching peek, cold
+        var got = pw2.classList.contains('fs');
+        // what is actually under a thumb at the top centre of the screen?
+        var hit = PD.elementFromPoint(195, 4);
+        var isStrip = !!(hit && hit.closest && hit.closest('.win-fsedge'));
+        ptap(hit || pw2.querySelector('.win-fsedge'), 'pointerenter');
+        var peeked = pw2.classList.contains('peek');
+        // and press whatever a thumb would ACTUALLY land on over the button,
+        // not the button we already know is in the DOM
+        var cr = pw2.querySelector('.cap-fs').getBoundingClientRect();
+        var capHit = PD.elementFromPoint(Math.round(cr.left + cr.width / 2), Math.round(cr.top + cr.height / 2));
+        var capReachable = !!(capHit && capHit.closest && capHit.closest('.cap-fs'));
+        if (capHit) capHit.dispatchEvent(new P.MouseEvent('click', { bubbles: true, cancelable: true }));
+        ok('a phone can get back out of full screen with nothing but a thumb',
+            got && isStrip && peeked && capReachable && !pw2.classList.contains('fs'),
+            'entered=' + got + ' thumb at top hits=' + (hit ? (hit.className || hit.tagName) : 'nothing') +
+            ' bar came down=' + peeked + ' caption reachable=' + capReachable +
+            ' out=' + !pw2.classList.contains('fs'));
+    });
+
     function finish() {
         ok('a refused full screen explains itself instead of failing silently',
             toasts.some(function (t) { return /turned full screen down/i.test(t); }),
