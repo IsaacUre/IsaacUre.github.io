@@ -2,8 +2,11 @@
 <style>body{background:#14121a;color:#e6e1f0;font:12px/1.55 monospace;margin:0;padding:10px}
 pre{white-space:pre-wrap}iframe{position:fixed;left:-4000px;width:1280px;height:800px;border:0}</style>
 <pre id="out">booting</pre>
+<!-- cache-bust: headless keeps comp.js from the last run otherwise -->
 <iframe id="f" src="/comp/" allow="fullscreen"></iframe>
 <script>
+/* headless serves the previous run's comp.js from cache otherwise */
+document.getElementById('f').src = '/comp/?_=' + Math.floor(Math.random() * 1e9);
 /* FULL SCREEN CHECKS — /comp/
    Every state transition of the three fullscreen layers, driven with real
    DOM events on the real desktop rather than by calling internals: the
@@ -184,8 +187,13 @@ function run() {
     /* Escape, and its priority against a menu that wanted it */
     key('F11');
     click(D.getElementById('startBtn'));
+    ok('the Windows key in a full-screen app hands the taskbar back with Start',
+        zOf('.windows') < zOf('.taskbar') && D.getElementById('startMenu').classList.contains('open'),
+        'windows=' + zOf('.windows') + ' taskbar=' + zOf('.taskbar'));
     key('Escape');
     var startEatIt = w.classList.contains('fs') && !D.getElementById('startMenu').classList.contains('open');
+    ok('and takes it away again when Start closes', zOf('.windows') > zOf('.taskbar'),
+        'windows=' + zOf('.windows'));
     key('Escape');
     ok('Escape closes Start first and only then leaves full screen',
         startEatIt && !w.classList.contains('fs'),

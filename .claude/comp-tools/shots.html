@@ -1,7 +1,10 @@
 <!doctype html><meta charset="utf-8"><title>shot</title>
 <style>html,body{margin:0;background:#0a0810}iframe{width:1440px;height:900px;border:0;display:block}</style>
+<!-- cache-bust: headless keeps comp.js from the last run otherwise -->
 <iframe id="f" src="/comp/" allow="fullscreen"></iframe>
 <script>
+/* headless serves the previous run's comp.js from cache otherwise */
+document.getElementById('f').src = '/comp/?_=' + Math.floor(Math.random() * 1e9);
 var STATE = location.hash.slice(1) || 'fs-terminal', t = 0;
 function go(){
   var W, D; try { W = frames[0]; D = W.document; } catch(e){}
@@ -38,6 +41,19 @@ function go(){
     key('F11');
     // rAF never runs headless, so drive the game by hand after the resize
     if (W.__ninth) { try { W.__ninth.tick(40, 1/60); } catch (e) { document.title = 'SHOT ERR ' + e.message; } }
+  }
+  else if (STATE === 'fs-start') {
+    var ic2 = null;
+    D.querySelectorAll('.dicon').forEach(function (d) { if (/ninth/i.test(d.textContent)) ic2 = d; });
+    if (ic2) ic2.dispatchEvent(new W.MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+    key('F11');
+    if (W.__ninth) { try { W.__ninth.tick(40, 1/60); } catch(e){} }
+    click(D.getElementById('startBtn'));      // the Windows key in a full-screen game
+  } else if (STATE === 'fs-steam-peek') {
+    tb('steam');
+    key('F11');
+    var sw = D.querySelector('.win[data-app="steam"]');
+    sw.querySelector('.win-fsedge').dispatchEvent(new (W.PointerEvent||W.MouseEvent)('pointerenter',{bubbles:true}));
   }
   setTimeout(function(){ document.title = 'SHOT ' + STATE; }, 200);
 }

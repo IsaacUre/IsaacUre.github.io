@@ -3222,6 +3222,10 @@ button.nn-drow:hover { background: rgba(30,60,48,.5); }
    flyouts (56), menus, dialogs and the blue screen, which is exactly what a
    real machine does when you press the Windows key in a full-screen game. */
 body.fs-app .windows { z-index: 51; }
+/* ...and drops back the moment Start or a flyout is up, so the Windows key
+   in a full-screen game hands you the taskbar too, not a menu floating on
+   its own over the game */
+body.fs-app.fs-yield .windows { z-index: 10; }
 
 /* The title bar leaves the flow and hangs above the top edge so the content
    gets the whole screen. Reach for the top edge and it comes back down. */

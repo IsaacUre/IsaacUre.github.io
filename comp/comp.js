@@ -608,6 +608,13 @@ function setTbAuto(on, save) {
     if (save !== false) store('tbauto', on ? 'on' : 'off');
     renderDesktop();          // the icon grid just gained or lost a row
 }
+/* Press the Windows key in a full-screen game and you get your taskbar back
+   along with Start, not Start floating on its own over the game. While
+   either is up the window layer drops back under the taskbar. */
+function fsYield() {
+    var up = startMenu.classList.contains('open') || !quickPanel.hidden || !calPanel.hidden;
+    document.body.classList.toggle('fs-yield', up);
+}
 function tbPeek(on) {
     if (!document.body.classList.contains('tb-auto')) return;
     clearTimeout(tbPeekT);
@@ -8518,7 +8525,7 @@ function setStart(open) {
     // queued rAF could land AFTER a close and corrupt the state)
     startMenu.classList.toggle('open', open);
     startBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
-    tbPeek(open);   // Start hangs off a taskbar that has to be there to hang off
+    tbPeek(open); fsYield();   // Start hangs off a taskbar that has to be there to hang off
     if (open) { closeFlyouts(); closeCtx(); closeBctx(); closeTaskView(); setTimeout(function () { startSearch.focus(); }, 40); }
     else { startSearch.value = ''; filterStart(''); }
 }
@@ -8572,7 +8579,7 @@ function toggleFlyout(panel, build) {
     var opening = panel.hidden;
     closeFlyouts(); setStart(false); closeCtx(); closeBctx();
     if (opening) { build(); panel.hidden = false; }
-    tbPeek(opening);   // and so does everything else anchored to the bar
+    tbPeek(opening); fsYield();   // and so does everything else anchored to the bar
 }
 byId('quickBtn').addEventListener('click', function (e) { e.stopPropagation(); toggleFlyout(quickPanel, buildQuick); });
 byId('clock').addEventListener('click', function (e) { e.stopPropagation(); toggleFlyout(calPanel, buildCal); });
