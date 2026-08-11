@@ -3083,6 +3083,19 @@ button.nn-drow:hover { background: rgba(30,60,48,.5); }
 .mc-chat.open .mc-chatin { display: block; width: 100%; box-sizing: border-box; margin-top: 1px;
     background: rgba(0,0,0,.5); border: 0; outline: 0; color: #fff; font-family: inherit; font-size: 15px;
     line-height: 1.5; padding: 3px 6px; text-shadow: 2px 2px 0 rgba(0,0,0,.75); caret-color: #fff; }
+/* live command suggestions: a box that sits above the input, lined up under the
+   token it is completing, with the command's usage line across the top */
+.mc-sug { position: relative; align-self: flex-start; width: max-content; max-width: 100%; min-width: 92px;
+    background: rgba(0,0,0,.86); border: 1px solid rgba(255,255,255,.14); margin-bottom: 1px; }
+.mc-chat:not(.open) .mc-sug { display: none !important; }
+.mc-sugu { color: #9aa0a6; font-size: 12px; padding: 2px 6px; white-space: nowrap;
+    border-bottom: 1px solid rgba(255,255,255,.12); }
+.mc-sugu:empty { display: none; }
+.mc-sugl { max-height: 136px; overflow-y: auto; scrollbar-width: none; }
+.mc-sugl::-webkit-scrollbar { width: 0; }
+.mc-sugi { color: #d7dadc; font-size: 14px; line-height: 1.35; padding: 1px 6px; white-space: nowrap; cursor: pointer; }
+.mc-sugi:hover { background: rgba(255,255,255,.13); }
+.mc-sugi.on { background: #2f5a96; color: #fff; }
 .mc-chattab { display: none; background: rgba(0,0,0,.72); color: #aaa; font-size: 13px;
     padding: 3px 6px; text-shadow: 1px 1px 0 rgba(0,0,0,.8); word-break: break-word; }
 .mc-chat.open .mc-chattab:not(:empty) { display: block; }
