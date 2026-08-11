@@ -54,7 +54,7 @@ function run() {
     function key(k, opt) {
         opt = opt || {};
         var e = new W.KeyboardEvent('keydown', { key: k, code: opt.code || '', bubbles: true, cancelable: true,
-            altKey: !!opt.alt, shiftKey: !!opt.shift, ctrlKey: !!opt.ctrl });
+            altKey: !!opt.alt, shiftKey: !!opt.shift, ctrlKey: !!opt.ctrl, metaKey: !!opt.meta });
         (opt.on || D).dispatchEvent(e);
         D.dispatchEvent(new W.KeyboardEvent('keyup', { key: k, bubbles: true }));
         return e;
@@ -268,7 +268,9 @@ function run() {
         // and the title bar takes its own pointer events back. closeTaskView
         // removes its overlay on a 180ms timer, so it is still hit-testable
         // here and would answer elementFromPoint instead of the window.
-        var ov = D.getElementById('taskView'); if (ov) ov.remove();
+        // closeTaskView drops the id before the fade (so a corpse cannot read
+        // as "task view is open"), which means it can only be swept by class
+        D.querySelectorAll('.tv-overlay').forEach(function (o) { o.remove(); });
         w.style.left = '0px'; w.style.top = '0px';
         var atTop = D.elementFromPoint(300, 2);
         var inBar = atTop && atTop.closest && atTop.closest('.win-bar');
@@ -287,9 +289,19 @@ function run() {
     ok('the desktop takes the strip back', desk.getBoundingClientRect().bottom > deskBottomBefore,
         Math.round(deskBottomBefore) + ' -> ' + Math.round(desk.getBoundingClientRect().bottom));
 
+    /* A maximized window takes the taskbar's 48px but NOT the reveal strip:
+       the strip sits at z-49 over the window layer with live pointer events,
+       so running the window to 100% put its own bottom row of controls under
+       it — measured 15 of the 16px of the launcher's instance button. */
+    var TBE = parseFloat(css(D.documentElement, '--tbedge-h')) || 0;
     w.classList.add('maxi');
-    ok('a maximized window takes it too', Math.round(w.getBoundingClientRect().height) === W.innerHeight,
-        Math.round(w.getBoundingClientRect().height) + ' of ' + W.innerHeight);
+    ok('a maximized window takes the taskbar strip, all but the reveal edge',
+        Math.round(w.getBoundingClientRect().height) === W.innerHeight - TBE,
+        Math.round(w.getBoundingClientRect().height) + ' of ' + W.innerHeight + ', reveal strip ' + TBE + 'px');
+    var justAbove = D.elementFromPoint(Math.round(W.innerWidth / 2), W.innerHeight - TBE - 3);
+    ok('and its own bottom row is still its own',
+        !!justAbove && !!(justAbove.closest && justAbove.closest('.win')),
+        'just above the strip: ' + (justAbove ? (justAbove.id || justAbove.className || justAbove.tagName) : 'nothing'));
     w.classList.remove('maxi');
 
     /* Hit-test the strip rather than compare z-indexes. `49 > 48` is true
@@ -690,6 +702,154 @@ function run() {
             ' bar came down=' + peeked + ' caption reachable=' + capReachable +
             ' out=' + !pw2.classList.contains('fs'));
     });
+
+    /* ══ what the second review found ══ */
+
+    /* body.fs-yield latched ON. Every dismissal chain runs setStart(false)
+       then closeFlyouts(), and setStart synced while the flyout was still up,
+       so the class stuck and the full-screen window sat at z-10 UNDER the
+       taskbar, losing its bottom 48px of clicks with no way back. */
+    (function () {
+        var tw = win('terminal') || open('terminal');
+        if (D.querySelector('.win.fs')) click(D.querySelector('.win.fs').querySelector('.cap-fs'));
+        key('a', { alt: true });                       // quick settings, by keyboard
+        click(tw.querySelector('.cap-fs'));
+        ok('a flyout open when full screen starts does not latch the yield',
+            B.classList.contains('fs-app') && !B.classList.contains('fs-yield') && zOf('.windows') > zOf('.taskbar'),
+            'fs-yield=' + B.classList.contains('fs-yield') + ' windows z=' + zOf('.windows'));
+        var hb = D.elementFromPoint(Math.round(W.innerWidth / 2), W.innerHeight - 4);
+        ok('and the bottom of the screen still belongs to the window',
+            !!hb && !!(hb.closest && hb.closest('.win.fs')),
+            'hit=' + (hb ? (hb.id || hb.className || hb.tagName) : 'nothing'));
+        click(D.getElementById('startBtn'));
+        ok('while Start still hands the taskbar back',
+            B.classList.contains('fs-yield') && zOf('.windows') < zOf('.taskbar'), 'windows z=' + zOf('.windows'));
+        click(D.getElementById('startBtn'));
+        ok('and takes it away again', !B.classList.contains('fs-yield') && zOf('.windows') > zOf('.taskbar'),
+            'windows z=' + zOf('.windows'));
+    })();
+
+    /* Escape was documented as yielding to an app that used it, on the theory
+       that such an app called stopPropagation. Four apps in this tree consume
+       Escape and not one of them does, so closing a Steam dropdown also threw
+       you out of full screen. defaultPrevented is a claim the app really makes. */
+    (function () {
+        var fw = D.querySelector('.win.fs');
+        if (!fw) { var tw2 = win('terminal') || open('terminal'); click(tw2.querySelector('.cap-fs')); fw = D.querySelector('.win.fs'); }
+        var body = fw.querySelector('.win-content') || fw;
+        var seen = 0;
+        var eat = function (e) { if (e.key === 'Escape') { seen++; e.preventDefault(); } };
+        body.addEventListener('keydown', eat);
+        key('Escape', { on: body });
+        ok('an app that claims Escape keeps its full screen',
+            seen === 1 && !!D.querySelector('.win.fs'),
+            'app consumed=' + seen + ' still full screen=' + !!D.querySelector('.win.fs'));
+        body.removeEventListener('keydown', eat);
+        key('Escape');
+        ok('and a plain Escape still leaves', !D.querySelector('.win.fs'));
+    })();
+
+    /* the modifier and layout bugs in the key chain */
+    (function () {
+        var tw = win('terminal') || open('terminal');
+        click(tw.querySelector('.win-bar'));
+        var c1 = key('F11', { ctrl: true }), m1 = key('F11', { code: 'F11', meta: true });
+        ok('Ctrl+F11 and Meta+F11 are somebody else\'s combination',
+            !c1.defaultPrevented && !m1.defaultPrevented && !D.querySelector('.win.fs'),
+            'ctrl prevented=' + c1.defaultPrevented + ' meta prevented=' + m1.defaultPrevented);
+        // macOS composes Option+Space as U+00A0, so the key arrives as \u00a0
+        var sp = key('\u00a0', { alt: true, code: 'Space' });
+        ok('Alt+Space opens the system menu on a Mac keyboard too',
+            !!D.querySelector('.bctx') && sp.defaultPrevented,
+            'menu=' + !!D.querySelector('.bctx') + ' prevented=' + sp.defaultPrevented);
+        key('Escape');
+    })();
+
+    /* every item of the system menu has to be reachable on a full-screen
+       window — "Restore" is the one whose whole job is getting you out, and it
+       was drawn, enabled and completely inert behind the peeked title bar */
+    (function () {
+        var tw = win('terminal') || open('terminal');
+        if (!tw.classList.contains('fs')) click(tw.querySelector('.cap-fs'));
+        tw.classList.add('peek');
+        tw.querySelector('.win-bar').dispatchEvent(new W.MouseEvent('contextmenu',
+            { bubbles: true, cancelable: true, clientX: 80, clientY: 18 }));
+        var menu = D.querySelector('.bctx');
+        var rows = menu ? [].slice.call(menu.querySelectorAll('button')) : [];
+        var blocked = rows.filter(function (r) {
+            var q = r.getBoundingClientRect();
+            var h = D.elementFromPoint(Math.round(q.left + q.width / 2), Math.round(q.top + q.height / 2));
+            return !(h && h.closest && h.closest('.bctx'));
+        });
+        ok('every item of the system menu is clickable on a full-screen window',
+            !!menu && rows.length > 0 && blocked.length === 0,
+            'items=' + rows.length + ' blocked=' + blocked.length +
+            (blocked.length ? ' (' + blocked.map(function (r) { return r.textContent.trim().slice(0, 16); }).join(', ') + ')' : ''));
+        key('Escape');
+    })();
+
+    /* both full-screen overlays reserve a strip for the taskbar, which is
+       right until the window layer is ABOVE the taskbar — then the strip shows
+       48px of live app and a click in it goes into the game behind them */
+    (function () {
+        var tw = win('terminal') || open('terminal');
+        if (!tw.classList.contains('fs')) click(tw.querySelector('.cap-fs'));
+        var low = Math.round(W.innerWidth / 2), y = W.innerHeight - 4;
+        key('v', { alt: true });
+        var hv = D.elementFromPoint(low, y);
+        ok('task view covers a full-screen window all the way down',
+            !!hv && !!(hv.closest && hv.closest('.tv-overlay')),
+            'hit=' + (hv ? (hv.id || hv.className || hv.tagName) : 'nothing'));
+        key('Escape');
+        key('/', { alt: true, code: 'Slash' });
+        var hc = D.elementFromPoint(low, y);
+        ok('and so does the shortcut card',
+            !!hc && !!(hc.closest && hc.closest('.cheat-overlay')),
+            'hit=' + (hc ? (hc.id || hc.className || hc.tagName) : 'nothing'));
+        key('Escape');
+        if (D.querySelector('.win.fs')) click(D.querySelector('.win.fs').querySelector('.cap-fs'));
+    })();
+
+    /* minimize is documented as keeping the window full screen so clicking it
+       in the taskbar brings the game back the way it was. That only held if you
+       touched nothing in between: focusWin exited it even while it was down. */
+    (function () {
+        var tw = win('terminal') || open('terminal');
+        if (tw.classList.contains('mini')) tbClick('terminal');
+        if (!tw.classList.contains('fs')) click(tw.querySelector('.cap-fs'));
+        var entered = tw.classList.contains('fs');
+        click(tw.querySelector('.cap[data-cap="min"]'));
+        var downFs = tw.classList.contains('fs');
+        open('explorer');                                  // touch something else
+        ok('a minimized full-screen window comes back full screen',
+            entered && downFs && tw.classList.contains('fs'),
+            'entered=' + entered + ' fs while down=' + downFs + ' fs after touching another window=' + tw.classList.contains('fs'));
+        tbClick('terminal');
+        if (tw.classList.contains('fs')) click(tw.querySelector('.cap-fs'));
+    })();
+
+    /* leaving full screen because another window took focus must not pull the
+       keyboard back into the window being left — WASD kept driving the game */
+    (function () {
+        var g = win('steam') || open('steam');
+        click(g.querySelector('.win-bar'));
+        if (!g.classList.contains('fs')) click(g.querySelector('.cap-fs'));
+        var btn = D.querySelector('.tb-btn.app[data-app="explorer"]');
+        btn.focus(); click(btn);
+        var ae = D.activeElement;
+        ok('leaving full screen for another window leaves the keyboard where you put it',
+            !g.contains(ae), 'activeElement=' + (ae ? (ae.id || ae.className || ae.tagName) : 'none'));
+        if (D.querySelector('.win.fs')) click(D.querySelector('.win.fs').querySelector('.cap-fs'));
+    })();
+
+    /* a key you are not going to act on belongs to the browser */
+    (function () {
+        key('/', { alt: true, code: 'Slash' });
+        var f = key('F11');
+        ok('F11 behind the shortcut card is handed back, not eaten', !f.defaultPrevented,
+            'prevented=' + f.defaultPrevented);
+        key('Escape');
+    })();
 
     function finish() {
         ok('a refused full screen explains itself instead of failing silently',

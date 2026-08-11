@@ -403,6 +403,12 @@ function activeNow() { return mounted && focused; }
 function menuMove() { blip(440, .04); }
 function onKeyDown(e) {
   if (!activeNow()) return;
+  // Alt/Ctrl/Meta belong to the desktop. This listener is window-CAPTURE, so
+  // it runs before the desktop's document-capture handler and the desktop's
+  // stopPropagation cannot protect the game: Alt+Space applied the handbrake
+  // as well as opening the system menu, and Alt+Enter advanced the menu as
+  // well as going full screen. ninth.js and arpg.js already guard this.
+  if (e.altKey || e.ctrlKey || e.metaKey) return;
   var k = KEYMAP[e.code]; if (!k) return;
   e.preventDefault();
   if (k === 'mute') { if (!e.repeat) toggleMute(); return; }

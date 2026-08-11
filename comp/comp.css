@@ -3207,6 +3207,11 @@ button.nn-drow:hover { background: rgba(30,60,48,.5); }
      body.page-fs   the real browser Fullscreen API is on
      body.tb-auto   Windows 11's "automatically hide the taskbar"            */
 
+/* how tall the bottom reveal strip is. A maximized window has to give exactly
+   this much back, so both read the same number. Bigger for a thumb, at the
+   foot of this file. */
+:root { --tbedge-h: 5px; }
+
 /* ── a window that owns the screen ──
    Anchored on all four insets rather than 100vw/100vh: .windows is inset:0
    inside .screen, which is fixed inset:0, so this IS the viewport — and it
@@ -3258,10 +3263,16 @@ body.fs-app.fs-yield .windows { z-index: 10; }
 .taskbar { transition: transform .18s ease; }
 body.tb-auto .taskbar { transform: translateY(100%); }
 body.tb-auto.tb-peek .taskbar { transform: none; }
-/* with the strip gone, the desktop and any maximized window take it back */
+/* With the strip gone, the desktop and any maximized window take it back —
+   all of it except the reveal strip itself, which sits at z-49 over the
+   window layer with live pointer events. Running the window to 100% put its
+   own bottom row of controls under the strip: measured on a coarse pointer,
+   15 of the 16px of the launcher's instance button, and the last 16px of
+   every app inert. The height lives in one custom property so the two rules
+   cannot drift apart again. */
 body.tb-auto .desktop { bottom: 0; }
-body.tb-auto .win.maxi { height: 100% !important; }
-.tb-edge { position: absolute; left: 0; right: 0; bottom: 0; height: 5px; z-index: 49; display: none; }
+body.tb-auto .win.maxi { height: calc(100% - var(--tbedge-h)) !important; }
+.tb-edge { position: absolute; left: 0; right: 0; bottom: 0; height: var(--tbedge-h); z-index: 49; display: none; }
 body.tb-auto .tb-edge { display: block; }
 /* a full-screen window is above the edge strip, so the taskbar cannot peek
    out from under a game — you leave full screen first, like anywhere else */
@@ -3270,10 +3281,30 @@ body.tb-auto .tb-edge { display: block; }
 .tray-fs.on { color: var(--accent); background: rgba(255,255,255,.10); }
 
 /* Phones are where filling the screen matters most, and the tray collapses at
-   520px — this one earns its place back. */
+   520px — this one earns its place back. But .tb-center is absolutely
+   positioned, so at this width it ran straight underneath the tray AND
+   painted on top of it: measured at 375px, 29 of this button's 31px were
+   covered and a tap in the middle of it opened Settings. Put the cluster back
+   in the flex flow, where it cannot overlap the tray by construction, and let
+   the pins be the thing that gives way. */
 @media (max-width: 520px) {
     .tb-tray .tray-fs { display: flex; }
+    .tb-center { position: static; left: auto; transform: none; min-width: 0; overflow: hidden; }
+    .tb-tray { flex: 0 0 auto; }
 }
+
+/* The system menu is built inside the window, and a full-screen window's
+   title bar is at 60 — so "Restore", the one item whose whole job is getting
+   you out of full screen, was drawn, enabled and completely inert behind the
+   peeked bar. 61 clears the bar and the edge strip both, and .bctx is scoped
+   inside the window's stacking context so it cannot escape upward. */
+.win.fs .bctx { z-index: 61; }
+
+/* Both of these stop short of the taskbar, which is right until the window
+   layer is ABOVE the taskbar — then the reserved strip shows 48px of live
+   app instead, and a click in it goes into the game behind the overlay that
+   is supposed to be covering it. Same one-liner the tb-auto twin already got. */
+body.fs-app .tv-overlay, body.fs-app .cheat-overlay { bottom: 0; }
 
 @media (prefers-reduced-motion: reduce) {
     .taskbar, .win.fs > .win-bar { transition: none; }
@@ -3304,7 +3335,7 @@ body.no-crt .screen::after { display: none; }
    full-screen window: the title bar is translated off the top and the
    taskbar is underneath the window layer. */
 @media (any-pointer: coarse) {
-    .tb-edge { height: 16px; }
+    :root { --tbedge-h: 16px; }
     .win.fs .win-fsedge { height: 16px; }
 }
 

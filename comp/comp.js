@@ -261,7 +261,11 @@ function focusWin(id) {
     // Alt-tabbing out of a full-screen game gives you your desktop back. The
     // window layer is raised as a whole while one window owns the screen, so
     // leaving another window floating over the taskbar is not an option.
-    if (fsWin && fsWin !== id) exitWinFs(fsWin);
+    // A MINIMIZED one is not on screen and is nobody's problem, though, and
+    // tearing it out of full screen broke the contract minWin documents:
+    // minimize a game, touch anything else, and it came back as an ordinary
+    // window. syncFsBody already keeps body.fs-app off while it is down.
+    if (fsWin && fsWin !== id && openWins[fsWin] && !openWins[fsWin].min) exitWinFs(fsWin);
     w.el.style.zIndex = ++zTop; activeApp = id;
     if (APPS[id].onFocus) APPS[id].onFocus(w.el);
     syncFsBody(); syncTaskbar();
@@ -327,6 +331,7 @@ byId('showDesk').addEventListener('click', minimizeAll);
 function closeTaskView() {
     var ov = byId('taskView'); if (!ov) return;
     ov.classList.remove('on');
+    ov.id = '';    // it lingers 180ms for the fade; a corpse must not read as open
     setTimeout(function () { if (ov.parentNode) ov.remove(); }, reduce ? 0 : 180);
 }
 function openTaskView() {
@@ -594,8 +599,15 @@ function syncFsCap(id) {
 function winResized(id) {
     var w = openWins[id], a = APPS[id];
     if (!w || !a) return;
-    // the caption button took the keyboard on the way in; a game wants it back
-    if (activeApp === id && a.onFocus) { try { a.onFocus(w.el); } catch (e) {} }
+    // The caption button took the keyboard on the way in; a game wants it back.
+    // Only when the focus is still ours to move, though: focusWin() exits the
+    // old window's full screen BEFORE it reassigns activeApp, so this ran for
+    // the window being LEFT and pulled the keyboard off the taskbar button the
+    // user had just activated — WASD kept driving the game they tabbed out of.
+    var here = document.activeElement;
+    if (activeApp === id && a.onFocus && (!here || here === document.body || w.el.contains(here))) {
+        try { a.onFocus(w.el); } catch (e) {}
+    }
     if (a.onResize) { try { a.onResize(w.el, id); } catch (e) {} }
 }
 /* Nothing has ever re-clamped windows when the viewport changed, and full
@@ -4471,7 +4483,9 @@ function initChrome(el) {
     url.addEventListener('keydown', function (e) {
         if (e.key === 'ArrowDown') { e.preventDefault(); var u = crSuggestMove(1); if (u) url.value = u; }
         else if (e.key === 'ArrowUp') { e.preventDefault(); var u2 = crSuggestMove(-1); if (u2) url.value = u2; }
-        else if (e.key === 'Escape') { suggest.hidden = true; url.blur(); crChrome(); }
+        // preventDefault so the desktop knows Escape was spent here: cancelling
+        // the omnibox is not also a request to leave full screen
+        else if (e.key === 'Escape') { suggest.hidden = true; url.blur(); crChrome(); e.preventDefault(); }
         else if (e.key === 'Enter') {
             var pick = crSuggestPick();
             suggest.hidden = true; url.blur();
@@ -5960,7 +5974,18 @@ function initSteam(el, id, arg) {
     el.addEventListener('contextmenu', stCtxMenu);        // on the window el: the title bar suppresses, the client answers
     el.addEventListener('scroll', closeBctx, true);       // real menus don't scroll along with the page
     ST.root.addEventListener('keydown', function (e) {
-        if (e.key !== 'Enter') { if (e.key === 'Escape') stCloseLayers(); return; }
+        if (e.key !== 'Enter') {
+            // Claim the key when a layer actually closed. The desktop's Escape
+            // handler reads defaultPrevented to decide whether Escape was
+            // already spent; without this, closing a dropdown in here ALSO
+            // dropped the window out of full screen, two things from one key.
+            if (e.key === 'Escape') {
+                var lay = ['drop', 'notifp', 'sdrop', 'modal'].some(function (k) { return ST[k] && !ST[k].hidden; });
+                stCloseLayers();
+                if (lay) e.preventDefault();
+            }
+            return;
+        }
         if (e.target.closest('[data-search]')) { stCloseLayers(); stGo('store', 'browse', null, { cat: null, q: e.target.value }); }
         else if (e.target.closest('.st-chat-in')) stChatSend();
         else if (e.target.closest('.st-act-in')) stActivateGo();
@@ -8622,7 +8647,13 @@ byId('searchBtn').addEventListener('click', function (e) { e.stopPropagation(); 
 
 /* ═══════════════════════ flyouts ════════════════════════════ */
 var quickPanel = byId('quickPanel'), calPanel = byId('calPanel');
-function closeFlyouts() { quickPanel.hidden = true; calPanel.hidden = true; }
+/* fsYield() here and not only in toggleFlyout: every dismissal chain in the
+   file runs `setStart(false); closeFlyouts();` in that order, and setStart
+   syncs while the flyout is STILL up — so `up` came out true and nothing ran
+   again once closeFlyouts hid it. body.fs-yield latched on and left the
+   full-screen window painted at z-10, under the taskbar, eating its bottom
+   48px. The writer of the state owns the sync. */
+function closeFlyouts() { quickPanel.hidden = true; calPanel.hidden = true; fsYield(); }
 
 function toggleFlyout(panel, build) {
     var opening = panel.hidden;
@@ -8998,10 +9029,16 @@ document.addEventListener('keydown', function (e) {
     //   F11        the focused window takes the screen (nothing open: the page does)
     //   Shift+F11  the page itself, through the real Fullscreen API
     //   Alt+Enter  the shortcut every game has used for thirty years
-    if (e.key === 'F11' || (e.key === 'Enter' && e.altKey && !e.ctrlKey && !e.metaKey)) {
+    // Shift is the page/window switch; Ctrl, Alt and Meta are somebody else's
+    // combination and were being swallowed along with the plain key
+    if ((e.key === 'F11' && !e.ctrlKey && !e.altKey && !e.metaKey) ||
+        (e.key === 'Enter' && e.altKey && !e.ctrlKey && !e.metaKey)) {
         var f11App = e.key === 'F11' && e.shiftKey ? null : topAppId();
         if (e.key === 'Enter' && !f11App) return;            // Alt+Enter on bare desktop stays free
-        if (dlgs.length || byId('cheatsheet')) { if (e.key === 'F11') e.preventDefault(); return; }
+        // hand it back rather than eating it: preventDefault with no action
+        // made F11 a dead key in BOTH machines while the shortcut card that
+        // advertises F11 was the thing on screen
+        if (dlgs.length || byId('cheatsheet')) return;
         e.preventDefault(); e.stopPropagation();
         if (f11App) toggleWinFs(f11App); else togglePageFs();
         return;
@@ -9033,6 +9070,10 @@ document.addEventListener('keydown', function (e) {
     var k = /^Key[A-Z]$/.test(code) ? code.slice(3).toLowerCase() :
             /^Digit[0-9]$/.test(code) ? code.slice(5) :
             code === 'Backquote' ? '`' :
+            // macOS composes Option+Space as U+00A0 NO-BREAK SPACE, so the one
+            // new OS_KEYS binding — Alt+Space for the system menu — was dead
+            // there: exactly the failure this ladder exists to prevent
+            code === 'Space' ? ' ' :
             code === 'Slash' ? '/' : e.key.toLowerCase();
     var c = (e.shiftKey ? 'shift+' : '') + k;
     var id = topAppId();
@@ -9074,13 +9115,23 @@ document.addEventListener('auxclick', closeBctx);   // middle-click closes tabs 
 document.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape') return;
     if (closeTopDlg()) return;   // dialogs eat the first Escape
+    // byId('taskView') is the right test — closeTaskView drops the id before
+    // it schedules the fade, so a corpse no longer answers to it. Testing the
+    // `.on` class instead would NOT work: it is added in a requestAnimationFrame,
+    // so for one frame (and forever, headless, where rAF does not run) an open
+    // task view would read as closed and Escape would leave full screen.
     var had = startMenu.classList.contains('open') || !quickPanel.hidden || !calPanel.hidden ||
-              !ctx.hidden || !!bctxEl || (fctx && !fctx.hidden) || !!byId('taskView');
+              !ctx.hidden || !!bctxEl || (fctx && !fctx.hidden) ||
+              !!byId('taskView') || !!(MC && MC.menuEl);
     setStart(false); closeFlyouts(); closeCtx(); closeFctx(); closeBctx(); mcCloseMenu(); closeTaskView();
-    // Last in the chain, and only if Escape had nothing else to close. This
-    // listener is on the bubble, so a game that used Escape for its own pause
-    // menu called stopPropagation and never got here — which is exactly the
-    // priority you want: the game's menu first, the way out second.
+    // Last in the chain, and only if Escape had nothing else to close.
+    // This used to lean on propagation — "a game that used Escape for its own
+    // pause menu called stopPropagation and never got here". That was simply
+    // not true: four apps in this tree consume Escape and not one of them
+    // stops propagation, so closing a Steam dropdown or a Chrome suggest list
+    // also threw you out of full screen, two things from one keystroke.
+    // defaultPrevented is a claim the app actually makes, so trust that.
+    if (e.defaultPrevented) return;
     if (!had && fsWin && openWins[fsWin] && !openWins[fsWin].min) exitWinFs(fsWin);
 });
 
