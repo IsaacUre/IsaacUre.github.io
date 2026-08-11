@@ -320,7 +320,7 @@ var ITEMS = {
     },
     wax: {
         n: 'A Stub of Wax', tag: 'use', cost: 18,
-        d: 'Off the chandler\'s counter. Warm it in your hand and a mismatched pair holds for a while: slants land in full.',
+        d: 'Off the chandler\'s counter. Warm it in your hand and a mismatched pair holds for a while: any sound you answer takes the whole pile with it, at full strength.',
         // stacks rather than resets, so a second stub is never worth less than
         // the seconds it wipes off the first. Refuses near the ceiling instead
         // of eating a stub for the two seconds it has room for.
@@ -2585,13 +2585,17 @@ function doRhyme(fam) {
         f.stacks.forEach(function (t) { if (t.fam === fam) match++; else other++; });
         if (!match && !other) return;
         var closed = match > 0;
-        var n = closed ? match : other;
-        // soft wax holds a mismatched pair together, which means it CLOSES:
-        // full damage and the sounds are spent. It used to grant full damage
-        // on top of the drag, which was the same pile hit at full strength
-        // over and over for the whole time the wax was warm.
-        var waxed = !closed && RT.items.freeSlant > 0 && !f.def.folk;
+        // Soft wax holds a mismatched pair together, which means it CLOSES:
+        // full damage and the sounds are spent. Two things it must not do.
+        // It must not grant full damage on top of the drag, which was the
+        // same pile hit at full strength over and over for the whole time
+        // the wax was warm. And it must not sit behind `!closed`, which made
+        // pressing a sound the foe was carrying strictly worse than pressing
+        // one it was not: the mixed pile is exactly the pair the wax is for,
+        // so with it warm the whole pile counts as one sound.
+        var waxed = other > 0 && RT.items.freeSlant > 0 && !f.def.folk;
         var takes = closed || waxed;
+        var n = waxed ? match + other : closed ? match : other;
         var willDrag = !takes && !f.def.folk && !!T('slantShift');
         var dmg;
         if (takes) {
@@ -2614,10 +2618,10 @@ function doRhyme(fam) {
         hurtFoe(f, dmg, fam, { answer: 1, closed: takes, n: n });
         if (takes) { totalMatched += n; if (n > best) best = n; famEffect(f, fam, n); }
         hitFoes++;
-        if (closed) {
+        if (waxed) {
+            f.stacks.length = 0;              // the wax takes the whole pile, matched or not
+        } else if (closed) {
             f.stacks = f.stacks.filter(function (t) { return t.fam !== fam; });
-        } else if (waxed) {
-            f.stacks.length = 0;
         } else if (f.def.folk) {
             // The town's open line is not draggable. It has been the same
             // sound for four hundred years and a wrong answer does not move
