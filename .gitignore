@@ -1,0 +1,4 @@
+# scratch harnesses live at the repo root while testing and must never ship
+__*.html
+__*.js
+comp/__*

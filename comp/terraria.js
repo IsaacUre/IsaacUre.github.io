@@ -64,28 +64,30 @@ var SOLID = {};
 var STATION = {}; STATION[T_BENCH] = 'bench'; STATION[T_FURNACE] = 'furnace'; STATION[T_ANVIL] = 'anvil';
 STATION[T_TABLE] = 'table'; STATION[T_HELLFORGE] = 'hellforge'; STATION[T_BOTTLE] = 'bottle';
 
-/* tile colours [main, shade, edge-hi] */
+/* Tile colours [main, shade, edge-hi], hand-matched against Terraria's own block palette
+   (dirt 151,107,75 · stone 128,128,136 · sand 212,192,100 · mud 92,68,73 · demonite 98,95,167 …). */
 var TCOL = {};
-TCOL[T_DIRT] = ['#6b4a2a', '#573b21', '#7c5732']; TCOL[T_GRASS] = ['#4a9c3a', '#3a7c2e', '#63c04a'];
-TCOL[T_STONE] = ['#7f7f88', '#666670', '#94949e']; TCOL[T_PLANK] = ['#9c7040', '#7f5a33', '#b0824c'];
-TCOL[T_TRUNK] = ['#7a5228', '#5f3f1f', '#8c6030']; TCOL[T_LEAF] = ['#3a8a30', '#2f7027', '#4aa03a'];
-TCOL[T_SAND] = ['#dcc888', '#c3ac6b', '#ecdaa0']; TCOL[T_SNOW] = ['#eaf1f7', '#cdd8e4', '#ffffff'];
-TCOL[T_ICE] = ['#9cc8e6', '#7ba9cc', '#c2e2f4']; TCOL[T_MUD] = ['#5a4632', '#463625', '#6b543c'];
-TCOL[T_JGRASS] = ['#6bbf2a', '#4f971d', '#88d63c']; TCOL[T_CLAY] = ['#9c5a44', '#7f4735', '#b06a52'];
-TCOL[T_SILT] = ['#6d6a72', '#57545c', '#807d86']; TCOL[T_ASH] = ['#4a4550', '#3a3642', '#565060'];
-TCOL[T_HELLSTONE] = ['#8a2a1a', '#5f1c12', '#c04020']; TCOL[T_OBSIDIAN] = ['#2a2438', '#1c1828', '#3a3450'];
-TCOL[T_COBWEB] = ['#c8ccd4', '#9aa0aa', '#e6e9ef']; TCOL[T_CLOUD] = ['#eef2fa', '#d2dcec', '#ffffff'];
-TCOL[T_EBON] = ['#4a3a5c', '#372a45', '#5c4a72']; TCOL[T_CGRASS] = ['#8a52c8', '#6c3fa0', '#a066e0'];
-TCOL[T_COPPER] = ['#c07038', '#7f7f88', '#e08a4a']; TCOL[T_IRON] = ['#b0a49a', '#7f7f88', '#cabeb2'];
-TCOL[T_SILVER] = ['#d8dce6', '#7f7f88', '#f0f2fa']; TCOL[T_GOLD] = ['#e0b83a', '#7f7f88', '#ffd85a'];
-TCOL[T_DEMONITE] = ['#4a5a86', '#33405f', '#6274a8']; TCOL[T_METEOR] = ['#8a4a3a', '#6a3529', '#b0604a'];
-TCOL[T_AMETHYST] = ['#a24ad2', '#7f7f88', '#c876ec']; TCOL[T_TOPAZ] = ['#d29a2a', '#7f7f88', '#f0bc4a'];
-TCOL[T_SAPPHIRE] = ['#3a7ad2', '#7f7f88', '#5c9cec']; TCOL[T_EMERALD] = ['#2aa24a', '#7f7f88', '#4ac86a'];
-TCOL[T_RUBY] = ['#d23a4a', '#7f7f88', '#ec5c6a']; TCOL[T_DIAMOND] = ['#8ae6ea', '#7f7f88', '#c2f4f6'];
-TCOL[T_PLATFORM] = ['#9c7040', '#7f5a33', '#b0824c']; TCOL[T_EBON] = ['#4a3a5c', '#372a45', '#5c4a72'];
+TCOL[T_DIRT] = ['#976b4b', '#6e4b32', '#ab7d5b']; TCOL[T_GRASS] = ['#37a83f', '#215f26', '#55c454'];
+TCOL[T_STONE] = ['#808088', '#5c5c66', '#9d9da8']; TCOL[T_PLANK] = ['#8e6a3c', '#5f462a', '#ab8258'];
+TCOL[T_TRUNK] = ['#7a5b36', '#4c3620', '#98744a']; TCOL[T_LEAF] = ['#2e9b34', '#1a6621', '#48c045'];
+TCOL[T_SAND] = ['#d4c064', '#a99646', '#efdc8a']; TCOL[T_SNOW] = ['#d3ecf1', '#a5c1d1', '#ffffff'];
+TCOL[T_ICE] = ['#90c3e8', '#6796bf', '#c4e6fb']; TCOL[T_MUD] = ['#5c4449', '#3d2c30', '#75585d'];
+TCOL[T_JGRASS] = ['#82b52c', '#4d7016', '#a5d846']; TCOL[T_CLAY] = ['#925144', '#69382e', '#ae6757'];
+TCOL[T_SILT] = ['#6a6b76', '#4b4c55', '#84858f']; TCOL[T_ASH] = ['#46383c', '#2d2326', '#5e4d52'];
+TCOL[T_HELLSTONE] = ['#b74a18', '#742c0d', '#e8763a']; TCOL[T_OBSIDIAN] = ['#3d3a4e', '#242235', '#585472'];
+TCOL[T_COBWEB] = ['#c9d2de', '#97a3b2', '#eef3f9']; TCOL[T_CLOUD] = ['#dee8ff', '#b3c4e4', '#ffffff'];
+TCOL[T_EBON] = ['#52496e', '#342e4b', '#706592']; TCOL[T_CGRASS] = ['#75639e', '#463a68', '#9483bc'];
+/* ores: [nugget, host-rock shade, nugget highlight] — the rock behind is stone/ash, painted first */
+TCOL[T_COPPER] = ['#b45a1e', '#5c5c66', '#e08e42']; TCOL[T_IRON] = ['#8d7963', '#5c5c66', '#c0ad96'];
+TCOL[T_SILVER] = ['#c8d1e8', '#5c5c66', '#f2f6ff']; TCOL[T_GOLD] = ['#ddb828', '#5c5c66', '#ffe066'];
+TCOL[T_DEMONITE] = ['#625fa7', '#3a3860', '#8a86d4']; TCOL[T_METEOR] = ['#8a5b4a', '#4f3730', '#b8836c'];
+TCOL[T_AMETHYST] = ['#a040d0', '#5c5c66', '#cd7bf0']; TCOL[T_TOPAZ] = ['#e0a020', '#5c5c66', '#ffcb56'];
+TCOL[T_SAPPHIRE] = ['#2c6ae0', '#5c5c66', '#5f9bfb']; TCOL[T_EMERALD] = ['#1fb040', '#5c5c66', '#4ee06d'];
+TCOL[T_RUBY] = ['#d02c3f', '#5c5c66', '#f4616f']; TCOL[T_DIAMOND] = ['#b8ebf0', '#5c5c66', '#eafcff'];
+TCOL[T_PLATFORM] = ['#8e6a3c', '#5f462a', '#ab8258'];
 
-var GEMCOL = {}; GEMCOL[T_AMETHYST] = '#c060f0'; GEMCOL[T_TOPAZ] = '#f0b840'; GEMCOL[T_SAPPHIRE] = '#4a90f0';
-GEMCOL[T_EMERALD] = '#40c060'; GEMCOL[T_RUBY] = '#f04a5a'; GEMCOL[T_DIAMOND] = '#a0f0f4';
+var GEMCOL = {}; GEMCOL[T_AMETHYST] = '#a040d0'; GEMCOL[T_TOPAZ] = '#e0a020'; GEMCOL[T_SAPPHIRE] = '#2c6ae0';
+GEMCOL[T_EMERALD] = '#1fb040'; GEMCOL[T_RUBY] = '#d02c3f'; GEMCOL[T_DIAMOND] = '#b8ebf0';
 
 /* hardness (mining progress to break) */
 var HARD = {};
@@ -101,8 +103,9 @@ HARD[T_DOOROPEN] = 2; HARD[T_PLATFORM] = 1; HARD[T_SAPLING] = 0.3; HARD[T_HELLFO
 
 /* ─────────────── walls (background) ─────────────── */
 var WL_NONE = 0, WL_DIRT = 1, WL_STONE = 2, WL_WOOD = 3, WL_ASH = 4, WL_SAND = 5, WL_SNOW = 6, WL_JUNGLE = 7, WL_EBON = 8;
-var WLCOL = {}; WLCOL[WL_DIRT] = '#3a2818'; WLCOL[WL_STONE] = '#2b2b32'; WLCOL[WL_WOOD] = '#4a3620';
-WLCOL[WL_ASH] = '#231519'; WLCOL[WL_SAND] = '#6b5f3a'; WLCOL[WL_SNOW] = '#5a6672'; WLCOL[WL_JUNGLE] = '#243318'; WLCOL[WL_EBON] = '#241a30';
+/* Terraria background walls read as the block colour dropped to roughly a third brightness */
+var WLCOL = {}; WLCOL[WL_DIRT] = '#42301f'; WLCOL[WL_STONE] = '#33333c'; WLCOL[WL_WOOD] = '#4b3823';
+WLCOL[WL_ASH] = '#2a1c1c'; WLCOL[WL_SAND] = '#6a5f34'; WLCOL[WL_SNOW] = '#54646f'; WLCOL[WL_JUNGLE] = '#2b3a1a'; WLCOL[WL_EBON] = '#2a2340';
 
 /* ─────────────── liquids ─────────────── */
 var LQ_WATER = 1, LQ_LAVA = 2, LMAX = 100;
@@ -1872,12 +1875,70 @@ function paintTerrainCell(g, tx, ty) {
     g.clearRect(sx, sy, TS, TS);
     if (tx < 0 || tx >= W || ty < 0 || ty >= H) return;
     var idx = ty * W + tx, t = RT.w[idx], wl = RT.wall[idx];
-    if (wl && (t === T_AIR || DYNTILE[t] || t === T_POT || t === T_CHEST || t === T_DOOR || t === T_DOOROPEN || t === T_PLATFORM || t === T_BOTTLE || STATION[t])) {
-        g.drawImage(wallArt(wl), sx, sy, TS, TS);
-        if (!RT.wall[(ty - 1) * W + tx]) { g.fillStyle = 'rgba(0,0,0,.30)'; g.fillRect(sx, sy, TS, 1); }
+    var bare = t === T_AIR || DYNTILE[t] || t === T_POT || t === T_CHEST || t === T_DOOR ||
+               t === T_DOOROPEN || t === T_PLATFORM || t === T_BOTTLE || STATION[t];
+    // A framed block is no longer a solid square: its chewed top and rounded corners are genuinely
+    // transparent, so anything behind shows through. Without the wall painted first that hole is
+    // the SKY, which puts a blue pixel on the corner of every exposed block. Interior blocks
+    // (mask 15) have no transparency, so they still skip the blit and the re-cut stays cheap.
+    var mask = bare ? 15 : tileMask(tx, ty, t);
+    if (wl && (bare || !frameOpaque(t, mask))) {
+        g.drawImage(wallFrames(wl)[((hsh(tx, ty) * 2) | 0) * 16 + wallMask(tx, ty)], sx, sy, TS, TS);
     }
-    if (t === T_AIR || DYNTILE[t]) return;
-    drawTile(g, t, sx, sy, tx, ty);
+    if (t === T_AIR) { drawBranch(g, sx, sy, tx, ty); drawVine(g, sx, sy, tx, ty); return; }
+    if (DYNTILE[t]) return;
+    drawTile(g, t, sx, sy, tx, ty, mask);
+}
+/* A branch reaching out of the trunk beside this empty cell, ending in a leaf tuft. */
+function drawBranch(g, sx, sy, tx, ty) {
+    var lft = tx > 0 && RT.w[ty * W + tx - 1] === T_TRUNK;
+    var rgt = !lft && tx < W - 1 && RT.w[ty * W + tx + 1] === T_TRUNK;
+    if (!lft && !rgt) return;
+    var col = lft ? tx - 1 : tx + 1;
+    if (ty < 1 || RT.w[(ty - 1) * W + col] !== T_TRUNK) return;        // not at the very top
+    for (var dn = 1; dn <= 3; dn++) {                                  // nor down among the roots
+        if (ty + dn >= H || RT.w[(ty + dn) * W + col] !== T_TRUNK) return;
+    }
+    if (hsh(col * 9 + 5, ty) < 0.84) return;                           // roughly one row in six
+    var bm = '#7a5b36', bd = '#4c3620', lf = TCOL[T_LEAF];
+    for (var q = 0; q < 5; q++) {
+        var qx = lft ? sx + q : sx + TS - 1 - q, qy = sy + 4 - q * 0.5;
+        g.fillStyle = q > 2 ? bd : bm; g.fillRect(qx, qy, 1, 1.5);
+    }
+    var ex = lft ? sx + 4 : sx + TS - 5, ey = sy + 1.5;
+    g.fillStyle = lf[1]; g.fillRect(ex - 1.5, ey - 1, 4.5, 3);
+    g.fillStyle = lf[0]; g.fillRect(ex - 1, ey - 1.5, 3.5, 2.5);
+    g.fillStyle = lf[2]; g.fillRect(ex - 0.5, ey - 1.5, 2, 1);
+}
+/* Vines. Any grass block with air under it trails one, longer in the jungle — the single strongest
+   silhouette cue that you are looking at Terraria and not a generic side-scroller. Each segment is
+   drawn wholly inside its own cell, so the cache's per-cell clearRect never truncates it. */
+var VINEFROM = {}; VINEFROM[T_GRASS] = 1; VINEFROM[T_JGRASS] = 2; VINEFROM[T_CGRASS] = 3;
+function drawVine(g, sx, sy, tx, ty) {
+    var top = 0, root = 0;
+    for (var up = 1; up <= 9; up++) {                    // how far above is the grass this hangs from?
+        var a = ty - up; if (a < 0) return;
+        var ta = RT.w[a * W + tx];
+        if (VINEFROM[ta]) { top = up; root = ta; break; }
+        if (ta !== T_AIR) return;                        // something else up there: no vine
+    }
+    if (!top) return;
+    var seed = hsh(tx * 3 + 11, ty - top);
+    if (seed > (root === T_JGRASS ? 0.55 : 0.72)) return;   // vines are common, not universal
+    var len = 1 + ((hsh(tx + 61, ty - top) * (root === T_JGRASS ? 7 : 4)) | 0);
+    if (top > len) return;
+    var col = TCOL[root === T_JGRASS ? T_JGRASS : root === T_CGRASS ? T_CGRASS : T_GRASS];
+    // the curve is a function of position only — this is baked into the terrain cache, and cells
+    // repainted at different times would kink if the sway moved
+    var sway = Math.sin(tx * 0.9 + top * 0.5) * 0.5 * (top / len);
+    var vx = sx + 3 + sway + (hsh(tx, ty) - 0.5);
+    g.fillStyle = col[1]; g.fillRect(vx, sy, 1, TS);
+    g.fillStyle = col[0]; g.fillRect(vx, sy, 0.5, TS);
+    if (hsh(tx + 7, ty) > 0.5) {                          // a leaflet every few segments
+        g.fillStyle = col[0];
+        g.fillRect(vx - 1.5, sy + 2.5, 1.5, 1); g.fillRect(vx + 1, sy + 5, 1.5, 1);
+    }
+    if (top === len) { g.fillStyle = col[0]; g.fillRect(vx - 0.5, sy + TS - 2, 2, 1.5); }   // tip
 }
 function terrCtx() {
     var g = RT.terr.getContext('2d');
@@ -1890,7 +1951,9 @@ function patchRect(ax, ay, bx, by) {
     if (!RT || !RT.terr) return;
     var g = terrCtx();
     var x0 = Math.max(ax, RT.terrX), x1 = Math.min(bx, RT.terrX + RT.terrTW - 1);
-    var y0 = Math.max(ay, RT.terrY), y1 = Math.min(by, RT.terrY + RT.terrTH - 1);
+    // one row of slack at the bottom: grass blades, flowers and the tree crown are painted by the
+    // cell BELOW the row they land in, so repainting a row alone would shave them off
+    var y0 = Math.max(ay, RT.terrY), y1 = Math.min(by + 1, RT.terrY + RT.terrTH - 1);
     for (var ty = y0; ty <= y1; ty++) for (var tx = x0; tx <= x1; tx++) paintTerrainCell(g, tx, ty);
     g.setTransform(1, 0, 0, 1, 0, 0);
 }
@@ -1941,18 +2004,32 @@ function buildTerrain(ox, oy, tw, th) {
    detailed as we like without paying for it every frame. Everything is authored on a 16x16 grid
    (1 art pixel = 0.5 world units = 1 device pixel at RS=2). */
 var TPX = 16;
-var _tileArt = {}, _wallArt = {}, _crackArt = {}, _objArt = {};
+var _crackArt = {}, _objArt = {};
 function mkc(w, h) {
     var c = document.createElement('canvas'); c.width = w; c.height = h;
     var g = c.getContext('2d'); if (g.imageSmoothingEnabled !== undefined) g.imageSmoothingEnabled = false;
     return { c: c, g: g };
 }
-// deterministic hash → the same tile always gets the same speckles
-function hsh(a, b) { var n = (a * 374761393 + b * 668265263) | 0; n = (n ^ (n >> 13)) * 1274126177; return ((n ^ (n >> 16)) >>> 0) / 4294967296; }
+/* Deterministic hash → the same tile always gets the same speckles.
+   The multiplies MUST go through Math.imul. Doing them as plain floats overflows 2^53, the low bits
+   are rounded away, and the result never exceeds 0.5 — which silently killed every `hsh(...) > 0.5`
+   threshold in this file (the chewed tile silhouettes, the scattered flowers, the third style
+   variant) without ever throwing. */
+function hsh(a, b) {
+    var n = (Math.imul(a, 374761393) + Math.imul(b, 668265263)) | 0;
+    n = Math.imul(n ^ (n >>> 13), 1274126177);
+    return ((n ^ (n >>> 16)) >>> 0) / 4294967296;
+}
+var _shade = {};
 function shade(hex, k) {
-    var n = parseInt(hex.slice(1), 16), r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
-    r = clamp(Math.round(r * k), 0, 255); g = clamp(Math.round(g * k), 0, 255); b = clamp(Math.round(b * k), 0, 255);
-    return 'rgb(' + r + ',' + g + ',' + b + ')';
+    var byK = _shade[hex] || (_shade[hex] = {});
+    var out = byK[k];
+    if (out === undefined) {
+        var n = parseInt(hex.slice(1), 16), r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+        r = clamp(Math.round(r * k), 0, 255); g = clamp(Math.round(g * k), 0, 255); b = clamp(Math.round(b * k), 0, 255);
+        out = byK[k] = 'rgb(' + r + ',' + g + ',' + b + ')';
+    }
+    return out;
 }
 function grain(g, base, seed, n, alpha) {
     for (var i = 0; i < n; i++) {
@@ -1964,129 +2041,431 @@ function grain(g, base, seed, n, alpha) {
     }
     g.globalAlpha = 1;
 }
-function tileArt(t) { if (!_tileArt[t]) _tileArt[t] = bakeTile(t); return _tileArt[t]; }
-function wallArt(w) { if (!_wallArt[w]) _wallArt[w] = bakeWall(w); return _wallArt[w]; }
+/* ── merge groups ──
+   Terraria does not draw a border between two blocks that belong to the same family: an ore vein
+   sits seamlessly inside stone, grass melts into the dirt under it. Everything else gets a framed
+   edge. This single rule is most of what makes a Terraria screenshot look like Terraria. */
+var MG_SOIL = 1, MG_ROCK = 2, MG_SNOW = 3, MG_ASH = 4, MG_SAND = 5;
+var MERGE = {};
+[T_DIRT, T_GRASS, T_MUD, T_JGRASS, T_CLAY].forEach(function (t) { MERGE[t] = MG_SOIL; });
+[T_STONE, T_SILT].concat(ORES).concat(GEMS).forEach(function (t) { MERGE[t] = MG_ROCK; });
+delete MERGE[T_HELLSTONE];                        // hellstone sits in ash, not stone
+[T_SNOW, T_ICE].forEach(function (t) { MERGE[t] = MG_SNOW; });
+[T_ASH, T_HELLSTONE].forEach(function (t) { MERGE[t] = MG_ASH; });
+MERGE[T_SAND] = MG_SAND;
+/* Ebonstone and corrupt grass deliberately do NOT join their clean counterparts: how far the
+   corruption has spread is something the player is meant to read at a glance, so it gets a hard
+   edge against stone and grass exactly as it does in game. */
+/* flat lookup: the merge group is read four times per tile on every cache repaint, so it lives in
+   a typed array rather than an object */
+var MGRP = new Int16Array(64);
+for (var _t = 1; _t < 64; _t++) MGRP[_t] = MERGE[_t] || (1000 + _t);
+function mgrp(t) { return MGRP[t]; }
+/* Terraria's other framing rule: natural earth erodes into natural earth. Dirt against stone has no
+   seam at all — it is why a cave wall looks eroded instead of tiled. Crafted and unnatural blocks
+   (wood, cloud, obsidian, ebonstone, corruption) keep their hard rim. */
+var EARTH = new Uint8Array(1064);
+[MG_SOIL, MG_ROCK, MG_SNOW, MG_ASH, MG_SAND].forEach(function (g) { EARTH[g] = 1; });
+
+/* grass grows a skin on whichever faces are exposed — over dirt, or mud in the jungle */
+var GRASSY = {}; GRASSY[T_GRASS] = T_DIRT; GRASSY[T_JGRASS] = T_MUD; GRASSY[T_CGRASS] = T_DIRT;
+/* an ore or gem tile is host rock FIRST, with the metal set into it — the tile is never solid metal */
+var HOST = {};
+ORES.concat(GEMS).forEach(function (t) { HOST[t] = T_STONE; });
+HOST[T_HELLSTONE] = T_ASH;
+function hostOf(t) { return GRASSY[t] !== undefined ? GRASSY[t] : HOST[t] !== undefined ? HOST[t] : t; }
+/* loose materials get a chewed, irregular silhouette where they meet air; rock stays straight */
+var SOFT = {};
+[T_DIRT, T_GRASS, T_JGRASS, T_CGRASS, T_MUD, T_CLAY, T_SAND, T_SNOW, T_SILT, T_ASH].forEach(function (t) { SOFT[t] = 1; });
+
+var NVAR = 3;                                     // three style variants per tile, as in the real tileset
+var _mat = [], _atlas = [], _wallAt = [], _wallBody = [];
 function crackArt(n) { if (!_crackArt[n]) _crackArt[n] = bakeCrack(n); return _crackArt[n]; }
 function objArt(k) { if (!_objArt[k]) _objArt[k] = bakeObj(k); return _objArt[k]; }
+/* The material of a tile does not depend on its neighbours — only the edge treatment does — so it
+   is painted once per style variant and stamped into each frame. Frames themselves are cut lazily:
+   a given tile type only ever meets a handful of the 256 neighbour codes, and baking all of them
+   up front was both the bulk of the first-frame cost and a few thousand retained canvases. */
+function materialArt(t, v) {
+    var mt = _mat[t] || (_mat[t] = []);
+    if (!mt[v]) { var m = mkc(TPX, TPX); paintMaterial(m.g, t, v); mt[v] = m.c; }
+    return mt[v];
+}
+function tileFrame(t, k, v) {
+    var ft = _atlas[t] || (_atlas[t] = []), id = v * 256 + k, c = ft[id];
+    if (!c) {
+        var m = mkc(TPX, TPX);
+        m.g.drawImage(materialArt(t, v), 0, 0);
+        frameEdges(m.g, t, k, v);
+        ft[id] = c = m.c;
+    }
+    return c;
+}
+/* The neighbour code is two nibbles: bits 0-3 say "same family, no edge at all", bits 4-7 say
+   "different family but both natural earth, so erode into it rather than draw a rim". Anything in
+   neither nibble is open air or a foreign block and gets the full framed edge. */
+function tileMask(tx, ty, t) {
+    var g0 = MGRP[t], e0 = EARTH[g0], w = RT.w, i = ty * W + tx, k = 0, g1;
+    if (ty > 0) { g1 = MGRP[w[i - W]]; if (g1 === g0) k |= 1; else if (e0 && EARTH[g1]) k |= 16; }
+    else k |= 0;
+    if (ty >= H - 1) k |= 2;
+    else { g1 = MGRP[w[i + W]]; if (g1 === g0) k |= 2; else if (e0 && EARTH[g1]) k |= 32; }
+    if (tx <= 0) k |= 4;
+    else { g1 = MGRP[w[i - 1]]; if (g1 === g0) k |= 4; else if (e0 && EARTH[g1]) k |= 64; }
+    if (tx >= W - 1) k |= 8;
+    else { g1 = MGRP[w[i + 1]]; if (g1 === g0) k |= 8; else if (e0 && EARTH[g1]) k |= 128; }
+    return k;
+}
+/* true when the frame for this code is fully opaque — no corner bite, no chewed silhouette */
+function frameOpaque(t, k) {
+    if (t === T_COBWEB || t === T_CLOUD) return false;
+    return ((k & 15) | ((k >> 4) & 15)) === 15;
+}
 
-function bakeTile(t) {
-    var m = mkc(TPX, TPX), g = m.g;
-    var col = TCOL[t] || ['#f0f', '#a0a', '#f8f'], base = col[0], dk = col[1], lt = col[2] || col[0];
+/* ── the material itself: a full 16x16 of texture, no borders ── */
+function paintMaterial(g, t, v) {
+    var col = TCOL[t] || ['#f0f', '#a0a', '#f8f'];
+    var mat = hostOf(t);                                        // grass paints dirt, ore paints stone
+    var mc = TCOL[mat] || col, base = mc[0], dk = mc[1], lt = mc[2] || mc[0];
+    var sd = t * 31 + v * 7;
+
+    if (t === T_COBWEB) return webMaterial(g, v);
+    if (t === T_CLOUD) return cloudMaterial(g, v);
+
     g.fillStyle = base; g.fillRect(0, 0, TPX, TPX);
-    grain(g, base, t * 7 + 3, 46, 0.5);
+    grain(g, base, sd + 3, 44, 0.5);
 
-    // ── soft interior shading: light from above-left, like the real tileset ──
-    g.globalAlpha = 0.16; g.fillStyle = '#fff'; g.fillRect(0, 0, TPX, 2);
-    g.globalAlpha = 0.13; g.fillStyle = '#000'; g.fillRect(0, TPX - 2, TPX, 2); g.fillRect(TPX - 2, 0, 2, TPX);
-    g.globalAlpha = 1;
+    if (mat === T_DIRT || mat === T_MUD || mat === T_CLAY || mat === T_SILT) {
+        // clods: soft rounded blobs, a lit top-left face and a shadow under
+        var clod = [[2, 3, 5, 4], [9, 2, 5, 4], [4, 9, 6, 4], [11, 8, 4, 5], [0, 7, 3, 4]];
+        for (var i = 0; i < clod.length; i++) {
+            var c0 = clod[i], j = (i + v) % clod.length, cx0 = clod[j][0], cy0 = clod[j][1];
+            g.globalAlpha = 0.30; g.fillStyle = shade(base, 1.22);
+            g.fillRect(cx0, cy0, c0[2], 1); g.fillRect(cx0, cy0, 1, c0[3]);
+            g.globalAlpha = 0.34; g.fillStyle = shade(base, 0.74);
+            g.fillRect(cx0, cy0 + c0[3] - 1, c0[2], 1); g.fillRect(cx0 + c0[2] - 1, cy0, 1, c0[3]);
+        }
+        g.globalAlpha = 0.5; g.fillStyle = shade(base, 0.6);   // small pebbles
+        for (var p = 0; p < 5; p++) g.fillRect((hsh(sd, p) * 14) | 0, (hsh(sd + 40, p) * 14) | 0, 1, 1);
+        g.globalAlpha = 1;
+    } else if (mat === T_STONE || mat === T_EBON || mat === T_OBSIDIAN || mat === T_ASH || mat === T_HELLSTONE || ORE_ITEM[t] || GEMCOL[t]) {
+        // Mottled rock. Terraria's stone reads as noise with a few short fissures, NOT a lattice —
+        // so nothing here touches the tile border, or the seams would join up across a whole cliff
+        // face and turn it into fish scales.
+        var patch = [[[1, 2, 5, 4], [8, 1, 6, 3], [3, 8, 6, 5], [10, 9, 5, 4], [6, 13, 5, 2]],
+                     [[2, 1, 6, 3], [9, 4, 5, 5], [1, 7, 5, 6], [8, 11, 6, 4], [12, 1, 3, 2]],
+                     [[4, 2, 6, 5], [1, 4, 3, 6], [11, 3, 4, 6], [3, 10, 6, 4], [10, 11, 5, 3]]][v];
+        for (var s2 = 0; s2 < patch.length; s2++) {
+            var pt = patch[s2], up2 = s2 % 2 === 0;
+            g.globalAlpha = up2 ? 0.26 : 0.22;
+            g.fillStyle = shade(base, up2 ? 1.2 : 0.8);
+            g.fillRect(pt[0], pt[1], pt[2], pt[3]);
+            g.globalAlpha = up2 ? 0.3 : 0.26;
+            g.fillStyle = shade(base, up2 ? 1.38 : 0.68);
+            g.fillRect(pt[0], pt[1], pt[2] - 1, 1);
+        }
+        g.globalAlpha = 0.42; g.fillStyle = shade(base, 0.58);      // short fissures, kept off the edges
+        var fis = [[3, 5, 1, 4], [9, 8, 1, 3], [6, 2, 3, 1], [11, 12, 3, 1], [2, 11, 1, 3]];
+        for (var f2 = 0; f2 < 3; f2++) { var fr2 = fis[(f2 + v) % fis.length]; g.fillRect(fr2[0], fr2[1], fr2[2], fr2[3]); }
+        g.globalAlpha = 0.5; g.fillStyle = shade(base, 0.55);       // grit
+        for (var p2 = 0; p2 < 6; p2++) g.fillRect(1 + ((hsh(sd + 3, p2) * 13) | 0), 1 + ((hsh(sd + 47, p2) * 13) | 0), 1, 1);
+        g.globalAlpha = 1;
+    } else if (mat === T_SAND) {
+        g.globalAlpha = 0.55;
+        for (var s3 = 0; s3 < 34; s3++) {
+            var hx = hsh(sd + 5, s3), hy = hsh(sd + 61, s3);
+            g.fillStyle = hx > 0.55 ? shade(base, 1.16) : shade(base, 0.84);
+            g.fillRect((hx * TPX) | 0, (hy * TPX) | 0, 1, 1);
+        }
+        g.globalAlpha = 0.25; g.fillStyle = shade(base, 0.88);   // faint wind bands
+        g.fillRect(0, 5 + v, TPX, 1); g.fillRect(0, 11 - v, TPX, 1);
+        g.globalAlpha = 1;
+    } else if (mat === T_SNOW) {
+        g.globalAlpha = 0.45; g.fillStyle = '#b9cfe0';
+        g.fillRect(3, 5 + v, 4, 2); g.fillRect(9, 9, 4, 2); g.fillRect(6, 12, 3, 1);
+        g.globalAlpha = 0.95; g.fillStyle = '#fff';
+        g.fillRect(2, 2, 3, 1); g.fillRect(10, 4 + v, 3, 1); g.fillRect(5, 9, 2, 1);
+        g.globalAlpha = 1;
+    } else if (mat === T_ICE) {
+        g.globalAlpha = 0.5; g.fillStyle = '#e2f4ff';
+        g.beginPath(); g.moveTo(2, 14); g.lineTo(8 + v, 1); g.lineTo(11 + v, 1); g.lineTo(5, 14); g.closePath(); g.fill();
+        g.globalAlpha = 0.35; g.fillStyle = '#ffffff';
+        g.beginPath(); g.moveTo(10, 15); g.lineTo(14, 6); g.lineTo(16, 6); g.lineTo(13, 15); g.closePath(); g.fill();
+        g.globalAlpha = 0.4; g.fillStyle = shade(base, 0.7); g.fillRect(0, 8, TPX, 1);
+        g.globalAlpha = 1;
+    } else if (mat === T_PLANK || mat === T_PLATFORM || mat === T_TRUNK) {
+        // two courses of board with vertical grain and a nail at each end, like Terraria's Wood
+        g.globalAlpha = 0.6; g.fillStyle = shade(base, 0.58);
+        g.fillRect(0, 7, TPX, 1); g.fillRect(0, 15, TPX, 1);
+        g.globalAlpha = 0.4; g.fillStyle = shade(base, 1.28);
+        g.fillRect(0, 0, TPX, 1); g.fillRect(0, 8, TPX, 1);
+        g.globalAlpha = 0.35; g.fillStyle = shade(base, 0.72);
+        for (var w2 = 0; w2 < 7; w2++) {
+            var gx = 1 + ((hsh(sd, w2) * 14) | 0), gy = w2 < 4 ? 2 : 10;
+            g.fillRect(gx, gy + ((hsh(sd + 9, w2) * 3) | 0), 1, 3);
+        }
+        g.globalAlpha = 0.55; g.fillStyle = shade(base, 0.5);
+        g.fillRect(2, 3, 1, 1); g.fillRect(13, 3, 1, 1); g.fillRect(2, 11, 1, 1); g.fillRect(13, 11, 1, 1);
+        g.globalAlpha = 1;
+    } else if (mat === T_LEAF) {
+        // overlapping leaf clusters, lit from the upper left, that tile seamlessly into a canopy
+        for (var l = 0; l < 9; l++) {
+            var lx = ((hsh(sd + 2, l) * 18) | 0) - 2, ly = ((hsh(sd + 55, l) * 18) | 0) - 2;
+            var big = hsh(sd + 19, l) > 0.5;
+            g.fillStyle = hsh(sd + 7, l) > 0.45 ? shade(base, 0.84) : shade(base, 1.06);
+            g.fillRect(lx, ly, big ? 5 : 4, big ? 4 : 3);
+            g.fillStyle = hsh(sd + 7, l) > 0.45 ? shade(base, 1.0) : shade(base, 1.2);
+            g.fillRect(lx, ly, big ? 4 : 3, 1); g.fillRect(lx, ly, 1, big ? 3 : 2);
+        }
+        for (var l2 = 0; l2 < 5; l2++) {                    // speckle so no two canopy tiles match
+            g.fillStyle = hsh(sd + 33, l2) > 0.5 ? lt : '#1a5c20';
+            g.fillRect((hsh(sd + 12, l2) * 15) | 0, (hsh(sd + 71, l2) * 15) | 0, 1, 1);
+        }
+    }
 
-    if (t === T_STONE || t === T_EBON || t === T_SILT || t === T_ASH || t === T_OBSIDIAN) {
-        // chunky rock facets + a crack or two
-        g.globalAlpha = 0.5; g.fillStyle = shade(base, 1.25);
-        g.fillRect(2, 2, 5, 4); g.fillRect(9, 7, 5, 4); g.fillRect(3, 10, 4, 3);
-        g.globalAlpha = 0.55; g.fillStyle = shade(base, 0.72);
-        g.fillRect(7, 3, 1, 5); g.fillRect(8, 8, 1, 4); g.fillRect(2, 9, 5, 1); g.fillRect(10, 12, 4, 1);
+    if (t === T_HELLSTONE) {                       // molten veins glowing through the rock
+        g.globalAlpha = 0.95; g.fillStyle = '#ff8a2a';
+        g.fillRect(3, 3 + v, 1, 6); g.fillRect(4, 8 + v, 3, 1); g.fillRect(10, 2, 1, 5); g.fillRect(8, 11, 5, 1);
+        g.globalAlpha = 0.75; g.fillStyle = '#ffe0a0';
+        g.fillRect(3, 4 + v, 1, 2); g.fillRect(10, 3, 1, 2); g.fillRect(9, 11, 2, 1);
         g.globalAlpha = 1;
     }
-    if (t === T_DIRT || t === T_MUD || t === T_CLAY) {
-        g.globalAlpha = 0.45; g.fillStyle = shade(base, 1.2);
-        g.fillRect(3, 3, 3, 2); g.fillRect(10, 5, 3, 2); g.fillRect(6, 10, 3, 2);
-        g.globalAlpha = 0.4; g.fillStyle = shade(base, 0.75);
-        g.fillRect(2, 7, 2, 2); g.fillRect(12, 10, 2, 2); g.fillRect(7, 2, 2, 1);
+    if (t === T_OBSIDIAN) {                        // glassy: hard specular streaks
+        g.globalAlpha = 0.5; g.fillStyle = '#8e86c4';
+        g.fillRect(3, 2, 1, 4); g.fillRect(10, 7, 1, 5); g.fillRect(6, 10, 3, 1);
         g.globalAlpha = 1;
     }
-    if (t === T_SAND) { g.globalAlpha = 0.5; for (var s = 0; s < 26; s++) { var hx = hsh(t + 5, s), hy = hsh(t + 61, s); g.fillStyle = hx > 0.5 ? shade(base, 1.15) : shade(base, 0.86); g.fillRect(Math.floor(hx * TPX), Math.floor(hy * TPX), 1, 1); } g.globalAlpha = 1; }
-    if (t === T_SNOW) {
-        g.globalAlpha = 0.5; g.fillStyle = '#c9d8ea';
-        g.fillRect(3, 6, 3, 2); g.fillRect(9, 10, 3, 2); g.fillRect(6, 12, 2, 1);
-        g.globalAlpha = 0.9; g.fillStyle = '#fff'; g.fillRect(2, 3, 2, 1); g.fillRect(11, 5, 2, 1);
-        g.globalAlpha = 1;
-    }
-    if (t === T_ICE) {
-        g.globalAlpha = 0.55; g.fillStyle = '#dff2ff';
-        g.beginPath(); g.moveTo(2, 13); g.lineTo(9, 2); g.lineTo(12, 2); g.lineTo(5, 13); g.closePath(); g.fill();
-        g.globalAlpha = 0.35; g.fillRect(10, 8, 4, 1); g.fillRect(3, 4, 3, 1);
-        g.globalAlpha = 1;
-    }
-    if (t === T_PLANK || t === T_PLATFORM) {
-        // real plank grain + end nails
-        g.globalAlpha = 0.55; g.fillStyle = shade(base, 0.7);
-        g.fillRect(0, 5, TPX, 1); g.fillRect(0, 11, TPX, 1);
-        g.globalAlpha = 0.35; g.fillStyle = shade(base, 1.25);
-        g.fillRect(0, 6, TPX, 1); g.fillRect(0, 12, TPX, 1); g.fillRect(0, 0, TPX, 1);
-        g.globalAlpha = 0.5; g.fillStyle = shade(base, 0.55);
-        g.fillRect(2, 2, 1, 1); g.fillRect(13, 2, 1, 1); g.fillRect(2, 8, 1, 1); g.fillRect(13, 8, 1, 1);
-        g.globalAlpha = 1;
-    }
-    if (t === T_COBWEB) {
-        g.clearRect(0, 0, TPX, TPX);
-        g.strokeStyle = 'rgba(226,232,242,.85)'; g.lineWidth = 1;
-        g.beginPath();
-        g.moveTo(0, 0); g.lineTo(TPX, TPX); g.moveTo(TPX, 0); g.lineTo(0, TPX);
-        g.moveTo(8, 0); g.lineTo(8, TPX); g.moveTo(0, 8); g.lineTo(TPX, 8);
-        g.stroke();
-        g.strokeStyle = 'rgba(226,232,242,.55)';
-        g.beginPath(); g.moveTo(8, 3); g.lineTo(13, 8); g.lineTo(8, 13); g.lineTo(3, 8); g.closePath(); g.stroke();
-        g.beginPath(); g.moveTo(8, 6); g.lineTo(10, 8); g.lineTo(8, 10); g.lineTo(6, 8); g.closePath(); g.stroke();
-    }
-    if (t === T_CLOUD) {
-        g.clearRect(0, 0, TPX, TPX);
-        g.fillStyle = '#fbfdff'; g.beginPath();
-        g.arc(5, 9, 5, 0, 7); g.arc(11, 8, 5, 0, 7); g.arc(8, 12, 5, 0, 7); g.fill();
-        g.globalAlpha = 0.5; g.fillStyle = '#c6d4e8'; g.fillRect(2, 12, 12, 2); g.globalAlpha = 1;
-    }
-    if (t === T_HELLSTONE) {
-        g.globalAlpha = 0.9; g.fillStyle = '#ff7a2a';
-        g.fillRect(3, 4, 1, 5); g.fillRect(4, 8, 3, 1); g.fillRect(10, 3, 1, 4); g.fillRect(8, 11, 4, 1);
-        g.globalAlpha = 0.55; g.fillStyle = '#ffd28a';
-        g.fillRect(3, 5, 1, 2); g.fillRect(10, 4, 1, 2);
-        g.globalAlpha = 1;
-    }
-    if (t === T_GRASS || t === T_JGRASS || t === T_CGRASS) {
-        // a real grass cap over dirt, not a flat green square
-        var dirtc = t === T_JGRASS ? TCOL[T_MUD][0] : t === T_CGRASS ? '#4a3a5c' : TCOL[T_DIRT][0];
-        g.fillStyle = dirtc; g.fillRect(0, 0, TPX, TPX);
-        grain(g, dirtc, t * 11 + 2, 40, 0.45);
-        g.fillStyle = base; g.fillRect(0, 0, TPX, 6);
-        g.fillStyle = lt; g.fillRect(0, 0, TPX, 2);
-        g.globalAlpha = 0.7; g.fillStyle = dk;
-        for (var b2 = 0; b2 < TPX; b2 += 3) g.fillRect(b2, 6, 2, 1 + (hsh(t, b2) > 0.5 ? 1 : 0));
-        g.globalAlpha = 1;
-    }
-    if (ORE_ITEM[t]) {
-        // ore veins: nuggets with a rim light and a drop shadow so the metal reads at a glance
-        var oc = col[0], nug = [[3, 4], [9, 3], [6, 9], [11, 10]];
-        for (var n2 = 0; n2 < nug.length; n2++) {
-            var nx = nug[n2][0], ny = nug[n2][1], sz = n2 % 2 ? 3 : 4;
-            g.fillStyle = 'rgba(0,0,0,.35)'; g.fillRect(nx + 1, ny + 1, sz, sz);
-            g.fillStyle = oc; g.fillRect(nx, ny, sz, sz);
-            g.fillStyle = shade(oc, 1.45); g.fillRect(nx, ny, sz - 1, 1); g.fillRect(nx, ny, 1, sz - 1);
-            g.fillStyle = shade(oc, 0.65); g.fillRect(nx + sz - 1, ny + 1, 1, sz - 1);
-            g.fillStyle = 'rgba(255,255,255,.85)'; g.fillRect(nx + 1, ny + 1, 1, 1);
+    if (ORE_ITEM[t] && t !== T_HELLSTONE) {
+        // Terraria ore: irregular blobs of metal set into the rock, each lit from the upper left
+        var oc = col[0], hi = col[2] || shade(oc, 1.4);
+        var vein = [[[3, 3, 3, 3], [9, 5, 3, 2], [6, 10, 3, 3], [12, 11, 2, 2]],
+                    [[5, 2, 3, 2], [2, 7, 3, 3], [10, 8, 3, 3], [7, 12, 2, 2]],
+                    [[2, 5, 3, 3], [8, 2, 3, 3], [11, 9, 2, 3], [5, 11, 3, 2]]][v];
+        for (var n2 = 0; n2 < vein.length; n2++) {
+            var b0 = vein[n2], nx = b0[0], ny = b0[1], nw = b0[2], nh = b0[3];
+            g.fillStyle = 'rgba(0,0,0,.45)'; g.fillRect(nx, ny + 1, nw, nh);
+            g.fillStyle = oc; g.fillRect(nx, ny, nw, nh);
+            g.fillStyle = hi; g.fillRect(nx, ny, nw - 1, 1); g.fillRect(nx, ny, 1, nh - 1);
+            g.fillStyle = shade(oc, 0.6); g.fillRect(nx + nw - 1, ny + 1, 1, nh - 1); g.fillRect(nx + 1, ny + nh - 1, nw - 1, 1);
+            if (nw > 3) { g.fillStyle = 'rgba(255,255,255,.8)'; g.fillRect(nx + 1, ny + 1, 1, 1); }
         }
     }
     if (GEMCOL[t]) {
-        // a faceted crystal, not a colored square
+        // A pocket of two or three small crystals scattered differently per variant, so a vein
+        // reads as a gem deposit rather than the same big jewel stamped in a row.
         var gc = GEMCOL[t];
-        g.fillStyle = 'rgba(0,0,0,.4)'; g.beginPath(); g.moveTo(8, 3); g.lineTo(13, 8); g.lineTo(8, 14); g.lineTo(3, 8); g.closePath(); g.fill();
-        g.fillStyle = gc; g.beginPath(); g.moveTo(8, 2); g.lineTo(12, 7); g.lineTo(8, 13); g.lineTo(4, 7); g.closePath(); g.fill();
-        g.fillStyle = shade(gc, 1.5); g.beginPath(); g.moveTo(8, 2); g.lineTo(12, 7); g.lineTo(8, 7); g.closePath(); g.fill();
-        g.fillStyle = shade(gc, 0.6); g.beginPath(); g.moveTo(8, 7); g.lineTo(12, 7); g.lineTo(8, 13); g.closePath(); g.fill();
-        g.fillStyle = 'rgba(255,255,255,.95)'; g.fillRect(7, 4, 1, 2); g.fillRect(6, 6, 1, 1);
+        var clus = [[[5, 6, 4], [11, 10, 3], [9, 4, 2]],
+                    [[10, 6, 4], [5, 11, 3], [3, 5, 2]],
+                    [[8, 9, 4], [4, 4, 3], [12, 12, 2]]][v];
+        for (var cq = 0; cq < clus.length; cq++) {
+            var gx0 = clus[cq][0], gy0 = clus[cq][1], gr = clus[cq][2];
+            g.fillStyle = 'rgba(0,0,0,.45)';
+            g.beginPath(); g.moveTo(gx0, gy0 - gr + 1); g.lineTo(gx0 + gr, gy0 + 1); g.lineTo(gx0, gy0 + gr + 1); g.lineTo(gx0 - gr, gy0 + 1); g.closePath(); g.fill();
+            g.fillStyle = gc;
+            g.beginPath(); g.moveTo(gx0, gy0 - gr); g.lineTo(gx0 + gr, gy0); g.lineTo(gx0, gy0 + gr); g.lineTo(gx0 - gr, gy0); g.closePath(); g.fill();
+            g.fillStyle = shade(gc, 1.55);
+            g.beginPath(); g.moveTo(gx0, gy0 - gr); g.lineTo(gx0 + gr - 1, gy0); g.lineTo(gx0, gy0); g.closePath(); g.fill();
+            g.fillStyle = shade(gc, 0.55);
+            g.beginPath(); g.moveTo(gx0, gy0); g.lineTo(gx0 + gr - 1, gy0); g.lineTo(gx0, gy0 + gr); g.closePath(); g.fill();
+            if (gr > 2) { g.fillStyle = 'rgba(255,255,255,.95)'; g.fillRect(gx0 - 1, gy0 - gr + 1, 1, 2); }
+        }
     }
-    return m.c;
 }
-function bakeWall(wl) {
-    var m = mkc(TPX, TPX), g = m.g, base = WLCOL[wl] || '#241a14';
-    g.fillStyle = base; g.fillRect(0, 0, TPX, TPX);
-    // recessed brick coursing reads instantly as "background wall"
-    g.globalAlpha = 0.5; g.fillStyle = shade(base, 0.62);
-    g.fillRect(0, 7, TPX, 1); g.fillRect(0, 15, TPX, 1); g.fillRect(7, 0, 1, 8); g.fillRect(3, 8, 1, 8);
-    g.globalAlpha = 0.35; g.fillStyle = shade(base, 1.5);
-    g.fillRect(0, 8, TPX, 1); g.fillRect(0, 0, TPX, 1); g.fillRect(8, 0, 1, 7); g.fillRect(4, 8, 1, 7);
+function webMaterial(g, v) {
+    g.strokeStyle = 'rgba(228,234,244,.85)'; g.lineWidth = 1;
+    g.beginPath();
+    g.moveTo(0, 0); g.lineTo(TPX, TPX); g.moveTo(TPX, 0); g.lineTo(0, TPX);
+    g.moveTo(8, 0); g.lineTo(8, TPX); g.moveTo(0, 8); g.lineTo(TPX, 8);
+    g.stroke();
+    g.strokeStyle = 'rgba(228,234,244,.5)';
+    for (var r = 3 + v; r < 8; r += 3) {
+        g.beginPath(); g.moveTo(8, 8 - r); g.lineTo(8 + r, 8); g.lineTo(8, 8 + r); g.lineTo(8 - r, 8); g.closePath(); g.stroke();
+    }
+}
+function cloudMaterial(g, v) {
+    g.fillStyle = '#fbfdff'; g.beginPath();
+    g.arc(4 + v, 9, 5.5, 0, 7); g.arc(11, 7 + v, 5.5, 0, 7); g.arc(8, 12, 5, 0, 7); g.fill();
+    g.globalAlpha = 0.45; g.fillStyle = '#b9c9e6'; g.fillRect(1, 12, 14, 3); g.globalAlpha = 1;
+}
+
+/* ── edges: the dark rim, bevel and rounded corner Terraria bakes into every exposed face ── */
+function frameEdges(g, t, k, v) {
+    if (t === T_COBWEB || t === T_CLOUD) return;
+    var oU = !(k & 1), oD = !(k & 2), oL = !(k & 4), oR = !(k & 8);       // not the same family
+    var bU = !!(k & 16), bD = !!(k & 32), bL = !!(k & 64), bR = !!(k & 128);   // eroding into earth
+    var mat = hostOf(t);
+    var mc = TCOL[mat] || TCOL[t] || ['#888'], base = mc[0];
+    var gc = (TCOL[t] || mc)[0];
+    // a blended face gets no rim and no bevel — just a ragged fringe of its own material, which is
+    // what makes dirt finger into stone instead of butting up against it
+    if (bU || bD || bL || bR) blendFringe(g, t, base, bU, bD, bL, bR, v);
+    oU = oU && !bU; oD = oD && !bD; oL = oL && !bL; oR = oR && !bR;
+    if (GRASSY[t] !== undefined) grassSkin(g, t, oU, oD, oL, oR, v);
+    var rimU = GRASSY[t] !== undefined && oU ? shade(gc, 0.5) : shade(base, 0.5);
+    var rimS = GRASSY[t] !== undefined ? shade(gc, 0.45) : shade(base, 0.45);
+    var leafy = t === T_LEAF;
+
+    if (oU) {
+        if (!leafy) {
+            g.globalAlpha = 0.32; g.fillStyle = '#fff'; g.fillRect(0, 1, TPX, 1);    // sunlit lip
+            g.globalAlpha = 0.9; g.fillStyle = rimU; g.fillRect(0, 0, TPX, 1);
+            g.globalAlpha = 1;
+        }
+        if (SOFT[t]) for (var i = 0; i < TPX; i++) if (hsh(t * 5 + v, i) > 0.68) g.clearRect(i, 0, 1, 1);
+    }
+    if (oD) {
+        if (!leafy) {
+            g.globalAlpha = 0.34; g.fillStyle = '#000'; g.fillRect(0, TPX - 2, TPX, 1);
+            g.globalAlpha = 0.9; g.fillStyle = shade(base, 0.4); g.fillRect(0, TPX - 1, TPX, 1);
+            g.globalAlpha = 1;
+        }
+        if (SOFT[t]) for (var i2 = 0; i2 < TPX; i2++) if (hsh(t * 5 + v + 17, i2) > 0.78) g.clearRect(i2, TPX - 1, 1, 1);
+    }
+    if (oL && !leafy) {
+        g.globalAlpha = 0.16; g.fillStyle = '#fff'; g.fillRect(1, 0, 1, TPX);
+        g.globalAlpha = 0.85; g.fillStyle = GRASSY[t] !== undefined ? rimS : shade(base, 0.46); g.fillRect(0, 0, 1, TPX);
+        g.globalAlpha = 1;
+    }
+    if (oR && !leafy) {
+        g.globalAlpha = 0.24; g.fillStyle = '#000'; g.fillRect(TPX - 2, 0, 1, TPX);
+        g.globalAlpha = 0.85; g.fillStyle = GRASSY[t] !== undefined ? rimS : shade(base, 0.42); g.fillRect(TPX - 1, 0, 1, TPX);
+        g.globalAlpha = 1;
+    }
+    // Foliage has no straight edge anywhere: every exposed column of a leaf tile is bitten to a
+    // different depth, so a canopy reads as a leafy mass rather than a stack of outlined squares.
+    if (leafy) {
+        if (oU) for (var lu = 0; lu < TPX; lu++) g.clearRect(lu, 0, 1, 1 + ((hsh(v * 7 + 1, lu) * 3) | 0));
+        if (oD) for (var ld = 0; ld < TPX; ld++) { var db = 1 + ((hsh(v * 7 + 5, ld) * 3) | 0); g.clearRect(ld, TPX - db, 1, db); }
+        if (oL) for (var ll = 0; ll < TPX; ll++) g.clearRect(0, ll, 1 + ((hsh(v * 7 + 9, ll) * 3) | 0), 1);
+        if (oR) for (var lr = 0; lr < TPX; lr++) { var rb = 1 + ((hsh(v * 7 + 13, lr) * 3) | 0); g.clearRect(TPX - rb, lr, rb, 1); }
+    }
+    // rounded outer corners: a hard bite plus a half-strength diagonal, so blocks read as blocks
+    var soft = leafy ? 2 : 1;
+    function round(cx0, cy0, sx0, sy0) {
+        var bx = sx0 > 0 ? cx0 : cx0 - soft + 1, by = sy0 > 0 ? cy0 : cy0 - soft + 1;
+        g.clearRect(bx, by, soft, soft);
+        g.globalCompositeOperation = 'destination-out'; g.globalAlpha = 0.55;
+        g.fillStyle = '#000';
+        g.fillRect(sx0 > 0 ? bx + soft : bx - soft, by, soft, soft);
+        g.fillRect(bx, sy0 > 0 ? by + soft : by - soft, soft, soft);
+        g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
+    }
+    if (oU && oL) round(0, 0, 1, 1);
+    if (oU && oR) round(TPX - 1, 0, -1, 1);
+    if (oD && oL) round(0, TPX - 1, 1, -1);
+    if (oD && oR) round(TPX - 1, TPX - 1, -1, -1);
+}
+/* The eroded boundary between two natural materials: a soft, uneven band of this tile's own colour
+   reaching a pixel or two into the face, so neither side ends on a straight line.
+   MUST only fill, never clear or composite out — frameOpaque() counts a blended face as covered,
+   and punching transparency here would put the sky back through the seam. */
+function blendFringe(g, t, base, bU, bD, bL, bR, v) {
+    var hi = shade(base, 1.16), lo = shade(base, 0.8), sd = t * 9 + v * 3;
+    g.globalAlpha = 0.55;
+    if (bU) for (var a = 0; a < TPX; a++) { g.fillStyle = hsh(sd, a) > 0.5 ? hi : lo; g.fillRect(a, 0, 1, 1 + ((hsh(sd + 2, a) * 2) | 0)); }
+    if (bD) for (var b = 0; b < TPX; b++) { var d = 1 + ((hsh(sd + 5, b) * 2) | 0); g.fillStyle = hsh(sd + 7, b) > 0.5 ? lo : hi; g.fillRect(b, TPX - d, 1, d); }
+    if (bL) for (var c = 0; c < TPX; c++) { g.fillStyle = hsh(sd + 11, c) > 0.5 ? hi : lo; g.fillRect(0, c, 1 + ((hsh(sd + 13, c) * 2) | 0), 1); }
+    if (bR) for (var e = 0; e < TPX; e++) { var f = 1 + ((hsh(sd + 17, e) * 2) | 0); g.fillStyle = hsh(sd + 19, e) > 0.5 ? lo : hi; g.fillRect(TPX - f, e, f, 1); }
     g.globalAlpha = 1;
-    grain(g, base, wl * 13 + 5, 26, 0.4);
-    return m.c;
+}
+/* grass only skins the faces that touch air — a buried grass block is just dirt, exactly as in game */
+function grassSkin(g, t, oU, oD, oL, oR, v) {
+    var c = TCOL[t], base = c[0], lt = c[2], dk = c[1];
+    if (oU) {
+        g.fillStyle = base; g.fillRect(0, 0, TPX, 6);
+        g.fillStyle = lt; g.fillRect(0, 0, TPX, 2);
+        for (var i = 0; i < TPX; i++) {                       // the turf frays into the soil below it
+            var dpt = 6 + ((hsh(t * 3 + v, i) * 3) | 0);
+            g.fillStyle = base; g.fillRect(i, 6, 1, dpt - 6);
+            g.fillStyle = dk; g.fillRect(i, dpt, 1, 1);
+        }
+    }
+    if (oL) {
+        var lh2 = oU ? TPX : 10;
+        for (var j = 0; j < lh2; j++) {
+            var wdt = 3 + ((hsh(t + v + 3, j) * 2) | 0);
+            g.fillStyle = base; g.fillRect(0, j, wdt, 1);
+            g.fillStyle = dk; g.fillRect(wdt, j, 1, 1);
+        }
+        g.fillStyle = lt; g.fillRect(0, 0, 2, oU ? TPX : 7);
+    }
+    if (oR) {
+        var rh2 = oU ? TPX : 10;
+        for (var j2 = 0; j2 < rh2; j2++) {
+            var wd2 = 3 + ((hsh(t + v + 8, j2) * 2) | 0);
+            g.fillStyle = base; g.fillRect(TPX - wd2, j2, wd2, 1);
+            g.fillStyle = dk; g.fillRect(TPX - wd2 - 1, j2, 1, 1);
+        }
+        g.fillStyle = lt; g.fillRect(TPX - 2, 0, 2, oU ? TPX : 7);
+    }
+    if (oD && !oU) { g.fillStyle = base; g.fillRect(0, TPX - 3, TPX, 3); g.fillStyle = dk; g.fillRect(0, TPX - 4, TPX, 1); }
+}
+
+/* ── background walls: framed too, with the deep shadow Terraria puts where a wall meets open air ── */
+function wallFrames(wl) {
+    var a = _wallAt[wl]; if (a) return a;
+    var fr = new Array(32), base = WLCOL[wl] || '#241a14';
+    for (var v = 0; v < 2; v++) {
+        var body = mkc(TPX, TPX), g = body.g, sd = wl * 13 + v * 5;
+        g.fillStyle = base; g.fillRect(0, 0, TPX, TPX);
+        if (wl === WL_WOOD) {
+            // a crafted wall is boarded, not bricked — vertical planks with seams and nail heads
+            g.globalAlpha = 0.55; g.fillStyle = shade(base, 0.5);
+            g.fillRect(v ? 4 : 5, 0, 1, TPX); g.fillRect(v ? 10 : 11, 0, 1, TPX); g.fillRect(0, 0, 1, TPX);
+            g.globalAlpha = 0.28; g.fillStyle = shade(base, 1.6);
+            g.fillRect(v ? 5 : 6, 0, 1, TPX); g.fillRect(v ? 11 : 12, 0, 1, TPX); g.fillRect(1, 0, 1, TPX);
+            g.globalAlpha = 0.3; g.fillStyle = shade(base, 0.72);
+            for (var wg2 = 0; wg2 < 6; wg2++) g.fillRect(2 + ((hsh(sd, wg2) * 12) | 0), (hsh(sd + 3, wg2) * 12) | 0, 1, 4);
+            g.globalAlpha = 0.5; g.fillStyle = shade(base, 0.42);
+            g.fillRect(2, 3, 1, 1); g.fillRect(8, 10, 1, 1); g.fillRect(13, 5, 1, 1);
+            g.globalAlpha = 1;
+        } else {
+            // natural walls are mottled rock and soil — Terraria never bricks a dirt wall
+            g.globalAlpha = 0.4;
+            for (var bl = 0; bl < 7; bl++) {
+                var bx2 = ((hsh(sd + 1, bl) * 17) | 0) - 2, by2 = ((hsh(sd + 44, bl) * 17) | 0) - 2;
+                var bw = 4 + ((hsh(sd + 9, bl) * 4) | 0), bh = 3 + ((hsh(sd + 21, bl) * 4) | 0);
+                g.fillStyle = shade(base, bl % 2 ? 1.35 : 0.7);
+                g.fillRect(bx2, by2, bw, bh);
+                g.fillStyle = shade(base, bl % 2 ? 1.6 : 0.55);
+                g.fillRect(bx2, by2, bw - 1, 1);
+            }
+            g.globalAlpha = 0.45; g.fillStyle = shade(base, 0.55);
+            for (var cr = 0; cr < 3; cr++) {                        // a few cracks running through
+                g.beginPath(); g.strokeStyle = shade(base, 0.5); g.lineWidth = 1;
+                var sx2 = (hsh(sd + 60, cr) * 16) | 0;
+                g.moveTo(sx2, 0); g.lineTo(sx2 + (cr % 2 ? 3 : -3), 8); g.lineTo(sx2 + (cr % 2 ? 1 : -1), 16); g.stroke();
+            }
+            g.globalAlpha = 1;
+        }
+        grain(g, base, sd + 5, 30, 0.45);
+        // the wall body has nothing to do with the neighbour mask, so it is painted once per
+        // variant and stamped into each of the 16 frames; only the edge fade below differs
+        for (var k = 0; k < 16; k++) {
+            var cell = mkc(TPX, TPX), cg = cell.g;
+            cg.drawImage(body.c, 0, 0);
+            // where the wall stops, Terraria fades it to black rather than cutting it square
+            var oU = !(k & 1), oD = !(k & 2), oL = !(k & 4), oR = !(k & 8);
+            for (var d = 0; d < 3; d++) {
+                cg.fillStyle = WALLFADE[d];
+                if (oU) cg.fillRect(0, d, TPX, 1);
+                if (oD) cg.fillRect(0, TPX - 1 - d, TPX, 1);
+                if (oL) cg.fillRect(d, 0, 1, TPX);
+                if (oR) cg.fillRect(TPX - 1 - d, 0, 1, TPX);
+            }
+            fr[v * 16 + k] = cell.c;
+        }
+    }
+    return (_wallAt[wl] = fr);
+}
+var WALLFADE = ['rgba(0,0,0,.34)', 'rgba(0,0,0,.23)', 'rgba(0,0,0,.12)'];
+function wallMask(tx, ty) {
+    var k = 0;
+    if (ty <= 0 || RT.wall[(ty - 1) * W + tx]) k |= 1;
+    if (ty >= H - 1 || RT.wall[(ty + 1) * W + tx]) k |= 2;
+    if (tx <= 0 || RT.wall[ty * W + tx - 1]) k |= 4;
+    if (tx >= W - 1 || RT.wall[ty * W + tx + 1]) k |= 8;
+    return k;
 }
 function bakeCrack(n) {
     var m = mkc(TPX, TPX), g = m.g;
@@ -2099,78 +2478,473 @@ function bakeCrack(n) {
     }
     return m.c;
 }
-/* objects: furniture and props, authored at 16x16 */
+/* objects: furniture and props, authored at 16x16 against the real furniture sprites */
+var WD = '#8e6a3c', WD_L = '#ab8258', WD_D = '#5f462a', WD_DD = '#41301c';
 function bakeObj(k) {
     var m = mkc(TPX, TPX), g = m.g;
     function rect(a, b, w2, h2, c) { g.fillStyle = c; g.fillRect(a, b, w2, h2); }
+    function plank(a, b, w2, h2) {                       // a board with a lit top and shadowed base
+        rect(a, b, w2, h2, WD); rect(a, b, w2, 1, WD_L); rect(a, b + h2 - 1, w2, 1, WD_D);
+    }
     if (k === 'bench') {
-        rect(0, 5, 16, 3, '#a97a46'); rect(0, 5, 16, 1, '#c99a5e'); rect(0, 7, 16, 1, '#7f5a33');
-        rect(2, 8, 2, 8, '#8a6238'); rect(12, 8, 2, 8, '#8a6238');
-        rect(2, 8, 1, 8, '#a97a46'); rect(12, 8, 1, 8, '#a97a46');
-        rect(4, 9, 8, 1, '#7f5a33');
-        rect(5, 1, 2, 4, '#9aa0aa'); rect(9, 2, 4, 2, '#8a6238');   // a saw and a plank on top
-        rect(5, 1, 1, 4, '#c6ccd6');
+        plank(0, 5, 16, 3);                              // top slab
+        rect(1, 8, 2, 8, WD_D); rect(13, 8, 2, 8, WD_D);  // legs
+        rect(1, 8, 1, 8, WD); rect(13, 8, 1, 8, WD);
+        rect(3, 9, 10, 1, WD_DD);                        // stretcher
+        rect(4, 0, 8, 1, '#6a6a74');                     // a saw laid on the bench
+        rect(4, 1, 8, 2, '#a8adb8'); rect(4, 1, 8, 1, '#ced3dc');
+        for (var s = 4; s < 12; s += 2) rect(s, 3, 1, 1, '#8a8f9a');
+        rect(11, 0, 3, 1, WD_D);
+        rect(1, 2, 2, 3, '#5a5a64'); rect(1, 2, 2, 1, '#8a8f9a');    // hammer head
+        rect(2, 4, 1, 2, WD_D);
     } else if (k === 'furnace' || k === 'hellforge') {
-        var body = k === 'hellforge' ? '#5e3a38' : '#6b6b74', trim = k === 'hellforge' ? '#7d4a44' : '#83838d';
-        rect(0, 2, 16, 14, body); rect(0, 2, 16, 1, trim); rect(0, 15, 16, 1, shade(body, 0.7));
-        rect(1, 4, 14, 1, shade(body, 0.75)); rect(1, 10, 14, 1, shade(body, 0.75));
-        rect(3, 6, 10, 7, '#2a1a14');                                 // the mouth
-        rect(4, 11, 8, 2, '#3a2018');
-        rect(2, 0, 3, 2, trim); rect(11, 0, 3, 2, trim);              // chimney stubs
+        var body = k === 'hellforge' ? '#5b3630' : '#6f6f79', trim = k === 'hellforge' ? '#7f4a40' : '#8a8a95';
+        rect(0, 1, 16, 15, body);
+        rect(0, 1, 16, 1, trim); rect(0, 15, 16, 1, shade(body, 0.62));
+        rect(0, 1, 1, 15, shade(body, 1.18)); rect(15, 1, 1, 15, shade(body, 0.72));
+        g.globalAlpha = 0.45; g.fillStyle = shade(body, 0.6);        // brickwork
+        g.fillRect(0, 5, 16, 1); g.fillRect(0, 11, 16, 1);
+        g.fillRect(4, 1, 1, 4); g.fillRect(11, 1, 1, 4); g.fillRect(7, 12, 1, 4);
+        g.globalAlpha = 1;
+        rect(3, 7, 10, 6, '#241610');                                // arched mouth
+        rect(4, 6, 8, 1, '#241610'); rect(5, 5, 6, 1, '#241610');
+        rect(3, 12, 10, 2, '#150c08');
+        rect(2, 0, 4, 1, trim); rect(10, 0, 4, 1, trim);             // chimney stubs
     } else if (k === 'anvil') {
-        rect(2, 4, 12, 3, '#55555f'); rect(2, 4, 12, 1, '#6e6e7a');
-        rect(6, 7, 4, 4, '#4a4a54'); rect(3, 11, 10, 4, '#55555f');
-        rect(3, 11, 10, 1, '#6e6e7a'); rect(3, 14, 10, 1, '#3a3a42');
-        rect(0, 5, 2, 1, '#55555f'); rect(14, 5, 2, 1, '#55555f');    // horn + heel
-        rect(4, 5, 6, 1, 'rgba(255,255,255,.18)');
+        // the real anvil silhouette: wide face, pinched waist, flared foot, horn on the left
+        rect(2, 3, 12, 3, '#5a5a66'); rect(2, 3, 12, 1, '#7d7d8c');
+        rect(0, 4, 2, 2, '#5a5a66'); rect(0, 4, 2, 1, '#7d7d8c');    // horn
+        rect(14, 4, 2, 2, '#4c4c56');                                // heel
+        rect(2, 6, 12, 1, '#3f3f48');
+        rect(6, 7, 4, 5, '#4c4c56'); rect(6, 7, 1, 5, '#68687a');    // waist
+        rect(3, 12, 10, 4, '#5a5a66'); rect(3, 12, 10, 1, '#7d7d8c'); rect(3, 15, 10, 1, '#38383f');
+        rect(3, 4, 8, 1, 'rgba(255,255,255,.22)');
     } else if (k === 'table') {
-        rect(0, 4, 16, 3, '#a97a46'); rect(0, 4, 16, 1, '#c99a5e'); rect(0, 6, 16, 1, '#7f5a33');
-        rect(1, 7, 2, 9, '#8a6238'); rect(13, 7, 2, 9, '#8a6238');
-        rect(1, 7, 1, 9, '#a97a46'); rect(13, 7, 1, 9, '#a97a46');
+        plank(0, 3, 16, 3);
+        rect(1, 6, 2, 10, WD_D); rect(13, 6, 2, 10, WD_D);
+        rect(1, 6, 1, 10, WD); rect(13, 6, 1, 10, WD);
+        rect(2, 7, 12, 1, WD_DD);
     } else if (k === 'chair') {
-        rect(4, 1, 3, 9, '#8a6238'); rect(4, 1, 1, 9, '#a97a46');
-        rect(4, 9, 8, 2, '#a97a46'); rect(4, 9, 8, 1, '#c99a5e');
-        rect(5, 11, 2, 5, '#8a6238'); rect(10, 11, 2, 5, '#8a6238');
+        rect(3, 0, 3, 10, WD_D); rect(3, 0, 1, 10, WD);              // back post
+        rect(3, 1, 8, 1, WD); rect(3, 4, 8, 1, WD);                  // back slats
+        plank(3, 9, 10, 2);                                          // seat
+        rect(4, 11, 2, 5, WD_D); rect(10, 11, 2, 5, WD_D);
+        rect(4, 11, 1, 5, WD); rect(10, 11, 1, 5, WD);
     } else if (k === 'door') {
-        rect(1, 0, 14, 16, '#8a6238'); rect(1, 0, 14, 1, '#a97a46'); rect(1, 15, 14, 1, '#5f4426');
-        rect(3, 2, 10, 5, '#7a5530'); rect(3, 9, 10, 5, '#7a5530');
-        rect(3, 2, 10, 1, '#5f4426'); rect(3, 9, 10, 1, '#5f4426');
-        rect(11, 7, 2, 2, '#e0c060'); rect(11, 7, 1, 1, '#fff0b0');   // handle
+        rect(1, 0, 14, 16, WD_D);
+        rect(1, 0, 14, 1, WD_L); rect(1, 15, 14, 1, WD_DD);
+        rect(1, 0, 1, 16, WD); rect(14, 0, 1, 16, WD_DD);
+        rect(3, 2, 10, 5, WD); rect(3, 9, 10, 5, WD);                // sunken panels
+        rect(3, 2, 10, 1, WD_DD); rect(3, 9, 10, 1, WD_DD);
+        rect(3, 6, 10, 1, WD_L); rect(3, 13, 10, 1, WD_L);
+        rect(11, 7, 2, 2, '#d8b64a'); rect(11, 7, 1, 1, '#fff0b0');  // knob
     } else if (k === 'dooropen') {
-        rect(0, 0, 5, 16, '#8a6238'); rect(0, 0, 5, 1, '#a97a46'); rect(4, 0, 1, 16, '#5f4426');
-        rect(1, 3, 3, 4, '#7a5530'); rect(1, 9, 3, 4, '#7a5530');
+        rect(0, 0, 5, 16, WD_D); rect(0, 0, 5, 1, WD_L); rect(4, 0, 1, 16, WD_DD);
+        rect(0, 0, 1, 16, WD);
+        rect(1, 3, 3, 4, WD); rect(1, 9, 3, 4, WD);
     } else if (k === 'chest') {
-        rect(1, 4, 14, 11, '#8a5a2a'); rect(1, 4, 14, 4, '#a87038');
-        rect(1, 4, 14, 1, '#c08a4a'); rect(1, 8, 14, 1, '#6b4420');
-        rect(1, 14, 14, 1, '#5c3a1c');
-        rect(2, 5, 1, 9, '#c08a4a'); rect(13, 5, 1, 9, '#6b4420');
-        rect(6, 7, 4, 4, '#e0b83a'); rect(6, 7, 4, 1, '#fff0b0');     // lock plate
-        rect(7, 9, 2, 2, '#6b4420');
+        // Terraria's chest: a lighter lid over a darker body, iron bands and a small gold lock
+        rect(1, 3, 14, 5, '#a87038'); rect(1, 3, 14, 1, '#c99154');
+        rect(1, 8, 14, 7, '#8a5a2a'); rect(1, 14, 14, 1, '#4f3218');
+        rect(1, 7, 14, 1, '#4f3218');
+        rect(2, 3, 1, 12, '#c08a4a'); rect(13, 3, 1, 12, '#63401e');
+        rect(4, 3, 1, 12, '#6b4420'); rect(11, 3, 1, 12, '#6b4420');  // iron bands
+        rect(6, 6, 4, 4, '#d8b64a'); rect(6, 6, 4, 1, '#fff0b0'); rect(6, 9, 4, 1, '#9c7a20');
+        rect(7, 7, 2, 2, '#4f3218');                                  // keyhole
     } else if (k === 'pot') {
-        rect(4, 2, 8, 2, '#b07f42'); rect(3, 4, 10, 9, '#a8763a');
-        rect(4, 13, 8, 2, '#8a5f2e');
-        rect(4, 4, 2, 8, 'rgba(255,255,255,.22)');                    // rim light
-        rect(10, 5, 2, 7, 'rgba(0,0,0,.22)');
-        rect(3, 7, 10, 1, '#8a5f2e'); rect(5, 6, 2, 1, '#c08f52');
+        rect(5, 1, 6, 1, '#b9834a');                                  // lip
+        rect(4, 2, 8, 2, '#a8763a');
+        rect(3, 4, 10, 8, '#a8763a'); rect(4, 12, 8, 3, '#8a5f2e');
+        rect(4, 3, 2, 9, 'rgba(255,255,255,.20)');                    // rim light
+        rect(10, 4, 2, 8, 'rgba(0,0,0,.24)');
+        rect(3, 6, 10, 2, '#7d5427');                                 // painted band
+        for (var d = 4; d < 12; d += 3) rect(d, 6, 1, 2, '#c99154');
+        rect(4, 14, 8, 1, '#5f3f1c');
     } else if (k === 'heartc') {
-        rect(3, 4, 4, 4, '#e04a6a'); rect(9, 4, 4, 4, '#e04a6a');
-        rect(2, 6, 12, 4, '#e04a6a'); rect(4, 10, 8, 3, '#e04a6a'); rect(6, 13, 4, 2, '#e04a6a');
-        rect(4, 5, 2, 2, '#ff9ab0'); rect(9, 5, 1, 1, '#ff9ab0');
-        rect(5, 11, 5, 1, '#a82a48'); rect(11, 7, 2, 2, '#a82a48');
+        // Life Crystal: a faceted red crystal, not a cartoon heart
+        rect(6, 0, 4, 2, '#f27a94');
+        g.fillStyle = '#c8213f';
+        g.beginPath(); g.moveTo(8, 0); g.lineTo(14, 6); g.lineTo(8, 16); g.lineTo(2, 6); g.closePath(); g.fill();
+        g.fillStyle = '#ec4b62';
+        g.beginPath(); g.moveTo(8, 0); g.lineTo(14, 6); g.lineTo(8, 7); g.closePath(); g.fill();
+        g.fillStyle = '#8c0f28';
+        g.beginPath(); g.moveTo(8, 7); g.lineTo(14, 6); g.lineTo(8, 16); g.closePath(); g.fill();
+        g.fillStyle = '#ff9ab0'; g.fillRect(5, 3, 1, 3); g.fillRect(6, 6, 1, 2);
+        g.fillStyle = 'rgba(255,255,255,.9)'; g.fillRect(5, 3, 1, 1);
     } else if (k === 'manac') {
-        rect(7, 1, 2, 14, '#4a6ad8'); rect(1, 7, 14, 2, '#4a6ad8');
-        rect(5, 5, 6, 6, '#4a6ad8'); rect(6, 4, 4, 8, '#5f80ea'); rect(4, 6, 8, 4, '#5f80ea');
-        rect(7, 3, 2, 2, '#a0c0ff'); rect(6, 6, 2, 2, '#c8d8ff');
+        // Mana Crystal: a blue star-cut crystal
+        g.fillStyle = '#2c48b4';
+        g.beginPath();
+        g.moveTo(8, 0); g.lineTo(10, 6); g.lineTo(16, 8); g.lineTo(10, 10); g.lineTo(8, 16);
+        g.lineTo(6, 10); g.lineTo(0, 8); g.lineTo(6, 6); g.closePath(); g.fill();
+        g.fillStyle = '#4a6ad8';
+        g.beginPath(); g.moveTo(8, 0); g.lineTo(10, 6); g.lineTo(8, 8); g.lineTo(6, 6); g.closePath(); g.fill();
+        g.fillStyle = '#7ea0ff'; g.fillRect(7, 3, 2, 3); g.fillRect(5, 7, 6, 2);
+        g.fillStyle = '#dbe6ff'; g.fillRect(7, 6, 2, 2); g.fillRect(7, 2, 1, 2);
     } else if (k === 'bottle') {
-        rect(6, 2, 4, 3, '#9fc6d8'); rect(5, 5, 6, 8, '#b0d8e8');
-        rect(4, 9, 8, 5, '#b0d8e8'); rect(4, 13, 8, 2, '#8fb4c6');
-        rect(5, 10, 2, 4, 'rgba(255,255,255,.45)');
-        rect(6, 1, 4, 1, '#7f5a33');
+        rect(7, 1, 2, 1, '#7f5a33');                                  // cork
+        rect(6, 2, 4, 4, '#a8cfe0');
+        rect(4, 6, 8, 8, '#b6dcec'); rect(3, 8, 10, 6, '#b6dcec');
+        rect(3, 13, 10, 2, '#8fb4c6');
+        rect(4, 8, 2, 5, 'rgba(255,255,255,.5)');
+        rect(4, 11, 8, 3, 'rgba(120,190,230,.7)');                    // liquid
+    } else if (k.charAt(0) === 'b' && k.slice(0, 4) === 'bark' || k === 'root') {
+        var bl = '#98744a', bm = '#7a5b36', bd = '#4c3620', bx = '#3a2817';
+        var bv = k === 'root' ? 9 : (+k.charAt(4) || 0);               // bark0 / bark1 / bark2
+        rect(2, 0, 12, 16, bm);
+        rect(2, 0, 2, 16, bl); rect(12, 0, 2, 16, bd);
+        rect(1, 0, 1, 16, bx); rect(14, 0, 1, 16, bx);                // dark bark outline
+        for (var b3 = 0; b3 < 5; b3++) {                              // vertical bark grooves
+            var gx2 = 4 + ((hsh(bv * 13 + 4, b3) * 8) | 0), gy2 = (hsh(bv * 7 + 11, b3) * 12) | 0;
+            rect(gx2, gy2, 1, 3 + ((hsh(bv + 21, b3) * 3) | 0), bd);
+        }
+        if (bv !== 1) {                                               // a knot, but not on every tile
+            var ky = bv === 2 ? 10 : 4, kx = bv === 2 ? 8 : 5;
+            rect(kx, ky, 2, 2, bx); rect(kx, ky, 1, 1, bm);
+        }
+        if (k === 'root') {                                           // the base flares into roots
+            rect(0, 11, 2, 5, bm); rect(14, 11, 2, 5, bm);
+            rect(0, 11, 1, 5, bl); rect(15, 11, 1, 5, bd);
+            rect(0, 10, 3, 1, bd); rect(13, 10, 3, 1, bd);
+            rect(2, 15, 12, 1, bx);
+        }
+    } else if (k === 'crown') {
+        var lf = '#2e9b34', lfL = '#48c045', lfD = '#1a6621';
+        var blob = [[2, 4, 6, 5], [8, 3, 6, 5], [0, 7, 6, 5], [10, 7, 6, 5], [5, 8, 6, 5], [5, 1, 6, 4]];
+        for (var cb = 0; cb < blob.length; cb++) {
+            var bb = blob[cb];
+            g.fillStyle = cb % 2 ? lfD : lf; g.fillRect(bb[0], bb[1], bb[2], bb[3]);
+            g.fillStyle = cb % 2 ? lf : lfL; g.fillRect(bb[0], bb[1], bb[2] - 1, 1);
+        }
+        for (var cs = 0; cs < 8; cs++) g.fillRect((hsh(77, cs) * 15) | 0, 2 + ((hsh(91, cs) * 11) | 0), 1, 1);
     } else if (k === 'sapling') {
-        rect(7, 8, 2, 8, '#7a5228'); rect(4, 4, 8, 4, '#4aa03a'); rect(6, 2, 4, 3, '#5db44a');
+        rect(7, 9, 2, 7, '#6b4a28');
+        rect(4, 5, 8, 4, '#2e9b34'); rect(5, 3, 6, 3, '#48c045'); rect(6, 2, 4, 2, '#48c045');
+        rect(5, 4, 3, 1, '#66d85e'); rect(3, 6, 2, 2, '#2e9b34'); rect(11, 6, 2, 2, '#2e9b34');
     }
     return m.c;
 }
+
+/* ═══════════════ item sprites ═══════════════
+   Every item is baked once at 16x16 — Terraria's own item-sprite size — and that one canvas is
+   used for the world drop, the held item in the player's hand AND the inventory icon, so what you
+   pick up is pixel-for-pixel what sits in the slot. */
+var _itemArt = {}, _itemURL = {};
+var IMAT = {
+    wood:     ['#8e6a3c', '#ab8258', '#5f462a'],
+    copper:   ['#b45a1e', '#e08e42', '#7a3a10'],
+    iron:     ['#9a9086', '#c6bfb6', '#645b52'],
+    silver:   ['#c8d1e8', '#f2f6ff', '#8d95ab'],
+    gold:     ['#ddb828', '#ffe066', '#9a7810'],
+    demonite: ['#625fa7', '#8a86d4', '#3c3a68'],
+    meteor:   ['#8a5b4a', '#b8836c', '#573528'],
+    hell:     ['#b74a18', '#e8763a', '#742c0d'],
+    shadow:   ['#4a3a5c', '#6e5c86', '#2e2338']
+};
+var SETMAT = { wood: 'wood', copper: 'copper', iron: 'iron', silver: 'silver', gold: 'gold' };
+function toolMat(id) {
+    if (id === 'woodbow') return IMAT.wood;
+    return IMAT[{ c: 'copper', i: 'iron', s: 'silver', g: 'gold', d: 'demonite', l: 'demonite' }[id.charAt(0)]] || IMAT.iron;
+}
+function itemArt(id) { if (!_itemArt[id]) _itemArt[id] = bakeItem(id); return _itemArt[id]; }
+function itemURL(id) {
+    if (_itemURL[id] === undefined) {
+        var u = null;
+        try { u = itemArt(id).toDataURL(); } catch (e) { u = null; }
+        _itemURL[id] = u;
+    }
+    return _itemURL[id];
+}
+/* the grip point of a held item, in art pixels — where the player's hand closes on it */
+var GRIP = { sword: [3, 14], pick: [10, 15], axe: [10, 15], hammer: [10, 15], bow: [6, 8], magic: [2, 15] };
+
+function bakeItem(id) {
+    var m = mkc(TPX, TPX), g = m.g, d = ITEMS[id] || {}, k = d.kind;
+    function R(a, b, w, h, c) { g.fillStyle = c; g.fillRect(a, b, w, h); }
+    function diag(x0, y0, n, dx, dy, w, mat) {           // a stepped 45° bar, lit on its upper-left
+        for (var i = 0; i < n; i++) {
+            var bx = x0 + dx * i, by = y0 + dy * i;
+            R(bx, by, w, w, mat[0]); R(bx, by, 1, 1, mat[1]);
+            R(bx + w - 1, by + w - 1, 1, 1, mat[2]);
+        }
+    }
+    function handle(x0, y0, n, dx, dy) {                 // wooden haft running down-right
+        for (var i = 0; i < n; i++) { R(x0 + dx * i, y0 + dy * i, 2, 2, '#7a5228'); R(x0 + dx * i, y0 + dy * i, 1, 1, '#9c6f3a'); }
+    }
+    function gemFacet(a, b, r, c) {
+        g.fillStyle = shade(c, 0.55); g.beginPath();
+        g.moveTo(a, b - r); g.lineTo(a + r, b); g.lineTo(a, b + r); g.lineTo(a - r, b); g.closePath(); g.fill();
+        g.fillStyle = c; g.beginPath(); g.moveTo(a, b - r); g.lineTo(a + r - 1, b); g.lineTo(a, b + r - 1); g.lineTo(a - r + 1, b); g.closePath(); g.fill();
+        g.fillStyle = shade(c, 1.5); g.beginPath(); g.moveTo(a, b - r + 1); g.lineTo(a + r - 2, b); g.lineTo(a, b); g.closePath(); g.fill();
+        g.fillStyle = 'rgba(255,255,255,.9)'; g.fillRect(a - Math.max(1, r - 3), b - 2, 1, 2);
+    }
+
+    if (k === 'sword') {
+        var sm = toolMat(id), lng = id === 'csword' ? 6 : 9;           // shortsword vs broadsword
+        R(0, 13, 3, 3, '#c89a18'); R(0, 13, 2, 1, '#fff0b0');          // pommel
+        for (var q0 = 0; q0 < 3; q0++) { R(2 + q0, 12 - q0, 2, 2, '#5a3f22'); R(2 + q0, 12 - q0, 1, 1, '#7d5a34'); }
+        for (var q = 0; q < 5; q++) {                                  // crossguard, across the blade
+            R(1 + q, 8 + q, 2, 2, '#d8b64a'); R(1 + q, 8 + q, 1, 1, '#fff0b0');
+        }
+        var b0 = 4, b1 = 11;
+        for (var i0 = 0; i0 < lng; i0++) {
+            var bx0 = b0 + i0, by0 = b1 - i0;
+            R(bx0, by0, 3, 3, sm[0]);
+            R(bx0, by0, 2, 1, sm[1]); R(bx0, by0, 1, 2, sm[1]);
+            R(bx0 + 2, by0 + 1, 1, 2, sm[2]); R(bx0 + 1, by0 + 2, 2, 1, sm[2]);
+        }
+        R(b0 + lng, b1 - lng, 2, 2, sm[1]); R(b0 + lng + 1, b1 - lng - 1, 1, 1, sm[1]);
+        if (id === 'lsword') { R(6, 9, 1, 1, '#c47ae0'); R(9, 6, 1, 1, '#c47ae0'); R(11, 4, 1, 1, '#c47ae0'); }
+    } else if (k === 'pick') {
+        var pm = toolMat(id);
+        handle(4, 4, 6, 1, 2);                                          // haft from top-left to bottom-right
+        R(3, 2, 3, 3, pm[0]); R(3, 2, 2, 1, pm[1]);                      // the head socket
+        R(0, 5, 3, 2, pm[0]); R(0, 5, 3, 1, pm[1]); R(1, 4, 4, 1, pm[0]);   // left prong, curving up
+        R(6, 1, 5, 2, pm[0]); R(6, 1, 5, 1, pm[1]); R(10, 2, 2, 2, pm[0]);  // right prong
+        R(11, 3, 2, 2, pm[2]);
+        R(3, 3, 4, 2, pm[0]); R(3, 3, 4, 1, pm[1]);
+    } else if (k === 'axe') {
+        var am = toolMat(id);
+        handle(5, 5, 6, 1, 2);
+        // a crescent blade: deep cutting edge at the outside, tapering in to the eye
+        var col = [[3, 4], [2, 7], [1, 9], [1, 9], [2, 7], [3, 5]];
+        for (var c0 = 0; c0 < col.length; c0++) {
+            R(c0, col[c0][0], 1, col[c0][1], am[0]);
+            R(c0, col[c0][0], 1, 1, am[1]);
+            R(c0, col[c0][0] + col[c0][1] - 1, 1, 1, am[2]);
+        }
+        R(0, 4, 1, 3, am[1]); R(1, 3, 1, 2, am[1]);                        // the bright edge
+        R(2, 3, 3, 1, 'rgba(255,255,255,.4)');
+        R(5, 4, 3, 3, am[2]); R(5, 4, 3, 1, am[0]);                        // the eye where the haft passes
+    } else if (k === 'hammer') {
+        var hm = toolMat(id);
+        handle(5, 5, 6, 1, 2);
+        R(1, 1, 8, 6, hm[0]); R(1, 1, 8, 1, hm[1]); R(1, 1, 1, 6, hm[1]);
+        R(1, 6, 8, 1, hm[2]); R(8, 1, 1, 6, hm[2]);
+        R(2, 2, 4, 1, 'rgba(255,255,255,.3)');
+    } else if (k === 'bow') {
+        var bm = id === 'woodbow' ? IMAT.wood : IMAT.iron;
+        R(4, 1, 2, 14, '#f4f6fb');                                          // string, drawn first
+        R(4, 1, 1, 14, '#c8ccd8');
+        g.strokeStyle = bm[2]; g.lineWidth = 2.4;                           // limbs bowing forward
+        g.beginPath(); g.arc(0, 8, 8, -0.95, 0.95); g.stroke();
+        g.strokeStyle = bm[0]; g.lineWidth = 1.6;
+        g.beginPath(); g.arc(0, 8, 7.6, -0.95, 0.95); g.stroke();
+        g.strokeStyle = bm[1]; g.lineWidth = 0.8;
+        g.beginPath(); g.arc(0, 8, 7.1, -0.75, 0.75); g.stroke();
+        g.lineWidth = 1;
+        R(6, 6, 2, 5, bm[2]); R(6, 6, 1, 5, bm[0]);                         // grip wrap
+    } else if (k === 'magic') {
+        var gcol = id === 'dbstaff' ? GEMCOL[T_DIAMOND] : GEMCOL[T_AMETHYST];
+        for (var s2 = 0; s2 < 8; s2++) { R(2 + s2, 14 - s2 * 1.5 | 0, 2, 2, '#7a5228'); R(2 + s2, 14 - s2 * 1.5 | 0, 1, 1, '#9c6f3a'); }
+        g.globalAlpha = 0.35; g.fillStyle = gcol; g.beginPath(); g.arc(11, 3, 5, 0, 7); g.fill(); g.globalAlpha = 1;
+        gemFacet(11, 3, 4, gcol);
+    } else if (k === 'ammo') {
+        var af = d.fire;
+        for (var a2 = 0; a2 < 8; a2++) R(3 + a2, 12 - a2, 2, 2, a2 % 2 ? '#7a5228' : '#6b4520');
+        R(11, 2, 3, 3, af ? '#ff9a3a' : '#c8ccd6'); R(11, 2, 2, 1, af ? '#ffd88a' : '#eef1f8');
+        R(13, 1, 2, 2, af ? '#ffd88a' : '#eef1f8');
+        R(2, 12, 3, 1, '#e8e8f0'); R(1, 13, 3, 1, '#c8c8d4'); R(3, 11, 1, 3, '#e8e8f0');   // fletching
+        if (af) { g.globalAlpha = 0.4; g.fillStyle = '#ff7a2a'; g.beginPath(); g.arc(12, 3, 4, 0, 7); g.fill(); g.globalAlpha = 1; }
+    } else if (k === 'bar') {
+        // Terraria's bar: a back ingot with a front ingot stacked in front, both top-lit
+        var bmat = IMAT[{ cbar: 'copper', ibar: 'iron', sbar: 'silver', gbar: 'gold', dbar: 'demonite', mbar: 'meteor', hbar: 'hell' }[id]] || IMAT.iron;
+        R(4, 3, 9, 4, bmat[0]); R(4, 3, 9, 1, bmat[1]); R(4, 6, 9, 1, bmat[2]);
+        R(3, 4, 1, 3, bmat[0]); R(13, 4, 1, 3, bmat[2]);
+        R(2, 8, 12, 5, bmat[0]); R(2, 8, 12, 1, bmat[1]); R(2, 12, 12, 1, bmat[2]);
+        R(1, 9, 1, 4, bmat[0]); R(14, 9, 1, 4, bmat[2]);
+        R(3, 9, 5, 1, 'rgba(255,255,255,.45)'); R(5, 4, 4, 1, 'rgba(255,255,255,.4)');
+    } else if (k === 'ore') {
+        var omat = IMAT[{ cop: 'copper', iron: 'iron', silv: 'silver', gold: 'gold', demon: 'demonite', meteor: 'meteor', hell: 'hell' }[id]] || IMAT.iron;
+        R(3, 5, 10, 8, '#5a5a64'); R(4, 4, 8, 10, '#5a5a64');            // host rock
+        R(4, 4, 7, 1, '#7b7b87'); R(3, 5, 1, 7, '#7b7b87');
+        R(4, 13, 8, 1, '#3a3a43'); R(12, 6, 1, 7, '#3a3a43');
+        var nug = [[4, 6, 4, 3], [9, 5, 3, 3], [6, 10, 4, 3], [10, 9, 2, 2]];
+        for (var n3 = 0; n3 < nug.length; n3++) {
+            var u = nug[n3];
+            R(u[0], u[1], u[2], u[3], omat[0]); R(u[0], u[1], u[2] - 1, 1, omat[1]);
+            R(u[0] + u[2] - 1, u[1] + 1, 1, u[3] - 1, omat[2]);
+        }
+        R(5, 7, 1, 1, 'rgba(255,255,255,.85)');
+    } else if (k === 'gem') {
+        gemFacet(8, 8, 7, miniColor(id));
+    } else if (k === 'potion') {
+        var pc = d.heal ? '#e0344f' : d.mana ? '#3a6ae0' : d.buff === 'iron' ? '#c8b070' : d.buff === 'swift' ? '#e0d040' : '#f0e8a0';
+        R(7, 0, 3, 2, '#8a6238'); R(7, 0, 3, 1, '#a97a46');              // cork
+        R(6, 2, 4, 3, '#cfe4ef');                                        // neck
+        R(4, 5, 8, 9, '#cfe4ef'); R(3, 7, 10, 7, '#cfe4ef');             // bulb
+        R(4, 8, 8, 5, pc); R(3, 9, 10, 4, pc);
+        R(4, 8, 8, 1, shade(pc, 1.4));
+        R(4, 6, 2, 6, 'rgba(255,255,255,.55)');                          // glass highlight
+        R(3, 13, 10, 1, '#9fb8c4');
+    } else if (k === 'armor') {
+        var mat2 = IMAT[SETMAT[d.set]] || IMAT.iron;
+        if (d.slot === 'head') {
+            R(6, 1, 4, 1, mat2[1]); R(4, 2, 8, 1, mat2[1]);               // crown of the dome
+            R(3, 3, 10, 5, mat2[0]); R(3, 3, 10, 2, mat2[1]);
+            R(2, 5, 1, 7, mat2[1]); R(13, 5, 1, 7, mat2[2]);
+            R(3, 8, 10, 2, '#161a22');                                    // the eye slit, right across
+            R(3, 10, 10, 3, mat2[0]); R(3, 10, 10, 1, mat2[2]);
+            R(4, 13, 3, 2, mat2[0]); R(9, 13, 3, 2, mat2[0]);             // cheek tips
+            R(3, 10, 1, 3, mat2[1]); R(12, 10, 1, 3, mat2[2]);
+            R(5, 4, 4, 1, 'rgba(255,255,255,.4)');
+        } else if (d.slot === 'chest') {
+            R(1, 4, 4, 5, mat2[0]); R(11, 4, 4, 5, mat2[0]);              // pauldrons flaring out
+            R(1, 4, 4, 1, mat2[1]); R(11, 4, 4, 1, mat2[1]);
+            R(0, 5, 1, 3, mat2[1]); R(15, 5, 1, 3, mat2[2]);
+            R(1, 8, 4, 1, mat2[2]); R(11, 8, 4, 1, mat2[2]);
+            R(4, 3, 8, 3, mat2[0]); R(4, 3, 8, 1, mat2[1]);
+            R(6, 3, 4, 2, '#161a22');                                     // neck opening
+            R(4, 6, 8, 8, mat2[0]); R(4, 6, 8, 1, mat2[1]);
+            R(4, 6, 1, 8, mat2[1]); R(11, 6, 1, 8, mat2[2]);
+            R(7, 7, 2, 6, mat2[2]); R(4, 13, 8, 1, mat2[2]);
+            R(5, 8, 2, 4, 'rgba(255,255,255,.28)');
+        } else {
+            R(3, 2, 10, 3, mat2[0]); R(3, 2, 10, 1, mat2[1]); R(3, 4, 10, 1, mat2[2]);   // belt
+            R(3, 5, 4, 9, mat2[0]); R(9, 5, 4, 9, mat2[0]);
+            R(3, 5, 1, 9, mat2[1]); R(9, 5, 1, 9, mat2[1]);
+            R(6, 5, 1, 9, mat2[2]); R(12, 5, 1, 9, mat2[2]);
+            R(3, 13, 4, 1, mat2[2]); R(9, 13, 4, 1, mat2[2]);
+        }
+    } else if (k === 'accessory') {
+        if (id === 'hook') {
+            g.strokeStyle = '#9aa0aa'; g.lineWidth = 1;
+            g.beginPath(); g.moveTo(1, 15); g.lineTo(7, 8); g.stroke();
+            R(6, 5, 4, 4, '#c8ccd6'); R(6, 5, 3, 1, '#eef1f8');
+            R(3, 3, 2, 4, '#c8ccd6'); R(11, 3, 2, 4, '#c8ccd6'); R(7, 1, 2, 4, '#c8ccd6');
+            R(3, 2, 2, 1, '#8a8f9a'); R(11, 2, 2, 1, '#8a8f9a');
+        } else if (id === 'cloud') {
+            R(6, 0, 4, 2, '#8a6238'); R(6, 0, 4, 1, '#a97a46');
+            R(6, 2, 4, 3, '#9fc0d0');                                     // neck
+            R(4, 5, 8, 9, '#9fc0d0'); R(3, 7, 10, 7, '#9fc0d0');
+            R(5, 6, 6, 7, '#1d2a36'); R(4, 8, 8, 5, '#1d2a36');           // the dark inside the glass
+            g.fillStyle = '#fbfdff'; g.beginPath(); g.arc(6.5, 10, 2.6, 0, 7); g.arc(9.5, 9.5, 2.4, 0, 7); g.arc(8, 11.5, 2.2, 0, 7); g.fill();
+            R(4, 7, 1, 6, 'rgba(255,255,255,.55)'); R(3, 13, 10, 1, '#7d9bab');
+        } else if (id === 'boots') {
+            R(4, 4, 5, 8, '#b45a1e'); R(4, 4, 5, 1, '#e08e42');
+            R(3, 11, 10, 3, '#7a3a10'); R(3, 11, 10, 1, '#b45a1e');
+            R(9, 2, 5, 3, '#e8e8f0'); R(11, 5, 4, 2, '#e8e8f0'); R(9, 2, 5, 1, '#fff');   // wing
+            R(4, 6, 5, 1, '#e08e42');
+        } else if (id === 'shoe') {
+            R(3, 3, 3, 9, '#ddb828'); R(10, 3, 3, 9, '#ddb828');
+            R(3, 10, 10, 3, '#ddb828'); R(3, 3, 3, 1, '#ffe066'); R(10, 3, 3, 1, '#ffe066');
+            R(4, 12, 8, 1, '#9a7810');
+            R(4, 5, 1, 1, '#5a4a10'); R(11, 5, 1, 1, '#5a4a10'); R(7, 12, 1, 1, '#5a4a10');
+        } else {
+            R(3, 4, 10, 8, '#8a8f9a'); R(5, 6, 6, 4, '#20242e');         // shackle cuff
+            R(3, 4, 10, 1, '#c8ccd6'); R(3, 11, 10, 1, '#5a5f68');
+            R(12, 7, 3, 2, '#8a8f9a'); R(1, 7, 2, 2, '#8a8f9a');
+        }
+    } else if (k === 'summon') {
+        if (id === 'suseye') {
+            g.fillStyle = '#ded6ce'; g.beginPath(); g.arc(8, 8, 6.5, 0, 7); g.fill();
+            g.fillStyle = '#b8aca0'; g.beginPath(); g.arc(8, 10, 5, 0.2, Math.PI - 0.2); g.fill();
+            g.fillStyle = '#8a2222'; g.beginPath(); g.arc(9, 8, 3.2, 0, 7); g.fill();
+            g.fillStyle = '#12121a'; g.beginPath(); g.arc(9.5, 8, 1.8, 0, 7); g.fill();
+            R(6, 5, 2, 2, 'rgba(255,255,255,.9)');
+            g.strokeStyle = 'rgba(150,40,40,.6)'; g.lineWidth = 1;
+            g.beginPath(); g.moveTo(3, 5); g.lineTo(6, 7); g.moveTo(13, 10); g.lineTo(10, 9); g.stroke();
+        } else if (id === 'slimec') {
+            R(2, 6, 12, 5, '#ddb828'); R(2, 6, 12, 1, '#ffe066'); R(2, 10, 12, 1, '#9a7810');
+            R(2, 2, 3, 5, '#ddb828'); R(7, 0, 3, 7, '#ddb828'); R(12, 2, 3, 5, '#ddb828');
+            R(2, 2, 3, 1, '#ffe066'); R(7, 0, 3, 1, '#ffe066'); R(12, 2, 3, 1, '#ffe066');
+            R(7, 7, 3, 3, '#d02c3f'); R(7, 7, 2, 1, '#f4616f');
+            R(3, 12, 10, 2, 'rgba(74,132,236,.55)');
+        } else {
+            g.fillStyle = '#4e3260'; g.beginPath(); g.arc(8, 9, 6, 0, 7); g.fill();
+            g.fillStyle = '#654078'; g.beginPath(); g.arc(6, 7, 4, 0, 7); g.fill();
+            R(4, 3, 3, 3, '#8a5a9a'); R(9, 2, 3, 4, '#8a5a9a');          // worms poking out
+            R(4, 3, 1, 3, '#a878b8'); R(9, 2, 1, 4, '#a878b8');
+            R(5, 8, 2, 2, '#2a1a34'); R(9, 9, 2, 2, '#2a1a34');
+        }
+    } else if (k === 'coin') {
+        R(0, 0, 0, 0, '#000');
+    } else if (id === 'gel') {
+        g.fillStyle = 'rgba(74,132,236,.85)';
+        g.beginPath(); g.moveTo(2, 13); g.quadraticCurveTo(1, 4, 8, 3); g.quadraticCurveTo(15, 4, 14, 13); g.closePath(); g.fill();
+        g.fillStyle = 'rgba(120,180,255,.9)'; g.fillRect(4, 5, 3, 2);
+        g.fillStyle = 'rgba(40,90,190,.9)'; g.fillRect(2, 12, 12, 2);
+    } else if (id === 'lens') {
+        g.fillStyle = '#20242e'; g.beginPath(); g.arc(8, 8, 7, 0, 7); g.fill();
+        g.fillStyle = '#d8dce8'; g.beginPath(); g.arc(8, 8, 5.5, 0, 7); g.fill();
+        g.fillStyle = '#7c94c8'; g.beginPath(); g.arc(8, 8, 3.5, 0, 7); g.fill();
+        g.fillStyle = '#1a1c26'; g.beginPath(); g.arc(8, 8, 1.8, 0, 7); g.fill();
+        R(5, 5, 2, 2, 'rgba(255,255,255,.9)');
+    } else if (id === 'star') {
+        g.globalAlpha = 0.35; g.fillStyle = '#fff2a0'; g.beginPath(); g.arc(8, 8, 7, 0, 7); g.fill(); g.globalAlpha = 1;
+        g.fillStyle = '#ffe45a'; g.beginPath();
+        for (var st = 0; st < 10; st++) {
+            var ang = -Math.PI / 2 + st * Math.PI / 5, rr = st % 2 ? 2.6 : 6.5;
+            g[st ? 'lineTo' : 'moveTo'](8 + Math.cos(ang) * rr, 8 + Math.sin(ang) * rr);
+        }
+        g.closePath(); g.fill();
+        g.fillStyle = '#fffbd0'; g.fillRect(7, 4, 2, 4); g.fillRect(6, 7, 4, 2);
+    } else if (id === 'silk') {
+        R(3, 4, 10, 8, '#e8e8f0'); R(3, 4, 10, 1, '#fff'); R(3, 11, 10, 1, '#c4c4d0');
+        R(2, 3, 2, 10, '#d0d0dc'); R(12, 3, 2, 10, '#d0d0dc');
+        g.strokeStyle = '#c4c4d0'; g.lineWidth = 1;
+        for (var sk = 5; sk < 12; sk += 2) { g.beginPath(); g.moveTo(4, sk + 0.5); g.lineTo(12, sk - 0.5); g.stroke(); }
+    } else if (id === 'cobweb') {
+        g.strokeStyle = '#e2e8f2'; g.lineWidth = 1;
+        for (var cw = 0; cw < 6; cw++) {
+            var ca = cw * Math.PI / 3;
+            g.beginPath(); g.moveTo(8, 8); g.lineTo(8 + Math.cos(ca) * 7, 8 + Math.sin(ca) * 7); g.stroke();
+        }
+        g.strokeStyle = 'rgba(226,232,242,.7)';
+        for (var cr = 3; cr <= 6; cr += 3) {
+            g.beginPath();
+            for (var cp = 0; cp <= 6; cp++) { var pa = cp * Math.PI / 3; g[cp ? 'lineTo' : 'moveTo'](8 + Math.cos(pa) * cr, 8 + Math.sin(pa) * cr); }
+            g.stroke();
+        }
+    } else if (id === 'shadow') {
+        g.fillStyle = '#4a3a5c'; g.beginPath();
+        g.moveTo(8, 1); g.quadraticCurveTo(14, 6, 11, 14); g.lineTo(5, 14); g.quadraticCurveTo(2, 6, 8, 1); g.fill();
+        g.fillStyle = '#6e5c86'; g.beginPath();
+        g.moveTo(8, 3); g.quadraticCurveTo(12, 7, 10, 12); g.lineTo(8, 12); g.closePath(); g.fill();
+        R(6, 5, 1, 4, '#2e2338'); R(9, 6, 1, 4, '#2e2338');
+    } else if (id === 'manac') {
+        g.drawImage(objArt('manac'), 0, 0);
+    } else if (id === 'ldust') {
+        for (var dd = 0; dd < 14; dd++) {
+            var dx2 = (hsh(3, dd) * 14) | 0, dy2 = (hsh(41, dd) * 14) | 0;
+            R(dx2, dy2, 2, 2, dd % 3 ? '#d8dce8' : '#a8b0c8');
+        }
+    } else if (k === 'wall') {
+        g.drawImage(wallFrames(d.place)[15], 0, 0);
+        R(0, 0, 16, 1, 'rgba(255,255,255,.18)');
+    } else if (k === 'block' || k === 'platform') {
+        var pl = d.place;
+        if (pl === T_TORCH) {
+            R(7, 6, 2, 10, '#6b4a24'); R(7, 6, 1, 10, '#8a6030');
+            g.fillStyle = '#ff7a1e'; g.beginPath();
+            g.moveTo(8, 0); g.quadraticCurveTo(13, 4, 8, 8); g.quadraticCurveTo(3, 4, 8, 0); g.fill();
+            g.fillStyle = '#ffc14a'; g.beginPath();
+            g.moveTo(8, 2); g.quadraticCurveTo(11, 4.5, 8, 7); g.quadraticCurveTo(5, 4.5, 8, 2); g.fill();
+            R(7, 3, 2, 3, '#fff4c0');
+        } else if (pl === T_PLATFORM) {
+            R(0, 5, 16, 1, shade(TCOL[T_PLATFORM][2], 1)); R(0, 6, 16, 3, TCOL[T_PLATFORM][0]);
+            R(0, 9, 16, 1, TCOL[T_PLATFORM][1]);
+            R(2, 10, 2, 2, shade(TCOL[T_PLATFORM][0], 0.72)); R(12, 10, 2, 2, shade(TCOL[T_PLATFORM][0], 0.72));
+        } else if (pl && OBJ_FOR[pl]) {
+            g.drawImage(objArt(OBJ_FOR[pl]), 0, 0);
+        } else if (pl !== undefined && TCOL[pl]) {
+            g.drawImage(tileFrame(pl, 0, 0), 0, 0);      // code 0: a lone block, framed all round
+        } else {
+            R(2, 2, 12, 12, miniColor(id));
+        }
+    } else {
+        // any material without art of its own: a lit nugget in the item's colour
+        var mc2 = miniColor(id);
+        g.fillStyle = mc2; g.beginPath(); g.arc(8, 8, 5.5, 0, 7); g.fill();
+        g.fillStyle = shade(mc2, 1.45); g.beginPath(); g.arc(6.5, 6.5, 2.4, 0, 7); g.fill();
+        g.fillStyle = shade(mc2, 0.6); g.fillRect(4, 12, 8, 1);
+    }
+    return m.c;
+}
+var OBJ_FOR = {};
+OBJ_FOR[T_BENCH] = 'bench'; OBJ_FOR[T_FURNACE] = 'furnace'; OBJ_FOR[T_HELLFORGE] = 'hellforge';
+OBJ_FOR[T_ANVIL] = 'anvil'; OBJ_FOR[T_TABLE] = 'table'; OBJ_FOR[T_CHAIR] = 'chair';
+OBJ_FOR[T_DOOR] = 'door'; OBJ_FOR[T_BOTTLE] = 'bottle'; OBJ_FOR[T_CHEST] = 'chest';
 
 function drawSky(x, vw, vh, cx, cy) {
     var sk = skyColor(), dl = dayLight();
@@ -2247,7 +3021,7 @@ function drawLiquid(x, sx, sy, m, kind, above, tx, ty) {
         x.globalAlpha = 1;
     }
 }
-function drawTile(x, t, sx, sy, tx, ty) {
+function drawTile(x, t, sx, sy, tx, ty, mask) {
     if (t === T_TORCH) return drawTorch(x, sx, sy);
     if (t === T_FURNACE || t === T_HELLFORGE) return drawFurnace(x, sx, sy, t === T_HELLFORGE);
     if (t === T_BENCH) return drawBench(x, sx, sy);
@@ -2264,55 +3038,82 @@ function drawTile(x, t, sx, sy, tx, ty) {
     if (t === T_CHEST) return drawChest(x, sx, sy);
     if (t === T_TRUNK) return drawTrunk(x, sx, sy, tx, ty);
     if (t === T_LEAF) return drawLeaf(x, sx, sy, tx, ty);
-    if (t === T_PLATFORM) {
-        x.drawImage(tileArt(T_PLATFORM), sx, sy - 5, TS, TS);
-        x.fillStyle = 'rgba(0,0,0,.35)'; x.fillRect(sx, sy + 2.5, TS, 0.5);
-        return;
-    }
-    x.drawImage(tileArt(t), sx, sy, TS, TS);
+    if (t === T_PLATFORM) return drawPlatform(x, sx, sy, tx, ty);
 
-    // ── edge lighting from the neighbours: this is what makes a tile field readable ──
-    var up = RT.w[(ty - 1) * W + tx], dn = RT.w[(ty + 1) * W + tx];
-    var lf = tx > 0 ? RT.w[ty * W + tx - 1] : t, rt = tx < W - 1 ? RT.w[ty * W + tx + 1] : t;
-    var openU = !SOLID[up], openD = !SOLID[dn], openL = !SOLID[lf], openR = !SOLID[rt];
-    if (openU) { x.fillStyle = 'rgba(255,255,255,.30)'; x.fillRect(sx, sy, TS, 0.5); }
-    if (openD) { x.fillStyle = 'rgba(0,0,0,.40)'; x.fillRect(sx, sy + TS - 0.5, TS, 0.5); }
-    if (openL) { x.fillStyle = 'rgba(255,255,255,.13)'; x.fillRect(sx, sy, 0.5, TS); }
-    if (openR) { x.fillStyle = 'rgba(0,0,0,.28)'; x.fillRect(sx + TS - 0.5, sy, 0.5, TS); }
-    // grass spills over the lip of an exposed block
-    if ((t === T_GRASS || t === T_JGRASS || t === T_CGRASS) && openU) {
-        var gcol = (TCOL[t] || [])[2] || '#63c04a';
-        x.fillStyle = gcol;
-        var h1 = hsh(tx, ty), h2 = hsh(tx + 7, ty + 3);
-        x.fillRect(sx + 1, sy - 1.5 - h1, 0.5, 1.5 + h1);
-        x.fillRect(sx + 3.5, sy - 1 - h2 * 0.8, 0.5, 1 + h2);
-        x.fillRect(sx + 6, sy - 1, 0.5, 1);
+    // one blit: the neighbour code picks the frame, the position picks the style variant
+    var k = mask === undefined ? tileMask(tx, ty, t) : mask, v = (hsh(tx, ty) * NVAR) | 0;
+    x.drawImage(tileFrame(t, k, v), sx, sy, TS, TS);
+
+    // Anything that reaches OUT of the tile keys off the real neighbour, not the merge code: a
+    // block placed on grass must smother the blades, and "not my family" is not the same as "air".
+    var up = ty > 0 ? RT.w[(ty - 1) * W + tx] : T_AIR;
+    if (GRASSY[t] !== undefined && !SOLID[up] && up !== T_PLATFORM) {
+        var gc2 = (TCOL[t] || [])[2] || '#4fd44b', gd2 = (TCOL[t] || [])[0] || '#37a83f';
+        var h1 = hsh(tx, ty), h2 = hsh(tx + 7, ty + 3), h3 = hsh(tx + 31, ty), h4 = hsh(tx + 53, ty);
+        x.fillStyle = gc2;
+        x.fillRect(sx + 0.5, sy - 1.5 - h1 * 1.5, 0.5, 1.5 + h1 * 1.5);
+        x.fillRect(sx + 2.5, sy - 1 - h2 * 2, 0.5, 1 + h2 * 2);
+        x.fillRect(sx + 4.5, sy - 1 - h4, 0.5, 1 + h4);
+        x.fillStyle = gd2;
+        x.fillRect(sx + 6.5, sy - 1.5 - h1, 0.5, 1.5 + h1);
+        if (h3 > 0.8) {                                    // the odd flower or tall blade, as Terraria scatters
+            x.fillStyle = gd2; x.fillRect(sx + 3.5, sy - 6, 0.5, 6);
+            x.fillStyle = gc2; x.fillRect(sx + 3, sy - 4.5, 0.5, 1); x.fillRect(sx + 4, sy - 3.5, 0.5, 1);
+            if (h3 > 0.9) {
+                var fc = h3 > 0.95 ? '#f0e05a' : h3 > 0.93 ? '#e86a8a' : '#8ab4f0';
+                x.fillStyle = fc; x.fillRect(sx + 3, sy - 7.5, 1.5, 1.5);
+                x.fillStyle = '#fff8d0'; x.fillRect(sx + 3.5, sy - 7, 0.5, 0.5);
+            }
+        }
     }
     if (t === T_HELLSTONE) {   // hellstone glows into the air beside it
+        var dn = ty < H - 1 ? RT.w[(ty + 1) * W + tx] : T_STONE;
         x.globalAlpha = 0.18; x.fillStyle = '#ff7a2a';
-        if (openU) x.fillRect(sx, sy - 1.5, TS, 1.5);
-        if (openD) x.fillRect(sx, sy + TS, TS, 1.5);
+        if (!SOLID[up]) x.fillRect(sx, sy - 1.5, TS, 1.5);
+        if (!SOLID[dn]) x.fillRect(sx, sy + TS, TS, 1.5);
         x.globalAlpha = 1;
     }
 }
-function drawTrunk(x, sx, sy, tx, ty) {
-    var barkA = '#7a5228', barkB = '#5f3f1f', barkC = '#8c6030';
-    x.fillStyle = barkA; x.fillRect(sx + 1, sy, TS - 2, TS);
-    x.fillStyle = barkC; x.fillRect(sx + 1, sy, 1.5, TS);
-    x.fillStyle = barkB; x.fillRect(sx + TS - 2.5, sy, 1.5, TS);
-    for (var i = 0; i < 3; i++) { var hh = hsh(tx, ty + i); x.fillStyle = hh > 0.5 ? barkB : barkC; x.fillRect(sx + 2 + hh * 3, sy + i * 3 + 0.5, 1, 1.5); }
-    // a branch stub every few tiles
-    if ((tx * 3 + ty) % 5 === 0) { x.fillStyle = barkA; x.fillRect(sx + ((tx + ty) % 2 ? TS - 1.5 : 0), sy + 2, 1.5, 1.5); }
+/* Terraria platforms are a thin board sitting at the TOP of their tile, with the run of boards
+   joined end to end and a capped, darkened edge where the run stops. */
+function drawPlatform(x, sx, sy, tx, ty) {
+    var lf = tx > 0 && RT.w[ty * W + tx - 1] === T_PLATFORM, rt = tx < W - 1 && RT.w[ty * W + tx + 1] === T_PLATFORM;
+    var base = TCOL[T_PLATFORM][0];
+    x.fillStyle = shade(base, 1.2); x.fillRect(sx, sy, TS, 0.5);
+    x.fillStyle = base; x.fillRect(sx, sy + 0.5, TS, 1.5);
+    x.fillStyle = shade(base, 0.62); x.fillRect(sx, sy + 2, TS, 0.5);
+    x.fillStyle = shade(base, 0.5);
+    if (!lf) x.fillRect(sx, sy, 0.5, 2.5);
+    if (!rt) x.fillRect(sx + TS - 0.5, sy, 0.5, 2.5);
+    x.fillStyle = shade(base, 0.72);                       // support blocks under the run
+    x.fillRect(sx + 1, sy + 2.5, 1, 1); x.fillRect(sx + TS - 2, sy + 2.5, 1, 1);
 }
-function drawLeaf(x, sx, sy, tx, ty) {
-    var a = '#3a8a30', b = '#2f7027', c = '#4aa03a';
-    x.fillStyle = a; x.fillRect(sx, sy, TS, TS);
-    for (var i = 0; i < 7; i++) {
-        var h1 = hsh(tx * 3 + i, ty), h2 = hsh(tx, ty * 3 + i);
-        x.fillStyle = h1 > 0.55 ? c : b;
-        x.fillRect(sx + h1 * (TS - 2), sy + h2 * (TS - 2), 1.5, 1.5);
+function drawTrunk(x, sx, sy, tx, ty) {
+    var below = ty < H - 1 ? RT.w[(ty + 1) * W + tx] : T_STONE;
+    var above = ty > 0 ? RT.w[(ty - 1) * W + tx] : T_AIR;
+    x.drawImage(objArt(below === T_TRUNK ? 'bark' + ((hsh(tx * 5 + 3, ty) * 3) | 0) : 'root'), sx, sy, TS, TS);
+    if (above !== T_TRUNK && above !== T_LEAF) {                 // the crown of the tree
+        x.drawImage(objArt('crown'), sx, sy - 3, TS, TS);        // rows above are painted first, so
+        return;                                                  // the upward overhang survives
     }
-    x.fillStyle = 'rgba(255,255,255,.10)'; x.fillRect(sx, sy, TS, 0.5);
+    // a branch stub reaching into whichever side the canopy grew on
+}
+/* the canopy frames like any other tile, so its outer edge gets a chewed leafy silhouette
+   instead of the square block of green a naive fill would give */
+function drawLeaf(x, sx, sy, tx, ty) {
+    var k = tileMask(tx, ty, T_LEAF), v = (hsh(tx, ty) * NVAR) | 0;
+    // a branch reaching out of the trunk beside this leaf cell — drawn here, not from the trunk,
+    // because the trunk's own cell is cleared and repainted before this one
+    var lft = tx > 0 && RT.w[ty * W + tx - 1] === T_TRUNK;
+    var rgt = tx < W - 1 && RT.w[ty * W + tx + 1] === T_TRUNK;
+    if ((lft || rgt) && hsh(tx * 5, ty) > 0.42) {
+        var bd = '#4c3620', bm = '#7a5b36';
+        for (var q = 0; q < 5; q++) {
+            var qy = sy + 3.5 - q * 0.4, qx = lft ? sx + q * 0.8 : sx + TS - 0.8 - q * 0.8;
+            x.fillStyle = q > 2 ? bd : bm; x.fillRect(qx, qy, 1, 1.5);
+        }
+    }
+    x.drawImage(tileFrame(T_LEAF, k, v), sx, sy, TS, TS);
 }
 
 var COL_TORCH = [255, 150, 40], COL_LAVA = [255, 120, 30], COL_HELL = [255, 90, 40], COL_FORGE = [255, 150, 60], COL_MANA = [120, 150, 255];
@@ -2359,94 +3160,141 @@ function computeLight(x0, y0, lw, lh, dl) {
     return { L: L, col: col };
 }
 
-/* ─────────────── sprites (all drawn on the 0.5-unit art grid) ─────────────── */
-var SKIN = '#e9c6a0', SKIN_D = '#c99b74';
+/* ═══════════════ character sprites ═══════════════
+   Authored in ART pixels (1 art px = 0.5 world units = 1 device pixel at RS=2), which is the same
+   grid Terraria's own sprites live on — a player is 20x40, a slime 20x20, a zombie 20x36. The pen
+   below takes art-pixel coordinates and mirrors the whole sprite when the character faces left, so
+   every character is drawn once, facing right. */
+var _pg = null, _pX = 0, _pY = 0, _pF = 1, _pW = 20;
+function pen(g, X, Y, f, w) { _pg = g; _pX = X; _pY = Y; _pF = f < 0 ? -1 : 1; _pW = w; }
+function P(a, b, w, h, c) {
+    _pg.fillStyle = c;
+    _pg.fillRect(_pX + (_pF > 0 ? a : _pW - a - w) * 0.5, _pY + b * 0.5, w * 0.5, h * 0.5);
+}
+function Pa(al) { _pg.globalAlpha = al; }
+function Pa1() { _pg.globalAlpha = 1; }
+
+/* Terraria's default character, colour for colour */
+var PC = {
+    hair: '#d75a37', hairL: '#ef7a52', hairD: '#a03d21',
+    skin: '#ff7d5a', skinD: '#d55a3c', skinL: '#ff9c80',
+    eye: '#4a3f31', shirt: '#af2727', shirtL: '#cf3f3f', shirtD: '#7e1a1a',
+    under: '#a0b4d7', pants: '#ffe6af', pantsD: '#d9bd85', shoe: '#a0693c', shoeD: '#71481f'
+};
+/* front-leg dx / lift, back-leg dx / lift, front-arm dy, back-arm dy — an eight-frame stride.
+   The arms are counter-phased against the legs; without them the run reads as a pair of legs
+   scissoring under a rigid torso. */
+var WALK = [[0, 0, 0, 0, 0, 0], [2, 1, -2, 0, -1, 1], [3, 0, -3, 0, -2, 2], [2, 0, -2, 1, -1, 1],
+            [0, 0, 0, 0, 0, 0], [-2, 0, 2, 1, 1, -1], [-3, 0, 3, 0, 2, -2], [-2, 1, 2, 0, 1, -1]];
+function setMat(id) { return IMAT[SETMAT[(ITEMS[id] || {}).set]] || null; }
+function tintOf(id) { var m = setMat(id); return m ? m[0] : null; }
+
 function drawPlayer(x, px2, py2) {
     if (RT.iframe > 0 && (RT.anim >> 2) % 2) return;
-    var walking = RT.ground && Math.abs(RT.vx) > 0.3;
-    var ph = walking ? (RT.anim >> 3) % 4 : 0;              // 4-frame walk cycle
-    var lift = [0, 1, 0, -1][ph] * 0.5, f = RT.face;
-    var head = S.arm[0] ? tintOf(S.arm[0].id) : null;
-    var chest = S.arm[1] ? tintOf(S.arm[1].id) : null;
-    var legs = S.arm[2] ? tintOf(S.arm[2].id) : null;
-    var shirt = chest || '#d81e05', pants = legs || '#31518c';
-    var bob = walking ? (ph === 1 || ph === 3 ? 0.5 : 0) : 0;
-    var X = px2, Y = py2 + bob;
+    var f = RT.face, walking = RT.ground && Math.abs(RT.vx) > 0.3;
+    var ph = walking ? (RT.anim >> 2) % 8 : 0;
+    var air = !RT.ground;
+    var w = WALK[ph], bob = walking && (ph === 1 || ph === 5) ? 1 : 0;
+    var hm = S.arm[0] ? setMat(S.arm[0].id) : null;
+    var cm = S.arm[1] ? setMat(S.arm[1].id) : null;
+    var lm = S.arm[2] ? setMat(S.arm[2].id) : null;
+    var sh = cm ? cm[0] : PC.shirt, shL = cm ? cm[1] : PC.shirtL, shD = cm ? cm[2] : PC.shirtD;
+    var pn = lm ? lm[0] : PC.pants, pnD = lm ? lm[2] : PC.pantsD;
+    var h = held(), def = h ? ITEMS[h.id] : null, swing = RT.swing > 0;
+    // Terraria draws the held item only for the duration of the use animation — stand still with a
+    // broadsword out and your hands are empty. Torches are the exception: they have a hold style,
+    // so they stay in the hand and light the way.
+    var carrying = def && (swing || def.place === T_TORCH);
+    pen(x, px2, py2 + bob * 0.5, f, 20);
 
-    // back arm first so it reads behind the torso
-    x.fillStyle = shade(shirt, 0.75); x.fillRect(X + (f > 0 ? 1 : 6.5), Y + 7.5, 2.5, 4.5);
-    // legs
-    x.fillStyle = pants;
-    x.fillRect(X + 2, Y + 13, 3, 6.5 - lift); x.fillRect(X + 5.5, Y + 13, 3, 6.5 + lift);
-    x.fillStyle = shade(pants, 0.72); x.fillRect(X + 2, Y + 18.5 - lift, 3, 1); x.fillRect(X + 5.5, Y + 18.5 + lift, 3, 1);
-    x.fillStyle = '#4a3428';                                 // shoes
-    x.fillRect(X + 1.5, Y + 19 - lift, 3.5, 1); x.fillRect(X + 5.5, Y + 19 + lift, 3.5, 1);
-    // torso
-    x.fillStyle = shirt; x.fillRect(X + 1.5, Y + 7, 7, 6.5);
-    x.fillStyle = shade(shirt, 1.22); x.fillRect(X + 1.5, Y + 7, 7, 1);
-    x.fillStyle = shade(shirt, 0.72); x.fillRect(X + 1.5, Y + 12.5, 7, 1);
-    if (chest) { x.fillStyle = 'rgba(255,255,255,.35)'; x.fillRect(X + 2, Y + 8, 1, 4); }   // armor sheen
-    // head
-    x.fillStyle = SKIN; x.fillRect(X + 2, Y + 2.5, 6, 5);
-    x.fillStyle = SKIN_D; x.fillRect(X + 2, Y + 6.5, 6, 1);
-    x.fillStyle = head || '#4a3020';                          // hair / helm
-    x.fillRect(X + 1.5, Y + 1, 7, 2.5); x.fillRect(X + (f > 0 ? 1.5 : 7), Y + 3, 1.5, 2);
-    if (head) { x.fillStyle = 'rgba(255,255,255,.3)'; x.fillRect(X + 2, Y + 1, 5, 0.5); }
-    x.fillStyle = '#2b2b33';                                  // eye
-    x.fillRect(X + (f > 0 ? 5.5 : 2.5), Y + 4, 1.5, 1.5);
-    x.fillStyle = '#fff'; x.fillRect(X + (f > 0 ? 6 : 3), Y + 4, 0.5, 0.5);
-    // front arm + held item
-    var h = held(), def = h ? ITEMS[h.id] : null;
-    var armX = X + (f > 0 ? 7 : 1), swing = RT.swing > 0;
-    x.fillStyle = shirt; x.fillRect(armX, Y + 7.5, 2.5, swing ? 3 : 4.5);
-    x.fillStyle = SKIN; x.fillRect(armX, Y + (swing ? 10 : 11.5), 2.5, 1.5);
-    if (def) drawHeldItem(x, def, h.id, X, Y, f, swing);
+    // ── back arm, behind the torso ──
+    P(4, 17 + w[5], 4, 7, shD);
+    P(4, 23 + w[5], 4, 3, cm ? cm[2] : PC.skinD);
+    // ── legs ──
+    var fl = air ? 1 : w[0], flL = air ? 3 : w[1], bl = air ? -1 : w[2], blL = air ? 2 : w[3];
+    P(5 + bl, 30, 5, 7 - blL, shade(pn, 0.82)); P(4 + bl, 36 - blL, 6, 3, PC.shoeD);
+    P(5, 26, 11, 6, pn); P(5, 26, 11, 1, shade(pn, 1.12));       // hips
+    P(10 + fl, 30, 5, 7 - flL, pn); P(9 + fl, 36 - flL, 7, 3, lm ? lm[2] : PC.shoe);
+    P(9 + fl, 36 - flL, 7, 1, lm ? lm[0] : '#c2854e');
+    // ── torso ──
+    P(5, 16, 11, 11, sh);
+    P(5, 16, 11, 2, shL);                                        // lit shoulders
+    P(5, 25, 11, 2, shD);
+    P(7, 16, 5, 2, PC.under); P(7, 16, 5, 1, shade(PC.under, 1.15));   // undershirt at the collar
+    P(5, 16, 1, 11, shL); P(15, 16, 1, 11, shD);
+    if (cm) { Pa(0.35); P(7, 19, 2, 5, '#fff'); Pa1(); }         // plate sheen
+    // ── head ──
+    P(5, 5, 11, 12, PC.skin);
+    P(5, 5, 11, 1, PC.skinL); P(5, 15, 11, 2, PC.skinD);
+    P(15, 6, 1, 10, PC.skinD);
+    P(6, 12, 2, 3, PC.skinD);                                    // ear
+    if (hm) {                                                    // helmet: a dome with a visor gap
+        P(4, 2, 13, 7, hm[0]); P(4, 2, 13, 2, hm[1]);
+        P(3, 6, 2, 8, hm[0]); P(15, 6, 2, 6, hm[2]);
+        P(4, 9, 5, 5, hm[0]); P(4, 9, 1, 5, hm[1]);
+        P(9, 9, 2, 2, hm[2]);
+        Pa(0.4); P(6, 3, 7, 1, '#fff'); Pa1();
+    } else {
+        P(5, 1, 11, 5, PC.hair);                                 // hair cap
+        P(5, 1, 11, 2, PC.hairL); P(6, 0, 7, 1, PC.hairL);
+        P(3, 3, 3, 8, PC.hair); P(3, 3, 1, 8, PC.hairD);         // back of the hair, ending at the jaw
+        P(2, 4, 1, 5, PC.hairD);
+        P(13, 4, 4, 3, PC.hair); P(16, 5, 1, 3, PC.hairD);       // fringe over the brow
+        P(5, 6, 4, 2, PC.hairD);
+        P(14, 0, 3, 2, PC.hair); P(16, 1, 2, 2, PC.hairD);       // a spike at the crown
+    }
+    // eye: white sclera with the pupil pushed to the outer edge, as Terraria draws it
+    P(10, 9, 6, 6, PC.skinD);
+    P(11, 10, 5, 4, '#fff');
+    P(13, 10, 3, 4, PC.eye);
+    P(13, 10, 3, 1, shade(PC.eye, 0.6));
+    // ── front arm + whatever it is holding ──
+    var aim = 0;
+    if (carrying && (def.kind === 'bow' || def.kind === 'magic')) {
+        var mp = mouseWorld(); aim = Math.atan2(mp.y - (py2 + RT.cam.y + 10), Math.abs(mp.x - (px2 + RT.cam.x + 5)));
+    }
+    var armDrop = swing ? 4 : (carrying && def.kind === 'bow' ? 3 : 7);
+    var armY = 17 + (swing ? 0 : w[4]);
+    P(14, armY, 5, armDrop + 1, sh);
+    P(14, armY, 5, 2, shL); P(18, armY, 1, armDrop, shD);
+    P(14, armY + 1 + armDrop, 4, 3, cm ? cm[1] : PC.skin);       // hand
+    if (carrying) drawHeldItem(x, def, h.id, px2, py2 + bob * 0.5, f, swing, aim);
 }
-function drawHeldItem(x, def, id, X, Y, f, swinging) {
-    var k = def.kind;
-    if (k === 'sword' && swinging) {
-        var t0 = (12 - RT.swing) / 12, a0 = f > 0 ? -1.2 + t0 * 2.0 : Math.PI + 1.2 - t0 * 2.0;
-        var cxp = X + 5, cyp = Y + 9, len = 11;
-        x.save(); x.translate(cxp, cyp); x.rotate(a0);
-        x.fillStyle = '#6b4a2a'; x.fillRect(0, -0.75, 3, 1.5);            // grip
-        x.fillStyle = '#c8a24a'; x.fillRect(2.5, -2, 1, 4);               // guard
-        var blade = miniColor(id);
-        x.fillStyle = blade; x.fillRect(3.5, -1, len, 2);
-        x.fillStyle = 'rgba(255,255,255,.75)'; x.fillRect(3.5, -1, len, 0.5);
-        x.fillStyle = shade(blade, 0.65); x.fillRect(3.5, 0.5, len, 0.5);
-        x.restore();
-        x.strokeStyle = 'rgba(235,240,255,.32)'; x.lineWidth = 1.5;
-        x.beginPath(); x.arc(cxp, cyp, 12, f > 0 ? a0 - 0.9 : a0 + 0.15, f > 0 ? a0 + 0.15 : a0 + 0.9); x.stroke();
-        x.lineWidth = 1;
-    } else if (k === 'pick' || k === 'axe' || k === 'hammer') {
-        var hx = X + (f > 0 ? 7.5 : -2), hy = Y + 8.5, mc = miniColor(id);
-        x.save(); x.translate(hx + (f > 0 ? 0 : 4), hy); x.rotate(f > 0 ? (swinging ? 0.55 : 1.15) : -(swinging ? 0.55 : 1.15));
-        x.fillStyle = '#7a5228'; x.fillRect(-0.5, -0.5, 1.5, 7);          // handle
-        x.fillStyle = mc;
-        if (k === 'pick') { x.fillRect(-3, -1.5, 7, 1.5); x.fillRect(-3.5, -1, 1, 1.5); x.fillRect(3, -1, 1, 1.5); }
-        else if (k === 'axe') { x.fillRect(0.5, -2, 3.5, 4); x.fillRect(0.5, -2.5, 2, 5); }
-        else { x.fillRect(-2.5, -2, 6, 3); }
-        x.fillStyle = 'rgba(255,255,255,.5)'; x.fillRect(-2.5, -1.5, 5, 0.5);
-        x.restore();
+/* the held item is the item's own sprite, rotated about its grip — the same trick the game uses */
+function drawHeldItem(x, def, id, X, Y, f, swinging, aim) {
+    var k = def.kind, art = itemArt(id), gp = GRIP[k];
+    if (k === 'block' || k === 'platform' || k === 'wall') {      // a block is carried, not swung
+        x.drawImage(art, X + (f > 0 ? 8 : -3), Y + 11, 5, 5);
+        return;
+    }
+    if (!gp) { x.drawImage(art, X + (f > 0 ? 7 : -3), Y + 9, 6, 6); return; }
+    var ang, hx, hy;
+    if (k === 'sword') {
+        var t0 = clamp((12 - RT.swing) / 12, 0, 1);
+        ang = swinging ? -1.6 + t0 * 3.0 : -0.35;                 // overhead, sweeping down and forward
+        hx = X + (f > 0 ? 7.5 : 2.5); hy = Y + (swinging ? 10 + t0 * 2 : 13.5);
     } else if (k === 'bow') {
-        var bx = X + (f > 0 ? 8 : 0), by = Y + 9;
-        x.strokeStyle = '#8a6030'; x.lineWidth = 1;
-        x.beginPath(); x.arc(bx, by, 4.5, f > 0 ? -1.3 : 1.85, f > 0 ? 1.3 : 4.45); x.stroke();
-        x.strokeStyle = 'rgba(240,240,240,.8)'; x.lineWidth = 0.5;
-        x.beginPath(); x.moveTo(bx + (f > 0 ? 1.2 : -1.2), by - 4.3); x.lineTo(bx + (f > 0 ? 1.2 : -1.2), by + 4.3); x.stroke();
-        x.lineWidth = 1;
+        ang = (aim || 0) * (f > 0 ? 1 : 1); hx = X + (f > 0 ? 8.5 : 1.5); hy = Y + 10.5;
     } else if (k === 'magic') {
-        var sx2 = X + (f > 0 ? 8 : -1), sy2 = Y + 6;
-        x.fillStyle = '#7a5228'; x.fillRect(sx2, sy2, 1.5, 8);
-        var gcol = miniColor(id);
-        x.globalAlpha = 0.4; x.fillStyle = gcol; x.beginPath(); x.arc(sx2 + 0.75, sy2, 3, 0, 7); x.fill(); x.globalAlpha = 1;
-        x.fillStyle = gcol; x.beginPath(); x.arc(sx2 + 0.75, sy2, 1.6, 0, 7); x.fill();
-        x.fillStyle = '#fff'; x.fillRect(sx2, sy2 - 1, 0.5, 0.5);
-    } else if (k === 'block' || k === 'platform' || k === 'wall') {
-        x.drawImage(tileArt(def.place && TCOL[def.place] ? def.place : T_DIRT), X + (f > 0 ? 8 : -2.5), Y + 9, 4, 4);
+        ang = -0.55 + (aim || 0) * 0.7; hx = X + (f > 0 ? 8 : 2); hy = Y + 12.5;
+    } else {                                                      // pick / axe / hammer
+        var tw = clamp((12 - RT.swing) / 12, 0, 1);
+        ang = swinging ? 1.15 + tw * 1.7 : 1.3;
+        hx = X + (f > 0 ? 8 : 2); hy = Y + 12;
+    }
+    x.save();
+    x.translate(hx, hy);
+    if (f < 0) x.scale(-1, 1);
+    x.rotate(ang);
+    x.drawImage(art, -gp[0] * 0.5, -gp[1] * 0.5, TS, TS);
+    x.restore();
+    if (k === 'sword' && swinging) {                              // the trailing arc of the swing
+        var t1 = clamp((12 - RT.swing) / 12, 0, 1), a1 = (f > 0 ? 1 : -1) * (-1.6 + t1 * 3.0) - (f > 0 ? 0.79 : -0.79);
+        x.strokeStyle = 'rgba(235,240,255,.28)'; x.lineWidth = 1.5;
+        x.beginPath(); x.arc(hx, hy, 9, f > 0 ? a1 - 0.7 : a1, f > 0 ? a1 : a1 + 0.7); x.stroke();
+        x.lineWidth = 1;
     }
 }
-function tintOf(id) { var s = ITEMS[id].set; return { wood: '#8a6030', copper: '#c07038', iron: '#b0a49a', silver: '#d8dce6', gold: '#e0b83a' }[s] || null; }
 function drawGrapple(x, cx, cy) {
     var g = RT.grapple, sx = S.px + 5 - cx, sy = S.py + 10 - cy;
     var ex = (g.latched ? g.tx * TS + 4 : g.x) - cx, ey = (g.latched ? g.ty * TS + 4 : g.y) - cy;
@@ -2482,94 +3330,200 @@ function drawShot(x, s, cx, cy) {
 }
 function drawFoe(x, f, cx, cy) {
     var fx = f.x - cx, fy = f.y - cy, flash = f.hurtT > 4;
-    var beat = (RT.anim >> 3) % 4;
-    if (f.kind === 'slime') {
-        var grounded = SOLID[tileAt(f.x + 4, f.y + 9)], sq = grounded ? 1 : 0;
-        var body = f.pinky ? '234,120,182' : f.green ? '96,196,96' : '74,132,236';
-        var top = fy + 1.5 + sq, hgt = 8 - sq;
-        x.fillStyle = flash ? 'rgba(255,255,255,.9)' : 'rgba(' + body + ',.72)';
-        x.beginPath();
-        x.moveTo(fx - 0.5, top + hgt); x.quadraticCurveTo(fx - 1, top + 1, fx + 4.5, top);
-        x.quadraticCurveTo(fx + 10, top + 1, fx + 9.5, top + hgt); x.closePath(); x.fill();
-        x.fillStyle = 'rgba(255,255,255,.28)'; x.fillRect(fx + 1, top + 1, 2.5, 1.5);   // highlight
-        x.fillStyle = flash ? '#fff' : 'rgba(' + body + ',.95)'; x.fillRect(fx - 0.5, top + hgt - 1, 10, 1);
-        x.fillStyle = '#12121a';                                                        // eyes
-        x.fillRect(fx + 2, top + 3, 1.5, 2); x.fillRect(fx + 6, top + 3, 1.5, 2);
-        x.fillStyle = '#fff'; x.fillRect(fx + 2, top + 3, 0.5, 0.5); x.fillRect(fx + 6, top + 3, 0.5, 0.5);
-        x.fillStyle = '#12121a'; x.fillRect(fx + 3.5, top + 6, 2.5, 0.5);               // mouth
-    } else if (f.kind === 'zombie') {
-        var sw = (beat === 1 || beat === 3) ? 0.5 : 0;
-        x.fillStyle = flash ? '#fff' : '#3f5a30';
-        x.fillRect(fx + 1.5, fy + 12, 2.5, 5 - sw); x.fillRect(fx + 5, fy + 12, 2.5, 5 + sw);   // legs
-        x.fillStyle = flash ? '#fff' : '#4d6f3a'; x.fillRect(fx + 1, fy + 4, 7, 8);             // torso
-        x.fillStyle = shade('#4d6f3a', 1.2); x.fillRect(fx + 1, fy + 4, 7, 1);
-        x.fillStyle = flash ? '#fff' : '#6b8a52';
-        x.fillRect(fx - 1.5, fy + 5, 2.5, 5); x.fillRect(fx + 8, fy + 5, 2.5, 5);               // outstretched arms
-        x.fillStyle = flash ? '#fff' : '#79a05e'; x.fillRect(fx + 1.5, fy - 0.5, 6, 5);         // head
-        x.fillStyle = shade('#79a05e', 0.8); x.fillRect(fx + 1.5, fy + 3.5, 6, 1);
-        x.fillStyle = '#1c1c22'; x.fillRect(fx + 2.5, fy + 1, 1.5, 1.5); x.fillRect(fx + 5, fy + 1, 1.5, 1.5);
-        x.fillStyle = '#c22'; x.fillRect(fx + 2.5, fy + 1, 0.5, 0.5); x.fillRect(fx + 5, fy + 1, 0.5, 0.5);
-        x.fillStyle = '#2a2a30'; x.fillRect(fx + 3, fy + 3, 3, 0.5);
-    } else if (f.kind === 'skeleton') {
-        var sw2 = (beat === 1 || beat === 3) ? 0.5 : 0;
-        x.fillStyle = flash ? '#fff' : '#d6d2c4';
-        x.fillRect(fx + 2, fy + 11, 2, 6 - sw2); x.fillRect(fx + 5, fy + 11, 2, 6 + sw2);
-        x.fillStyle = flash ? '#fff' : '#e8e4d6'; x.fillRect(fx + 2, fy + 4.5, 5, 6.5);
-        x.fillStyle = '#b8b4a6';                                                                // ribs
-        x.fillRect(fx + 2, fy + 6, 5, 0.5); x.fillRect(fx + 2, fy + 7.5, 5, 0.5); x.fillRect(fx + 2, fy + 9, 5, 0.5);
-        x.fillStyle = flash ? '#fff' : '#e8e4d6'; x.fillRect(fx + 0, fy + 5, 2, 5); x.fillRect(fx + 7, fy + 5, 2, 5);
-        x.fillStyle = flash ? '#fff' : '#f0ece0'; x.fillRect(fx + 1.5, fy, 6, 4.5);             // skull
-        x.fillStyle = '#15151a'; x.fillRect(fx + 2.5, fy + 1.5, 1.5, 1.5); x.fillRect(fx + 5, fy + 1.5, 1.5, 1.5);
-        x.fillStyle = '#c9c5b6'; x.fillRect(fx + 3, fy + 3.5, 3, 0.5);
-    } else if (f.kind === 'bat') {
-        var wing = (RT.anim >> 2) % 2, wy = wing ? -1.5 : 0.5;
-        x.fillStyle = flash ? '#fff' : '#4a2a4a';
-        x.beginPath(); x.moveTo(fx + 3.5, fy + 3); x.lineTo(fx - 3, fy + wy); x.lineTo(fx - 1, fy + 4.5); x.closePath(); x.fill();
-        x.beginPath(); x.moveTo(fx + 5.5, fy + 3); x.lineTo(fx + 12, fy + wy); x.lineTo(fx + 10, fy + 4.5); x.closePath(); x.fill();
-        x.fillStyle = flash ? '#fff' : '#6a4a6a'; x.fillRect(fx + 3, fy + 1.5, 3, 4.5);
-        x.fillStyle = '#4a2a4a'; x.fillRect(fx + 2.5, fy + 0.5, 1.5, 1.5); x.fillRect(fx + 5, fy + 0.5, 1.5, 1.5);
-        x.fillStyle = '#ff5a5a'; x.fillRect(fx + 3.5, fy + 2.5, 1, 1); x.fillRect(fx + 4.5, fy + 2.5, 1, 1);
-    } else if (f.kind === 'hornet') {
-        var wg = (RT.anim >> 1) % 2;
-        x.globalAlpha = 0.55; x.fillStyle = '#e8f0ff';
-        x.fillRect(fx + 1, fy - 1 - wg, 4, 2); x.fillRect(fx + 5, fy - 1 - wg, 4, 2);
-        x.globalAlpha = 1;
-        x.fillStyle = flash ? '#fff' : '#e0c030'; x.fillRect(fx + 1.5, fy + 1.5, 7, 4.5);
-        x.fillStyle = '#25251c'; x.fillRect(fx + 3.5, fy + 1.5, 1.5, 4.5); x.fillRect(fx + 6, fy + 1.5, 1.5, 4.5);
-        x.fillStyle = flash ? '#fff' : '#f0d860'; x.fillRect(fx + 0.5, fy + 2, 2, 3);           // head
-        x.fillStyle = '#15151a'; x.fillRect(fx + 0.5, fy + 2.5, 1, 1);
-        x.fillStyle = '#2a2a30'; x.fillRect(fx + 8.5, fy + 3, 2, 1);                            // stinger
-    } else {   // demon eye
-        x.fillStyle = flash ? '#fff' : '#e4e4ec';
-        x.beginPath(); x.ellipse ? x.ellipse(fx + 4, fy + 4, 5, 4.2, 0, 0, 7) : x.arc(fx + 4, fy + 4, 4.6, 0, 7); x.fill();
-        x.fillStyle = 'rgba(160,150,170,.55)'; x.fillRect(fx + 1, fy + 6.5, 6, 1);
-        var dir = f.vx > 0 ? 1 : -1;
-        x.fillStyle = flash ? '#fff' : '#9a2a2a'; x.beginPath(); x.arc(fx + 4 + dir * 1.6, fy + 4, 2.6, 0, 7); x.fill();
-        x.fillStyle = '#12121a'; x.beginPath(); x.arc(fx + 4 + dir * 2.2, fy + 4, 1.3, 0, 7); x.fill();
-        x.fillStyle = '#fff'; x.fillRect(fx + 4 + dir * 1.4, fy + 2.6, 0.8, 0.8);
-        x.strokeStyle = 'rgba(150,40,40,.5)'; x.lineWidth = 0.5;                                 // veins
-        x.beginPath(); x.moveTo(fx + 0.5, fy + 2.5); x.lineTo(fx + 2.5, fy + 3.5); x.moveTo(fx + 7.5, fy + 5); x.lineTo(fx + 5.5, fy + 4.5); x.stroke();
-        x.lineWidth = 1;
-    }
+    var dir = f.vx > 0.02 ? 1 : f.vx < -0.02 ? -1 : (S.px > f.x ? 1 : -1);
+    if (f.kind === 'slime') return drawSlime(x, f, fx, fy, flash);
+    if (f.kind === 'zombie') return drawZombie(x, f, fx, fy, flash, dir);
+    if (f.kind === 'skeleton') return drawSkeleton(x, f, fx, fy, flash, dir);
+    if (f.kind === 'bat') return drawBat(x, f, fx, fy, flash, dir);
+    if (f.kind === 'hornet') return drawHornet(x, f, fx, fy, flash, dir);
+    return drawDemonEye(x, f, fx, fy, flash, dir);
 }
+/* Slime: a translucent gel dome, flat-bottomed, squashing as it lands — plus the two black
+   eyes and the little frown Terraria gives it. */
+function drawSlime(x, f, fx, fy, flash) {
+    var grounded = SOLID[tileAt(f.x + 4, f.y + 9)], sq = grounded ? 0.8 : -0.6;
+    var rgb = f.pinky ? '255,105,190' : f.green ? '0,205,60' : '0,110,235';
+    var top = fy + 2 + sq, bot = fy + 10, hgt = bot - top, mid = fx + 5;
+    x.fillStyle = flash ? 'rgba(255,255,255,.92)' : 'rgba(' + rgb + ',.62)';
+    x.beginPath();
+    x.moveTo(fx - 0.5, bot);
+    x.bezierCurveTo(fx - 1, top + hgt * 0.15, fx + 2, top, mid, top);
+    x.bezierCurveTo(fx + 8, top, fx + 11, top + hgt * 0.15, fx + 10.5, bot);
+    x.closePath(); x.fill();
+    x.fillStyle = flash ? '#fff' : 'rgba(' + rgb + ',.9)';           // denser base
+    x.fillRect(fx - 0.5, bot - 1, 11, 1);
+    x.fillStyle = 'rgba(255,255,255,.35)';                            // gel shine
+    x.fillRect(fx + 1.5, top + hgt * 0.22, 2.5, 1); x.fillRect(fx + 1, top + hgt * 0.45, 1, 1);
+    var ey = top + hgt * 0.42;
+    x.fillStyle = '#0d0d14';
+    x.fillRect(fx + 2, ey, 1.5, 2); x.fillRect(fx + 6.5, ey, 1.5, 2);
+    x.fillStyle = 'rgba(255,255,255,.85)'; x.fillRect(fx + 2, ey, 0.5, 0.5); x.fillRect(fx + 6.5, ey, 0.5, 0.5);
+    x.fillStyle = '#0d0d14';                                          // the frown
+    x.fillRect(fx + 4, ey + 3, 2.5, 0.5); x.fillRect(fx + 3.5, ey + 2.5, 0.5, 0.5); x.fillRect(fx + 6.5, ey + 2.5, 0.5, 0.5);
+    if (f.pinky) { x.fillStyle = 'rgba(255,255,255,.5)'; x.fillRect(fx + 3, top + 0.5, 4, 0.5); }
+}
+/* Zombie: green flesh, a rotted shirt and both arms locked straight out in front. */
+function drawZombie(x, f, fx, fy, flash, dir) {
+    var beat = (RT.anim >> 3) % 4, sw = (beat === 1 || beat === 3) ? 1 : 0;
+    var sk = flash ? '#fff' : '#7d9a5c', skD = flash ? '#fff' : '#5e7742';
+    var sh = flash ? '#fff' : '#4a5a6e', shD = flash ? '#fff' : '#32404f';
+    var pt = flash ? '#fff' : '#3d4152';
+    pen(x, fx, fy, dir, 20);
+    P(5 + sw, 26, 5, 9 - sw, pt); P(10 - sw, 26, 5, 9 + sw, pt);      // legs
+    P(4 + sw, 34 - sw, 6, 2, '#2a2c38'); P(10 - sw, 34 + sw, 6, 2, '#2a2c38');
+    P(4, 12, 13, 15, sh);                                             // torso
+    P(4, 12, 13, 2, shade(sh, 1.22)); P(4, 24, 13, 3, shD);
+    P(6, 18, 3, 6, shD); P(11, 21, 3, 4, shD);                        // tears in the shirt
+    P(7, 19, 2, 4, skD); P(12, 22, 1, 3, skD);
+    P(15, 15, 7, 5, shD);                                             // the far arm, behind
+    P(21, 15, 5, 5, skD);
+    P(16, 12, 7, 5, sh); P(16, 12, 7, 1, shade(sh, 1.2));             // arms thrust forward
+    P(22, 12, 6, 5, sk); P(22, 12, 6, 1, shade(sk, 1.18));
+    P(27, 13, 2, 3, skD);
+    P(4, 0, 12, 13, sk);                                              // head
+    P(4, 0, 12, 2, shade(sk, 1.2)); P(4, 11, 12, 2, skD);
+    P(15, 1, 1, 11, skD);
+    P(6, 4, 4, 4, '#141a12'); P(11, 4, 4, 4, '#141a12');              // sunken sockets
+    P(7, 5, 2, 2, '#c8d8b0'); P(12, 5, 2, 2, '#c8d8b0');
+    P(7, 9, 7, 1, '#2b2f24'); P(8, 10, 1, 1, '#2b2f24'); P(11, 10, 1, 1, '#2b2f24');
+    P(4, 1, 3, 4, flash ? '#fff' : '#4e5c3c');                        // matted hair
+}
+/* Skeleton: bare bone, a lantern jaw and a visible ribcage. */
+function drawSkeleton(x, f, fx, fy, flash, dir) {
+    var beat = (RT.anim >> 3) % 4, sw = (beat === 1 || beat === 3) ? 1 : 0;
+    var bn = flash ? '#fff' : '#ded9c4', bnL = flash ? '#fff' : '#f2eede', bnD = flash ? '#fff' : '#a9a48d';
+    pen(x, fx, fy, dir, 20);
+    P(6 + sw, 26, 4, 9 - sw, bn); P(11 - sw, 26, 4, 9 + sw, bn);
+    P(6 + sw, 26, 1, 9 - sw, bnL); P(11 - sw, 26, 1, 9 + sw, bnL);
+    P(5 + sw, 34 - sw, 6, 2, bnD); P(10 - sw, 34 + sw, 6, 2, bnD);
+    P(6, 22, 9, 4, bn); P(6, 22, 9, 1, bnL);                          // pelvis
+    P(9, 13, 3, 9, bnD);                                              // spine
+    for (var r = 0; r < 4; r++) {
+        var rw = 11 - r * 1.6;
+        P(10.5 - rw / 2, 13.4 + r * 2.3, rw, 1.4, bn);
+        P(10.5 - rw / 2, 13.4 + r * 2.3, rw, 0.6, bnL);
+    }
+    P(6, 12, 9, 1.4, bn); P(6, 12, 9, 0.6, bnL);                      // collarbone
+    P(3, 13, 3, 9, bn); P(15, 13, 3, 9, bn);                          // arms
+    P(3, 13, 1, 9, bnL); P(15, 13, 1, 9, bnD);
+    P(2, 21, 4, 3, bn); P(15, 21, 4, 3, bn);
+    P(5, 1, 11, 10, bn); P(5, 1, 11, 2, bnL); P(15, 2, 1, 9, bnD);    // skull
+    P(6, 4, 4, 4, '#101018'); P(11, 4, 4, 4, '#101018');
+    P(9, 8, 2, 2, '#101018');                                         // nasal cavity
+    P(6, 11, 9, 2, bn); P(6, 11, 9, 1, bnD);                          // jaw
+    for (var tt = 0; tt < 4; tt++) P(7 + tt * 2, 12, 1, 1, '#2a2a30');
+}
+/* Bat: leathery wings that beat, tucked body, one red eye. */
+function drawBat(x, f, fx, fy, flash, dir) {
+    var wing = (RT.anim >> 2) % 3, lift = [0, -3, 2][wing];
+    var bd = flash ? '#fff' : '#6b4a3a', wg = flash ? '#fff' : '#4a3128', wgL = flash ? '#fff' : '#7d5745';
+    x.save(); x.translate(fx + 5, fy + 5); if (dir < 0) x.scale(-1, 1);
+    x.fillStyle = wg;                                                  // wings
+    x.beginPath(); x.moveTo(-1, -1); x.lineTo(-8, -2 + lift * 0.5); x.lineTo(-6, 1 + lift * 0.3); x.lineTo(-7, 3); x.lineTo(-1, 2); x.closePath(); x.fill();
+    x.beginPath(); x.moveTo(1, -1); x.lineTo(8, -2 + lift * 0.5); x.lineTo(6, 1 + lift * 0.3); x.lineTo(7, 3); x.lineTo(1, 2); x.closePath(); x.fill();
+    x.strokeStyle = wgL; x.lineWidth = 0.5;
+    x.beginPath(); x.moveTo(-1, 0); x.lineTo(-6, 0.5 + lift * 0.35); x.moveTo(1, 0); x.lineTo(6, 0.5 + lift * 0.35); x.stroke();
+    x.lineWidth = 1;
+    x.fillStyle = bd; x.fillRect(-2, -2.5, 4, 6);                      // body
+    x.fillStyle = shade(bd, 1.2); x.fillRect(-2, -2.5, 4, 1);
+    x.fillStyle = bd; x.fillRect(-2, -4.5, 1.5, 2.5); x.fillRect(0.5, -4.5, 1.5, 2.5);   // ears
+    x.fillStyle = '#ff4a4a'; x.fillRect(0.5, -1.5, 1.5, 1.5);
+    x.fillStyle = '#ffc0c0'; x.fillRect(1, -1.5, 0.5, 0.5);
+    x.fillStyle = '#e8e0d8'; x.fillRect(0.5, 0.5, 1, 0.5);             // fangs
+    x.restore();
+}
+/* Hornet: banded abdomen, four beating wings and a stinger. */
+function drawHornet(x, f, fx, fy, flash, dir) {
+    var wg = (RT.anim >> 1) % 2;
+    x.save(); x.translate(fx + 5, fy + 5); if (dir < 0) x.scale(-1, 1);
+    x.globalAlpha = 0.22; x.fillStyle = '#eaf2ff';                      // wings
+    x.beginPath(); x.ellipse ? x.ellipse(-0.5, -3 - wg * 0.8, 3, 0.9, -0.4, 0, 7) : x.arc(-0.5, -3, 1.2, 0, 7); x.fill();
+    x.globalAlpha = 0.45; x.strokeStyle = '#dce8ff'; x.lineWidth = 0.4;
+    x.beginPath(); x.moveTo(1, -1.5); x.lineTo(-3.5, -4 - wg * 0.8); x.moveTo(1.5, -1.5); x.lineTo(-1.5, -4.2 - wg * 0.8); x.stroke();
+    x.globalAlpha = 1; x.lineWidth = 1;
+    var yl = flash ? '#fff' : '#e6c72c', bk = flash ? '#fff' : '#241f14';
+    x.fillStyle = yl; x.fillRect(-5, -2, 8, 5);                         // abdomen
+    x.fillStyle = bk; x.fillRect(-4, -2, 1.5, 5); x.fillRect(-1.5, -2, 1.5, 5); x.fillRect(1, -2, 1.5, 5);
+    x.fillStyle = shade(yl, 1.2); x.fillRect(-5, -2, 8, 0.5);
+    x.fillStyle = flash ? '#fff' : '#3f6b2a'; x.fillRect(3, -2, 3.5, 4); // thorax + head
+    x.fillStyle = '#12121a'; x.fillRect(5, -1.5, 1.5, 1.5);
+    x.fillStyle = '#ff6a6a'; x.fillRect(5.5, -1.5, 0.5, 0.5);
+    x.fillStyle = bk; x.fillRect(-7, 0, 2.5, 1);                        // stinger
+    x.fillStyle = '#d8e030'; x.fillRect(-7.5, 0.2, 1, 0.6);
+    x.restore();
+}
+/* Demon Eye: the flying eyeball, wings and all — the wings are what make it read instantly. */
+function drawDemonEye(x, f, fx, fy, flash, dir) {
+    var beat = Math.sin((RT.anim + f.t) / 4), ex = fx + 4.5, ey = fy + 5;
+    x.save(); x.translate(ex, ey); if (dir < 0) x.scale(-1, 1);
+    // wings behind the eye
+    x.fillStyle = flash ? '#fff' : '#5e1f2a';
+    for (var s = -1; s <= 1; s += 2) {
+        x.save(); x.scale(1, 1);
+        x.beginPath();
+        x.moveTo(s * 2, -1);
+        x.quadraticCurveTo(s * 7, -5 + beat * 2, s * 9, -1 + beat * 2.5);
+        x.quadraticCurveTo(s * 7, 0.5, s * 8, 3 + beat);
+        x.quadraticCurveTo(s * 5, 1.5, s * 2, 2);
+        x.closePath(); x.fill();
+        x.restore();
+    }
+    x.strokeStyle = flash ? '#fff' : '#8a3040'; x.lineWidth = 0.5;
+    x.beginPath(); x.moveTo(2, 0); x.lineTo(7, -2 + beat * 2); x.moveTo(-2, 0); x.lineTo(-7, -2 + beat * 2); x.stroke();
+    x.lineWidth = 1;
+    x.fillStyle = flash ? '#fff' : '#4a1620';                            // the stalk behind
+    x.fillRect(-1.5, 3.5, 3, 2);
+    // eyeball
+    x.fillStyle = flash ? '#fff' : '#e8e2d6';
+    x.beginPath(); x.ellipse ? x.ellipse(0, 0, 5, 4.4, 0, 0, 7) : x.arc(0, 0, 4.7, 0, 7); x.fill();
+    x.fillStyle = 'rgba(168,152,150,.5)';
+    x.beginPath(); x.ellipse ? x.ellipse(0, 1.6, 4.4, 3, 0, 0, Math.PI) : x.arc(0, 1.6, 3.4, 0, Math.PI); x.fill();
+    x.strokeStyle = 'rgba(150,40,40,.5)'; x.lineWidth = 0.5;             // veins
+    x.beginPath(); x.moveTo(-4, -2); x.lineTo(-1.5, -1); x.moveTo(3.5, 1.5); x.lineTo(1.5, 0.8); x.moveTo(-3, 2.5); x.lineTo(-1, 1.5); x.stroke();
+    x.lineWidth = 1;
+    x.fillStyle = flash ? '#fff' : '#8e1c1c';                            // iris
+    x.beginPath(); x.arc(1.8, 0, 2.9, 0, 7); x.fill();
+    x.fillStyle = flash ? '#fff' : '#c03434';
+    x.beginPath(); x.arc(1.8, 0, 1.9, 0, 7); x.fill();
+    x.fillStyle = '#0e0e14'; x.beginPath(); x.arc(2.2, 0, 1.2, 0, 7); x.fill();
+    x.fillStyle = 'rgba(255,255,255,.9)'; x.fillRect(-1.5, -2.5, 1.5, 1.5);
+    x.restore();
+}
+/* town NPCs share the player's build so the town reads as one cast; each is dressed to their
+   own Terraria sprite — the Guide's green tunic, the Merchant's grey moustache, the Nurse's cap */
+var NPCLOOK = {
+    guide:    { hair: '#6b4a26', hairL: '#8a6234', shirt: '#3f7a46', shirtL: '#57a05e', shirtD: '#2b5730', pants: '#6b5334', shoe: '#4a3826', skin: '#f0b48a' },
+    merchant: { hair: '#b6b6c0', hairL: '#d8d8e0', shirt: '#7d8fa8', shirtL: '#9db0c8', shirtD: '#5a6a80', pants: '#5a4736', shoe: '#3d3128', skin: '#efc0a0' },
+    nurse:    { hair: '#e8567e', hairL: '#ff86a6', shirt: '#f2f2f6', shirtL: '#ffffff', shirtD: '#cfcfd8', pants: '#e2e2ea', shoe: '#d24a66', skin: '#ffcbb0' }
+};
 function drawNPC(x, n, cx, cy) {
     var nx = n.x - cx, ny = n.y - cy, walking = Math.abs(n.vx) > 0.05;
-    var ph = walking ? (RT.anim >> 3) % 4 : 0, lift = [0, 1, 0, -1][ph] * 0.5;
-    var look = { guide: ['#8a6a3a', '#3a7a4a', '#5a4632'], merchant: ['#b8b8c2', '#7a5a3a', '#4a3f34'], nurse: ['#e04a6a', '#f4f4f8', '#d8d8e0'] }[n.kind];
-    var hair = look[0], shirt = look[1], pants = look[2];
-    x.fillStyle = pants;
-    x.fillRect(nx + 2, ny + 13.5, 3, 6 - lift); x.fillRect(nx + 5.5, ny + 13.5, 3, 6 + lift);
-    x.fillStyle = '#3d2f26'; x.fillRect(nx + 1.5, ny + 19 - lift, 3.5, 1); x.fillRect(nx + 5.5, ny + 19 + lift, 3.5, 1);
-    x.fillStyle = shirt; x.fillRect(nx + 1.5, ny + 7, 7, 6.5);
-    x.fillStyle = shade(shirt, 1.2); x.fillRect(nx + 1.5, ny + 7, 7, 1);
-    x.fillStyle = shade(shirt, 0.75); x.fillRect(nx + 1.5, ny + 12.5, 7, 1);
-    x.fillStyle = shirt; x.fillRect(nx + (n.face > 0 ? 7.5 : 0.5), ny + 7.5, 2, 4.5);
-    x.fillStyle = SKIN; x.fillRect(nx + 2, ny + 2.5, 6, 5);
-    x.fillStyle = SKIN_D; x.fillRect(nx + 2, ny + 6.5, 6, 1);
-    x.fillStyle = hair; x.fillRect(nx + 1.5, ny + 1, 7, 2.5);
-    if (n.kind === 'nurse') { x.fillStyle = '#fff'; x.fillRect(nx + 2.5, ny + 0.5, 5, 1.5); x.fillStyle = '#e04a6a'; x.fillRect(nx + 4.5, ny + 0.5, 1, 1.5); x.fillRect(nx + 4, ny + 1, 2, 0.5); }
-    if (n.kind === 'merchant') { x.fillStyle = hair; x.fillRect(nx + 2.5, ny + 6.5, 5, 1.5); }   // beard
-    x.fillStyle = '#2b2b33'; x.fillRect(nx + (n.face > 0 ? 5.5 : 2.5), ny + 4, 1.5, 1.5);
+    var ph = walking ? (RT.anim >> 2) % 8 : 0, w = WALK[ph];
+    var k = NPCLOOK[n.kind] || NPCLOOK.guide, f = n.face;
+    var bob = walking && (ph === 1 || ph === 5) ? 0.5 : 0;
+    pen(x, nx, ny + bob, f, 20);
+    P(4, 17 + w[5], 4, 7, k.shirtD); P(4, 23 + w[5], 4, 3, k.skin);   // back arm
+    P(5 + w[2], 30, 5, 7 - w[3], shade(k.pants, 0.85)); P(4 + w[2], 36 - w[3], 6, 3, shade(k.shoe, 0.8));
+    P(5, 26, 11, 6, k.pants); P(5, 26, 11, 1, shade(k.pants, 1.14));
+    P(10 + w[0], 30, 5, 7 - w[1], k.pants); P(9 + w[0], 36 - w[1], 7, 3, k.shoe);
+    P(5, 16, 11, 11, k.shirt); P(5, 16, 11, 2, k.shirtL); P(5, 25, 11, 2, k.shirtD);
+    P(5, 16, 1, 11, k.shirtL); P(15, 16, 1, 11, k.shirtD);
+    if (n.kind === 'guide') { P(9, 18, 3, 9, k.shirtD); P(5, 24, 11, 1, '#6b5334'); }   // tunic seam + belt
+    if (n.kind === 'nurse') { P(5, 22, 11, 1, '#d24a66'); P(7, 17, 2, 2, '#d24a66'); }
+    if (n.kind === 'merchant') { P(5, 19, 11, 1, k.shirtD); P(13, 20, 2, 4, '#ddb828'); }   // coin pouch
+    P(5, 5, 11, 12, k.skin); P(5, 5, 11, 1, shade(k.skin, 1.1)); P(5, 15, 11, 2, shade(k.skin, 0.82));
+    P(15, 6, 1, 10, shade(k.skin, 0.82));
+    P(4, 1, 13, 6, k.hair); P(4, 1, 13, 2, k.hairL); P(3, 4, 3, 10, k.hair);
+    if (n.kind === 'merchant') { P(5, 11, 11, 5, k.hair); P(5, 11, 11, 1, k.hairL); P(9, 13, 4, 2, shade(k.skin, 0.8)); }  // full beard
+    if (n.kind === 'nurse') {                                          // cap with the red cross
+        P(4, 0, 13, 4, '#ffffff'); P(4, 0, 13, 1, '#e8e8f0');
+        P(9, 0, 3, 4, '#d8324e'); P(7, 1, 7, 2, '#d8324e');
+    }
+    P(10, 9, 6, 6, shade(k.skin, 0.82));
+    P(11, 10, 5, 4, '#fff'); P(13, 10, 3, 4, n.kind === 'nurse' ? '#3a6a8a' : '#4a3a2a');
+    var naY = 17 + w[4];                                               // front arm, counter-swinging
+    P(14, naY, 5, 8, k.shirt); P(14, naY, 5, 2, k.shirtL); P(18, naY, 1, 7, k.shirtD);
+    P(14, naY + 8, 4, 3, k.skin);
     if (Math.abs(S.px - n.x) < 46 && Math.abs(S.py - n.y) < 44) {
         x.font = 'bold 5px "Segoe UI", monospace'; x.textAlign = 'center';
         x.fillStyle = 'rgba(0,0,0,.7)'; x.fillText(npcName(n.kind), nx + 5.3, ny - 2.7);
@@ -2579,61 +3533,155 @@ function drawNPC(x, n, cx, cy) {
 }
 function npcName(k) { return { guide: 'Guide', merchant: 'Merchant', nurse: 'Nurse' }[k]; }
 function drawBoss(x, b, cx, cy) {
-    if (b.kind === 'eye') {
-        var bx = b.x - cx, by = b.y - cy, p2 = b.hp < b.max * 0.5;
-        var dx = (S.px - b.x), dy = (S.py - b.y), d = Math.max(1, Math.sqrt(dx * dx + dy * dy));
-        x.fillStyle = 'rgba(0,0,0,.25)'; x.beginPath(); x.arc(bx, by + 2, 16, 0, 7); x.fill();
-        x.fillStyle = '#ded6ce'; x.beginPath(); x.arc(bx, by, 15, 0, 7); x.fill();      // sclera
-        x.fillStyle = '#c3b3a8'; x.beginPath(); x.arc(bx, by + 4, 12, 0.2, Math.PI - 0.2); x.fill();
-        x.strokeStyle = 'rgba(150,50,50,.45)'; x.lineWidth = 0.6;                       // veins
-        for (var v = 0; v < 6; v++) {
-            var va = v * 1.05 + 0.4;
-            x.beginPath(); x.moveTo(bx + Math.cos(va) * 6, by + Math.sin(va) * 6);
-            x.lineTo(bx + Math.cos(va) * 13, by + Math.sin(va) * 13); x.stroke();
+    if (b.kind === 'eye') return drawEyeBoss(x, b, cx, cy);
+    if (b.kind === 'king') return drawKingSlime(x, b, cx, cy);
+    return drawEater(x, b, cx, cy);
+}
+/* Eye of Cthulhu: two thick tendril arms hanging under a huge eyeball. At half health the sclera
+   splits open into the toothed maw and the pupil is gone — the same tell the real fight gives. */
+function drawEyeBoss(x, b, cx, cy) {
+    var p2 = b.hp < b.max * 0.5;
+    var dx = (S.px - b.x), dy = (S.py - b.y), d = Math.max(1, Math.sqrt(dx * dx + dy * dy));
+    var t = (RT.anim || 0);
+    // The whole sprite aims at you: the pupil leads and the arms trail behind, which is what makes
+    // a dash read as a dash. In phase 2 it spins while charging, exactly as the tell goes in game.
+    var want = Math.atan2(dy, dx) - Math.PI / 2;
+    if (b.faceA === undefined) b.faceA = want;
+    var delta = ((want - b.faceA + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+    b.faceA += delta * (b.dash > 0 ? 0.28 : 0.08);
+    var spin = (p2 && b.dash > 0) ? t * 0.35 : 0;
+    x.save();
+    x.translate(b.x - cx, b.y - cy);
+    x.rotate(b.faceA + spin);
+    var bx = 0, by = 0;
+    x.fillStyle = 'rgba(0,0,0,.22)'; x.beginPath(); x.arc(bx, by + 3, 16, 0, 7); x.fill();
+    // the two big arms, and the thin strands between them
+    x.strokeStyle = p2 ? '#8e2323' : '#6d3038'; x.lineCap = 'round';
+    for (var arm = -1; arm <= 1; arm += 2) {
+        var sw = Math.sin(t / 14 + arm) * 3;
+        x.lineWidth = 4;
+        x.beginPath(); x.moveTo(bx + arm * 8, by + 9);
+        x.quadraticCurveTo(bx + arm * 13 + sw, by + 17, bx + arm * 10 + sw * 1.6, by + 25);
+        x.stroke();
+        x.lineWidth = 2.4;
+        x.beginPath(); x.moveTo(bx + arm * 10 + sw * 1.6, by + 25);
+        x.quadraticCurveTo(bx + arm * 8 + sw * 2, by + 30, bx + arm * 12 + sw * 2, by + 33);
+        x.stroke();
+    }
+    x.strokeStyle = p2 ? '#7a1f1f' : '#5c2a30'; x.lineWidth = 1.6;
+    for (var tn = 0; tn < 4; tn++) {
+        var t0 = bx - 5 + tn * 3.4, s2 = Math.sin((t + tn * 13) / 9) * 2.4;
+        x.beginPath(); x.moveTo(t0, by + 12);
+        x.quadraticCurveTo(t0 + s2, by + 18, t0 + s2 * 1.5, by + 23 + (tn % 2) * 3); x.stroke();
+    }
+    x.lineCap = 'butt'; x.lineWidth = 1;
+    // eyeball
+    x.fillStyle = p2 ? '#d8c2b8' : '#ded6ce'; x.beginPath(); x.arc(bx, by, 15, 0, 7); x.fill();
+    x.fillStyle = p2 ? '#bd9f96' : '#c3b3a8'; x.beginPath(); x.arc(bx, by + 4, 12.5, 0.15, Math.PI - 0.15); x.fill();
+    x.fillStyle = 'rgba(255,255,255,.35)'; x.beginPath(); x.arc(bx - 5, by - 6, 4.5, 0, 7); x.fill();
+    x.strokeStyle = p2 ? 'rgba(122,24,24,.85)' : 'rgba(126,44,44,.45)'; x.lineWidth = 0.5;
+    for (var v = 0; v < 8; v++) {
+        var va = v * 0.8 + 0.4, r0 = 8 + (v % 2) * 2;
+        x.beginPath(); x.moveTo(bx + Math.cos(va) * r0, by + Math.sin(va) * r0);
+        x.quadraticCurveTo(bx + Math.cos(va + 0.2) * 12, by + Math.sin(va + 0.2) * 12,
+                           bx + Math.cos(va + 0.1) * 14.2, by + Math.sin(va + 0.1) * 14.2);
+        x.stroke();
+    }
+    x.lineWidth = 1;
+    if (!p2) {
+        var px2 = bx, py2 = by - 4.5;                       // "up" in sprite space points at the player
+        x.fillStyle = '#2b3f66'; x.beginPath(); x.arc(px2, py2, 7, 0, 7); x.fill();
+        x.fillStyle = '#2f5fce'; x.beginPath(); x.arc(px2, py2, 5.6, 0, 7); x.fill();
+        x.fillStyle = '#5f8ff0'; x.beginPath(); x.arc(px2 - 1, py2 - 1, 3.4, 0, 7); x.fill();
+        x.fillStyle = '#0e0e14'; x.beginPath(); x.arc(bx, by - 6.5, 3, 0, 7); x.fill();
+        x.fillStyle = 'rgba(255,255,255,.9)'; x.beginPath(); x.arc(px2 - 2.4, py2 - 2.6, 1.6, 0, 7); x.fill();
+    } else {
+        // the split: a red maw across the eye with interlocking teeth
+        var gape = 4 + Math.sin(t / 9) * 1.6;
+        x.fillStyle = '#3a0a0e';
+        x.beginPath(); x.moveTo(bx - 13, by); x.quadraticCurveTo(bx, by - gape - 4, bx + 13, by);
+        x.quadraticCurveTo(bx, by + gape + 4, bx - 13, by); x.fill();
+        x.fillStyle = '#7a1420';
+        x.beginPath(); x.moveTo(bx - 9, by); x.quadraticCurveTo(bx, by + gape, bx + 9, by); x.fill();
+        x.fillStyle = '#f0e8dc';
+        for (var tk = 0; tk < 6; tk++) {
+            var tx0 = bx - 11 + tk * 4.2, th = 3.4 - Math.abs(tk - 2.5) * 0.5;
+            x.beginPath(); x.moveTo(tx0, by - gape * 0.55); x.lineTo(tx0 + 2.6, by - gape * 0.55); x.lineTo(tx0 + 1.3, by - gape * 0.55 + th); x.closePath(); x.fill();
+            x.beginPath(); x.moveTo(tx0 + 1.4, by + gape * 0.55); x.lineTo(tx0 + 4, by + gape * 0.55); x.lineTo(tx0 + 2.7, by + gape * 0.55 - th); x.closePath(); x.fill();
         }
-        x.lineWidth = 1;
-        x.fillStyle = p2 ? '#8a2222' : '#2f5fce'; x.beginPath(); x.arc(bx + dx / d * 5, by + dy / d * 5, 6.5, 0, 7); x.fill();
-        x.fillStyle = p2 ? '#c04040' : '#4a7ae8'; x.beginPath(); x.arc(bx + dx / d * 5, by + dy / d * 5, 4.5, 0, 7); x.fill();
-        x.fillStyle = '#0e0e14'; x.beginPath(); x.arc(bx + dx / d * 7, by + dy / d * 7, 3, 0, 7); x.fill();
-        x.fillStyle = 'rgba(255,255,255,.85)'; x.beginPath(); x.arc(bx + dx / d * 4 - 2, by + dy / d * 4 - 2.5, 1.6, 0, 7); x.fill();
-        x.strokeStyle = '#7a1f1f'; x.lineWidth = 2.2;                                    // tendrils
-        for (var tn = 0; tn < 5; tn++) {
-            var t0 = bx - 8 + tn * 4, sw = Math.sin(((RT.anim || 0) + tn * 11) / 8) * 3;
-            x.beginPath(); x.moveTo(t0, by + 12); x.quadraticCurveTo(t0 + sw, by + 17, t0 + sw * 1.6, by + 22 + (tn % 2) * 3); x.stroke();
+    }
+    x.restore();
+}
+/* King Slime: an enormous gel dome, the gold crown with its red jewel, and the ninja inside. */
+function drawKingSlime(x, b, cx, cy) {
+    var kx = b.x - cx, ky = b.y - cy, r = b.r, t = (RT.anim || 0);
+    var squash = Math.sin(t / 22) * 0.04;
+    var rw = r * (1 + squash), rh = r * (1 - squash);
+    x.fillStyle = 'rgba(0,0,0,.2)'; x.beginPath(); x.ellipse ? x.ellipse(kx, ky + rh, rw * 0.9, 3, 0, 0, 7) : x.arc(kx, ky + rh, 4, 0, 7); x.fill();
+    x.fillStyle = 'rgba(40,110,220,.45)';
+    x.beginPath();
+    x.moveTo(kx - rw, ky + rh);
+    x.bezierCurveTo(kx - rw - 2, ky - rh * 0.4, kx - rw * 0.5, ky - rh, kx, ky - rh);
+    x.bezierCurveTo(kx + rw * 0.5, ky - rh, kx + rw + 2, ky - rh * 0.4, kx + rw, ky + rh);
+    x.closePath(); x.fill();
+    x.fillStyle = 'rgba(150,205,255,.32)'; x.beginPath(); x.arc(kx - rw * 0.38, ky - rh * 0.35, rw * 0.34, 0, 7); x.fill();
+    x.fillStyle = 'rgba(30,90,200,.6)'; x.fillRect(kx - rw, ky + rh - 2, rw * 2, 2);
+    // the ninja suspended inside
+    x.fillStyle = 'rgba(30,34,54,.9)'; x.fillRect(kx - 3.5, ky - 1, 7, 8);
+    x.fillStyle = 'rgba(52,58,86,.9)'; x.fillRect(kx - 3.5, ky - 1, 7, 2);
+    x.fillStyle = 'rgba(24,26,40,.95)'; x.fillRect(kx - 3, ky - 6, 6, 5);
+    x.fillStyle = '#d8324e'; x.fillRect(kx - 3.5, ky - 5, 7, 1.2);                 // headband
+    x.fillStyle = '#e8e8f0'; x.fillRect(kx - 2.2, ky - 3.6, 1.6, 1.4); x.fillRect(kx + 0.8, ky - 3.6, 1.6, 1.4);
+    x.fillStyle = 'rgba(30,34,54,.9)'; x.fillRect(kx - 5.5, ky + 1, 2, 4); x.fillRect(kx + 3.5, ky + 1, 2, 4);
+    // crown
+    var cyT = ky - rh - 1;
+    x.fillStyle = '#c89a18'; x.fillRect(kx - 8, cyT, 16, 4);
+    x.fillStyle = '#ddb828'; x.fillRect(kx - 8, cyT, 16, 2.5);
+    x.fillStyle = '#ffe066'; x.fillRect(kx - 8, cyT, 16, 1);
+    x.fillStyle = '#ddb828';
+    x.beginPath(); x.moveTo(kx - 8, cyT); x.lineTo(kx - 6, cyT - 4); x.lineTo(kx - 4, cyT); x.closePath(); x.fill();
+    x.beginPath(); x.moveTo(kx - 2.5, cyT); x.lineTo(kx, cyT - 5.5); x.lineTo(kx + 2.5, cyT); x.closePath(); x.fill();
+    x.beginPath(); x.moveTo(kx + 4, cyT); x.lineTo(kx + 6, cyT - 4); x.lineTo(kx + 8, cyT); x.closePath(); x.fill();
+    x.fillStyle = '#fff0b0'; x.fillRect(kx - 6.5, cyT - 3, 1, 2); x.fillRect(kx - 0.5, cyT - 4, 1, 2);
+    x.fillStyle = '#d02c3f'; x.fillRect(kx - 1.5, cyT + 1, 3, 2.5);
+    x.fillStyle = '#f4616f'; x.fillRect(kx - 1.5, cyT + 1, 1.5, 1);
+}
+/* Eater of Worlds: armoured purple segments with a spiked ridge, and a head that bites. */
+function drawEater(x, b, cx, cy) {
+    for (var i = b.seg.length - 1; i >= 0; i--) {
+        var s = b.seg[i], ex = s.x - cx, ey = s.y - cy, head = i === 0, tail = i === b.seg.length - 1;
+        // The head has no segment ahead of it to point at — clamping to seg[0] made it atan2(0,0),
+        // so the maw faced right no matter which way it was burrowing. It leads away from the
+        // segment behind it instead, falling back to the player when the two coincide.
+        var ax, ay;
+        if (head) { ax = s.x - b.seg[1].x; ay = s.y - b.seg[1].y; if (ax * ax + ay * ay < 0.01) { ax = (S.px + 5) - s.x; ay = (S.py + 10) - s.y; } }
+        else { var nxt = b.seg[i - 1]; ax = nxt.x - s.x; ay = nxt.y - s.y; }
+        var ang = Math.atan2(ay, ax);
+        var rr = head ? 7 : tail ? 3.4 : 5.4 - i * 0.05;
+        x.save(); x.translate(ex, ey); x.rotate(ang);
+        x.fillStyle = '#3d2650';                                       // dark chitin body
+        x.beginPath(); x.ellipse ? x.ellipse(0, 0, rr * 1.1, rr, 0, 0, 7) : x.arc(0, 0, rr, 0, 7); x.fill();
+        x.fillStyle = '#5c3b78';                                       // lit plate on the back
+        x.beginPath(); x.ellipse ? x.ellipse(-rr * 0.1, -rr * 0.28, rr * 0.8, rr * 0.55, 0, 0, 7) : x.arc(0, -1, rr * 0.6, 0, 7); x.fill();
+        x.fillStyle = '#7a52a0'; x.fillRect(-rr * 0.5, -rr * 0.85, rr, 1);
+        x.fillStyle = 'rgba(16,8,22,.55)'; x.fillRect(-rr, rr * 0.4, rr * 2, 1.4);
+        if (!head) {                                                   // spiked ridge
+            x.fillStyle = '#2a1838';
+            x.beginPath(); x.moveTo(-1.5, -rr); x.lineTo(0, -rr - 2.4); x.lineTo(1.5, -rr); x.closePath(); x.fill();
         }
-        x.lineWidth = 1;
-    } else if (b.kind === 'king') {
-        var kx = b.x - cx, ky = b.y - cy, r = b.r;
-        x.fillStyle = 'rgba(64,130,226,.42)';
-        x.beginPath();
-        x.moveTo(kx - r, ky + r); x.quadraticCurveTo(kx - r - 2, ky - r * 0.5, kx, ky - r);
-        x.quadraticCurveTo(kx + r + 2, ky - r * 0.5, kx + r, ky + r); x.closePath(); x.fill();
-        x.fillStyle = 'rgba(120,190,255,.30)'; x.beginPath(); x.arc(kx - r * 0.35, ky - r * 0.3, r * 0.42, 0, 7); x.fill();
-        x.fillStyle = 'rgba(64,130,226,.65)'; x.fillRect(kx - r, ky + r - 2, r * 2, 2);
-        x.fillStyle = '#a87038'; x.fillRect(kx - 3, ky + 1, 6, 5);                        // the trapped ninja
-        x.fillStyle = '#2a2a34'; x.fillRect(kx - 3, ky + 1, 6, 2);
-        x.fillStyle = '#12121a'; x.fillRect(kx - 5, ky - 4, 2.5, 3); x.fillRect(kx + 2.5, ky - 4, 2.5, 3);
-        x.fillStyle = '#fff'; x.fillRect(kx - 5, ky - 4, 1, 1); x.fillRect(kx + 2.5, ky - 4, 1, 1);
-        x.fillStyle = '#e0b83a';                                                          // crown
-        x.fillRect(kx - 7, ky - r - 3, 14, 3);
-        x.fillRect(kx - 6, ky - r - 6, 2.5, 3); x.fillRect(kx - 1.2, ky - r - 7, 2.5, 4); x.fillRect(kx + 3.5, ky - r - 6, 2.5, 3);
-        x.fillStyle = '#fff0b0'; x.fillRect(kx - 7, ky - r - 3, 14, 1);
-        x.fillStyle = '#c02a4a'; x.fillRect(kx - 0.5, ky - r - 2, 1.5, 1.5);
-    } else if (b.kind === 'eater') {
-        for (var i = b.seg.length - 1; i >= 0; i--) {
-            var s = b.seg[i], ex = s.x - cx, ey = s.y - cy, headSeg = i === 0, rr = headSeg ? 6.5 : 5 - i * 0.06;
-            x.fillStyle = headSeg ? '#8a5a9a' : '#4e3260';
-            x.beginPath(); x.arc(ex, ey, rr, 0, 7); x.fill();
-            x.fillStyle = headSeg ? '#a878b8' : '#654078';                                  // plating highlight
-            x.beginPath(); x.arc(ex - rr * 0.25, ey - rr * 0.3, rr * 0.55, 0, 7); x.fill();
-            x.fillStyle = 'rgba(20,10,26,.5)'; x.fillRect(ex - rr, ey + rr * 0.45, rr * 2, 1);
-            if (headSeg) {
-                x.fillStyle = '#e6d6f4'; x.fillRect(ex - 3.5, ey - 1.5, 2.5, 2.5); x.fillRect(ex + 1, ey - 1.5, 2.5, 2.5);
-                x.fillStyle = '#12121a'; x.fillRect(ex - 3, ey - 1, 1.5, 1.5); x.fillRect(ex + 1.5, ey - 1, 1.5, 1.5);
-                x.fillStyle = '#d8c0e8';                                                    // mandibles
-                x.fillRect(ex - 5, ey + 2.5, 2, 3); x.fillRect(ex + 3, ey + 2.5, 2, 3);
-            }
+        if (head) {
+            x.fillStyle = '#6b4488'; x.beginPath(); x.arc(1, 0, rr * 0.72, 0, 7); x.fill();
+            x.fillStyle = '#150a1c';                                   // the maw
+            x.beginPath(); x.moveTo(4, -3.5); x.lineTo(8, 0); x.lineTo(4, 3.5); x.closePath(); x.fill();
+            x.fillStyle = '#e6d6f4';
+            x.fillRect(4.5, -3, 1, 1.6); x.fillRect(4.5, 1.4, 1, 1.6); x.fillRect(6, -0.7, 1.2, 1.4);
+            x.fillStyle = '#c8a8e0';                                   // mandibles
+            x.beginPath(); x.moveTo(3, -5.5); x.lineTo(9, -3.5); x.lineTo(3.5, -3); x.closePath(); x.fill();
+            x.beginPath(); x.moveTo(3, 5.5); x.lineTo(9, 3.5); x.lineTo(3.5, 3); x.closePath(); x.fill();
+            x.fillStyle = '#ff6a6a'; x.fillRect(0, -3, 1.8, 1.8); x.fillRect(0, 1.2, 1.8, 1.8);
+            x.fillStyle = '#ffd0d0'; x.fillRect(0.4, -2.6, 0.8, 0.8); x.fillRect(0.4, 1.6, 0.8, 0.8);
         }
+        x.restore();
     }
 }
 function drawTorch(x, sx, sy) {
@@ -2674,71 +3722,24 @@ function drawManaC(x, sx, sy) {
     x.beginPath(); x.arc(sx + 4, sy + 4, 5.5, 0, 7); x.fill(); x.globalAlpha = 1;
     x.drawImage(objArt('manac'), sx, sy, TS, TS);
 }
-/* dropped items: a real little icon per item class, bobbing on the ground */
+/* dropped items are the item sprite itself, at 1:1 — the same canvas the inventory slot shows */
 function drawItemMini(x, id, sx, sy, c) {
     var bob = Math.sin(((RT.anim || 0) + (sx * 3)) / 18) * 0.7;
-    var cxp = sx, cyp = sy + bob, d = ITEMS[id], col = miniColor(id);
+    var cxp = sx, cyp = sy + bob;
     x.globalAlpha = 0.25; x.fillStyle = '#000';
-    x.beginPath(); x.ellipse ? x.ellipse(cxp, sy + 3.5, 3, 1, 0, 0, 7) : x.arc(cxp, sy + 3.5, 2, 0, 7); x.fill();
+    x.beginPath(); x.ellipse ? x.ellipse(cxp, sy + 4, 3.5, 1, 0, 0, 7) : x.arc(cxp, sy + 4, 2, 0, 7); x.fill();
     x.globalAlpha = 1;
-    if (id === 'coin') {
-        var tier = c >= 10000 ? '#f0c840' : c >= 100 ? '#d6dae2' : '#c07038';
-        x.fillStyle = tier; x.beginPath(); x.arc(cxp, cyp, 2.4, 0, 7); x.fill();
-        x.fillStyle = 'rgba(255,255,255,.75)'; x.beginPath(); x.arc(cxp - 0.7, cyp - 0.8, 0.9, 0, 7); x.fill();
+    if (id === 'coin') {   // coins stack visibly: copper → silver → gold by value, as in game
+        var tier = c >= 10000 ? ['#f0c840', '#fff0a0'] : c >= 100 ? ['#d6dae2', '#f4f6fc'] : ['#c07038', '#e8a060'];
+        var n = c >= 10000 ? 3 : c >= 100 ? 2 : 1;
+        for (var i = 0; i < n; i++) {
+            x.fillStyle = tier[0]; x.beginPath(); x.arc(cxp, cyp - i * 1.2, 2.2, 0, 7); x.fill();
+            x.fillStyle = tier[1]; x.beginPath(); x.arc(cxp - 0.6, cyp - i * 1.2 - 0.7, 0.9, 0, 7); x.fill();
+        }
         return;
     }
-    if (!d) { x.fillStyle = col; x.fillRect(cxp - 2, cyp - 2, 4, 4); return; }
-    var k = d.kind;
-    if (k === 'pick' || k === 'axe' || k === 'hammer' || k === 'sword' || k === 'bow' || k === 'magic') {
-        x.save(); x.translate(cxp, cyp); x.rotate(-0.6);
-        x.fillStyle = '#7a5228'; x.fillRect(-0.6, -1, 1.2, 5);
-        x.fillStyle = col;
-        if (k === 'sword') { x.fillRect(-0.9, -4.5, 1.8, 5); x.fillStyle = '#c8a24a'; x.fillRect(-2, -0.4, 4, 1); }
-        else if (k === 'pick') { x.fillRect(-3, -3, 6, 1.4); x.fillRect(-3.2, -3, 1, 1.6); x.fillRect(2.2, -3, 1, 1.6); }
-        else if (k === 'axe') { x.fillRect(0.4, -4, 2.6, 3.4); }
-        else if (k === 'bow') { x.strokeStyle = col; x.lineWidth = 1; x.beginPath(); x.arc(0, 0, 3, -1.2, 1.2); x.stroke(); }
-        else { x.fillStyle = col; x.beginPath(); x.arc(0, -3.5, 1.6, 0, 7); x.fill(); }
-        x.restore(); return;
-    }
-    if (k === 'potion') {
-        x.fillStyle = '#cfe4ef'; x.fillRect(cxp - 0.8, cyp - 3, 1.6, 1.4);
-        x.fillStyle = col; x.beginPath(); x.arc(cxp, cyp + 0.4, 2.2, 0, 7); x.fill();
-        x.fillStyle = 'rgba(255,255,255,.6)'; x.fillRect(cxp - 1.4, cyp - 0.6, 0.8, 1.4);
-        return;
-    }
-    if (k === 'bar') {
-        x.fillStyle = shade(col, 0.7); x.fillRect(cxp - 2.6, cyp - 0.2, 5.2, 2);
-        x.fillStyle = col; x.fillRect(cxp - 2.2, cyp - 1.6, 4.4, 1.6);
-        x.fillStyle = 'rgba(255,255,255,.7)'; x.fillRect(cxp - 2, cyp - 1.5, 3.4, 0.6);
-        return;
-    }
-    if (k === 'ore') {
-        x.fillStyle = '#6f6f78'; x.beginPath(); x.arc(cxp, cyp, 2.6, 0, 7); x.fill();
-        x.fillStyle = col; x.fillRect(cxp - 1.6, cyp - 1.4, 1.6, 1.4); x.fillRect(cxp + 0.2, cyp + 0.1, 1.4, 1.2);
-        x.fillStyle = 'rgba(255,255,255,.8)'; x.fillRect(cxp - 1.5, cyp - 1.3, 0.6, 0.6);
-        return;
-    }
-    if (k === 'gem') {
-        x.fillStyle = col; x.beginPath(); x.moveTo(cxp, cyp - 2.6); x.lineTo(cxp + 2.2, cyp); x.lineTo(cxp, cyp + 2.6); x.lineTo(cxp - 2.2, cyp); x.closePath(); x.fill();
-        x.fillStyle = 'rgba(255,255,255,.85)'; x.beginPath(); x.moveTo(cxp, cyp - 2.4); x.lineTo(cxp + 1.9, cyp); x.lineTo(cxp, cyp); x.closePath(); x.fill();
-        return;
-    }
-    if (k === 'block' || k === 'platform' || k === 'wall') {
-        var pl = d.place;
-        if (pl && (TCOL[pl] || pl === T_TORCH)) { x.drawImage(tileArt(TCOL[pl] ? pl : T_PLANK), cxp - 2.5, cyp - 2.5, 5, 5); }
-        else { x.fillStyle = col; x.fillRect(cxp - 2.5, cyp - 2.5, 5, 5); }
-        x.fillStyle = 'rgba(255,255,255,.25)'; x.fillRect(cxp - 2.5, cyp - 2.5, 5, 0.6);
-        return;
-    }
-    if (k === 'summon') {
-        x.fillStyle = '#ded6ce'; x.beginPath(); x.arc(cxp, cyp, 2.6, 0, 7); x.fill();
-        x.fillStyle = col; x.beginPath(); x.arc(cxp, cyp, 1.4, 0, 7); x.fill();
-        x.fillStyle = '#12121a'; x.beginPath(); x.arc(cxp, cyp, 0.7, 0, 7); x.fill();
-        return;
-    }
-    // generic material: a soft nugget
-    x.fillStyle = col; x.beginPath(); x.arc(cxp, cyp, 2.3, 0, 7); x.fill();
-    x.fillStyle = 'rgba(255,255,255,.55)'; x.fillRect(cxp - 1.6, cyp - 1.6, 1, 1);
+    if (!ITEMS[id]) { x.fillStyle = miniColor(id); x.fillRect(cxp - 2, cyp - 2, 4, 4); return; }
+    x.drawImage(itemArt(id), cxp - TS / 2, cyp - TS / 2, TS, TS);
 }
 
 function miniColor(id) {
@@ -2913,25 +3914,30 @@ function autoSelect() {
 }
 
 /* ─────────────── item icons (DOM, crisp) ─────────────── */
+/* The slot icon IS the item sprite — the same 16x16 canvas the world drop and the player's hand
+   use — so nothing can drift out of sync. The data URL goes into a stylesheet rule once rather than
+   into the markup, because the panel rebuilds its innerHTML on every inventory change and sixty
+   inlined base64 images per rebuild is a lot of string to throw away. */
+var _spriteCSS = null, _spriteDone = {};
+function spriteClass(id) {
+    if (_spriteDone[id] !== undefined) return _spriteDone[id];
+    var u = itemURL(id);
+    if (!u) return (_spriteDone[id] = null);
+    try {
+        if (!_spriteCSS) {
+            _spriteCSS = document.createElement('style');
+            _spriteCSS.id = 'tr-sprites';
+            (document.head || document.body).appendChild(_spriteCSS);
+        }
+        _spriteCSS.appendChild(document.createTextNode('.tri.i-' + id + '{background-image:url(' + u + ')}'));
+    } catch (e) { return (_spriteDone[id] = null); }
+    return (_spriteDone[id] = 'i-' + id);
+}
 function itemIcon(id) {
-    var d = ITEMS[id]; if (!d) return '<em class="tri" style="background:#ccc"></em>';
-    var tier = { c: '#c07038', i: '#b0a49a', s: '#d8dce6', g: '#e0b83a', d: '#4a5a86', l: '#4a5a86' }[id.charAt(0)];
-    if (d.kind === 'pick') return '<em class="tri tri-pick" style="background:' + (tier || '#b0a49a') + '"></em>';
-    if (d.kind === 'axe') return '<em class="tri tri-axe" style="background:' + (tier || '#b0894a') + '"></em>';
-    if (d.kind === 'hammer') return '<em class="tri tri-hammer" style="background:' + (tier || '#b0894a') + '"></em>';
-    if (d.kind === 'sword') return '<em class="tri tri-sword" style="background:' + (tier || '#d8d8e0') + '"></em>';
-    if (d.kind === 'bow') return '<em class="tri tri-bow" style="background:' + (tier || '#b0894a') + '"></em>';
-    if (d.kind === 'magic') return '<em class="tri tri-staff" style="background:' + (GEMCOL[({ am: T_AMETHYST, db: T_DIAMOND }[id.slice(0, 2)])] || '#c060f0') + '"></em>';
-    if (d.kind === 'ammo') return '<em class="tri tri-arrow" style="background:' + (d.fire ? '#ff8a2a' : '#a87030') + '"></em>';
-    if (d.kind === 'potion') return '<em class="tri tri-potion" style="background:' + (d.heal ? '#f05a6a' : d.mana ? '#5a8cf0' : '#f0d040') + '"></em>';
-    if (d.kind === 'armor') return '<em class="tri tri-armor" style="background:' + (tintOf(id) || '#b0a49a') + '"></em>';
-    if (d.kind === 'accessory') return '<em class="tri tri-acc" style="background:' + (id === 'hook' ? '#c8c8d0' : id === 'boots' ? '#c07038' : id === 'cloud' ? '#eef2fa' : id === 'shoe' ? '#e0b83a' : '#a0a0c0') + '"></em>';
-    if (d.kind === 'summon') return '<em class="tri tri-eye" style="background:' + (id === 'suseye' ? '#d8d0c8' : id === 'slimec' ? '#5a8cf0' : '#8a5a9a') + '"></em>';
-    if (d.kind === 'gem') return '<em class="tri tri-gem" style="background:' + miniColor(id) + '"></em>';
-    if (d.kind === 'bar') return '<em class="tri tri-bar" style="background:' + miniColor(id) + '"></em>';
-    if (d.kind === 'ore') return '<em class="tri tri-ore" style="background:' + miniColor(id) + '"></em>';
-    if (d.kind === 'wall' || d.kind === 'platform' || d.kind === 'block') return '<em class="tri" style="background:' + miniColor(id) + '"></em>';
-    return '<em class="tri" style="background:' + miniColor(id) + '"></em>';
+    if (!ITEMS[id]) return '<em class="tri" style="background:#ccc"></em>';
+    var cls = spriteClass(id);
+    if (!cls) return '<em class="tri" style="background:' + miniColor(id) + '"></em>';
+    return '<em class="tri ' + cls + '"></em>';
 }
 
 /* ─────────────── fullscreen map ─────────────── */
@@ -3059,7 +4065,11 @@ window.__terra = {
     slot: function (ref) { onSlotClick(ref); }, slotRight: function (ref) { onSlotRight(ref); },
     potLoot: function (tx, ty) { potLoot(tx, ty); },
     TID: { AIR: T_AIR, STONE: T_STONE, PLATFORM: T_PLATFORM, PLANK: T_PLANK, DOOR: T_DOOR, TORCH: T_TORCH, TABLE: T_TABLE, CHAIR: T_CHAIR },
-    biomeAtX: biomeAtX, unlock: unlock, ACH: ACH, ITEMS: ITEMS, RECIPES: RECIPES
+    biomeAtX: biomeAtX, unlock: unlock, ACH: ACH, ITEMS: ITEMS, RECIPES: RECIPES,
+    // the sprite bakery, so art can be inspected frame by frame without playing to find it
+    art: { tile: tileFrame, wall: wallFrames, obj: objArt, item: itemArt, crack: crackArt,
+           foe: drawFoe, npc: drawNPC, boss: drawBoss, player: drawPlayer,
+           TPX: TPX, TS: TS, RS: RS, TCOL: TCOL, WLCOL: WLCOL }
 };
 window.TERRA = { render: render, init: init, close: close, steamAch: steamAch };
 })();
