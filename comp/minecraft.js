@@ -24,6 +24,8 @@
     var WALK = 4.317, SPRINT = 5.612, SNEAK = 1.31, SWIM = 2.2;
     var FLY = 10.89, FLY_SPRINT = 21.78;   // creative flight, at the real game's speeds
     var FLY_VY = 7.5, SPECT_VY = 11;       // Space/Shift climb rate; spectators are quicker
+    var SWING_T = 0.3;                     // 6 ticks: the real game's arm-swing duration
+    var EQUIP_T = 0.14;                    // how long the hand takes to come back up after a swap
     var FLY_TAP = 350;                     // double-tap window, the game's 7 ticks
     var CREATIVE_DIG_CD = 0.3;             // held-button break period: destroyDelay 5 + the tick it is tested on
     var REACH = 5;
@@ -2072,15 +2074,44 @@
             if (getB(x, y, z) === which) return true;
         return false;
     }
+    /* Resolve a collision by landing exactly ON the surface.
+       Every collider in this world is a unit cube, so the contact plane is
+       always an integer — which means the resting position can be computed
+       instead of searched for. The old code backed out in fixed 0.01 steps and
+       overshot by up to a centimetre; standing still, gravity pulled the player
+       down 0.0089 a frame and the back-out shoved them up 0.010, so a player
+       doing nothing at all climbed ~1mm per frame until they cleared the block
+       boundary and snapped back down 9mm. That sawtooth rode the camera and
+       made the entire world shimmer at this internal resolution.
+       `nudge` stays as the fallback for the pathological case — being extruded
+       from inside geometry, where there is no single contact plane to snap to. */
+    var EPS = 1e-6;
+    function nudge(axis, sgn, limit) {
+        var g = 0;
+        while (boxHits(S.px, S.py, S.pz) && g++ < limit) S[axis] -= sgn * 0.01;
+    }
+    function resolve(axis, sgn, exact, limit) {
+        var was = S[axis];
+        S[axis] = exact;
+        if (boxHits(S.px, S.py, S.pz)) { S[axis] = was; nudge(axis, sgn, limit); }
+    }
     function axisMove(dx, dy, dz) {
         var hit = { x: false, y: false, z: false };
         if (dx) {
             S.px += dx;
-            if (boxHits(S.px, S.py, S.pz)) { var sx = dx > 0 ? 1 : -1, g = 0; while (boxHits(S.px, S.py, S.pz) && g++ < 80) S.px -= sx * 0.01; hit.x = true; }
+            if (boxHits(S.px, S.py, S.pz)) {
+                var sx = dx > 0 ? 1 : -1;
+                resolve('px', sx, sx > 0 ? Math.floor(S.px + HW) - HW - EPS : Math.floor(S.px - HW) + 1 + HW, 80);
+                hit.x = true;
+            }
         }
         if (dz) {
             S.pz += dz;
-            if (boxHits(S.px, S.py, S.pz)) { var sz = dz > 0 ? 1 : -1, g2 = 0; while (boxHits(S.px, S.py, S.pz) && g2++ < 80) S.pz -= sz * 0.01; hit.z = true; }
+            if (boxHits(S.px, S.py, S.pz)) {
+                var sz = dz > 0 ? 1 : -1;
+                resolve('pz', sz, sz > 0 ? Math.floor(S.pz + HW) - HW - EPS : Math.floor(S.pz - HW) + 1 + HW, 80);
+                hit.z = true;
+            }
         }
         if (dy) {
             // sub-step the vertical move: a terminal-velocity frame must not tunnel through a thin floor
@@ -2088,7 +2119,12 @@
             while (rem !== 0 && !hit.y) {
                 var stp = Math.abs(rem) > 0.5 ? sy * 0.5 : rem;
                 S.py += stp; rem -= stp;
-                if (boxHits(S.px, S.py, S.pz)) { var g3 = 0; while (boxHits(S.px, S.py, S.pz) && g3++ < 200) S.py -= sy * 0.01; hit.y = true; }
+                if (boxHits(S.px, S.py, S.pz)) {
+                    // down: feet rest on the top of the row they sank into.
+                    // up: head stops just under the row it struck.
+                    resolve('py', sy, sy > 0 ? Math.floor(S.py + PH - 0.001) - PH : Math.floor(S.py) + 1, 200);
+                    hit.y = true;
+                }
             }
         }
         return hit;
@@ -2508,7 +2544,9 @@
         }
         if (RT.digCd > 0) return;
         RT.digT += dt;
-        RT.swing = 0.25;
+        // holding the button chains swings; it must NOT pin the timer, or the arm
+        // sits at phase zero and never actually moves while you mine
+        swingArm(false);
         if (instaBuild() && swordHeld()) return;   // a creative sword never lands on the block
         if (RT.digT >= RT.digNeed) {
             breakBlock(t.x, t.y, t.z);
@@ -2522,7 +2560,7 @@
     function tryUse() {
         if (RT.dead || RT.panel || RT.paused) return;
         var t = RT.target, h = held(), def = h && I[h.id];
-        RT.swing = 0.25;
+        swingArm(true);
         // a mob under the crosshair takes priority (feed / breed / milk)
         var ef = entRay();
         if (ef && h) {
@@ -2542,7 +2580,9 @@
             if (t.b === ANVIL) { openPanel('anvil', t); return; }
             if (t.b === CAKE) { eatCake(t.x, t.y, t.z); return; }
             if (t.b === BED) { trySleep(); return; }
-            if (t.b === TNT) { igniteTnt(t.x, t.y, t.z); return; }
+            // TNT is NOT hand-primeable. It takes flint and steel (handled below with
+            // the rest of the tools), a flaming arrow, or another blast — the same
+            // three things that set it off in the real game.
         }
         if (!h) return;
         // right-click armor → wear it
@@ -3036,6 +3076,22 @@
         return false;
     }
 
+    /* ── the arm ────────────────────────────────────────────
+       One swing per click; while a button is held the next one begins as the
+       last one ends, so mining is a continuous chop rather than a single frozen
+       pose. Haste shortens the swing and mining fatigue drags it out, exactly
+       as they do in the real game. */
+    function swingTime() {
+        var haste = effLvl('haste'), fatigue = effLvl('mining_fatigue');
+        var ticks = haste ? 6 - haste : fatigue ? 6 + fatigue * 2 : 6;
+        return Math.max(1, ticks) / 20;
+    }
+    function swingArm(restart) {
+        // a fresh click restarts the swing mid-arc; a held button only queues the
+        // next one, which is the difference between spamming and holding
+        if (restart || RT.swing <= 0) { RT.swingT = swingTime(); RT.swing = RT.swingT; }
+    }
+
     /* ── the player swings ──────────────────────────────────── */
     function entRay() {
         var d = look(), best = null, bestT = 3.2;
@@ -3059,7 +3115,7 @@
     }
     function attack() {
         if (RT.dead || RT.panel || RT.paused) return;
-        RT.swing = 0.25;
+        swingArm(true);
         var f = entRay();
         var h = held(), tool = h && I[h.id] && I[h.id].tool;
         var charged = RT.atkCd <= 0.02;   // full attack-cooldown → full-strength hit
@@ -3260,7 +3316,9 @@
         a.vy -= 20 * dt;
         var nx = a.x + a.vx * dt, ny = a.y + a.vy * dt, nz = a.z + a.vz * dt;
         if (solidAt(Math.floor(nx), Math.floor(ny), Math.floor(nz))) {
-            if (a.mine && !a.noPick) dropItem(a.x, a.y, a.z, 'arrow', 1);
+            // a burning arrow lights TNT, which is one of the three ways to set it off
+            if (a.flame && getB(Math.floor(nx), Math.floor(ny), Math.floor(nz)) === TNT) igniteTnt(Math.floor(nx), Math.floor(ny), Math.floor(nz));
+            else if (a.mine && !a.noPick) dropItem(a.x, a.y, a.z, 'arrow', 1);
             snd('thud');
             return true;
         }
@@ -3506,31 +3564,51 @@
         var v = [], h = held(), def = h && I[h.id];
         var L = cellLight(S.px, S.py + EYE, S.pz);
         var sk2 = Math.max(0.18, L[0]), bl2 = L[1];
-        var swingP = RT.swing > 0 ? Math.sin((0.25 - RT.swing) / 0.25 * Math.PI) : 0;
+        /* The real game's swing is not a symmetric bob. It drives position from
+           f = sin(√p · π) — which leaps out in the first third and eases back
+           over the rest — and rotation from f2 = sin(p² · π), which lags behind
+           it. Two envelopes out of phase is the whole reason a swing reads as a
+           strike and not a nod. p runs 0→1 across the swing. */
+        var p = RT.swing > 0 && RT.swingT > 0 ? Math.max(0, Math.min(1, 1 - RT.swing / RT.swingT)) : 0;
+        var f = RT.swing > 0 ? Math.sin(Math.sqrt(p) * Math.PI) : 0;
+        var f2 = RT.swing > 0 ? Math.sin(p * p * Math.PI) : 0;
         var bobX = Math.sin(RT.bob) * 0.012, bobY = Math.abs(Math.cos(RT.bob)) * 0.014;
-        var ox = 0.42 + bobX - swingP * 0.14, oy = -0.42 - bobY - swingP * 0.22, oz = -0.72 - swingP * 0.18;
+        // the arm sweeps in across the view, drives forward, then drops through
+        var ox = 0.42 + bobX - f * 0.19;
+        var oy = -0.42 - bobY + f * 0.07 - f2 * 0.19;
+        var oz = -0.72 - f * 0.23;
+        // swapping items drops the hand out of frame and lifts the new one in
+        oy -= (RT.equip || 0) * 0.65;
         var pull = RT.bowT > 0 ? RT.bowT * 0.12 : 0;
         var eatN = RT.eatT > 0 ? Math.sin(RT.eatT * 22) * 0.03 : 0;
         oy += eatN; oz += pull;
         if (def && def.place != null && !B[def.place].cross && !B[def.place].half) {
-            pushBox(v, ox, oy, oz, 0.16, 0.16, 0.16, Math.cos(0.62), Math.sin(0.62), swingP * 0.6, 0,
+            // a held block turns as it is driven down, so you see its top face bite
+            // in — but only so far, or it goes edge-on and vanishes mid-swing
+            pushBox(v, ox, oy, oz, 0.16, 0.16, 0.16, Math.cos(0.62 - f * 0.35), Math.sin(0.62 - f * 0.35), f2 * 0.7, 0,
                 (function (pl) { return function (dd) { return texFace(TEX[pl], dd); }; })(def.place),
                 sk2, bl2, 0);
         } else if (h) {
             var tid = def && def.tile != null ? def.tile : TILE.i_stick;
             var u0 = tileUV(tid);
             // an angled card: item sprites read great edge-on at this res
-            var yc2 = Math.cos(0.8 + swingP * 0.7), ys2 = Math.sin(0.8 + swingP * 0.7);
+            var yc2 = Math.cos(0.8 + f * 0.95), ys2 = Math.sin(0.8 + f * 0.95);
+            // and it tips over its own leading edge on the follow-through
+            var tipC = Math.cos(f2 * 0.6), tipS = Math.sin(f2 * 0.6);
             var cs = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
             for (var k = 0; k < 4; k++) {
                 var a = cs[k][0] * 0.22, b = cs[k][1] * 0.22;
-                v.push(ox + yc2 * a, oy + b + 0.08, oz + ys2 * a,
+                var by = b * tipC, bz = b * tipS;
+                v.push(ox + yc2 * a, oy + by + 0.08, oz + ys2 * a + bz,
                     cs[k][0] > 0 ? u0[0] + TS16 - INSET : u0[0] + INSET,
                     cs[k][1] > 0 ? u0[1] + INSET : u0[1] + TS16 - INSET,
                     sk2, bl2, 1, 0);
             }
         } else {
-            pushBox(v, ox + 0.05, oy, oz, 0.09, 0.09, 0.3, Math.cos(0.5), Math.sin(0.5), swingP * 0.8, -0.2,
+            // a bare fist rotates hardest of all — there is no item to read, so the
+            // motion has to carry the whole punch. It still has to stay on screen,
+            // so the arc is tempered and the arm pivots rather than translating away.
+            pushBox(v, ox + 0.05, oy + f2 * 0.06, oz, 0.09, 0.09, 0.3, Math.cos(0.5 - f * 0.3), Math.sin(0.5 - f * 0.3), f2 * 0.95, -0.2,
                 function () { return TILE.hand; }, sk2, bl2, 0);
         }
         return v;
@@ -4885,6 +4963,12 @@
             RT.digCd = Math.max(0, RT.digCd - dt);
             RT.atkCd = Math.max(0, RT.atkCd - dt);
             RT.swing = Math.max(0, RT.swing - dt);
+            // swapping what you're holding dips the hand and lifts the new item in.
+            // Watching the held id (not S.sel) catches every route into a swap:
+            // the number keys, the wheel, pick block, and the inventory screen.
+            var heldNow = (held() || {}).id || null;
+            if (heldNow !== RT.equipId) { RT.equipId = heldNow; RT.equip = 1; }
+            RT.equip = Math.max(0, RT.equip - dt / EQUIP_T);
             RT.flash = Math.max(0, RT.flash - dt);
             RT.shake = Math.max(0, RT.shake - dt);
             RT.lightning = Math.max(0, (RT.lightning || 0) - dt);
@@ -4979,6 +5063,7 @@
             '</div>' +
             '<div class="mc-effects" style="display:none"></div>' +
             '<div class="mc-chat"><div class="mc-chatlog"></div>' +
+              '<div class="mc-sug" style="display:none"><div class="mc-sugu"></div><div class="mc-sugl"></div></div>' +
               '<input class="mc-chatin" maxlength="256" spellcheck="false" autocomplete="off">' +
               '<div class="mc-chattab"></div></div>' +
             '<div class="mc-toasts"></div>' +
@@ -5708,7 +5793,8 @@
         if (!RT || RT.dead || RT.panel || RT.paused) return;
         // remember whether we were the one holding the pointer, so closing only
         // takes it back if opening gave it up
-        RT.chat = { hist: RT.chatHist || [], hi: -1, draft: '', relock: !!document.pointerLockElement };
+        RT.chat = { hist: RT.chatHist || [], hi: -1, draft: '', relock: !!document.pointerLockElement,
+                    hits: [], si: -1, sstart: 0, usage: '', applied: false };
         RT.chatHist = RT.chat.hist;
         RT.keys = {};                      // a held W must not keep walking while you type
         if (RT.mouse) RT.mouse.l = RT.mouse.r = false;   // nor a held button keep mining
@@ -5724,6 +5810,7 @@
         // lands in the box, and a throttled timer can't leave the box unfocused
         inp.focus();
         inp.setSelectionRange(inp.value.length, inp.value.length);
+        refreshSug(false);          // typing "/" should already be offering commands
     }
     function closeChat(relock) {
         if (!RT || !RT.chat) return;
@@ -5736,6 +5823,8 @@
             inp.blur(); inp.value = '';
             var tabBox = wrap.querySelector('.mc-chattab');
             if (tabBox) { tabBox.textContent = ''; tabBox.style.display = 'none'; }
+            var sug = wrap.querySelector('.mc-sug');
+            if (sug) sug.style.display = 'none';
         }
         paintChat();
         if (relock && wasLocked && !RT.panel && !RT.paused && !RT.dead) {
@@ -5765,6 +5854,118 @@
         }
         try { c.run(rd, raw.slice(1)); }
         catch (e) { chatErr('An unexpected error occurred running that command'); }
+    }
+    /* ── live command suggestions ────────────────────────
+       The real game does not sit and wait for Tab. It offers completions the
+       moment you start typing, in a box anchored under the token you are on,
+       with the command's usage line above it. Tab takes the highlighted entry
+       and cycles through the rest; Shift-Tab walks back; a click takes one
+       outright. The arrows are left alone — they belong to chat history. */
+    var _measure = null;
+    function textWidth(s, el) {
+        if (!_measure) _measure = document.createElement('canvas').getContext('2d');
+        var cs = getComputedStyle(el);
+        _measure.font = cs.fontStyle + ' ' + cs.fontWeight + ' ' + cs.fontSize + ' ' + cs.fontFamily;
+        return _measure.measureText(s).width;
+    }
+    /* What can follow what has been typed so far? Returns the candidate list,
+       where the token being completed starts, and the usage line to show. */
+    function suggestAt(text) {
+        if (text.charAt(0) !== '/') return null;
+        var body = text.slice(1), q, hits;
+        if (body.indexOf(' ') < 0) {                    // still naming the command
+            q = body.toLowerCase();
+            hits = Object.keys(CMDS).filter(function (n) { return n.indexOf(q) === 0; }).sort();
+            return { hits: hits, start: 1, usage: hits.length === 1 ? CMDS[hits[0]].usage : null };
+        }
+        var parts = body.split(' ');
+        var c = CMDS[stripNs(parts[0]).toLowerCase()];
+        if (!c) return null;
+        var cur = parts[parts.length - 1];
+        q = cur.toLowerCase();
+        var opts = (c.complete && c.complete(parts.length - 2)) || [];
+        hits = opts.filter(function (o) { return o.toLowerCase().indexOf(q) === 0; }).sort();
+        return { hits: hits, start: text.length - cur.length, usage: c.usage };
+    }
+    function refreshSug(keepSel) {
+        if (!RT.chat) return;
+        var inp = RT.el.querySelector('.mc-chatin');
+        var s = suggestAt(inp.value);
+        RT.chat.hits = (s && s.hits) || [];
+        RT.chat.sstart = s ? s.start : 0;
+        RT.chat.usage = (s && s.usage) || '';
+        // a fresh keystroke highlights the first entry; cycling keeps its place
+        if (!keepSel || RT.chat.si >= RT.chat.hits.length) RT.chat.si = RT.chat.hits.length ? 0 : -1;
+        paintSug();
+    }
+    function paintSug() {
+        var box = RT.el.querySelector('.mc-sug');
+        if (!box) return;
+        var c = RT.chat;
+        if (!c || (!c.hits.length && !c.usage)) { box.style.display = 'none'; return; }
+        var inp = RT.el.querySelector('.mc-chatin');
+        box.style.display = '';
+        box.querySelector('.mc-sugu').textContent = c.usage || '';
+        // keep the highlighted entry inside the window when the list is long
+        var MAXS = 12, off = 0;
+        if (c.si >= MAXS) off = c.si - MAXS + 1;
+        if (off > c.hits.length - MAXS) off = Math.max(0, c.hits.length - MAXS);
+        box.querySelector('.mc-sugl').innerHTML = c.hits.slice(off, off + MAXS).map(function (h, i) {
+            var idx = off + i;
+            return '<div class="mc-sugi' + (idx === c.si ? ' on' : '') + '" data-si="' + idx + '">' + escHtml(h) + '</div>';
+        }).join('');
+        // line the box up with the token it is completing, but never off the left
+        var pad = parseFloat(getComputedStyle(inp).paddingLeft) || 0;
+        var x = pad + textWidth(inp.value.slice(0, c.sstart), inp);
+        box.style.left = Math.max(0, Math.round(x) - 4) + 'px';
+        // The list scrolls, and replacing its innerHTML above just reset scrollTop
+        // to 0. Walk the highlight back into view or Tab runs off the bottom of a
+        // box that still looks like it is showing the first entry.
+        var onRow = box.querySelector('.mc-sugi.on');
+        if (onRow) {
+            var list = box.querySelector('.mc-sugl');
+            var top = onRow.offsetTop, bot = top + onRow.offsetHeight;
+            if (bot > list.clientHeight) list.scrollTop = bot - list.clientHeight;
+            else if (top < list.scrollTop) list.scrollTop = top;
+        }
+    }
+    /* Write candidate `i` over the token being completed.
+       `freeze` keeps the candidate list exactly as it stands. That matters while
+       cycling: once "/ga" has become "/gamemode", re-deriving the list from the
+       new text collapses it to that one entry, and the next Tab has nothing left
+       to walk to. The list stays anchored to what was typed until a real
+       keystroke replaces it. */
+    function applySug(i, freeze) {
+        var c = RT.chat;
+        if (!c || !c.hits.length) return false;
+        i = Math.max(0, Math.min(c.hits.length - 1, i));
+        var inp = RT.el.querySelector('.mc-chatin');
+        // one hit means the argument is settled, so leave a space ready for the next
+        var tail = c.hits.length === 1 ? ' ' : '';
+        inp.value = inp.value.slice(0, c.sstart) + c.hits[i] + tail;
+        inp.setSelectionRange(inp.value.length, inp.value.length);
+        c.si = i;
+        if (freeze) { paintSug(); return true; }
+        // Unambiguous: move on and offer whatever comes next. That is a NEW list,
+        // so the cycle is over — leaving the latch set made the following Tab step
+        // past the entry it was visibly highlighting ("/gamem" Tab Tab handed you
+        // `creative` while the box showed `adventure`).
+        var was = c.hits[i];
+        refreshSug(false);
+        var at = c.hits.indexOf(was);
+        if (at >= 0) c.si = at;
+        c.applied = false;
+        paintSug();
+        return true;
+    }
+    function cycleSug(dir) {
+        var c = RT.chat;
+        if (!c || !c.hits.length) return false;
+        // the first Tab takes what is already highlighted; the next ones walk on
+        var n = c.hits.length;
+        var i = c.applied ? ((c.si + dir) % n + n) % n : Math.max(0, c.si);
+        c.applied = true;
+        return applySug(i, n > 1);
     }
     /* ── tab completion ──────────────────────────────────── */
     function tabComplete(text) {
@@ -5854,7 +6055,7 @@
             chat: null, chatLog: [], chatHist: [], now: 0, fly: !!S.fly && (S.gm === 1 || S.gm === 3),
             vy: 0, ground: false, fallY: S.py, sprint: false,
             exh: 0, regenT: 0, starveT: 0, iframe: 0, digT: 0, digCd: 0, digNeed: 1, digAt: null, atkCd: 0,
-            eatT: 0, bowT: 0, swing: 0, bob: 0, flash: 0, shake: 0, sleep: 0, placeCd: 0,
+            eatT: 0, bowT: 0, swing: 0, swingT: SWING_T, equip: 0, equipId: null, bob: 0, flash: 0, shake: 0, sleep: 0, placeCd: 0,
             target: null, panel: null, cur: null, craft: [null, null, null, null, null, null, null, null, null], craftW: 2,
             cTab: 0, cScroll: 0, cSearch: '', cList: [], cDrag: 0, panelDirty: 0,
             paused: false, dead: S.hp <= 0, ready: false, lit: false, expectUnlock: false,
@@ -5909,19 +6110,16 @@
                 }
                 if (e.key === 'Escape') { closeChat(true); e.preventDefault(); return; }
                 if (e.key === 'Tab') {
+                    // Tab takes the highlighted suggestion, then walks the rest of
+                    // the list; Shift-Tab walks back. Same as the real game.
                     e.preventDefault();
-                    var r = tabComplete(chatIn.value);
-                    if (r) {
-                        chatIn.value = r.text;
-                        chatIn.setSelectionRange(r.text.length, r.text.length);
-                        var tabBox = root.querySelector('.mc-chattab');
-                        tabBox.textContent = r.hits.length > 1 ? r.hits.slice(0, 12).join('  ') : '';
-                        tabBox.style.display = r.hits.length > 1 ? '' : 'none';
-                    }
+                    cycleSug(e.shiftKey ? -1 : 1);
                     return;
                 }
                 if (!c) return;
                 if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                    // the arrows stay with chat history — the suggestion list is
+                    // Tab's and the mouse's, exactly as the real game divides them
                     e.preventDefault();
                     var h = RT.chatHist || [];
                     if (!h.length) return;
@@ -5931,13 +6129,32 @@
                     if (c.hi < 0) { c.hi = -1; chatIn.value = c.draft || ''; }
                     else chatIn.value = h[h.length - 1 - c.hi];
                     chatIn.setSelectionRange(chatIn.value.length, chatIn.value.length);
+                    c.applied = false;
+                    refreshSug(false);
                 }
             });
             chatIn.addEventListener('keyup', function (e) { e.stopPropagation(); });
             chatIn.addEventListener('input', function () {
                 var tabBox = root.querySelector('.mc-chattab');
                 if (tabBox) { tabBox.textContent = ''; tabBox.style.display = 'none'; }
+                // a real keystroke ends any Tab-cycle in progress and re-offers
+                if (RT.chat) { RT.chat.applied = false; refreshSug(false); }
             });
+            var sugBox = root.querySelector('.mc-sug');
+            if (sugBox) {
+                // mousedown here would pull focus out of the input, and the blur
+                // handler would shut the chat before the click ever landed
+                sugBox.addEventListener('mousedown', function (e) { e.preventDefault(); e.stopPropagation(); });
+                sugBox.addEventListener('click', function (e) {
+                    var el = e.target;
+                    while (el && el !== sugBox && (!el.getAttribute || el.getAttribute('data-si') == null)) el = el.parentNode;
+                    if (!el || el === sugBox) return;
+                    applySug(el.getAttribute('data-si') | 0);
+                    if (RT.chat) RT.chat.applied = true;   // a following Tab moves on rather than re-picking
+                    chatIn.focus();
+                    e.stopPropagation();
+                });
+            }
             chatIn.addEventListener('blur', function (e) {
                 if (!(RT && RT.chat)) return;
                 // alt-tabbing away must not throw away a half-typed command
@@ -6203,6 +6420,16 @@
             chatClose: function () { closeChat(false); },
             chatState: function () { return { open: !!RT.chat, lines: (RT.chatLog || []).length, last: (RT.chatLog || []).slice(-1)[0] || null }; },
             complete: function (t) { return tabComplete(t); },
+            sug: function () {
+                var c = RT.chat, box = RT.el.querySelector('.mc-sug');
+                if (!c) return null;
+                return { n: c.hits.length, hits: c.hits.slice(0, 24), si: c.si, usage: c.usage, start: c.sstart,
+                    shown: box ? getComputedStyle(box).display !== 'none' : false,
+                    rows: box ? box.querySelectorAll('.mc-sugi').length : 0,
+                    onRow: box && box.querySelector('.mc-sugi.on') ? box.querySelector('.mc-sugi.on').textContent : null,
+                    usageRow: box ? box.querySelector('.mc-sugu').textContent : null,
+                    left: box ? box.style.left : null };
+            },
             gm: function () { return S.gm; }, diff: function () { return S.diff; },
             /* creative: everything a test needs to see without touching the DOM */
             creat: function () {
@@ -6221,6 +6448,16 @@
             setFly: function (on) { setFly(on); },
             breakTime: function (b) { return breakTime(b); },
             heldStack: function () { var h = held(); return h ? { id: h.id, c: h.c, dur: h.dur } : null; },
+            swing: function () { return { t: Math.round(RT.swing * 1e4) / 1e4, dur: RT.swingT, equip: Math.round((RT.equip || 0) * 1e3) / 1e3 }; },
+            // centroid of the actual hand geometry: the only honest way to ask
+            // "did the arm move?" without trusting the timer that drives it
+            hand: function () {
+                var v = handGeo();
+                if (!v.length) return null;
+                var n = v.length / 9, sx = 0, sy = 0, sz = 0;
+                for (var i = 0; i < v.length; i += 9) { sx += v[i]; sy += v[i + 1]; sz += v[i + 2]; }
+                return [Math.round(sx / n * 1e4) / 1e4, Math.round(sy / n * 1e4) / 1e4, Math.round(sz / n * 1e4) / 1e4];
+            },
             eff: function () { return JSON.parse(JSON.stringify(S.eff || {})); },
             rules: function () { return JSON.parse(JSON.stringify(S.rules || {})); },
             flying: function () { return !!RT.fly; },
