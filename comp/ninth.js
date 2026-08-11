@@ -182,7 +182,7 @@ var TUNE = {
     coupletStacks: 1,    // extra stacks for saying two of a sound back to back
     coupletDmg: 0.35,    // and extra bite on the second one
     slantShift: 1,       // a slant rhyme drags every other sound over to its own
-    dragMul: 0.35,       // what a drag hits for, as a share of answerBase. FLAT: see doRhyme
+    dragMul: 0.7,        // what a drag hits for, as a share of one slant of answerBase. FLAT: see doRhyme
     dragAge: 0.45,       // and the share of their remaining life it costs the sounds it pulls
     rhymeCost: 15        // what closing a rhyme costs. answerCost is its old name
 };
@@ -272,7 +272,7 @@ var CHARMS = {
               m: { rampAfter: -0.5 } },
     bell:   { n: 'The Vestry Bell', cost: 70, d: 'Rung on the ninth night, badly. Echo builds 60% faster and decays slower.',
               m: { echoGain: 0.6, echoDecay: -1.5 } },
-    chalk:  { n: 'Rehearsal Chalk', cost: 45, d: 'For marking where to stand. A slant answer keeps 80% of its damage instead of half.',
+    chalk:  { n: 'Rehearsal Chalk', cost: 45, d: 'For marking where to stand. Your drag hits 60% harder, and a slant that does not drag keeps 80% of its damage instead of half.',
               m: { slantMul: 0.3 } },
     lamp:   { n: 'The Sill Lamp', cost: 85, d: 'Set out every year for a man who was never out there. -eat and -ight land 30% harder.',
               m: { famDmg: { eat: 0.3, ight: 0.3 } } },
@@ -1596,7 +1596,7 @@ function init(el) {
             say: function () { doCall(); },
             swallow: function () { doSwallow(); },
             rhyme: function (f) { doRhyme(f); },
-            board: function () { var o = {}; FAM_IDS.forEach(function (f) { var n = boardCount(f); if (n) o[f] = n; }); return o; },
+            board: function () { var o = {}; FAM_IDS.forEach(function (f) { var n = boardCount(f, 1); if (n) o[f] = n; }); return o; },
             poem: function () { return RT.poem; },
             frag: function (n) { grantFragment(n); },
             sfx: function (k) { sfx(k); return RT.audio.errs; },
@@ -2511,13 +2511,15 @@ function breakStack(f, s) {
    every rhyme pip, which is the whole readability problem solved: you
    can see at a glance that there are four -eat on the board and one
    stray -ark you have not closed. */
-function boardCount(fam) {
+/* `withFolk` is for the dev handle's auto-answer, which wants the real best
+   sound. The HUD never passes it: the pip is a combat readout, and at the
+   last cue the whole square is carrying -ill, so it would light up with 25
+   and hand the player the answer to the only question the game asks. */
+function boardCount(fam, withFolk) {
     var n = 0;
     RT.foes.forEach(function (f) {
-        // never the town. The pip is a combat readout, and at the last cue the
-        // whole square is carrying -ill: the HUD would light up with 25 and
-        // hand the player the answer to the only question the game asks.
-        if (f.dead || f.def.folk || heldOpen(f)) return;
+        if (f.dead || heldOpen(f)) return;
+        if (f.def.folk && !withFolk) return;
         f.stacks.forEach(function (t) { if (t.fam === fam) n++; });
     });
     return n;
@@ -2598,7 +2600,10 @@ function doRhyme(fam) {
             // six did 240 and left all six standing, against 95 for the close
             // that spends them), so the best play in a game about closing the
             // couplet was to never close one.
-            dmg = st.answerBase * T('dragMul') * famDmgMul(fam);
+            // Still billed through st.slantMul, because a drag IS a slant and
+            // Rehearsal Chalk buys that number. Give the drag its own constant
+            // and the chalk becomes a 45 coin charm that does nothing.
+            dmg = st.answerBase * st.slantMul * T('dragMul') * famDmgMul(fam);
         } else {
             dmg = (st.answerBase + st.answerPerStack * n) * st.slantMul * famDmgMul(fam);
         }
@@ -2703,7 +2708,7 @@ function doAnswer() {
     var best = null, bn = 0;
     FAM_IDS.forEach(function (f) {
         if (!rhymeReady(f)) return;
-        var n = boardCount(f);
+        var n = boardCount(f, 1);          // the town counts here: this is __ninth.answer()
         if (n > bn) { bn = n; best = f; }
     });
     doRhyme(best || (rhymeReady(answerFam()) ? answerFam() : FAM_IDS.filter(rhymeReady)[0] || 'eat'));
