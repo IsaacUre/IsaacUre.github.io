@@ -5333,7 +5333,7 @@
         var names = Object.keys(CMDS).sort();
         chatSay('--- Showing ' + names.length + ' commands ---', 'dim');
         for (var i = 0; i < names.length; i++) chatSay(CMDS[names[i]].usage, 'dim');
-    }, function () { return Object.keys(CMDS).sort(); });
+    }, function (a) { return a === 0 ? Object.keys(CMDS).sort() : []; });
 
     cmd('gamemode', '/gamemode <survival|creative|adventure|spectator>', 'Sets a player\'s game mode', function (rd, raw) {
         var m = rd.word();
@@ -5342,7 +5342,7 @@
         if (g === undefined) return chatSyntax('Unknown game mode: ' + m, raw, rd.i);
         setGamemode(g);
         chatSay('Set own game mode to ' + GM_NAME[g] + ' Mode');
-    }, function () { return ['survival', 'creative', 'adventure', 'spectator']; });
+    }, function (a) { return a === 0 ? ['survival', 'creative', 'adventure', 'spectator'] : []; });
 
     cmd('difficulty', '/difficulty [peaceful|easy|normal|hard]', 'Sets the difficulty level', function (rd, raw) {
         var d = rd.word();
@@ -5353,7 +5353,7 @@
         // peaceful clears the hostiles, and spawnTick keeps them cleared
         if (v === 0) for (var i = RT.foes.length - 1; i >= 0; i--) if (RT.foes[i].hostile) RT.foes.splice(i, 1);
         chatSay('Set the difficulty to ' + DIFF_NAME[v]);
-    }, function () { return ['peaceful', 'easy', 'normal', 'hard']; });
+    }, function (a) { return a === 0 ? ['peaceful', 'easy', 'normal', 'hard'] : []; });
 
     cmd('time', '/time <set|add|query> <value>', 'Changes or queries the world time', function (rd, raw) {
         var sub = rd.word().toLowerCase();
@@ -5379,7 +5379,7 @@
         else S.t = (S.t + ticks2 / 24000 * CYCLE) % CYCLE;
         var now = Math.floor(S.t / CYCLE * 24000);
         chatSay(sub === 'set' ? 'Set the time to ' + now : 'Added ' + ticks2 + ' to the time');
-    }, function (a) { return a === 0 ? ['set', 'add', 'query'] : ['day', 'noon', 'sunset', 'night', 'midnight', 'sunrise']; });
+    }, function (a) { return a === 0 ? ['set', 'add', 'query'] : a === 1 ? ['day', 'noon', 'sunset', 'night', 'midnight', 'sunrise'] : []; });
 
     cmd('weather', '/weather <clear|rain|thunder> [duration]', 'Sets the weather', function (rd, raw) {
         var w = rd.word().toLowerCase();
@@ -5390,7 +5390,7 @@
         if (dur && secs === null) return chatSyntax('Expected integer', raw, rd.i - dur.length);
         S.weather = map[w]; S.wt = Math.max(1, secs);
         chatSay(w === 'clear' ? 'Set the weather to clear' : w === 'rain' ? 'Set the weather to rain' : 'Set the weather to thunder');
-    }, function () { return ['clear', 'rain', 'thunder']; });
+    }, function (a) { return a === 0 ? ['clear', 'rain', 'thunder'] : []; });
 
     cmd('tp', '/tp <x> <y> <z> | /tp <target>', 'Teleports entities', cmdTeleport, tpComplete);
     cmd('teleport', '/teleport <x> <y> <z> | /teleport <target>', 'Teleports entities', cmdTeleport, tpComplete);
@@ -5454,7 +5454,7 @@
         if (!item) for (i = 0; i < 4; i++) if (S.armor[i]) { n++; S.armor[i] = null; }
         paintHotbar(); paintArmorBar();
         chatSay(n ? 'Removed ' + n + ' items from player Steve' : 'No items were found on player Steve');
-    }, function (a) { return a === 0 ? ['@s'] : itemNames(); });
+    }, function (a) { return a === 0 ? ['@s'] : a === 1 ? itemNames() : []; });
 
     cmd('kill', '/kill [target]', 'Kills entities', function (rd, raw) {
         var at = rd.i, sel = rd.selectorTok() || '@s';
@@ -5468,7 +5468,7 @@
             else { t.hp = 0; killFoe(t); killed++; names.push(targetName(t)); }
         }
         chatSay(killed === 1 ? 'Killed ' + names[0] : 'Killed ' + killed + ' entities');
-    }, function () { return ['@s', '@e', '@e[type=zombie]']; });
+    }, function (a) { return a === 0 ? ['@s', '@e', '@e[type=zombie]'] : []; });
 
     cmd('summon', '/summon <entity> [x y z]', 'Summons an entity', function (rd, raw) {
         var at = rd.i, kind = stripNs(rd.word()).toLowerCase();
@@ -5485,7 +5485,7 @@
         var nf = mkFoe(kind, p.x, p.y, p.z);
         RT.foes.push(nf);
         chatSay('Summoned new ' + (kind.charAt(0).toUpperCase() + kind.slice(1)));
-    }, function (a) { return a === 0 ? mobNames() : ['~ ~ ~']; });
+    }, function (a) { return a === 0 ? mobNames() : a === 1 ? ['~ ~ ~'] : []; });
 
     cmd('setblock', '/setblock <x> <y> <z> <block>', 'Changes a block', function (rd, raw) {
         var p = readPos(rd, Math.floor(S.px), Math.floor(S.py), Math.floor(S.pz));
@@ -5502,7 +5502,7 @@
         if (!chunkAt(x, z)) return chatErr('Position is not loaded');
         setB(x, y, z, id);
         chatSay('Changed the block at ' + x + ', ' + y + ', ' + z);
-    }, function (a) { return a < 3 ? ['~'] : Object.keys(blockNames()); });
+    }, function (a) { return a < 3 ? ['~'] : a === 3 ? Object.keys(blockNames()) : []; });
 
     cmd('fill', '/fill <from> <to> <block> [replace|destroy|keep|hollow|outline]', 'Fills a region with a block', function (rd, raw) {
         var bx = Math.floor(S.px), by = Math.floor(S.py), bz = Math.floor(S.pz);
@@ -5532,7 +5532,7 @@
         }
         remeshAround(x0, y0, z0, x1, y1, z1);
         chatSay(n ? 'Successfully filled ' + n + ' block(s)' : 'No blocks were filled');
-    }, function (a) { return a < 6 ? ['~'] : Object.keys(blockNames()); });
+    }, function (a) { return a < 6 ? ['~'] : a === 6 ? Object.keys(blockNames()) : a === 7 ? ['replace', 'destroy', 'keep', 'hollow', 'outline'] : []; });
 
     cmd('effect', '/effect <give|clear> [target] [effect] [seconds] [amplifier]', 'Adds or removes status effects', function (rd, raw) {
         var sub = rd.word().toLowerCase();
@@ -5620,7 +5620,7 @@
         if (v !== 'true' && v !== 'false') return chatSyntax('Invalid boolean, expected \'true\' or \'false\'', raw, rd.i - v.length);
         S.rules[key] = v === 'true';
         chatSay('Gamerule ' + key + ' is now set to: ' + v);
-    }, function (a) { return a === 0 ? Object.keys(GR_DEF) : ['true', 'false']; });
+    }, function (a) { return a === 0 ? Object.keys(GR_DEF) : a === 1 ? ['true', 'false'] : []; });
 
     cmd('seed', '/seed', 'Displays the world seed', function () {
         chatSay('Seed: [' + S.seed + ']');
@@ -5635,7 +5635,7 @@
         }
         S.spawn = [p.x, p.y, p.z];
         chatSay('Set spawn point to ' + fmtC(p.x) + ', ' + fmtC(p.y) + ', ' + fmtC(p.z) + ' for Steve');
-    }, function () { return ['~ ~ ~']; });
+    }, function (a) { return a === 0 ? ['~ ~ ~'] : []; });
 
     cmd('setworldspawn', '/setworldspawn [x y z]', 'Sets the world spawn', function (rd, raw) {
         var p = { x: S.px, y: S.py, z: S.pz };
@@ -5646,7 +5646,7 @@
         }
         S.wspawn = [p.x, p.y, p.z];
         chatSay('Set the world spawn point to ' + fmtC(p.x) + ', ' + fmtC(p.y) + ', ' + fmtC(p.z));
-    }, function () { return ['~ ~ ~']; });
+    }, function (a) { return a === 0 ? ['~ ~ ~'] : []; });
 
     cmd('enchant', '/enchant <target> <enchantment> [level]', 'Enchants the held item', function (rd, raw) {
         var selAt = rd.i, sel = rd.selectorTok();
@@ -5700,7 +5700,7 @@
             }
         }
         chatErr('Could not find a ' + b + ' within 512 blocks');
-    }, function () { return ['plains', 'forest', 'desert', 'snowy']; });
+    }, function (a) { return a === 0 ? ['plains', 'forest', 'desert', 'snowy'] : []; });
 
     cmd('tellraw', '/tellraw <target> <message>', 'Displays a raw message', function (rd) {
         rd.selectorTok();
