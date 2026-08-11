@@ -183,7 +183,7 @@ var TUNE = {
     coupletDmg: 0.35,    // and extra bite on the second one
     slantShift: 1,       // a slant rhyme drags every other sound over to its own
     dragMul: 0.7,        // what a drag hits for, as a share of one slant of answerBase. FLAT: see doRhyme
-    dragAge: 0.45,       // and the share of their remaining life it costs the sounds it pulls
+    dragAge: 0.35,       // and the share of their remaining life it costs the sounds it pulls
     rhymeCost: 15        // what closing a rhyme costs. answerCost is its old name
 };
 
@@ -2563,12 +2563,15 @@ function doRhyme(fam) {
     // is free. Charging for it made the 0.9s gap after a wrong answer in the
     // act into a trap: Bern tells you the sound, you say it inside a second,
     // and you are billed fifteen breath for silence.
-    if (!live.length) {
-        typo(RT.px, RT.py, FAMS[fam].tag, '#4d4757', 0.5, 12, 'pop');
-        sfx('empty');
-        return;
-    }
-    if (!spendBreath(st.answerCost)) { hudNudge('breath'); return; }
+    //
+    // Free, but NOT skipped. Returning early here quietly broke two things,
+    // because everything below this line still has to happen: you said the
+    // sound, so it ends your poem line (that is the poem's only player-driven
+    // break), and it counts as an Answer, which is the event the act's watcher
+    // reads. Skip it and a rhyme pressed into an empty square folds three
+    // words into the next line with no end sound, and the last cue can be
+    // made unanswerable.
+    if (live.length && !spendBreath(st.answerCost)) { hudNudge('breath'); return; }
     RT.answerCd = 0.34;
     RT.nAnswers++;
     RT.lastRhyme = fam;
@@ -2653,9 +2656,12 @@ function doRhyme(fam) {
         slam(word, '#6a5f72', 'slant');
         RT.shake = shake(3);
         sfx('slant');
+    } else {
+        // a rhyme with nothing to rhyme with: it goes out and finds no sound.
+        // It cost nothing, and it still ended the line.
+        typo(RT.px, RT.py, word, '#4d4757', 0.5, 12, 'pop');
+        sfx('empty');
     }
-    // there is no empty case down here any more: a rhyme that finds no sound
-    // at all returns before it is charged, at the top.
 }
 /* The money shot. Everything you said that matched flies in from where
    it was stuck and sets itself into one line across the middle of the
@@ -2753,6 +2759,11 @@ function stepReprise(dt) {
     var st = stats(), hit = 0;
     RT.foes.forEach(function (f) {
         if (f.dead || !f.stacks.length) return;
+        // never the town. The Reprise is everything YOU said coming back, and
+        // the town's open line is not something you said. It also used to
+        // clear their stacks on the last beat, which is the one thing in the
+        // game that could empty the square without an Answer.
+        if (heldOpen(f) || f.def.folk) return;
         var n = f.stacks.length;
         // everything counts as closed, whatever sound it was
         var dmg = (st.answerBase + st.answerPerStack * n) * T('repriseMul') * famDmgMul(r.fam) * deafMul(f, r.fam);
