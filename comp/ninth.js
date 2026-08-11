@@ -1042,7 +1042,11 @@ var DEV = [
 /* Bitmaps are the size of the PLACE now, not of the canvas, so a road
    can be longer than one screen. They are also the memory story of the
    game, so the cache is bounded and close() empties it. */
-var FLOORS = {}, FLOOR_LRU = [], FLOOR_MAX = 5;
+/* Seven, not five: a floor is the one thing that cannot be faked for a
+   frame while it builds, and five meant the ordinary loop through Wick
+   — square, house, shop, lane, mill, loft — evicted the square before
+   you walked back into it and paid for it again every time. */
+var FLOORS = {}, FLOOR_LRU = [], FLOOR_MAX = 7;
 var FLOOR_PAL = {
     stage:  ['#3a2a1c', '#2c1f14', '#4a3524'],
     town:   ['#2a2630', '#211d28', '#37323f'],
@@ -1059,6 +1063,29 @@ function floorOf(kind) { return FLOOR_PAL[kind] ? kind : 'mill'; }
    TILE space and converted, so detail sits where it is in the world and
    does not visibly repeat with the tile grid. */
 function blob(g, x, y, rx, ry, col) { g.fillStyle = col; g.beginPath(); g.ellipse(x, y, rx, ry, 0, 0, TAU); g.fill(); }
+/* A cobbled square is about thirteen thousand of those, and thirteen
+   thousand draw calls is most of what it cost to walk into Wick. Same
+   colour goes down in one path. It needs the shade quantised to a fixed
+   number of steps to be worth anything, which is what pixel art wants
+   in the first place: a palette, not a continuum. */
+function blobBatch(g) {
+    var by = {};
+    return {
+        add: function (x, y, rx, ry, col) { (by[col] || (by[col] = [])).push(x, y, rx, ry); },
+        flush: function () {
+            Object.keys(by).forEach(function (col) {
+                var a = by[col];
+                g.beginPath();
+                for (var i = 0; i < a.length; i += 4) {
+                    g.moveTo(a[i] + a[i + 2], a[i + 1]);        // start a subpath, or they chain together
+                    g.ellipse(a[i], a[i + 1], a[i + 2], a[i + 3], 0, 0, TAU);
+                }
+                g.fillStyle = col; g.fill();
+            });
+            by = {};
+        }
+    };
+}
 function lattice(f, step, jit, fn) {                        // a jittered grid in tile space
     for (var v = -0.5; v < f.gh + 0.5; v += step)
         for (var u = -0.5; u < f.gw + 0.5; u += step) {
@@ -1069,15 +1096,17 @@ function lattice(f, step, jit, fn) {                        // a jittered grid i
 var GROUND = {};
 GROUND.town = function (g, f) {                             // cobbles, and the mud where the cobbles went
     var fr = f.fr;
+    var joints = blobBatch(g), stones = blobBatch(g), tops = blobBatch(g);
     lattice(f, 0.3, 0.2, function (u, v, x, y) {
         var d = Math.hypot(u - f.gw / 2, v - f.gh / 2);
         if (fr() < 0.1 + d * 0.012) return;                 // worn through to earth, more so at the edges
         var rx = 3.4 + fr() * 2.6, ry = rx * 0.52;
-        blob(g, x, y + 1.5, rx + 0.6, ry + 0.6, 'rgba(8,6,12,.45)');       // the joint
+        joints.add(x, y + 1.5, rx + 0.6, ry + 0.6, 'rgba(8,6,12,.45)');    // the joint
         var k = 0.82 + fr() * 0.44;
-        blob(g, x, y, rx, ry, shadeHex(f.pal[2], k));
-        blob(g, x - rx * 0.2, y - ry * 0.28, rx * 0.5, ry * 0.42, shadeHex(f.pal[2], k * 1.22));
+        stones.add(x, y, rx, ry, shadeHex(f.pal[2], k));
+        tops.add(x - rx * 0.2, y - ry * 0.28, rx * 0.5, ry * 0.42, shadeHex(f.pal[2], k * 1.22));
     });
+    joints.flush(); stones.flush(); tops.flush();           // joints under every stone, then every lit face
     for (var m = 0; m < 90; m++) {                          // mud pushed up between the stones
         var u2 = fr() * f.gw, v2 = fr() * f.gh;
         blob(g, f.px(u2, v2), f.py(u2, v2), 6 + fr() * 12, 3 + fr() * 6, 'rgba(34,28,20,.3)');
@@ -1575,6 +1604,17 @@ function init(el) {
                          call: S.call, answer: S.answer, dead: RT.dead, phase: RT.phase, wave: RT.wave, dilate: RT.dilate };
             },
             sprites: function () { return Object.keys(SPR).length; },   // baked figures held
+            gfx: function () {                     // what the prop and floor caches are actually holding
+                var fb = 0; Object.keys(FLOORS).forEach(function (k) { var f = FLOORS[k]; fb += f.cv.width * f.cv.height * 4; });
+                return { sprites: Object.keys(SPRITES).length, spriteMB: +(SPRITE_BYTES / 1048576).toFixed(2),
+                         spriteBudgetMB: +(SPRITE_BUDGET / 1048576).toFixed(2),
+                         floors: Object.keys(FLOORS).length, floorMB: +(fb / 1048576).toFixed(2),
+                         keys: Object.keys(SPRITES),
+                         anchors: Object.keys(SPRITES).reduce(function (a, k) {
+                             if (Object.keys(SPRITES[k].anchors).length) a[k] = SPRITES[k].anchors;
+                             return a;
+                         }, {}) };
+            },
             S: function () { return S; }, RT: function () { return RT; }, TUNE: TUNE
         };
     }
@@ -3735,6 +3775,7 @@ function draw(rdt) {
     // was hard-coded to 1/60: on a 144Hz screen every typographic
     // effect outlived its intent by more than double
     var cx = RT.cx, dt = Math.min(0.05, rdt || 1 / 60);
+    startBuildBudget();
     cx.save();
     if (S.opts.shake && RT.shake > 0.2) cx.translate(rnd(-RT.shake, RT.shake) * 0.5, rnd(-RT.shake, RT.shake) * 0.35);
     cx.clearRect(-30, -30, VW + 60, VH + 60);
@@ -5000,8 +5041,8 @@ var PLACES = {
             { t: 'table', b: [4.2, 3.4, 2.6, 1.6] },
             { t: 'bed', b: [8.2, 1.2, 1.8, 3.2] },
             { t: 'shelf', b: [1, 1.2, 2.4, 0.8] },
-            { t: 'lamp', b: [5.3, 3.0, 0.5, 0.5] },
-            { t: 'hearth', b: [7.6, 0.6, 2.2, 1 ] },
+            { t: 'lamp', b: [7.2, 3.6, 0.5, 0.5] },
+            { t: 'hearth', b: [3.9, 0.6, 2.2, 1 ] },
             { t: 'crate', b: [1.2, 6.4, 1.2, 1.2] }
         ],
         looks: [
@@ -5156,7 +5197,7 @@ var PLACES = {
     },
     a3sq: {
         n: 'Wick — the ninth night', sub: 'the four hundredth performance',
-        floor: 'town', w: 17, h: 15, script: 'a3', a3: 1, oneway: 1,
+        floor: 'town', w: 17, h: 15, night: 1, script: 'a3', a3: 1, oneway: 1,
         props: [
             { t: 'house', b: [0, 0, 3.4, 2.6] }, { t: 'house', b: [13.6, 0, 3.4, 2.8] },
             { t: 'house', b: [0, 12.4, 3.6, 2.6] }, { t: 'house', b: [13.4, 12.2, 3.6, 2.8] },
@@ -6309,7 +6350,7 @@ function propDef(t) { return PROP[t] || PROP._; }
    Painters work in LOCAL space: the centre of the prop's ground
    footprint is the origin, and up is negative y. `c.lx/c.ly` map a
    point inside the footprint, in tiles, into that space. */
-var SPRITES = {}, SPRITE_LRU = [], SPRITE_BUDGET = 14 << 20;   // bytes of backing store, not entries
+var SPRITES = {}, SPRITE_LRU = [], SPRITE_BUDGET = 10 << 20;   // bytes of backing store, not entries
 var SPRITE_BYTES = 0, SPRITE_PAD = 30;                          // pad: eaves, canopies, anything that overhangs
 function hash2(a, b, c) {
     var n = (Math.round(a * 16) + 1013) | 0;
@@ -6326,10 +6367,37 @@ function seedRng(n) {                          // stable per sprite, so a house 
     var s = (n >>> 0) || 1;
     return function () { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; };
 }
-function propSprite(t, bw, bh, v) {
+/* The geometry every painter works in: origin at the centre of the
+   footprint, on the ground. Split out of propSprite because the plain
+   body is also drawn straight to the screen, for the frame or two
+   before a prop's real sprite has been painted. */
+function spriteCtx(t, bw, bh, v) {
+    var d = propDef(t), sk = (bw - bh) * TILE_W / 4;
+    var rrx = (bw + bh) * TILE_W / 4, rry = (bw + bh) * TILE_H / 4;
+    var c = {
+        t: t, bw: bw, bh: bh, hgt: d.h, pal: d.pal, d: d, v: v,
+        rrx: rrx, rry: rry, sk: sk, tx: 0, ty: -d.h,
+        x0: -sk, y0: -rry, x1: rrx, y1: (bw - bh) * TILE_H / 4,
+        x2: sk, y2: rry, x3: -rrx, y3: -(bw - bh) * TILE_H / 4,
+        fw: Math.hypot(sk + rrx, rry + (bw - bh) * TILE_H / 4) || 1,
+        lx: function (u, q) { return (u - q) * (TILE_W / 2) - sk; },
+        ly: function (u, q) { return (u + q) * (TILE_H / 2) - rry; },
+        anchors: {},
+        rng: seedRng(hash2(bw * 7 + bh * 13, v * 101 + 7, t.length * 131 + t.charCodeAt(t.length - 1)))
+    };
+    /* Where the fire is, where the chimney pot is, where the hub of the
+       wheel is. The animated layer used to work these out a second time
+       from the footprint, and the two answers drifted: the smoke came
+       out of the middle of the roof and the fire burned eleven pixels
+       above the logs. Whatever paints a thing now says where it is. */
+    c.at = function (name, x, y) { c.anchors[name] = [x, y]; return [x, y]; };
+    return c;
+}
+function propSprite(t, bw, bh, v, mayBuild) {
     var key = t + '|' + bw + '|' + bh + '|' + v;
     var hit = SPRITES[key];
     if (hit) { touchSprite(key); return hit; }
+    if (mayBuild === false) return null;
     var d = propDef(t), hgt = d.h;
     var rrx = (bw + bh) * TILE_W / 4, rry = (bw + bh) * TILE_H / 4;
     var over = d.over || 0;                    // headroom above hgt for roofs and canopies
@@ -6339,22 +6407,18 @@ function propSprite(t, bw, bh, v) {
     var g = cv.getContext('2d');
     var ax = SPRITE_PAD + Math.ceil(rrx), ay = SPRITE_PAD + Math.ceil(rry + hgt + over);
     g.translate(ax, ay);
-    var sk = (bw - bh) * TILE_W / 4;
-    var c = {
-        t: t, bw: bw, bh: bh, hgt: hgt, pal: d.pal, d: d, v: v,
-        rrx: rrx, rry: rry, sk: sk, tx: 0, ty: -hgt,
-        x0: -sk, y0: -rry, x1: rrx, y1: (bw - bh) * TILE_H / 4,
-        x2: sk, y2: rry, x3: -rrx, y3: -(bw - bh) * TILE_H / 4,
-        fw: Math.hypot(sk + rrx, rry + (bw - bh) * TILE_H / 4) || 1,
-        lx: function (u, q) { return (u - q) * (TILE_W / 2) - sk; },
-        ly: function (u, q) { return (u + q) * (TILE_H / 2) - rry; },
-        rng: seedRng(hash2(bw * 7 + bh * 13, v * 101 + 7, t.length * 131 + t.charCodeAt(t.length - 1)))
-    };
+    var c = spriteCtx(t, bw, bh, v);
     paintProp(g, c);
-    var sp = { cv: cv, ax: ax, ay: ay, bytes: w * h * 4 };
+    var sp = { cv: cv, ax: ax, ay: ay, bytes: w * h * 4, anchors: c.anchors };
     SPRITES[key] = sp; SPRITE_BYTES += sp.bytes;
     touchSprite(key); trimSprites();
     return sp;
+}
+/* sprite-local point to screen. Local (0,0) is the footprint centre, and
+   the sprite is blitted so that centre lands on (mxc, myc). */
+function anchorAt(sp, name, mxc, myc) {
+    var a = sp && sp.anchors && sp.anchors[name];
+    return { x: mxc + (a ? a[0] : 0), y: myc + (a ? a[1] : 0) };
 }
 function touchSprite(key) {
     var i = SPRITE_LRU.indexOf(key); if (i >= 0) SPRITE_LRU.splice(i, 1);
@@ -6389,16 +6453,32 @@ function line(g, x0, y0, x1, y1, col, w) {
    the edge of, which is what keeps this reading as pixels. */
 function dither(g, quad, col, amt, rng, size) {
     var s = size || 2;
-    var xs = quad.map(function (p) { return p[0]; }), ys = quad.map(function (p) { return p[1]; });
-    var x0 = Math.floor(Math.min.apply(null, xs)), x1 = Math.ceil(Math.max.apply(null, xs));
+    /* Walk the quad's own scanlines rather than its bounding box.
+       Every face here is a parallelogram drawn at an iso angle, so the
+       box is mostly outside the shape: scanning it and clipping cost 3x
+       on a house wall, 6x on the stage and 33x on the footlight strip,
+       all of it spent generating random numbers for cells that were
+       then clipped away. Dropping the clip drops a save/restore too. */
+    var n = quad.length, ys = quad.map(function (p) { return p[1]; });
     var y0 = Math.floor(Math.min.apply(null, ys)), y1 = Math.ceil(Math.max.apply(null, ys));
-    g.save(); g.beginPath();
-    g.moveTo(quad[0][0], quad[0][1]);
-    for (var i = 1; i < quad.length; i++) g.lineTo(quad[i][0], quad[i][1]);
-    g.closePath(); g.clip();
-    g.fillStyle = col;
-    for (var y = y0; y < y1; y += s) for (var x = x0; x < x1; x += s) if (rng() < amt) g.fillRect(x, y, s, s);
-    g.restore();
+    /* One path, one fill. A cell per fillRect meant about four thousand
+       draw calls for a single house wall, which is where sixty of the
+       sixty-six milliseconds of a wall sprite went. The cells sit on a
+       grid and never overlap, so filling them together is identical. */
+    g.beginPath();
+    for (var y = y0; y < y1; y += s) {
+        var yc = y + s / 2, lo = Infinity, hi = -Infinity;
+        for (var i = 0; i < n; i++) {                       // where this scanline crosses each edge
+            var a = quad[i], b = quad[(i + 1) % n];
+            if ((a[1] <= yc) === (b[1] <= yc)) continue;
+            var xh = a[0] + (b[0] - a[0]) * (yc - a[1]) / (b[1] - a[1]);
+            if (xh < lo) lo = xh;
+            if (xh > hi) hi = xh;
+        }
+        if (lo > hi) continue;
+        for (var x = Math.floor(lo / s) * s; x < hi; x += s) if (rng() < amt) g.rect(x, y, s, s);
+    }
+    g.fillStyle = col; g.fill();
 }
 /* bilinear point inside a quad: the only sane way to lay courses of
    anything across a face that is a parallelogram on screen */
@@ -6408,13 +6488,32 @@ function qp(quad, u, v) {
     var bx = d[0] + (c[0] - d[0]) * u, by = d[1] + (c[1] - d[1]) * u;
     return [tx + (bx - tx) * v, ty + (by - ty) * v];
 }
-function shadeHex(hex, k) {                    // k < 1 darkens, k > 1 lightens, clamped
-    var n = parseInt(hex.slice(1), 16);
-    var r = clamp(Math.round(((n >> 16) & 255) * k), 0, 255);
-    var g2 = clamp(Math.round(((n >> 8) & 255) * k), 0, 255);
-    var b2 = clamp(Math.round((n & 255) * k), 0, 255);
-    return '#' + ((1 << 24) | (r << 16) | (g2 << 8) | b2).toString(16).slice(1);
+/* k < 1 darkens, k > 1 lightens, clamped. Snapped to 64 steps and
+   memoised: this runs twice per cobblestone and several times per
+   course of stone in every wall in the game, and it was re-parsing a
+   hex string every time. Snapping is not a compromise here — a fixed
+   number of shades per colour is what makes a palette a palette. */
+var SHADE = {};
+function shadeHex(hex, k) {
+    var q = Math.round(k * 64), key = hex + '|' + q;
+    var hit = SHADE[key];
+    if (hit) return hit;
+    var kk = q / 64, n = parseInt(hex.slice(1), 16);
+    var r = clamp(Math.round(((n >> 16) & 255) * kk), 0, 255);
+    var g2 = clamp(Math.round(((n >> 8) & 255) * kk), 0, 255);
+    var b2 = clamp(Math.round((n & 255) * kk), 0, 255);
+    return (SHADE[key] = '#' + ((1 << 24) | (r << 16) | (g2 << 8) | b2).toString(16).slice(1));
 }
+/* Painting a sprite is expensive on purpose: it buys a detailed prop
+   that then costs one drawImage a frame forever. What it must not do is
+   spend all of it on the frame you walk through a door. Entering the
+   square used to build every sprite in it at once, which is 150ms, or
+   nine dropped frames, at exactly the moment the place is supposed to
+   open up. So each frame gets a budget, and anything not painted yet is
+   drawn as its plain solid until its turn comes. */
+var BUILD_MS = 5, buildT0 = 0;
+function startBuildBudget() { buildT0 = performance.now(); }
+function mayBuild() { return performance.now() - buildT0 < BUILD_MS; }
 function drawProp(cx, o) {
     var b = o.b, t = o.t;
     var x0 = isoX(b[0], b[1]), x1 = isoX(b[0] + b[2], b[1]), x2 = isoX(b[0] + b[2], b[1] + b[3]), x3 = isoX(b[0], b[1] + b[3]);
@@ -6422,9 +6521,18 @@ function drawProp(cx, o) {
     if (Math.max(x0, x1, x2, x3) < -80 || Math.min(x0, x1, x2, x3) > VW + 80) return;   // off camera
     if (Math.min(y0, y1, y2, y3) - 240 > VH + 40 || Math.max(y0, y1, y2, y3) < -260) return;
     var mxc = (x0 + x2) / 2, myc = (y0 + y2) / 2;
-    var sp = propSprite(t, b[2], b[3], propVar(t, b));
+    var v = propVar(t, b);
+    var sp = propSprite(t, b[2], b[3], v, mayBuild());
+    if (!sp) {                                   // its turn is next frame; stand something there meanwhile
+        var c = spriteCtx(t, b[2], b[3], v);
+        cx.save(); cx.translate(Math.round(mxc), Math.round(myc));
+        contactShadow(cx, c);
+        if (c.d.body === 'round') roundBody(cx, c); else if (c.d.body === 'cyl') cylBody(cx, c); else body(cx, c);
+        cx.restore();
+        return;
+    }
     cx.drawImage(sp.cv, Math.round(mxc - sp.ax), Math.round(myc - sp.ay));
-    if (propDef(t).live) propLive(cx, o, mxc, myc);
+    if (propDef(t).live) propLive(cx, o, mxc, myc, sp);
     return;
 }
 /* The one light rule, for every prop in the game: the key is low and
@@ -6440,14 +6548,21 @@ function paintProp(g, c) {
    reads as a sticker laid on top of the floor, and eleven of them in a
    room read as a collage. */
 function contactShadow(g, c) {
-    var rx = c.rrx * 1.05 + 6, ry = c.rry * 1.05 + 3;
-    g.save(); g.translate(0, 2); g.scale(1, ry / rx);
-    var gr = g.createRadialGradient(0, 0, rx * 0.34, 0, 0, rx);
-    gr.addColorStop(0, 'rgba(5,4,9,.6)'); gr.addColorStop(0.7, 'rgba(5,4,9,.3)'); gr.addColorStop(1, 'rgba(5,4,9,0)');
-    g.fillStyle = gr; g.beginPath(); g.arc(0, 0, rx, 0, TAU); g.fill();
+    /* Follow the footprint, not the diamond's half extents. Sized off
+       rrx/rry, a prop that is long and thin got a shadow the size of its
+       bounding box: the footlight strip is 13 tiles by half a tile and
+       was laying a 420px black ellipse across the middle of the stage,
+       over the player standing on it, in the first scene of the game.
+       Three banded rings rather than a gradient, because a soft radial
+       falloff is the one thing on screen that is not made of pixels. */
+    var q = [[c.x0, c.y0], [c.x1, c.y1], [c.x2, c.y2], [c.x3, c.y3]];
+    g.save(); g.translate(0, 2);
+    [[1.18, 'rgba(5,4,9,.15)'], [1.09, 'rgba(5,4,9,.2)'], [1.0, 'rgba(5,4,9,.34)']].forEach(function (st) {
+        poly(g, q.map(function (p) { return [p[0] * st[0], p[1] * st[0]]; }), st[1]);
+    });
     g.restore();
 }
-function propLive(cx, o, mxc, myc) { (LIVE[o.t] || function () {})(cx, o, mxc, myc); }
+function propLive(cx, o, mxc, myc, sp) { (LIVE[o.t] || function () {})(cx, o, mxc, myc, sp); }
 var LIVE = {};
 
 /* the plain extruded solid, for everything without bespoke geometry */
@@ -6743,6 +6858,7 @@ PAINT.house = function (g, c) {
     for (var br = 0; br < 4; br++) px(g, cp[0] - 7, cp[1] - ch + 3 + br * 5, 14, 1, 'rgba(16,12,22,.5)');
     px(g, cp[0] - 9, cp[1] - ch - 3, 18, 4, '#403a49');       // the cap
     px(g, cp[0] - 5, cp[1] - ch - 2, 10, 2, '#0d0a12');       // soot
+    c.at('chimney', cp[0], cp[1] - ch - 3);                   // and where the smoke has to leave from
     if (v % 5 === 2) {                                        // a stick nest in the pot. Nothing has been lit here this year.
         for (var tw2 = 0; tw2 < 8; tw2++) {
             var ta = -0.4 - tw2 * 0.32;
@@ -6774,13 +6890,13 @@ PAINT.house = function (g, c) {
     // mud kicked up the bottom of every wall in a town with no cobbles left
     dither(g, [qp(sw, 0, 0.92), qp(sw, 1, 0.92), qp(sw, 1, 1), qp(sw, 0, 1)], 'rgba(38,30,22,.55)', 0.45, rng);
 };
-LIVE.house = function (cx, o, mxc, myc) {
+LIVE.house = function (cx, o, mxc, myc, sp) {
     // Smoke has to move, so it cannot live in the sprite. Only the
     // houses with a fire lit get any, and in Wick that is not all of them.
     var v = propVar('house', o.b);
     if (v % 3 === 2) return;
-    var hgt = propDef('house').h, rh = 26 + (v % 3) * 6;
-    var sx = mxc + (o.b[2] + o.b[3]) * 2 - 6, sy = myc - hgt - rh - 22;
+    var ch = anchorAt(sp, 'chimney', mxc, myc);               // the pot the sprite actually drew
+    var sx = ch.x, sy = ch.y - 2;
     for (var i = 0; i < 4; i++) {
         var t = (RT.t * 0.34 + i * 0.25 + (o.b[0] % 1)) % 1;
         var a = (1 - t) * 0.16 * (v % 2 ? 1 : 0.7);
@@ -6831,6 +6947,7 @@ PAINT.mill = function (g, c) {
     });
     // the hoist door up in the gable, where the sacks go in
     var hd = qp(se, 0.44, 0.14);
+    c.at('hoist', hd[0], hd[1] - 2);                                // flour dust comes off the sacks, here
     px(g, hd[0] - 8, hd[1] - 2, 16, 18, '#1a140e');
     px(g, hd[0] - 8, hd[1] - 4, 16, 3, '#5c4c34');
     line(g, hd[0], hd[1] - 12, hd[0], hd[1] - 4, '#2a2118', 2);     // the beam it hangs from
@@ -6857,23 +6974,28 @@ PAINT.mill = function (g, c) {
     // flour dust on every ledge, which is the one thing Wick still has
     dither(g, [qp(sw, 0, 0.6), qp(sw, 1, 0.6), qp(sw, 1, 0.66), qp(sw, 0, 0.66)], 'rgba(214,198,158,.3)', 0.5, rng);
 };
-LIVE.mill = function (cx, o, mxc, myc) {
-    var hgt = propDef('mill').h;
-    var sx = mxc + 4, sy = myc - hgt - 34 - 14;
+LIVE.mill = function (cx, o, mxc, myc, sp) {
+    // it used to hang in the air a foot above the ridge, coming from
+    // nothing. It comes off the hoist door, where the sacks go in.
+    var hd = anchorAt(sp, 'hoist', mxc, myc);
     for (var i = 0; i < 3; i++) {
         var t = (RT.t * 0.22 + i * 0.34) % 1;
-        cx.fillStyle = 'rgba(196,184,152,' + ((1 - t) * 0.1).toFixed(3) + ')';
-        cx.beginPath(); cx.arc(sx + t * 22, sy - t * 26, 4 + t * 14, 0, TAU); cx.fill();
+        cx.fillStyle = 'rgba(196,184,152,' + ((1 - t) * 0.12).toFixed(3) + ')';
+        cx.beginPath(); cx.arc(hd.x + t * 16, hd.y - t * 30, 3 + t * 12, 0, TAU); cx.fill();
     }
 };
 PAINT.wheel = function (g, c) {                          // the frame; the wheel itself turns, so it is live
-    var hgt = c.hgt;
+    var hgt = c.hgt, hy = -hgt + hgt * 0.42;
     body(g, c, ['#3a3024', '#2a2218', '#4a3e2c']);
     px(g, -4, -hgt - 6, 8, 12, '#4a3e2c');
     px(g, -3, -hgt - 4, 6, 8, '#2a2218');
+    px(g, -3, hy - 22, 6, 22, '#332b1e');                // the post the axle sits on
+    px(g, -5, hy - 4, 10, 8, '#4a3e2c');                 // and the bearing block it turns in
+    px(g, -4, hy - 3, 8, 6, '#241d14');
+    c.at('hub', 0, hy);
 };
-LIVE.wheel = function (cx, o, mxc, myc) {
-    var hgt = propDef('wheel').h, cy = myc - hgt + hgt * 0.42, wr = Math.min(34, hgt * 0.46);
+LIVE.wheel = function (cx, o, mxc, myc, sp) {
+    var hgt = propDef('wheel').h, cy = anchorAt(sp, 'hub', mxc, myc).y, wr = Math.min(34, hgt * 0.46);
     var an0 = RT.t * 0.25;
     cx.strokeStyle = '#3a3022'; cx.lineWidth = 6;
     cx.beginPath(); cx.arc(mxc, cy, wr, 0, TAU); cx.stroke();
@@ -7365,7 +7487,7 @@ PAINT.table = PAINT.counter = function (g, c) {
     dither(g, f.top, 'rgba(24,18,10,.4)', 0.06, rng);
     for (var i = 1; i < 5; i++) { var a2 = qp(f.sw, i / 5, 0), b2 = qp(f.sw, i / 5, 1); line(g, a2[0], a2[1], b2[0], b2[1], 'rgba(0,0,0,.3)', 1); }
     if (c.t === 'counter') {
-        px(g, -c.fw * 0.36, 4 - hgt + hgt, c.fw * 0.72, 3, '#2a2118');
+        px(g, -c.fw * 0.36, -hgt + 4, c.fw * 0.72, 3, '#2a2118');    // the shadow line under the lip
         var sc = qp(f.top, 0.24, 0.5);                                           // scales: she sells by weight
         line(g, sc[0], sc[1] - 14, sc[0], sc[1], '#3a3228', 2);
         line(g, sc[0] - 8, sc[1] - 14, sc[0] + 8, sc[1] - 14, '#3a3228', 1);
@@ -7474,6 +7596,7 @@ PAINT.hearth = function (g, c) {
     dither(g, [[o0[0] - 6, o0[1] - 14], [o1[0] + 6, o1[1] - 14], [o1[0] + 6, o1[1] - 4], [o0[0] - 6, o0[1] - 4]], 'rgba(6,4,4,.6)', 0.4, rng);   // soot up the breast
     // logs and ash in the grate
     var bx = (o0[0] + o1[0]) / 2, by = o2[1] - 5;
+    c.at('fire', bx, by);                                                       // the fire burns where the logs are
     g.fillStyle = '#5a5148'; g.beginPath(); g.ellipse(bx, by + 2, (o1[0] - o0[0]) * 0.4, 4, 0, 0, TAU); g.fill();
     for (var l = 0; l < 4; l++) {
         var lxp = bx - 12 + l * 7, lyp = by - (l % 2) * 3;
@@ -7491,11 +7614,9 @@ PAINT.hearth = function (g, c) {
     g.beginPath(); g.arc(bx, by - 15, 8, Math.PI, 0); g.stroke();
     px(g, o1[0] + 2, o1[1] + 6, 3, 12, '#3a342c');                               // the poker, leaning
 };
-LIVE.hearth = function (cx, o, mxc, myc) {
-    var d = propDef('hearth'), b = o.b;
-    var x3 = isoX(b[0], b[1] + b[3]), y3 = isoY(b[0], b[1] + b[3]);
-    var x2 = isoX(b[0] + b[2], b[1] + b[3]), y2 = isoY(b[0] + b[2], b[1] + b[3]);
-    var bx = (x3 + x2) / 2, by = (y3 + y2) / 2 - 6;
+LIVE.hearth = function (cx, o, mxc, myc, sp) {
+    var fp = anchorAt(sp, 'fire', mxc, myc);
+    var bx = fp.x, by = fp.y;
     for (var i = 0; i < 7; i++) {                                                // tongues, each on its own clock
         var ph = RT.t * (3.4 + i * 0.6) + i * 1.9;
         var lift = (Math.sin(ph) * 0.5 + 0.5);
