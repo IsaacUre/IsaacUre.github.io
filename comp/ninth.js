@@ -1042,7 +1042,11 @@ var DEV = [
 /* Bitmaps are the size of the PLACE now, not of the canvas, so a road
    can be longer than one screen. They are also the memory story of the
    game, so the cache is bounded and close() empties it. */
-var FLOORS = {}, FLOOR_LRU = [], FLOOR_MAX = 5;
+/* Seven, not five: a floor is the one thing that cannot be faked for a
+   frame while it builds, and five meant the ordinary loop through Wick
+   — square, house, shop, lane, mill, loft — evicted the square before
+   you walked back into it and paid for it again every time. */
+var FLOORS = {}, FLOOR_LRU = [], FLOOR_MAX = 7;
 var FLOOR_PAL = {
     stage:  ['#3a2a1c', '#2c1f14', '#4a3524'],
     town:   ['#2a2630', '#211d28', '#37323f'],
@@ -1053,6 +1057,250 @@ var FLOOR_PAL = {
     room:   ['#33291f', '#281f18', '#443626']    // boards, indoors
 };
 function floorOf(kind) { return FLOOR_PAL[kind] ? kind : 'mill'; }
+/* ── what each ground is actually made of ──
+   These run once per place into a cached bitmap, so they can afford to
+   place four thousand cobbles one at a time. Everything is positioned in
+   TILE space and converted, so detail sits where it is in the world and
+   does not visibly repeat with the tile grid. */
+function blob(g, x, y, rx, ry, col) { g.fillStyle = col; g.beginPath(); g.ellipse(x, y, rx, ry, 0, 0, TAU); g.fill(); }
+/* A cobbled square is about thirteen thousand of those, and thirteen
+   thousand draw calls is most of what it cost to walk into Wick. Same
+   colour goes down in one path. It needs the shade quantised to a fixed
+   number of steps to be worth anything, which is what pixel art wants
+   in the first place: a palette, not a continuum. */
+function blobBatch(g) {
+    var by = {};
+    return {
+        add: function (x, y, rx, ry, col) { (by[col] || (by[col] = [])).push(x, y, rx, ry); },
+        flush: function () {
+            Object.keys(by).forEach(function (col) {
+                var a = by[col];
+                g.beginPath();
+                for (var i = 0; i < a.length; i += 4) {
+                    g.moveTo(a[i] + a[i + 2], a[i + 1]);        // start a subpath, or they chain together
+                    g.ellipse(a[i], a[i + 1], a[i + 2], a[i + 3], 0, 0, TAU);
+                }
+                g.fillStyle = col; g.fill();
+            });
+            by = {};
+        }
+    };
+}
+function lattice(f, step, jit, fn) {                        // a jittered grid in tile space
+    for (var v = -0.5; v < f.gh + 0.5; v += step)
+        for (var u = -0.5; u < f.gw + 0.5; u += step) {
+            var uu = u + (f.fr() - 0.5) * jit, vv = v + (f.fr() - 0.5) * jit;
+            fn(uu, vv, f.px(uu, vv), f.py(uu, vv));
+        }
+}
+var GROUND = {};
+GROUND.town = function (g, f) {                             // cobbles, and the mud where the cobbles went
+    var fr = f.fr;
+    var joints = blobBatch(g), stones = blobBatch(g), tops = blobBatch(g);
+    lattice(f, 0.3, 0.2, function (u, v, x, y) {
+        var d = Math.hypot(u - f.gw / 2, v - f.gh / 2);
+        if (fr() < 0.1 + d * 0.012) return;                 // worn through to earth, more so at the edges
+        var rx = 3.4 + fr() * 2.6, ry = rx * 0.52;
+        joints.add(x, y + 1.5, rx + 0.6, ry + 0.6, 'rgba(8,6,12,.45)');    // the joint
+        var k = 0.82 + fr() * 0.44;
+        stones.add(x, y, rx, ry, shadeHex(f.pal[2], k));
+        tops.add(x - rx * 0.2, y - ry * 0.28, rx * 0.5, ry * 0.42, shadeHex(f.pal[2], k * 1.22));
+    });
+    joints.flush(); stones.flush(); tops.flush();           // joints under every stone, then every lit face
+    for (var m = 0; m < 90; m++) {                          // mud pushed up between the stones
+        var u2 = fr() * f.gw, v2 = fr() * f.gh;
+        blob(g, f.px(u2, v2), f.py(u2, v2), 6 + fr() * 12, 3 + fr() * 6, 'rgba(34,28,20,.3)');
+    }
+    for (var p = 0; p < 7; p++) {                           // standing water, because the drains gave up
+        var u3 = 1 + fr() * (f.gw - 2), v3 = 1 + fr() * (f.gh - 2);
+        var x3 = f.px(u3, v3), y3 = f.py(u3, v3), pr = 9 + fr() * 14;
+        blob(g, x3, y3, pr, pr * 0.5, 'rgba(10,10,18,.55)');
+        blob(g, x3 - pr * 0.2, y3 - pr * 0.12, pr * 0.5, pr * 0.2, 'rgba(90,104,130,.14)');
+    }
+    for (var s = 0; s < 130; s++) {                         // straw and muck, trodden in
+        var u4 = fr() * f.gw, v4 = fr() * f.gh;
+        var a = fr() * TAU, l = 2 + fr() * 5;
+        g.strokeStyle = fr() < 0.5 ? 'rgba(122,108,72,.3)' : 'rgba(60,52,36,.35)'; g.lineWidth = 1;
+        g.beginPath(); g.moveTo(f.px(u4, v4), f.py(u4, v4));
+        g.lineTo(f.px(u4, v4) + Math.cos(a) * l, f.py(u4, v4) + Math.sin(a) * l * 0.55); g.stroke();
+    }
+};
+GROUND.road = function (g, f) {                             // packed dirt, and the ruts stop before the end
+    var fr = f.fr;
+    for (var i = 0; i < 900; i++) {                         // grit
+        var u = fr() * f.gw, v = fr() * f.gh;
+        blob(g, f.px(u, v), f.py(u, v), 1 + fr() * 2.2, 0.7 + fr() * 1.2, fr() < 0.5 ? 'rgba(96,88,72,.3)' : 'rgba(20,17,13,.4)');
+    }
+    /* The fence ends at v = gh*0.66, two posts and nothing between them.
+       The cart ruts end there too. They break into dashes for the last
+       couple of tiles and then simply stop, and the ground north of the
+       posts has never had a wheel on it, because nobody has ever had a
+       reason to take a cart past the end of the fence. */
+    var fence = f.gh * 0.66;
+    [0.34, 0.63].forEach(function (q) {
+        for (var v2 = f.gh; v2 > fence - 0.6; v2 -= 0.12) {
+            var give = clamp((v2 - fence) / 2.2, 0, 1);     // the last two tiles come apart
+            if (give < 1 && fr() > 0.25 + give * 0.75) continue;
+            var u2 = f.gw * q + Math.sin(v2 * 0.4) * 0.22;
+            var x = f.px(u2, v2), y = f.py(u2, v2);
+            blob(g, x, y, 7, 3.4, 'rgba(12,10,8,.3)');
+            blob(g, x - 1, y - 1, 4, 1.8, 'rgba(70,62,48,.12)');
+        }
+    });
+    // and a clean strip straight through the gap, never trodden
+    for (var cu = 0; cu < f.gw; cu += 0.25) {
+        blob(g, f.px(cu, fence - 0.2), f.py(cu, fence - 0.2), 9, 3, 'rgba(120,110,92,.05)');
+    }
+    /* The green gives out as you go north. Living weeds this side of the
+       fence, dead stubs for a while after it, and then nothing at all. */
+    for (var t = 0; t < 320; t++) {
+        var u3 = fr() * f.gw, v3 = fr() * f.gh;
+        var edge = Math.min(u3, f.gw - u3);
+        if (edge > 2.2 && fr() < 0.85) continue;
+        if (v3 < f.gh * 0.24) continue;                     // nothing grows near the hollow
+        var dead = v3 < fence;
+        var x2 = f.px(u3, v3), y2 = f.py(u3, v3);
+        if (dead) {
+            g.strokeStyle = 'rgba(96,92,80,.4)'; g.lineWidth = 1;
+            g.beginPath(); g.moveTo(x2, y2); g.lineTo(x2 + (fr() - 0.5) * 3, y2 - 2 - fr() * 3); g.stroke();
+        } else {
+            g.strokeStyle = fr() < 0.4 ? 'rgba(74,86,54,.5)' : 'rgba(52,58,38,.5)'; g.lineWidth = 1;
+            for (var b = 0; b < 3; b++) {
+                g.beginPath(); g.moveTo(x2, y2);
+                g.lineTo(x2 + (fr() - 0.5) * 7, y2 - 3 - fr() * 5); g.stroke();
+            }
+        }
+    }
+    for (var s2 = 0; s2 < 26; s2++) {                       // stones the frost pushed up
+        var u4 = fr() * f.gw, v4 = fr() * f.gh;
+        blob(g, f.px(u4, v4), f.py(u4, v4), 2.5 + fr() * 3, 1.4 + fr() * 1.6, 'rgba(96,92,86,.35)');
+    }
+};
+GROUND.mill = function (g, f) {                             // trampled earth, and the only grain left in Wick
+    var fr = f.fr;
+    for (var i = 0; i < 420; i++) {
+        var u = fr() * f.gw, v = fr() * f.gh;
+        blob(g, f.px(u, v), f.py(u, v), 3 + fr() * 9, 1.6 + fr() * 4, fr() < 0.5 ? 'rgba(72,60,44,.25)' : 'rgba(22,18,14,.3)');
+    }
+    for (var c = 0; c < 340; c++) {                         // chaff, blown into drifts against nothing
+        var u2 = fr() * f.gw, v2 = fr() * f.gh;
+        var x = f.px(u2, v2), y = f.py(u2, v2);
+        g.fillStyle = 'rgba(206,186,132,' + (0.14 + fr() * 0.26).toFixed(3) + ')';
+        g.fillRect(Math.round(x), Math.round(y), 1 + (fr() < 0.3 ? 1 : 0), 1);
+    }
+    for (var p = 0; p < 5; p++) {                           // a path worn between the door and the road
+        var v3 = p / 5 * f.gh;
+        blob(g, f.px(f.gw / 2, v3), f.py(f.gw / 2, v3), 30, 14, 'rgba(96,82,60,.1)');
+    }
+};
+GROUND.loft = function (g, f) {                             // boards, gaps, and grain dust in every one
+    var fr = f.fr;
+    for (var v = 0; v < f.gh; v += 0.5) {
+        var y0 = f.py(0, v), y1 = f.py(f.gw, v);
+        g.strokeStyle = 'rgba(0,0,0,.5)'; g.lineWidth = 2;
+        g.beginPath(); g.moveTo(f.px(0, v), y0); g.lineTo(f.px(f.gw, v), y1); g.stroke();
+        g.strokeStyle = 'rgba(84,66,46,' + (0.1 + fr() * 0.16).toFixed(3) + ')'; g.lineWidth = 1;
+        g.beginPath(); g.moveTo(f.px(0, v + 0.06), f.py(0, v + 0.06)); g.lineTo(f.px(f.gw, v + 0.06), f.py(f.gw, v + 0.06)); g.stroke();
+        if (fr() < 0.3) {                                   // a board that has sprung, and the dark under it
+            var u = fr() * f.gw * 0.7;
+            g.strokeStyle = 'rgba(0,0,0,.65)'; g.lineWidth = 3;
+            g.beginPath(); g.moveTo(f.px(u, v), f.py(u, v)); g.lineTo(f.px(u + 2.4, v), f.py(u + 2.4, v)); g.stroke();
+        }
+    }
+    for (var n = 0; n < 120; n++) {                         // nail heads, in pairs, at the joists
+        var u2 = Math.round(fr() * f.gw * 2) / 2, v2 = Math.round(fr() * f.gh * 2) / 2;
+        g.fillStyle = 'rgba(120,104,80,.35)'; g.fillRect(Math.round(f.px(u2, v2)), Math.round(f.py(u2, v2)), 1, 1);
+    }
+    for (var d = 0; d < 300; d++) {
+        var u3 = fr() * f.gw, v3 = fr() * f.gh;
+        g.fillStyle = 'rgba(196,178,132,' + (0.06 + fr() * 0.14).toFixed(3) + ')';
+        g.fillRect(Math.round(f.px(u3, v3)), Math.round(f.py(u3, v3)), 1, 1);
+    }
+};
+GROUND.hollow = function (g, f) {
+    /* The one ground that has to feel wrong. Everywhere else in the game
+       the tile grid is something you stop seeing. Here the frost picks
+       every edge out in white, so the ground looks ruled, like somebody
+       set it out. And there is not one living thing scattered on it. */
+    var fr = f.fr;
+    for (var v = 0; v <= f.gh; v++) {
+        g.strokeStyle = 'rgba(178,190,214,.16)'; g.lineWidth = 1;
+        g.beginPath(); g.moveTo(f.px(0, v), f.py(0, v)); g.lineTo(f.px(f.gw, v), f.py(f.gw, v)); g.stroke();
+    }
+    for (var u = 0; u <= f.gw; u++) {
+        g.strokeStyle = 'rgba(178,190,214,.16)'; g.lineWidth = 1;
+        g.beginPath(); g.moveTo(f.px(u, 0), f.py(u, 0)); g.lineTo(f.px(u, f.gh), f.py(u, f.gh)); g.stroke();
+    }
+    for (var i = 0; i < 500; i++) {                         // rime, gathered in the low places
+        var u2 = fr() * f.gw, v2 = fr() * f.gh;
+        var d = Math.hypot(u2 - f.gw / 2, v2 - f.gh / 2);
+        g.fillStyle = 'rgba(196,206,226,' + (0.03 + fr() * 0.09 * clamp(d / 5, 0, 1)).toFixed(3) + ')';
+        g.fillRect(Math.round(f.px(u2, v2)), Math.round(f.py(u2, v2)), 1 + (fr() < 0.2 ? 1 : 0), 1);
+    }
+    // the ground is lower in the middle, and it gets darker the further in you go
+    var cx0 = f.px(f.gw / 2, f.gh / 2), cy0 = f.py(f.gw / 2, f.gh / 2);
+    g.save(); g.translate(cx0, cy0); g.scale(1, 0.5);
+    var gr = g.createRadialGradient(0, 0, 10, 0, 0, 230);
+    gr.addColorStop(0, 'rgba(4,3,10,.72)'); gr.addColorStop(1, 'rgba(4,3,10,0)');
+    g.fillStyle = gr; g.beginPath(); g.arc(0, 0, 230, 0, TAU); g.fill(); g.restore();
+    for (var r = 0; r < 26; r++) {                          // and the frost is scored, outward, all the way round
+        var a = r / 26 * TAU;
+        var u3 = f.gw / 2 + Math.cos(a) * 3.4, v3 = f.gh / 2 + Math.sin(a) * 3.4;
+        var u4 = f.gw / 2 + Math.cos(a) * 5.6, v4 = f.gh / 2 + Math.sin(a) * 5.6;
+        g.strokeStyle = 'rgba(170,182,206,.09)'; g.lineWidth = 1;
+        g.beginPath(); g.moveTo(f.px(u3, v3), f.py(u3, v3)); g.lineTo(f.px(u4, v4), f.py(u4, v4)); g.stroke();
+    }
+};
+GROUND.stage = function (g, f) {                            // boards that get walked on every ninth night
+    var fr = f.fr;
+    for (var v = 0; v < f.gh; v += 0.5) {
+        g.strokeStyle = 'rgba(0,0,0,.45)'; g.lineWidth = 2;
+        g.beginPath(); g.moveTo(f.px(0, v), f.py(0, v)); g.lineTo(f.px(f.gw, v), f.py(f.gw, v)); g.stroke();
+        g.strokeStyle = 'rgba(126,96,58,' + (0.1 + fr() * 0.18).toFixed(3) + ')'; g.lineWidth = 1;
+        g.beginPath(); g.moveTo(f.px(0, v + 0.06), f.py(0, v + 0.06)); g.lineTo(f.px(f.gw, v + 0.06), f.py(f.gw, v + 0.06)); g.stroke();
+    }
+    for (var k = 0; k < 200; k++) {                         // scuffs from four hundred years of the same three steps
+        var u = fr() * f.gw, v2 = fr() * f.gh;
+        blob(g, f.px(u, v2), f.py(u, v2), 3 + fr() * 8, 1.4 + fr() * 3, 'rgba(120,92,54,.1)');
+    }
+    g.strokeStyle = 'rgba(226,216,196,.3)'; g.lineWidth = 2;   // chalk: your mark, and the line you walk
+    g.beginPath(); g.moveTo(f.px(f.gw * 0.3, f.gh * 0.62), f.py(f.gw * 0.3, f.gh * 0.62));
+    g.lineTo(f.px(f.gw * 0.7, f.gh * 0.62), f.py(f.gw * 0.7, f.gh * 0.62)); g.stroke();
+    var mx = f.px(f.gw * 0.5, f.gh * 0.62), my = f.py(f.gw * 0.5, f.gh * 0.62);
+    g.beginPath(); g.moveTo(mx - 7, my - 4); g.lineTo(mx + 7, my + 4); g.stroke();
+    g.beginPath(); g.moveTo(mx + 7, my - 4); g.lineTo(mx - 7, my + 4); g.stroke();
+};
+GROUND.room = function (g, f) {                             // somebody lives on this floor
+    var fr = f.fr;
+    for (var v = 0; v < f.gh; v += 0.45) {
+        g.strokeStyle = 'rgba(0,0,0,.45)'; g.lineWidth = 2;
+        g.beginPath(); g.moveTo(f.px(0, v), f.py(0, v)); g.lineTo(f.px(f.gw, v), f.py(f.gw, v)); g.stroke();
+        g.strokeStyle = 'rgba(132,104,70,' + (0.1 + fr() * 0.2).toFixed(3) + ')'; g.lineWidth = 1;
+        g.beginPath(); g.moveTo(f.px(0, v + 0.05), f.py(0, v + 0.05)); g.lineTo(f.px(f.gw, v + 0.05), f.py(f.gw, v + 0.05)); g.stroke();
+        for (var u = 1.5; u < f.gw; u += 2.5 + fr()) {      // board ends, staggered
+            g.strokeStyle = 'rgba(0,0,0,.4)'; g.lineWidth = 1;
+            g.beginPath(); g.moveTo(f.px(u, v), f.py(u, v)); g.lineTo(f.px(u, v + 0.45), f.py(u, v + 0.45)); g.stroke();
+        }
+    }
+    var rx0 = f.gw * 0.28, ry0 = f.gh * 0.3, rx1 = f.gw * 0.72, ry1 = f.gh * 0.72;
+    g.fillStyle = 'rgba(74,44,40,.5)';                      // a rug, worn to the backing in the middle
+    g.beginPath();
+    g.moveTo(f.px(rx0, ry0), f.py(rx0, ry0)); g.lineTo(f.px(rx1, ry0), f.py(rx1, ry0));
+    g.lineTo(f.px(rx1, ry1), f.py(rx1, ry1)); g.lineTo(f.px(rx0, ry1), f.py(rx0, ry1));
+    g.closePath(); g.fill();
+    g.strokeStyle = 'rgba(120,72,60,.4)'; g.lineWidth = 1; g.stroke();
+    for (var s = 0; s < 90; s++) {
+        var su = rx0 + fr() * (rx1 - rx0), sv = ry0 + fr() * (ry1 - ry0);
+        g.fillStyle = fr() < 0.5 ? 'rgba(132,80,66,.3)' : 'rgba(44,26,26,.4)';
+        g.fillRect(Math.round(f.px(su, sv)), Math.round(f.py(su, sv)), 2, 1);
+    }
+    blob(g, f.px((rx0 + rx1) / 2, (ry0 + ry1) / 2), f.py((rx0 + rx1) / 2, (ry0 + ry1) / 2), 34, 17, 'rgba(30,20,18,.3)');
+    for (var d = 0; d < 60; d++) {                          // dust and crumbs at the edges of the room
+        var du = fr() * f.gw, dv = fr() * f.gh;
+        g.fillStyle = 'rgba(150,130,100,.16)';
+        g.fillRect(Math.round(f.px(du, dv)), Math.round(f.py(du, dv)), 1, 1);
+    }
+};
 function buildFloor(kind, gw, gh) {
     gw = gw || GRID; gh = gh || GRID;
     kind = floorOf(kind);
@@ -1065,33 +1313,47 @@ function buildFloor(kind, gw, gh) {
     var seed = 9; function fr() { seed = (seed * 1103515245 + 12345) >>> 0; return (seed >>> 8) / 16777216; }
     var pal = FLOOR_PAL[kind];
     g.fillStyle = '#07060a'; g.fillRect(0, 0, box.w, box.h);
+    /* Pass one: the tiles, which is what keeps the iso grid legible.
+       Kept deliberately quiet — all the character goes on in pass two,
+       scattered across the whole bitmap rather than per tile, because
+       anything laid out tile by tile reads as graph paper the moment
+       you look at more than four of them. */
     for (var y = 0; y < gh; y++) for (var x = 0; x < gw; x++) {
         var sx = isoXB(x, y) - box.x, sy = isoYB(x, y) - box.y;
         var edge = Math.min(x, y, gw - 1 - x, gh - 1 - y);
         g.beginPath();
         g.moveTo(sx, sy); g.lineTo(sx + TILE_W / 2, sy + TILE_H / 2);
         g.lineTo(sx, sy + TILE_H); g.lineTo(sx - TILE_W / 2, sy + TILE_H / 2); g.closePath();
-        var base = pal[(x + y) % 2 ? 0 : 1];
-        g.fillStyle = base; g.fill();
-        g.strokeStyle = 'rgba(0,0,0,.4)'; g.lineWidth = 1; g.stroke();
-        if ((kind === 'stage' || kind === 'room') && y % 2 === 0) {   // plank seams run one way
-            g.strokeStyle = 'rgba(0,0,0,.3)';
-            g.beginPath(); g.moveTo(sx - TILE_W / 2, sy + TILE_H / 2); g.lineTo(sx + TILE_W / 2, sy + TILE_H / 2); g.stroke();
-        }
-        if (fr() < 0.22) { g.fillStyle = pal[2]; g.globalAlpha = 0.35; g.fillRect(sx - 8 + fr() * 16, sy + 8 + fr() * 10, 3 + fr() * 5, 2); g.globalAlpha = 1; }
-        if (kind === 'mill' && fr() < 0.14) { g.fillStyle = 'rgba(190,170,110,.3)'; g.fillRect(sx - 6 + fr() * 12, sy + 10 + fr() * 8, 2, 2); }
-        if (kind === 'road') {                    // a rut worn up the middle by four hundred years of nobody
-            var mid = Math.abs((x - y) - (gw - gh) / 2);
-            if (mid < 1.6) { g.fillStyle = 'rgba(0,0,0,.16)'; g.fill(); }
-        }
-        if (kind === 'hollow' && fr() < 0.3) { g.fillStyle = 'rgba(8,6,14,.5)'; g.fill(); }
-        if (edge === 0) { g.fillStyle = 'rgba(4,3,8,.5)'; g.fill(); }
+        g.fillStyle = shadeHex(pal[(x + y) % 2 ? 0 : 1], 0.92 + fr() * 0.2);
+        g.fill();
+        g.strokeStyle = 'rgba(0,0,0,.22)'; g.lineWidth = 1; g.stroke();
+        if (edge === 0) { g.fillStyle = 'rgba(4,3,8,.45)'; g.fill(); }
+        if (edge === 1) { g.fillStyle = 'rgba(4,3,8,.18)'; g.fill(); }
     }
+    // pass two happens inside the outline of the place, never over its edge
+    var shape = [
+        [isoXB(0, 0) - box.x, isoYB(0, 0) - box.y],
+        [isoXB(gw - 1, 0) - box.x + TILE_W / 2, isoYB(gw - 1, 0) - box.y + TILE_H / 2],
+        [isoXB(gw - 1, gh - 1) - box.x, isoYB(gw - 1, gh - 1) - box.y + TILE_H],
+        [isoXB(0, gh - 1) - box.x - TILE_W / 2, isoYB(0, gh - 1) - box.y + TILE_H / 2]
+    ];
+    g.save();
+    g.beginPath(); g.moveTo(shape[0][0], shape[0][1]);
+    for (var si = 1; si < 4; si++) g.lineTo(shape[si][0], shape[si][1]);
+    g.closePath(); g.clip();
+    (GROUND[kind] || GROUND.mill)(g, {
+        w: box.w, h: box.h, gw: gw, gh: gh, pal: pal, fr: fr,
+        // tile coords to bitmap coords, so detail can be placed by where
+        // it is in the world rather than by where it is on the canvas
+        px: function (u, v) { return isoXB(u, v) - box.x; },
+        py: function (u, v) { return isoYB(u, v) - box.y + TILE_H / 2; }
+    });
+    g.restore();
     // a ring of light where the scene wants you to stand
     var cx0 = isoXB(gw / 2, gh / 2) - box.x, cy0 = isoYB(gw / 2, gh / 2) - box.y;
     g.save(); g.translate(cx0, cy0); g.scale(1, 0.5);
     var rg = g.createRadialGradient(0, 0, 20, 0, 0, 330);
-    rg.addColorStop(0, kind === 'stage' ? 'rgba(255,190,90,.16)' : 'rgba(255,200,120,.07)');
+    rg.addColorStop(0, kind === 'stage' ? 'rgba(255,190,90,.16)' : 'rgba(255,200,120,.05)');
     rg.addColorStop(1, 'rgba(255,190,90,0)');
     g.fillStyle = rg; g.beginPath(); g.arc(0, 0, 330, 0, TAU); g.fill(); g.restore();
     // the vignette used to be baked here. With a camera it has to follow
@@ -1342,6 +1604,17 @@ function init(el) {
                          call: S.call, answer: S.answer, dead: RT.dead, phase: RT.phase, wave: RT.wave, dilate: RT.dilate };
             },
             sprites: function () { return Object.keys(SPR).length; },   // baked figures held
+            gfx: function () {                     // what the prop and floor caches are actually holding
+                var fb = 0; Object.keys(FLOORS).forEach(function (k) { var f = FLOORS[k]; fb += f.cv.width * f.cv.height * 4; });
+                return { sprites: Object.keys(SPRITES).length, spriteMB: +(SPRITE_BYTES / 1048576).toFixed(2),
+                         spriteBudgetMB: +(SPRITE_BUDGET / 1048576).toFixed(2),
+                         floors: Object.keys(FLOORS).length, floorMB: +(fb / 1048576).toFixed(2),
+                         keys: Object.keys(SPRITES),
+                         anchors: Object.keys(SPRITES).reduce(function (a, k) {
+                             if (Object.keys(SPRITES[k].anchors).length) a[k] = SPRITES[k].anchors;
+                             return a;
+                         }, {}) };
+            },
             S: function () { return S; }, RT: function () { return RT; }, TUNE: TUNE
         };
     }
@@ -3502,6 +3775,7 @@ function draw(rdt) {
     // was hard-coded to 1/60: on a 144Hz screen every typographic
     // effect outlived its intent by more than double
     var cx = RT.cx, dt = Math.min(0.05, rdt || 1 / 60);
+    startBuildBudget();
     cx.save();
     if (S.opts.shake && RT.shake > 0.2) cx.translate(rnd(-RT.shake, RT.shake) * 0.5, rnd(-RT.shake, RT.shake) * 0.35);
     cx.clearRect(-30, -30, VW + 60, VH + 60);
@@ -4767,7 +5041,8 @@ var PLACES = {
             { t: 'table', b: [4.2, 3.4, 2.6, 1.6] },
             { t: 'bed', b: [8.2, 1.2, 1.8, 3.2] },
             { t: 'shelf', b: [1, 1.2, 2.4, 0.8] },
-            { t: 'lamp', b: [5.3, 3.0, 0.5, 0.5] },
+            { t: 'lamp', b: [7.2, 3.6, 0.5, 0.5] },
+            { t: 'hearth', b: [3.9, 0.6, 2.2, 1 ] },
             { t: 'crate', b: [1.2, 6.4, 1.2, 1.2] }
         ],
         looks: [
@@ -4795,11 +5070,14 @@ var PLACES = {
     },
     lane: {
         n: 'The lane out of Wick', sub: 'in the play it is a day\'s walk',
-        floor: 'mill', w: 13, h: 17,
+        floor: 'mill', w: 13, h: 17, night: 1,
         props: [
             { t: 'fence', b: [0.6, 4, 0.5, 9] }, { t: 'fence', b: [11.6, 3, 0.5, 3.2] }, { t: 'fence', b: [11.6, 10.2, 0.5, 2.8] },
             { t: 'tree', b: [2.2, 6.4, 1.4, 1.4] }, { t: 'tree', b: [9.4, 10.2, 1.4, 1.4] },
-            { t: 'stone', b: [4.6, 12.6, 1, 1] }
+            { t: 'stone', b: [4.6, 12.6, 1, 1] },
+            // the last lamp of Wick. The town lights the lane as far as it
+            // thinks the town goes, and then it stops.
+            { t: 'lamp', b: [7.6, 14.4, 0.5, 0.5] }
         ],
         npcs: ['shepherd'],
         looks: [{ x: 5.2, y: 12.4, n: 'A milestone', d: 'WICK — 1/4 MILE.\n\nIn the play he walks out past the mill and the well and the mark, and it takes him all night. It is four hundred yards. You can see both ends of it from here.' }],
@@ -4812,7 +5090,7 @@ var PLACES = {
     },
     mill: {
         n: 'The mill', sub: 'rehearse where nobody can hear you, because you are bad',
-        floor: 'mill', w: 15, h: 13,
+        floor: 'mill', w: 15, h: 13, night: 1,
         props: [
             { t: 'mill', b: [5.4, 0.6, 5, 4.4] },
             { t: 'wheel', b: [10.8, 1.6, 1.2, 3.2] },
@@ -4830,7 +5108,7 @@ var PLACES = {
     },
     loft: {
         n: 'The grain loft', sub: 'a crowd of voices with no bodies',
-        floor: 'loft', w: 13, h: 13,
+        floor: 'loft', w: 13, h: 13, night: 1, dark: 1,
         props: [
             { t: 'beam', b: [0, 3.2, 4.8, 0.6] }, { t: 'beam', b: [8.2, 3.2, 4.8, 0.6] },
             { t: 'beam', b: [0, 9.2, 4.4, 0.6] }, { t: 'beam', b: [8.6, 9.2, 4.4, 0.6] },
@@ -4842,7 +5120,7 @@ var PLACES = {
     },
     village: {
         n: 'Grelling — the next village', sub: 'an empty hat and a bad performance',
-        floor: 'town', calm: 1, w: 15, h: 12,
+        floor: 'town', calm: 1, w: 15, h: 12, night: 1,
         props: [
             { t: 'house', b: [0, 0, 3.6, 3] }, { t: 'house', b: [11.4, 0, 3.6, 3.4] }, { t: 'house', b: [0, 9, 4, 3] },
             { t: 'cart', b: [9.6, 7.4, 2.2, 1.2] }, { t: 'well', b: [3.4, 5.6, 1.6, 1.6] }
@@ -4856,7 +5134,7 @@ var PLACES = {
     },
     mark: {
         n: 'The mark', sub: 'she walked out past the mill, the well, the mark',
-        floor: 'mill', calm: 1, w: 13, h: 11,
+        floor: 'mill', calm: 1, w: 13, h: 11, night: 1, dark: 1,
         props: [
             { t: 'markstone', b: [6, 4.6, 1.4, 1.6] },
             { t: 'fence', b: [0.6, 1, 0.5, 2.4] }, { t: 'fence', b: [0.6, 7.6, 0.5, 2.4] },
@@ -4919,7 +5197,7 @@ var PLACES = {
     },
     a3sq: {
         n: 'Wick — the ninth night', sub: 'the four hundredth performance',
-        floor: 'town', w: 17, h: 15, script: 'a3', a3: 1, oneway: 1,
+        floor: 'town', w: 17, h: 15, night: 1, script: 'a3', a3: 1, oneway: 1,
         props: [
             { t: 'house', b: [0, 0, 3.4, 2.6] }, { t: 'house', b: [13.6, 0, 3.4, 2.8] },
             { t: 'house', b: [0, 12.4, 3.6, 2.6] }, { t: 'house', b: [13.4, 12.2, 3.6, 2.8] },
@@ -6027,301 +6305,1353 @@ function speakPressure() {
    anonymous brown box in the middle of the lane. Unknown types now fall
    to `_` on purpose rather than by accident. */
 var PROP = {
-    house:     { h: 78, pal: ['#3b3340', '#2c2532', '#4a4150'] },
-    mill:      { h: 96, pal: ['#4a3f30', '#37301f', '#5c5040'] },
-    curtain:   { h: 120, pal: ['#3a1c22', '#2a1218', '#4a262e'] },
-    stagewip:  { h: 26, pal: ['#43392e', '#332b22', '#544738'] },
-    tree:      { h: 62, ins: 0.34, pal: ['#33291f', '#241c14', '#3e3225'] },
-    well:      { h: 26, body: 'cyl', pal: ['#43392e', '#332b22', '#544738'] },
-    markstone: { h: 40, pal: ['#4a4a52', '#3a3a42', '#5c5c66'] },
-    wheel:     { h: 70, pal: ['#43392e', '#332b22', '#544738'] },
-    fence:     { h: 22, pal: ['#3a2f24', '#2c231a', '#4a3d2e'] },
+    house:     { h: 78, over: 74, vars: 6, live: 1, pal: ['#3b3340', '#2c2532', '#4a4150'] },
+    mill:      { h: 96, over: 86, vars: 2, live: 1, pal: ['#4a3f30', '#37301f', '#5c5040'] },
+    curtain:   { h: 120, over: 16, pal: ['#3a1c22', '#2a1218', '#4a262e'] },
+    stagewip:  { h: 26, over: 40, pal: ['#43392e', '#332b22', '#544738'] },
+    tree:      { h: 62, over: 34, vars: 5, ins: 0.34, pal: ['#33291f', '#241c14', '#3e3225'] },
+    well:      { h: 26, over: 54, body: 'cyl', pal: ['#43392e', '#332b22', '#544738'] },
+    markstone: { h: 40, over: 12, pal: ['#4a4a52', '#3a3a42', '#5c5c66'] },
+    wheel:     { h: 70, over: 16, live: 1, pal: ['#43392e', '#332b22', '#544738'] },
+    fence:     { h: 22, over: 18, vars: 3, pal: ['#3a2f24', '#2c231a', '#4a3d2e'] },
     beam:      { h: 16, pal: ['#3a2f24', '#2c231a', '#4a3d2e'] },
-    cart:      { h: 22, pal: ['#43392e', '#332b22', '#544738'] },
-    crate:     { h: 20, pal: ['#4a3d2c', '#382e21', '#5c4c38'] },
-    sack:      { h: 14, body: 'round', pal: ['#5a4f36', '#463d29', '#6c5f44'] },
-    foot:      { h: 6,  pal: ['#4a4030', '#3a3224', '#5c5040'] },
-    stone:     { h: 20, body: 'round', pal: ['#4a4a52', '#3a3a42', '#5c5c66'] },
-    lamp:      { h: 34, pal: ['#2e2a26', '#232019', '#3c3630'] },
-    post:      { h: 30, pal: ['#3a2f24', '#2c231a', '#4a3d2e'] },
-    cairn:     { h: 26, body: 'round', pal: ['#454550', '#35353f', '#565662'] },
-    hedge:     { h: 24, pal: ['#22301f', '#182417', '#2c3f28'] },
-    table:     { h: 20, pal: ['#4a3a28', '#382c1e', '#5e4a34'] },
+    cart:      { h: 22, over: 24, pal: ['#43392e', '#332b22', '#544738'] },
+    crate:     { h: 20, vars: 3, pal: ['#4a3d2c', '#382e21', '#5c4c38'] },
+    sack:      { h: 14, vars: 3, body: 'round', pal: ['#5a4f36', '#463d29', '#6c5f44'] },
+    foot:      { h: 6,  over: 16, live: 1, pal: ['#4a4030', '#3a3224', '#5c5040'] },
+    stone:     { h: 20, vars: 4, body: 'round', pal: ['#4a4a52', '#3a3a42', '#5c5c66'] },
+    lamp:      { h: 34, over: 30, live: 1, pal: ['#2e2a26', '#232019', '#3c3630'] },
+    post:      { h: 30, vars: 2, ins: 0.42, over: 10, pal: ['#3a2f24', '#2c231a', '#4a3d2e'] },
+    cairn:     { h: 26, vars: 4, body: 'round', pal: ['#454550', '#35353f', '#565662'] },
+    hedge:     { h: 24, over: 16, pal: ['#22301f', '#182417', '#2c3f28'] },
+    table:     { h: 20, over: 14, pal: ['#4a3a28', '#382c1e', '#5e4a34'] },
     shelf:     { h: 46, pal: ['#413224', '#31261b', '#54412f'] },
-    counter:   { h: 24, pal: ['#4a3a28', '#382c1e', '#5e4a34'] },
-    bed:       { h: 14, pal: ['#3e3446', '#2f2836', '#4e4258'] },
-    barrel:    { h: 22, body: 'cyl', pal: ['#46372a', '#352a20', '#584636'] },
+    counter:   { h: 24, over: 16, pal: ['#4a3a28', '#382c1e', '#5e4a34'] },
+    bed:       { h: 14, over: 22, pal: ['#3e3446', '#2f2836', '#4e4258'] },
+    barrel:    { h: 22, vars: 2, body: 'cyl', pal: ['#46372a', '#352a20', '#584636'] },
     wall:      { h: 68, pal: ['#332b30', '#272026', '#42383e'] },
-    vat:       { h: 26, body: 'cyl', pal: ['#3e3a34', '#2f2c27', '#514c44'] },
+    vat:       { h: 26, over: 20, body: 'cyl', pal: ['#3e3a34', '#2f2c27', '#514c44'] },
+    hearth:    { h: 46, over: 30, live: 1, pal: ['#3d3a37', '#2c2a28', '#4c4844'] },
     _:         { h: 18, pal: ['#43392e', '#332b22', '#544738'] }
 };
 function propDef(t) { return PROP[t] || PROP._; }
+
+/* ─────────────── prop sprites ───────────────
+   Every prop used to be redrawn from scratch, in vector calls, every
+   frame. That put a hard ceiling on detail: a roof could have a shingle
+   course or a framerate, not both.
+
+   Now a prop is painted ONCE into an offscreen canvas and blitted after
+   that. Nothing about a prop's appearance depends on where the camera
+   is — the projection only translates — so the same bitmap is correct
+   forever. Cost per prop per frame is one drawImage, and the detail
+   budget goes from about twenty canvas calls to as many as it takes.
+
+   Painters work in LOCAL space: the centre of the prop's ground
+   footprint is the origin, and up is negative y. `c.lx/c.ly` map a
+   point inside the footprint, in tiles, into that space. */
+var SPRITES = {}, SPRITE_LRU = [], SPRITE_BUDGET = 10 << 20;   // bytes of backing store, not entries
+var SPRITE_BYTES = 0, SPRITE_PAD = 30;                          // pad: eaves, canopies, anything that overhangs
+function hash2(a, b, c) {
+    var n = (Math.round(a * 16) + 1013) | 0;
+    n = Math.imul(n ^ (Math.round(b * 16) + 9176), 374761393);
+    n = Math.imul(n ^ ((c || 0) * 2654435761), 668265263);
+    n ^= n >>> 13; n = Math.imul(n, 1274126177);
+    return (n ^ (n >>> 16)) >>> 0;
+}
+function propVar(t, b) {                       // which of this type's variants this instance is
+    var d = propDef(t);
+    return d.vars ? hash2(b[0], b[1], t.length * 31 + t.charCodeAt(0)) % d.vars : 0;
+}
+function seedRng(n) {                          // stable per sprite, so a house does not reshuffle itself
+    var s = (n >>> 0) || 1;
+    return function () { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; };
+}
+/* The geometry every painter works in: origin at the centre of the
+   footprint, on the ground. Split out of propSprite because the plain
+   body is also drawn straight to the screen, for the frame or two
+   before a prop's real sprite has been painted. */
+function spriteCtx(t, bw, bh, v) {
+    var d = propDef(t), sk = (bw - bh) * TILE_W / 4;
+    var rrx = (bw + bh) * TILE_W / 4, rry = (bw + bh) * TILE_H / 4;
+    var c = {
+        t: t, bw: bw, bh: bh, hgt: d.h, pal: d.pal, d: d, v: v,
+        rrx: rrx, rry: rry, sk: sk, tx: 0, ty: -d.h,
+        x0: -sk, y0: -rry, x1: rrx, y1: (bw - bh) * TILE_H / 4,
+        x2: sk, y2: rry, x3: -rrx, y3: -(bw - bh) * TILE_H / 4,
+        fw: Math.hypot(sk + rrx, rry + (bw - bh) * TILE_H / 4) || 1,
+        lx: function (u, q) { return (u - q) * (TILE_W / 2) - sk; },
+        ly: function (u, q) { return (u + q) * (TILE_H / 2) - rry; },
+        anchors: {},
+        rng: seedRng(hash2(bw * 7 + bh * 13, v * 101 + 7, t.length * 131 + t.charCodeAt(t.length - 1)))
+    };
+    /* Where the fire is, where the chimney pot is, where the hub of the
+       wheel is. The animated layer used to work these out a second time
+       from the footprint, and the two answers drifted: the smoke came
+       out of the middle of the roof and the fire burned eleven pixels
+       above the logs. Whatever paints a thing now says where it is. */
+    c.at = function (name, x, y) { c.anchors[name] = [x, y]; return [x, y]; };
+    return c;
+}
+function propSprite(t, bw, bh, v, mayBuild) {
+    var key = t + '|' + bw + '|' + bh + '|' + v;
+    var hit = SPRITES[key];
+    if (hit) { touchSprite(key); return hit; }
+    if (mayBuild === false) return null;
+    var d = propDef(t), hgt = d.h;
+    var rrx = (bw + bh) * TILE_W / 4, rry = (bw + bh) * TILE_H / 4;
+    var over = d.over || 0;                    // headroom above hgt for roofs and canopies
+    var w = Math.ceil(rrx * 2) + SPRITE_PAD * 2;
+    var h = Math.ceil(rry * 2 + hgt + over) + SPRITE_PAD * 2;
+    var cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+    var g = cv.getContext('2d');
+    var ax = SPRITE_PAD + Math.ceil(rrx), ay = SPRITE_PAD + Math.ceil(rry + hgt + over);
+    g.translate(ax, ay);
+    var c = spriteCtx(t, bw, bh, v);
+    paintProp(g, c);
+    var sp = { cv: cv, ax: ax, ay: ay, bytes: w * h * 4, anchors: c.anchors };
+    SPRITES[key] = sp; SPRITE_BYTES += sp.bytes;
+    touchSprite(key); trimSprites();
+    return sp;
+}
+/* sprite-local point to screen. Local (0,0) is the footprint centre, and
+   the sprite is blitted so that centre lands on (mxc, myc). */
+function anchorAt(sp, name, mxc, myc) {
+    var a = sp && sp.anchors && sp.anchors[name];
+    return { x: mxc + (a ? a[0] : 0), y: myc + (a ? a[1] : 0) };
+}
+function touchSprite(key) {
+    var i = SPRITE_LRU.indexOf(key); if (i >= 0) SPRITE_LRU.splice(i, 1);
+    SPRITE_LRU.push(key);
+}
+function trimSprites() {
+    while (SPRITE_BYTES > SPRITE_BUDGET && SPRITE_LRU.length > 1) {
+        var k = SPRITE_LRU.shift(), s = SPRITES[k];
+        if (!s) continue;
+        SPRITE_BYTES -= s.bytes; s.cv.width = s.cv.height = 0; delete SPRITES[k];
+    }
+}
+function freeSprites() {
+    Object.keys(SPRITES).forEach(function (k) { SPRITES[k].cv.width = SPRITES[k].cv.height = 0; delete SPRITES[k]; });
+    SPRITE_LRU.length = 0; SPRITE_BYTES = 0;
+}
+/* ── the pixel primitives every painter uses ──
+   Everything lands on integer boundaries. That is the whole difference
+   between pixel art and a smooth vector drawing at this size. */
+function px(g, x, y, w, h, col) { g.fillStyle = col; g.fillRect(Math.round(x), Math.round(y), Math.max(1, Math.round(w)), Math.max(1, Math.round(h))); }
+function poly(g, pts, col) {
+    g.fillStyle = col; g.beginPath();
+    g.moveTo(Math.round(pts[0][0]), Math.round(pts[0][1]));
+    for (var i = 1; i < pts.length; i++) g.lineTo(Math.round(pts[i][0]), Math.round(pts[i][1]));
+    g.closePath(); g.fill();
+}
+function line(g, x0, y0, x1, y1, col, w) {
+    g.strokeStyle = col; g.lineWidth = w || 1;
+    g.beginPath(); g.moveTo(Math.round(x0) + 0.5, Math.round(y0) + 0.5); g.lineTo(Math.round(x1) + 0.5, Math.round(y1) + 0.5); g.stroke();
+}
+/* Dither in 2px blocks rather than blending: a value step you can see
+   the edge of, which is what keeps this reading as pixels. */
+function dither(g, quad, col, amt, rng, size) {
+    var s = size || 2;
+    /* Walk the quad's own scanlines rather than its bounding box.
+       Every face here is a parallelogram drawn at an iso angle, so the
+       box is mostly outside the shape: scanning it and clipping cost 3x
+       on a house wall, 6x on the stage and 33x on the footlight strip,
+       all of it spent generating random numbers for cells that were
+       then clipped away. Dropping the clip drops a save/restore too. */
+    var n = quad.length, ys = quad.map(function (p) { return p[1]; });
+    var y0 = Math.floor(Math.min.apply(null, ys)), y1 = Math.ceil(Math.max.apply(null, ys));
+    /* One path, one fill. A cell per fillRect meant about four thousand
+       draw calls for a single house wall, which is where sixty of the
+       sixty-six milliseconds of a wall sprite went. The cells sit on a
+       grid and never overlap, so filling them together is identical. */
+    g.beginPath();
+    for (var y = y0; y < y1; y += s) {
+        var yc = y + s / 2, lo = Infinity, hi = -Infinity;
+        for (var i = 0; i < n; i++) {                       // where this scanline crosses each edge
+            var a = quad[i], b = quad[(i + 1) % n];
+            if ((a[1] <= yc) === (b[1] <= yc)) continue;
+            var xh = a[0] + (b[0] - a[0]) * (yc - a[1]) / (b[1] - a[1]);
+            if (xh < lo) lo = xh;
+            if (xh > hi) hi = xh;
+        }
+        if (lo > hi) continue;
+        for (var x = Math.floor(lo / s) * s; x < hi; x += s) if (rng() < amt) g.rect(x, y, s, s);
+    }
+    g.fillStyle = col; g.fill();
+}
+/* bilinear point inside a quad: the only sane way to lay courses of
+   anything across a face that is a parallelogram on screen */
+function qp(quad, u, v) {
+    var a = quad[0], b = quad[1], c = quad[2], d = quad[3];
+    var tx = a[0] + (b[0] - a[0]) * u, ty = a[1] + (b[1] - a[1]) * u;
+    var bx = d[0] + (c[0] - d[0]) * u, by = d[1] + (c[1] - d[1]) * u;
+    return [tx + (bx - tx) * v, ty + (by - ty) * v];
+}
+/* k < 1 darkens, k > 1 lightens, clamped. Snapped to 64 steps and
+   memoised: this runs twice per cobblestone and several times per
+   course of stone in every wall in the game, and it was re-parsing a
+   hex string every time. Snapping is not a compromise here — a fixed
+   number of shades per colour is what makes a palette a palette. */
+var SHADE = {};
+function shadeHex(hex, k) {
+    var q = Math.round(k * 64), key = hex + '|' + q;
+    var hit = SHADE[key];
+    if (hit) return hit;
+    var kk = q / 64, n = parseInt(hex.slice(1), 16);
+    var r = clamp(Math.round(((n >> 16) & 255) * kk), 0, 255);
+    var g2 = clamp(Math.round(((n >> 8) & 255) * kk), 0, 255);
+    var b2 = clamp(Math.round((n & 255) * kk), 0, 255);
+    return (SHADE[key] = '#' + ((1 << 24) | (r << 16) | (g2 << 8) | b2).toString(16).slice(1));
+}
+/* Painting a sprite is expensive on purpose: it buys a detailed prop
+   that then costs one drawImage a frame forever. What it must not do is
+   spend all of it on the frame you walk through a door. Entering the
+   square used to build every sprite in it at once, which is 150ms, or
+   nine dropped frames, at exactly the moment the place is supposed to
+   open up. So each frame gets a budget, and anything not painted yet is
+   drawn as its plain solid until its turn comes. */
+var BUILD_MS = 5, buildT0 = 0;
+function startBuildBudget() { buildT0 = performance.now(); }
+function mayBuild() { return performance.now() - buildT0 < BUILD_MS; }
 function drawProp(cx, o) {
     var b = o.b, t = o.t;
     var x0 = isoX(b[0], b[1]), x1 = isoX(b[0] + b[2], b[1]), x2 = isoX(b[0] + b[2], b[1] + b[3]), x3 = isoX(b[0], b[1] + b[3]);
     var y0 = isoY(b[0], b[1]), y1 = isoY(b[0] + b[2], b[1]), y2 = isoY(b[0] + b[2], b[1] + b[3]), y3 = isoY(b[0], b[1] + b[3]);
     if (Math.max(x0, x1, x2, x3) < -80 || Math.min(x0, x1, x2, x3) > VW + 80) return;   // off camera
-    if (Math.min(y0, y1, y2, y3) - 130 > VH + 40 || Math.max(y0, y1, y2, y3) < -160) return;
-    var d = propDef(t), hgt = d.h, pal = d.pal;
-    var mx0 = (x0 + x2) / 2, my0 = (y0 + y2) / 2;             // centre of the footprint
-    var rrx = (x1 - x3) / 2, rry = (y2 - y0) / 2;             // and its half extents, in px
-    /* The solid underneath the art. It used to be a box for everything,
-       always, and the round props then painted a lump on the lid that
-       covered about half of it, so the hollow read as six grey crates.
-       A prop that is round in the world gets a round solid. */
-    if (d.body === 'round') {
-        cx.fillStyle = pal[1];                                // the whole silhouette, in shadow
-        cx.beginPath(); cx.ellipse(mx0, my0 - hgt / 2, rrx * 0.96, rry + hgt / 2, 0, 0, TAU); cx.fill();
-        cx.fillStyle = pal[0];                                // the side that faces the light
-        cx.beginPath(); cx.ellipse(mx0 - rrx * 0.09, my0 - hgt * 0.6 - rry * 0.2, rrx * 0.8, (rry + hgt / 2) * 0.72, 0, 0, TAU); cx.fill();
-        cx.fillStyle = pal[2];
-        cx.beginPath(); cx.ellipse(mx0 - rrx * 0.2, my0 - hgt * 0.8 - rry * 0.4, rrx * 0.46, (rry + hgt / 2) * 0.34, 0, 0, TAU); cx.fill();
-    } else if (d.body === 'cyl') {                            // round in plan: a foot, a straight side, a lid
-        cx.fillStyle = pal[0];
-        cx.fillRect(mx0 - rrx, my0 - hgt, rrx * 2, hgt);
-        cx.beginPath(); cx.ellipse(mx0, my0, rrx, rry, 0, 0, TAU); cx.fill();
-        cx.fillStyle = pal[1];
-        cx.fillRect(mx0 + rrx * 0.3, my0 - hgt, rrx * 0.7, hgt);
-        cx.fillStyle = pal[2];
-        cx.beginPath(); cx.ellipse(mx0, my0 - hgt, rrx, rry, 0, 0, TAU); cx.fill();
-    } else {
-        // some props stand on less ground than they own: a tree is a
-        // trunk in the middle of its canopy, not a green cube
-        var k = d.ins || 1, gx0 = x0, gx1 = x1, gx2 = x2, gx3 = x3, gy0 = y0, gy1 = y1, gy2 = y2, gy3 = y3;
-        if (k !== 1) {
-            gx0 = mx0 + (x0 - mx0) * k; gx1 = mx0 + (x1 - mx0) * k; gx2 = mx0 + (x2 - mx0) * k; gx3 = mx0 + (x3 - mx0) * k;
-            gy0 = my0 + (y0 - my0) * k; gy1 = my0 + (y1 - my0) * k; gy2 = my0 + (y2 - my0) * k; gy3 = my0 + (y3 - my0) * k;
-        }
-        // top face
-        cx.beginPath(); cx.moveTo(gx0, gy0 - hgt); cx.lineTo(gx1, gy1 - hgt); cx.lineTo(gx2, gy2 - hgt); cx.lineTo(gx3, gy3 - hgt); cx.closePath();
-        cx.fillStyle = pal[2]; cx.fill();
-        // two visible walls
-        cx.beginPath(); cx.moveTo(gx3, gy3 - hgt); cx.lineTo(gx2, gy2 - hgt); cx.lineTo(gx2, gy2); cx.lineTo(gx3, gy3); cx.closePath();
-        cx.fillStyle = pal[0]; cx.fill();
-        cx.beginPath(); cx.moveTo(gx1, gy1 - hgt); cx.lineTo(gx2, gy2 - hgt); cx.lineTo(gx2, gy2); cx.lineTo(gx1, gy1); cx.closePath();
-        cx.fillStyle = pal[1]; cx.fill();
+    if (Math.min(y0, y1, y2, y3) - 240 > VH + 40 || Math.max(y0, y1, y2, y3) < -260) return;
+    var mxc = (x0 + x2) / 2, myc = (y0 + y2) / 2;
+    var v = propVar(t, b);
+    var sp = propSprite(t, b[2], b[3], v, mayBuild());
+    if (!sp) {                                   // its turn is next frame; stand something there meanwhile
+        var c = spriteCtx(t, b[2], b[3], v);
+        cx.save(); cx.translate(Math.round(mxc), Math.round(myc));
+        contactShadow(cx, c);
+        if (c.d.body === 'round') roundBody(cx, c); else if (c.d.body === 'cyl') cylBody(cx, c); else body(cx, c);
+        cx.restore();
+        return;
     }
-    if (t === 'house') {
-        // a roof, so it reads as somewhere people sleep and not as a box
-        var rh = 26, mx = (x0 + x2) / 2, my = (y0 + y2) / 2 - hgt;
-        cx.fillStyle = '#241d29';
-        cx.beginPath(); cx.moveTo(x3, y3 - hgt); cx.lineTo(x2, y2 - hgt); cx.lineTo(mx, my - rh); cx.closePath(); cx.fill();
-        cx.fillStyle = '#1b1520';
-        cx.beginPath(); cx.moveTo(x1, y1 - hgt); cx.lineTo(x2, y2 - hgt); cx.lineTo(mx, my - rh); cx.closePath(); cx.fill();
-        cx.fillStyle = '#332a3a';
-        cx.beginPath(); cx.moveTo(x0, y0 - hgt); cx.lineTo(x3, y3 - hgt); cx.lineTo(mx, my - rh); cx.closePath(); cx.fill();
-        // a door on the face you can see
-        var dx = x3 + (x2 - x3) * 0.5, dy = y3 + (y2 - y3) * 0.5;
-        cx.fillStyle = '#191320'; cx.fillRect(dx - 6, dy - 30, 12, 30);
-        cx.fillStyle = '#2e2436'; cx.fillRect(dx - 6, dy - 30, 12, 3);
-        // one lit window: the ninth night is a lamp on every sill
-        cx.fillStyle = 'rgba(255,196,110,.2)'; cx.fillRect(x3 + 8, y3 - hgt + 16, 17, 19);
-        cx.fillStyle = 'rgba(255,196,110,.8)'; cx.fillRect(x3 + 12, y3 - hgt + 20, 9, 11);
-        cx.strokeStyle = 'rgba(20,14,26,.9)'; cx.lineWidth = 1.5;
-        cx.beginPath(); cx.moveTo(x3 + 16.5, y3 - hgt + 20); cx.lineTo(x3 + 16.5, y3 - hgt + 31); cx.stroke();
-    }
-    if (t === 'tree') {
-        // three overlapping blobs read as a canopy; one ellipse reads as
-        // a lozenge. The trunk is the inset solid underneath.
-        var tx = (x0 + x2) / 2, ty = (y0 + y2) / 2 - hgt;
-        cx.fillStyle = '#1c2c1f';
-        cx.beginPath(); cx.ellipse(tx - rrx * 0.28, ty + rry * 0.26, rrx * 0.44, rry * 0.64, 0, 0, TAU); cx.fill();
-        cx.beginPath(); cx.ellipse(tx + rrx * 0.3, ty + rry * 0.16, rrx * 0.4, rry * 0.6, 0, 0, TAU); cx.fill();
-        cx.beginPath(); cx.ellipse(tx, ty + rry * 0.5, rrx * 0.34, rry * 0.46, 0, 0, TAU); cx.fill();   // the skirt, over the trunk top
-        cx.fillStyle = '#2c4430';
-        cx.beginPath(); cx.ellipse(tx, ty - rry * 0.38, rrx * 0.56, rry * 0.94, 0, 0, TAU); cx.fill();
-        cx.fillStyle = '#3a5840';
-        cx.beginPath(); cx.ellipse(tx - rrx * 0.16, ty - rry * 0.8, rrx * 0.3, rry * 0.44, 0, 0, TAU); cx.fill();
-    }
-    if (t === 'stagewip') {                               // the play, half built
-        cx.strokeStyle = '#6a5638'; cx.lineWidth = 2;
-        for (var pz = 0; pz < 3; pz++) {
-            var qx = x3 + (x2 - x3) * (0.2 + pz * 0.3), qy = y3 + (y2 - y3) * (0.2 + pz * 0.3);
-            cx.beginPath(); cx.moveTo(qx, qy - hgt); cx.lineTo(qx + 2, qy - hgt - 30); cx.stroke();
-        }
-    }
-    if (t === 'markstone') {                              // two names, one scratched out
-        cx.fillStyle = '#7a7a86'; cx.fillRect((x0 + x2) / 2 - 9, (y0 + y2) / 2 - hgt + 6, 18, 2);
-        cx.fillStyle = '#2a2a30'; cx.fillRect((x0 + x2) / 2 - 9, (y0 + y2) / 2 - hgt + 13, 18, 3);
-        cx.strokeStyle = '#6a6a76'; cx.lineWidth = 1;
-        for (var s = 0; s < 4; s++) { cx.beginPath(); cx.moveTo((x0 + x2) / 2 - 9 + s * 5, (y0 + y2) / 2 - hgt + 11); cx.lineTo((x0 + x2) / 2 - 4 + s * 5, (y0 + y2) / 2 - hgt + 17); cx.stroke(); }
-    }
-    if (t === 'well') {                                   // a shaft, and a rim you could sit on
-        cx.fillStyle = '#12101a';
-        cx.beginPath(); cx.ellipse(mx0, my0 - hgt, rrx * 0.66, rry * 0.66, 0, 0, TAU); cx.fill();
-        cx.strokeStyle = 'rgba(30,24,18,.6)'; cx.lineWidth = 1.5;
-        cx.beginPath(); cx.ellipse(mx0, my0 - hgt, rrx * 0.84, rry * 0.84, 0, 0, TAU); cx.stroke();
-    }
-    /* ── the nine that used to be coloured boxes, plus the indoor set ── */
-    var tx = (x0 + x2) / 2, ty = (y0 + y2) / 2 - hgt;        // centre of the top face
-    var fw = Math.hypot(x2 - x3, y2 - y3) || 1;              // the south-west face, in px
-    function plank(n, col) {                                  // n seams across the south face
-        cx.strokeStyle = col; cx.lineWidth = 1;
-        for (var i = 1; i < n; i++) {
-            var q = i / n, ax = x3 + (x2 - x3) * q, ay = y3 + (y2 - y3) * q;
-            cx.beginPath(); cx.moveTo(ax, ay - hgt); cx.lineTo(ax, ay); cx.stroke();
-        }
-    }
-    if (t === 'fence') {                                      // pickets and a rail, not a wall
-        var long = b[2] >= b[3], n = Math.max(2, Math.round((long ? b[2] : b[3]) * 1.6));
-        cx.strokeStyle = '#5a4a36'; cx.lineWidth = 2;
-        for (var fi = 0; fi <= n; fi++) {
-            var q2 = fi / n;
-            var px = long ? isoX(b[0] + b[2] * q2, b[1] + b[3] / 2) : isoX(b[0] + b[2] / 2, b[1] + b[3] * q2);
-            var py = long ? isoY(b[0] + b[2] * q2, b[1] + b[3] / 2) : isoY(b[0] + b[2] / 2, b[1] + b[3] * q2);
-            cx.beginPath(); cx.moveTo(px, py + TILE_H / 2); cx.lineTo(px, py + TILE_H / 2 - hgt - 6); cx.stroke();
-        }
-        cx.strokeStyle = '#463a2a'; cx.lineWidth = 2.5;
-        cx.beginPath(); cx.moveTo(x3, y3 - hgt - 2); cx.lineTo(x2, y2 - hgt - 2); cx.stroke();
-        cx.beginPath(); cx.moveTo(x3, y3 - hgt + 8); cx.lineTo(x2, y2 - hgt + 8); cx.stroke();
-    }
-    if (t === 'beam' || t === 'post') { plank(3, 'rgba(0,0,0,.35)'); cx.fillStyle = 'rgba(255,240,210,.06)'; cx.fillRect(tx - fw * 0.3, ty - 1, fw * 0.6, 2); }
-    if (t === 'crate') {
-        plank(3, 'rgba(0,0,0,.4)');
-        cx.strokeStyle = '#6a5a40'; cx.lineWidth = 1.5;
-        cx.beginPath(); cx.moveTo(x3, y3 - hgt * 0.55); cx.lineTo(x2, y2 - hgt * 0.55); cx.stroke();
-        cx.strokeStyle = 'rgba(120,100,70,.5)';
-        cx.beginPath(); cx.moveTo(x3, y3); cx.lineTo(x2, y2 - hgt); cx.stroke();
-    }
-    if (t === 'barrel') {                                     // staves down, hoops around
-        cx.strokeStyle = 'rgba(0,0,0,.32)'; cx.lineWidth = 1;
-        for (var bs = -2; bs <= 2; bs++) {
-            var bx = mx0 + rrx * bs * 0.3;
-            cx.beginPath(); cx.moveTo(bx, my0 - hgt + 2); cx.lineTo(bx, my0 + rry * 0.5); cx.stroke();
-        }
-        cx.strokeStyle = '#6a5a40'; cx.lineWidth = 1.5;
-        [0.72, 0.24].forEach(function (q) {
-            cx.beginPath(); cx.ellipse(mx0, my0 - hgt * q, rrx, rry, 0, 0, Math.PI); cx.stroke();
-        });
-    }
-    if (t === 'sack') {                                       // a grain sack slumps, and it is tied at the neck
-        cx.fillStyle = '#463d29'; cx.fillRect(tx - 3, ty - rry + 1, 6, 5);
-        cx.strokeStyle = 'rgba(40,34,22,.5)'; cx.lineWidth = 1;
-        cx.beginPath(); cx.moveTo(tx - rrx * 0.36, ty + rry * 0.3); cx.lineTo(tx + rrx * 0.34, ty + rry * 0.5); cx.stroke();
-    }
-    if (t === 'cart') {                                       // two wheels and a bed with rails
-        cx.fillStyle = '#2a2118';
-        [[-0.3, 0.34], [0.32, 0.3]].forEach(function (w) {
-            cx.beginPath(); cx.arc(tx + fw * w[0], ty + hgt * 0.9, 7, 0, TAU); cx.fill();
-        });
-        cx.strokeStyle = '#5c4a32'; cx.lineWidth = 2;
-        cx.beginPath(); cx.moveTo(x3, y3 - hgt - 10); cx.lineTo(x2, y2 - hgt - 10); cx.stroke();
-        cx.beginPath(); cx.moveTo(x3, y3 - hgt); cx.lineTo(x3, y3 - hgt - 10); cx.stroke();
-        cx.beginPath(); cx.moveTo(x2, y2 - hgt); cx.lineTo(x2, y2 - hgt - 10); cx.stroke();
-    }
-    if (t === 'mill') {                                       // roof, door, and the sails behind it
-        var rh2 = 30, mmx = tx, mmy = ty;
-        cx.fillStyle = '#2a2318';
-        cx.beginPath(); cx.moveTo(x3, y3 - hgt); cx.lineTo(x2, y2 - hgt); cx.lineTo(mmx, mmy - rh2); cx.closePath(); cx.fill();
-        cx.fillStyle = '#221c12';
-        cx.beginPath(); cx.moveTo(x1, y1 - hgt); cx.lineTo(x2, y2 - hgt); cx.lineTo(mmx, mmy - rh2); cx.closePath(); cx.fill();
-        cx.fillStyle = '#1a1410'; cx.fillRect(tx - 7, ty + hgt * 0.42, 14, hgt * 0.58);
-        cx.fillStyle = '#3a2f1e'; cx.fillRect(tx - 7, ty + hgt * 0.42, 14, 3);
-        plank(5, 'rgba(0,0,0,.28)');
-    }
-    if (t === 'wheel') {                                      // the mill wheel, spokes and all
-        var wr = Math.min(34, hgt * 0.46);
-        cx.strokeStyle = '#4a3d2a'; cx.lineWidth = 4;
-        cx.beginPath(); cx.arc(tx, ty + hgt * 0.42, wr, 0, TAU); cx.stroke();
-        cx.lineWidth = 2; cx.strokeStyle = '#5c4c34';
-        for (var sp = 0; sp < 8; sp++) {
-            var an = sp / 8 * TAU + RT.t * 0.25;
-            cx.beginPath(); cx.moveTo(tx, ty + hgt * 0.42);
-            cx.lineTo(tx + Math.cos(an) * wr, ty + hgt * 0.42 + Math.sin(an) * wr); cx.stroke();
-        }
-    }
-    if (t === 'stone' || t === 'cairn') {                     // a boulder, not a crate
-        cx.strokeStyle = 'rgba(18,16,24,.45)'; cx.lineWidth = 1;
-        cx.beginPath();
-        cx.moveTo(tx - rrx * 0.34, ty - rry * 0.1);
-        cx.lineTo(tx - rrx * 0.02, ty + rry * 0.26);
-        cx.lineTo(tx + rrx * 0.3, ty + rry * 0.16);
-        cx.stroke();
-        cx.fillStyle = 'rgba(210,210,230,.09)';
-        cx.beginPath(); cx.ellipse(tx - rrx * 0.26, ty - rry * 0.6, rrx * 0.16, rry * 0.34, -0.5, 0, TAU); cx.fill();
-        if (t === 'cairn') {                                  // one more stone on top, because somebody stacked it
-            var cy2 = ty - rry - hgt * 0.14;
-            cx.fillStyle = pal[1];
-            cx.beginPath(); cx.ellipse(tx + 1, cy2, rrx * 0.42, rry * 0.42, 0, 0, TAU); cx.fill();
-            cx.fillStyle = pal[2];
-            cx.beginPath(); cx.ellipse(tx - rrx * 0.05, cy2 - rry * 0.12, rrx * 0.26, rry * 0.24, 0, 0, TAU); cx.fill();
-        }
-    }
-    if (t === 'hedge') {
-        cx.fillStyle = '#22331f';
-        for (var hb = 0; hb < 4; hb++) {
-            var hq = hb / 3, hx = x3 + (x2 - x3) * hq, hy = y3 + (y2 - y3) * hq;
-            cx.beginPath(); cx.ellipse(hx, hy - hgt, 13, 9, 0, 0, TAU); cx.fill();
-        }
-        cx.fillStyle = '#2f4429'; cx.beginPath(); cx.ellipse(tx, ty - 5, fw * 0.4, 8, 0, 0, TAU); cx.fill();
-    }
-    if (t === 'curtain') {                                    // heavy folds, and it hangs
-        cx.strokeStyle = 'rgba(0,0,0,.35)'; cx.lineWidth = 3;
-        for (var cf = 1; cf < 14; cf++) {
-            var cq = cf / 14, ax2 = x3 + (x2 - x3) * cq, ay2 = y3 + (y2 - y3) * cq;
-            cx.beginPath(); cx.moveTo(ax2, ay2 - hgt + 4);
-            cx.lineTo(ax2 + Math.sin(cf * 1.7) * 2, ay2 - 2); cx.stroke();
-        }
-        cx.fillStyle = '#5c3038'; cx.fillRect(Math.min(x3, x2), Math.min(y3, y2) - hgt, Math.abs(x2 - x3), 5);
-    }
-    if (t === 'foot') {                                       // footlights, the reason the stage is lit
-        for (var fl = 0; fl < 9; fl++) {
-            var lq = (fl + 0.5) / 9, lx = x3 + (x2 - x3) * lq, ly = y3 + (y2 - y3) * lq;
-            cx.fillStyle = '#1a1410'; cx.fillRect(lx - 3, ly - hgt - 4, 6, 5);
-            cx.globalCompositeOperation = 'lighter';
-            var fg = cx.createRadialGradient(lx, ly - hgt - 4, 1, lx, ly - hgt - 4, 22);
-            fg.addColorStop(0, 'rgba(255,190,90,.5)'); fg.addColorStop(1, 'rgba(255,190,90,0)');
-            cx.fillStyle = fg; cx.beginPath(); cx.arc(lx, ly - hgt - 4, 22, 0, TAU); cx.fill();
-            cx.globalCompositeOperation = 'source-over';
-        }
-    }
-    if (t === 'lamp') {                                       // the whole title of the game
-        cx.strokeStyle = '#2a2620'; cx.lineWidth = 3;
-        cx.beginPath(); cx.moveTo(tx, ty + hgt); cx.lineTo(tx, ty - 6); cx.stroke();
-        var flick = 0.82 + Math.sin(RT.t * 7 + b[0]) * 0.18;
-        cx.fillStyle = 'rgba(30,24,18,.95)'; cx.fillRect(tx - 6, ty - 18, 12, 13);
-        cx.fillStyle = 'rgba(255,206,120,' + (0.55 + flick * 0.4).toFixed(2) + ')'; cx.fillRect(tx - 4, ty - 16, 8, 9);
-        cx.globalCompositeOperation = 'lighter';
-        var lg = cx.createRadialGradient(tx, ty - 11, 2, tx, ty - 11, 34);
-        lg.addColorStop(0, 'rgba(255,200,110,' + (0.3 * flick).toFixed(2) + ')'); lg.addColorStop(1, 'rgba(255,190,90,0)');
-        cx.fillStyle = lg; cx.beginPath(); cx.arc(tx, ty - 11, 34, 0, TAU); cx.fill();
-        cx.globalCompositeOperation = 'source-over';
-    }
-    if (t === 'table' || t === 'counter') {
-        plank(4, 'rgba(0,0,0,.3)');
-        cx.fillStyle = 'rgba(255,240,210,.05)'; cx.beginPath();
-        cx.moveTo(x0, y0 - hgt); cx.lineTo(x1, y1 - hgt); cx.lineTo(x2, y2 - hgt); cx.lineTo(x3, y3 - hgt); cx.closePath(); cx.fill();
-        if (t === 'counter') { cx.fillStyle = '#2a2118'; cx.fillRect(tx - fw * 0.36, ty + 4, fw * 0.72, 3); }
-    }
-    if (t === 'shelf') {
-        cx.strokeStyle = 'rgba(0,0,0,.4)'; cx.lineWidth = 2;
-        for (var sh = 1; sh < 3; sh++) {
-            cx.beginPath(); cx.moveTo(x3, y3 - hgt * sh / 3); cx.lineTo(x2, y2 - hgt * sh / 3); cx.stroke();
-        }
-        var jars = ['#6a5a3a', '#4a5a5a', '#6a4a4a', '#5a5a3a'];
-        for (var jr = 0; jr < 5; jr++) {
-            var jq = (jr + 0.5) / 5, jx = x3 + (x2 - x3) * jq, jy = y3 + (y2 - y3) * jq;
-            cx.fillStyle = jars[jr % 4]; cx.fillRect(jx - 3, jy - hgt + 4, 6, 8);
-            cx.fillStyle = jars[(jr + 1) % 4]; cx.fillRect(jx - 3, jy - hgt * 2 / 3 + 3, 6, 7);
-        }
-    }
-    if (t === 'bed') {
-        cx.fillStyle = '#514463';
-        cx.beginPath(); cx.moveTo(x0, y0 - hgt); cx.lineTo(x1, y1 - hgt); cx.lineTo(x2, y2 - hgt); cx.lineTo(x3, y3 - hgt); cx.closePath(); cx.fill();
-        cx.fillStyle = '#d8cfc0';
-        var hx2 = x3 + (x0 - x3) * 0.72, hy2 = y3 + (y0 - y3) * 0.72;
-        cx.beginPath(); cx.ellipse(hx2, hy2 - hgt - 1, 9, 5, 0, 0, TAU); cx.fill();
-    }
-    if (t === 'vat') {                                        // wax, cooling, with a skin on it
-        cx.fillStyle = '#1b1a16';
-        cx.beginPath(); cx.ellipse(mx0, my0 - hgt, rrx * 0.84, rry * 0.84, 0, 0, TAU); cx.fill();
-        cx.fillStyle = 'rgba(230,220,190,.5)';
-        cx.beginPath(); cx.ellipse(mx0, my0 - hgt + 2, rrx * 0.7, rry * 0.7, 0, 0, TAU); cx.fill();
-        cx.fillStyle = 'rgba(255,244,214,.28)';
-        cx.beginPath(); cx.ellipse(mx0 - rrx * 0.2, my0 - hgt, rrx * 0.24, rry * 0.24, 0, 0, TAU); cx.fill();
-    }
-    if (t === 'wall') { plank(Math.max(2, Math.round(fw / 26)), 'rgba(0,0,0,.3)'); }
+    cx.drawImage(sp.cv, Math.round(mxc - sp.ax), Math.round(myc - sp.ay));
+    if (propDef(t).live) propLive(cx, o, mxc, myc, sp);
+    return;
 }
+/* The one light rule, for every prop in the game: the key is low and
+   from the west-north-west, so the SOUTH-WEST face is lit, the
+   SOUTH-EAST face is in shadow, and tops catch a little sky. Anything
+   that breaks this reads as a sticker rather than an object. */
+var PAINT = {};
+function paintProp(g, c) {
+    if (c.d.shadow !== 0) contactShadow(g, c);
+    (PAINT[c.t] || PAINT._)(g, c);
+}
+/* Nothing was touching the ground. An object with no contact shadow
+   reads as a sticker laid on top of the floor, and eleven of them in a
+   room read as a collage. */
+function contactShadow(g, c) {
+    /* Follow the footprint, not the diamond's half extents. Sized off
+       rrx/rry, a prop that is long and thin got a shadow the size of its
+       bounding box: the footlight strip is 13 tiles by half a tile and
+       was laying a 420px black ellipse across the middle of the stage,
+       over the player standing on it, in the first scene of the game.
+       Three banded rings rather than a gradient, because a soft radial
+       falloff is the one thing on screen that is not made of pixels. */
+    var q = [[c.x0, c.y0], [c.x1, c.y1], [c.x2, c.y2], [c.x3, c.y3]];
+    g.save(); g.translate(0, 2);
+    [[1.18, 'rgba(5,4,9,.15)'], [1.09, 'rgba(5,4,9,.2)'], [1.0, 'rgba(5,4,9,.34)']].forEach(function (st) {
+        poly(g, q.map(function (p) { return [p[0] * st[0], p[1] * st[0]]; }), st[1]);
+    });
+    g.restore();
+}
+function propLive(cx, o, mxc, myc, sp) { (LIVE[o.t] || function () {})(cx, o, mxc, myc, sp); }
+var LIVE = {};
+
+/* the plain extruded solid, for everything without bespoke geometry */
+function body(g, c, palOver) {
+    var pal = palOver || c.pal, hgt = c.hgt;
+    var k = c.d.ins || 1;
+    var gx0 = c.x0 * k, gy0 = c.y0 * k, gx1 = c.x1 * k, gy1 = c.y1 * k;
+    var gx2 = c.x2 * k, gy2 = c.y2 * k, gx3 = c.x3 * k, gy3 = c.y3 * k;
+    poly(g, [[gx0, gy0 - hgt], [gx1, gy1 - hgt], [gx2, gy2 - hgt], [gx3, gy3 - hgt]], pal[2]);
+    poly(g, [[gx3, gy3 - hgt], [gx2, gy2 - hgt], [gx2, gy2], [gx3, gy3]], pal[0]);
+    poly(g, [[gx1, gy1 - hgt], [gx2, gy2 - hgt], [gx2, gy2], [gx1, gy1]], pal[1]);
+    return { sw: [[gx3, gy3 - hgt], [gx2, gy2 - hgt], [gx2, gy2], [gx3, gy3]],
+             se: [[gx2, gy2 - hgt], [gx1, gy1 - hgt], [gx1, gy1], [gx2, gy2]],
+             top: [[gx0, gy0 - hgt], [gx1, gy1 - hgt], [gx2, gy2 - hgt], [gx3, gy3 - hgt]] };
+}
+function roundBody(g, c) {
+    var pal = c.pal, hgt = c.hgt, rrx = c.rrx, rry = c.rry;
+    g.fillStyle = pal[1];
+    g.beginPath(); g.ellipse(0, -hgt / 2, rrx * 0.96, rry + hgt / 2, 0, 0, TAU); g.fill();
+    g.fillStyle = pal[0];
+    g.beginPath(); g.ellipse(-rrx * 0.09, -hgt * 0.6 - rry * 0.2, rrx * 0.8, (rry + hgt / 2) * 0.72, 0, 0, TAU); g.fill();
+    g.fillStyle = pal[2];
+    g.beginPath(); g.ellipse(-rrx * 0.2, -hgt * 0.8 - rry * 0.4, rrx * 0.46, (rry + hgt / 2) * 0.34, 0, 0, TAU); g.fill();
+}
+function cylBody(g, c) {
+    var pal = c.pal, hgt = c.hgt, rrx = c.rrx, rry = c.rry;
+    g.fillStyle = pal[0];
+    g.fillRect(-rrx, -hgt, rrx * 2, hgt);
+    g.beginPath(); g.ellipse(0, 0, rrx, rry, 0, 0, TAU); g.fill();
+    g.fillStyle = pal[1]; g.fillRect(rrx * 0.3, -hgt, rrx * 0.7, hgt);
+    g.fillStyle = pal[2];
+    g.beginPath(); g.ellipse(0, -hgt, rrx, rry, 0, 0, TAU); g.fill();
+}
+PAINT._ = function (g, c) {
+    if (c.d.body === 'round') roundBody(g, c);
+    else if (c.d.body === 'cyl') cylBody(g, c);
+    else body(g, c);
+};
+
+/* ── plaster, timber, thatch: the materials Wick is built out of ── */
+/* Every material below is mixed for a NIGHT scene with a dark veil laid
+   over it and warm pools punched back out. Painted at daylight values
+   the town glowed like it was on fire, which is the opposite of a game
+   about one lamp in each window. Leave the headroom for the lamps. */
+function plaster(g, quad, lit, rng) {
+    var base = lit ? '#4c4653' : '#332e3b';
+    poly(g, quad, base);
+    dither(g, quad, shadeHex(base, 1.14), 0.16, rng);        // lime wash, unevenly applied
+    dither(g, quad, shadeHex(base, 0.82), 0.13, rng);
+    // rain never gets the bottom of a wall dry again
+    var damp = [qp(quad, 0, 0.72), qp(quad, 1, 0.72), qp(quad, 1, 1), qp(quad, 0, 1)];
+    dither(g, damp, 'rgba(24,20,30,.5)', 0.5, rng);
+    poly(g, [qp(quad, 0, 0.94), qp(quad, 1, 0.94), qp(quad, 1, 1), qp(quad, 0, 1)], 'rgba(18,14,24,.55)');
+}
+/* Nine hungry years: the daub comes off in sheets and nobody has the
+   lime to put it back, so the sticks underneath show through. */
+function bareWattle(g, quad, u0, v0, u1, v1, rng) {
+    var patch = [qp(quad, u0, v0), qp(quad, u1, v0), qp(quad, u1, v1), qp(quad, u0, v1)];
+    poly(g, patch, '#332b26');
+    for (var i = 0; i <= 7; i++) {                            // woven withies
+        var q = i / 7, a = qp(patch, 0, q), b = qp(patch, 1, q);
+        line(g, a[0], a[1], b[0], b[1], i % 2 ? '#4a3d30' : '#3d3226', 1);
+    }
+    for (var j = 1; j < 4; j++) {
+        var a2 = qp(patch, j / 4, 0), b2 = qp(patch, j / 4, 1);
+        line(g, a2[0], a2[1], b2[0], b2[1], '#241d1a', 1);
+    }
+    dither(g, patch, 'rgba(0,0,0,.35)', 0.3, rng);
+}
+function timberFrame(g, quad, rng, braces) {
+    var dark = '#2f2731', lit = '#3d3440';
+    function beam(u0, v0, u1, v1, w) {                        // a squared timber, lit on its upper edge
+        var a = qp(quad, u0, v0), b = qp(quad, u1, v1);
+        line(g, a[0], a[1], b[0], b[1], dark, w);
+        line(g, a[0], a[1] - w / 2 + 0.5, b[0], b[1] - w / 2 + 0.5, lit, 1);
+    }
+    beam(0.02, 0, 0.02, 1, 4); beam(0.98, 0, 0.98, 1, 4);     // corner posts
+    beam(0, 0.06, 1, 0.06, 4);                                // wall plate, under the eaves
+    beam(0, 0.55, 1, 0.55, 3);                                // mid rail
+    beam(0, 0.985, 1, 0.985, 3);                              // sill beam on the ground
+    if (braces) { beam(0.02, 0.55, 0.26, 0.06, 2); beam(0.98, 0.55, 0.74, 0.06, 2); }
+    for (var s = 1; s < 4; s++) beam(s / 4, 0.06, s / 4, 0.55, 2);   // studs
+}
+/* Courses of thatch or slate laid across a roof plane. The plane is a
+   parallelogram on screen, so every course is walked in quad space
+   rather than in pixels, or the far end of the roof drifts off it. */
+function thatchPlane(g, quad, rng, lit) {
+    var base = lit ? '#4a3f28' : '#302819';
+    poly(g, quad, base);
+    var courses = 7;
+    for (var i = courses; i >= 0; i--) {
+        var v = i / courses;
+        var band = [qp(quad, 0, Math.max(0, v - 0.16)), qp(quad, 1, Math.max(0, v - 0.16)), qp(quad, 1, v), qp(quad, 0, v)];
+        poly(g, band, shadeHex(base, 0.86 + (i / courses) * 0.3));
+        // the ragged lower lip of a course, tuft by tuft
+        var steps = Math.max(6, Math.round(Math.abs(quad[1][0] - quad[0][0]) / 7));
+        for (var s = 0; s < steps; s++) {
+            var u = (s + 0.5) / steps, p = qp(quad, u, v);
+            var drop = 1 + rng() * 3;
+            px(g, p[0] - 3, p[1] - 1, 6, drop, shadeHex(base, 0.62));
+        }
+        var a = qp(quad, 0, v), b = qp(quad, 1, v);
+        line(g, a[0], a[1], b[0], b[1], 'rgba(20,15,10,.4)', 1);
+    }
+    for (var k = 0; k < 90; k++) {                            // individual straws, catching the light
+        var u2 = rng(), v2 = rng(), p2 = qp(quad, u2, v2);
+        px(g, p2[0], p2[1], 1, 2 + rng() * 3, rng() < 0.5 ? shadeHex(base, 1.24) : shadeHex(base, 0.7));
+    }
+    for (var m = 0; m < 3; m++) {                             // moss, on the courses that never dry
+        var mu = rng(), mv = 0.3 + rng() * 0.6, mp = qp(quad, mu, mv);
+        g.fillStyle = 'rgba(58,78,48,.5)';
+        g.beginPath(); g.ellipse(mp[0], mp[1], 4 + rng() * 6, 2 + rng() * 3, 0, 0, TAU); g.fill();
+    }
+    // a patch of newer straw, a repair somebody could still afford
+    var pu = 0.2 + rng() * 0.5, pv = 0.24 + rng() * 0.4;
+    var patch = [qp(quad, pu, pv), qp(quad, pu + 0.2, pv), qp(quad, pu + 0.2, pv + 0.3), qp(quad, pu, pv + 0.3)];
+    poly(g, patch, shadeHex(base, 1.2));
+    dither(g, patch, shadeHex(base, 0.8), 0.3, rng);
+}
+function slatePlane(g, quad, rng, lit) {
+    var base = lit ? '#3a3945' : '#26262e';
+    poly(g, quad, base);
+    var rows = 9;
+    for (var r = 0; r < rows; r++) {
+        var v0 = r / rows, v1 = (r + 1) / rows;
+        var cols = Math.max(5, Math.round(Math.abs(quad[1][0] - quad[0][0]) / 11));
+        for (var s = 0; s < cols; s++) {
+            var off = (r % 2) * 0.5 / cols;
+            var u0 = s / cols + off, u1 = u0 + 1 / cols;
+            if (u0 >= 1) continue;
+            var tile = [qp(quad, u0, v0), qp(quad, Math.min(1, u1) - 0.004, v0), qp(quad, Math.min(1, u1) - 0.004, v1), qp(quad, u0, v1)];
+            var k = 0.86 + rng() * 0.3;
+            poly(g, tile, shadeHex(base, k));
+            if (rng() < 0.1) poly(g, tile, 'rgba(60,80,52,.35)');        // lichen
+            if (rng() < 0.05) poly(g, tile, 'rgba(12,10,16,.8)');        // gone, and the batten shows
+        }
+        var a = qp(quad, 0, v1), b = qp(quad, 1, v1);
+        line(g, a[0], a[1], b[0], b[1], 'rgba(10,8,14,.45)', 1);
+    }
+}
+PAINT.house = function (g, c) {
+    var rng = c.rng, hgt = c.hgt, v = c.v;
+    var thatched = v % 3 !== 2;                   // most of Wick is thatched; one roof in three is slate
+    var flip = v % 2 === 1;                       // which way the ridge runs, so no two neighbours match
+    var rh = 26 + (v % 3) * 6;
+    var eo = 1.1;                                  // the eaves overhang the wall
+    var E = function (p) { return [p[0] * eo, p[1] * eo]; };
+    var W = { n: [c.x0, c.y0 - hgt], e: [c.x1, c.y1 - hgt], s: [c.x2, c.y2 - hgt], w: [c.x3, c.y3 - hgt] };
+    var eaveN = E(W.n), eaveE = E(W.e), eaveS = E(W.s), eaveW = E(W.w);
+    var mid = function (a, b) { return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2 - rh]; };
+    var rA, rB, farPlane, nearPlane, gable, gableFlat;
+    if (!flip) {                                   // ridge runs west-east: one long slope faces us, gable to the south-east
+        rA = mid(eaveW, eaveN); rB = mid(eaveE, eaveS);
+        farPlane  = [rA, rB, eaveE, eaveN];
+        nearPlane = [rA, rB, eaveS, eaveW];
+        gable = [W.e, W.s, [ (W.e[0] + W.s[0]) / 2, (W.e[1] + W.s[1]) / 2 - rh ]];
+        gableFlat = [W.s, W.e, [(W.e[0] + W.s[0]) / 2, (W.e[1] + W.s[1]) / 2 - rh]];
+    } else {                                       // ridge runs north-south: gable to the south-west
+        rA = mid(eaveN, eaveE); rB = mid(eaveW, eaveS);
+        farPlane  = [rA, rB, eaveW, eaveN];
+        nearPlane = [rA, rB, eaveS, eaveE];
+        gable = [W.w, W.s, [(W.w[0] + W.s[0]) / 2, (W.w[1] + W.s[1]) / 2 - rh]];
+        gableFlat = gable;
+    }
+    /* ── the two walls you can see ── */
+    var sw = [[c.x3, c.y3 - hgt], [c.x2, c.y2 - hgt], [c.x2, c.y2], [c.x3, c.y3]];
+    var se = [[c.x2, c.y2 - hgt], [c.x1, c.y1 - hgt], [c.x1, c.y1], [c.x2, c.y2]];
+    poly(g, [[c.x0, c.y0 - hgt], [c.x1, c.y1 - hgt], [c.x2, c.y2 - hgt], [c.x3, c.y3 - hgt]], '#2a2530');
+    plaster(g, se, false, rng);
+    plaster(g, sw, true, rng);
+    if (v % 2 === 0) bareWattle(g, sw, 0.62, 0.16, 0.88, 0.5, rng);
+    else bareWattle(g, se, 0.1, 0.6, 0.36, 0.9, rng);
+    /* Two rectangles, and they are the whole game.
+       Around the sill that still gets a lamp, the plaster is scrubbed
+       clean, in a hard-edged rectangle, because somebody wipes the soot
+       off it once a year and has done for four hundred.
+       Around the sill that does not, the same rectangle is still there,
+       one step lighter than the wall and no more. It was scrubbed too,
+       once. This house used to set out two. */
+    var lampU = 0.3 + (v % 2) * 0.3;
+    var scrub = [qp(se, lampU - 0.05, 0.13), qp(se, lampU + 0.18, 0.13), qp(se, lampU + 0.18, 0.55), qp(se, lampU - 0.05, 0.55)];
+    poly(g, scrub, 'rgba(122,114,132,.22)');
+    dither(g, scrub, 'rgba(150,142,162,.3)', 0.2, rng);
+    var ghostU = v % 3 === 0 ? 0.74 : 0.1;
+    var ghost = [qp(sw, ghostU - 0.05, 0.13), qp(sw, ghostU + 0.18, 0.13), qp(sw, ghostU + 0.18, 0.55), qp(sw, ghostU - 0.05, 0.55)];
+    poly(g, ghost, 'rgba(122,114,132,.07)');
+    timberFrame(g, se, rng, false);
+    timberFrame(g, sw, rng, true);
+
+    /* ── the doorway, in the middle of the lit wall ── */
+    var dTop = qp(sw, 0.42, 0.34), dBot = qp(sw, 0.42, 1), dTop2 = qp(sw, 0.6, 0.34), dBot2 = qp(sw, 0.6, 1);
+    poly(g, [dTop, dTop2, dBot2, dBot], '#171220');
+    var dw = dTop2[0] - dTop[0];
+    for (var pl = 0; pl < 4; pl++) {                       // four planks and the light between them
+        var q = pl / 4;
+        px(g, dTop[0] + dw * q + 1, dTop[1] + 2, dw / 4 - 1.5, dBot[1] - dTop[1] - 2, pl % 2 ? '#241b2c' : '#2b2134');
+    }
+    px(g, dTop[0] - 2, dTop[1] - 3, dw + 4, 4, '#332c3c');   // lintel
+    px(g, dTop[0], dTop[1] + 5, dw, 2, '#3a3142');           // iron strap hinges
+    px(g, dTop[0], dBot[1] - 12, dw, 2, '#3a3142');
+    px(g, dTop2[0] - 5, (dTop[1] + dBot[1]) / 2, 3, 3, '#6a5c3a');   // a ring handle
+    px(g, dBot[0] - 3, dBot[1] - 3, dw + 6, 4, '#3b3542');   // a step, worn hollow in the middle
+    px(g, dBot[0] + 3, dBot[1] - 2, dw - 4, 2, '#3b3442');
+    /* The tally on the door post: groups of five, one for each ninth
+       night this house has kept. Exactly one group has been rubbed back
+       out. It is the same hand that scratched the name off the mark. */
+    var tp = qp(sw, 0.37, 0.42), groups = 6 + (v % 6), rubbed = 2 + (v % 3);
+    for (var tg = 0; tg < groups; tg++) {
+        var ty2 = tp[1] + tg * 3.4;
+        if (ty2 > dBot[1] - 8) break;
+        var col = tg === rubbed ? 'rgba(100,78,51,.3)' : 'rgba(154,123,82,.7)';
+        for (var tm = 0; tm < 4; tm++) px(g, tp[0] - 7 + tm * 2, ty2, 1, 3, col);
+        line(g, tp[0] - 8, ty2 + 3, tp[0] - 1, ty2, col, 1);
+    }
+    if (v % 5 === 3) {                                       // a straw cross over the lintel, on one house in five
+        px(g, dTop[0] + dw / 2 - 5, dTop[1] - 12, 10, 1, '#6f6845');
+        px(g, dTop[0] + dw / 2 - 1, dTop[1] - 16, 1, 9, '#6f6845');
+        line(g, dTop[0] + dw / 2 - 5, dTop[1] - 16, dTop[0] + dw / 2 + 5, dTop[1] - 8, '#6f6845', 1);
+    }
+
+    /* ── windows, and the one that matters ── */
+    function window_(quad, u, wv, lit2) {
+        var a = qp(quad, u, wv), b = qp(quad, u + 0.13, wv), d2 = qp(quad, u, wv + 0.2), c2 = qp(quad, u + 0.13, wv + 0.2);
+        poly(g, [a, b, c2, d2], '#100c18');
+        if (lit2) {
+            poly(g, [[a[0] + 1, a[1] + 1], [b[0] - 1, b[1] + 1], [c2[0] - 1, c2[1] - 1], [d2[0] + 1, d2[1] - 1]], 'rgba(255,196,110,.85)');
+            var w2 = b[0] - a[0];
+            line(g, a[0] + w2 / 2, a[1], d2[0] + w2 / 2, d2[1], '#1a1420', 2);     // a mullion
+            line(g, a[0], (a[1] + d2[1]) / 2, b[0], (b[1] + c2[1]) / 2, '#1a1420', 1);
+        } else {
+            dither(g, [a, b, c2, d2], 'rgba(70,62,80,.5)', 0.3, rng);              // shutters, closed
+            line(g, (a[0] + b[0]) / 2, a[1], (d2[0] + c2[0]) / 2, d2[1], '#2a2334', 2);
+        }
+        px(g, a[0] - 2, d2[1] - 1, (b[0] - a[0]) + 4, 3, '#403949');               // the sill
+        return { a: a, b: b, c: c2, d: d2 };
+    }
+    var litIdx = v % 3;
+    window_(sw, 0.1, 0.2, litIdx === 0);
+    window_(sw, 0.74, 0.2, litIdx === 1);
+    var sill = window_(se, lampU, 0.24, true);
+    // one pane went years ago and was greased and papered over rather
+    // than replaced, and it is the colour of old fat, not of firelight
+    px(g, sill.a[0] + 1, sill.a[1] + 1, (sill.b[0] - sill.a[0]) / 2 - 1, (sill.d[1] - sill.a[1]) / 2 - 1, '#b8763a');
+
+    /* ── the lamp on the sill. This is the name of the game. ── */
+    var lx2 = (sill.d[0] + sill.c[0]) / 2, ly2 = sill.d[1];
+    px(g, lx2 - 3, ly2 - 7, 6, 7, '#241c18');                 // the lantern body
+    px(g, lx2 - 2, ly2 - 6, 4, 5, '#ffd089');
+    px(g, lx2 - 1, ly2 - 9, 2, 2, '#3a3028');                 // its little handle
+    g.globalCompositeOperation = 'lighter';
+    var lg = g.createRadialGradient(lx2, ly2 - 4, 1, lx2, ly2 - 4, 26);
+    lg.addColorStop(0, 'rgba(255,196,104,.4)'); lg.addColorStop(1, 'rgba(255,180,80,0)');
+    g.fillStyle = lg; g.beginPath(); g.arc(lx2, ly2 - 4, 26, 0, TAU); g.fill();
+    g.globalCompositeOperation = 'source-over';
+    // and the tongue of soot the flame has licked up the plaster, which
+    // is the same mark the lamp post outside the door carries
+    var tw = [6, 6, 4, 4, 2, 2];
+    for (var so = 0; so < 6; so++) px(g, lx2 - tw[so] / 2, ly2 - 12 - so * 2, tw[so], 2, 'rgba(11,9,18,' + (0.4 - so * 0.05).toFixed(2) + ')');
+    poly(g, [[lx2 - 7, ly2], [lx2 + 7, ly2], [lx2 + 11, sw[2][1] > se[2][1] ? se[2][1] : se[3][1]], [lx2 - 11, se[3][1]]], 'rgba(255,190,96,.07)');
+
+    /* ── the roof ── */
+    var paint = thatched ? thatchPlane : slatePlane;
+    paint(g, farPlane, rng, false);
+    paint(g, nearPlane, rng, true);
+    // the gable end: a triangle of wall with a vent in it
+    poly(g, gable, thatched ? '#3b3644' : '#37323f');
+    dither(g, [gable[0], gable[1], gable[2], gable[0]], 'rgba(24,20,30,.4)', 0.2, rng);
+    var gcx = (gable[0][0] + gable[1][0] + gable[2][0]) / 3, gcy = (gable[0][1] + gable[1][1] + gable[2][1]) / 3;
+    px(g, gcx - 4, gcy - 6, 8, 9, '#100c18');                 // the loft vent, always open, always dark
+    for (var vv = 0; vv < 3; vv++) px(g, gcx - 4, gcy - 5 + vv * 3, 8, 1, '#332b3c');
+    line(g, gable[0][0], gable[0][1], gable[2][0], gable[2][1], '#2b2430', 3);   // barge boards
+    line(g, gable[1][0], gable[1][1], gable[2][0], gable[2][1], '#2b2430', 3);
+    // The ridge sags. Every roof over a hungry house dips in the middle,
+    // because the timber under it has not been looked at in nine years.
+    var sag = rh * (0.05 + (v % 4) * 0.03);
+    var rM = [(rA[0] + rB[0]) / 2, (rA[1] + rB[1]) / 2 + sag];
+    line(g, rA[0], rA[1], rM[0], rM[1], thatched ? '#7a6944' : '#3f3e49', 5);
+    line(g, rM[0], rM[1], rB[0], rB[1], thatched ? '#7a6944' : '#3f3e49', 5);
+    line(g, rA[0], rA[1] - 2, rM[0], rM[1] - 2, thatched ? '#8b7a52' : '#585767', 2);
+    line(g, rM[0], rM[1] - 2, rB[0], rB[1] - 2, thatched ? '#8b7a52' : '#585767', 2);
+    if (thatched) for (var rp = 0; rp < 9; rp++) {            // the hazel spars that pin the ridge down
+        var rq = (rp + 0.5) / 9, rx = rA[0] + (rB[0] - rA[0]) * rq, ry = rA[1] + (rB[1] - rA[1]) * rq;
+        line(g, rx - 3, ry - 4, rx + 3, ry + 1, '#463a26', 1);
+    }
+    poly(g, [qp(sw, 0, 0), qp(sw, 1, 0), qp(sw, 1, 0.07), qp(sw, 0, 0.07)], 'rgba(14,10,20,.5)');
+    poly(g, [qp(se, 0, 0), qp(se, 1, 0), qp(se, 1, 0.07), qp(se, 0, 0.07)], 'rgba(14,10,20,.5)');
+
+    /* ── the chimney, and everything hung off the walls ── */
+    var chu = 0.18 + (v % 4) * 0.16, ch = 20 + (v % 3) * 5;
+    var cp = qp(nearPlane, chu, 0.12);
+    px(g, cp[0] - 7, cp[1] - ch, 14, ch + 6, '#2c2733');
+    px(g, cp[0] - 7, cp[1] - ch, 7, ch + 6, '#3a3542');
+    for (var br = 0; br < 4; br++) px(g, cp[0] - 7, cp[1] - ch + 3 + br * 5, 14, 1, 'rgba(16,12,22,.5)');
+    px(g, cp[0] - 9, cp[1] - ch - 3, 18, 4, '#403a49');       // the cap
+    px(g, cp[0] - 5, cp[1] - ch - 2, 10, 2, '#0d0a12');       // soot
+    c.at('chimney', cp[0], cp[1] - ch - 3);                   // and where the smoke has to leave from
+    if (v % 5 === 2) {                                        // a stick nest in the pot. Nothing has been lit here this year.
+        for (var tw2 = 0; tw2 < 8; tw2++) {
+            var ta = -0.4 - tw2 * 0.32;
+            line(g, cp[0] - 1 + tw2 * 0.4, cp[1] - ch - 3, cp[0] - 1 + Math.cos(ta) * 7, cp[1] - ch - 5 + Math.sin(ta) * 3, '#4a3f2e', 1);
+        }
+    }
+    poly(g, [[cp[0] + 7, cp[1] - ch], [cp[0] + 13, cp[1] - ch + 5], [cp[0] + 13, cp[1] + 8], [cp[0] + 7, cp[1] + 6]], 'rgba(12,9,18,.35)');
+    if (v % 3 === 0) {                                        // kindling stacked against the wall, what is left of it
+        var kb = qp(sw, 0.88, 0.98);
+        for (var kk = 0; kk < 7; kk++) px(g, kb[0] - 8 + kk * 2.4, kb[1] - 9 - (kk % 3), 2, 10 + (kk % 3) * 2, kk % 2 ? '#3e3326' : '#4a3d2c');
+    }
+    if (v % 4 === 1) {                                        // a water butt under the eave
+        var wb = qp(sw, 0.06, 0.98);
+        px(g, wb[0] - 6, wb[1] - 16, 12, 16, '#3c3128');
+        px(g, wb[0] - 6, wb[1] - 16, 12, 2, '#544636');
+        px(g, wb[0] - 6, wb[1] - 11, 12, 1, '#6a5a40');
+    }
+    if (v % 5 === 2) {                                        // herbs hung to dry by the door, mostly stalks now
+        var hb = qp(sw, 0.66, 0.3);
+        line(g, hb[0], hb[1], hb[0], hb[1] + 9, '#5a4a34', 1);
+        for (var hh = 0; hh < 5; hh++) line(g, hb[0], hb[1] + 3, hb[0] - 3 + hh * 1.6, hb[1] + 12, '#4a5238', 1);
+    }
+    if (v % 3 === 1) {                                        // a bird on the ridge, because somewhere still has seed
+        var bq = 0.3 + rng() * 0.4;
+        var bx = rA[0] + (rB[0] - rA[0]) * bq, by = rA[1] + (rB[1] - rA[1]) * bq;
+        px(g, bx - 2, by - 7, 4, 3, '#1d1822'); px(g, bx + 1, by - 8, 2, 2, '#1d1822');
+        px(g, bx - 3, by - 5, 2, 1, '#1d1822');
+    }
+    // mud kicked up the bottom of every wall in a town with no cobbles left
+    dither(g, [qp(sw, 0, 0.92), qp(sw, 1, 0.92), qp(sw, 1, 1), qp(sw, 0, 1)], 'rgba(38,30,22,.55)', 0.45, rng);
+};
+LIVE.house = function (cx, o, mxc, myc, sp) {
+    // Smoke has to move, so it cannot live in the sprite. Only the
+    // houses with a fire lit get any, and in Wick that is not all of them.
+    var v = propVar('house', o.b);
+    if (v % 3 === 2) return;
+    var ch = anchorAt(sp, 'chimney', mxc, myc);               // the pot the sprite actually drew
+    var sx = ch.x, sy = ch.y - 2;
+    for (var i = 0; i < 4; i++) {
+        var t = (RT.t * 0.34 + i * 0.25 + (o.b[0] % 1)) % 1;
+        var a = (1 - t) * 0.16 * (v % 2 ? 1 : 0.7);
+        var px2 = sx + Math.sin(t * 3 + i) * 7 * t, py2 = sy - t * 46;
+        cx.fillStyle = 'rgba(150,142,158,' + a.toFixed(3) + ')';
+        cx.beginPath(); cx.arc(px2, py2, 3 + t * 11, 0, TAU); cx.fill();
+        // now and then a puff carries an ember up with it. They burned
+        // the doors and the pews nine years ago; they are burning
+        // something now, and it is not seasoned wood.
+        if (t < 0.34 && (Math.floor(RT.t * 0.34 + i * 0.25 + (o.b[0] % 1)) % 14) === (i * 3) % 14) {
+            cx.fillStyle = 'rgba(212,87,31,' + (0.85 - t * 2).toFixed(3) + ')';
+            cx.fillRect(Math.round(px2), Math.round(py2), 1, 1);
+        }
+    }
+};
+/* ── the mill: the tallest thing in Wick, and the only one still working ── */
+PAINT.mill = function (g, c) {
+    var rng = c.rng, hgt = c.hgt, rh = 34;
+    var W = { n: [c.x0, c.y0 - hgt], e: [c.x1, c.y1 - hgt], s: [c.x2, c.y2 - hgt], w: [c.x3, c.y3 - hgt] };
+    var eo = 1.08, E = function (p) { return [p[0] * eo, p[1] * eo]; };
+    var eaveN = E(W.n), eaveE = E(W.e), eaveS = E(W.s), eaveW = E(W.w);
+    var mid = function (a, b) { return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2 - rh]; };
+    var rA = mid(eaveW, eaveN), rB = mid(eaveE, eaveS);
+    var sw = [[c.x3, c.y3 - hgt], [c.x2, c.y2 - hgt], [c.x2, c.y2], [c.x3, c.y3]];
+    var se = [[c.x2, c.y2 - hgt], [c.x1, c.y1 - hgt], [c.x1, c.y1], [c.x2, c.y2]];
+    poly(g, [[c.x0, c.y0 - hgt], [c.x1, c.y1 - hgt], [c.x2, c.y2 - hgt], [c.x3, c.y3 - hgt]], '#332b20');
+    // rubble stone at the bottom, weatherboard above: you build the base
+    // out of what the field gives you and the rest out of what you can saw
+    [[sw, true], [se, false]].forEach(function (pair) {
+        var q = pair[0], lit = pair[1];
+        var base = lit ? '#3e3427' : '#2a231a';
+        poly(g, q, base);
+        for (var r = 0; r < 9; r++) {                      // weatherboard, lapped, each board shading the one below
+            var v0 = r / 9, v1 = (r + 1) / 9;
+            if (v0 > 0.62) break;
+            poly(g, [qp(q, 0, v0), qp(q, 1, v0), qp(q, 1, v1), qp(q, 0, v1)], shadeHex(base, 1.02 - r * 0.012));
+            var a = qp(q, 0, v1), b = qp(q, 1, v1);
+            line(g, a[0], a[1], b[0], b[1], 'rgba(14,10,6,.5)', 2);
+        }
+        var rub = [qp(q, 0, 0.62), qp(q, 1, 0.62), qp(q, 1, 1), qp(q, 0, 1)];
+        poly(g, rub, lit ? '#393634' : '#373432');
+        for (var s = 0; s < 34; s++) {                     // field stones, no two the same
+            var p = qp(rub, rng(), rng());
+            g.fillStyle = shadeHex(lit ? '#454140' : '#403c3a', 0.8 + rng() * 0.5);
+            g.beginPath(); g.ellipse(p[0], p[1], 3 + rng() * 4, 2 + rng() * 2.4, 0, 0, TAU); g.fill();
+        }
+        dither(g, rub, 'rgba(12,10,14,.45)', 0.2, rng);
+    });
+    // the hoist door up in the gable, where the sacks go in
+    var hd = qp(se, 0.44, 0.14);
+    c.at('hoist', hd[0], hd[1] - 2);                                // flour dust comes off the sacks, here
+    px(g, hd[0] - 8, hd[1] - 2, 16, 18, '#1a140e');
+    px(g, hd[0] - 8, hd[1] - 4, 16, 3, '#5c4c34');
+    line(g, hd[0], hd[1] - 12, hd[0], hd[1] - 4, '#2a2118', 2);     // the beam it hangs from
+    px(g, hd[0] - 6, hd[1] - 14, 12, 3, '#3e3222');
+    line(g, hd[0] + 3, hd[1] - 12, hd[0] + 3, hd[1] + 10, '#6a5c40', 1);   // and the rope, still rigged
+    // the big door, and a chute
+    var dq = qp(sw, 0.4, 0.4), dq2 = qp(sw, 0.6, 1);
+    poly(g, [dq, qp(sw, 0.6, 0.4), dq2, qp(sw, 0.4, 1)], '#1c1610');
+    for (var pk = 0; pk < 5; pk++) px(g, dq[0] + (dq2[0] - dq[0]) * pk / 5 + 1, dq[1] + 2, (dq2[0] - dq[0]) / 5 - 1.5, dq2[1] - dq[1] - 2, pk % 2 ? '#2a2016' : '#31261a');
+    px(g, dq[0] - 2, dq[1] - 4, (dq2[0] - dq[0]) + 4, 4, '#5c4c34');
+    // roof: shingles, mossy on the side that never sees sun
+    slatePlane(g, [rA, rB, eaveE, eaveN], rng, false);
+    slatePlane(g, [rA, rB, eaveS, eaveW], rng, true);
+    line(g, rA[0], rA[1], rB[0], rB[1], '#4a4854', 5);
+    line(g, rA[0], rA[1] - 2, rB[0], rB[1] - 2, '#605e6e', 2);
+    var wv = [[c.x1, c.y1 - hgt], [c.x2, c.y2 - hgt], [(c.x1 + c.x2) / 2, (c.y1 + c.y2) / 2 - hgt - rh]];
+    poly(g, wv, '#3a3126');
+    dither(g, [wv[0], wv[1], wv[2], wv[0]], 'rgba(20,14,8,.4)', 0.22, rng);
+    // a weathervane, because a mill has to know which way the wind is
+    var vx = rB[0], vy = rB[1];
+    line(g, vx, vy - 2, vx, vy - 20, '#3a3428', 2);
+    poly(g, [[vx - 8, vy - 17], [vx + 2, vy - 19], [vx + 2, vy - 13]], '#4a4234');
+    px(g, vx + 3, vy - 20, 5, 1, '#4a4234'); px(g, vx - 8, vy - 20, 5, 1, '#4a4234');
+    // flour dust on every ledge, which is the one thing Wick still has
+    dither(g, [qp(sw, 0, 0.6), qp(sw, 1, 0.6), qp(sw, 1, 0.66), qp(sw, 0, 0.66)], 'rgba(214,198,158,.3)', 0.5, rng);
+};
+LIVE.mill = function (cx, o, mxc, myc, sp) {
+    // it used to hang in the air a foot above the ridge, coming from
+    // nothing. It comes off the hoist door, where the sacks go in.
+    var hd = anchorAt(sp, 'hoist', mxc, myc);
+    for (var i = 0; i < 3; i++) {
+        var t = (RT.t * 0.22 + i * 0.34) % 1;
+        cx.fillStyle = 'rgba(196,184,152,' + ((1 - t) * 0.12).toFixed(3) + ')';
+        cx.beginPath(); cx.arc(hd.x + t * 16, hd.y - t * 30, 3 + t * 12, 0, TAU); cx.fill();
+    }
+};
+PAINT.wheel = function (g, c) {                          // the frame; the wheel itself turns, so it is live
+    var hgt = c.hgt, hy = -hgt + hgt * 0.42;
+    body(g, c, ['#3a3024', '#2a2218', '#4a3e2c']);
+    px(g, -4, -hgt - 6, 8, 12, '#4a3e2c');
+    px(g, -3, -hgt - 4, 6, 8, '#2a2218');
+    px(g, -3, hy - 22, 6, 22, '#332b1e');                // the post the axle sits on
+    px(g, -5, hy - 4, 10, 8, '#4a3e2c');                 // and the bearing block it turns in
+    px(g, -4, hy - 3, 8, 6, '#241d14');
+    c.at('hub', 0, hy);
+};
+LIVE.wheel = function (cx, o, mxc, myc, sp) {
+    var hgt = propDef('wheel').h, cy = anchorAt(sp, 'hub', mxc, myc).y, wr = Math.min(34, hgt * 0.46);
+    var an0 = RT.t * 0.25;
+    cx.strokeStyle = '#3a3022'; cx.lineWidth = 6;
+    cx.beginPath(); cx.arc(mxc, cy, wr, 0, TAU); cx.stroke();
+    cx.strokeStyle = '#57492f'; cx.lineWidth = 3;
+    cx.beginPath(); cx.arc(mxc, cy, wr, 0, TAU); cx.stroke();
+    for (var sp = 0; sp < 12; sp++) {
+        var an = sp / 12 * TAU + an0;
+        cx.strokeStyle = sp % 2 ? '#4a3d2a' : '#5c4c34'; cx.lineWidth = 2;
+        cx.beginPath(); cx.moveTo(mxc, cy); cx.lineTo(mxc + Math.cos(an) * wr, cy + Math.sin(an) * wr); cx.stroke();
+        // paddles: the part that actually catches the water
+        var px2 = mxc + Math.cos(an) * wr, py2 = cy + Math.sin(an) * wr;
+        // One paddle has been mended. It is the only new wood anywhere in
+        // Wick, and it is on the one machine the town still needs.
+        var mended = sp === 4;
+        cx.strokeStyle = mended ? '#6a5535' : '#2e2618'; cx.lineWidth = 4;
+        cx.beginPath(); cx.moveTo(px2, py2); cx.lineTo(px2 - Math.sin(an) * 6, py2 + Math.cos(an) * 6); cx.stroke();
+        if (mended) {
+            cx.fillStyle = '#8a8079';
+            cx.fillRect(Math.round(px2 - Math.sin(an) * 2 - 1), Math.round(py2 + Math.cos(an) * 2 - 1), 2, 2);
+            cx.fillRect(Math.round(px2 - Math.sin(an) * 5 - 1), Math.round(py2 + Math.cos(an) * 5 - 1), 2, 2);
+        }
+        // the paddles coming up out of the race are wet, and they drip
+        var lo = Math.sin(an) > 0.55;
+        if (lo) {
+            cx.strokeStyle = 'rgba(150,178,196,.35)'; cx.lineWidth = 1;
+            cx.beginPath(); cx.moveTo(px2, py2); cx.lineTo(px2 - Math.sin(an) * 6, py2 + Math.cos(an) * 6); cx.stroke();
+            if (sp % 4 === 0) {
+                var dt2 = (RT.t * 2.2 + sp) % 1;
+                cx.fillStyle = 'rgba(150,178,196,' + ((1 - dt2) * 0.5).toFixed(3) + ')';
+                cx.fillRect(Math.round(px2), Math.round(py2 + dt2 * 16), 1, 2);
+            }
+        }
+    }
+    cx.fillStyle = '#241d14'; cx.beginPath(); cx.arc(mxc, cy, 5, 0, TAU); cx.fill();
+    cx.fillStyle = '#4a3d2a'; cx.beginPath(); cx.arc(mxc, cy, 2, 0, TAU); cx.fill();
+};
+/* ── a tree in the ninth hungry year: thin, and half of it dead ── */
+PAINT.tree = function (g, c) {
+    var rng = c.rng, hgt = c.hgt, rrx = c.rrx, rry = c.rry, ty = -hgt;
+    var bare = c.v === 4;                                    // one tree in five did not come back this spring
+    var lean = (c.v - 2) * 1.6;
+    // roots, then a trunk that is not a cylinder
+    g.fillStyle = '#2b231a';
+    for (var r = 0; r < 5; r++) {
+        var ra = Math.PI + r / 4 * Math.PI;
+        g.beginPath(); g.moveTo(-4, 0); g.lineTo(Math.cos(ra) * rrx * 0.4, 2 + Math.sin(ra) * rry * 0.3); g.lineTo(4, 2); g.closePath(); g.fill();
+    }
+    for (var s = 0; s < hgt; s += 2) {                       // taper and lean, drawn as stacked slabs
+        var q = s / hgt, w = 13 - q * 5;
+        var off = lean * q * q;
+        px(g, -w / 2 + off, -s - 2, w, 3, '#332a1f');
+        px(g, -w / 2 + off, -s - 2, w * 0.42, 3, '#453927');   // the lit side of the trunk
+        if (rng() < 0.3) px(g, -w / 2 + off + rng() * w, -s - 2, 1, 2, '#241d15');   // bark grain
+    }
+    // limbs
+    var lim = bare ? 7 : 5;
+    for (var l = 0; l < lim; l++) {
+        var la = -0.4 - l * 0.42 + rng() * 0.3, ll = rrx * (0.4 + rng() * 0.5);
+        var bx = lean, by = ty + rry * 0.5 - l * 4;
+        g.strokeStyle = '#332a1f'; g.lineWidth = 3 - l * 0.3;
+        g.beginPath(); g.moveTo(bx, by);
+        g.quadraticCurveTo(bx + Math.cos(la) * ll * 0.6, by + Math.sin(la) * ll * 0.4, bx + Math.cos(la) * ll, by - Math.abs(Math.sin(la)) * ll * 0.5 - 6);
+        g.stroke();
+    }
+    if (bare) {                                              // dead: just the fingers
+        for (var t2 = 0; t2 < 26; t2++) {
+            var ta = rng() * TAU, tl = 6 + rng() * 14;
+            var px2 = lean + Math.cos(ta) * rrx * 0.4, py2 = ty - rry * 0.2 + Math.sin(ta) * rry * 0.5;
+            line(g, px2, py2, px2 + Math.cos(ta) * tl, py2 + Math.sin(ta) * tl * 0.6, '#2e2619', 1);
+        }
+        return;
+    }
+    // canopy: clumps, not a lollipop. Each clump is lit on its upper left.
+    var clumps = [];
+    for (var i = 0; i < 9; i++) {
+        var a = i / 9 * TAU + rng(), d2 = 0.2 + rng() * 0.6;
+        clumps.push([lean + Math.cos(a) * rrx * 0.52 * d2, ty - rry * 0.25 + Math.sin(a) * rry * 0.8 * d2,
+                     rrx * (0.2 + rng() * 0.2), rry * (0.34 + rng() * 0.3)]);
+    }
+    clumps.forEach(function (k) { g.fillStyle = '#18261b'; g.beginPath(); g.ellipse(k[0], k[1] + 3, k[2], k[3], 0, 0, TAU); g.fill(); });
+    clumps.forEach(function (k) { g.fillStyle = '#263a28'; g.beginPath(); g.ellipse(k[0], k[1], k[2] * 0.94, k[3] * 0.9, 0, 0, TAU); g.fill(); });
+    clumps.forEach(function (k) {
+        g.fillStyle = '#35513a';
+        g.beginPath(); g.ellipse(k[0] - k[2] * 0.24, k[1] - k[3] * 0.3, k[2] * 0.56, k[3] * 0.48, 0, 0, TAU); g.fill();
+    });
+    // leaf speckle so the mass has a grain instead of being a flat blob
+    var bb = [[lean - rrx * 0.8, ty - rry * 1.2], [lean + rrx * 0.8, ty - rry * 1.2], [lean + rrx * 0.8, ty + rry * 0.8], [lean - rrx * 0.8, ty + rry * 0.8]];
+    dither(g, bb, 'rgba(66,96,70,.5)', 0.06, rng);
+    dither(g, bb, 'rgba(12,20,14,.5)', 0.05, rng);
+    for (var d3 = 0; d3 < 5; d3++) {                         // dead limbs poking out of the green
+        var da = rng() * TAU;
+        var dx2 = lean + Math.cos(da) * rrx * 0.5, dy2 = ty - rry * 0.2 + Math.sin(da) * rry * 0.6;
+        line(g, dx2, dy2, dx2 + Math.cos(da) * 10, dy2 + Math.sin(da) * 7, '#2b2318', 1);
+    }
+};
+PAINT.stagewip = function (g, c) {
+    var rng = c.rng, hgt = c.hgt;
+    var f = body(g, c);
+    for (var i = 1; i < 5; i++) { var a = qp(f.sw, i / 5, 0), b = qp(f.sw, i / 5, 1); line(g, a[0], a[1], b[0], b[1], 'rgba(0,0,0,.35)', 1); }
+    // scaffolding for a play about a man who never walked anywhere
+    for (var pz = 0; pz < 4; pz++) {
+        var q = 0.14 + pz * 0.25, p = qp(f.top, q, 0.5);
+        var lean = (pz % 2 ? 2 : -2);
+        line(g, p[0], p[1], p[0] + lean, p[1] - 30 - (pz % 3) * 6, '#6a5638', 2);
+        line(g, p[0] + lean * 0.5, p[1] - 16, p[0] + lean * 0.5 + 14, p[1] - 20, '#57482e', 2);
+    }
+    var t0 = qp(f.top, 0.1, 0.5), t1 = qp(f.top, 0.9, 0.5);
+    line(g, t0[0], t0[1] - 30, t1[0], t1[1] - 34, '#57482e', 2);
+    px(g, (t0[0] + t1[0]) / 2 - 10, (t0[1] + t1[1]) / 2 - 30, 20, 12, 'rgba(120,96,60,.5)');   // a flat, half painted
+    for (var n = 0; n < 12; n++) { var np = qp(f.top, rng(), rng()); px(g, np[0], np[1], 2, 1, '#6a5638'); }
+    dither(g, f.top, 'rgba(200,180,130,.25)', 0.1, rng);     // sawdust
+};
+PAINT.markstone = function (g, c) {
+    var rng = c.rng, hgt = c.hgt;
+    var f = body(g, c, ['#4e4e57', '#3c3c45', '#606069']);
+    dither(g, f.sw, 'rgba(150,150,168,.3)', 0.14, rng);
+    dither(g, f.se, 'rgba(20,20,28,.5)', 0.18, rng);
+    dither(g, f.sw, 'rgba(84,104,74,.4)', 0.1, rng);          // lichen, on the side the weather comes from
+    // chisel work: a name, and a name taken off
+    var a = qp(f.sw, 0.16, 0.24), w = qp(f.sw, 0.84, 0.24)[0] - a[0];
+    px(g, a[0], a[1], w, 2, '#7d7d8a');
+    for (var i = 0; i < 5; i++) px(g, a[0] + 2 + i * (w / 5), a[1] + 5, w / 8, 3, '#787885');
+    var b2 = qp(f.sw, 0.16, 0.52);
+    px(g, b2[0], b2[1], w, 5, '#2b2b33');                     // the scratched-out line, cut out to nothing
+    for (var j = 0; j < 7; j++) line(g, b2[0] + j * (w / 7), b2[1] - 1, b2[0] + 3 + j * (w / 7), b2[1] + 6, '#6e6e7b', 1);
+    var c3 = qp(f.sw, 0.3, 0.74);
+    for (var k = 0; k < 3; k++) px(g, c3[0] + k * 6, c3[1], 4, 2, '#6a6a77');
+    // the top is weathered round and there is a chip out of one corner
+    poly(g, [[c.x0, c.y0 - hgt], [c.x0 + 5, c.y0 - hgt + 2], [c.x3 + 6, c.y3 - hgt + 3], [c.x3, c.y3 - hgt]], 'rgba(120,120,138,.35)');
+    poly(g, [[c.x2, c.y2 - hgt], [c.x2 - 6, c.y2 - hgt + 1], [c.x2 - 3, c.y2 - hgt + 7]], '#2f2f38');
+};
+PAINT.well = function (g, c) {
+    var rng = c.rng, hgt = c.hgt, rrx = c.rrx, rry = c.rry;
+    // a drystone ring, course by course
+    g.fillStyle = '#3d3830'; g.fillRect(-rrx, -hgt, rrx * 2, hgt);
+    g.beginPath(); g.ellipse(0, 0, rrx, rry, 0, 0, TAU); g.fill();
+    for (var row = 0; row < 4; row++) {
+        var yy = -hgt + row * (hgt / 4);
+        var n = Math.max(6, Math.round(rrx / 7));
+        for (var s = 0; s < n; s++) {
+            var u = (s + (row % 2) * 0.5) / n, ang = Math.PI * (1 - u);
+            var sx = Math.cos(ang) * rrx, lit = sx < rrx * 0.2;
+            g.fillStyle = shadeHex(lit ? '#57503f' : '#3a352b', 0.85 + rng() * 0.35);
+            g.fillRect(Math.round(sx - rrx / n * 0.9), Math.round(yy), Math.ceil(rrx * 2 / n * 0.92), Math.ceil(hgt / 4) - 1);
+        }
+    }
+    dither(g, [[-rrx, -hgt], [rrx, -hgt], [rrx, 0], [-rrx, 0]], 'rgba(70,92,62,.35)', 0.09, rng);   // moss in the joints
+    g.fillStyle = '#4a4335'; g.beginPath(); g.ellipse(0, -hgt, rrx, rry, 0, 0, TAU); g.fill();
+    g.fillStyle = '#0a0810'; g.beginPath(); g.ellipse(0, -hgt + 1, rrx * 0.66, rry * 0.66, 0, 0, TAU); g.fill();
+    g.strokeStyle = 'rgba(120,150,190,.16)'; g.lineWidth = 1;                  // water, a long way down
+    g.beginPath(); g.ellipse(0, -hgt + 3, rrx * 0.4, rry * 0.4, 0, 0, TAU); g.stroke();
+    // two posts, a windlass, a rope and a bucket
+    var ph = 34;
+    px(g, -rrx * 0.72 - 2, -hgt - ph, 5, ph, '#3a3024');
+    px(g, rrx * 0.72 - 3, -hgt - ph, 5, ph, '#453a2c');
+    poly(g, [[-rrx * 0.8, -hgt - ph], [rrx * 0.8, -hgt - ph], [rrx * 0.66, -hgt - ph - 9], [-rrx * 0.66, -hgt - ph - 9]], '#2e2718');
+    px(g, -rrx * 0.72, -hgt - ph + 6, rrx * 1.44, 7, '#4a3f2c');               // the barrel of the windlass
+    for (var w2 = 0; w2 < 5; w2++) px(g, -rrx * 0.6 + w2 * (rrx * 0.3), -hgt - ph + 6, 1, 7, '#2a2218');
+    line(g, rrx * 0.72, -hgt - ph + 9, rrx * 0.92, -hgt - ph + 14, '#4a3f2c', 3);   // the crank
+    line(g, -4, -hgt - ph + 13, -4, -hgt - 12, '#5c5240', 1);                  // the rope
+    px(g, -9, -hgt - 12, 11, 9, '#3e3426');                                    // and the bucket on the end
+    px(g, -9, -hgt - 12, 11, 2, '#584a34');
+    px(g, -9, -hgt - 6, 11, 1, '#584a34');
+};
+PAINT.fence = function (g, c) {
+    var rng = c.rng, hgt = c.hgt, long = c.bw >= c.bh;
+    var span = long ? c.bw : c.bh;
+    var n = Math.max(2, Math.round(span * 2.1));
+    // the run has to follow the long axis of the footprint. It used to be
+    // pinned to the south-west edge, so a fence running north-south was a
+    // row of sticks with its rails stacked up at one end.
+    function at(q) {
+        var u = long ? c.bw * q : c.bw / 2, v = long ? c.bh / 2 : c.bh * q;
+        return [c.lx(u, v), c.ly(u, v) + TILE_H / 2];
+    }
+    var A = at(0), B = at(1);
+    var gap0 = 0.52, gap1 = 0.72;                                              // a stretch nobody has mended
+    function rail(dy, col, w) {
+        if (c.v !== 1) { line(g, A[0], A[1] - hgt - dy, B[0], B[1] - hgt - dy, col, w); return; }
+        var m0 = [A[0] + (B[0] - A[0]) * gap0, A[1] + (B[1] - A[1]) * gap0];
+        var m1 = [A[0] + (B[0] - A[0]) * gap1, A[1] + (B[1] - A[1]) * gap1];
+        line(g, A[0], A[1] - hgt - dy, m0[0], m0[1] - hgt - dy, col, w);
+        line(g, m1[0], m1[1] - hgt - dy, B[0], B[1] - hgt - dy, col, w);
+    }
+    rail(-10, '#3a3024', 3);                                                    // lower rail
+    for (var i = 0; i <= n; i++) {
+        var q = i / n;
+        if (c.v === 1 && q > gap0 && q < gap1) continue;
+        var p = at(q);
+        var lean = ((i * 7 + c.v * 3) % 5) - 2, h2 = hgt + 5 + ((i * 5) % 4);
+        line(g, p[0], p[1], p[0] + lean, p[1] - h2, '#4c3f2e', 3);
+        line(g, p[0] - 1, p[1] - 2, p[0] + lean - 1, p[1] - h2 + 2, '#5e4f38', 1);
+        px(g, p[0] + lean - 2, p[1] - h2 - 2, 4, 3, '#3a2f22');                 // a cut top, greyed off
+        if (rng() < 0.3) px(g, p[0] + lean - 3, p[1] - h2 * 0.4, 2, 2, 'rgba(80,100,70,.5)');
+    }
+    rail(2, '#463a2a', 3);                                                      // top rail
+    rail(3, '#5a4c36', 1);
+    if (c.v === 2) {                                                            // a rail lashed back on with rope
+        var m = [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2 - hgt - 2];
+        for (var w3 = 0; w3 < 4; w3++) line(g, m[0] - 4, m[1] - 2 + w3, m[0] + 5, m[1] + 1 + w3, '#6a5c40', 1);
+    }
+};
+/* The two posts at the end of the fence, with nothing between them. It
+   is the thing the whole road is about, so it has to read as the end of
+   a fence and not as a crate: a slender squared timber, silvered by
+   weather, with the empty mortise holes the rails came out of. */
+PAINT.post = function (g, c) {
+    var hgt = c.hgt, rng = c.rng;
+    var f = body(g, c, ['#5b5243', '#3b352b', '#6d6455']);                     // silvered, not fresh timber
+    for (var i = 1; i < 3; i++) { var a = qp(f.sw, i / 3, 0), b = qp(f.sw, i / 3, 1); line(g, a[0], a[1], b[0], b[1], 'rgba(0,0,0,.35)', 1); }
+    poly(g, f.top, '#7a7263');
+    dither(g, f.top, 'rgba(30,26,18,.5)', 0.34, rng);                          // the sawn end, gone grey
+    // the mortises, empty. This is where the rail was, and it is not here.
+    [0.28, 0.6].forEach(function (v) {
+        var m0 = qp(f.sw, 0.16, v), m1 = qp(f.sw, 0.84, v);
+        poly(g, [m0, m1, [m1[0], m1[1] + 5], [m0[0], m0[1] + 5]], '#181410');
+        line(g, m0[0], m0[1], m1[0], m1[1], 'rgba(150,142,124,.35)', 1);
+        var p0 = qp(f.se, 0.12, v), p1 = qp(f.se, 0.5, v);
+        poly(g, [p0, p1, [p1[0], p1[1] + 5], [p0[0], p0[1] + 5]], '#141110');
+    });
+    var nl = qp(f.sw, 0.3, 0.46);
+    px(g, nl[0], nl[1], 2, 2, '#6d6a62');                                      // one nail left in it
+    dither(g, f.sw, 'rgba(86,104,74,.3)', 0.14, rng);                          // lichen, on the weather side
+    dither(g, f.sw, 'rgba(180,176,164,.16)', 0.1, rng);                        // and the silvering itself
+};
+PAINT.beam = function (g, c) {
+    var f = body(g, c);
+    for (var i = 1; i < 4; i++) { var a = qp(f.sw, i / 4, 0), b = qp(f.sw, i / 4, 1); line(g, a[0], a[1], b[0], b[1], 'rgba(0,0,0,.35)', 1); }
+    px(g, -c.fw * 0.3, -c.hgt - 1, c.fw * 0.6, 2, 'rgba(255,240,210,.07)');
+    var m = qp(f.sw, 0.5, 0.4);
+    px(g, m[0] - 2, m[1], 4, 4, '#241c14');                                     // a peg through the joint
+};
+PAINT.crate = function (g, c) {
+    var rng = c.rng, f = body(g, c);
+    [f.sw, f.se].forEach(function (q, qi) {
+        for (var i = 1; i < 4; i++) { var a = qp(q, i / 4, 0), b = qp(q, i / 4, 1); line(g, a[0], a[1], b[0], b[1], 'rgba(0,0,0,.4)', 1); }
+        var t1 = qp(q, 0, 0.3), t2 = qp(q, 1, 0.3);
+        line(g, t1[0], t1[1], t2[0], t2[1], '#6a5a40', 2);                      // batten
+        line(g, t1[0], t1[1] - 1, t2[0], t2[1] - 1, '#7d6b4c', 1);
+        if (qi === 0) { var d1 = qp(q, 0, 1), d2 = qp(q, 1, 0.12); line(g, d1[0], d1[1], d2[0], d2[1], 'rgba(130,110,78,.5)', 1); }
+        dither(g, q, 'rgba(20,14,8,.4)', 0.1, rng);
+    });
+    poly(g, f.top, '#63523c');
+    for (var s = 1; s < 3; s++) { var a2 = qp(f.top, s / 3, 0), b2 = qp(f.top, s / 3, 1); line(g, a2[0], a2[1], b2[0], b2[1], 'rgba(0,0,0,.3)', 1); }
+    if (c.v === 1) { var st = qp(f.top, 0.5, 0.5); px(g, st[0] - 5, st[1] - 2, 10, 5, 'rgba(180,150,100,.25)'); }   // a stencil, faded
+};
+PAINT.barrel = function (g, c) {
+    var rng = c.rng, hgt = c.hgt, rrx = c.rrx, rry = c.rry;
+    // a barrel bulges: draw it as stacked slices so the belly is real
+    for (var s = 0; s <= hgt; s++) {
+        var q = s / hgt, bulge = 1 + Math.sin(q * Math.PI) * 0.1;
+        var w = rrx * bulge;
+        px(g, -w, -s, w * 2, 1, '#3f3226');
+        px(g, -w, -s, w * 0.72, 1, '#54432f');
+        px(g, w * 0.44, -s, w * 0.56, 1, '#31271c');
+    }
+    g.fillStyle = '#31271c'; g.beginPath(); g.ellipse(0, 0, rrx, rry, 0, 0, TAU); g.fill();
+    for (var st = -3; st <= 3; st++) {                                          // staves
+        var sxx = rrx * st * 0.26;
+        line(g, sxx, -hgt + 2, sxx * 1.1, -rry * 0.3, 'rgba(20,14,8,.4)', 1);
+    }
+    [0.78, 0.5, 0.16].forEach(function (q2, qi) {                               // iron hoops
+        var yy = -hgt * q2, bulge2 = 1 + Math.sin((1 - q2) * Math.PI) * 0.1;
+        g.strokeStyle = qi === 1 ? '#5a5048' : '#6a5f52'; g.lineWidth = 3;
+        g.beginPath(); g.ellipse(0, yy, rrx * bulge2, rry * bulge2 * 0.9, 0, 0, Math.PI); g.stroke();
+        g.strokeStyle = 'rgba(150,140,128,.4)'; g.lineWidth = 1;
+        g.beginPath(); g.ellipse(0, yy - 1, rrx * bulge2, rry * bulge2 * 0.9, 0, 0.5, Math.PI - 1.4); g.stroke();
+    });
+    g.fillStyle = '#4a3c2c'; g.beginPath(); g.ellipse(0, -hgt, rrx, rry, 0, 0, TAU); g.fill();
+    g.fillStyle = '#3a2e22'; g.beginPath(); g.ellipse(0, -hgt, rrx * 0.86, rry * 0.86, 0, 0, TAU); g.fill();
+    for (var pl = -2; pl <= 2; pl++) line(g, pl * rrx * 0.34, -hgt - rry * 0.7, pl * rrx * 0.34, -hgt + rry * 0.7, 'rgba(18,12,8,.5)', 1);
+    if (c.v === 1) { px(g, -rrx * 0.2, -hgt * 0.5, 5, 4, '#2a2118'); px(g, -rrx * 0.2 + 1, -hgt * 0.5 + 1, 3, 2, '#161009'); }   // a bung
+    dither(g, [[-rrx, -hgt], [rrx, -hgt], [rrx, 0], [-rrx, 0]], 'rgba(0,0,0,.3)', 0.08, rng);
+};
+PAINT.sack = function (g, c) {
+    var rng = c.rng, hgt = c.hgt, rrx = c.rrx, rry = c.rry;
+    var empty = c.v === 2;                                                      // a slack sack in a hungry year
+    var sq = empty ? 0.55 : 1;
+    g.fillStyle = '#463d29';
+    g.beginPath(); g.ellipse(0, -hgt / 2 * sq, rrx * 0.96, (rry + hgt / 2) * sq, 0, 0, TAU); g.fill();
+    g.fillStyle = '#5a4f36';
+    g.beginPath(); g.ellipse(-rrx * 0.09, (-hgt * 0.6 - rry * 0.2) * sq, rrx * 0.8, (rry + hgt / 2) * 0.72 * sq, 0, 0, TAU); g.fill();
+    g.fillStyle = '#6c5f44';
+    g.beginPath(); g.ellipse(-rrx * 0.2, (-hgt * 0.8 - rry * 0.4) * sq, rrx * 0.46, (rry + hgt / 2) * 0.34 * sq, 0, 0, TAU); g.fill();
+    var bb = [[-rrx, -rry - hgt], [rrx, -rry - hgt], [rrx, rry], [-rrx, rry]];
+    dither(g, bb, 'rgba(120,106,74,.4)', 0.1, rng);                             // hessian weave
+    dither(g, bb, 'rgba(40,32,18,.4)', 0.09, rng);
+    for (var f = 0; f < 4; f++) {                                               // folds where the cloth gathers
+        var fx = -rrx * 0.6 + f * rrx * 0.4;
+        line(g, fx, -rry * 0.2 * sq, fx + 3, (-hgt * 0.7 - rry * 0.4) * sq, 'rgba(36,30,18,.45)', 1);
+    }
+    var ny = (-rry - hgt / 2 * sq) - (rry + hgt / 2) * sq * 0.5;
+    px(g, -4, ny, 8, 5, '#3b3220');                                             // the neck, tied
+    line(g, -5, ny + 2, 5, ny + 2, '#7d6c48', 1);
+    px(g, -2, ny - 4, 4, 4, '#584c33');
+    if (!empty) { px(g, rrx * 0.3, rry * 0.3, 3, 2, '#c8b98a'); px(g, rrx * 0.3 + 3, rry * 0.4, 2, 2, '#b3a479'); }   // spilled grain
+};
+PAINT.cart = function (g, c) {
+    var rng = c.rng, hgt = c.hgt, fw = c.fw, ty = -hgt;
+    var f = body(g, c, ['#4a3d2a', '#33291c', '#5c4d36']);
+    for (var i = 1; i < 6; i++) { var a = qp(f.sw, i / 6, 0), b = qp(f.sw, i / 6, 1); line(g, a[0], a[1], b[0], b[1], 'rgba(0,0,0,.35)', 1); }
+    poly(g, f.top, '#5a4b34');
+    for (var s = 1; s < 5; s++) { var a2 = qp(f.top, s / 5, 0), b2 = qp(f.top, s / 5, 1); line(g, a2[0], a2[1], b2[0], b2[1], 'rgba(0,0,0,.3)', 1); }
+    // rails, and the empty bed under them
+    [[c.x3, c.y3], [c.x2, c.y2]].forEach(function () {});
+    line(g, c.x3, c.y3 - hgt - 12, c.x2, c.y2 - hgt - 12, '#5c4a32', 3);
+    line(g, c.x3, c.y3 - hgt, c.x3, c.y3 - hgt - 12, '#5c4a32', 3);
+    line(g, c.x2, c.y2 - hgt, c.x2, c.y2 - hgt - 12, '#5c4a32', 3);
+    for (var r = 1; r < 4; r++) {
+        var rq = r / 4, rx = c.x3 + (c.x2 - c.x3) * rq, ry2 = c.y3 + (c.y2 - c.y3) * rq;
+        line(g, rx, ry2 - hgt, rx, ry2 - hgt - 12, '#4a3c28', 2);
+    }
+    // two wheels with real spokes, and a shaft the horse has not been in for a while
+    [[-0.3, 9], [0.32, 8]].forEach(function (w) {
+        var wx = fw * w[0], wy = ty + hgt * 0.9, wr = w[1];
+        g.strokeStyle = '#241c12'; g.lineWidth = 3;
+        g.beginPath(); g.arc(wx, wy, wr, 0, TAU); g.stroke();
+        g.strokeStyle = '#3e3220'; g.lineWidth = 1;
+        for (var sp = 0; sp < 6; sp++) { var an = sp / 6 * Math.PI; line(g, wx - Math.cos(an) * wr, wy - Math.sin(an) * wr, wx + Math.cos(an) * wr, wy + Math.sin(an) * wr, '#3e3220', 1); }
+        g.fillStyle = '#4a3c28'; g.beginPath(); g.arc(wx, wy, 2, 0, TAU); g.fill();
+    });
+    line(g, c.x3, c.y3 - hgt + 4, c.x3 - 14, c.y3 - hgt + 12, '#4a3c28', 3);
+    dither(g, f.top, 'rgba(30,22,12,.5)', 0.14, rng);
+};
+PAINT.stone = PAINT.cairn = function (g, c) {
+    var rng = c.rng, hgt = c.hgt, rrx = c.rrx, rry = c.rry, ty = -hgt;
+    roundBody(g, c);
+    var bb = [[-rrx, -rry - hgt], [rrx, -rry - hgt], [rrx, rry], [-rrx, rry]];
+    dither(g, bb, 'rgba(150,150,172,.28)', 0.1, rng);                           // grain in the rock
+    dither(g, bb, 'rgba(14,12,20,.4)', 0.1, rng);
+    g.strokeStyle = 'rgba(18,16,24,.5)'; g.lineWidth = 1;                       // a fault line, and a chip out of it
+    g.beginPath();
+    g.moveTo(-rrx * 0.34, ty - rry * 0.1); g.lineTo(-rrx * 0.02, ty + rry * 0.26); g.lineTo(rrx * 0.3, ty + rry * 0.16);
+    g.stroke();
+    for (var l = 0; l < 3; l++) {                                               // lichen, only on the weather side
+        var lp = [-rrx * (0.2 + rng() * 0.5), ty - rry * (0.2 + rng() * 0.7)];
+        g.fillStyle = 'rgba(104,124,88,.28)';
+        g.beginPath(); g.ellipse(lp[0], lp[1], 3 + rng() * 4, 2 + rng() * 3, 0, 0, TAU); g.fill();
+    }
+    g.fillStyle = 'rgba(210,210,230,.1)';
+    g.beginPath(); g.ellipse(-rrx * 0.26, ty - rry * 0.6, rrx * 0.16, rry * 0.34, -0.5, 0, TAU); g.fill();
+    if (c.t === 'cairn') {                                                      // somebody stacked these, one at a time
+        var y2 = ty - rry - hgt * 0.14;
+        g.fillStyle = c.pal[1]; g.beginPath(); g.ellipse(1, y2, rrx * 0.42, rry * 0.42, 0, 0, TAU); g.fill();
+        g.fillStyle = c.pal[2]; g.beginPath(); g.ellipse(-rrx * 0.05, y2 - rry * 0.12, rrx * 0.26, rry * 0.24, 0, 0, TAU); g.fill();
+        g.fillStyle = c.pal[0]; g.beginPath(); g.ellipse(rrx * 0.06, y2 - rry * 0.5, rrx * 0.2, rry * 0.2, 0, 0, TAU); g.fill();
+        dither(g, [[-rrx * 0.5, y2 - rry], [rrx * 0.5, y2 - rry], [rrx * 0.5, y2 + rry * 0.4], [-rrx * 0.5, y2 + rry * 0.4]], 'rgba(14,12,20,.4)', 0.12, rng);
+    }
+};
+PAINT.hedge = function (g, c) {
+    var rng = c.rng, hgt = c.hgt, long = c.bw >= c.bh;
+    var n = Math.max(5, Math.round((long ? c.bw : c.bh) * 3));
+    for (var pass = 0; pass < 3; pass++) {
+        var col = ['#16220f', '#22331a', '#334a26'][pass];
+        var lift = pass * 3;
+        for (var i = 0; i <= n; i++) {
+            var q = i / n;
+            var hx = long ? c.lx(c.bw * q, c.bh / 2) : c.lx(c.bw / 2, c.bh * q);
+            var hy = long ? c.ly(c.bw * q, c.bh / 2) : c.ly(c.bw / 2, c.bh * q);
+            g.fillStyle = col;
+            g.beginPath(); g.ellipse(hx + (rng() - 0.5) * 6, hy - hgt - lift + (rng() - 0.5) * 5, 9 + rng() * 5, 6 + rng() * 4, 0, 0, TAU); g.fill();
+        }
+    }
+    for (var t = 0; t < 40; t++) {                                              // twigs poking out of a hedge nobody cuts
+        var q2 = rng();
+        var tx = long ? c.lx(c.bw * q2, c.bh / 2) : c.lx(c.bw / 2, c.bh * q2);
+        var tyy = long ? c.ly(c.bw * q2, c.bh / 2) : c.ly(c.bw / 2, c.bh * q2);
+        var a = rng() * TAU;
+        line(g, tx, tyy - hgt - 3, tx + Math.cos(a) * 8, tyy - hgt - 3 + Math.sin(a) * 6, 'rgba(58,48,32,.7)', 1);
+    }
+};
+PAINT.curtain = function (g, c) {
+    var rng = c.rng, hgt = c.hgt;
+    poly(g, [[c.x3, c.y3 - hgt], [c.x2, c.y2 - hgt], [c.x2, c.y2], [c.x3, c.y3]], '#3a1c22');
+    var q = [[c.x3, c.y3 - hgt], [c.x2, c.y2 - hgt], [c.x2, c.y2], [c.x3, c.y3]];
+    for (var f = 0; f < 22; f++) {                                              // heavy velvet takes deep folds
+        var u = f / 22, w = 0.028 + (f % 3) * 0.008;
+        var dark = f % 2 === 0;
+        poly(g, [qp(q, u, 0.02), qp(q, u + w, 0.02), qp(q, u + w * 1.4, 1), qp(q, u, 1)], dark ? '#2a1218' : '#48242c');
+    }
+    dither(g, q, 'rgba(120,50,62,.24)', 0.07, rng);                             // the nap of the cloth
+    dither(g, q, 'rgba(14,6,10,.5)', 0.07, rng);
+    var moth = 5;
+    for (var m = 0; m < moth; m++) {                                            // it has been in a damp loft for years
+        var mp = qp(q, rng(), 0.3 + rng() * 0.6);
+        g.fillStyle = 'rgba(20,10,14,.7)';
+        g.beginPath(); g.ellipse(mp[0], mp[1], 2 + rng() * 3, 1 + rng() * 2, 0, 0, TAU); g.fill();
+    }
+    poly(g, [[c.x3, c.y3 - hgt - 5], [c.x2, c.y2 - hgt - 5], [c.x2, c.y2 - hgt + 2], [c.x3, c.y3 - hgt + 2]], '#5c3038');
+    poly(g, [[c.x3, c.y3 - hgt - 5], [c.x2, c.y2 - hgt - 5], [c.x2, c.y2 - hgt - 3], [c.x3, c.y3 - hgt - 3]], '#7a4450');
+    for (var r = 0; r < 12; r++) {                                              // rings on the pole
+        var rp = qp(q, (r + 0.5) / 12, 0);
+        g.strokeStyle = '#8a7a4a'; g.lineWidth = 1.5;
+        g.beginPath(); g.arc(rp[0], rp[1] - 4, 3, 0, TAU); g.stroke();
+    }
+};
+PAINT.foot = function (g, c) {
+    var hgt = c.hgt;
+    body(g, c, ['#332b1f', '#241e15', '#453a28']);
+    for (var fl = 0; fl < 9; fl++) {
+        var lq = (fl + 0.5) / 9;
+        var lx2 = c.x3 + (c.x2 - c.x3) * lq, ly2 = c.y3 + (c.y2 - c.y3) * lq;
+        px(g, lx2 - 4, ly2 - hgt - 7, 8, 8, '#1a1410');                          // a tin reflector
+        px(g, lx2 - 3, ly2 - hgt - 6, 6, 6, '#4a4238');
+        px(g, lx2 - 1, ly2 - hgt - 4, 2, 4, '#ffe0a0');
+    }
+};
+LIVE.foot = function (cx, o, mxc, myc) {
+    var d = propDef('foot'), hgt = d.h, b = o.b;
+    var x3 = isoX(b[0], b[1] + b[3]), y3 = isoY(b[0], b[1] + b[3]);
+    var x2 = isoX(b[0] + b[2], b[1] + b[3]), y2 = isoY(b[0] + b[2], b[1] + b[3]);
+    cx.globalCompositeOperation = 'lighter';
+    // Nine oil lamps in a row, and one of them is always going out. The
+    // play has been lit like this for four hundred years.
+    var guttering = Math.floor(RT.t / 3.7) % 9;
+    var gphase = (RT.t / 3.7) % 1;
+    for (var fl = 0; fl < 9; fl++) {
+        var lq = (fl + 0.5) / 9, lx2 = x3 + (x2 - x3) * lq, ly2 = y3 + (y2 - y3) * lq - hgt - 4;
+        var fk = 0.72 + Math.sin(RT.t * 6 + fl * 1.7) * 0.28;
+        if (fl === guttering && gphase < 0.11) fk *= 0.28;
+        var fg = cx.createRadialGradient(lx2, ly2, 1, lx2, ly2, 24);
+        fg.addColorStop(0, 'rgba(255,190,90,' + (0.45 * fk).toFixed(3) + ')');
+        fg.addColorStop(1, 'rgba(255,190,90,0)');
+        cx.fillStyle = fg; cx.beginPath(); cx.arc(lx2, ly2, 24, 0, TAU); cx.fill();
+    }
+    cx.globalCompositeOperation = 'source-over';
+};
+PAINT.lamp = function (g, c) {
+    var hgt = c.hgt;
+    // a post nobody has painted since before the famine, and an iron bracket
+    px(g, -2, -hgt, 4, hgt + 3, '#2a2620');
+    px(g, -2, -hgt, 2, hgt + 3, '#3c3630');
+    for (var r = 0; r < 4; r++) px(g, -3, -hgt * (0.2 + r * 0.22), 6, 1, '#231f19');
+    line(g, 0, -hgt + 4, 7, -hgt - 2, '#2a2620', 2);
+    px(g, -7, -hgt - 20, 14, 15, '#231d16');                                     // the lantern housing
+    px(g, -5, -hgt - 18, 10, 11, '#100c08');
+    px(g, -7, -hgt - 22, 14, 3, '#39312a');                                      // its little roof
+    poly(g, [[-7, -hgt - 22], [0, -hgt - 28], [7, -hgt - 22]], '#39312a');
+    px(g, -1, -hgt - 30, 2, 3, '#2a241d');                                       // the ring you hang it by
+    for (var m = 0; m < 3; m++) px(g, -5 + m * 4, -hgt - 18, 1, 11, '#2f2820');  // glazing bars
+    // four hundred ninth nights scorch a post. This is the only mark in
+    // the game that is evidence of how long the lie has been kept.
+    for (var s = 0; s < 8; s++) {
+        var w = 5 - s * 0.5;
+        px(g, -w / 2, -hgt - 24 - s, w, 1, 'rgba(11,9,18,' + (0.5 - s * 0.05).toFixed(2) + ')');
+    }
+};
+LIVE.lamp = function (cx, o, mxc, myc) {
+    var hgt = propDef('lamp').h;
+    var fx = mxc, fy = myc - hgt - 12;
+    // Nothing is alive out past the fence. Inside it, every flame has
+    // two or three moths on it; on the road there are none, and that is
+    // the whole difference between the two halves of the world.
+    var wild = RT.place === 'road' || RT.place === 'hollow';
+    var moths = wild ? 0 : 2, bump = 0;
+    for (var m = 0; m < moths; m++) {
+        var a = RT.t * (1.6 + m * 0.7) + m * 2.3 + o.b[0];
+        var mx = fx + Math.cos(a) * (11 + m * 5), my = fy + Math.sin(a * 1.3) * (7 + m * 3);
+        if (Math.abs(mx - fx) < 4 && Math.abs(my - fy) < 4) bump = 1;   // it hit the glass
+        cx.fillStyle = 'rgba(226,214,180,.5)';
+        cx.fillRect(Math.round(mx), Math.round(my), 2, 2);
+    }
+    var flick = 0.8 + Math.sin(RT.t * 7 + o.b[0] * 3) * 0.14 + Math.sin(RT.t * 17 + o.b[1]) * 0.06;
+    cx.fillStyle = 'rgba(255,206,120,' + (0.55 + flick * 0.4).toFixed(2) + ')';
+    cx.fillRect(Math.round(fx - 3), Math.round(fy - 4 - bump), 6, 8);
+    cx.fillStyle = 'rgba(255,246,214,' + (0.5 + flick * 0.5).toFixed(2) + ')';
+    cx.fillRect(Math.round(fx - 1), Math.round(fy - 3 - bump + Math.sin(RT.t * 9) * 0.6), 2, 4);
+    cx.globalCompositeOperation = 'lighter';
+    var lg = cx.createRadialGradient(fx, fy, 2, fx, fy, 40);
+    lg.addColorStop(0, 'rgba(255,200,110,' + (0.34 * flick).toFixed(3) + ')');
+    lg.addColorStop(0.4, 'rgba(255,190,90,' + (0.1 * flick).toFixed(3) + ')');
+    lg.addColorStop(1, 'rgba(255,190,90,0)');
+    cx.fillStyle = lg; cx.beginPath(); cx.arc(fx, fy, 40, 0, TAU); cx.fill();
+    cx.globalCompositeOperation = 'source-over';
+};
+PAINT.table = PAINT.counter = function (g, c) {
+    var rng = c.rng, hgt = c.hgt, f = body(g, c);
+    poly(g, f.top, '#5e4a34');
+    for (var s = 1; s < 5; s++) {                                                // boards, and the gaps between them
+        var a = qp(f.top, s / 5, 0), b = qp(f.top, s / 5, 1);
+        line(g, a[0], a[1], b[0], b[1], 'rgba(0,0,0,.35)', 1);
+    }
+    for (var k = 0; k < 40; k++) {                                               // grain, running with the boards
+        var p = qp(f.top, rng(), rng());
+        px(g, p[0], p[1], 2 + rng() * 5, 1, rng() < 0.5 ? 'rgba(110,88,60,.5)' : 'rgba(40,30,20,.4)');
+    }
+    var wear = [qp(f.top, 0.3, 0.25), qp(f.top, 0.7, 0.25), qp(f.top, 0.7, 0.75), qp(f.top, 0.3, 0.75)];
+    poly(g, wear, 'rgba(140,116,80,.16)');                                       // where the elbows go
+    dither(g, f.top, 'rgba(24,18,10,.4)', 0.06, rng);
+    for (var i = 1; i < 5; i++) { var a2 = qp(f.sw, i / 5, 0), b2 = qp(f.sw, i / 5, 1); line(g, a2[0], a2[1], b2[0], b2[1], 'rgba(0,0,0,.3)', 1); }
+    if (c.t === 'counter') {
+        px(g, -c.fw * 0.36, -hgt + 4, c.fw * 0.72, 3, '#2a2118');    // the shadow line under the lip
+        var sc = qp(f.top, 0.24, 0.5);                                           // scales: she sells by weight
+        line(g, sc[0], sc[1] - 14, sc[0], sc[1], '#3a3228', 2);
+        line(g, sc[0] - 8, sc[1] - 14, sc[0] + 8, sc[1] - 14, '#3a3228', 1);
+        g.fillStyle = '#4a4238';
+        g.beginPath(); g.ellipse(sc[0] - 8, sc[1] - 10, 4, 2, 0, 0, TAU); g.fill();
+        g.beginPath(); g.ellipse(sc[0] + 8, sc[1] - 11, 4, 2, 0, 0, TAU); g.fill();
+        var lg2 = qp(f.top, 0.68, 0.5);                                          // and a ledger, open
+        px(g, lg2[0] - 7, lg2[1] - 3, 14, 6, '#cabf9e');
+        px(g, lg2[0] - 1, lg2[1] - 3, 2, 6, '#9d9377');
+        for (var ln = 0; ln < 3; ln++) px(g, lg2[0] - 5, lg2[1] - 2 + ln * 2, 4, 1, 'rgba(60,50,40,.6)');
+    } else {
+        var bowl = qp(f.top, 0.62, 0.44);                                        // a bowl, and not much in it
+        g.fillStyle = '#4a4640'; g.beginPath(); g.ellipse(bowl[0], bowl[1], 7, 4, 0, 0, TAU); g.fill();
+        g.fillStyle = '#20201c'; g.beginPath(); g.ellipse(bowl[0], bowl[1], 5, 2.6, 0, 0, TAU); g.fill();
+        var cnd = qp(f.top, 0.34, 0.5);
+        px(g, cnd[0] - 2, cnd[1] - 9, 4, 9, '#d8cfae');                          // a candle burned most of the way down
+        px(g, cnd[0] - 1, cnd[1] - 11, 2, 2, '#3a3228');
+    }
+};
+PAINT.shelf = function (g, c) {
+    var rng = c.rng, hgt = c.hgt, f = body(g, c);
+    var jars = ['#6a5a3a', '#4a5a5a', '#6a4a4a', '#5a5a3a', '#3f4a56'];
+    for (var sh = 0; sh < 3; sh++) {
+        var v = 0.08 + sh * 0.32;
+        var a = qp(f.sw, 0, v), b = qp(f.sw, 1, v);
+        // the contents first, standing on the board below
+        for (var jr = 0; jr < 7; jr++) {
+            if (rng() < 0.22) continue;                                          // gaps: stock she has sold, or cannot get
+            var jq = (jr + 0.5) / 7, jp = qp(f.sw, jq, v);
+            var jh = 6 + Math.round(rng() * 5), jw = 4 + Math.round(rng() * 3);
+            px(g, jp[0] - jw / 2, jp[1] - jh, jw, jh, jars[(jr + sh) % 5]);
+            px(g, jp[0] - jw / 2, jp[1] - jh, 1, jh, 'rgba(255,240,210,.16)');
+            px(g, jp[0] - jw / 2, jp[1] - jh - 1, jw, 1, '#2a2620');              // a stopper
+            if (rng() < 0.4) px(g, jp[0] - jw / 2, jp[1] - jh + 2, jw, 2, 'rgba(230,220,190,.3)');   // a paper label
+        }
+        line(g, a[0], a[1], b[0], b[1], '#2c2118', 3);                            // the board itself
+        line(g, a[0], a[1] - 1, b[0], b[1] - 1, '#5c4934', 1);
+    }
+    for (var u = 0; u < 2; u++) { var p1 = qp(f.sw, u ? 0.97 : 0.03, 0), p2 = qp(f.sw, u ? 0.97 : 0.03, 1); line(g, p1[0], p1[1], p2[0], p2[1], '#332818', 3); }
+    dither(g, f.sw, 'rgba(0,0,0,.35)', 0.09, rng);
+};
+PAINT.bed = function (g, c) {
+    var rng = c.rng, hgt = c.hgt;
+    body(g, c, ['#332b22', '#241e18', '#413528']);                                // the frame
+    var top = [[c.x0, c.y0 - hgt], [c.x1, c.y1 - hgt], [c.x2, c.y2 - hgt], [c.x3, c.y3 - hgt]];
+    poly(g, top, '#4a4056');                                                      // a straw mattress under a blanket
+    var blanket = [qp(top, 0.06, 0.3), qp(top, 0.94, 0.3), qp(top, 0.94, 0.96), qp(top, 0.06, 0.96)];
+    poly(g, blanket, '#514463');
+    for (var f = 0; f < 7; f++) {                                                 // the creases of a bed slept in
+        var u = f / 7;
+        var a = qp(blanket, u, 0), b = qp(blanket, u + 0.03, 1);
+        line(g, a[0], a[1], b[0], b[1], 'rgba(38,30,50,.5)', 2);
+    }
+    poly(g, [qp(blanket, 0, 0), qp(blanket, 1, 0), qp(blanket, 1, 0.12), qp(blanket, 0, 0.12)], '#6a5b7e');
+    dither(g, blanket, 'rgba(90,78,110,.4)', 0.1, rng);
+    var hp = qp(top, 0.2, 0.16);
+    g.fillStyle = '#cfc6b6'; g.beginPath(); g.ellipse(hp[0], hp[1], 10, 6, -0.2, 0, TAU); g.fill();
+    g.fillStyle = '#b3a998'; g.beginPath(); g.ellipse(hp[0] + 2, hp[1] + 2, 7, 3.4, -0.2, 0, TAU); g.fill();
+    px(g, c.x3 + 2, c.y3 - hgt - 16, 3, 17, '#3a3024');                           // the head board posts
+    px(g, c.x0 - 2, c.y0 - hgt - 16, 3, 17, '#453927');
+    line(g, c.x3 + 3, c.y3 - hgt - 15, c.x0, c.y0 - hgt - 15, '#3f3427', 2);
+};
+PAINT.vat = function (g, c) {
+    var rng = c.rng, hgt = c.hgt, rrx = c.rrx, rry = c.rry;
+    cylBody(g, c);
+    for (var s = -3; s <= 3; s++) line(g, rrx * s * 0.28, -hgt + 2, rrx * s * 0.3, -rry * 0.2, 'rgba(18,16,12,.4)', 1);
+    [0.8, 0.2].forEach(function (q) {                                             // iron bands round the tub
+        g.strokeStyle = '#5a5248'; g.lineWidth = 3;
+        g.beginPath(); g.ellipse(0, -hgt * q, rrx, rry * 0.92, 0, 0, Math.PI); g.stroke();
+    });
+    g.fillStyle = '#1b1a16'; g.beginPath(); g.ellipse(0, -hgt, rrx * 0.84, rry * 0.84, 0, 0, TAU); g.fill();
+    g.fillStyle = '#e2d6ae'; g.beginPath(); g.ellipse(0, -hgt + 2, rrx * 0.7, rry * 0.7, 0, 0, TAU); g.fill();
+    g.fillStyle = '#cbbd93'; g.beginPath(); g.ellipse(rrx * 0.12, -hgt + 3, rrx * 0.5, rry * 0.5, 0, 0, TAU); g.fill();
+    // the skin that forms on cooling wax, and the wicks hung to dip
+    g.strokeStyle = 'rgba(255,250,226,.5)'; g.lineWidth = 1;
+    g.beginPath(); g.ellipse(-rrx * 0.16, -hgt + 1, rrx * 0.44, rry * 0.42, 0, 0, TAU); g.stroke();
+    for (var w = 0; w < 4; w++) {
+        var wx = -rrx * 0.5 + w * rrx * 0.34;
+        line(g, wx, -hgt - 18, wx, -hgt + 1, '#b8a97f', 1);
+        px(g, wx - 2, -hgt - 8, 4, 9, '#efe3bc');                                 // a candle taking shape
+        px(g, wx - 2, -hgt - 8, 1, 9, '#fff8dc');
+    }
+    line(g, -rrx * 0.62, -hgt - 18, rrx * 0.62, -hgt - 18, '#4a4238', 2);
+    dither(g, [[-rrx, -hgt], [rrx, -hgt], [rrx, 0], [-rrx, 0]], 'rgba(220,208,170,.16)', 0.05, rng);   // wax splashes
+};
+/* ── the fire. An interior with no fire in it is a set, not a room. ── */
+PAINT.hearth = function (g, c) {
+    var rng = c.rng, hgt = c.hgt, rrx = c.rrx;
+    var f = body(g, c);
+    // a rubble stone chimney breast, course by course
+    [[f.sw, true], [f.se, false]].forEach(function (pair) {
+        var q = pair[0], lit = pair[1];
+        for (var s = 0; s < 46; s++) {
+            var p = qp(q, rng(), rng());
+            g.fillStyle = shadeHex(lit ? '#4c4844' : '#332f2c', 0.82 + rng() * 0.4);
+            g.beginPath(); g.ellipse(p[0], p[1], 3 + rng() * 5, 2 + rng() * 2.6, 0, 0, TAU); g.fill();
+        }
+        dither(g, q, 'rgba(10,8,10,.45)', 0.16, rng);
+    });
+    // the opening, blackened, with a lintel over it
+    var o0 = qp(f.sw, 0.18, 0.42), o1 = qp(f.sw, 0.82, 0.42);
+    var o2 = qp(f.sw, 0.82, 1), o3 = qp(f.sw, 0.18, 1);
+    poly(g, [o0, o1, o2, o3], '#0b0808');
+    px(g, o0[0] - 4, o0[1] - 5, (o1[0] - o0[0]) + 8, 5, '#57524c');              // the lintel stone
+    px(g, o0[0] - 4, o0[1] - 6, (o1[0] - o0[0]) + 8, 1, '#6c665e');
+    dither(g, [[o0[0] - 6, o0[1] - 14], [o1[0] + 6, o1[1] - 14], [o1[0] + 6, o1[1] - 4], [o0[0] - 6, o0[1] - 4]], 'rgba(6,4,4,.6)', 0.4, rng);   // soot up the breast
+    // logs and ash in the grate
+    var bx = (o0[0] + o1[0]) / 2, by = o2[1] - 5;
+    c.at('fire', bx, by);                                                       // the fire burns where the logs are
+    g.fillStyle = '#5a5148'; g.beginPath(); g.ellipse(bx, by + 2, (o1[0] - o0[0]) * 0.4, 4, 0, 0, TAU); g.fill();
+    for (var l = 0; l < 4; l++) {
+        var lxp = bx - 12 + l * 7, lyp = by - (l % 2) * 3;
+        px(g, lxp, lyp, 12, 4, l % 2 ? '#2e241c' : '#3a2c20');
+        px(g, lxp, lyp, 12, 1, '#4a3a2a');
+        px(g, lxp + (l % 2 ? 11 : 0), lyp, 2, 4, '#1a1310');                     // the charred end
+    }
+    // a pot on a chain: the reason a fire is kept in at all
+    px(g, bx - 2, o0[1] - 3, 2, 9, '#3a3630');
+    g.fillStyle = '#2b2724';
+    g.beginPath(); g.ellipse(bx, by - 11, 9, 7, 0, 0, TAU); g.fill();
+    g.fillStyle = '#1b1815';
+    g.beginPath(); g.ellipse(bx, by - 14, 8, 3.4, 0, 0, TAU); g.fill();
+    g.strokeStyle = '#4a453e'; g.lineWidth = 1;
+    g.beginPath(); g.arc(bx, by - 15, 8, Math.PI, 0); g.stroke();
+    px(g, o1[0] + 2, o1[1] + 6, 3, 12, '#3a342c');                               // the poker, leaning
+};
+LIVE.hearth = function (cx, o, mxc, myc, sp) {
+    var fp = anchorAt(sp, 'fire', mxc, myc);
+    var bx = fp.x, by = fp.y;
+    for (var i = 0; i < 7; i++) {                                                // tongues, each on its own clock
+        var ph = RT.t * (3.4 + i * 0.6) + i * 1.9;
+        var lift = (Math.sin(ph) * 0.5 + 0.5);
+        var fx = bx - 13 + i * 4.4 + Math.sin(ph * 1.7) * 1.6;
+        var fh = 6 + lift * 11;
+        cx.fillStyle = 'rgba(216,86,26,.55)';
+        cx.fillRect(Math.round(fx - 2), Math.round(by - fh), 4, Math.round(fh));
+        cx.fillStyle = 'rgba(255,160,52,.75)';
+        cx.fillRect(Math.round(fx - 1), Math.round(by - fh * 0.72), 2, Math.round(fh * 0.72));
+        if (lift > 0.7) { cx.fillStyle = 'rgba(255,232,180,.8)'; cx.fillRect(Math.round(fx - 1), Math.round(by - fh - 2), 2, 3); }
+    }
+    cx.globalCompositeOperation = 'lighter';
+    var fk = 0.84 + Math.sin(RT.t * 5.3) * 0.1 + Math.sin(RT.t * 13.1) * 0.06;
+    var gr = cx.createRadialGradient(bx, by - 6, 2, bx, by - 6, 62);
+    gr.addColorStop(0, 'rgba(255,152,60,' + (0.4 * fk).toFixed(3) + ')');
+    gr.addColorStop(0.45, 'rgba(255,130,44,' + (0.12 * fk).toFixed(3) + ')');
+    gr.addColorStop(1, 'rgba(255,120,40,0)');
+    cx.fillStyle = gr; cx.beginPath(); cx.arc(bx, by - 6, 62, 0, TAU); cx.fill();
+    for (var s = 0; s < 4; s++) {                                                // embers going up the chimney
+        var t = (RT.t * 0.7 + s * 0.25) % 1;
+        cx.fillStyle = 'rgba(255,170,80,' + ((1 - t) * 0.7).toFixed(3) + ')';
+        cx.fillRect(Math.round(bx - 8 + s * 5 + Math.sin(t * 7 + s) * 4), Math.round(by - 8 - t * 34), 1, 1);
+    }
+    cx.globalCompositeOperation = 'source-over';
+};
+PAINT.wall = function (g, c) {
+    var rng = c.rng, hgt = c.hgt;
+    var f = body(g, c);
+    plaster(g, f.sw, true, rng);
+    plaster(g, f.se, false, rng);
+    timberFrame(g, f.sw, rng, true);
+    timberFrame(g, f.se, rng, false);
+    poly(g, f.top, '#4a4148');
+    poly(g, [qp(f.sw, 0, 0), qp(f.sw, 1, 0), qp(f.sw, 1, 0.05), qp(f.sw, 0, 0.05)], 'rgba(12,9,16,.5)');
+};
 /* ─────────────── light ───────────────
    Every house sets a lamp on the sill. That is the name of the game, so
    it gets a pass of its own: darkness laid down flat, then punched back
@@ -6335,13 +7665,17 @@ function lightsOf(p) {
         else if (o.t === 'lamp') out.push({ x: b[0] + b[2] / 2, y: b[1] + b[3] / 2, r: 3.2, c: '255,206,120', i: 1 });
         else if (o.t === 'foot') out.push({ x: b[0] + b[2] / 2, y: b[1] + b[3] / 2, r: 4.4, c: '255,190,90', i: 0.7 });
         else if (o.t === 'mill') out.push({ x: b[0] + b[2] / 2, y: b[1] + b[3] + 0.3, r: 2.4, c: '255,190,120', i: 0.45 });
+        else if (o.t === 'hearth') out.push({ x: b[0] + b[2] / 2, y: b[1] + b[3] + 0.4, r: 4.6, c: '255,168,78', i: 1.15 });
     });
     (p.lights || []).forEach(function (l) { out.push(l); });
     return out;
 }
 function drawLights(cx) {
     var p = place(); if (!p.night) return;
-    cx.fillStyle = 'rgba(6,5,14,' + (p.night >= 2 ? 0.66 : 0.5) + ')';
+    // Inside, the dark is warmer and there is less of it. You are in a
+    // room with a fire in it, not standing in a field.
+    if (p.indoor) cx.fillStyle = 'rgba(14,8,10,.34)';
+    else cx.fillStyle = 'rgba(6,5,14,' + (p.night >= 2 ? 0.66 : 0.5) + ')';
     cx.fillRect(0, 0, VW, VH);
     var ls = lightsOf(p);
     if (!RT.dead) ls.push({ x: RT.px, y: RT.py, r: 3.4, c: '255,214,150', i: 0.8, self: 1 });
@@ -6364,8 +7698,16 @@ function drawLights(cx) {
    sat under every prop and, with a camera, scrolled away off the side
    of the screen. It belongs to the eye. */
 function drawVignette(cx) {
-    var vg = cx.createRadialGradient(VW / 2, VH / 2 - 30, 210, VW / 2, VH / 2, 620);
-    vg.addColorStop(0, 'rgba(4,3,8,0)'); vg.addColorStop(1, 'rgba(4,3,8,.92)');
+    /* This used to reach .92 black at radius 620 against a canvas whose
+       corner is at 631, so the corners were all but solid and a house
+       standing in one of them was throwing away every detail painted on
+       it. The falloff still frames the player; it just stops eating the
+       town to do it. */
+    var ind = place().indoor;
+    var vg = cx.createRadialGradient(VW / 2, VH / 2 - 30, ind ? 300 : 250, VW / 2, VH / 2, 680);
+    vg.addColorStop(0, 'rgba(4,3,8,0)');
+    vg.addColorStop(0.55, ind ? 'rgba(7,4,7,.2)' : 'rgba(4,3,8,.3)');
+    vg.addColorStop(1, ind ? 'rgba(8,5,8,.6)' : 'rgba(4,3,8,.8)');
     cx.fillStyle = vg; cx.fillRect(0, 0, VW, VH);
 }
 /* Something you can look at has to be visible before you are told
@@ -6407,6 +7749,51 @@ function drawExits(cx) {
         }
     });
 }
+/* ── what each of them does when they think nobody is watching ──
+   One gesture per person, and every one of them is that person's
+   dialogue told again without words. They repeat on their own clock,
+   so you catch them by standing still, which is the only way anybody
+   has ever noticed anything in this town. */
+var GESTURE = {
+    bern: function (cx, w, h, t) {                  // patting his hip for a hat that is on his head
+        var p = (t % 7) < 0.34 ? 1 : 0;
+        cx.strokeStyle = 'rgba(0,0,0,.45)'; cx.lineWidth = 2.2;
+        cx.beginPath(); cx.moveTo(-w * 0.75, -h * 0.62);
+        cx.lineTo(-w * 0.95, -h * (p ? 0.3 : 0.42)); cx.stroke();
+    },
+    widow: function (cx, w, h, t) {                 // reaching for the sill, twice, and never lifting it
+        var q = t % 9, up = (q < 0.7) ? q / 0.7 : (q > 1.3 && q < 2) ? (q - 1.3) / 0.7 : 0;
+        cx.strokeStyle = 'rgba(0,0,0,.45)'; cx.lineWidth = 2.2;
+        cx.beginPath(); cx.moveTo(w * 0.7, -h * 0.62);
+        cx.lineTo(w * (0.9 + up * 0.5), -h * (0.62 + up * 0.28)); cx.stroke();
+    },
+    shepherd: function (cx, w, h, t) {              // whittling, because he has no sheep left to count
+        var q = (t * 1.6) % 1;
+        cx.strokeStyle = 'rgba(0,0,0,.45)'; cx.lineWidth = 2.2;
+        cx.beginPath(); cx.moveTo(-w * 0.6, -h * 0.58); cx.lineTo(-w * 0.2, -h * (0.44 + q * 0.08)); cx.stroke();
+        cx.fillStyle = '#9aa0a8'; cx.fillRect(Math.round(-w * 0.2), Math.round(-h * (0.46 + q * 0.08)), 1, 3);
+        if (q > 0.86) { cx.fillStyle = 'rgba(150,128,88,.7)'; cx.fillRect(Math.round(-w * 0.1), Math.round(-h * 0.34 + (q - 0.86) * 40), 1, 1); }
+    },
+    busker: function (cx, w, h, t) {                // he does the walked-out-past-the-fence arm, to nobody
+        var q = t % 2.4, out = q < 0.8 ? Math.sin(q / 0.8 * Math.PI) : 0;
+        cx.strokeStyle = 'rgba(0,0,0,.45)'; cx.lineWidth = 2.2;
+        cx.beginPath(); cx.moveTo(w * 0.7, -h * 0.6);
+        cx.lineTo(w * (0.7 + out * 1.1), -h * (0.6 + out * 0.22)); cx.stroke();
+        if (out > 0.5) { cx.fillStyle = 'rgba(0,0,0,.4)'; cx.fillRect(Math.round(w * (0.7 + out * 1.1) - 1), Math.round(-h * (0.6 + out * 0.22) - 1), 3, 3); }
+    },
+    hal: function (cx, w, h, t) {                   // his jaw opens, and nothing comes out of it
+        if ((t % 12) > 11.6) { cx.fillStyle = '#0b0912'; cx.fillRect(Math.round(-1), Math.round(-h * 0.78), 2, 1); }
+    },
+    child: function (cx, w, h, t) {                 // barefoot, and the mend is on her knee
+        cx.fillStyle = 'rgba(196,186,168,.4)';
+        cx.fillRect(Math.round(-w * 0.4), Math.round(-h * 0.2), 3, 2);
+    },
+    chandler: function (cx, w, h, t) {              // wax on the apron: the only person in Wick with a trade
+        cx.fillStyle = '#c4b98c'; cx.fillRect(Math.round(-w * 0.3), Math.round(-h * 0.4), 2, 2);
+        cx.fillStyle = '#8e8a80';                   // and tin buttons, which nobody else has
+        for (var b = 0; b < 3; b++) cx.fillRect(0, Math.round(-h * (0.66 - b * 0.08)), 2, 2);
+    }
+};
 function drawNpc(cx, n) {
     var w2 = n.id ? npcRT(n.id) : { x: n.x, y: n.y, bob: RT.t * 2.4, moving: 0, face: 1 };
     var sx = isoX(w2.x, w2.y), sy = isoY(w2.x, w2.y) + TILE_H / 2;
@@ -6447,6 +7834,12 @@ function drawNpc(cx, n) {
         }
     }
     cx.restore();
+    /* The idle gestures survive the move to baked figures: standing
+       still, Bern pats his hip for a hat that is on his head, and the
+       widow reaches for the sill twice and never lifts it. They hang off
+       the figure rather than being part of it, so they stayed hand
+       drawn. Half-width is the sprite's, not the old robe's. */
+    if (!w2.moving && GESTURE[n.id]) GESTURE[n.id](cx, n.small ? 7 : 9, h, RT.t);
     cx.restore();
     // a quiet mark so you know they will talk to you
     cx.save(); cx.globalAlpha = 0.5 + Math.sin(RT.t * 2.6 + w2.y) * 0.2;
@@ -6665,6 +8058,7 @@ function close() {
         RT = null;
     }
     freeFloors();       // the cache is megabytes of prerendered ground; it does not outlive the window
+    freeSprites();      // and neither do the prop bitmaps
     if (S) sSave();
     if (window.__ninth) delete window.__ninth;
     return hrs;

@@ -139,6 +139,24 @@ Object.keys(PLACES).forEach(function (id) {
         }
     });
 
+    /* Two solids standing in the same square metre. The painter sort
+       draws the souther one over the norther one, so the overlap is not
+       symmetric and not obvious: Bern's bed was parked across three
+       quarters of his hearth, mattress over the fire, and it read as a
+       slightly odd corner rather than as a mistake. Walls are exempt
+       because everything in a room is meant to stand against one. */
+    var solid = (p.props || []).filter(function (o) { return o.t !== 'wall' && o.t !== 'foot' && o.t !== 'beam'; });
+    solid.forEach(function (a, i) {
+        solid.slice(i + 1).forEach(function (b) {
+            var ox = Math.min(a.b[0] + a.b[2], b.b[0] + b.b[2]) - Math.max(a.b[0], b.b[0]);
+            var oy = Math.min(a.b[1] + a.b[3], b.b[1] + b.b[3]) - Math.max(a.b[1], b.b[1]);
+            if (ox > 0.05 && oy > 0.05) {
+                bad(id + ': "' + a.t + '" [' + a.b + '] and "' + b.t + '" [' + b.b + '] overlap by ' +
+                    ox.toFixed(1) + 'x' + oy.toFixed(1) + ' tiles. One is drawn through the other.');
+            }
+        });
+    });
+
     // a place lit only by your own lantern is a deliberate choice; a lit
     // place with nothing to light it is a mistake
     if (p.night) {

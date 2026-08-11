@@ -3195,3 +3195,9 @@ button.nn-drow:hover { background: rgba(30,60,48,.5); }
   .nn-lw { padding: 3px 6px; }
   .nn-rh { min-width: 38px; }
 }
+/* NINTH NIGHT: keeping the pixels */
+/* The canvas is 1120x580 and object-fit: contain stretches it to whatever
+   size the window is, so the browser was resampling it smoothly and every
+   hard edge in the world art arrived as a two pixel gradient. Every other
+   pixel canvas on this desktop already asks for this; this one never did. */
+.nn-cv { image-rendering: pixelated; image-rendering: crisp-edges; }
