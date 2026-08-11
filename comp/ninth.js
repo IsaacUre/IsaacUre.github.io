@@ -2175,8 +2175,10 @@ function spendBreath(cost) {
 /* ═══════════════ THE LINE ═══════════════
    You do not choose your words. You choose your rhymes.
 
-   Every word you own sits in a bag. The line deals you four of them,
-   face up: the one on your tongue and three you can see coming. Left
+   Every word you own sits in a bag. The line deals them face up: the
+   one on your tongue and the ones you can see coming. It always keeps
+   one back, so it is four cards once you know five words and three
+   before that, and swallowing can always hand you something else. Left
    click says the head word at whatever you are pointing at and sticks
    a syllable of its sound to what it hits. Right click swallows it
    instead, which costs breath and puts a struck-out word in your poem.
@@ -4801,7 +4803,7 @@ function fillBook() {
 function fillKit() {
     var b = RT.root.querySelector('.nn-p-kit .nn-pb');
     var pool = poolWords(), keys = rhymeKeys();
-    var html = '<p class="nn-note">You do not pick your words. Every word you have learned goes in the bag and the line deals you four at a time: <b>left click</b> says the one on your tongue, <b>right click</b> swallows it. The <b>sounds</b> are yours, on the number row, and each one closes every syllable of itself on the board at once.</p>';
+    var html = '<p class="nn-note">You do not pick your words. Every word you have learned goes in the bag and the line deals them out a few at a time, always keeping one back: <b>left click</b> says the one on your tongue, <b>right click</b> swallows it. Learn more words and the line gets longer. The <b>sounds</b> are yours, on the number row, and each one closes every syllable of itself on the board at once.</p>';
     html += '<p class="nn-note dim">Learn more words in a sound and you will draw that sound more often. That is the build.</p>';
     html += '<h4>YOUR BAG <i>· ' + pool.length + ' word' + (pool.length === 1 ? '' : 's') + '</i></h4>';
     FAM_IDS.forEach(function (fid, i) {

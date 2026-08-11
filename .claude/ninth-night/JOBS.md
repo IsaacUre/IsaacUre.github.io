@@ -1,5 +1,30 @@
 # NINTH NIGHT: the five jobs
 
+**All five have shipped.** The job files below are the briefs they were
+given, kept because they are still the best written account of what each
+part of the game is for. They are NOT a to-do list any more, and several
+of the problems they describe have been fixed. Read them as history and
+check the file before believing any specific claim.
+
+**The combat they describe is gone.** Jobs 4 and 5 were written against a
+game where you slotted one Call word and one Answer word in a menu and
+said the same two words all game. It does not work like that now:
+
+- Words are **dealt**, not chosen. Every word you own is in a bag, the
+  line deals them face up, left click says the one on your tongue and
+  right click swallows it. So the word market is no longer cosmetic:
+  buying a word puts it in your deck.
+- **Rhymes** are on the number row, one per family, unlocked by
+  fragments. A rhyme closes every syllable of its own sound on the board
+  at once. That is the verb the game is about.
+- A rhyme against the wrong sound **drags**: it pulls every stack on that
+  foe over to its own sound, spending nothing, for flat damage and at the
+  cost of some of their life. It is how you make a couplet out of a mess.
+- Everything you say is written down. A rhyme is a line break. When a
+  place goes quiet the game reads your **poem** back and grades it, and
+  keeps it in the book next to the real ballad.
+- Echo has a consumer: the **Reprise** on G.
+
 Say **"do ninth night job N"** and the chat picks up that file.
 
 Read first, in this order: `README.md` (what the game is),
