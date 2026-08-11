@@ -5918,6 +5918,16 @@
         var pad = parseFloat(getComputedStyle(inp).paddingLeft) || 0;
         var x = pad + textWidth(inp.value.slice(0, c.sstart), inp);
         box.style.left = Math.max(0, Math.round(x) - 4) + 'px';
+        // The list scrolls, and replacing its innerHTML above just reset scrollTop
+        // to 0. Walk the highlight back into view or Tab runs off the bottom of a
+        // box that still looks like it is showing the first entry.
+        var onRow = box.querySelector('.mc-sugi.on');
+        if (onRow) {
+            var list = box.querySelector('.mc-sugl');
+            var top = onRow.offsetTop, bot = top + onRow.offsetHeight;
+            if (bot > list.clientHeight) list.scrollTop = bot - list.clientHeight;
+            else if (top < list.scrollTop) list.scrollTop = top;
+        }
     }
     /* Write candidate `i` over the token being completed.
        `freeze` keeps the candidate list exactly as it stands. That matters while
@@ -5936,11 +5946,15 @@
         inp.setSelectionRange(inp.value.length, inp.value.length);
         c.si = i;
         if (freeze) { paintSug(); return true; }
-        // unambiguous: move on and offer whatever comes next
+        // Unambiguous: move on and offer whatever comes next. That is a NEW list,
+        // so the cycle is over — leaving the latch set made the following Tab step
+        // past the entry it was visibly highlighting ("/gamem" Tab Tab handed you
+        // `creative` while the box showed `adventure`).
         var was = c.hits[i];
         refreshSug(false);
         var at = c.hits.indexOf(was);
         if (at >= 0) c.si = at;
+        c.applied = false;
         paintSug();
         return true;
     }
