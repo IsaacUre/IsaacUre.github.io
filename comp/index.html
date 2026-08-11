@@ -38,6 +38,27 @@
           <rect x="1" y="3" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1"/>
           <rect x="7" y="7" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1"/>
         </symbol>
+        <!-- four brackets pushed out to the corners: go full screen.
+             Drawn inset to a 12-unit box so it can be rendered at exactly
+             16px (one device pixel per unit) in a 46px caption button and
+             still weigh the same as the 11px minimize/maximize glyphs. -->
+        <symbol id="ic-fs" viewBox="0 0 16 16" shape-rendering="crispEdges">
+          <g fill="currentColor">
+            <rect x="2" y="2" width="4" height="1"/><rect x="2" y="3" width="1" height="3"/>
+            <rect x="10" y="2" width="4" height="1"/><rect x="13" y="3" width="1" height="3"/>
+            <rect x="2" y="13" width="4" height="1"/><rect x="2" y="10" width="1" height="3"/>
+            <rect x="10" y="13" width="4" height="1"/><rect x="13" y="10" width="1" height="3"/>
+          </g>
+        </symbol>
+        <!-- the same four brackets pulled back in: leave full screen -->
+        <symbol id="ic-fsx" viewBox="0 0 16 16" shape-rendering="crispEdges">
+          <g fill="currentColor">
+            <rect x="2" y="6" width="5" height="1"/><rect x="6" y="2" width="1" height="5"/>
+            <rect x="9" y="6" width="5" height="1"/><rect x="9" y="2" width="1" height="5"/>
+            <rect x="2" y="9" width="5" height="1"/><rect x="6" y="9" width="1" height="5"/>
+            <rect x="9" y="9" width="5" height="1"/><rect x="9" y="9" width="1" height="5"/>
+          </g>
+        </symbol>
         <symbol id="ic-explorer" viewBox="0 0 16 16" shape-rendering="crispEdges">
           <rect x="1" y="3" width="6" height="2" fill="#c9902f"/>
           <rect x="1" y="4" width="14" height="9" fill="#eab84f"/>
@@ -562,6 +583,7 @@
           </div>
 
           <div class="tb-tray">
+            <button class="tray-btn tray-fs" id="fsBtn" type="button" hidden aria-pressed="false" aria-label="Full screen"><svg class="ic"><use href="#ic-fs"/></svg></button>
             <button class="tray-btn lang" type="button" aria-label="Input language">ENG</button>
             <button class="tray-btn" type="button" aria-label="Hidden icons"><svg class="ic"><use href="#ic-chevron"/></svg></button>
             <button class="tray-cluster" id="quickBtn" type="button" aria-label="Network, sound, battery" aria-haspopup="dialog"><svg class="ic"><use href="#ic-net"/></svg><svg class="ic"><use href="#ic-vol"/></svg><svg class="ic"><use href="#ic-batt"/></svg></button>
@@ -573,6 +595,11 @@
           </div>
         </nav>
 
+        <!-- the strip you have to reach with the mouse to get an auto-hidden
+             taskbar back. Sits above the window layer but under the taskbar,
+             so a maximized window cannot cover it and a full-screen one can. -->
+        <div class="tb-edge" id="tbEdge" aria-hidden="true"></div>
+
         <!-- ── desktop right-click menu ── -->
         <div class="ctx px-sm lift" id="ctx" role="menu" hidden>
           <button class="ctx-item sub" role="menuitem" type="button"><svg class="ic"><use href="#ic-taskview"/></svg> View <b class="ctx-arrow">›</b></button>
@@ -581,6 +608,7 @@
           <div class="ctx-sep"></div>
           <button class="ctx-item" role="menuitem" type="button" data-act="terminal"><svg class="ic"><use href="#ic-terminal"/></svg> Open Terminal</button>
           <div class="ctx-sep"></div>
+          <button class="ctx-item" role="menuitem" type="button" data-act="fullscreen" data-fs-item hidden><svg class="ic"><use href="#ic-fs"/></svg> Full screen</button>
           <button class="ctx-item" role="menuitem" type="button" data-act="display"><svg class="ic"><use href="#ic-pc"/></svg> Display settings</button>
           <button class="ctx-item" role="menuitem" type="button" data-act="personalize"><svg class="ic"><use href="#ic-ure"/></svg> Personalize</button>
         </div>

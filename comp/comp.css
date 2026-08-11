@@ -3201,3 +3201,148 @@ button.nn-drow:hover { background: rgba(30,60,48,.5); }
    hard edge in the world art arrived as a two pixel gradient. Every other
    pixel canvas on this desktop already asks for this; this one never did. */
 .nn-cv { image-rendering: pixelated; image-rendering: crisp-edges; }
+/* ═══════════ full screen, and a taskbar that gets out of the way ═══════════
+   Three separate things that add up to one feature:
+     .win.fs        one window owns the whole screen, taskbar included
+     body.page-fs   the real browser Fullscreen API is on
+     body.tb-auto   Windows 11's "automatically hide the taskbar"            */
+
+/* how tall the bottom reveal strip is. A maximized window has to give exactly
+   this much back, so both read the same number. Bigger for a thumb, at the
+   foot of this file. */
+:root { --tbedge-h: 5px; }
+
+/* ── a window that owns the screen ──
+   Anchored on all four insets rather than 100vw/100vh: .windows is inset:0
+   inside .screen, which is fixed inset:0, so this IS the viewport — and it
+   sidesteps the mobile "100vh includes the URL bar" problem completely. */
+.win.fs {
+    left: 0 !important; top: 0 !important; right: 0 !important; bottom: 0 !important;
+    width: auto !important; height: auto !important;
+    border: 0; clip-path: none; filter: none;
+}
+/* The window layer is a stacking context at z-index 10, so on its own a .win
+   can never out-paint the taskbar at 50. While one window is full screen the
+   whole layer lifts over the taskbar — but stays under Start (55), the
+   flyouts (56), menus, dialogs and the blue screen, which is exactly what a
+   real machine does when you press the Windows key in a full-screen game. */
+body.fs-app .windows { z-index: 51; }
+/* ...and drops back the moment Start or a flyout is up, so the Windows key
+   in a full-screen game hands you the taskbar too, not a menu floating on
+   its own over the game */
+body.fs-app.fs-yield .windows { z-index: 10; }
+
+/* The title bar leaves the flow and hangs above the top edge so the content
+   gets the whole screen. Reach for the top edge and it comes back down. */
+.win.fs > .win-bar {
+    position: absolute; left: 0; right: 0; top: 0; z-index: 60;   /* over Steam's in-window toast at 50 */
+    background: linear-gradient(var(--hi), transparent 2px), #1c1d25;
+    border-bottom: 1px solid var(--line); box-shadow: 0 3px 0 rgba(0,0,0,.35);
+    transform: translateY(-100%);
+    transition: transform .16s ease;
+}
+.win.fs.peek > .win-bar { transform: none; }
+/* the strip you aim at to get it back. Under the bar in z, so once the bar is
+   down it takes the pointer and the top 6px of the caption buttons still work */
+.win-fsedge { display: none; }
+/* scoped to .fs on purpose: the div is created once and left in the DOM, and
+   unscoped it would keep sitting over the top 6px of an ordinary title bar
+   at z-index 59, quietly eating the drag you started up there */
+.win.fs .win-fsedge { display: block; position: absolute; left: 0; right: 0; top: 0; height: 6px; z-index: 59; }
+/* maximize means nothing when you already have the screen */
+.win.fs .cap[data-cap="max"] { display: none; }
+.win.fs .win-title::after { content: " — full screen"; color: var(--ink-faint); }
+
+/* the caption button, sitting left of the familiar minimize/maximize/close
+   trio so muscle memory for those three is untouched */
+.cap-fs { width: 38px; color: var(--ink-faint); }
+.cap-fs svg { width: 16px; height: 16px; }   /* 1 device pixel per grid unit, or crispEdges eats it */
+.cap-fs:hover { color: var(--ink); }
+
+/* ── the taskbar, hidden ── */
+.taskbar { transition: transform .18s ease; }
+body.tb-auto .taskbar { transform: translateY(100%); }
+body.tb-auto.tb-peek .taskbar { transform: none; }
+/* With the strip gone, the desktop and any maximized window take it back —
+   all of it except the reveal strip itself, which sits at z-49 over the
+   window layer with live pointer events. Running the window to 100% put its
+   own bottom row of controls under the strip: measured on a coarse pointer,
+   15 of the 16px of the launcher's instance button, and the last 16px of
+   every app inert. The height lives in one custom property so the two rules
+   cannot drift apart again. */
+body.tb-auto .desktop { bottom: 0; }
+body.tb-auto .win.maxi { height: calc(100% - var(--tbedge-h)) !important; }
+.tb-edge { position: absolute; left: 0; right: 0; bottom: 0; height: var(--tbedge-h); z-index: 49; display: none; }
+body.tb-auto .tb-edge { display: block; }
+/* a full-screen window is above the edge strip, so the taskbar cannot peek
+   out from under a game — you leave full screen first, like anywhere else */
+
+/* ── the tray button for real browser full screen ── */
+.tray-fs.on { color: var(--accent); background: rgba(255,255,255,.10); }
+
+/* Phones are where filling the screen matters most, and the tray collapses at
+   520px — this one earns its place back. But .tb-center is absolutely
+   positioned, so at this width it ran straight underneath the tray AND
+   painted on top of it: measured at 375px, 29 of this button's 31px were
+   covered and a tap in the middle of it opened Settings. Put the cluster back
+   in the flex flow, where it cannot overlap the tray by construction, and let
+   the pins be the thing that gives way. */
+@media (max-width: 520px) {
+    .tb-tray .tray-fs { display: flex; }
+    .tb-center { position: static; left: auto; transform: none; min-width: 0; overflow: hidden; }
+    .tb-tray { flex: 0 0 auto; }
+}
+
+/* The system menu is built inside the window, and a full-screen window's
+   title bar is at 60 — so "Restore", the one item whose whole job is getting
+   you out of full screen, was drawn, enabled and completely inert behind the
+   peeked bar. 61 clears the bar and the edge strip both, and .bctx is scoped
+   inside the window's stacking context so it cannot escape upward. */
+.win.fs .bctx { z-index: 61; }
+
+/* Both of these stop short of the taskbar, which is right until the window
+   layer is ABOVE the taskbar — then the reserved strip shows 48px of live
+   app instead, and a click in it goes into the game behind the overlay that
+   is supposed to be covering it. Same one-liner the tb-auto twin already got. */
+body.fs-app .tv-overlay, body.fs-app .cheat-overlay { bottom: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+    .taskbar, .win.fs > .win-bar { transition: none; }
+}
+
+/* the find bar hangs below a title bar that is not there any more */
+.win.fs .findbar { top: 8px; transition: top .16s ease; }
+.win.fs.peek .findbar { top: 48px; }
+
+/* the two overlays that stop short of the taskbar have to stop short of
+   nothing when the taskbar is hidden, or they leave a strip of desktop */
+body.tb-auto .tv-overlay, body.tb-auto .cheat-overlay { bottom: 0; }
+body.tb-auto .toast { bottom: 20px; }
+
+/* Settings has offered a Scanlines switch since the machine shipped and it
+   has never done anything: body.no-crt had no rule anywhere. It matters here
+   because this overlay paints at z-index 900, which is over a full-screen
+   game, so "turn it off" has to actually turn it off. */
+body.no-crt .screen::after { display: none; }
+
+/* A 5px strip is a mouse target, not a thumb target.
+   `any-pointer: coarse` rather than `hover: none`: a Windows touch laptop or
+   an iPad with a keyboard reports a fine primary pointer and its owner still
+   has fingers. And note the .win.fs scope — the base rule is `.win.fs
+   .win-fsedge` at (0,3,0), so an unscoped `.win-fsedge` here loses on
+   specificity no matter how far down the file it sits, and the touch target
+   silently stayed 6px. Which, on a phone, is the ONLY way out of a
+   full-screen window: the title bar is translated off the top and the
+   taskbar is underneath the window layer. */
+@media (any-pointer: coarse) {
+    :root { --tbedge-h: 16px; }
+    .win.fs .win-fsedge { height: 16px; }
+}
+
+/* The skip link is parked at top:-60px, but its text wraps to three lines at
+   phone width, so ~15px of it hangs back inside the viewport at z-index 999 —
+   directly over the top-edge strip above. A tap there did not reveal the
+   title bar, it followed the href and left the desktop entirely. Parked
+   means untouchable; focused means back. */
+.skip-link { pointer-events: none; }
+.skip-link:focus { pointer-events: auto; }

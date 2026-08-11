@@ -1,0 +1,61 @@
+<!doctype html><meta charset="utf-8"><title>shot</title>
+<style>html,body{margin:0;background:#0a0810}iframe{width:1440px;height:900px;border:0;display:block}</style>
+<!-- cache-bust: headless keeps comp.js from the last run otherwise -->
+<iframe id="f" src="/comp/" allow="fullscreen"></iframe>
+<script>
+/* headless serves the previous run's comp.js from cache otherwise */
+document.getElementById('f').src = '/comp/?_=' + Math.floor(Math.random() * 1e9);
+var STATE = location.hash.slice(1) || 'fs-terminal', t = 0;
+function go(){
+  var W, D; try { W = frames[0]; D = W.document; } catch(e){}
+  if (!D || D.readyState !== 'complete' || !D.querySelector('.tb-btn.app')) { if (++t < 600) return setTimeout(go, 40); document.title='SHOT FAIL'; return; }
+  var kill = D.createElement('style');
+  kill.textContent = '*, *::before, *::after { transition: none !important; animation: none !important; }';
+  D.head.appendChild(kill);
+  function click(el){ if(el) el.dispatchEvent(new W.MouseEvent('click',{bubbles:true,cancelable:true})); }
+  function key(k,o){ o=o||{}; D.dispatchEvent(new W.KeyboardEvent('keydown',{key:k,bubbles:true,cancelable:true,altKey:!!o.alt,shiftKey:!!o.shift})); }
+  function tb(a){ click(D.querySelector('.tb-btn.app[data-app="'+a+'"]')); }
+  function start(a){ click(D.getElementById('startBtn')); click(D.querySelector('#startMenu [data-app="'+a+'"]')); click(D.getElementById('startBtn')); }
+
+  if (STATE === 'fs-terminal' || STATE === 'fs-peek') {
+    tb('terminal'); key('F11');
+    if (STATE === 'fs-peek') {
+      var w = D.querySelector('.win[data-app="terminal"]');
+      w.querySelector('.win-fsedge').dispatchEvent(new (W.PointerEvent||W.MouseEvent)('pointerenter',{bubbles:true}));
+    }
+  } else if (STATE === 'tb-auto') {
+    tb('explorer');
+    D.querySelector('.win[data-app="explorer"]').classList.add('maxi');
+    D.body.classList.add('tb-auto');
+  } else if (STATE === 'settings') {
+    tb('settings');
+    click(D.querySelector('.set-navi[data-pane="taskbar"]'));
+    D.querySelector('.win[data-app="settings"]').classList.add('maxi');
+  } else if (STATE === 'fs-ninth') {
+    // NINTH NIGHT is a desktop icon, not a Start pin
+    var ico = null;
+    D.querySelectorAll('.dicon').forEach(function (d) { if (/ninth/i.test(d.textContent)) ico = d; });
+    if (ico) ico.dispatchEvent(new W.MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+    var nw = D.querySelector('.win[data-app="ninth"]');
+    if (!nw) { document.title = 'SHOT NO-NINTH'; return; }
+    key('F11');
+    // rAF never runs headless, so drive the game by hand after the resize
+    if (W.__ninth) { try { W.__ninth.tick(40, 1/60); } catch (e) { document.title = 'SHOT ERR ' + e.message; } }
+  }
+  else if (STATE === 'fs-start') {
+    var ic2 = null;
+    D.querySelectorAll('.dicon').forEach(function (d) { if (/ninth/i.test(d.textContent)) ic2 = d; });
+    if (ic2) ic2.dispatchEvent(new W.MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+    key('F11');
+    if (W.__ninth) { try { W.__ninth.tick(40, 1/60); } catch(e){} }
+    click(D.getElementById('startBtn'));      // the Windows key in a full-screen game
+  } else if (STATE === 'fs-steam-peek') {
+    tb('steam');
+    key('F11');
+    var sw = D.querySelector('.win[data-app="steam"]');
+    sw.querySelector('.win-fsedge').dispatchEvent(new (W.PointerEvent||W.MouseEvent)('pointerenter',{bubbles:true}));
+  }
+  setTimeout(function(){ document.title = 'SHOT ' + STATE; }, 200);
+}
+go();
+</script>
