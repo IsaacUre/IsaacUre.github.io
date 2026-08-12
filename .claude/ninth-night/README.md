@@ -62,7 +62,7 @@ begin the game with is a lie you can cast. Nobody says this out loud.
 
 ## What is built right now
 
-Roughly 2760 lines in `comp/ninth.js`, one IIFE, vanilla ES5-style, no
+Roughly 8280 lines in `comp/ninth.js`, one IIFE, vanilla ES5-style, no
 build step, no modules, no dependencies.
 
 - **Combat**: Call/Answer, five families, rhyme stacks, slant, sour,
@@ -111,8 +111,15 @@ Inside `ninth.js`:
   **know which clock you are on**: sim `dt` for game logic, `real` for
   anything that must not slow down, `ac.currentTime` for audio.
 - Rendering is isometric, painter sorted, onto one 1120x580 canvas.
-  `isoX`/`isoY` have a fixed origin. **There is no camera.** A place
-  bigger than about 17x17 tiles renders off the bottom of the canvas.
+  **There is a camera now.** `isoXB`/`isoYB` are the fixed projection;
+  `isoX`/`isoY` are that minus wherever the eye is looking, and they are
+  what everything draws with. Anything converting the other way (the
+  mouse) has to add the camera back: use `screenToWorld`. A place
+  smaller than the canvas centres and never scrolls, so the small rooms
+  stay composed. The road is 11x34 and does scroll. What replaces the
+  old 17x17 ceiling is memory: a floor bitmap is prerendered at
+  `(w+h)` tiles across, so a place that is big on both axes costs real
+  megabytes. The audit checks that.
 - Sections are marked with banner comments. They are the ownership
   boundaries: see `PARALLEL.md`.
 
