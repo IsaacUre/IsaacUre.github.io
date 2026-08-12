@@ -74,6 +74,60 @@ Then read the PNG. Reading screenshots is a bug finding tool, not a
 formality: two bugs in the world layer were found purely by looking at
 one.
 
+**Whatever reads the PNG back downscales it to about 280 pixels wide.**
+A 1120x580 canvas seen at 280 is quarter scale, and at quarter scale a
+rhyme pip is two pixels of mud and a frost crust is nothing at all. A
+crop wider than 280 is a crop you cannot actually see. Crop tight and
+crop at 1:1.
+
+## The three harnesses under `tools/`
+
+The shell draws the game into a window about 700px wide, so a shot of
+`/comp/` is the canvas at a third of its own resolution inside a picture
+of Windows. These host the same game at native size instead. All three
+call the same `window.NINTH.render/init`, so anything that works in them
+works in the shell.
+
+| file | for |
+|---|---|
+| `canvas.html` | a region of the canvas at 1:1, with a zoom |
+| `vfx-lab.html` | one combat scenario, set up and stepped to a chosen frame |
+| `playtest.html` | the whole verb set driven by real key events, pass or fail as text |
+
+`vfx-lab.html` takes `?scene=rhyme|call|status|slant|sour|reprise|stanza`
+plus `f=` the sound, `n=` stacks, `foes=`, `kind=`, `tank=` a hp
+multiplier so a detonation does not kill what you came to photograph,
+`warm=` frames before and `at=` frames after. `shot.py` drives it:
+
+```bash
+python .claude/ninth-night/tools/shot.py <name> "scene=rhyme&f=ill&n=6&foes=4" ring
+```
+
+The last argument is a crop preset (`ring`, `pips`, `slam`, `hud`, and
+others) or `x,y,w,h`, all of them 280 wide for the reason above.
+
+`playtest.html` is the one that matters, and it is the answer to the one
+rule. It dispatches real `KeyboardEvent`s and real `PointerEvent`s at the
+real root and asserts on the state that results, traps `window.onerror`
+and counts `console.error`, and prints PASS or FAIL lines that headless
+can read:
+
+```bash
+"/c/Program Files/Google/Chrome/Application/chrome.exe" --headless=new \
+  --disable-gpu --no-sandbox --virtual-time-budget=45000 --dump-dom \
+  "http://localhost:8677/.claude/ninth-night/tools/playtest.html?dev=ninth"
+```
+
+Four things it knows that cost an hour each to learn. The canvas must be
+on screen at native size or `getBoundingClientRect` is empty, the pointer
+maps to `NaN`, and every Call flies off along `atan2(NaN, NaN)` and
+silently hits nothing. The sour bill is coalesced over 0.05s, so three
+frames after a lapse reads as no damage. The town is shut out of every
+board by `heldOpen` unless the act is holding on the last cue, so the
+twenty five body case measures an empty room and reports a pass. And a
+thrash pass that mashes every key leaves a panel and the map open, and
+every verb in the game correctly refuses while they are.
+
 `devDemo` params, in the order it applies them:
 
 | param | does |

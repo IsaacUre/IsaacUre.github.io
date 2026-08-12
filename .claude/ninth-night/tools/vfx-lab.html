@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>NINTH NIGHT — vfx lab</title>
+<!--
+  A 1:1 capture rig for the magic layer, and nothing else.
+
+  The desktop shell renders NINTH NIGHT into a draggable window about
+  700px wide, so every headless screenshot of a 1120x580 canvas came back
+  at roughly 60% scale with a taskbar under it. You cannot read a 8px
+  rhyme pip in that. This page mounts the same game, at native size, on
+  black, with no shell.
+
+  It is deliberately NOT a second copy of the game: it calls the same
+  window.NINTH.render/init and then drives the real functions through the
+  __ninth dev handle, so anything that works here works in the shell.
+
+  Never served publicly: this is a dotfolder.
+
+  ?f=eat|ight|erd|ark|ill   which sound the scenario says
+  ?n=6                      stacks to put on each foe before the rhyme
+  ?foes=4                   how many to spawn
+  ?kind=mouth               archetype, or 'mix' for one of each
+  ?scene=rhyme              rhyme | call | flight | idle | status | execute
+                            | slant | reprise | stanza | sour | verse
+  ?at=18                    frames to run AFTER the scenario fires
+  ?warm=120                 frames to settle the place before it fires
+  ?hp=1                     foe hp as a share of max, for the execute
+  ?tank=1                   multiply foe max hp, so a detonation does not
+                            kill what you came to photograph. A status
+                            effect on a corpse is a blank screenshot, and
+                            six stacks of anything kills a 26hp Hearsay.
+  ?place=arena              any PLACES id. Defaults to the dev arena: it
+                            has no props, no NPCs and therefore no
+                            "E - talk to Bern" sitting over the subject.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Pixelify+Sans:wght@400;500;600;700&family=VT323&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/comp/comp.css">
+<style>
+  html, body { margin: 0; padding: 0; background: #000; overflow: hidden; }
+  #lab { position: relative; width: 1120px; height: 580px; }
+  /* the shell sizes .nn from its window; on its own it needs telling */
+  #lab .nn { position: absolute; inset: 0; width: 1120px; height: 580px; }
+  #lab .nn-cv { width: 1120px; height: 580px; }
+  #tag { position: fixed; left: 0; top: 580px; width: 1120px;
+         font: 12px "Pixelify Sans", monospace; color: #6a6478; padding: 4px 8px;
+         box-sizing: border-box; background: #08060c; }
+</style>
+</head>
+<body>
+<div id="lab"></div>
+<div id="tag"></div>
+<script src="/comp/ninth.js"></script>
+<script>
+(function () {
+  var q = {};
+  location.search.slice(1).split('&').forEach(function (kv) {
+    var a = kv.split('='); if (a[0]) q[a[0]] = decodeURIComponent(a[1] || '');
+  });
+  function num(k, d) { return q[k] == null || q[k] === '' ? d : +q[k]; }
+
+  var lab = document.getElementById('lab');
+  lab.innerHTML = window.NINTH.render();
+  try { localStorage.removeItem('comp_ninth'); } catch (e) {}
+  window.NINTH.init(lab);
+
+  var D = window.__ninth;
+  if (!D) { document.getElementById('tag').textContent = 'no dev handle: add ?dev=ninth'; return; }
+  var RT = D.RT(), S = D.S();
+
+  // everything unlocked, nothing in the way of looking at an effect
+  [1, 2, 3].forEach(function (n) { D.frag(n); });
+  S.verse = 1; S.opts.shake = true;
+  RT.god = 1; RT.infBreath = 1;
+
+  // Achievement toasts park three gold cards over the right third of every
+  // capture, because a fresh save earns half of them the first time it says
+  // anything. Nothing can un-earn them, so the toast queue is emptied on
+  // every frame instead. tick() is the only thing that draws, so this has to
+  // sit between the step and the next one, which is what wrapping it does.
+  function run(n) {
+    for (var i = 0; i < n; i++) { RT.toasts.length = 0; D.tick(1); }
+  }
+
+  var place = q.place || 'arena';
+  D.place(place);
+  var cx0 = 8, cy0 = 8;
+  RT.px = cx0; RT.py = cy0;
+
+  run(num('warm', 90));
+
+  var fam = q.f || 'ill';
+  var nStacks = num('n', 6);
+  var nFoes = num('foes', 4);
+  var kind = q.kind || 'mouth';
+  var scene = q.scene || 'rhyme';
+  var KINDS = ['mouth', 'thief', 'droner', 'deaf'];
+
+  RT.foes.length = 0;
+  var made = [];
+  for (var i = 0; i < nFoes; i++) {
+    var a = i / Math.max(1, nFoes) * Math.PI * 2 + 0.4;
+    var k = kind === 'mix' ? KINDS[i % KINDS.length] : kind;
+    var f = D.spawn(k, cx0 + Math.cos(a) * 3.4, cy0 + Math.sin(a) * 3.4);
+    if (f) {
+      f.spawn = 0;
+      // a Hearsay has 26 hp and six stacks of anything is eighty damage, so
+      // without this every status shot is a photograph of an empty floor
+      var tank = num('tank', 1);
+      if (tank !== 1) { f.hpm = Math.round(f.hpm * tank); f.hp = f.hpm; }
+      made.push(f);
+    }
+  }
+  // spawn animations and the arrival ring are not what we came to look at
+  run(30);
+
+  function stack(f, n, ff) {
+    for (var j = 0; j < n; j++) f.stacks.push({ fam: ff || fam, t: 4.0, max: 4.0, born: RT.t });
+  }
+
+  if (q.hp) made.forEach(function (f) { f.hp = Math.max(1, Math.round(f.hpm * num('hp', 1))); });
+
+  if (scene === 'rhyme' || scene === 'status' || scene === 'execute' || scene === 'reprise') {
+    made.forEach(function (f, i) { stack(f, scene === 'rhyme' ? Math.max(1, nStacks - (i % 2)) : nStacks); });
+  } else if (scene === 'slant') {
+    // a board that is a mixture, which is the case the drag is for
+    made.forEach(function (f, i) { stack(f, nStacks, ['eat', 'ark', 'erd'][i % 3]); });
+  } else if (scene === 'sour') {
+    made.forEach(function (f) { stack(f, nStacks); f.stacks.forEach(function (t) { t.t = 0.02; }); });
+  }
+
+  run(1);
+
+  if (scene === 'rhyme' || scene === 'execute') { D.rhyme(fam); }
+  else if (scene === 'slant') { D.rhyme(fam); }
+  else if (scene === 'reprise') { RT.lastWord = fam.toUpperCase(); RT.lastFam = fam; RT.echo = 100; D.reprise(); }
+  else if (scene === 'stanza') { D.stanza(fam === 'erd' ? 1 : fam === 'ark' ? 2 : 3); }
+  else if (scene === 'verse') { D.rhyme(fam); RT.verseCast = 0; window.__ninthVerse = 1; }
+  else if (scene === 'call' || scene === 'flight') {
+    if (made[0]) D.aimFoe(0);
+    RT.line.unshift(FAMWORD(fam)); D.call();
+    if (scene === 'flight') { /* caught mid-air by a small at= */ }
+  } else if (scene === 'status') {
+    // land the detonation, then run on so the lingering status is what shows
+    D.rhyme(fam);
+  } else if (scene === 'sour') {
+    /* nothing to press: the stacks lapse on their own */
+  }
+
+  function FAMWORD(ff) {
+    var words = { eat: 'heat', ight: 'light', erd: 'word', ark: 'dark', ill: 'still' };
+    return words[ff] || 'heat';
+  }
+
+  var at = num('at', scene === 'status' ? 90 : scene === 'flight' ? 5 : 12);
+  run(at);
+
+  document.getElementById('tag').textContent =
+    scene + ' · -' + fam + ' · ' + nFoes + '× ' + kind + ' · ' + nStacks + ' stacks · +' + at + 'f';
+})();
+</script>
+</body>
+</html>

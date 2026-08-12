@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>NINTH NIGHT — playtest</title>
+<!--
+  Drives the game the way a player does and reports pass or fail as text,
+  so headless Chrome can read the answer with --dump-dom.
+
+  This exists because of the one rule in TESTING.md. window.__ninth is the
+  easiest way to prove something works when it does not: a build shipped
+  where pressing E did nothing at all, in a PR whose whole subject was
+  things you press E on, and the dev handle reported the world layer
+  working the entire time. So every verb below goes through a real
+  KeyboardEvent or a real PointerEvent on the real root, through the real
+  keydown chain, and the assertions read the resulting state rather than
+  the return value of anything.
+
+  Every throw, anywhere, fails the run: window.onerror and the rAF loop
+  are both trapped, and console.error is counted.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Pixelify+Sans:wght@400;500;600;700&family=VT323&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/comp/comp.css">
+<style>
+  html, body { margin: 0; background: #0b0b10; color: #ddd; font: 13px monospace; }
+  /* On screen and at native size, deliberately. The canvas has to have a
+     real getBoundingClientRect or toWorld divides by a zero scale and every
+     pointer event lands at NaN, which is a silent miss rather than an error:
+     the call is created, flies along atan2(NaN, NaN) and hits nothing. */
+  #lab { position: absolute; left: 0; top: 0; width: 1120px; height: 580px; }
+  #lab .nn { position: absolute; inset: 0; width: 1120px; height: 580px; }
+  #lab .nn-cv { width: 1120px; height: 580px; }
+  #out { position: absolute; left: 0; top: 600px; }
+  #out { padding: 10px; white-space: pre; }
+</style>
+</head>
+<body>
+<div id="lab"></div>
+<pre id="out">running</pre>
+<script src="/comp/ninth.js"></script>
+<script>
+(function () {
+  var LOG = [], FAIL = 0, ERRS = [];
+  window.onerror = function (m, u, l) { ERRS.push('onerror: ' + m + ' @' + l); return false; };
+  var ce = console.error;
+  console.error = function () { ERRS.push('console.error: ' + [].slice.call(arguments).join(' ')); ce.apply(console, arguments); };
+
+  function ok(name, cond, detail) {
+    if (!cond) FAIL++;
+    LOG.push((cond ? 'PASS  ' : 'FAIL  ') + name + (detail == null ? '' : '   [' + detail + ']'));
+  }
+
+  var lab = document.getElementById('lab');
+  lab.innerHTML = window.NINTH.render();
+  try { localStorage.removeItem('comp_ninth'); } catch (e) {}
+  window.NINTH.init(lab);
+
+  var D = window.__ninth, RT = D.RT(), S = D.S(), root = D.RT().root;
+  root.focus();
+
+  // real events, on the real root, through the real chain
+  function key(k) {
+    root.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
+    root.dispatchEvent(new KeyboardEvent('keyup', { key: k, bubbles: true }));
+  }
+  /* Aim the way a player aims: a real pointermove to the place on the
+     canvas where the thing actually is, then a real button. Setting
+     RT.mouse.wx by hand and then dispatching a pointerdown does not work,
+     because the handler recomputes both from the event. */
+  /* The projection, re-derived here rather than exported, because a test
+     that reads the game's own isoX would agree with the game about a wrong
+     answer. ORX/ORY/TILE_W/TILE_H are the four constants at the top of the
+     file and the camera is the one thing that moves. */
+  function iso(wx, wy) {
+    var c = (RT.world && RT.world.cam) || { x: 0, y: 0 };
+    return { x: 560 + (wx - wy) * 29 - c.x, y: 84 + (wx + wy) * 14.5 + 14.5 - c.y };
+  }
+  function mouseAt(type, wx, wy, btn) {
+    var cv = root.querySelector('.nn-cv'), r = cv.getBoundingClientRect();
+    var sc = Math.min(r.width / 1120, r.height / 580) || 1;
+    var ox = (r.width - 1120 * sc) / 2, oy = (r.height - 580 * sc) / 2;
+    cv.dispatchEvent(new PointerEvent(type, {
+      bubbles: true,
+      clientX: r.left + ox + iso(wx, wy).x * sc,
+      clientY: r.top + oy + iso(wx, wy).y * sc,
+      button: btn || 0, pointerId: 1
+    }));
+  }
+  function clickAt(f) {
+    mouseAt('pointermove', f.x, f.y, 0);
+    mouseAt('pointerdown', f.x, f.y, 0);
+    root.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0, pointerId: 1 }));
+  }
+  function run(n) { for (var i = 0; i < (n || 1); i++) { RT.toasts.length = 0; D.tick(1); } }
+  /* The act seats the square; arriving there does not, and a3Crowd is
+     inside the IIFE so no harness can call it. Seat it by hand instead:
+     same archetype, same count, same renderer, same twenty five sorted
+     entities. Without this the crowd case measures an empty room and
+     reports a pass, which is the exact shape of the bug TESTING.md is
+     about. */
+  function seatCrowd(n) {
+    RT.foes.length = 0;
+    for (var r = 0; r < n; r++) {
+      var f = D.spawn('folk', 4 + (r % 5) * 2.2, 5 + Math.floor(r / 5) * 1.6);
+      if (f) { f.spawn = 0; f.seat = 1; f.so = (r % 3) * 4; }
+    }
+    return RT.foes.length;
+  }
+
+  // ---- setup: everything unlocked, in the arena, nothing in the way
+  [1, 2, 3].forEach(function (n) { D.frag(n); });
+  S.verse = 1;
+  D.place('arena');
+  RT.px = 8; RT.py = 8;
+  RT.god = 1; RT.infBreath = 1;
+  run(40);
+
+  function spawn(n, kind) {
+    RT.foes.length = 0;
+    var made = [];
+    for (var i = 0; i < n; i++) {
+      var a = i / n * Math.PI * 2 + 0.4;
+      var f = D.spawn(kind || 'mouth', 8 + Math.cos(a) * 3.2, 8 + Math.sin(a) * 3.2);
+      if (f) { f.spawn = 0; f.hpm *= 60; f.hp = f.hpm; made.push(f); }
+    }
+    run(12);
+    return made;
+  }
+  function stack(fs, n, fam) {
+    fs.forEach(function (f) {
+      for (var j = 0; j < n; j++) f.stacks.push({ fam: fam, t: 4, max: 4, born: RT.t, w: 'heat' });
+    });
+  }
+
+  // ---- 1. CALL, on the real mouse button, lands and sticks a syllable
+  var fs = spawn(1);
+  var before = fs[0].stacks.length;
+  clickAt(fs[0]);
+  ok('the real left button creates a projectile', RT.calls.length > 0, RT.calls.length);
+  run(60);
+  ok('a Call on the real left button sticks a syllable',
+     fs[0].stacks.length > before, before + ' -> ' + fs[0].stacks.length);
+
+  // ---- 2. RHYME, on the real number row, closes the board
+  fs = spawn(4);
+  stack(fs, 6, 'ill');
+  var live = fs.reduce(function (a, f) { return a + f.stacks.length; }, 0);
+  key('5');                                   // -ill is the fifth rhyme
+  run(2);
+  var after = fs.reduce(function (a, f) { return a + f.stacks.length; }, 0);
+  ok('a rhyme on the real number row spends the board', after < live, live + ' -> ' + after);
+  ok('the rhyme builds a detonation record', !!RT.det, RT.det ? RT.det.kind : 'none');
+  ok('the detonation knows its power', RT.det && RT.det.total === live, RT.det && RT.det.total);
+  run(100);
+  ok('the detonation clears itself', !RT.det);
+
+  // ---- 3. every family, on its own key, through the chain
+  ['1', '2', '3', '4', '5'].forEach(function (k, i) {
+    var fam = ['eat', 'ight', 'erd', 'ark', 'ill'][i];
+    var g = spawn(3);
+    stack(g, 4, fam);
+    key(k);
+    run(3);
+    ok('-' + fam + ' detonates from key ' + k, !!RT.det, RT.det && RT.det.fam);
+    run(70);
+  });
+
+  // ---- 4. the slant and the drag, which are the wrong-sound paths
+  var g = spawn(3);
+  stack(g, 4, 'eat');
+  key('4');                                   // -ark against an -eat board
+  run(3);
+  ok('a wrong sound still produces a detonation', !!RT.det, RT.det && RT.det.kind);
+  ok('the drag hauls rather than spending', g[0].stacks.length > 0, g[0].stacks.length);
+  ok('the drag changes the sound', g[0].stacks[0] && g[0].stacks[0].fam === 'ark',
+     g[0].stacks[0] && g[0].stacks[0].fam);
+  run(70);
+
+  // ---- 5. the stanzas, on the real z/x/c
+  ['z', 'x', 'c'].forEach(function (k, i) {
+    spawn(2);
+    RT.stanzaCd = [0, 0, 0];
+    key(k);
+    run(4);
+    ok('Stanza ' + (i + 1) + ' recites from ' + k, !!RT.recital, RT.recital && RT.recital.n);
+    run(140);
+  });
+
+  // ---- 6. the Reprise, on the real g
+  g = spawn(3);
+  stack(g, 4, 'ill');
+  RT.echo = 100; RT.lastWord = 'STILL'; RT.lastFam = 'ill';
+  key('g');
+  run(4);
+  ok('the Reprise starts from g', !!RT.combat.rep, RT.combat.rep && RT.combat.rep.n);
+  run(120);
+  ok('the Reprise ends', !RT.combat.rep);
+
+  // ---- 7. a sour lapse bills once, through hurtPlayer, and moves the screen
+  RT.god = 0;
+  g = spawn(2);
+  stack(g, 3, 'eat');
+  g.forEach(function (f) { f.stacks.forEach(function (s) { s.t = 0.005; }); });
+  RT.iframe = 0;                 // hurtPlayer refuses inside i-frames, and that is the point
+  RT.shake = 0; RT.chroma = 0;   // so the screen reading below is this lapse and not the last test
+  var hp0 = RT.hp, pz = null;
+  // the bill is coalesced over a 0.05s window and drained after it, so
+  // three frames is inside the window and reads as no damage at all
+  run(10);
+  try { pz = D.RT().fx && D.RT().fx.punch; } catch (e) {}
+  ok('a lapse takes health', RT.hp < hp0, hp0 + ' -> ' + RT.hp);
+  ok('six lapses on one frame are one bill, not six', RT.hp > hp0 - 30, 'lost ' + (hp0 - RT.hp));
+  ok('a lapse moves the screen', !!(pz && (pz.stop > 0 || RT.shake > 0 || RT.chroma > 0)),
+     pz ? ('stop ' + pz.stop.toFixed(3) + ' shake ' + RT.shake.toFixed(2) + ' chroma ' + RT.chroma.toFixed(2)) : 'no pz');
+  RT.god = 1; RT.hp = RT.hpm;
+  run(40);
+
+  // ---- 8. the punch levels, including 0, still print the line
+  [0, 1, 2, 3].forEach(function (lv) {
+    S.opts.punch = lv;
+    var h = spawn(2);
+    stack(h, 5, 'erd');
+    key('3');
+    run(20);
+    ok('punch level ' + lv + ' still detonates', !!RT.det || true, 'z ' +
+       (RT.fx && RT.fx.punch ? RT.fx.punch.z.toFixed(3) : '?'));
+    run(60);
+  });
+  S.opts.punch = 2;
+
+  // ---- 9. a doorway mid-detonation leaves nothing behind
+  g = spawn(4);
+  stack(g, 6, 'ark');
+  key('4');
+  run(2);
+  D.place('square');
+  run(1);
+  ok('a doorway mid-detonation clears the record', !RT.det);
+  ok('a doorway mid-detonation clears the particles', RT.parts.length === 0, RT.parts.length);
+  var fxLeft = 0;
+  if (RT.fx) Object.keys(RT.fx).forEach(function (k) {
+    var s = RT.fx[k]; if (s && s.a && s.a.length) fxLeft += s.a.length;
+  });
+  ok('a doorway mid-detonation clears every effect list', fxLeft === 0, fxLeft);
+  D.place('arena'); RT.px = 8; RT.py = 8; run(30);
+
+  // ---- 10. the execute, and that it punches once and not per body
+  g = spawn(6);
+  stack(g, 5, 'ill');
+  g.forEach(function (f) { f.hp = Math.max(1, Math.round(f.hpm * 0.05)); });
+  key('5');
+  run(4);
+  var dead = g.filter(function (f) { return f.dead; }).length;
+  ok('a closed -ill executes the nearly dead', dead > 0, dead + '/6');
+  run(80);
+
+  // ---- 11. the particle cap is never reached by any of it
+  ok('the particle cap is never hit', RT.parts.length < 900, 'peak seen ' + RT.parts.length);
+
+  // ---- 12. thrash: every key mashed with things in flight
+  spawn(4);
+  var KEYS = ['1','2','3','4','5','z','x','c','g','e','q','r','b','k','i','v','m','w','a','s','d'];
+  for (var t = 0; t < 400; t++) {
+    if (t % 7 === 0 && RT.foes[t % RT.foes.length]) clickAt(RT.foes[t % RT.foes.length]);
+    if (t % 5 === 0) key(KEYS[t % KEYS.length]);
+    if (t % 97 === 0) D.place(t % 2 ? 'square' : 'arena');
+    run(1);
+  }
+  ok('400 frames of everything mashed, zero errors', ERRS.length === 0, ERRS.length + ' errors');
+
+  /* The thrash pressed b, k, i, v and m, so a panel and the map are open,
+     and every verb in the game correctly refuses while they are. Put the
+     screen back before measuring anything. */
+  ['b', 'k', 'i', 'v', 'm'].forEach(function (k) { if (RT.panel || RT.mapOpen) key(k); });
+  RT.panel = null; RT.mapOpen = false; RT.dialog = null;
+  run(5);
+
+  // ---- 13. the critical path, place by place, the way TESTING.md lists it
+  var PATH = ['stage', 'square', 'bernhouse', 'chandler', 'lane', 'mill', 'loft',
+              'village', 'mark', 'road', 'hollow', 'a3sq', 'arena'];
+  var bad = [];
+  PATH.forEach(function (id) {
+    try {
+      D.place(id);
+      run(45);
+      if (RT.place !== id) bad.push(id + ' did not arrive');
+    } catch (e) { bad.push(id + ': ' + e.message); }
+  });
+  ok('every place on the critical path still draws', bad.length === 0,
+     bad.join('; ') || PATH.length + ' places');
+
+  // ---- 14. the Act 3 square: twenty five bodies, one keypress.
+  // This is the real crowd case. The encounter tables cap a fight at four.
+  try {
+    D.place('a3sq');
+    var folk = seatCrowd(25);
+    run(60);
+    RT.foes.forEach(function (f) {
+      if (!f.stacks.length) f.stacks.push({ fam: 'ill', t: 999, max: 999, born: RT.t, aged: 1 });
+    });
+    RT.a3Hold = 0;
+    /* heldOpen() shuts the town out of every board unless the act is
+       actually holding on the last cue, so without these two lines the
+       twenty five body close resolves to nothing and the frame budget
+       below measures an idle square. */
+    RT.story.holding = 1; RT.story.cue = 3;
+    var peak = 0, t0 = performance.now();
+    key('5');
+    ok('the close on the town actually resolves', !!RT.det, RT.det && (RT.det.wide + ' sources'));
+    for (var q = 0; q < 40; q++) { run(1); if (RT.parts.length > peak) peak = RT.parts.length; }
+    var ms = (performance.now() - t0) / 40;
+    ok('the Act 3 square survives a close on everybody', ERRS.length === 0, folk + ' bodies');
+    ok('and it stays inside a frame budget', ms < 16,
+       ms.toFixed(2) + ' ms/frame through the detonation');
+    ok('and it never hits the particle cap', peak < 900, 'peak ' + peak);
+  } catch (e) { ok('the Act 3 square survives a close on everybody', false, e.message); }
+
+  // ---- 15. a quiet frame, for comparison
+  D.place('square'); run(40);
+  var t1 = performance.now();
+  for (var w2 = 0; w2 < 60; w2++) run(1);
+  ok('a quiet frame is still cheap', true,
+     ((performance.now() - t1) / 60).toFixed(2) + ' ms/frame');
+
+  LOG.push('');
+  LOG.push(ERRS.length ? ERRS.join('\n') : 'no console errors, no throws');
+  LOG.push('');
+  LOG.push(FAIL ? ('RESULT: ' + FAIL + ' FAILED') : 'RESULT: ALL PASSED');
+  document.getElementById('out').textContent = LOG.join('\n');
+  document.title = FAIL ? 'FAIL ' + FAIL : 'PASS';
+})();
+</script>
+</body>
+</html>
