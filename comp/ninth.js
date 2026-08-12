@@ -800,9 +800,26 @@ function render() {
           '<button class="nn-b" data-nn="p:bag" type="button" title="What you carry (I)">I</button>' +
           '<button class="nn-b" data-nn="p:shop" type="button" title="The chandler (V)">V</button>' +
           '<button class="nn-b" data-nn="dev" type="button" title="Dev menu (`)">`</button>' +
+          // Escape does not exist on a touchscreen. wireHud's [data-nn] loop
+          // falls through every branch to root.focus(), so an unrecognised
+          // value costs nothing there; wireWings attaches the real listener.
+          '<button class="nn-b nn-b-wings" data-nn="wings" type="button" title="The wings (Escape)">ESC</button>' +
         '</div>' +
         '<div class="nn-tip" hidden></div>' +
         '<div class="nn-vig"></div>' +
+
+        // THE WINGS. Last in the DOM, so it is over everything without
+        // having to out-bid anybody for a z-index.
+        '<div class="nn-wings" hidden>' +
+          '<div class="nn-wings-veil"></div>' +
+          '<div class="nn-wings-book">' +
+            '<header><b class="nn-wings-t">THE WINGS</b><i class="nn-wings-where"></i><span class="nn-wings-cue"></span></header>' +
+            '<div class="nn-wings-mood"></div>' +
+            '<div class="nn-wings-join"><i></i><b></b><em></em></div>' +
+            '<div class="nn-wings-pg"></div>' +
+            '<div class="nn-wings-foot"></div>' +
+          '</div>' +
+        '</div>' +
     '</div>';
 }
 
@@ -1565,7 +1582,8 @@ function init(el) {
         audio: { ready: 0, held: 0, errs: 0, lastErr: '', master: null, bus: null, noise: null, amb: null, ambKind: '', evT: 0, stepT: 0.35, solo: '' },
         combat: { cuts: [], rep: null, encI: 0, lull: 0 },
         items: { freeSlant: 0, tack: 0, atShop: false },
-        world: { cam: { x: 0, y: 0 }, npc: {}, seenLine: null, cut: {} }
+        world: { cam: { x: 0, y: 0 }, npc: {}, seenLine: null, cut: {} },
+        wings: { on: 0, page: '', sel: 0, root: 0, armed: '', wired: 0, fsWas: 0, held: [] }
     };
     RT.cx.imageSmoothingEnabled = false;    // people are pixels; never interpolate them
     wireInput(root, cv);
@@ -1671,12 +1689,18 @@ function wireInput(root, cv) {
         var k = e.key.toLowerCase();
         if (k === '`' || k === '~') { toggleDev(); e.preventDefault(); return; }
         if (k === 'escape') {
-            // only eat it if it actually closed something, or the desktop
-            // never sees Escape while the game holds focus
-            var had = RT.devOpen || RT.mapOpen || RT.dialog || RT.panel;
-            if (RT.devOpen) toggleDev(); else if (RT.mapOpen) RT.mapOpen = false;
-            else if (RT.dialog) closeDialog(); else if (RT.panel) panel(null);
-            if (had) { e.stopPropagation(); e.preventDefault(); }
+            // Escape closes the top thing first and, with nothing left to
+            // close, steps you off the stage. The game claims the key
+            // unconditionally now, which costs the desktop its keyboard
+            // route out of window full screen: THE MARGINS gives that back
+            // as a row, and F11 and the title bar never went anywhere.
+            // The wings-is-open case never reaches here. wingsKey catches
+            // it in the capture phase, one element up.
+            // This branch sits above the repeat guard below, so it needs its
+            // own: without it, holding Escape strobes the menu open and shut
+            // at the auto-repeat rate.
+            if (!e.repeat) wingsEscape();
+            e.stopPropagation(); e.preventDefault();
             return;
         }
         RT.keys[k] = true;
@@ -2949,7 +2973,7 @@ function doVerse() {
     var i = 0;
     BALLAD.forEach(function (st, k) {
         st.r.forEach(function (ln, j) {
-            RT.timers.push(setTimeout(function () {
+            RT.timers.push(heldTimeout(function () {
                 if (!RT) return;
                 bigLine(ln, '', k === 6 && j === 3 ? '#ffe66e' : '#f0e9df', 1.4);
                 if (j === 3) {
@@ -2967,7 +2991,7 @@ function doVerse() {
             }, (i++) * 260));
         });
     });
-    RT.timers.push(setTimeout(function () {
+    RT.timers.push(heldTimeout(function () {
         if (!RT) return;
         RT.verseCast = 0;
         // spent when it finishes, not when the key goes down. These are
@@ -3812,6 +3836,28 @@ function frame(now) {
     RT.raf = requestAnimationFrame(frame);
 }
 function step(dt, real) {
+    /* The play holds. Everything below this line is the performance, and
+       none of it runs while you are standing in the wings.
+       stepAudio is the one thing that carries on, and it is not optional:
+       A.muted is cleared nowhere else, so skipping it makes the Sound row
+       a one way trip. The house keeps its sound because an actor stepping
+       off does not empty it. The guard is here rather than in frame()
+       because devDemo and __ninth.tick both call step() and draw() by
+       hand and never touch frame(), so a guard up there could not be
+       tested by the only harness this project has. */
+    if (RT.wings.on) {
+        stepAudio(real || dt);
+        /* The full screen row reads the shell's class, and the shell can be
+           driven from outside this menu while it is open: F11 and the peeked
+           title bar both still work. Nothing else re-fills the page, so
+           without this the row sits there stating the opposite of the truth
+           and its next press appears to do the wrong thing. */
+        if (RT.wings.page === 'margins') {
+            var fs = isWinFs();
+            if (fs !== RT.wings.fsWas) { RT.wings.fsWas = fs; fillWings(); }
+        }
+        return;
+    }
     RT.t += dt;
     RT.dilate = Math.max(0, RT.dilate - (real || dt));      // dilation runs on real time
     RT.mono = Math.max(0, RT.mono - (real || dt));
@@ -3845,6 +3891,13 @@ function step(dt, real) {
     if (RT.hudT <= 0) { RT.hudT = 0.05; updateHud(0.05); }
 }
 function draw(rdt) {
+    /* The stage keeps the last thing it was. Returning here is the whole
+       freeze frame: no snapshot, no second canvas. It also stops the
+       shake jitter picking a new offset every frame over a still world,
+       and stops drawTypo and drawSlams and drawLines draining the
+       lifetimes of the letters they are drawing, which they do inside
+       draw and not inside step. */
+    if (RT.wings.on) return;
     // was hard-coded to 1/60: on a 144Hz screen every typographic
     // effect outlived its intent by more than double
     var cx = RT.cx, dt = Math.min(0.05, rdt || 1 / 60);
@@ -8182,7 +8235,13 @@ function devDemo() {
        own, so npoem=1 after nfrag=3 reads differently from npoem=1 cold. */
     if (q.npoem) {
         poemStart();
-        for (var pw = 0; pw < (+q.npoem || 1) * 3; pw++) {
+        /* NOT `pw`. A var declared here is hoisted to the top of devDemo and
+           shadows the pw() function for the whole of it, so `nfoes` threw
+           "pw is not a function" on its first spawn and took the entire
+           harness run down with it: no frames, no nkey, no __nnReady, and a
+           screenshot of a game that had ignored every parameter after
+           ndev. It looked exactly like the feature under test not working. */
+        for (var pq = 0; pq < (+q.npoem || 1) * 3; pq++) {
             var run = irnd(2, 4), fam = null;
             for (var pj = 0; pj < run; pj++) {
                 var word = headWord(); RT.line.shift(); fillLine();
@@ -8269,6 +8328,457 @@ onPlaceChange(function () {
    once a real gesture has started the context, so the gotoPlace
    inside init() cannot fire this on first load. */
 onPlaceChange(function () { if (RT && RT.audio && RT.audio.ready) sfx('travel'); });
+
+/* ═══════════════ THE WINGS ═══════════════
+   Escape steps you off the stage.
+
+   The performance holds exactly where you left it, because the guards in
+   step() and draw() hold it, and in front of you is the prompter's book
+   open on a stand. Three pages: the wings themselves, the margins where
+   thirty years of pencil says how it plays, and the flyleaf where
+   somebody has been keeping score of your part.
+
+   Two things this section is careful about, both learned from the file:
+
+   It takes the keyboard in the CAPTURE phase, on the window element
+   rather than on anything inside .nn. Every overlay in this game ends
+   its click handlers with root.focus(), so focus lives on .nn itself,
+   and a listener on a descendant would never see a keydown at all. One
+   element up and one phase early beats the game's own chain (including
+   the backtick, which is tested above Escape) and beats the desktop's
+   Escape handler, which is a bubble listener on document.
+
+   And nothing here goes through setTimeout. gotoPlace clears RT.timers,
+   so a hide scheduled on a timer would be cancelled by the very restart
+   that scheduled it, and the book would be left dead over the prologue. */
+
+function wingsEl() { return RT && RT.root ? RT.root.querySelector('.nn-wings') : null; }
+function wingsPg() { return RT && RT.root ? RT.root.querySelector('.nn-wings-pg') : null; }
+/* RT.el IS the .win section: comp.js builds it, sets class 'win ...' on it,
+   and hands that same element to init(). So the caption buttons are one
+   querySelector away and the menu never has to reach into comp.js. */
+function winCap(n) { return RT && RT.el && RT.el.querySelector ? RT.el.querySelector('.win-caps .cap[data-cap="' + n + '"]') : null; }
+/* Escape used to be the desktop's way out of window full screen and the
+   wings have taken the key. The MARGINS row is the replacement, and it is a
+   real two way toggle rather than a synthetic event: it presses the same
+   button the title bar shows. */
+function isWinFs() { return !!(RT && RT.el && RT.el.classList && RT.el.classList.contains('fs')); }
+function toggleWinFs() { var b = winCap('fs'); if (b) b.click(); }
+/* nn-lg, NOT nn-big. say(html, 'big') has written class="nn-line nn-big"
+   on the game's most important narration since narration was written, and a
+   root rule using the same token out-specifies it and flattens the emphasis
+   step to nothing. Two meanings, one name, and the new one was winning. */
+function applyBigText() { if (RT && RT.root) RT.root.classList.toggle('nn-lg', !!(S && S.opts && S.opts.bigtext)); }
+/* A timer that does not go off while the play is held.
+   The freeze in step() holds everything on the sim clock, and almost
+   everything is on the sim clock. The Verse is not: doVerse schedules its
+   28 lines with setTimeout on the wall clock, on purpose, so they land at a
+   steady 260ms while dilation slows the world around them. setTimeout does
+   not care that step() returned early, so the whole recital used to play out
+   behind the veil: every fourth line killed the room, foeDie banked the
+   kills and the loot, and the last one set S.a3.verseSpent and sSave()d it.
+   You came back to a finished ending you never saw, and 28 lines of ballad
+   stacked on one frame because drawLines had not run either.
+   Rather than move the recital onto sim time, which would hand it to the
+   dilation it is deliberately written to ignore, a timer that comes due
+   during a pause parks its body and closeWings lets it go again in order. */
+function heldTimeout(fn, ms) {
+    return setTimeout(function () {
+        if (!RT) return;
+        if (RT.wings.on) { RT.wings.held.push(fn); return; }
+        fn();
+    }, ms);
+}
+function putItDown() {
+    sSave();
+    closeWings();
+    var b = winCap('close'); if (b) b.click();     // the shell's own path, so playtime still banks
+}
+function takeItFromTheTop() {
+    // close first. resetGame drops you into the prologue, which is a timed
+    // sequence that walks itself into the square about thirteen seconds
+    // later, and an open book over the top of it reads exactly like the
+    // button having done nothing at all.
+    closeWings();
+    resetGame();
+}
+
+/* one live sentence at the top of the page, about the thing you just
+   stopped. First match wins. */
+function wingsMood() {
+    if (RT.dead) return 'You are on the ground. It will wait.';
+    if (RT.recital) return 'The stanza is stopped halfway through a line.';
+    var live = RT.foes.filter(function (f) { return !f.dead && !f.def.folk; });
+    if (live.filter(function (f) { return f.def.boss; })[0]) return 'The Chorus is holding a note it is not going to finish.';
+    if (RT.winded > 0) return 'You had nothing left to say anyway.';
+    if (live.length > 1) return 'They stopped when you did.';
+    if (live.length === 1) return 'It stopped when you did.';
+    return 'You have stopped speaking. Nothing is coming.';
+}
+/* Wall clock, including the time you spend in here, which is why the label
+   says "this sitting" and not "played for". */
+function wingsSitting() {
+    var mins = Math.floor((Date.now() - (RT.started || Date.now())) / 60000);
+    if (mins < 1) return 'under a minute';
+    if (mins === 1) return 'a minute';
+    if (mins < 60) return mins + ' minutes';
+    var h = Math.floor(mins / 60), m = mins % 60;
+    return h + (h === 1 ? ' hour' : ' hours') + (m ? ' ' + m + (m === 1 ? ' minute' : ' minutes') : '');
+}
+
+/* ── the three pages ── */
+function wingsRootRows() {
+    var rows = [
+        { k: 'txt', t: 'You have stepped off. Nothing out there moves until you go back on.' },
+        { k: 'txt', t: 'Breath does not come back in here. Saying nothing has to cost you the same as it always did.' },
+        { k: 'go', t: 'Go back on', sub: 'Pick it up where you put it down.', key: 'ESC', cue: 'go', on: closeWings },
+        { k: 'go', t: 'The margins', sub: 'Thirty years of pencil. How it plays, how loud.', page: 'margins' },
+        { k: 'go', t: 'Your part so far', sub: 'What you know, what you found, how long you have been out there.', page: 'part' },
+        { k: 'arm', id: 'top', danger: 1, t: 'Take it from the top', sub: 'Start it again from the mask.',
+          arm: 'Press it again and it is done. The pencil goes with it. There is no other copy.', on: takeItFromTheTop }
+    ];
+    // no window means no cross to press, and a row that cannot do its job
+    // should say so rather than sit there greyed out
+    if (winCap('close')) rows.push({ k: 'arm', id: 'down', danger: 1, t: 'Put it down', sub: 'It keeps where you are standing.',
+        arm: 'Press it again and the window shuts.', on: putItDown });
+    else rows.push({ k: 'txt', dim: 1, t: 'The window will not shut from in here. There is a cross in the corner of it.' });
+    return rows;
+}
+function wingsMarginRows() {
+    var rows = [
+        { k: 'txt', t: 'Pencil in the margin. Change what you like.' },
+        { k: 'tgl', t: 'How you walk', yes: 'KEYS', no: 'POINT',
+          sub: function () { return S.opts.wasd ? 'W A S D walks you. The mouse says the words.'
+                                                : 'Click where you want to stand. The keys say the words.'; },
+          get: function () { return !!S.opts.wasd; },
+          set: function (v) { S.opts.wasd = v; sSave(); refreshStanzaKeys(); } },
+        { k: 'tgl', t: 'Let the stage shake', sub: 'Off, and nothing moves that you did not move.',
+          get: function () { return !!S.opts.shake; },
+          set: function (v) { S.opts.shake = v; sSave(); } },
+        { k: 'tgl', t: 'Sound', yes: 'ON', no: 'OFF', sub: 'Off is an empty house.',
+          get: function () { return !!S.opts.sound; },
+          set: function (v) { S.opts.sound = v; sSave(); } },
+        { k: 'num', t: 'How loud', sub: 'The same dial as the one on the taskbar.', min: 0, max: 100, step: 5,
+          get: function () { return Math.round(volNow() * 100); },
+          set: function (v) { audioVolume(v / 100); } },
+        { k: 'tgl', t: 'Large lettering', sub: 'For the back row.',
+          get: function () { return !!S.opts.bigtext; },
+          set: function (v) { S.opts.bigtext = v; sSave(); applyBigText(); } }
+    ];
+    if (winCap('fs')) rows.push({ k: 'tgl', t: 'The whole screen', yes: 'ON', no: 'OFF', sub: 'Take it, or give it back.',
+        get: isWinFs, set: toggleWinFs });
+    rows.push({ k: 'go', t: 'Go back', key: 'ESC', on: wingsBack });
+    return rows;
+}
+/* Read only, and it stays that way. It deliberately does NOT call
+   fillBook: that writes S.a3.read as a side effect, and that flag is the
+   gate on Act 3. Opening a status page must not open the ending. */
+function wingsPartRows() {
+    var got = fragCount();
+    var worn = (S.worn || []).map(function (c) { return CHARMS[c] ? CHARMS[c].n : c; });
+    var house = 0; ACH.forEach(function (a) { if (S.ach[a[0]]) house++; });
+    return [
+        { k: 'txt', t: 'The flyleaf. Kept in pencil so it can be wrong.' },
+        { k: 'val', t: 'This sitting', v: wingsSitting() },
+        { k: 'val', t: 'Where you are', v: place().n },
+        { k: 'val', t: 'Sounds you own', v: FAM_IDS.filter(famOwned).length + ' of ' + FAM_IDS.length },
+        { k: 'val', t: 'Words you can say', v: poolWords().length + ' of ' + Object.keys(WORDS).length },
+        // the only count on the page spelled out, because it is the only
+        // one that means anything
+        { k: 'val', t: 'Lines that do not rhyme', v: ['none', 'one', 'two', 'three'][got] + ' of three' },
+        { k: 'val', t: 'The last verse', v: S.a3 && S.a3.verseSpent ? 'Spent' : S.verse ? 'Lit, and not yet spent' : 'Still dark' },
+        { k: 'val', t: 'Coin', v: String(S.coin) },
+        { k: 'val', t: 'Wearing', v: worn.length ? worn.join(', ') : 'Nothing' },
+        { k: 'val', t: 'The house', v: house + ' of ' + ACH.length },
+        { k: 'val', t: 'Put down', v: String(S.kills || 0) },
+        { k: 'txt', dim: 1, t: ['You know the words the town gave you.',
+                                'One thing does not fit.',
+                                'Two things do not fit. They fit each other.',
+                                'You have the whole of it now.'][got] },
+        { k: 'go', t: 'Go back', key: 'ESC', on: wingsBack }
+    ];
+}
+function wingsRows() {
+    return RT.wings.page === 'margins' ? wingsMarginRows()
+         : RT.wings.page === 'part' ? wingsPartRows()
+         : wingsRootRows();
+}
+function wingsPickable(r) { return !!r && (r.k === 'go' || r.k === 'tgl' || r.k === 'num' || r.k === 'arm'); }
+function wingsFirst() {
+    var rows = wingsRows();
+    for (var i = 0; i < rows.length; i++) if (wingsPickable(rows[i])) return i;
+    return 0;
+}
+function wingsText(t) { return typeof t === 'function' ? t() : (t || ''); }
+
+/* ── drawing the book ── */
+function wingsRowHtml(r, i) {
+    if (r.k === 'txt') return '<p class="nn-wnote' + (r.dim ? ' dim' : '') + '">' + esc(wingsText(r.t)) + '</p>';
+    if (r.k === 'val') return '<div class="nn-wrow nn-wstatic"><span class="nn-wlab">' + esc(r.t) +
+        '</span><b class="nn-wval">' + esc(r.v) + '</b></div>';
+    // A div, not a button. The number rows carry two stepper buttons and a
+    // button inside a button is not a thing the parser will keep: it hoists
+    // them straight back out and the row falls apart. Nothing here is ever
+    // focused anyway, so there is nothing to lose by not being one.
+    var armed = !!(r.id && RT.wings.armed === r.id);
+    var h = '<div class="nn-wrow' + (r.danger ? ' danger' : '') + (armed ? ' armed' : '') +
+            '" role="button" data-wi="' + i + '">';
+    if (r.key) h += '<span class="nn-wkey">' + esc(r.key) + '</span>';
+    h += '<span class="nn-wlab">' + esc(wingsText(r.t)) + '</span>';
+    var sub = armed ? r.arm : wingsText(r.sub);
+    if (sub) h += '<span class="nn-wsub">' + esc(sub) + '</span>';
+    if (r.k === 'tgl') h += '<b class="nn-wval">' + esc(r.get() ? (r.yes || 'YES') : (r.no || 'NO')) + '</b>';
+    if (r.k === 'num') h += '<span class="nn-wnum"><button class="nn-wstep" type="button" data-wd="-1">&lt;</button>' +
+        '<b>' + esc(r.get()) + '</b><button class="nn-wstep" type="button" data-wd="1">&gt;</button></span>';
+    return h + '</div>';
+}
+/* `top` means this is a page you have just arrived on, so start it at the
+   top rather than scrolled to the caret. Your part so far is eleven lines
+   of readout with one takeable row at the very bottom, and chasing the
+   caret opened it scrolled past its own first line every time. */
+function fillWings(top) {
+    var el = wingsEl(); if (!el) return;
+    var W = RT.wings, rows = wingsRows();
+    el.querySelector('.nn-wings-t').textContent =
+        W.page === 'margins' ? 'THE MARGINS' : W.page === 'part' ? 'YOUR PART SO FAR' : 'THE WINGS';
+    el.querySelector('.nn-wings-where').textContent = String(place().n).toUpperCase();
+    el.querySelector('.nn-wings-mood').textContent = wingsMood();
+    var html = '<span class="nn-wcaret">&gt;</span>';
+    rows.forEach(function (r, i) { html += wingsRowHtml(r, i); });
+    el.querySelector('.nn-wings-pg').innerHTML = html;
+    el.querySelector('.nn-wings-foot').textContent =
+        W.page === 'margins' ? 'Escape goes back. It writes itself down the moment you touch it.'
+      : W.page === 'part' ? 'Escape goes back. Nothing on this page can be spent.'
+      : 'Up and down to move. Enter to take it. Escape goes back on.';
+    if (top) el.querySelector('.nn-wings-pg').scrollTop = 0;
+    markWings(top);
+}
+/* The caret is one element for the whole page rather than a class on every
+   row, so it slides down the stanza instead of blinking between lines. */
+function markWings(noScroll) {
+    var pg = wingsPg(); if (!pg) return;
+    var rows = wingsRows(), sel = null;
+    pg.querySelectorAll('.nn-wrow[data-wi]').forEach(function (b) {
+        var on = +b.getAttribute('data-wi') === RT.wings.sel;
+        b.classList.toggle('on', on);
+        if (on) sel = b;
+    });
+    var caret = pg.querySelector('.nn-wcaret');
+    if (caret) {
+        caret.style.display = sel ? '' : 'none';
+        if (sel) caret.style.top = (sel.offsetTop + 6) + 'px';
+    }
+    /* Red for stand by, green for go. It answers the caret rather than
+       blinking on a timer, so it is the one light in the wings and it means
+       something: green is the line that puts you back on. */
+    var r = rows[RT.wings.sel], go = !!(r && r.cue === 'go');
+    var cue = RT.root.querySelector('.nn-wings-cue');
+    if (cue) { cue.classList.toggle('go', go); cue.classList.toggle('on', !go); }
+    // scroll by hand rather than scrollIntoView, which will happily scroll
+    // the desktop behind us as well
+    if (sel && !noScroll) {
+        var top = sel.offsetTop, bot = top + sel.offsetHeight;
+        if (top < pg.scrollTop) pg.scrollTop = top - 8;
+        else if (bot > pg.scrollTop + pg.clientHeight) pg.scrollTop = bot - pg.clientHeight + 8;
+    }
+}
+function wingsTurn() {
+    var pg = wingsPg(); if (!pg) return;
+    pg.classList.remove('turn'); void pg.offsetWidth; pg.classList.add('turn');
+}
+function wingsDeny() {
+    var pg = wingsPg(); if (!pg) return;
+    var row = pg.querySelector('.nn-wrow.on');
+    if (row) { row.classList.remove('deny'); void row.offsetWidth; row.classList.add('deny'); }
+    sfx('empty');
+}
+
+/* ── opening, closing, moving ── */
+function openWings() {
+    if (!RT || RT.wings.on) return;
+    var el = wingsEl(); if (!el) return;
+    RT.wings.on = 1; RT.wings.page = ''; RT.wings.armed = ''; RT.wings.root = 0;
+    RT.wings.sel = wingsFirst();
+    /* Let go of everything, the way focusout already does. Otherwise you
+       press Escape with W held, read the book for a minute, close it and
+       walk north into a wall because the key never came up. */
+    RT.keys = {}; RT.mouse.down = false; RT.mouse.rdown = false; RT.moveTo = null;
+    RT.root.classList.add('nn-off');
+    el.hidden = false;
+    fillWings(1);
+    sfx('travel');
+    RT.root.focus();
+}
+function closeWings() {
+    if (!RT || !RT.wings.on) return;
+    var el = wingsEl();
+    RT.wings.on = 0; RT.wings.armed = ''; RT.wings.page = '';
+    if (el) el.hidden = true;                 // synchronously: see the note at the top of the section
+    RT.root.classList.remove('nn-off');
+    /* Anything that came due while you were off runs now, in the order it
+       was written and at its own pace, rather than all landing on the frame
+       you come back on. 260ms is the Verse's own gap between lines. */
+    var held = RT.wings.held; RT.wings.held = [];
+    held.forEach(function (fn, i) {
+        RT.timers.push(setTimeout(function () { if (RT) fn(); }, i * 260));
+    });
+    sfx('travel');
+    RT.root.focus();
+}
+function wingsGo(page) {
+    RT.wings.root = RT.wings.sel;             // so Escape puts the caret back where it was
+    RT.wings.page = page; RT.wings.armed = '';
+    RT.wings.sel = wingsFirst();
+    fillWings(1); wingsTurn(); sfx('ui');
+}
+function wingsBack() {
+    if (RT.wings.armed) { RT.wings.armed = ''; fillWings(); sfx('ui'); return; }
+    if (RT.wings.page) {
+        RT.wings.page = ''; RT.wings.sel = RT.wings.root;
+        fillWings(1); wingsTurn(); sfx('ui'); return;
+    }
+    closeWings();
+}
+function wingsMove(d) {
+    var rows = wingsRows(), idx = [];
+    rows.forEach(function (r, i) { if (wingsPickable(r)) idx.push(i); });
+    if (!idx.length) return;
+    var at = idx.indexOf(RT.wings.sel);
+    at = at < 0 ? 0 : (at + d + idx.length) % idx.length;
+    RT.wings.sel = idx[at];
+    // walking off an armed row backs out of the confirm, exactly as the dev
+    // menu's wipe does
+    if (RT.wings.armed) { RT.wings.armed = ''; fillWings(); } else markWings();
+    sfx('ui');
+}
+function wingsNudge(d) {
+    var r = wingsRows()[RT.wings.sel];
+    if (!wingsPickable(r)) { if (d < 0) wingsBack(); return; }
+    if (r.k === 'num') {
+        RT.wings.armed = '';
+        r.set(clamp((+r.get()) + d * (r.step || 1), r.min, r.max));
+        fillWings(); sfx('ui'); return;
+    }
+    if (r.k === 'tgl') {
+        RT.wings.armed = '';
+        r.set(!r.get());
+        fillWings(); sfx('ui'); return;
+    }
+    if (d < 0) wingsBack(); else wingsTake();
+}
+function wingsTake() {
+    var r = wingsRows()[RT.wings.sel];
+    if (!wingsPickable(r)) { wingsDeny(); return; }
+    if (r.k === 'arm') {
+        // two presses, in place, rather than a confirm screen
+        if (RT.wings.armed === r.id) { RT.wings.armed = ''; r.on(); return; }
+        RT.wings.armed = r.id; fillWings(); sfx('ui'); return;
+    }
+    RT.wings.armed = '';
+    if (r.k === 'tgl' || r.k === 'num') { wingsNudge(1); return; }
+    if (r.page) { wingsGo(r.page); return; }
+    if (r.on) { r.on(); return; }             // may close the window: touch nothing after it
+    wingsDeny();
+}
+
+/* ── input ── */
+function wingsKey(e) {
+    if (!RT || !RT.wings.on) return;
+    if (e.altKey || e.ctrlKey || e.metaKey) return;      // the OS keeps its combinations
+    /* Only keys aimed at the game. The shell appends its own UI INSIDE the
+       .win element this listener sits on: the Alt+F find bar puts a focused
+       text input in there, and the system menu puts a button list. Claiming
+       every key in the window swallowed what the player typed into the find
+       bar and drove the caret with it instead. */
+    if (e.target !== RT.root && !(RT.root.contains && RT.root.contains(e.target))) return;
+    var k = (e.key || '').toLowerCase();
+    /* An auto-repeat is one held key, not a second press, and this menu has
+       two rows that mean it. Held Enter on "Take it from the top" armed it on
+       the first keydown and wiped the save on the repeat 500ms later, which
+       is the exact thing arming in place exists to prevent. Repeats are
+       allowed for the caret and the stepper, where holding a key to run is
+       the point, and refused for anything that takes a row.
+       Escape is in the refused set for a second reason: without it, holding
+       it strobes the menu, because the root chain's own repeat guard sits
+       BELOW its Escape branch and would happily reopen what this just shut. */
+    if (e.repeat && !(k === 'arrowup' || k === 'arrowdown' || k === 'arrowleft' || k === 'arrowright')) {
+        e.preventDefault(); e.stopPropagation(); return;
+    }
+    if (k === 'arrowup' || k === 'w') wingsMove(-1);
+    else if (k === 'arrowdown' || k === 's') wingsMove(1);
+    else if (k === 'arrowleft' || k === 'a') wingsNudge(-1);
+    else if (k === 'arrowright' || k === 'd') wingsNudge(1);
+    else if (k === 'enter' || k === ' ') wingsTake();
+    else if (k === 'escape' || k === 'backspace') wingsBack();
+    // everything else is swallowed on purpose, including the backtick: the
+    // dev menu opening underneath the book is not a state anybody wants
+    e.preventDefault(); e.stopPropagation();
+}
+/* One ladder, two doors. Escape and the ESC button have to mean the same
+   thing: close the top thing that is open, and only step off the stage when
+   there is nothing left to close. The button used to call openWings()
+   directly, which put the book on top of a live panel that then showed
+   through the veil, and left the panel waiting underneath when you came
+   back. */
+function wingsEscape() {
+    if (RT.devOpen) toggleDev();
+    else if (RT.mapOpen) RT.mapOpen = false;
+    else if (RT.dialog) closeDialog();
+    else if (RT.panel) panel(null);
+    else openWings();
+}
+function wireWings() {
+    if (!RT || RT.wings.wired) return;
+    RT.wings.wired = 1;
+    var host = RT.el && RT.el.addEventListener ? RT.el : RT.root;
+    host.addEventListener('keydown', wingsKey, true);
+    var el = wingsEl();
+    if (el) el.addEventListener('click', function (e) {
+        if (!RT || !RT.wings.on) return;
+        var row = e.target.closest ? e.target.closest('.nn-wrow[data-wi]') : null;
+        if (row) {
+            // only a real hit stops here. A click on bare veil has to reach
+            // document, because that is what closes the desktop's own start
+            // menu and context menus, and the veil covers the whole window.
+            e.stopPropagation();
+            var i = +row.getAttribute('data-wi');
+            if (RT.wings.sel !== i) { RT.wings.sel = i; markWings(); }
+            var st = e.target.closest('.nn-wstep');
+            if (st) wingsNudge(+st.getAttribute('data-wd'));
+            else wingsTake();
+        }
+        if (RT) RT.root.focus();
+    });
+    var pg = wingsPg();
+    if (pg) pg.addEventListener('mousemove', function (e) {
+        if (!RT || !RT.wings.on) return;
+        var row = e.target.closest ? e.target.closest('.nn-wrow[data-wi]') : null;
+        if (!row) return;
+        var i = +row.getAttribute('data-wi');
+        if (i === RT.wings.sel) return;                  // one sound per row, not one per pixel
+        RT.wings.sel = i;
+        // the mouse backs out of a confirm exactly as the caret does, or you
+        // arm a danger row, move the mouse, and one click finishes it
+        if (RT.wings.armed) { RT.wings.armed = ''; fillWings(); } else markWings();
+        sfx('ui');
+    });
+    var b = RT.root.querySelector('[data-nn="wings"]');
+    if (b) b.addEventListener('click', function (e) { e.stopPropagation(); wingsEscape(); });
+}
+
+/* Registered here rather than in init(), which is shared. gotoPlace runs
+   inside init() and fires RESETS at the top of itself, so the wiring and
+   the lettering are live from the first frame of every session, and they
+   re-apply after a wipe. */
+onPlaceChange(function () {
+    if (!RT) return;
+    wireWings();
+    applyBigText();
+    // gotoPlace has just cleared RT.timers, which is how walking through a
+    // doorway cancels the Verse. Anything of it parked here goes with them.
+    RT.wings.held.length = 0;
+    if (RT.wings.on) closeWings();     // nothing that teleports you may leave the book open over it
+});
 
 window.NINTH = {
     render: render, init: init, close: close, steamAch: steamAch,

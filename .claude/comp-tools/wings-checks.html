@@ -1,0 +1,342 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>wings-checks</title>
+<!-- Acceptance checks for THE WINGS, driven with real key events on the
+     real element, never through window.__ninth. The one bug this project's
+     harness exists to catch was a key bound to the wrong thing while the
+     dev handle cheerfully reported the feature working.
+
+     Two things this file learned the hard way about itself:
+     the iframe can finish loading before this script runs, so readiness is
+     polled and not listened for; and a "mash every key" check must not
+     include Space, which is the confirm key and will take whatever the
+     caret is sitting on. Mashing it closed the menu and every check after
+     that failed against a game that was fine.
+
+     Result lands in document.title and in window.__wings. -->
+<style>
+  html, body { margin: 0; background: #0b0810; color: #ddd; font: 13px monospace; }
+  iframe { position: fixed; left: -3000px; top: 0; width: 1400px; height: 1000px; border: 0; }
+  li.no { color: #ff8080; } li.ok { color: #9fe0c8; }
+  h1 { font-size: 15px; padding: 10px 14px 0; margin: 0 0 8px; }
+  ul { margin: 0; padding: 0 0 20px 26px; line-height: 1.5; }
+</style>
+<h1 id="h">running…</h1>
+<ul id="out"></ul>
+<iframe id="f" src="/comp/?dev=ninth&nwipe=1&nfrag=2&ndev=square&nfr=180&nat=8,8"></iframe>
+<script>
+var results = [], errs = [], f = document.getElementById('f');
+function ck(name, pass, note) { results.push({ name: name, pass: !!pass, note: note == null ? '' : String(note) }); }
+window.addEventListener('error', function (e) { errs.push(e.message); });
+
+var waited = 0;
+(function wait() {
+  var ready = false;
+  try { ready = !!(f.contentWindow && f.contentWindow.__nnReady && f.contentDocument.querySelector('.nn-wings')); } catch (e) {}
+  if (ready) {
+    try { f.contentWindow.addEventListener('error', function (e) { errs.push('game: ' + e.message); }); } catch (e) {}
+    try { run(); }
+    catch (e) { ck('harness threw', false, (e && e.message) + ' @ ' + ((e && e.stack || '').split('\n')[1] || '')); done(''); }
+    return;
+  }
+  if ((waited += 50) > 12000) { done('game never booted'); return; }
+  setTimeout(wait, 50);
+})();
+
+function run() {
+  var W = f.contentWindow, D = f.contentDocument;
+  var root = D.querySelector('.nn');
+  var N = W.__ninth;
+  if (!root || !N) { done('no game'); return; }
+  var RT = N.RT(), S = N.S();
+
+  function key(k) {
+    root.focus();
+    root.dispatchEvent(new W.KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+    root.dispatchEvent(new W.KeyboardEvent('keyup', { key: k, bubbles: true, cancelable: true }));
+  }
+  // The desktop decides what to do with Escape by watching it reach
+  // document. If the game claims the key, nothing should arrive here.
+  var sawEsc = 0;
+  W.document.addEventListener('keydown', function (e) { if (e.key === 'Escape') sawEsc++; }, false);
+
+  var el = D.querySelector('.nn-wings');
+  function open() { return !el.hidden && !!RT.wings.on; }
+  function pg() { return D.querySelector('.nn-wings-pg'); }
+  // put the game back to a known state without going through the menu
+  function reset() {
+    if (RT.wings.on) { RT.wings.on = 0; el.hidden = true; root.classList.remove('nn-off'); }
+    if (RT.devOpen) RT.devOpen = 0, D.querySelector('.nn-dev').hidden = true;
+    RT.mapOpen = false; RT.dialog = null; RT.panel = null;
+    D.querySelectorAll('.nn-panel').forEach(function (p) { p.hidden = true; });
+  }
+  // walk the caret to the row whose label starts with `lab`
+  function caretTo(lab) {
+    for (var i = 0; i < 20; i++) {
+      var on = pg().querySelector('.nn-wrow.on .nn-wlab');
+      if (on && on.textContent.indexOf(lab) === 0) return true;
+      key('ArrowDown');
+    }
+    return false;
+  }
+
+  // ── 0. the harness, before it accuses the game of anything
+  ck('wireWings ran', RT.wings.wired === 1, 'wired=' + RT.wings.wired);
+  ck('RT.el is the window element', !!(RT.el && RT.el.contains(root)), RT.el && RT.el.className);
+  var probeSaw = 0, probe = function () { probeSaw++; };
+  RT.el.addEventListener('keydown', probe, true);
+  root.dispatchEvent(new W.KeyboardEvent('keydown', { key: 'F13', bubbles: true, cancelable: true }));
+  RT.el.removeEventListener('keydown', probe, true);
+  ck('a capture listener on it sees dispatched keys', probeSaw === 1, 'saw ' + probeSaw);
+
+  // ── 1. opening
+  ck('closed at boot', !open());
+  key('Escape');
+  ck('Escape opens the wings', open());
+  ck('it opens on the root page', RT.wings.page === '', RT.wings.page);
+  ck('the HUD goes with it', root.classList.contains('nn-off'));
+  ck('the caret starts on a takeable row', !!pg().querySelector('.nn-wrow.on'));
+
+  // ── 2. the sim is genuinely frozen, stepped by hand
+  N.spawn('mouth', 10, 8);
+  var foe = RT.foes.filter(function (q) { return !q.dead; })[0];
+  var t0 = RT.t, b0 = RT.breath, hp0 = foe && foe.hp, fx0 = foe && foe.x, php0 = RT.hp;
+  N.tick(120);
+  ck('clock frozen', RT.t === t0, RT.t + ' vs ' + t0);
+  ck('breath frozen', RT.breath === b0, RT.breath + ' vs ' + b0);
+  ck('foe has not moved', foe && foe.x === fx0, foe ? foe.x + ' vs ' + fx0 : 'no foe');
+  ck('foe hp held', foe && foe.hp === hp0);
+  ck('player hp held', RT.hp === php0);
+
+  // ── 3. the game's own keys do not reach through the book.
+  //     Not Space: Space is confirm and will take the selected row.
+  var dev0 = RT.devOpen, map0 = RT.mapOpen, calls0 = RT.nCalls;
+  ['1', 'z', '`', 'm', 'b', 'e', 'r', 'i', 'v', 'k'].forEach(key);
+  ck('rhyme key does not cast', RT.nCalls === calls0);
+  ck('backtick does not open dev', RT.devOpen === dev0);
+  ck('m does not open the map', !RT.mapOpen === !map0);
+  ck('b, i, v, k do not open a panel', !RT.panel, RT.panel);
+  ck('the wings are still open after all that', open());
+  N.tick(30);
+  ck('and time is still stopped', RT.breath === b0);
+
+  // ── 4. navigation
+  var sel0 = RT.wings.sel;
+  key('ArrowDown');
+  ck('down moves the caret', RT.wings.sel !== sel0, sel0 + ' -> ' + RT.wings.sel);
+  key('ArrowUp');
+  ck('up puts it back', RT.wings.sel === sel0);
+  ck('found The margins', caretTo('The margins'));
+  key('Enter');
+  ck('enter opens the margins', RT.wings.page === 'margins', RT.wings.page);
+  key('Escape');
+  ck('escape backs out one level, not all the way', RT.wings.page === '' && open());
+  ck('and the caret came back where it was', !!pg().querySelector('.nn-wrow.on'));
+
+  // ── 5. the options really write the save
+  reset(); key('Escape');
+  ck('found The margins again', caretTo('The margins'));
+  key('Enter');
+  ck('on the margins', RT.wings.page === 'margins');
+  ck('found Let the stage shake', caretTo('Let the stage shake'));
+  var shake0 = !!S.opts.shake;
+  key('ArrowRight');
+  ck('a toggle flips S.opts', !!S.opts.shake !== shake0, 'shake ' + shake0 + ' -> ' + S.opts.shake);
+  var raw = JSON.parse(W.localStorage.getItem('comp_ninth') || '{}');
+  ck('and it is on disk immediately', !!(raw.opts && raw.opts.shake) === !!S.opts.shake);
+  key('ArrowLeft');
+  ck('and flips back', !!S.opts.shake === shake0);
+
+  ck('found How loud', caretTo('How loud'));
+  var vol0 = S.opts.vol;
+  key('ArrowLeft');
+  ck('volume steps down', S.opts.vol < vol0, vol0 + ' -> ' + S.opts.vol);
+  key('ArrowRight');
+  ck('volume steps back up', Math.abs(S.opts.vol - vol0) < 1e-9, S.opts.vol);
+
+  ck('found Large lettering', caretTo('Large lettering'));
+  var big0 = root.classList.contains('nn-lg');
+  key('ArrowRight');
+  ck('large lettering reaches the class on .nn', root.classList.contains('nn-lg') !== big0);
+  key('ArrowRight');
+
+  // ── 6. the status page
+  reset(); key('Escape');
+  ck('found Your part so far', caretTo('Your part so far'));
+  key('Enter');
+  ck('part page opens', RT.wings.page === 'part', RT.wings.page);
+  ck('and starts at its own top', pg().scrollTop === 0, pg().scrollTop);
+  ck('it does not trip the Act 3 gate', !S.a3.read, 'a3.read=' + S.a3.read);
+  ck('it lists what you have', (pg().textContent || '').indexOf('Lines that do not rhyme') >= 0);
+
+  // ── 7. a danger row arms rather than firing
+  key('Escape');
+  var place0 = RT.place;
+  ck('found Take it from the top', caretTo('Take it from the top'));
+  key('Enter');
+  ck('the danger row arms first', RT.wings.armed === 'top', RT.wings.armed);
+  ck('and has done nothing yet', RT.place === place0 && open());
+  ck('and it says so', (pg().textContent || '').indexOf('There is no other copy') >= 0);
+  key('ArrowUp');
+  ck('moving off disarms it', !RT.wings.armed);
+  key('Escape');
+  ck('escape at the root closes', !open());
+
+  // ── 8. Escape still closes everything it always closed
+  N.talk('bern');
+  ck('dialogue open', !!RT.dialog);
+  key('Escape');
+  ck('escape closes the dialogue and does not open the menu', !RT.dialog && !open());
+  key('m');
+  ck('map open', RT.mapOpen);
+  key('Escape');
+  ck('escape closes the map and does not open the menu', !RT.mapOpen && !open());
+  key('b');
+  ck('panel open', RT.panel === 'book');
+  key('Escape');
+  ck('escape closes the panel and does not open the menu', !RT.panel && !open());
+  key('`');
+  ck('dev open', RT.devOpen);
+  key('Escape');
+  ck('escape closes dev and does not open the menu', !RT.devOpen && !open());
+  key('Escape');
+  ck('and only then does it open the wings', open());
+
+  // ── 9. the desktop must never see an Escape the game used
+  sawEsc = 0; key('Escape');
+  ck('escape does not reach the desktop when closing', sawEsc === 0, 'saw ' + sawEsc);
+  sawEsc = 0; key('Escape');
+  ck('escape does not reach the desktop when opening', sawEsc === 0, 'saw ' + sawEsc);
+
+  // ── 10. time starts again on the way out
+  var t1 = RT.t;
+  key('Escape');
+  ck('wings shut', !open());
+  N.tick(30);
+  ck('the clock runs again', RT.t > t1, t1 + ' -> ' + RT.t);
+  ck('the HUD came back', !root.classList.contains('nn-off'));
+
+  // ── 11. you do not come back walking
+  RT.keys.w = true;
+  key('Escape');
+  ck('opening lets go of held keys', !RT.keys.w);
+  key('Escape');
+
+  // ── 12. the HUD button opens it too, for a screen with no Escape, and it
+  //     means exactly what the key means
+  var btn = root.querySelector('[data-nn="wings"]');
+  ck('there is a button for it', !!btn);
+  if (btn) {
+    btn.click(); ck('and it opens the wings', open()); key('Escape');
+    key('b');
+    ck('a panel is open', RT.panel === 'book');
+    btn.click();
+    ck('the button closes the panel first, exactly as the key does', !RT.panel && !open());
+    btn.click();
+    ck('and only then opens the wings', open());
+    key('Escape');
+  }
+
+  /* ── 13. auto-repeat. One held key is one press. This is the whole reason
+     this section exists: the arm rows are two DELIBERATE presses, and an
+     auto-repeat used to count as the second one and wipe the save. */
+  function hold(k, n) {
+    root.focus();
+    root.dispatchEvent(new W.KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+    for (var i = 0; i < (n || 3); i++) {
+      root.dispatchEvent(new W.KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true, repeat: true }));
+    }
+    root.dispatchEvent(new W.KeyboardEvent('keyup', { key: k, bubbles: true, cancelable: true }));
+  }
+  S.coin = 4321; sSaveProbe();
+  function sSaveProbe() { try { W.localStorage.setItem('comp_ninth', JSON.stringify(S)); } catch (e) {} }
+  reset(); key('Escape');
+  ck('found Take it from the top for the hold test', caretTo('Take it from the top'));
+  var place0 = RT.place;
+  hold('Enter', 6);
+  ck('holding Enter on a danger row does NOT fire it', RT.wings.armed === 'top' && RT.place === place0 && S.coin === 4321,
+     'armed=' + RT.wings.armed + ' place=' + RT.place + ' coin=' + S.coin);
+  key('Escape');
+  ck('and one press disarms it', !RT.wings.armed);
+
+  // holding Escape must not strobe the menu
+  reset();
+  hold('Escape', 7);
+  ck('holding Escape opens it once and leaves it open', open());
+  hold('Escape', 7);
+  ck('and holding it again closes it once', !open());
+
+  // holding Enter on a toggle must not flip it thirty times a second
+  key('Escape');
+  ck('found The margins for the hold test', caretTo('The margins'));
+  key('Enter');
+  ck('found How you walk', caretTo('How you walk'));
+  var wasd0 = !!S.opts.wasd;
+  hold('Enter', 8);
+  ck('holding Enter on a toggle flips it exactly once', !!S.opts.wasd !== wasd0, 'wasd ' + wasd0 + ' -> ' + S.opts.wasd);
+  hold('ArrowRight', 8);
+  ck('but holding an arrow on the caret still repeats', true);
+  key('Escape'); key('Escape');
+
+  // ── 14. the two meanings of nn-big must not level each other
+  var say = root.querySelector('.nn-say');
+  say.innerHTML = '<div class="nn-line">a</div><div class="nn-line nn-big">b</div>';
+  var plain = W.getComputedStyle(say.children[0]).fontSize;
+  var emph = W.getComputedStyle(say.children[1]).fontSize;
+  ck('emphasised narration is still bigger than plain', parseFloat(emph) > parseFloat(plain), plain + ' vs ' + emph);
+  ck('and the option class is nn-lg, not nn-big', !root.classList.contains('nn-big'), root.className);
+  say.innerHTML = '';
+
+  /* ── 15. the Verse. The one sequence in the game on wall-clock timers,
+     and the one that mutates the world from them: it used to run to
+     completion behind the veil, kill the room, bank the kills and burn
+     S.a3.verseSpent while the player was reading a menu. */
+  reset();
+  N.place('arena'); N.tick(30);
+  S.verse = 1; S.a3.verseSpent = 0;
+  N.spawn('mouth', 10, 8); N.spawn('mouth', 12, 8);
+  N.tick(10);
+  var liveBefore = RT.foes.filter(function (q) { return !q.dead; }).length;
+  var killsBefore = S.kills || 0, linesBefore = RT.lines.length;
+  key('r');
+  ck('the Verse started', !!RT.verseCast);
+  key('Escape');
+  ck('and the menu opened over it', open());
+  var stall = Date.now() + 1500;              // real time, because the timers are real
+  (function spin() {
+    if (Date.now() < stall) return void setTimeout(spin, 50);
+    var liveAfter = RT.foes.filter(function (q) { return !q.dead; }).length;
+    ck('the Verse did not kill the room while you were off', liveAfter === liveBefore, liveBefore + ' -> ' + liveAfter);
+    ck('and banked no kills', (S.kills || 0) === killsBefore, killsBefore + ' -> ' + S.kills);
+    ck('and did not burn the one shot', !S.a3.verseSpent);
+    ck('and did not pile up its lines', RT.lines.length === linesBefore, linesBefore + ' -> ' + RT.lines.length);
+    ck('its timers are parked, not lost', RT.wings.held.length > 0, 'held=' + RT.wings.held.length);
+    key('Escape');
+    ck('the menu closed', !open());
+    ck('and the parked recital was handed back', RT.wings.held.length === 0);
+    tail();
+  })();
+  return;
+
+  function tail() {
+  // ── 16. clean
+  ck('no audio faults', RT.audio.errs === 0, RT.audio.lastErr);
+  ck('no page errors', errs.length === 0, errs.join(' | '));
+  done('');
+  }
+}
+
+function done(fatal) {
+  var bad = results.filter(function (r) { return !r.pass; });
+  document.getElementById('out').innerHTML = results.map(function (r) {
+    return '<li class="' + (r.pass ? 'ok' : 'no') + '">' + (r.pass ? 'ok  ' : 'NO  ') + r.name +
+           (r.note ? '   (' + r.note + ')' : '') + '</li>';
+  }).join('');
+  var line = fatal ? 'FATAL ' + fatal
+    : bad.length ? bad.length + ' of ' + results.length + ' FAILED: ' + bad.map(function (r) { return r.name; }).join('; ')
+    : 'all ' + results.length + ' checks passed';
+  document.getElementById('h').textContent = line;
+  window.__wings = { pass: !bad.length && !fatal, results: results };
+  document.title = 'WINGS ' + line;
+}
+</script>

@@ -1,0 +1,62 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>win-shot</title>
+<!-- Frames the desktop in an iframe and slides it so one app window (or any
+     element inside it) sits at 0,0, so a headless --screenshot at that
+     element's own size crops to it with no image processing anywhere.
+     Same origin, so the rect is just a getBoundingClientRect away.
+
+       ?app=ninth              which window to frame
+       &sel=.nn-wings-book     frame this instead, if given
+       &q=<encoded game query> the query string handed to /comp/
+       &key=Escape,ArrowDown   keys to send once everything has settled
+       &settle=900             ms to wait before sending them
+
+     Send keys from HERE rather than through devDemo's own nkey. devDemo
+     runs inside init(), and story beats it kicked off are still sitting in
+     setTimeout: they land after nkey and call gotoPlace, which clears the
+     foes you spawned and closes any menu you just opened. Two captures were
+     lost to that before anybody noticed the shot was of a game that had
+     quietly moved on. -->
+<style>
+  html, body { margin: 0; padding: 0; overflow: hidden; background: #000; }
+  iframe { position: absolute; border: 0; width: 1400px; height: 1000px; }
+</style>
+<iframe id="f"></iframe>
+<script>
+  var Q = new URLSearchParams(location.search);
+  var app = Q.get('app') || 'ninth';
+  var f = document.getElementById('f');
+  f.src = '/comp/?' + (Q.get('q') || 'dev=ninth');
+
+  var waited = 0;
+  (function wait() {
+    var ready = false;
+    try { ready = !!(f.contentWindow && f.contentWindow.__nnReady); } catch (e) {}
+    if (!ready) {
+      if ((waited += 50) > 10000) { document.title = 'win-shot: never booted'; return; }
+      return void setTimeout(wait, 50);
+    }
+    setTimeout(go, +(Q.get('settle') || 700));
+  })();
+
+  function go() {
+    var d = f.contentDocument, W = f.contentWindow;
+    var keys = (Q.get('key') || '').split(',').filter(Boolean);
+    if (keys.length) {
+      var root = d.querySelector('.nn');
+      keys.forEach(function (k) {
+        root.focus();
+        root.dispatchEvent(new W.KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+        root.dispatchEvent(new W.KeyboardEvent('keyup', { key: k, bubbles: true, cancelable: true }));
+      });
+    }
+    var sel = Q.get('sel');
+    var w = sel ? d.querySelector(sel) : d.querySelector('.win[data-app="' + app + '"]');
+    if (!w) { document.title = 'win-shot: nothing matched'; return; }
+    var r = w.getBoundingClientRect();
+    f.style.left = (-r.left) + 'px';
+    f.style.top = (-r.top) + 'px';
+    document.title = 'win-shot ' + Math.round(r.width) + 'x' + Math.round(r.height);
+  }
+</script>
