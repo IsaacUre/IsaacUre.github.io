@@ -1,0 +1,200 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>wings-regress</title>
+<!-- The regression suite JOBS.md asks every job for, run against a build
+     that has taken over Escape: the critical path is still walkable, the
+     window still closes and reopens with the save intact, and the game
+     survives being thrashed with the menu opening and closing throughout.
+     Everything is driven with dispatched key events on the real element. -->
+<style>
+  html, body { margin: 0; background: #0b0810; color: #ddd; font: 13px monospace; }
+  iframe { position: fixed; left: -3000px; top: 0; width: 1400px; height: 1000px; border: 0; }
+  li.no { color: #ff8080; } li.ok { color: #9fe0c8; }
+  h1 { font-size: 15px; padding: 10px 14px 0; margin: 0 0 8px; }
+  ul { margin: 0; padding: 0 0 20px 26px; line-height: 1.5; }
+</style>
+<h1 id="h">running…</h1>
+<ul id="out"></ul>
+<iframe id="f"></iframe>
+<script>
+var results = [], errs = [], f = document.getElementById('f');
+/* Wipe from out here rather than with nwipe=1 in the query. devDemo re-runs
+   on EVERY init, so a window reopened from the desktop would wipe the save
+   again on the way in, and the "your settings survived the close" check
+   would be reading a fresh default and calling the game wrong for it. */
+try { localStorage.removeItem('comp_ninth'); } catch (e) {}
+f.src = '/comp/?dev=ninth&ndev=stage&nfr=60';
+function ck(n, p, note) { results.push({ name: n, pass: !!p, note: note == null ? '' : String(note) }); }
+window.addEventListener('error', function (e) { errs.push(e.message); });
+
+var waited = 0;
+(function wait() {
+  var ready = false;
+  try { ready = !!(f.contentWindow && f.contentWindow.__nnReady); } catch (e) {}
+  if (ready) {
+    try { f.contentWindow.addEventListener('error', function (e) { errs.push('game: ' + e.message); }); } catch (e) {}
+    try { run(); } catch (e) { ck('harness threw', false, e && e.message); done(); }
+    return;
+  }
+  if ((waited += 50) > 12000) { ck('game never booted', false); done(); return; }
+  setTimeout(wait, 50);
+})();
+
+function run() {
+  var W = f.contentWindow, D = f.contentDocument, N = W.__ninth;
+  var root = D.querySelector('.nn'), RT = N.RT(), S = N.S();
+  function key(k) {
+    root.focus();
+    root.dispatchEvent(new W.KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+    root.dispatchEvent(new W.KeyboardEvent('keyup', { key: k, bubbles: true, cancelable: true }));
+  }
+  function wingsOpen() { var e = D.querySelector('.nn-wings'); return e && !e.hidden && !!RT.wings.on; }
+  function esc() { key('Escape'); }
+
+  // ── the critical path, every stop of it, with the menu opened and shut
+  //    at each one. If Escape has broken travel or interaction, this finds it.
+  var stops = ['square', 'lane', 'mill', 'loft', 'village', 'mark', 'road', 'hollow', 'arena'];
+  var bad = [];
+  stops.forEach(function (id) {
+    N.place(id);
+    N.tick(40);
+    esc();
+    if (!wingsOpen()) bad.push(id + ':wouldnotopen');
+    N.tick(20);
+    esc();
+    if (wingsOpen()) bad.push(id + ':wouldnotclose');
+    N.tick(40);
+    if (RT.place !== id) bad.push(id + ':moved to ' + RT.place);
+  });
+  ck('the menu opens and closes in every place', bad.length === 0, bad.join(', '));
+
+  // ── the three fragments still land
+  [1, 2, 3].forEach(function (n) { N.frag(n); });
+  ck('all three fragments granted', [1,2,3].every(function (n) { return S.frags[n]; }));
+  esc();
+  ck('and the menu still opens with the whole song', wingsOpen());
+  var txt = '';
+  // walk to the status page and read it
+  for (var i = 0; i < 8; i++) {
+    var on = D.querySelector('.nn-wrow.on .nn-wlab');
+    if (on && on.textContent.indexOf('Your part so far') === 0) break;
+    key('ArrowDown');
+  }
+  key('Enter');
+  txt = D.querySelector('.nn-wings-pg').textContent || '';
+  ck('the status page says three of three', txt.indexOf('three of three') >= 0, txt.slice(0, 60));
+  ck('and it has the whole of it', txt.indexOf('You have the whole of it now') >= 0);
+  esc(); esc();
+  ck('back out to the world', !wingsOpen());
+
+  // ── interaction still works after all that (the E-key class of bug)
+  N.place('square');
+  N.tick(60);
+  N.talk('bern');
+  ck('you can still talk to Bern', !!RT.dialog);
+  esc();
+  ck('and escape closes him', !RT.dialog && !wingsOpen());
+
+  // ── combat still works with the menu in the chain
+  N.place('arena'); N.tick(30);
+  var f1 = N.spawn('mouth', 10, 8);
+  N.aimFoe(0);
+  var hp0 = RT.foes[0].hp;
+  for (var c = 0; c < 6; c++) { N.call(); N.tick(6); }
+  ck('call still damages a foe', RT.foes[0].hp < hp0 || RT.foes[0].dead, hp0 + ' -> ' + RT.foes[0].hp);
+  esc();
+  var hpFrozen = RT.foes[0].hp;
+  N.tick(90);
+  ck('and the fight holds while you are off', RT.foes[0].hp === hpFrozen);
+  esc();
+
+  // ── thrash: place changes with the menu opening and closing throughout
+  var before = errs.length;
+  for (var t = 0; t < 50; t++) {
+    N.place(stops[t % stops.length]);
+    if (t % 3 === 0) { esc(); N.tick(3); esc(); }
+    ['1','2','3','4','5','z','x','c','e','m','b','k','i','v','r',' ','Escape'].forEach(function (k) {
+      if (Math.abs(t % 7) === 0 || k === 'Escape') key(k);
+    });
+    if (wingsOpen()) esc();
+    N.tick(5);
+  }
+  ck('50 rounds of thrashing, no new errors', errs.length === before, errs.slice(before).join(' | '));
+  ck('and it ends closed', !wingsOpen());
+  ck('and still in a real place', !!RT.place, RT.place);
+
+  // ── close the window and open it again: the save survives
+  var coin0 = S.coin, shake0 = !!S.opts.shake;
+  // the thrash mashes m, b, k, i and v, so something is very likely still up
+  // and the next Escape would close THAT rather than opening the menu
+  RT.mapOpen = false; RT.dialog = null; RT.panel = null;
+  if (RT.devOpen) { RT.devOpen = 0; D.querySelector('.nn-dev').hidden = true; }
+  D.querySelectorAll('.nn-panel').forEach(function (p) { p.hidden = true; });
+  esc();
+  ck('the menu opens from a cleared world', wingsOpen());
+  // flip an option from inside the menu, then close the whole window with it open
+  for (var j = 0; j < 8; j++) {
+    var lab = D.querySelector('.nn-wrow.on .nn-wlab');
+    if (lab && lab.textContent.indexOf('The margins') === 0) break;
+    key('ArrowDown');
+  }
+  key('Enter');
+  for (var j2 = 0; j2 < 8; j2++) {
+    var lab2 = D.querySelector('.nn-wrow.on .nn-wlab');
+    if (lab2 && lab2.textContent.indexOf('Let the stage shake') === 0) break;
+    key('ArrowDown');
+  }
+  key('ArrowRight');
+  ck('flipped an option inside the menu', !!S.opts.shake !== shake0);
+
+  var cap = RT.el.querySelector('.win-caps .cap[data-cap="close"]');
+  ck('the close button is where the menu thinks it is', !!cap);
+  cap.click();
+  ck('the window closed with the menu open', !W.__ninth || !D.querySelector('.nn'));
+
+  // reopen from the shell
+  // the desktop shortcut, which is how a player would do it. comp.js is an
+  // IIFE, so openApp is not reachable from out here and should not be.
+  var reopen = W.document.querySelector('.dicon[data-n="NINTH NIGHT"]');
+  ck('the desktop shortcut is still there', !!reopen, reopen && reopen.getAttribute('data-n'));
+  if (reopen) {
+    reopen.dispatchEvent(new W.MouseEvent('pointerdown', { bubbles: true }));
+    reopen.click();
+    reopen.dispatchEvent(new W.MouseEvent('dblclick', { bubbles: true }));
+  }
+  setTimeout(function () {
+    try { after(); } catch (e) { ck('reopen threw', false, e && e.message); done(); }
+  }, 400);
+
+  function after() {
+    var N2 = W.__ninth;
+    ck('it came back', !!N2);
+    if (!N2) return done();
+    var RT2 = N2.RT(), S2 = N2.S(), root2 = W.document.querySelector('.nn');
+    ck('the option survived the close', !!S2.opts.shake !== shake0);
+    ck('the coin survived', S2.coin === coin0);
+    ck('wings rewired on the new window', RT2.wings.wired === 1, 'wired=' + RT2.wings.wired);
+    ck('and it is closed to start with', !RT2.wings.on);
+    root2.focus();
+    root2.dispatchEvent(new W.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    ck('Escape still opens it in the reopened window', !!RT2.wings.on);
+    root2.dispatchEvent(new W.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    ck('and still closes it', !RT2.wings.on);
+    ck('no page errors in any of that', errs.length === 0, errs.join(' | '));
+    done();
+  }
+}
+
+function done() {
+  var bad = results.filter(function (r) { return !r.pass; });
+  document.getElementById('out').innerHTML = results.map(function (r) {
+    return '<li class="' + (r.pass ? 'ok' : 'no') + '">' + (r.pass ? 'ok  ' : 'NO  ') + r.name +
+           (r.note ? '   (' + r.note + ')' : '') + '</li>';
+  }).join('');
+  var line = bad.length ? bad.length + ' of ' + results.length + ' FAILED: ' + bad.map(function (r) { return r.name; }).join('; ')
+                        : 'all ' + results.length + ' checks passed';
+  document.getElementById('h').textContent = line;
+  window.__regress = { pass: !bad.length, results: results };
+  document.title = 'REGRESS ' + line;
+}
+</script>

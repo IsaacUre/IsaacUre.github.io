@@ -3347,3 +3347,142 @@ body.no-crt .screen::after { display: none; }
    means untouchable; focused means back. */
 .skip-link { pointer-events: none; }
 .skip-link:focus { pointer-events: auto; }
+
+/* NINTH NIGHT: the wings (Escape) ═══════════════════════════════
+   Escape steps you off the stage. The performance holds exactly where
+   you left it and in front of you is the prompter's book, open on a
+   stand. Flat veil rather than a blur: this desktop dithers, it does
+   not do acrylic, and the one soft edge in the whole OS would be this
+   one. The page is ruled like a script, the gutter holds a gold caret
+   and a pencilled keycap, and nothing else. */
+.nn-wings { position: absolute; inset: 0; z-index: 8; display: flex; align-items: center; justify-content: center;
+    padding: 24px 14px; }
+.nn-wings[hidden] { display: none; }
+.nn-wings-veil { position: absolute; inset: 0; background: rgba(6,5,10,.86); }
+.nn-wings-book { position: relative; width: 660px; max-width: calc(100% - 28px); max-height: calc(100% - 48px);
+    display: flex; flex-direction: column; background: #0d0a14; border: 1px solid #4a3f5e;
+    box-shadow: 0 12px 0 rgba(0,0,0,.45); animation: nnWingsBook .14s steps(3, end); }
+
+.nn-wings-book > header { display: flex; align-items: center; gap: 10px; padding: 9px 13px;
+    background: #150f1e; border-bottom: 1px solid #2e2740; }
+.nn-wings-t { font-family: "Press Start 2P", monospace; font-size: .6rem; letter-spacing: .22em; color: #d8cfa8; }
+.nn-wings-where { margin-left: auto; font-style: normal; font-family: "Press Start 2P", monospace;
+    font-size: .46rem; letter-spacing: .1em; color: #5f586e; }
+/* red for stand by, green for go. The only light in the wings. */
+.nn-wings-cue { width: 9px; height: 9px; flex: 0 0 auto; background: #241c2e; border: 1px solid #3d3350; }
+.nn-wings-cue.on { background: #c86a6a; border-color: #7a3a3a; box-shadow: 0 0 8px rgba(200,106,106,.55); }
+.nn-wings-cue.go { background: #9fe0c8; border-color: #3f7a68; box-shadow: 0 0 8px rgba(159,224,200,.6); }
+
+.nn-wings-mood { padding: 8px 14px 6px; font-family: "VT323", monospace; font-size: 1.02rem;
+    line-height: 1.25; color: #8a8296; }
+/* a rule that stops rhyming two thirds of the way across, with the hole
+   marked. Three elements and no copy at all. */
+.nn-wings-join { display: flex; align-items: center; gap: 9px; margin: 2px 14px 10px; }
+.nn-wings-join i { height: 1px; flex: 3 1 0; background: linear-gradient(90deg, rgba(201,169,74,.15), #c9a94a); }
+.nn-wings-join b { width: 5px; height: 5px; flex: 0 0 auto; background: #c9a94a; transform: rotate(45deg); }
+.nn-wings-join em { height: 0; flex: 2 1 0; border-top: 1px dashed #4a3f5e; }
+
+.nn-wings-pg { position: relative; flex: 1 1 auto; overflow-y: auto; padding: 12px 18px 16px 104px;
+    background-color: #14101d; scrollbar-width: thin; scrollbar-color: #3d3350 transparent;
+    background-image: linear-gradient(90deg, transparent 91px, rgba(201,169,74,.22) 91px,
+        rgba(201,169,74,.22) 92px, transparent 92px); }
+.nn-wings-pg.turn { animation: nnWingsPg .09s steps(2, end); }
+.nn-wings-foot { padding: 7px 13px; border-top: 1px solid #2e2740; background: #0d0a14;
+    font-size: .54rem; letter-spacing: .06em; color: #5f586e; }
+
+.nn-wnote { font-size: .64rem; color: #8a8296; line-height: 1.6; margin: 0 0 10px; max-width: 42ch; }
+.nn-wnote.dim { color: #5f586e; font-style: italic; margin-top: 12px; }
+
+.nn-wrow { position: relative; display: block; width: 100%; text-align: left; background: none; border: 0;
+    border-bottom: 1px solid rgba(46,39,64,.55); padding: 9px 4px 9px 0; cursor: pointer;
+    font-family: inherit; color: inherit; transition: color .12s; }
+.nn-wlab { display: block; font-family: "VT323", monospace; font-size: 1.3rem; line-height: 1.05; color: #cfc7dc; }
+.nn-wsub { display: block; font-size: .6rem; color: #7d7490; margin-top: 2px; line-height: 1.4; }
+.nn-wrow.on .nn-wlab { color: #ffe66e; }
+.nn-wrow.on .nn-wsub { color: #a99a7a; }
+.nn-wrow.on { border-bottom-color: rgba(201,169,74,.45); }
+.nn-wrow.danger .nn-wlab { color: #ffb0b0; }
+.nn-wrow.armed .nn-wsub { color: #ffb0b0; }
+.nn-wrow.deny { animation: nnDeny .3s; }
+.nn-wstatic { cursor: default; }
+.nn-wstatic .nn-wlab { font-size: 1.16rem; color: #b9b0c6; }
+/* a pencil note in the margin, not a button */
+.nn-wkey { position: absolute; left: -90px; top: 13px; font-family: "Press Start 2P", monospace;
+    font-size: .44rem; letter-spacing: .08em; color: #5f586e; }
+.nn-wval { position: absolute; right: 4px; top: 11px; font-family: "Press Start 2P", monospace;
+    font-size: .54rem; letter-spacing: .1em; color: #d8cfa8; }
+.nn-wstatic .nn-wval { color: #cfc7dc; }
+.nn-wnum { position: absolute; right: 4px; top: 8px; display: flex; gap: 6px; align-items: center; }
+.nn-wnum b { min-width: 44px; text-align: center; font-family: "Press Start 2P", monospace;
+    font-size: .54rem; color: #ffe66e; }
+.nn-wstep { padding: 3px 8px; font-size: .56rem; background: #1a1524; border: 1px solid #3d3350;
+    color: #cfc7dc; font-family: inherit; cursor: pointer; }
+.nn-wstep:hover { border-color: #8a6ad0; color: #fff; }
+
+/* one caret for the whole page, so it slides down the stanza rather than
+   blinking between rows. Positioned against the scroll content. */
+.nn-wcaret { position: absolute; left: 70px; width: 14px; text-align: center;
+    font-family: "VT323", monospace; font-size: 1.3rem; color: #c9a94a;
+    transition: top .15s cubic-bezier(.2,.8,.25,1); }
+
+/* the HUD goes with you. Left up, the button row and the coin and the
+   gold-lit Verse key sit crisp over the veil and the whole thing reads
+   as an overlay that failed to cover the interface. */
+.nn.nn-off .nn-hud, .nn.nn-off .nn-btns, .nn.nn-off .nn-coin,
+.nn.nn-off .nn-scene, .nn.nn-off .nn-say { opacity: 0; pointer-events: none; transition: opacity .12s linear; }
+
+/* S.opts.bigtext has existed since the options were written and nothing
+   has ever read it. Narration only: the dialogue box is a fixed 560px
+   and larger type in there wraps into the name.
+   The root class is nn-lg and not nn-big because .nn-line.nn-big already
+   means something else and has since narration was written: it is the
+   emphasis class say() puts on the lines that matter. A root rule sharing
+   the token outranks it and levels the two channels to the same size, so
+   the second rule here keeps the step whichever way the option is set. */
+.nn.nn-lg .nn-say .nn-line { font-size: .82rem; line-height: 1.6; }
+.nn.nn-lg .nn-say .nn-line.nn-big { font-size: .9rem; }
+
+/* Transform only, and nothing here fades in from nothing. The document
+   timeline is frozen in this project's headless capture exactly as rAF is,
+   so an entrance keyframed on opacity leaves the element stuck partway:
+   the book photographed at a third opacity with the town showing straight
+   through it. A stalled transform costs a few pixels of offset and can
+   never cost visibility.
+   The veil had an opacity entrance too, under a comment claiming that was
+   safe because a veil that has not arrived is a lighter veil. It is not: a
+   stalled one is opacity 0, which is no veil at all, which is the very
+   thing the paragraph above says it is avoiding. It has no entrance now. */
+@keyframes nnWingsBook { from { transform: translateY(7px); } }
+@keyframes nnWingsPg { from { transform: translateX(6px); } }
+
+@media (prefers-reduced-motion: reduce) {
+    .nn-wings-book, .nn-wings-pg.turn { animation: none; }
+    .nn-wcaret { transition: none; }
+}
+@media (max-width: 720px) {
+    .nn-wings { padding: 12px 8px; }
+    .nn-wings-book { max-height: calc(100% - 24px); }
+    .nn-wings-pg { padding-left: 84px;
+        background-image: linear-gradient(90deg, transparent 71px, rgba(201,169,74,.22) 71px,
+            rgba(201,169,74,.22) 72px, transparent 72px); }
+    .nn-wcaret { left: 52px; }
+    .nn-wkey { display: none; }
+    .nn-wlab { font-size: 1.14rem; }
+    .nn-wval, .nn-wnum { position: static; display: block; margin-top: 4px; text-align: left; }
+}
+@media (any-pointer: coarse) {
+    .nn-wrow { padding: 12px 4px 12px 0; }
+    .nn-wstep { padding: 6px 10px; }
+    /* the row grew 3px of top padding and the label went with it, but these
+       are positioned against the row and did not. Not .nn-wnum: the taller
+       stepper above moves its centre by the same 3px on its own. */
+    .nn-wval { top: 14px; }
+    .nn-wkey { top: 16px; }
+}
+/* Escape exists on every keyboard, so this button is for the screens that
+   do not have one. It is hidden otherwise because .nn-btns is anchored
+   right and grows leftward over .nn-stanzas: a sixth button takes the
+   Verse key with it on any window under about 1120px wide. */
+.nn-b-wings { display: none; font-size: .42rem; letter-spacing: 0; }
+@media (any-pointer: coarse) { .nn-b-wings { display: block; } }
+@supports not (scrollbar-width: thin) { .nn-wings-pg::-webkit-scrollbar { width: 6px; } }

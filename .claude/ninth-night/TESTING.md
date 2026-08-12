@@ -167,3 +167,41 @@ Before you open the PR:
 - Thrash it: 50 rounds of place changes with projectiles in flight and
   every key mashed, zero console errors.
 - Screenshots of anything visual.
+
+## The harnesses in `.claude/comp-tools`
+
+`serve.js` is the static server the preview tool starts (`.claude/launch.json`,
+port 8571). Everything below is served from it.
+
+| file | does |
+|---|---|
+| `win-shot.html` | frames one app window, or any element inside it, at 0,0 so a headless `--screenshot` at that size crops to it with no image processing. `?app=ninth&sel=.nn-wings-book&key=Escape&settle=800&q=<game query>` |
+| `wings-checks.html` | acceptance suite for the Escape menu |
+| `wings-regress.html` | the critical path, the thrash, and close-and-reopen |
+
+Read the result out of the headline rather than a screenshot:
+
+```bash
+chrome --headless=new --disable-gpu --no-sandbox --virtual-time-budget=30000 \
+  --dump-dom "http://localhost:8571/.claude/comp-tools/wings-checks.html" \
+  | grep -o '<h1 id="h">[^<]*</h1>'
+```
+
+Four things these cost a morning to learn, all of them the harness lying
+rather than the game being broken:
+
+- **Send keys from the harness, after a settle, not through `nkey`.** `devDemo`
+  runs inside `init()`, and beats it started are still in `setTimeout`. They
+  land after `nkey` and call `gotoPlace`, which clears the foes you spawned
+  and closes anything you just opened.
+- **`nwipe=1` re-runs on every `init`.** Reopening the window wipes the save
+  again on the way in, so "your settings survived the close" reads a fresh
+  default and blames the game. Wipe from the harness instead.
+- **The document timeline is frozen here exactly as rAF is.** Anything whose
+  visibility depends on a CSS animation completing photographs part way or
+  not at all. Capture with `--force-prefers-reduced-motion`, and prefer
+  entrances that animate transform, which cannot cost visibility when they
+  stall.
+- **Dispatch `repeat: true` as well.** A held key is not a second press, and
+  nothing that only ever sends `repeat: false` can see the difference. One
+  held Enter used to wipe the save through a two-press confirm.
