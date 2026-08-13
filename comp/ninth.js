@@ -923,7 +923,6 @@ function render() {
           '<button class="nn-b nn-b-wings" data-nn="wings" type="button" title="The wings (Escape)">ESC</button>' +
         '</div>' +
         '<div class="nn-tip" hidden></div>' +
-        '<div class="nn-vig"></div>' +
 
         // THE WINGS. Last in the DOM, so it is over everything without
         // having to out-bid anybody for a z-index.
@@ -1249,7 +1248,16 @@ var DEV = [
    frame while it builds, and five meant the ordinary loop through Wick
    — square, house, shop, lane, mill, loft — evicted the square before
    you walked back into it and paid for it again every time. */
-var FLOORS = {}, FLOOR_LRU = [], FLOOR_MAX = 7;
+/* Floors are capped in BYTES, not in entries, because they are not the
+   same size as each other: room11x9 is 1.21 MB and road11x34 is 4.43,
+   a 3.7x spread, and seven entries was anywhere from 11.4 MB to 17.9
+   depending on which seven. The sprite cache next door has been byte
+   capped from the start for exactly this reason.
+   FLOOR_MIN keeps the reason the 7 was picked: the ordinary loop through
+   Wick is town17x15, room11x9, room12x9, mill13x17, mill15x13, loft13x13,
+   which is 11.08 MB and six entries, and it must never evict the square
+   before you walk back into it. */
+var FLOORS = {}, FLOOR_LRU = [], FLOOR_MIN = 7, FLOOR_BUDGET = 13 << 20, FLOOR_BYTES = 0;
 var FLOOR_PAL = {
     stage:  ['#3a2a1c', '#2c1f14', '#4a3524'],
     town:   ['#2a2630', '#211d28', '#37323f'],
@@ -1573,7 +1581,8 @@ function buildFloor(kind, gw, gh) {
     g.fillStyle = rg; g.beginPath(); g.arc(0, 0, 330, 0, TAU); g.fill(); g.restore();
     // the vignette used to be baked here. With a camera it has to follow
     // the eye, not the ground, so it moved to drawVignette in screen space.
-    FLOORS[key] = { cv: cv, box: box };
+    FLOORS[key] = { cv: cv, box: box, bytes: box.w * box.h * 4 };
+    FLOOR_BYTES += FLOORS[key].bytes;
     touchFloor(key); trimFloors();
     return FLOORS[key];
 }
@@ -1582,13 +1591,16 @@ function touchFloor(key) {
     FLOOR_LRU.push(key);
 }
 function trimFloors() {
-    while (FLOOR_LRU.length > FLOOR_MAX) {
+    while (FLOOR_LRU.length > FLOOR_MIN && FLOOR_BYTES > FLOOR_BUDGET) {
         var k = FLOOR_LRU.shift(), f = FLOORS[k];
-        if (f) { f.cv.width = f.cv.height = 0; delete FLOORS[k]; }   // drop the backing store, not just the reference
+        if (!f) continue;
+        FLOOR_BYTES -= f.bytes;
+        f.cv.width = f.cv.height = 0; delete FLOORS[k];              // drop the backing store, not just the reference
     }
 }
 function freeFloors() {
     Object.keys(FLOORS).forEach(function (k) { FLOORS[k].cv.width = FLOORS[k].cv.height = 0; delete FLOORS[k]; });
+    FLOOR_BYTES = 0;
     FLOOR_LRU.length = 0;
 }
 
@@ -3035,13 +3047,19 @@ function drawActor(cx) {
        move: crit-eng-ark #22, the gradient's radius and the arc that
        rasterises it are separate literals, so shrinking one paid a
        120px fill for a 44px gradient every frame. */
+    /* Squashed to 0.62, the same as every light in drawLights. It was a
+       true circle, so the one pool in the game that is always on screen
+       was the one that did not lie on the ground; against the flattened
+       pool the same lantern also throws through drawLights it read as
+       two lights with two different ideas about where the floor is. */
     var pr = lerp(120, 44, hood);
     cx.save(); cx.globalCompositeOperation = 'lighter';
-    var lg = cx.createRadialGradient(sx, sy - 10, 6, sx, sy - 10, pr);
+    cx.translate(sx, sy - 10); cx.scale(1, 0.62);
+    var lg = cx.createRadialGradient(0, 0, 6, 0, 0, pr);
     lg.addColorStop(0, hood > 0 ? partCol(mixRgb('255,190,90', ARK_RIM || '201,161,255', hood), 0.14)
                                 : 'rgba(255,190,90,.14)');
     lg.addColorStop(1, 'rgba(255,180,70,0)');
-    cx.fillStyle = lg; cx.beginPath(); cx.arc(sx, sy - 10, pr, 0, TAU); cx.fill(); cx.restore();
+    cx.fillStyle = lg; cx.beginPath(); cx.arc(0, 0, pr, 0, TAU); cx.fill(); cx.restore();
 }
 
 /* ═══════════════ EFFECT SPINE ═══════════════
@@ -11426,6 +11444,7 @@ function draw(rdt) {
        geometry audit is where that gets caught. */
     RT.rdt = dt;
     RT.hide = [{ x: RT.px, y: RT.py, k: RT.px + RT.py, h: 44 }];
+    RT.marks = [];                                       // talk marks, drawn in screen space after the veil
     RT.foes.forEach(function (f) { if (!f.dead) ents.push({ k: f.x + f.y, fn: function () { drawFoe(cx, f); } }); });
     (place().npcs || []).forEach(function (id) { var n = NPCS[id]; if (n) ents.push({ k: npcX(n) + npcY(n), fn: function () { drawNpc(cx, n); } }); });
     (place().props || []).forEach(function (o, oi) {
@@ -11453,6 +11472,7 @@ function draw(rdt) {
     cx.restore();                // /B
     drawBloom(cx);
     if (RT.hurt > 0 || RT.dead) { cx.fillStyle = 'rgba(150,10,25,' + (RT.dead ? 0.34 : RT.hurt * 0.3) + ')'; fullRect(cx); }
+    drawTalkMarks(cx);
     drawPrompt(cx);
     // The world drains away until the letters are the only light. mono has
     // been set by the Verse and read by nothing since it was written; the
@@ -12721,7 +12741,7 @@ var PLACES = {
         ],
         npcs: ['bern', 'child', 'widow'],
         looks: [
-            { x: 12.4, y: 8.2, n: 'A lamp on a sill', d: 'Set out on the ninth night for the man who walked out past the fence. Every house on the square has one. Nobody has ever set out a second.' },
+            { x: 4.6, y: 2.6, n: 'A lamp on a sill', d: 'Set out on the ninth night for the man who walked out past the fence. Every house on the square has one. Nobody has ever set out a second.' },
             { x: 7.2, y: 6.6, n: 'The playbill', d: 'THE NINTH NIGHT. A true account. The same four hundredth time.\n\nUnder the cast list somebody has pencilled your name, and then gone over it twice, harder.' }
         ],
         exits: [
@@ -12731,7 +12751,9 @@ var PLACES = {
             { x: 8.5, y: 14.3, w: 3, to: 'lane', n: 'the lane, north', dir: [0, -1] },
             { x: 2.1, y: 3.6, w: 1.6, to: 'bernhouse', n: 'Bern\'s door' },
             { x: 15, y: 3.8, w: 1.6, to: 'chandler', n: 'the chandler\'s shop' },
-            { x: 8.7, y: 6.6, w: 2.4, to: 'a3sq', n: 'up the steps, onto the stage', needs: 'a3ready', over: 1,
+            // a full tile clear of the playbill at 7.2. This band is the only
+            // point of no return in the game and you enter it by walking
+            { x: 9.2, y: 6.6, w: 1.6, to: 'a3sq', n: 'up the steps, onto the stage', needs: 'a3ready', over: 1,
               shut: function () {
                   return S.a3.ending ? 'They have the boards up on the cart already. It was last night now.'
                                      : 'They are still building it. It is not tonight yet.';
@@ -12741,7 +12763,10 @@ var PLACES = {
     /* ── interiors. Somewhere with a roof on it, and one lamp that is
           not for anybody, which is the only one in the game that is not. ── */
     bernhouse: {
-        n: 'Bern\'s house', sub: 'he has kept the part for forty years and never played it',
+        // was "he has kept the part for forty years and never played it",
+        // which the man himself contradicts in this room: "I played him
+        // thirty years". The shop item and the cast comment agree with him.
+        n: 'Bern\'s house', sub: 'thirty years in the part, and his father before him',
         floor: 'room', calm: 1, mends: 1, w: 11, h: 9, night: 1, indoor: 1,
         props: [
             /* North and west only. In this projection the two faces
@@ -12874,7 +12899,7 @@ var PLACES = {
             { t: 'post', b: [0.45, 22.4, 0.6, 0.6] }, { t: 'post', b: [9.95, 22.4, 0.6, 0.6] },
             { t: 'tree', b: [1.5, 18.4, 1.4, 1.4] }, { t: 'tree', b: [8.1, 15.2, 1.4, 1.4] },
             { t: 'tree', b: [1.3, 12.2, 1.4, 1.4] }, { t: 'hedge', b: [8.4, 20.2, 1.6, 1.2] },
-            { t: 'cairn', b: [6.0, 9.4, 1.2, 1.2] },
+            { t: 'cairn', b: [3.4, 9.4, 1.2, 1.2] },              // west of the walking line, which is what its look says
             { t: 'stone', b: [2.4, 6.8, 1, 1] }, { t: 'stone', b: [7.8, 4.4, 1, 1] },
             { t: 'cairn', b: [3.6, 2.6, 1.2, 1.2] }
         ],
@@ -12900,7 +12925,12 @@ var PLACES = {
             { t: 'stone', b: [4.2, 3.6, 1, 1] }, { t: 'stone', b: [10.2, 4.2, 1, 1] },
             { t: 'stone', b: [3.8, 8.2, 1, 1] }, { t: 'stone', b: [10.6, 8.4, 1, 1] },
             { t: 'stone', b: [7.2, 2.2, 1, 1] },
-            { t: 'tree', b: [1.4, 1.6, 1.4, 1.4] }, { t: 'tree', b: [12.2, 10.2, 1.4, 1.4] }
+            /* The second tree used to stand at 12.2,10.2, which is south-east
+               of the ring, and in this projection that is in front of it:
+               its canopy took the south-east stone out entirely and the
+               ring the whole place is about read as four stones and a
+               tree. Due east now, level with the gap, hiding nothing. */
+            { t: 'tree', b: [1.4, 1.6, 1.4, 1.4] }, { t: 'tree', b: [12.2, 4.6, 1.4, 1.4] }
         ],
         looks: [
             { x: 7.6, y: 7.2, n: 'The ground', d: 'The stones are not scattered. They are set, in a ring, with the gap facing south, facing the road, facing the town.\n\nSomebody sat down in the middle of this and made it tidy, and then it snowed for four hundred years.', key: 'hollowground' },
@@ -13029,7 +13059,7 @@ var NPCS = {
             if (!S.seen.shep1) {
                 S.seen.shep1 = 1;
                 return [['', 'He is singing the last verse to nobody, the way you sing when your hands are busy.'],
-                        ['The shepherd', '"...not for the man who came back down — but for the girl who never will."'],
+                        ['The shepherd', '"...not for the man who came back down, but for the girl who never will."'],
                         ['You', 'That is not how it goes.'],
                         ['The shepherd', 'It is how my mother sang it.'],
                         ['You', 'Where did she get it?'],
@@ -13104,7 +13134,7 @@ var NPCS = {
                               go: [['', 'She looks up. This is the first thing you have said that she has to think about.'],
                                    ['The chandler', 'I do. Walk up, light it, walk back.'],
                                    ['You', 'Why that far out?'],
-                                   ['The chandler', 'Because that is where the fence stops. You put the last one where the last one goes.'],
+                                   ['The chandler', 'Because that is as far as anybody goes. You put the last one where the last one goes.'],
                                    ['You', 'It faces the town.'],
                                    ['The chandler', 'They all face the town.'],
                                    ['', 'She says it without hearing it. A lamp set out for a man who walked away, turned so it lights the way back, by somebody who has never once walked past it.']] }
@@ -13710,10 +13740,22 @@ function pw() { return place().w || GRID; }
 function ph() { return place().h || GRID; }
 
 /* solid props: simple AABB rejection so you slide along walls */
+/* `ins` says what fraction of its footprint a prop actually is: a tree's
+   trunk is 0.34 of the 1.4 tile square it is authored in, a post 0.42 of
+   its 0.6. body() has always drawn at that scale and blocked() has always
+   collided at 100%, so a slender prop stopped you a full tile-width short
+   of a thirteen pixel trunk. One reader now, and the number means the
+   same thing to both. */
+function solidBox(o) {
+    var b = o.b, k = propDef(o.t).ins;
+    if (!k || k >= 1) return b;
+    var iw = b[2] * k, ih = b[3] * k;
+    return [b[0] + (b[2] - iw) / 2, b[1] + (b[3] - ih) / 2, iw, ih];
+}
 function blocked(x, y, r) {
     var ps = place().props || [];
     for (var i = 0; i < ps.length; i++) {
-        var b = ps[i].b;
+        var b = solidBox(ps[i]);
         if (x + r > b[0] && x - r < b[0] + b[2] && y + r > b[1] && y - r < b[1] + b[3]) return true;
     }
     return false;
@@ -13745,7 +13787,10 @@ function stepTravel() {
     if (!e) { RT.armed = true; RT.nagged = null; return; }
     if (!RT.armed) return;
     if (exitOpen(e)) { gotoPlace(e.to, false); return; }
-    if (RT.nagged !== e.n) { RT.nagged = e.n; say(shutText(e), 'dim'); hudNudge('breath'); }
+    // no hudNudge: that is the flash for a cost you cannot pay, and every
+        // other caller is a refused spend. A locked door is not about breath,
+        // and the loft one fires mid-fight when the bar is what you are reading
+        if (RT.nagged !== e.n) { RT.nagged = e.n; say(shutText(e), 'dim'); }
 }
 /* never wake up inside a wall */
 function unstick() {
@@ -13812,6 +13857,10 @@ function gotoPlace(id, fresh) {
         RT.py += back.h ? 0 : (back.y < H / 2 ? 1.2 : -1.2); }
     else { RT.px = W / 2; RT.py = H - 2.2; }
     RT.moveTo = null; RT.armed = false; RT.nagged = null;
+    // the prompt belonged to the place you just left: a second E in the same
+    // frame used to re-enter the place you were already in, which finds no
+    // back exit and teleports you to its default arrival point
+    RT.prompt = null; RT.mapOpen = false;
     RT.world.npc = {};                       // everybody back to their own doorstep
     unstick();
     stepCamera(0, true);                     // the eye arrives with you, it does not pan in from the last place
@@ -13868,10 +13917,16 @@ function stepNpcs(dt) {
         }
         var sp = (n.speed || 1.5) * dt;
         var nx = w.x + dx / d * sp, ny = w.y + dy / d * sp;
-        // people do not walk through walls either
-        if (!blocked(nx, w.y, 0.28)) w.x = nx;
-        if (!blocked(w.x, ny, 0.28)) w.y = ny;
-        w.x = clamp(w.x, 0.6, pw() - 0.6); w.y = clamp(w.y, 0.6, ph() - 0.6);
+        /* People do not walk through walls either, and they collide the
+           way you do. The radius was 0.28 against your 0.3 and the clamp
+           0.6 against your 0.5, which left eight gaps in the game a
+           walker fits through and you do not. The clamp also ran AFTER
+           the two tests, so it was the one thing in the file that could
+           put somebody inside a prop; moveActor has always clamped first
+           for exactly that reason. */
+        nx = clamp(nx, 0.5, pw() - 0.5); ny = clamp(ny, 0.5, ph() - 0.5);
+        if (!blocked(nx, w.y, 0.3)) w.x = nx;
+        if (!blocked(w.x, ny, 0.3)) w.y = ny;
         // which way they face is a SCREEN question, and screen x is (x - y).
         // Testing dx alone got a quarter of all directions backwards, and
         // every one of them was somebody walking mostly along y, which on
@@ -14104,7 +14159,13 @@ function propDef(t) { return PROP[t] || PROP._; }
    Painters work in LOCAL space: the centre of the prop's ground
    footprint is the origin, and up is negative y. `c.lx/c.ly` map a
    point inside the footprint, in tiles, into that space. */
-var SPRITES = {}, SPRITE_LRU = [], SPRITE_BUDGET = 10 << 20;   // bytes of backing store, not entries
+/* 14, not 10. Every prop sprite the game can build totals 11.68 MB, so a
+   10 MB cap meant the cache sat at its ceiling from mid-game on and threw
+   something away on every transition that built anything. It got away
+   with it because the two coldest entries are the prologue stage and the
+   act 3 square, but the margin was under a megabyte and a house is a
+   third of one. The audit fails the build if the total ever passes this. */
+var SPRITES = {}, SPRITE_LRU = [], SPRITE_BUDGET = 14 << 20;   // bytes of backing store, not entries
 var SPRITE_BYTES = 0, SPRITE_PAD = 30;                          // pad: eaves, canopies, anything that overhangs
 function hash2(a, b, c) {
     var n = (Math.round(a * 16) + 1013) | 0;
@@ -14133,7 +14194,6 @@ function spriteCtx(t, bw, bh, v) {
         rrx: rrx, rry: rry, sk: sk, tx: 0, ty: -d.h,
         x0: -sk, y0: -rry, x1: rrx, y1: (bw - bh) * TILE_H / 4,
         x2: sk, y2: rry, x3: -rrx, y3: -(bw - bh) * TILE_H / 4,
-        fw: Math.hypot(sk + rrx, rry + (bw - bh) * TILE_H / 4) || 1,
         lx: function (u, q) { return (u - q) * (TILE_W / 2) - sk; },
         ly: function (u, q) { return (u + q) * (TILE_H / 2) - rry; },
         anchors: {},
@@ -14308,10 +14368,14 @@ function qp(quad, u, v) {
    number of shades per colour is what makes a palette a palette. */
 var SHADE = {};
 /* A band running across a face, following the face. Every one of these
-   was a level `px()` rect sized off `c.fw`, which is the LENGTH of a
+   was a level `px()` rect sized off `c.fw`, which was the LENGTH of a
    sloped iso edge and not a horizontal span — so the band came out too
    long, level, and sitting on bare wall at one end while the face it
-   belonged to ran away underneath it. Take the points off the quad. */
+   belonged to ran away underneath it. Take the points off the quad.
+
+   `c.fw` is gone now. The cart outlived this comment by using it for its
+   wheels and putting the front one on its own tailgate, so the field has
+   been removed rather than left lying about for the next painter. */
 function bar(g, quad, u0, u1, v, w, col) {
     var a = qp(quad, u0, v), b = qp(quad, u1, v);
     line(g, a[0], a[1], b[0], b[1], col, w);
@@ -15184,7 +15248,7 @@ PAINT.sack = function (g, c) {
     if (!empty) { px(g, rrx * 0.3, rry * 0.3, 3, 2, '#c8b98a'); px(g, rrx * 0.3 + 3, rry * 0.4, 2, 2, '#b3a479'); }   // spilled grain
 };
 PAINT.cart = function (g, c) {
-    var rng = c.rng, hgt = c.hgt, fw = c.fw, ty = -hgt;
+    var rng = c.rng, hgt = c.hgt;
     var f = body(g, c, ['#4a3d2a', '#33291c', '#5c4d36']);
     for (var i = 1; i < 6; i++) { var a = qp(f.sw, i / 6, 0), b = qp(f.sw, i / 6, 1); line(g, a[0], a[1], b[0], b[1], 'rgba(0,0,0,.35)', 1); }
     poly(g, f.top, '#5a4b34');
@@ -15198,9 +15262,17 @@ PAINT.cart = function (g, c) {
         var rq = r / 4, rx = c.x3 + (c.x2 - c.x3) * rq, ry2 = c.y3 + (c.y2 - c.y3) * rq;
         line(g, rx, ry2 - hgt, rx, ry2 - hgt - 12, '#4a3c28', 2);
     }
-    // two wheels with real spokes, and a shaft the horse has not been in for a while
-    [[-0.3, 9], [0.32, 8]].forEach(function (w) {
-        var wx = fw * w[0], wy = ty + hgt * 0.9, wr = w[1];
+    /* two wheels with real spokes, and a shaft the horse has not been in
+       for a while. They used to be placed at fw * u, and c.fw is the
+       LENGTH of the sloped south-west edge, not a horizontal span: 12%
+       too long, centred on the origin instead of on that side, so the
+       rear wheel sat on the side of the cart and the front one was
+       entirely on its tailgate, fifteen pixels off the ground. bar()
+       exists because this exact mistake shipped once before. Take the
+       points off the footprint quad like everything else does. */
+    [[0.26, 9], [0.74, 8]].forEach(function (w) {
+        var wp = qp(f.sw, w[0], 1), wr = w[1];
+        var wx = wp[0], wy = wp[1] - wr + 1;
         g.strokeStyle = '#241c12'; g.lineWidth = 3;
         g.beginPath(); g.arc(wx, wy, wr, 0, TAU); g.stroke();
         g.strokeStyle = '#3e3220'; g.lineWidth = 1;
@@ -15484,8 +15556,13 @@ PAINT.hearth = function (g, c) {
     px(g, o0[0] - 4, o0[1] - 5, (o1[0] - o0[0]) + 8, 5, '#57524c');              // the lintel stone
     px(g, o0[0] - 4, o0[1] - 6, (o1[0] - o0[0]) + 8, 1, '#6c665e');
     dither(g, [[o0[0] - 6, o0[1] - 14], [o1[0] + 6, o1[1] - 14], [o1[0] + 6, o1[1] - 4], [o0[0] - 6, o0[1] - 4]], 'rgba(6,4,4,.6)', 0.4, rng);   // soot up the breast
-    // logs and ash in the grate
-    var bx = (o0[0] + o1[0]) / 2, by = o2[1] - 5;
+    /* logs and ash in the grate. bx is the middle of the opening, so by
+       has to be the floor of the opening AT THE MIDDLE. It used to take
+       the y off o2, which is the opening's bottom edge at its RIGHT end,
+       and the foot of this face slopes half a pixel per pixel, so the
+       grate landed five pixels below the floor of its own fireplace and
+       the logs marched further out westward from there. */
+    var bx = (o0[0] + o1[0]) / 2, by = qp(f.sw, 0.5, 1)[1] - 5;
     c.at('fire', bx, by);                                                       // the fire burns where the logs are
     g.fillStyle = '#5a5148'; g.beginPath(); g.ellipse(bx, by + 2, (o1[0] - o0[0]) * 0.4, 4, 0, 0, TAU); g.fill();
     for (var l = 0; l < 4; l++) {
@@ -15562,7 +15639,15 @@ function lightsOf(p) {
             // the `se` face runs from the south corner at u 0 to the east
             // corner at u 1, and the window centre sits just past lampU
             var u = houseSillU(propVar('house', b)) + 0.07;
-            out.push({ x: b[0] + b[2] + 0.2, y: b[1] + b[3] * (1 - u), r: 3.6, c: '255,196,110', i: 0.95 });
+            /* Clamped inside the floor. The sill is 0.2 past the east
+               face, and for a house built against the east edge that put
+               the light off the world: five of the twelve in the game,
+               each spilling half its pool onto the black beyond the
+               ground. Pull it back to the brink rather than moving the
+               house, which is where the painter draws the window. */
+            var W = p.w || GRID, H = p.h || GRID;
+            out.push({ x: Math.min(b[0] + b[2] + 0.2, W - 0.35), y: clamp(b[1] + b[3] * (1 - u), 0.35, H - 0.35),
+                       r: 3.6, c: '255,196,110', i: 0.95 });
         }
         else if (o.t === 'lamp') out.push({ x: b[0] + b[2] / 2, y: b[1] + b[3] / 2, r: 3.2, c: '255,206,120', i: 1 });
         else if (o.t === 'foot') out.push({ x: b[0] + b[2] / 2, y: b[1] + b[3] / 2, r: 4.4, c: '255,190,90', i: 0.7 });
@@ -15572,6 +15657,14 @@ function lightsOf(p) {
     (p.lights || []).forEach(function (l) { out.push(l); });
     // and the one you set down yourself, which is the only lamp in the
     // game that is anywhere somebody chose rather than anywhere a house is
+    /* The widow is carrying a lit lamp. It was a gradient inside drawNpc,
+       which is under the veil, so the one lamp in the game somebody is
+       actually holding threw half the light of a lamp on a sill. */
+    (p.npcs || []).forEach(function (id) {
+        var n = NPCS[id], pr = NPC_PROP[id];
+        if (!n || !pr || !pr.glow) return;
+        out.push({ x: npcX(n), y: npcY(n), r: 1.9, c: '255,200,110', i: 0.8 });
+    });
     var mine = RT && lampAt(RT.place);
     if (mine) out.push({ x: mine.x, y: mine.y, r: 3.0, c: '255,206,120', i: 1 });
     return out;
@@ -15581,7 +15674,9 @@ function drawLights(cx) {
     // Inside, the dark is warmer and there is less of it. You are in a
     // room with a fire in it, not standing in a field.
     if (p.indoor) cx.fillStyle = 'rgba(14,8,10,.34)';
-    else cx.fillStyle = 'rgba(6,5,14,' + (p.night >= 2 ? 0.66 : 0.5) + ')';
+    // `dark` means the lantern is the only light here, and it now says so
+    // in the one place that decides how much dark there is
+    else cx.fillStyle = 'rgba(6,5,14,' + (p.night >= 2 ? 0.66 : p.dark ? 0.6 : 0.5) + ')';
     /* -ight drops the night by 60% for fifty milliseconds. The corners
        of the room, which are dark in every other frame of this game,
        are visible, and so is anybody standing in them. That is a
@@ -15795,10 +15890,22 @@ function drawNpc(cx, n) {
        drawn. Half-width is the sprite's, not the old robe's. */
     if (!w2.moving && GESTURE[n.id]) GESTURE[n.id](cx, n.small ? 7 : 9, h, RT.t);
     cx.restore();
-    // a quiet mark so you know they will talk to you
-    cx.save(); cx.globalAlpha = 0.5 + Math.sin(RT.t * 2.6 + w2.y) * 0.2;
-    cx.fillStyle = '#c9a94a'; cx.font = 'bold 9px "Press Start 2P", monospace'; cx.textAlign = 'center';
-    cx.fillText('·', sx, sy - h - 12 - bob); cx.restore(); cx.textAlign = 'left';
+    /* The quiet mark that says they will talk to you is queued, not
+       drawn. Everything inside drawNpc lands in the ents pass, which
+       runs BEFORE drawLights lays the night down over the whole canvas,
+       so the mark was losing half its contrast (two thirds in the
+       hollow) and measured about three lit pixels. drawPrompt carries
+       the same information and is drawn after the vignette and loses
+       none of it, so the mark goes with it. */
+    RT.marks.push({ x: sx, y: sy - h - 12 - bob, p: w2.y });
+}
+function drawTalkMarks(cx) {
+    for (var i = 0; i < RT.marks.length; i++) {
+        var m = RT.marks[i];
+        cx.save(); cx.globalAlpha = 0.5 + Math.sin(RT.t * 2.6 + m.p) * 0.2;
+        cx.fillStyle = '#c9a94a'; cx.font = 'bold 9px "Press Start 2P", monospace'; cx.textAlign = 'center';
+        cx.fillText('·', m.x, m.y); cx.restore(); cx.textAlign = 'left';
+    }
 }
 function drawPrompt(cx) {
     var o = RT.prompt; if (!o || RT.dialog) return;

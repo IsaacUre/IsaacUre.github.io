@@ -124,7 +124,9 @@ var CASES = [
     { p: 'village',   x: 0.5,  y: 6.6,  hidden: 1, what: 'behind Grelling’s west house' },
     // clear: nothing sorts after you at all, so nothing may thin
     { p: 'square',    x: 8.5,  y: 13.6, hidden: 0, what: 'out in the open, south of the well' },
-    { p: 'arena',     x: 8.5,  y: 8.5,  hidden: 0, what: 'the empty arena' },
+    // not the arena: it is endless:1, so waves spawn while the probe runs
+    // and the frame changes for reasons that have nothing to do with a roof
+    { p: 'road',      x: 5.4,  y: 17.0, hidden: 0, what: 'the middle of the road' },
     { p: 'lane',      x: 6.2,  y: 14.5, hidden: 0, what: 'the open lane' },
     { p: 'hollow',    x: 7.5,  y: 11.0, hidden: 0, what: 'the open hollow' },
     { p: 'stage',     x: 6.5,  y: 8.0,  hidden: 0, what: 'downstage, well clear of the curtain' },
