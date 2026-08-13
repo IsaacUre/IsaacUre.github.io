@@ -59,6 +59,16 @@ function isoXB(x, y) { return ORX + (x - y) * (TILE_W / 2); }
 function isoYB(x, y) { return ORY + (x + y) * (TILE_H / 2); }
 function isoX(x, y) { return ORX + (x - y) * (TILE_W / 2) - cam().x; }
 function isoY(x, y) { return ORY + (x + y) * (TILE_H / 2) - cam().y; }
+/* Which way a figure faces, given a direction in WORLD space. Every
+   figure in the game is mirrored with cx.scale(-1, 1), which is a flip in
+   SCREEN x, and screen x is (x - y). Three separate call sites tested
+   sign(dx) alone, which is right for three quadrants and backwards for
+   the fourth: the two disagree on exactly 25% of directions, and every
+   one of them is somebody walking mostly along y, which on screen is
+   left or right. The child was drawn walking backwards 44% of the time
+   because one of her legs has dx = 0 authored and the sign fell out of
+   float noise. One helper now, so the next drawer cannot get it wrong. */
+function faceX(dx, dy) { return (dx - dy) >= 0 ? 1 : -1; }
 function screenToWorld(sx, sy) {
     var c = cam(), pz = (RT && RT.fx) ? fxOf('punch') : null;
     /* The zoom punch scales the whole world about a screen point, so
@@ -703,7 +713,14 @@ function setLamp() {
     // setting one down has to actually cost you the lamp or you have as
     // many as you have sills
     if (!takeItem('lamp', 1)) return false;
-    S.items.lamps[here] = 1; sSave();
+    /* Where you put it, not just that you did. This used to be a bare 1,
+       and nothing outside the bag panel ever read it: no prop, no sprite,
+       no light. In a game named after a lamp on a sill you could set one
+       down on the marker stone, be told it burns exactly as well out here
+       as it does on a sill, and watch the stone not change at all. An
+       array is still truthy, so lampsElsewhere, takeLamp and fillBag are
+       untouched; lampAt() below handles a 1 from an older save. */
+    S.items.lamps[here] = [+RT.px.toFixed(2), +RT.py.toFixed(2)]; sSave();
     if (here === 'mark') {
         // past the fence. Nobody has ever set out a second lamp, and
         // nobody has ever set one out here.
@@ -711,6 +728,37 @@ function setLamp() {
     }
     if (here === 'square') return 'You set it on a sill with all the others. It looks like all the others.';
     return 'You set the lamp down. It throws about a yard of light and the rest of it stays dark.';
+}
+/* The lamp itself, standing on the ground where you put it. Same rows the
+   widow carries, so it is recognisably the same object in her hand and on
+   your sill, and it gets the shadow every other solid thing has. */
+var LAMP_PAL = null;
+function drawSetLamp(cx, at) {
+    var sx = isoX(at.x, at.y), sy = isoY(at.x, at.y) + TILE_H / 2;
+    if (sx < -40 || sx > VW + 40 || sy < -40 || sy > VH + 40) return;
+    if (!LAMP_PAL) LAMP_PAL = pxPal('#2e2a26', '#c9a94a', '#d8b48c', '#241c26');
+    cx.save();
+    cx.fillStyle = 'rgba(0,0,0,.4)';
+    cx.beginPath(); cx.ellipse(sx, sy, 7, 3, 0, 0, TAU); cx.fill();
+    blit(cx, bake('prop.lamp.set', PROP_LAMP, LAMP_PAL), sx, sy);
+    // the flame itself, which is the one part that must not be a still frame
+    var f = 0.72 + Math.sin(RT.t * 7.3 + at.x) * 0.14;
+    cx.globalCompositeOperation = 'lighter';
+    var g = cx.createRadialGradient(sx, sy - 9, 1, sx, sy - 9, 22);
+    g.addColorStop(0, 'rgba(255,206,120,' + (0.34 * f).toFixed(3) + ')');
+    g.addColorStop(1, 'rgba(255,190,90,0)');
+    cx.fillStyle = g; cx.beginPath(); cx.arc(sx, sy - 9, 22, 0, TAU); cx.fill();
+    cx.restore();
+}
+/* Where the lamp you left in this place is standing, or null. A save
+   written before lamps had positions stored a bare 1: put that one in the
+   middle of the floor rather than dropping it, so an old save still sees
+   the thing it left behind. */
+function lampAt(id) {
+    var v = S.items.lamps[id];
+    if (!v) return null;
+    if (v === 1 || !v.length) return { x: (PLACES[id].w || GRID) / 2, y: (PLACES[id].h || GRID) / 2 };
+    return { x: v[0], y: v[1] };
 }
 /* lamps left in OTHER places. Counting the one on the sill in this room made
    the bag say "1 set down elsewhere" directly above the row offering to take
@@ -1378,11 +1426,17 @@ GROUND.hollow = function (g, f) {
        every edge out in white, so the ground looks ruled, like somebody
        set it out. And there is not one living thing scattered on it. */
     var fr = f.fr;
-    for (var v = 0; v <= f.gh; v++) {
+    /* On the EDGES, at k - 0.5, not through the middles at integer k. The
+       tile pass draws tile (x,y) as the diamond with corners at world
+       (x,y),(x+1,y),(x+1,y+1),(x,y+1), so the edges are the half-integer
+       lines. Ruling the integers put the white lattice exactly TILE_H/2
+       below the black one and gave the one ground that is meant to look
+       ruled two interleaved grids at half-tile pitch. */
+    for (var v = -0.5; v <= f.gh - 0.5; v++) {
         g.strokeStyle = 'rgba(178,190,214,.16)'; g.lineWidth = 1;
         g.beginPath(); g.moveTo(f.px(0, v), f.py(0, v)); g.lineTo(f.px(f.gw, v), f.py(f.gw, v)); g.stroke();
     }
-    for (var u = 0; u <= f.gw; u++) {
+    for (var u = -0.5; u <= f.gw - 0.5; u++) {
         g.strokeStyle = 'rgba(178,190,214,.16)'; g.lineWidth = 1;
         g.beginPath(); g.moveTo(f.px(u, 0), f.py(u, 0)); g.lineTo(f.px(u, f.gh), f.py(u, f.gh)); g.stroke();
     }
@@ -1465,7 +1519,13 @@ function buildFloor(kind, gw, gh) {
     var box = placeBox(gw, gh);
     var cv = document.createElement('canvas'); cv.width = box.w; cv.height = box.h;
     var g = cv.getContext('2d');
-    var seed = 9; function fr() { seed = (seed * 1103515245 + 12345) >>> 0; return (seed >>> 8) / 16777216; }
+    /* Math.imul, not `*`. A uint32 times 1103515245 reaches 2^62, a double
+       carries 53 bits of mantissa, and the low nine bits were being rounded
+       away before `>>> 0` ever saw them. That is not an LCG with a 2^32
+       period: from seed 9 it visited 5078 states and then cycled on 419
+       forever. GROUND.town draws 16188 numbers for the square, so 71% of
+       the cobbles under the hub were coming out of those 419. */
+    var seed = 9; function fr() { seed = (Math.imul(seed, 1103515245) + 12345) >>> 0; return (seed >>> 8) / 16777216; }
     var pal = FLOOR_PAL[kind];
     g.fillStyle = '#07060a'; g.fillRect(0, 0, box.w, box.h);
     /* Pass one: the tiles, which is what keeps the iso grid legible.
@@ -2562,7 +2622,22 @@ function downPlayer() {
 }
 function revive() {
     RT.dead = false; RT.hp = RT.hpm; RT.breath = stats().breathMax; RT.iframe = 1.6;
+    /* gotoPlace does breath and winded on one line. This only did the
+       first half, and the lockout does not even run down while you are
+       dead: `RT.winded -= dt` lives in stepPlayer, which step() skips on
+       the dead branch. So a 1.5s silence expired twice over during the
+       2.2s death animation and was handed back to you intact, and you
+       got up with a full bar reading WINDED and no verbs for 1.5 of
+       your 1.6 invulnerable seconds. */
+    RT.winded = 0;
     RT.px = pw() / 2; RT.py = ph() - 2;
+    /* A teleport invalidates a click-to-move destination, which is why
+       gotoPlace nulls it. Left standing, the first live frame walked you
+       back toward the tile you clicked before you died, which is by
+       definition the tile you were fighting on, with i-frames burning. */
+    RT.moveTo = null; RT.armed = false; RT.nagged = null;
+    unstick();                // the one teleport in the game that had no guard behind it. All 13 spawn points are clear today; the next place authored is not this function's problem any more
+    stepCamera(0, true);      // the eye arrives with you: dying at one end of the road and getting up at the other used to pan the whole map
     RT.foes.forEach(function (f) { f.stacks.length = 0; });
     /* A lapse is the commonest way to die, so the wreckage of the lapse
        that killed you is on screen when you go down; stepFx keeps
@@ -2894,7 +2969,7 @@ var P_PLAYER = null;                 // built on first draw, so hex2rgb exists
 function drawActor(cx) {
     var sx = isoX(RT.px, RT.py), sy = isoY(RT.px, RT.py) + TILE_H / 2;
     var bob = RT.walking ? Math.sin(RT.t * 12) * 1.8 : Math.sin(RT.t * 2.2) * 0.7;
-    var west = Math.cos(RT.face) < 0 ? -1 : 1;
+    var west = faceX(Math.cos(RT.face), Math.sin(RT.face));   // screen x is (x - y), see faceX
     var cast = RT.casting ? clamp(RT.casting.t / RT.casting.max, 0, 1) : 0;
     /* The three families that reach the actor, read here and written
        nowhere else in this function. -eat: `fed` is the consumer
@@ -5414,7 +5489,7 @@ function drawMuzzle(cx) {
     if (!C || !C.fam) return;
     var k = clamp(C.t / C.max, 0, 1), P = fampx()[C.fam];
     var big = C.max > 0.18 ? 1.9 : 1;      // a rhyme is not aimed at anything
-    var west = Math.cos(RT.face) < 0 ? -1 : 1;
+    var west = faceX(Math.cos(RT.face), Math.sin(RT.face));   // screen x is (x - y), see faceX
     var bob = RT.walking ? Math.sin(RT.t * 12) * 1.8 : Math.sin(RT.t * 2.2) * 0.7;
     var hx = Math.round(isoX(RT.px, RT.py) + west * 4);
     var hy = Math.round(isoY(RT.px, RT.py) + TILE_H / 2 - 38 - bob);
@@ -11358,6 +11433,10 @@ function draw(rdt) {
         ents.push({ k: o.b[0] + o.b[2] / 2 + o.b[1] + o.b[3] / 2, fn: function () { drawProp(cx, o); } });
     });
     ents.push({ k: RT.px + RT.py, fn: function () { drawActor(cx); } });
+    // the lamp you set down. In the sort like everything else, so you can
+    // walk behind it and it stays where you left it
+    var myLamp = lampAt(RT.place);
+    if (myLamp) ents.push({ k: myLamp.x + myLamp.y, fn: function () { drawSetLamp(cx, myLamp); } });
     ents.sort(function (a, b) { return a.k - b.k; });
     ents.forEach(function (e) { e.fn(); });
     drawLights(cx);
@@ -12646,7 +12725,10 @@ var PLACES = {
             { x: 7.2, y: 6.6, n: 'The playbill', d: 'THE NINTH NIGHT. A true account. The same four hundredth time.\n\nUnder the cast list somebody has pencilled your name, and then gone over it twice, harder.' }
         ],
         exits: [
-            { x: 8.5, y: 14.3, w: 3, to: 'lane', n: 'the lane, north' },
+            // the one door in the game whose name and whose wall disagree:
+            // Wick's north side is built up, so you leave for the lane off
+            // the south edge. `dir` tells the map what the name says.
+            { x: 8.5, y: 14.3, w: 3, to: 'lane', n: 'the lane, north', dir: [0, -1] },
             { x: 2.1, y: 3.6, w: 1.6, to: 'bernhouse', n: 'Bern\'s door' },
             { x: 15, y: 3.8, w: 1.6, to: 'chandler', n: 'the chandler\'s shop' },
             { x: 8.7, y: 6.6, w: 2.4, to: 'a3sq', n: 'up the steps, onto the stage', needs: 'a3ready', over: 1,
@@ -12697,7 +12779,7 @@ var PLACES = {
         n: 'The lane out of Wick', sub: 'in the play it is a day\'s walk',
         floor: 'mill', w: 13, h: 17, night: 1,
         props: [
-            { t: 'fence', b: [0.6, 4, 0.5, 9] }, { t: 'fence', b: [11.6, 3, 0.5, 3.2] }, { t: 'fence', b: [11.6, 10.2, 0.5, 2.8] },
+            { t: 'fence', b: [0.6, 4, 0.5, 9] }, { t: 'fence', b: [11.9, 3, 0.5, 3.2] }, { t: 'fence', b: [11.9, 10.2, 0.5, 2.8] },
             { t: 'tree', b: [2.2, 6.4, 1.4, 1.4] }, { t: 'tree', b: [9.4, 10.2, 1.4, 1.4] },
             { t: 'stone', b: [4.6, 12.6, 1, 1] },
             // the last lamp of Wick. The town lights the lane as far as it
@@ -12780,8 +12862,8 @@ var PLACES = {
         floor: 'road', w: 11, h: 34, night: 1,
         props: [
             { t: 'lamp', b: [8.2, 30.4, 0.5, 0.5] },                       // the last lamp in the world, off the walking line
-            { t: 'fence', b: [0.8, 23.6, 0.5, 8.4] }, { t: 'fence', b: [9.7, 23.6, 0.5, 8.4] },
-            { t: 'post', b: [0.9, 22.4, 0.6, 0.6] }, { t: 'post', b: [9.6, 22.4, 0.6, 0.6] },
+            { t: 'fence', b: [0.5, 23.6, 0.5, 8.4] }, { t: 'fence', b: [10.0, 23.6, 0.5, 8.4] },
+            { t: 'post', b: [0.45, 22.4, 0.6, 0.6] }, { t: 'post', b: [9.95, 22.4, 0.6, 0.6] },
             { t: 'tree', b: [1.5, 18.4, 1.4, 1.4] }, { t: 'tree', b: [8.1, 15.2, 1.4, 1.4] },
             { t: 'tree', b: [1.3, 12.2, 1.4, 1.4] }, { t: 'hedge', b: [8.4, 20.2, 1.6, 1.2] },
             { t: 'cairn', b: [6.0, 9.4, 1.2, 1.2] },
@@ -12887,9 +12969,18 @@ var NPCS = {
         }
     },
     child: {
-        n: 'A child with a skipping rope', x: 10.6, y: 9.8, col: ['#4a5a7a', '#6a7a9a', '#e8c8a0'], small: 1,
+        n: 'A child with a skipping rope', x: 4.6, y: 10, col: ['#4a5a7a', '#6a7a9a', '#e8c8a0'], small: 1,
+        /* She used to loop through the well. Her last leg ran east at
+           y = 9.9, and the well's blocked band at the npc radius is
+           y 9.12..11.28, so she was refused after ten frames, the
+           give-up branch in stepNpcs skipped her home, and the loop was
+           three legs and a wall: eleven give-ups a minute, seven seconds
+           of it standing still inside the well where nothing could be
+           seen of her. This loop is the open cobbles west of it. It also
+           keeps her off the lane door, whose prompt she used to take
+           about a third of the time she was near it. */
         // she is described as skipping in her own dialogue, so she skips
-        skip: 1, speed: 1.9, path: [[10.6, 9.8], [10.6, 12.6], [7.4, 12.6], [7.4, 10.0]],
+        skip: 1, speed: 1.9, path: [[4.6, 10], [4.6, 12.6], [6.8, 12.6], [6.8, 10]],
         talk: function () {
             S.heard.child = 1;
             if (!S.seen.child1) {
@@ -13025,6 +13116,10 @@ var SCRIPTS = {
     },
     wick: function () {
         if (S.a3.ending) return;                   // it is the morning after. a3Home has its own line.
+        // the square is the hub, so this fired every time you walked back in,
+        // including on the way home from the hollow. Same guard the mill has.
+        if (S.seen.wickIntro) return;
+        S.seen.wickIntro = 1;
         say('<b>Wick.</b> They are building the stage in the square. You have been given the crown and the lantern.', 'big');
         beat(3.4, function () { say('Talk to people. Look at things. Nothing here wants to hurt you.', 'dim'); });
         beat(6.4, function () { say('When you are ready, the lane runs north to the mill.', 'dim'); });
@@ -13762,7 +13857,11 @@ function stepNpcs(dt) {
         if (!blocked(nx, w.y, 0.28)) w.x = nx;
         if (!blocked(w.x, ny, 0.28)) w.y = ny;
         w.x = clamp(w.x, 0.6, pw() - 0.6); w.y = clamp(w.y, 0.6, ph() - 0.6);
-        w.face = dx >= 0 ? 1 : -1; w.moving = 1;
+        // which way they face is a SCREEN question, and screen x is (x - y).
+        // Testing dx alone got a quarter of all directions backwards, and
+        // every one of them was somebody walking mostly along y, which on
+        // screen is left or right. See faceX().
+        w.face = faceX(dx, dy); w.moving = 1;
         if (Math.hypot(tx - w.x, ty - w.y) > d - 0.001) { w.i++; w.tx = null; w.wait = 0.6; }   // stuck against a wall: give up on this leg
     }
 }
@@ -13781,7 +13880,7 @@ function interactables() {
     (p.exits || []).forEach(function (e) {
         var open = exitOpen(e);
         out.push({ k: 'exit', x: e.x, y: e.y, e: e, shut: !open,
-                   label: open ? 'go to ' + e.n : (e.over && S.a3.ending ? 'over' : 'not yet') });
+                   label: open ? e.n : (e.over && S.a3.ending ? 'over' : 'not yet') });
     });
     return out;
 }
@@ -15384,6 +15483,10 @@ function lightsOf(p) {
         else if (o.t === 'hearth') out.push({ x: b[0] + b[2] / 2, y: b[1] + b[3] + 0.4, r: 4.6, c: '255,168,78', i: 1.15 });
     });
     (p.lights || []).forEach(function (l) { out.push(l); });
+    // and the one you set down yourself, which is the only lamp in the
+    // game that is anywhere somebody chose rather than anywhere a house is
+    var mine = RT && lampAt(RT.place);
+    if (mine) out.push({ x: mine.x, y: mine.y, r: 3.0, c: '255,206,120', i: 1 });
     return out;
 }
 function drawLights(cx) {
@@ -15607,7 +15710,19 @@ var MAP_HIDE = { arena: 1, stage: 1, a3sq: 1 };
    square lays them all out. MAP_SEED only pins the root and anything
    the graph cannot reach. */
 var MAP_SEED = { square: [2, 3], stage: [1, 4], arena: [0, 0] };
+/* A hidden place you can still be standing in. Act 3's square IS the
+   square, so the map lights the square while you are in it rather than
+   lighting nothing at all for the whole final act. */
+var MAP_STANDIN = { a3sq: 'square' };
 function exitDir(p, e) {
+    // An exit may say which way it goes. One does: the square's door to
+    // the lane is called "the lane, north" and sits on the square's SOUTH
+    // wall, because the north wall is behind two houses. Read off the
+    // wall it is on, that door pointed south, the lane was placed below
+    // Wick, and the mill then wanted the square's own cell and slid two
+    // columns east onto Wick's row. The map drew a shape the world does
+    // not have.
+    if (e.dir) return e.dir;
     var W = p.w || GRID, H = p.h || GRID;
     var dx = e.x < W * 0.25 ? -1 : e.x > W * 0.75 ? 1 : 0;
     var dy = e.y < H * 0.25 ? -1 : e.y > H * 0.75 ? 1 : 0;
@@ -15617,7 +15732,12 @@ function exitDir(p, e) {
 }
 function buildMap() {
     var pos = {}, taken = {}, k;
-    for (k in MAP_SEED) if (PLACES[k]) { pos[k] = MAP_SEED[k].slice(); taken[pos[k].join(',')] = k; }
+    /* A place nobody can see does not hold a cell. Act 3's square is
+       hidden and used to take the one Grelling wanted, which pushed
+       Grelling a row north of the road it is actually on. Hidden places
+       still get a position, they just do not make anybody else slide. */
+    function hold(id, c) { pos[id] = c; if (!MAP_HIDE[id]) taken[c.join(',')] = id; }
+    for (k in MAP_SEED) if (PLACES[k]) hold(k, MAP_SEED[k].slice());
     var q = ['square'], guard = 0;
     while (q.length && guard++ < 400) {
         var id = q.shift(), p = PLACES[id]; if (!p || !pos[id]) continue;
@@ -15630,7 +15750,7 @@ function buildMap() {
                 if (d[0]) c[1] = pos[id][1] + (slip % 2 ? 1 : -1) * Math.ceil(slip / 2);
                 else c[0] = pos[id][0] + (slip % 2 ? 1 : -1) * Math.ceil(slip / 2);
             }
-            pos[e.to] = c; taken[c.join(',')] = e.to; q.push(e.to);
+            hold(e.to, c); q.push(e.to);
         });
     }
     // anything the graph never reached still gets a cell, off to one side
@@ -15638,7 +15758,7 @@ function buildMap() {
     PLACE_IDS.forEach(function (id) {
         if (pos[id] || MAP_HIDE[id]) return;
         while (taken[(-1) + ',' + spare] && spare < 40) spare++;
-        pos[id] = [-1, spare]; taken[pos[id].join(',')] = id; spare++;
+        hold(id, [-1, spare]); spare++;
     });
     return pos;
 }
@@ -15649,16 +15769,38 @@ function drawMap(cx) {
     cx.textAlign = 'center';
     cx.fillStyle = '#d8cfa8'; cx.font = '16px "Press Start 2P", monospace';
     cx.fillText('WHERE YOU HAVE BEEN', VW / 2, 70);
+    /* What the map is allowed to show is what you have been to, plus the
+       far end of any road out of one of those. That is the same rule the
+       link pass already used for the dashed roads; the node pass had no
+       rule at all and plotted the whole world, so a cold save gave away
+       that there are ten places in five columns before you had left the
+       square. */
+    var known = {};
+    PLACE_IDS.forEach(function (id) {
+        if (MAP_HIDE[id] || !S.seen['been_' + id]) return;
+        known[id] = 1;
+        (PLACES[id].exits || []).forEach(function (e) { if (!MAP_HIDE[e.to] && PLACES[e.to]) known[e.to] = 1; });
+    });
     /* derived coordinates are not hand tuned to fit the panel, so the
-       panel fits itself around them */
+       panel fits itself around them. The bounds are taken over what will
+       actually be DRAWN, not over what has been visited: during the
+       prologue you are on a hidden place, nothing was visited, and the
+       old [0,0] fallback centred the panel on a cell nothing occupies
+       and put most of the map off the bottom of the canvas. */
     var lo = [1e9, 1e9], hi = [-1e9, -1e9], any = false;
     PLACE_IDS.forEach(function (id) {
-        var m = MAP_POS[id]; if (!m || MAP_HIDE[id] || !S.seen['been_' + id]) return;
+        var m = MAP_POS[id]; if (!m || MAP_HIDE[id] || !known[id]) return;
         any = true;
         lo[0] = Math.min(lo[0], m[0]); lo[1] = Math.min(lo[1], m[1]);
         hi[0] = Math.max(hi[0], m[0]); hi[1] = Math.max(hi[1], m[1]);
     });
-    if (!any) { lo = [0, 0]; hi = [0, 0]; }
+    if (!any) {                                  // nowhere known yet: say so rather than drawing an empty grid
+        cx.fillStyle = '#6a6278'; cx.font = '10px "Pixelify Sans"';
+        cx.fillText('Nowhere yet.', VW / 2, VH / 2);
+        cx.fillText('M to close', VW / 2, 96);
+        cx.textAlign = 'left';
+        return;
+    }
     var spanX = hi[0] - lo[0], spanY = hi[1] - lo[1];
     var cell = Math.min(100, Math.floor(Math.min(spanX ? 620 / spanX : 100, spanY ? 330 / spanY : 100)));
     cell = Math.max(46, cell);
@@ -15680,19 +15822,31 @@ function drawMap(cx) {
         });
     });
     cx.setLineDash([]);
+    /* You are somewhere even when the place you are in is hidden. Act 3's
+       square is the same square, and without this the whole final act
+       drew with no gold node anywhere, on the one screen whose only job
+       is telling you where you are. */
+    var hereId = MAP_STANDIN[RT.place] || RT.place;
     PLACE_IDS.forEach(function (id) {
-        var m = MAP_POS[id]; if (!m || MAP_HIDE[id]) return;
-        var seen = S.seen['been_' + id], here = RT.place === id;
+        var m = MAP_POS[id]; if (!m || MAP_HIDE[id] || !known[id]) return;
+        var seen = S.seen['been_' + id], here = hereId === id;
+        // a room off a place you can already see is a door, not a settlement.
+        // Drawn small and unlabelled, the main road reads as the road again.
+        var room = !!PLACES[id].indoor;
         var x = ox + m[0] * cell, y = oy + m[1] * cell;
         cx.fillStyle = here ? '#c9a94a' : seen ? '#3d3350' : '#1a1620';
-        cx.beginPath(); cx.arc(x, y, here ? 12 : 9, 0, TAU); cx.fill();
+        cx.beginPath(); cx.arc(x, y, here ? 12 : room ? 5 : 9, 0, TAU); cx.fill();
         cx.strokeStyle = here ? '#ffe66e' : seen ? '#6a5f82' : '#241f2e'; cx.lineWidth = 2; cx.stroke();
+        if (room && !here) return;
         cx.fillStyle = seen ? (here ? '#ffe66e' : '#b9b0c6') : '#3a3446';
         cx.font = '10px "Pixelify Sans"';
         cx.fillText(seen ? PLACES[id].n.split('—')[0].trim() : '?', x, y + 26);
     });
+    // under the title, not at VH-40: the HUD is a DOM sibling above the
+    // canvas, so the dim never reaches it and the hint used to sit lit
+    // between the word chips and the rhyme keys
     cx.fillStyle = '#6a6278'; cx.font = '10px "Pixelify Sans"';
-    cx.fillText('M to close', VW / 2, VH - 40);
+    cx.fillText('M to close', VW / 2, 96);
     cx.textAlign = 'left';
 }
 
