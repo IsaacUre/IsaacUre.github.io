@@ -89,13 +89,13 @@ for different jobs:
 Either way, if a shot comes back too small to see, take it again smaller
 and closer rather than squinting at it.
 
-## The three harnesses under `tools/`
+## The harnesses under `tools/`
 
 The shell draws the game into a window about 700px wide, so a shot of
 `/comp/` is the canvas at a third of its own resolution inside a picture
-of Windows. These host the same game at native size instead. All three
-call the same `window.NINTH.render/init`, so anything that works in them
-works in the shell.
+of Windows. These host the same game at native size instead. Every one of
+them calls the same `window.NINTH.render/init`, so anything that works in
+them works in the shell.
 
 | file | for |
 |---|---|
