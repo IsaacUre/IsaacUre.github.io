@@ -102,6 +102,8 @@ works in the shell.
 | `canvas.html` | a region of the canvas at 1:1, with a zoom |
 | `vfx-lab.html` | one combat scenario, set up and stepped to a chosen frame |
 | `playtest.html` | the whole verb set driven by real key events, pass or fail as text |
+| `critical-path.html` | the acceptance floor below, walked end to end |
+| `cutaway-checks.html` | the world layer's render rules, asserted against the canvas |
 
 `canvas.html` takes every `devDemo` param plus three of its own:
 
@@ -242,7 +244,25 @@ fixes introduced a softlock that only appeared once two changes met.
 
 ## Acceptance floor for any job
 
-Before you open the PR:
+Before you open the PR. The first four are one command each:
+
+```bash
+node --check comp/ninth.js
+node .claude/ninth-night/tools/audit-geometry.js
+# and these two through headless chrome, --dump-dom, as above
+#   tools/playtest.html        the verbs
+#   tools/critical-path.html   the whole run, prologue to the hollow
+#   tools/cutaway-checks.html  the world layer's render rules
+```
+
+`critical-path.html` is the list below, automated: it plays a wiped save
+from the prologue to the hollow with real key events, collects all three
+fragments, closes the window, opens it again and checks the save came
+back, and fails on a single console error. `cutaway-checks.html` asserts
+that a prop in your way thins and one that is not does not, reads the
+canvas back to confirm the fade changed what you can see, and measures
+one tick of animation first so the figure breathing is not mistaken for
+a roof.
 
 - `node --check comp/ninth.js` passes.
 - A save wipe to your new content, played through with real key events,
