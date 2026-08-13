@@ -30,6 +30,7 @@
     var CREATIVE_DIG_CD = 0.3;             // held-button break period: destroyDelay 5 + the tick it is tested on
     var REACH = 5;
     var PW = 0.6, PH = 1.8, EYE = 1.62;   // player box + eye height
+    var FOV = 1.22;                        // base vertical field of view, radians — the game's 70°
 
     var S = null;      // save state (persisted)
     var RT = null;     // runtime (rebuilt every open)
@@ -1809,7 +1810,7 @@
         gl.viewport(0, 0, RT.cv.width, RT.cv.height);
         gl.clearColor(fogC[0], fogC[1], fogC[2], 1);
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-        var proj = mPersp(1.22, RT.cv.width / RT.cv.height, 0.08, 260);
+        var proj = mPersp(FOV * (RT.fovM || 1), RT.cv.width / RT.cv.height, 0.08, 260);
         var rot = mMul(mRotX(S.pitch), mRotY(S.yaw));
         var view = mMul(rot, mTrans(-S.px, -eyeY, -S.pz));
         var pv = mMul(proj, view);
@@ -1931,7 +1932,9 @@
         if (hv.length) {
             gl.clear(gl.DEPTH_BUFFER_BIT);
             gl.useProgram(G.prog);
-            gl.uniformMatrix4fv(G.u.mvp, false, mPersp(1.22, RT.cv.width / RT.cv.height, 0.05, 10));
+            // the hand keeps the base FOV while the world widens, exactly like the
+            // real game — it is the world stretching past you that sells the speed
+            gl.uniformMatrix4fv(G.u.mvp, false, mPersp(FOV, RT.cv.width / RT.cv.height, 0.05, 10));
             gl.uniform2f(G.u.fogR, 50, 100);
             gl.bindBuffer(gl.ARRAY_BUFFER, G.dyn);
             gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(hv), gl.DYNAMIC_DRAW);
@@ -2245,6 +2248,45 @@
             RT.stepD = (RT.stepD || 0) + Math.sqrt(dx * dx + dz * dz);
             if (RT.stepD > 2.2) { RT.stepD = 0; var gb = getB(Math.floor(S.px), Math.floor(S.py - 0.5), Math.floor(S.pz)); snd('step', gb); }
         }
+        /* Sprinting kicks dust off whatever you are running over — the tell you
+           catch at your feet, the way the real game does it. Flight is excluded
+           outright rather than trusted to RT.ground, which goes stale the moment
+           you take off: a hovering flight never clears it. */
+        if (RT.sprint && RT.ground && !RT.fly && !fluid && (dx || dz)) {
+            RT.dustT = (RT.dustT || 0) + dt;
+            if (RT.dustT >= 0.05 && RT.parts.length < 260) {
+                RT.dustT = 0;
+                var ub = getB(Math.floor(S.px), Math.floor(S.py - 0.2), Math.floor(S.pz));
+                if (ub > 0 && TEX[ub]) {
+                    var duv = tileUV(texSide(TEX[ub]));
+                    RT.parts.push({ x: S.px + (Math.random() - 0.5) * PW, y: S.py + 0.1, z: S.pz + (Math.random() - 0.5) * PW,
+                        vx: -dx / dt * 0.25, vy: 1.2 + Math.random() * 0.6, vz: -dz / dt * 0.25,
+                        life: 0.45 + Math.random() * 0.3, u: duv[0] + Math.random() * TS16 * 0.8, v: duv[1] + Math.random() * TS16 * 0.8, s: 0.06, dim: 0.6 });
+                }
+            }
+        } else RT.dustT = 0;
+    }
+
+    /* ── dynamic FOV ────────────────────────────────────────
+       The real game never writes "sprinting" on the HUD — it widens the lens
+       and eases it back when you stop, and that is the whole indicator. The
+       multiplier is the movement-speed attribute over the walking speed,
+       averaged with 1 (so sprint's +30% reads as +15% of view), times 1.1 in
+       creative flight. Sneaking and swimming slow the *input* rather than the
+       attribute, so they leave the lens alone — same as Minecraft. */
+    function fovTarget() {
+        if (RT.dead || RT.sleep) return 1;
+        var ratio = (RT.sprint ? SPRINT / WALK : 1) * (1 + 0.2 * effLvl('speed') - 0.15 * effLvl('slowness'));
+        if (ratio < 0) ratio = 0;   // Slowness VII and up would otherwise invert the lens
+        var m = (RT.fly ? 1.1 : 1) * (ratio + 1) / 2;
+        return m < 0.1 ? 0.1 : m > 1.5 ? 1.5 : m;
+    }
+    function fovTick(dt) {
+        // MC closes half the remaining gap every tick; expressed per-second so
+        // the ease lands the same at 30fps as at 144
+        var t = fovTarget();
+        RT.fovM += (t - RT.fovM) * (1 - Math.pow(0.5, Math.min(dt, 0.25) * 20));
+        if (Math.abs(t - RT.fovM) < 0.0005) RT.fovM = t;
     }
 
     /* ── hunger, health ─────────────────────────────────────── */
@@ -3462,14 +3504,14 @@
             }
         }
     }
-    function pushBillboard(v, x, y, z, size, u0, v0, u1, v1, sk, bl, wh) {
+    function pushBillboard(v, x, y, z, size, u0, v0, u1, v1, sk, bl, wh, ao) {
         var r = RT.camR, u = RT.camU;
         var cs = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
         for (var k = 0; k < 4; k++) {
             var a = cs[k][0] * size, b = cs[k][1] * size;
             v.push(x + r[0] * a + u[0] * b, y + r[1] * a + u[1] * b, z + r[2] * a + u[2] * b,
                 cs[k][0] > 0 ? u1 : u0, cs[k][1] > 0 ? v0 : v1,
-                sk, bl, 1, wh);
+                sk, bl, ao === undefined ? 1 : ao, wh);
         }
     }
     function cellLight(x, y, z) {
@@ -3551,7 +3593,9 @@
         for (i = 0; i < RT.parts.length; i++) {
             var pp = RT.parts[i];
             var PL = cellLight(pp.x, pp.y, pp.z);
-            pushBillboard(v, pp.x, pp.y, pp.z, pp.s, pp.u, pp.v, pp.u + TS16 / 10, pp.v + TS16 / 10, Math.max(0.25, PL[0]), PL[1], 0);
+            // dim: a flat tint on the mote, the way the real game darkens block
+            // dust to 0.6 — without it, sand kicked off sand is invisible
+            pushBillboard(v, pp.x, pp.y, pp.z, pp.s, pp.u, pp.v, pp.u + TS16 / 10, pp.v + TS16 / 10, Math.max(0.25, PL[0]), PL[1], 0, pp.dim || 1);
         }
         if (RT.sleep) {   // fade handled by overlay; nothing extra here
         }
@@ -4974,6 +5018,7 @@
             RT.lightning = Math.max(0, (RT.lightning || 0) - dt);
             RT.target = raycast();
             stepPlayer(dt);
+            fovTick(dt);
             digTick(dt);
             useTick(dt);
             foodTick(dt);
@@ -6053,7 +6098,7 @@
             foes: [], drops: [], arrows: [], tnts: [], parts: [], entV: [], orbs: [],
             keys: {}, mouse: { l: false, r: false },
             chat: null, chatLog: [], chatHist: [], now: 0, fly: !!S.fly && (S.gm === 1 || S.gm === 3),
-            vy: 0, ground: false, fallY: S.py, sprint: false,
+            vy: 0, ground: false, fallY: S.py, sprint: false, fovM: 1,
             exh: 0, regenT: 0, starveT: 0, iframe: 0, digT: 0, digCd: 0, digNeed: 1, digAt: null, atkCd: 0,
             eatT: 0, bowT: 0, swing: 0, swingT: SWING_T, equip: 0, equipId: null, bob: 0, flash: 0, shake: 0, sleep: 0, placeCd: 0,
             target: null, panel: null, cur: null, craft: [null, null, null, null, null, null, null, null, null], craftW: 2,
@@ -6202,9 +6247,11 @@
                 return;
             }
             RT.keys[k] = true;
-            // sprint is double-tap W only — holding real Ctrl arms Ctrl+W (closes the tab!)
-            if (k === 'w' && RT.lastW && performance.now() - RT.lastW < 280) RT.sprint = true;
-            if (k === 'w') RT.lastW = performance.now();
+            // sprint is double-tap W only — holding real Ctrl arms Ctrl+W (closes the tab!).
+            // The window is the game's own 7 ticks; at 280ms an honest double tap
+            // fell through it and you just walked, with nothing to say why
+            if (k === 'w' && RT.lastW && performance.now() - RT.lastW < FLY_TAP) { RT.sprint = true; RT.lastW = 0; }
+            else if (k === 'w') RT.lastW = performance.now();
             // every other action key is gated; this one wasn't, so idly double-tapping
             // Space with a screen up toggled flight behind it
             if (k === ' ' && mayFly() && !RT.panel && !RT.paused && !RT.dead) {
@@ -6389,7 +6436,7 @@
         if (onReady.length) RT.onReady = function () { for (var i = 0; i < onReady.length; i++) onReady[i](); };
         window.__mc = {
             step: function (ms) { frame((RT.lastT || performance.now()) + (ms || 16.7)); },
-            dbg: function () { return { target: RT.target, digT: RT.digT, digNeed: RT.digNeed, mouseL: RT.mouse.l, paused: RT.paused, panel: !!RT.panel, dead: RT.dead, yaw: S.yaw, pitch: S.pitch }; },
+            dbg: function () { return { target: RT.target, digT: RT.digT, digNeed: RT.digNeed, mouseL: RT.mouse.l, paused: RT.paused, panel: !!RT.panel, dead: RT.dead, yaw: S.yaw, pitch: S.pitch, sprint: RT.sprint, fly: RT.fly, fovM: RT.fovM, parts: RT.parts.length }; },
             state: function () {
                 return { ready: RT.ready, px: S.px, py: S.py, pz: S.pz, chunks: RT.ckeys.length,
                     foes: RT.foes.length, drops: RT.drops.length, orbs: RT.orbs.length, hp: S.hp, food: S.food,
