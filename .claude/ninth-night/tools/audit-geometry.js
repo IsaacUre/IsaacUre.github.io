@@ -405,9 +405,16 @@ Object.keys(PLACES).forEach(function (a) {
     }
     var keys = {};
     Object.keys(PLACES).forEach(function (id) {
+        var used = {};
         (PLACES[id].props || []).forEach(function (o) {
-            var d = PROP[o.t] || PROP._, b = o.b;
-            var v = d.vars ? hash2(b[0], b[1], o.t.length * 31 + o.t.charCodeAt(0)) % d.vars : 0;
+            var d = PROP[o.t] || PROP._, b = o.b, v = 0;
+            // in step with propVar(): a taken variant steps on until one is free
+            if (d.vars) {
+                v = hash2(b[0], b[1], o.t.length * 31 + o.t.charCodeAt(0)) % d.vars;
+                var u = used[o.t] || (used[o.t] = {}), n = 0;
+                while (u[v] && n < d.vars) { v = (v + 1) % d.vars; n++; }
+                u[v] = 1;
+            }
             var rrx = (b[2] + b[3]) * 58 / 4, rry = (b[2] + b[3]) * 29 / 4;
             var w = Math.ceil(rrx * 2) + 60, h = Math.ceil(rry * 2 + d.h + (d.over || 0)) + 60;
             keys[o.t + '|' + b[2] + '|' + b[3] + '|' + v] = w * h * 4;

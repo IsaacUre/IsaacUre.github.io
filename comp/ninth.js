@@ -109,12 +109,32 @@ function placeBox(gw, gh) {
    Smaller than the viewport on an axis means centre it and hold still. */
 function camBounds(gw, gh) {
     var b = placeBox(gw, gh);
-    return {
+    var r = {
         x0: b.w <= VW ? b.x + (b.w - VW) / 2 : b.x,
         x1: b.w <= VW ? b.x + (b.w - VW) / 2 : b.x + b.w - VW,
         y0: b.h <= VH ? b.y + (b.h - VH) / 2 : b.y,
         y1: b.h <= VH ? b.y + (b.h - VH) / 2 : b.y + b.h - VH
     };
+    /* On an axis that scrolls, the eye also has to be able to REACH every
+       walkable tile. Clamping to the bitmap alone is not the same thing:
+       for a long thin place the bitmap's box is mostly empty triangle, so
+       on the road the eye ran out of travel after about a third of the
+       walk and the player crossed the rest of a static frame, ending up
+       99 pixels from the left edge in one corner and 1021 in another.
+       Widen by exactly enough to bring the extreme walkable tiles inside
+       the dead zone, never more. It shows a little more of the dark
+       beyond the ground at the two far corners, and it is the difference
+       between walking down a road and watching one slide past. */
+    if (b.w > VW) {
+        var xa = isoXB(0.5, gh - 0.5), xb = isoXB(gw - 0.5, 0.5);
+        r.x0 = Math.min(r.x0, Math.min(xa, xb) - (VW + DEAD_W) / 2);
+        r.x1 = Math.max(r.x1, Math.max(xa, xb) - (VW - DEAD_W) / 2);
+    }
+    if (b.h > VH) {
+        r.y0 = Math.min(r.y0, isoYB(0.5, 0.5) + ACTOR_DY - (VH + DEAD_H) / 2);
+        r.y1 = Math.max(r.y1, isoYB(gw - 0.5, gh - 0.5) + ACTOR_DY - (VH - DEAD_H) / 2);
+    }
+    return r;
 }
 /* Dead zone follow. The camera does not move until you push out of a
    box in the middle of the screen, so walking around a room does not
@@ -13989,8 +14009,15 @@ function interactables() {
 }
 function nearestInteract() {
     if (RT.dialog) return null;
+    /* You arrive standing in the band of the door you came through, and
+       RT.armed is false until you step off it. That door was winning the
+       prompt on every single arrival in the game, so the first thing the
+       world ever offered you in a new place was the way back out of it.
+       It is still there the moment you step off and turn round. */
+    var here = RT.armed ? null : exitAt(RT.px, RT.py);
     var best = null, bd = 1.9;
     interactables().forEach(function (o) {
+        if (here && o.k === 'exit' && o.e === here) return;
         var d = Math.hypot(o.x - RT.px, o.y - RT.py);
         if (d < bd) { bd = d; best = o; }
     });
@@ -14207,9 +14234,35 @@ function hash2(a, b, c) {
     n ^= n >>> 13; n = Math.imul(n, 1274126177);
     return (n ^ (n >>> 16)) >>> 0;
 }
-function propVar(t, b) {                       // which of this type's variants this instance is
-    var d = propDef(t);
-    return d.vars ? hash2(b[0], b[1], t.length * 31 + t.charCodeAt(0)) % d.vars : 0;
+/* Which of this type's variants this instance is.
+
+   A hash of the position alone is not enough. With five stones and four
+   variants a repeat is arithmetic, but it was worse than arithmetic: the
+   hollow's five ring stones came out as two shapes, the road's three
+   trees were one tree blitted three times, and the two crates on the
+   prologue stage were the same crate. So the hash picks a starting
+   variant and, if another prop of the same type in the same place has
+   already taken it, steps on until it finds one free. Every instance is
+   different until a place holds more of something than there are
+   variants, and it is still fixed data: it depends on where the props
+   are and the order they are written in, not on anything at run time.
+
+   `_pv` is worked out once per prop, ever: the props arrays are static
+   per place. */
+function assignVars() {
+    var ps = place().props || [], used = {}, i;
+    for (i = 0; i < ps.length; i++) {
+        var o = ps[i], d = propDef(o.t);
+        if (!d.vars) { o._pv = 0; continue; }
+        var v = hash2(o.b[0], o.b[1], o.t.length * 31 + o.t.charCodeAt(0)) % d.vars;
+        var u = used[o.t] || (used[o.t] = {}), n = 0;
+        while (u[v] && n < d.vars) { v = (v + 1) % d.vars; n++; }   // taken: step on, the way the map slides a cell
+        u[v] = 1; o._pv = v;
+    }
+}
+function propVar(o) {
+    if (o._pv == null) assignVars();
+    return o._pv || 0;
 }
 function seedRng(n) {                          // stable per sprite, so a house does not reshuffle itself
     var s = (n >>> 0) || 1;
@@ -14386,6 +14439,34 @@ function dither(g, quad, col, amt, rng, size) {
     }
     g.fillStyle = col; g.fill();
 }
+/* A filled ellipse in PIXELS, in 2px scanline steps, one path and one
+   fill. ctx.ellipse anti-aliases its edge, and against a game where
+   everything else lands on integer boundaries a soft rim is the one
+   thing that reads as not-pixel-art: the hollow's ring, which is five
+   stones and the last thing the game asks you to look at, came out as
+   smooth grey eggs. */
+function pxEllipse(g, cx, cy, rx, ry, col, step) {
+    var s = step || 2;
+    g.fillStyle = col;
+    g.beginPath();
+    for (var y = -ry; y <= ry; y += s) {
+        var t = y / ry, w = rx * Math.sqrt(Math.max(0, 1 - t * t));
+        if (w < 0.5) continue;
+        g.rect(Math.round(cx - w), Math.round(cy + y), Math.max(1, Math.round(w * 2)), s);
+    }
+    g.fill();
+}
+/* The same ellipse as a polygon, so dither() can walk it. Dithering the
+   bounding rectangle instead put grain in the empty corners around every
+   round prop in the game. */
+function ellipsePoly(cx, cy, rx, ry, n) {
+    var p = [], k = n || 20;
+    for (var i = 0; i < k; i++) {
+        var a = i / k * TAU;
+        p.push([cx + Math.cos(a) * rx, cy + Math.sin(a) * ry]);
+    }
+    return p;
+}
 /* bilinear point inside a quad: the only sane way to lay courses of
    anything across a face that is a parallelogram on screen */
 function qp(quad, u, v) {
@@ -14440,7 +14521,7 @@ function drawProp(cx, o) {
     if (Math.max(x0, x1, x2, x3) < -80 || Math.min(x0, x1, x2, x3) > VW + 80) return;   // off camera
     if (Math.min(y0, y1, y2, y3) - 240 > VH + 40 || Math.max(y0, y1, y2, y3) < -260) return;
     var mxc = (x0 + x2) / 2, myc = (y0 + y2) / 2;
-    var v = propVar(t, b);
+    var v = propVar(o);
     var sp = propSprite(t, b[2], b[3], v, mayBuild());
     if (!sp) {                                   // its turn is next frame; stand something there meanwhile
         var c = spriteCtx(t, b[2], b[3], v);
@@ -14559,13 +14640,12 @@ function body(g, c, palOver) {
 }
 function roundBody(g, c) {
     var pal = c.pal, hgt = c.hgt, rrx = c.rrx, rry = c.rry;
-    g.fillStyle = pal[1];
-    g.beginPath(); g.ellipse(0, -hgt / 2, rrx * 0.96, rry + hgt / 2, 0, 0, TAU); g.fill();
-    g.fillStyle = pal[0];
-    g.beginPath(); g.ellipse(-rrx * 0.09, -hgt * 0.6 - rry * 0.2, rrx * 0.8, (rry + hgt / 2) * 0.72, 0, 0, TAU); g.fill();
-    g.fillStyle = pal[2];
-    g.beginPath(); g.ellipse(-rrx * 0.2, -hgt * 0.8 - rry * 0.4, rrx * 0.46, (rry + hgt / 2) * 0.34, 0, 0, TAU); g.fill();
+    pxEllipse(g, 0, -hgt / 2, rrx * 0.96, rry + hgt / 2, pal[1]);
+    pxEllipse(g, -rrx * 0.09, -hgt * 0.6 - rry * 0.2, rrx * 0.8, (rry + hgt / 2) * 0.72, pal[0]);
+    pxEllipse(g, -rrx * 0.2, -hgt * 0.8 - rry * 0.4, rrx * 0.46, (rry + hgt / 2) * 0.34, pal[2]);
 }
+// the silhouette roundBody just drew, for anything that wants to stay inside it
+function roundShape(c) { return ellipsePoly(0, -c.hgt / 2, c.rrx * 0.96, c.rry + c.hgt / 2); }
 function cylBody(g, c) {
     var pal = c.pal, hgt = c.hgt, rrx = c.rrx, rry = c.rry;
     g.fillStyle = pal[0];
@@ -14800,7 +14880,13 @@ PAINT.house = function (g, c) {
     // is the same mark the lamp post outside the door carries
     var tw = [6, 6, 4, 4, 2, 2];
     for (var so = 0; so < 6; so++) px(g, lx2 - tw[so] / 2, ly2 - 12 - so * 2, tw[so], 2, 'rgba(11,9,18,' + (0.4 - so * 0.05).toFixed(2) + ')');
-    poly(g, [[lx2 - 7, ly2], [lx2 + 7, ly2], [lx2 + 11, sw[2][1] > se[2][1] ? se[2][1] : se[3][1]], [lx2 - 11, se[3][1]]], 'rgba(255,190,96,.07)');
+    /* The spill under the sill. Both bottom corners used to be taken from
+       the corners of the WALL, so the wedge of light ran the whole length
+       of the house from a window a few pixels wide, and which corner it
+       reached for depended on a comparison between two unrelated ys. Take
+       it off the face directly under the lamp. */
+    var spillL = qp(se, clamp(lampU - 0.06, 0, 1), 1), spillR = qp(se, clamp(lampU + 0.24, 0, 1), 1);
+    poly(g, [[lx2 - 7, ly2], [lx2 + 7, ly2], spillR, spillL], 'rgba(255,190,96,.07)');
 
     /* ── the roof ──
        Draw far then near, always. Which one is LIT is a different question
@@ -14880,7 +14966,7 @@ PAINT.house = function (g, c) {
 LIVE.house = function (cx, o, mxc, myc, sp) {
     // Smoke has to move, so it cannot live in the sprite. Only the
     // houses with a fire lit get any, and in Wick that is not all of them.
-    var v = propVar('house', o.b);
+    var v = propVar(o);
     if (v % 3 === 2) return;
     var ch = anchorAt(sp, 'chimney', mxc, myc);               // the pot the sprite actually drew
     var sx = ch.x, sy = ch.y - 2;
@@ -15267,15 +15353,12 @@ PAINT.sack = function (g, c) {
     var rng = c.rng, hgt = c.hgt, rrx = c.rrx, rry = c.rry;
     var empty = c.v === 2;                                                      // a slack sack in a hungry year
     var sq = empty ? 0.55 : 1;
-    g.fillStyle = '#463d29';
-    g.beginPath(); g.ellipse(0, -hgt / 2 * sq, rrx * 0.96, (rry + hgt / 2) * sq, 0, 0, TAU); g.fill();
-    g.fillStyle = '#5a4f36';
-    g.beginPath(); g.ellipse(-rrx * 0.09, (-hgt * 0.6 - rry * 0.2) * sq, rrx * 0.8, (rry + hgt / 2) * 0.72 * sq, 0, 0, TAU); g.fill();
-    g.fillStyle = '#6c5f44';
-    g.beginPath(); g.ellipse(-rrx * 0.2, (-hgt * 0.8 - rry * 0.4) * sq, rrx * 0.46, (rry + hgt / 2) * 0.34 * sq, 0, 0, TAU); g.fill();
-    var bb = [[-rrx, -rry - hgt], [rrx, -rry - hgt], [rrx, rry], [-rrx, rry]];
-    dither(g, bb, 'rgba(120,106,74,.4)', 0.1, rng);                             // hessian weave
-    dither(g, bb, 'rgba(40,32,18,.4)', 0.09, rng);
+    pxEllipse(g, 0, -hgt / 2 * sq, rrx * 0.96, (rry + hgt / 2) * sq, '#463d29');
+    pxEllipse(g, -rrx * 0.09, (-hgt * 0.6 - rry * 0.2) * sq, rrx * 0.8, (rry + hgt / 2) * 0.72 * sq, '#5a4f36');
+    pxEllipse(g, -rrx * 0.2, (-hgt * 0.8 - rry * 0.4) * sq, rrx * 0.46, (rry + hgt / 2) * 0.34 * sq, '#6c5f44');
+    var bb = ellipsePoly(0, -hgt / 2 * sq, rrx * 0.96, (rry + hgt / 2) * sq);   // the sack, not its bounding box
+    dither(g, bb, 'rgba(120,106,74,.4)', 0.14, rng);                            // hessian weave
+    dither(g, bb, 'rgba(40,32,18,.4)', 0.13, rng);
     for (var f = 0; f < 4; f++) {                                               // folds where the cloth gathers
         var fx = -rrx * 0.6 + f * rrx * 0.4;
         line(g, fx, -rry * 0.2 * sq, fx + 3, (-hgt * 0.7 - rry * 0.4) * sq, 'rgba(36,30,18,.45)', 1);
@@ -15324,9 +15407,9 @@ PAINT.cart = function (g, c) {
 PAINT.stone = PAINT.cairn = function (g, c) {
     var rng = c.rng, hgt = c.hgt, rrx = c.rrx, rry = c.rry, ty = -hgt;
     roundBody(g, c);
-    var bb = [[-rrx, -rry - hgt], [rrx, -rry - hgt], [rrx, rry], [-rrx, rry]];
-    dither(g, bb, 'rgba(150,150,172,.28)', 0.1, rng);                           // grain in the rock
-    dither(g, bb, 'rgba(14,12,20,.4)', 0.1, rng);
+    var bb = roundShape(c);                                                     // the stone, not the rectangle it came in
+    dither(g, bb, 'rgba(150,150,172,.28)', 0.14, rng);                          // grain in the rock
+    dither(g, bb, 'rgba(14,12,20,.4)', 0.14, rng);
     g.strokeStyle = 'rgba(18,16,24,.5)'; g.lineWidth = 1;                       // a fault line, and a chip out of it
     g.beginPath();
     g.moveTo(-rrx * 0.34, ty - rry * 0.1); g.lineTo(-rrx * 0.02, ty + rry * 0.26); g.lineTo(rrx * 0.3, ty + rry * 0.16);
@@ -15677,7 +15760,7 @@ function lightsOf(p) {
         if (o.t === 'house') {
             // the `se` face runs from the south corner at u 0 to the east
             // corner at u 1, and the window centre sits just past lampU
-            var u = houseSillU(propVar('house', b)) + 0.07;
+            var u = houseSillU(propVar(o)) + 0.07;
             /* Clamped inside the floor. The sill is 0.2 past the east
                face, and for a house built against the east edge that put
                the light off the world: five of the twelve in the game,
