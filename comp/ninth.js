@@ -12852,7 +12852,11 @@ var PLACES = {
             { t: 'sack', b: [3, 6.4, 1.2, 1 ] }, { t: 'sack', b: [4.4, 6.8, 1.2, 1] }, { t: 'sack', b: [3.6, 8, 1.2, 1] },
             { t: 'fence', b: [0.6, 2, 0.5, 8] }, { t: 'fence', b: [13.9, 2, 0.5, 8] }
         ],
-        looks: [{ x: 8, y: 5.4, n: 'The mill door', d: 'Bern told you to rehearse out here because the loft carries sound and the town does not need to hear you learn.\n\nHe meant it kindly. He is like that.' }],
+        // west end of the mill's face, a clear tile from the ladder band at
+        // 7.9. It used to sit exactly ON that band, so the text that tells
+        // you to rehearse lost the prompt to the door it explains about
+        // nine times out of ten
+        looks: [{ x: 5.9, y: 5.5, n: 'The mill door', d: 'Bern told you to rehearse out here because the loft carries sound and the town does not need to hear you learn.\n\nHe meant it kindly. He is like that.' }],
         exits: [
             { x: 6.8, y: 12.3, w: 3, to: 'lane', n: 'back down the lane' },
             { x: 7.9, y: 5.6, w: 1.8, to: 'loft', n: 'up the ladder, into the loft', needs: 'rehearsed',
@@ -12948,7 +12952,7 @@ var PLACES = {
             { t: 'tree', b: [1.4, 1.6, 1.4, 1.4] }, { t: 'tree', b: [12.2, 4.6, 1.4, 1.4] }
         ],
         looks: [
-            { x: 7.6, y: 7.2, n: 'The ground', d: 'The stones are not scattered. They are set, in a ring, with the gap facing south, facing the road, facing the town.\n\nSomebody sat down in the middle of this and made it tidy, and then it snowed for four hundred years.', key: 'hollowground' },
+            { x: 7.6, y: 7.2, n: 'The ground', d: 'The stones are not scattered. They are set, in a ring, with the gap facing south, facing the road, facing the town.\n\nSomebody sat down in the middle of this and made it tidy, and then it snowed for four hundred years.' },
             { x: 5.4, y: 4.2, n: 'The cold', d: 'It is not colder here. That is the wrong thing about it. You walked north all night and the air stopped getting colder about a mile back and it has been exactly this ever since.\n\nSomething took the difference.' },
             { x: 11.2, y: 6.4, n: 'North of here', d: 'Nothing. Not a view, not a drop, not a wall. The ground goes on being ground and the dark goes on being dark and there is no line where one ends.\n\nShe would have had to decide to stop. Nothing here would have stopped her.' }
         ],
@@ -12991,7 +12995,11 @@ var NPCS = {
        ledger four hundred years long, so job 5 only hangs the stock on
        her: see chandlerNear and fillShop. */
     bern: {
-        n: 'Bern', x: 7.4, y: 7.2, col: ['#6a4f3a', '#8a6a4a', '#d8b48c'], hat: 1,
+        // he does not move, and he stood 0.63 tiles from the playbill, which
+        // is the one thing in the square with the player's own name on it.
+        // The playbill won the prompt on 4.9% of the floor. This is two
+        // tiles east of it and still the middle of the square.
+        n: 'Bern', x: 9.0, y: 7.4, col: ['#6a4f3a', '#8a6a4a', '#d8b48c'], hat: 1,
         talk: function () {
             if (fragCount() === 3 && !S.a3.ending && !S.seen.a3ready) {
                 if (!S.a3.read && !S.seen.bernA3) {
@@ -13650,7 +13658,12 @@ function reLook(id, name, d) {
    not looting. */
 function checkRealisation() {
     if (S.frags[1] || RT.realising || !S.heard.refrain) return;
-    var src = S.heard.child || S.heard.busker || S.heard.shepherd;
+    /* Bern's script counts. Its look is the syllables in the margin, six
+       eight seven six, and the five circled twice with nothing written
+       beside it. That is this fragment's whole observation, in writing,
+       from the man who has held the part longest, and it was being
+       recorded as S.seen.bernscript and read by nothing. */
+    var src = S.heard.child || S.heard.busker || S.heard.shepherd || S.seen.bernscript;
     if (!src) return;
     RT.realising = 1;
     beat(1.0, function () { bigLine('he spoke and we all heard', '', '#e8e2ee', 2.4); });
@@ -13692,7 +13705,12 @@ function checkMark() {
    been pointed at the wrong person for four hundred years. */
 function checkSill() {
     if (S.frags[3] || RT.realising3 || !S.frags[2]) return;
-    if (!S.heard.widow || !S.seen.markstone) return;
+    /* The widow is not the only witness to this. The chandler's ledger is
+       four hundred years of one lamp per house and never one more, and
+       the end of the fence is nine steps past the line the song says only
+       he ever crossed. Both were being recorded and read by nothing. */
+    var lamps = S.heard.widow || S.seen.ledger || S.seen.fenceend;
+    if (!lamps || !S.seen.markstone) return;
     RT.realising3 = 1;
     beat(1.2, function () { bigLine('set one on the sill', '', '#e8e2ee', 2.4); });
     beat(3.6, function () { bigLine('for the man who walked out past the fence', '', '#e8e2ee', 2.6); });
