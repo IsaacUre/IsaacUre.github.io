@@ -69,6 +69,21 @@ function isoY(x, y) { return ORY + (x + y) * (TILE_H / 2) - cam().y; }
    because one of her legs has dx = 0 authored and the sign fell out of
    float noise. One helper now, so the next drawer cannot get it wrong. */
 function faceX(dx, dy) { return (dx - dy) >= 0 ? 1 : -1; }
+/* Where a FIGURE standing at world (x, y) has its feet on screen.
+   buildFloor draws the diamond it calls tile (x,y) with its corners at
+   the projections of world (x,y), (x+1,y), (x+1,y+1) and (x,y+1), and
+   drawProp takes every footprint corner off isoX/isoY raw. So isoY(x,y)
+   with nothing added IS the ground at (x, y), and it is what props and
+   the floor already use.
+   Every actor, ring, light, particle, prompt and the camera target used
+   to add TILE_H/2 on top of that, which is the projection of
+   (x+0.5, y+0.5): half a tile south-east of where they collide. It was
+   consistent across all seventy call sites, so nothing looked broken,
+   but it meant contact and occlusion were half a tile out against the
+   only two things that were not doing it. One name for the convention
+   now, and one number. */
+var ACTOR_DY = 0;
+function isoYA(x, y) { return isoY(x, y) + ACTOR_DY; }
 function screenToWorld(sx, sy) {
     var c = cam(), pz = (RT && RT.fx) ? fxOf('punch') : null;
     /* The zoom punch scales the whole world about a screen point, so
@@ -106,7 +121,7 @@ function camBounds(gw, gh) {
    swim, and walking down a road does. */
 var DEAD_W = 300, DEAD_H = 150;
 function camTarget(px, py) {
-    var c = cam(), sx = isoXB(px, py) - c.x, sy = isoYB(px, py) + TILE_H / 2 - c.y;
+    var c = cam(), sx = isoXB(px, py) - c.x, sy = isoYB(px, py) + ACTOR_DY - c.y;   // frame the figure where the figure is drawn
     var nx = c.x, ny = c.y;
     var l = (VW - DEAD_W) / 2, r = VW - l, t = (VH - DEAD_H) / 2, bm = VH - t;
     if (sx < l) nx -= (l - sx); else if (sx > r) nx += (sx - r);
@@ -734,7 +749,7 @@ function setLamp() {
    your sill, and it gets the shadow every other solid thing has. */
 var LAMP_PAL = null;
 function drawSetLamp(cx, at) {
-    var sx = isoX(at.x, at.y), sy = isoY(at.x, at.y) + TILE_H / 2;
+    var sx = isoX(at.x, at.y), sy = isoYA(at.x, at.y);
     if (sx < -40 || sx > VW + 40 || sy < -40 || sy > VH + 40) return;
     if (!LAMP_PAL) LAMP_PAL = pxPal('#2e2a26', '#c9a94a', '#d8b48c', '#241c26');
     cx.save();
@@ -1673,7 +1688,7 @@ function drawPartPass(cx, add) {
         var p = RT.parts[i];
         if ((p.add ? 1 : 0) !== add) continue;
         var k = clamp(p.life / p.max, 0, 1);
-        var sx = isoX(p.x, p.y), sy = isoY(p.x, p.y) + TILE_H / 2 - p.z;
+        var sx = isoX(p.x, p.y), sy = isoYA(p.x, p.y) - p.z;
         var s = p.size * (0.4 + 0.6 * k);
         cx.fillStyle = partCol(p.col, k);
         /* Three shapes. The default arm is the line this function has
@@ -1706,7 +1721,7 @@ function drawTypo(cx, dt) {
         var w = RT.typo[i]; w.life -= dt;
         if (w.life <= 0) { RT.typo.splice(i, 1); continue; }
         var k = 1 - w.life / w.max, a = clamp(w.life / w.max * 1.6, 0, 1);
-        var sx = isoX(w.x, w.y), sy = isoY(w.x, w.y) + TILE_H / 2 - w.z;
+        var sx = isoX(w.x, w.y), sy = isoYA(w.x, w.y) - w.z;
         if (w.style === 'drift') sy -= k * 34;
         else if (w.style === 'pop') sy -= 10 + k * 16;
         var size = w.size * (w.style === 'pop' ? (0.7 + k * 0.5) : 1);
@@ -2104,10 +2119,10 @@ function punch(o) {
        is NaN, translate(NaN, NaN) makes the transform non invertible
        and NOTHING DRAWS AT ALL for as long as the shake runs. */
     if (o.x != null && isFinite(o.x) && isFinite(o.y)) {
-        ex = isoX(o.x, o.y); ey = isoY(o.x, o.y) + TILE_H / 2;
+        ex = isoX(o.x, o.y); ey = isoYA(o.x, o.y);
         ax = Math.round(clamp(ex, VW / 2 - 150, VW / 2 + 150));
         ay = Math.round(clamp(ey, VH / 2 - 80, VH / 2 + 80));
-        dx = ex - isoX(RT.px, RT.py); dy = ey - isoY(RT.px, RT.py) - TILE_H / 2;
+        dx = ex - isoX(RT.px, RT.py); dy = ey - isoYA(RT.px, RT.py);
     }
 
     // the held frame
@@ -2979,7 +2994,7 @@ var PLAYER_TOP = [
 ];
 var P_PLAYER = null;                 // built on first draw, so hex2rgb exists
 function drawActor(cx) {
-    var sx = isoX(RT.px, RT.py), sy = isoY(RT.px, RT.py) + TILE_H / 2;
+    var sx = isoX(RT.px, RT.py), sy = isoYA(RT.px, RT.py);
     var bob = RT.walking ? Math.sin(RT.t * 12) * 1.8 : Math.sin(RT.t * 2.2) * 0.7;
     var west = faceX(Math.cos(RT.face), Math.sin(RT.face));   // screen x is (x - y), see faceX
     var cast = RT.casting ? clamp(RT.casting.t / RT.casting.max, 0, 1) : 0;
@@ -3195,7 +3210,7 @@ function foeH(f) { return f.def.boss ? 130 : (FOE_H[f.def.draw] || 30); }
    (3012). This helper existed in design-deton-3 and its own author
    open-coded the expression at both of his call sites, which is
    exactly how the 104 pixels happened the first time. */
-function foeStackY(f) { return isoY(f.x, f.y) + TILE_H / 2 - foeH(f) - 18 - (f.so || 0); }
+function foeStackY(f) { return isoYA(f.x, f.y) - foeH(f) - 18 - (f.so || 0); }
 
 /* A world heading is not a screen heading. isoX is (x-y)*29 and isoY
    is (x+y)*14.5, so a world angle of 0 leaves at 26.6 degrees on
@@ -3840,8 +3855,8 @@ function detWordPath(d, w, h, i) {
        in detJolt (4.4.5). */
     var over = (d.K.miss || (FAM_LINE[d.fam] && FAM_LINE[d.fam].still))
                ? 0 : Math.round(2 + 5 * d.p);
-    var x0 = isoX(w.wx, w.wy), y0 = isoY(w.wx, w.wy) + TILE_H / 2 - w.wh;
-    var my = w.low ? (isoY(d.x, d.y) + TILE_H / 2 + 10) : (y0 + d.lineY) / 2 + w.arc;
+    var x0 = isoX(w.wx, w.wy), y0 = isoYA(w.wx, w.wy) - w.wh;
+    var my = w.low ? (isoYA(d.x, d.y) + 10) : (y0 + d.lineY) / 2 + w.arc;
     var mx = (x0 + w.sx) / 2;
     var vx = w.sx - mx, vy = d.lineY - my, m = Math.sqrt(vx * vx + vy * vy) || 1;
     w.tx = w.sx + Math.round(vx / m * over);
@@ -3976,9 +3991,9 @@ function detEase(t) { var u = 1 - t; return 1 - u * u * u * u * u; }
 function detAt(d, r, tx, ty, dur, t) {
     var k = clamp((t - r.t0) / Math.max(0.001, dur), 0, 1), e = detEase(k), u = 1 - e;
     var x0 = punchWX(isoX(r.wx, r.wy) + (r.ox || 0));
-    var y0 = punchWY(isoY(r.wx, r.wy) + TILE_H / 2 - r.wh);
+    var y0 = punchWY(isoYA(r.wx, r.wy) - r.wh);
     var mx = (x0 + tx) / 2;
-    var my = r.low ? (isoY(d.x, d.y) + TILE_H / 2 + 10) : (y0 + ty) / 2 + (r.arc || 0);
+    var my = r.low ? (isoYA(d.x, d.y) + 10) : (y0 + ty) / 2 + (r.arc || 0);
     return { k: k,
              x: Math.round(u * u * x0 + 2 * u * e * mx + e * e * tx),
              y: Math.round(u * u * y0 + 2 * u * e * my + e * e * ty) };
@@ -4091,7 +4106,7 @@ function drawDetWorld(cx) {
         if (k < 0 || k >= 1) continue;
         n = tr.cells.length; if (!n) continue;
         sx = isoX(tr.wx, tr.wy);
-        y0 = isoY(tr.wx, tr.wy) + TILE_H / 2 - tr.wh;      // where the row WAS
+        y0 = isoYA(tr.wx, tr.wy) - tr.wh;      // where the row WAS
         sy = y0 - Math.round(k * 16);                      // where it is now
         lit = (d.t - tr.t0) < 0.014;
         plate = n * PIP_W + 8;
@@ -4517,7 +4532,7 @@ function drawSnaps(cx, dt) {
         var k = 1 - s.t / s.max;
         // the row's real height, stored at push time, because foeH needs
         // the foe and no record may outlive the frame holding one
-        var sx = Math.round(isoX(s.x, s.y)), sy = Math.round(isoY(s.x, s.y) + TILE_H / 2 - s.h);
+        var sx = Math.round(isoX(s.x, s.y)), sy = Math.round(isoYA(s.x, s.y) - s.h);
         cx.save();
         fn(cx, s, k, sx, sy);
         cx.globalAlpha = 1;
@@ -4564,7 +4579,7 @@ function dressSlant(d, hits) {
 function drawHaulWorld(cx) {
     var d = RT.det; if (!d || !d.haul || !d.haul.length) return;
     var P = fampx()[d.fam];
-    var ax = Math.round(isoX(RT.px, RT.py)), ay = Math.round(isoY(RT.px, RT.py) + TILE_H / 2 - 34);
+    var ax = Math.round(isoX(RT.px, RT.py)), ay = Math.round(isoYA(RT.px, RT.py) - 34);
     var i, j, H, c, t, sx, sy, x, dist, steps, m, u, k, tf, a, bw, fam, tg;
     cx.save(); cx.textAlign = 'center';
     cx.font = 'bold 8px "Press Start 2P", monospace';
@@ -4572,7 +4587,7 @@ function drawHaulWorld(cx) {
         H = d.haul[i]; t = d.t - H.t0;
         if (t < 0 || t > 0.42) continue;
         sx = Math.round(isoX(H.wx, H.wy));
-        sy = Math.round(isoY(H.wx, H.wy) + TILE_H / 2 - H.wh);
+        sy = Math.round(isoYA(H.wx, H.wy) - H.wh);
         /* THE ROPE, a run of 2px marks rather than a stroke. A diagonal
            stroke is the one soft edge a canvas gives you for free and
            this game has no soft edges; a rope of hard marks also makes
@@ -4786,7 +4801,7 @@ function drawRepWorld(cx) {
         k = clamp((d.t - tr.t0) / 0.05, 0, 1);
         if (k <= 0) continue;
         sx = Math.round(isoX(tr.wx, tr.wy));
-        sy = Math.round(isoY(tr.wx, tr.wy) + TILE_H / 2 - tr.wh);
+        sy = Math.round(isoYA(tr.wx, tr.wy) - tr.wh);
         w = Math.round((tr.cells.length * PIP_W + 8) / 2 * k);   // struck from the centre out
         cx.globalAlpha = 0.9 * (1 - clamp((d.t - 0.18) / 0.16, 0, 1));
         for (j = 0; j < d.rep; j++) cx.fillRect(sx - w, sy + 7 + j * 3, w * 2, 1);
@@ -5310,7 +5325,7 @@ function drawProjWorld(cx, dt, s) {
     for (i = 0; i < s.lands.length; i++) {
         o = s.lands[i]; P = fampx()[o.fam];
         sx = Math.round(isoX(o.wx, o.wy));
-        sy = Math.round(isoY(o.wx, o.wy) + TILE_H / 2);
+        sy = Math.round(isoYA(o.wx, o.wy));
         if (o.kind === 'fizz') {
             /* IT HANGS FIRST. Dead still at full colour for 0.22s, and
                then it falls 22px over 0.5s. It greys through rimeText's
@@ -5411,13 +5426,13 @@ function drawProjWorld(cx, dt, s) {
     for (i = 0; i < s.sours.length; i++) {
         o = s.sours[i];
         sx = Math.round(isoX(o.wx, o.wy));
-        sy = Math.round(isoY(o.wx, o.wy) + TILE_H / 2 - o.wh);
+        sy = Math.round(isoYA(o.wx, o.wy) - o.wh);
         if (o.kind === 'thread') {
             /* it eats itself from the foe end, so the line arrives
                rather than merely fading. Quadratic, 14px of sag, one
                pixel wide, and the number lands when it does. */
             tx = Math.round(isoX(RT.px, RT.py));
-            ty = Math.round(isoY(RT.px, RT.py) + TILE_H / 2 - 20);
+            ty = Math.round(isoYA(RT.px, RT.py) - 20);
             px2 = lerp(sx, tx, o.k0); py2 = lerp(sy, ty, o.k0);
             mx = (px2 + tx) / 2; my = (py2 + ty) / 2 + 14;
             cx.globalAlpha = clamp(1 - o.k0, 0, 1) * 0.55;
@@ -5510,7 +5525,7 @@ function drawMuzzle(cx) {
     var west = faceX(Math.cos(RT.face), Math.sin(RT.face));   // screen x is (x - y), see faceX
     var bob = RT.walking ? Math.sin(RT.t * 12) * 1.8 : Math.sin(RT.t * 2.2) * 0.7;
     var hx = Math.round(isoX(RT.px, RT.py) + west * 4);
-    var hy = Math.round(isoY(RT.px, RT.py) + TILE_H / 2 - 38 - bob);
+    var hy = Math.round(isoYA(RT.px, RT.py) - 38 - bob);
     var wpx = 12 * 0.55 * big, r = Math.round((4 + (1 - k) * 11) * big);
     cx.save();
     cx.globalCompositeOperation = 'lighter';
@@ -6816,7 +6831,7 @@ function drawRings(cx, dt) {
         var g = RT.rings[i]; g.t -= dt;
         if (g.t <= 0) { RT.rings.splice(i, 1); continue; }
         var k = 1 - g.t / g.life, rr = g.max * (0.15 + 0.85 * k);
-        var sx = isoX(g.x, g.y), sy = isoY(g.x, g.y) + TILE_H / 2;
+        var sx = isoX(g.x, g.y), sy = isoYA(g.x, g.y);
         cx.save(); cx.translate(sx, sy); cx.scale(1, 0.5); cx.globalCompositeOperation = 'lighter';
         cx.strokeStyle = 'rgba(' + g.col + ',' + (0.85 * (1 - k)).toFixed(3) + ')';
         cx.lineWidth = 5 * (1 - k) + 1;
@@ -7327,7 +7342,7 @@ function drawFolk(cx, f) {
     cx.restore();
 }
 function drawFoe(cx, f) {
-    var sx = isoX(f.x, f.y), sy = isoY(f.x, f.y) + TILE_H / 2;
+    var sx = isoX(f.x, f.y), sy = isoYA(f.x, f.y);
     var pop = f.spawn > 0 ? 0.5 + (0.45 - f.spawn) : 1;
     var wob = Math.sin(RT.t * 22) * f.wob * 3;
     var tell = f.state === 'tell' ? 0.5 + 0.5 * Math.sin(RT.t * 30) : 0;
@@ -8287,7 +8302,7 @@ function drawEatRing(cx, o, k) {
     var r = (1 - k * k) * o.r0 * TILE_W / 2, a = 0.85 * (1 - k), i, ang, tx, ty;
     if (r < 3) return;
     cx.save();
-    cx.translate(Math.round(isoX(o.x, o.y)), Math.round(isoY(o.x, o.y) + TILE_H / 2));
+    cx.translate(Math.round(isoX(o.x, o.y)), Math.round(isoYA(o.x, o.y)));
     cx.scale(1, 0.5);
     for (i = 0; i < o.nt; i++) {
         ang = i * TAU / o.nt + o.r0;             // seeded off its own radius: no two rings phase-lock
@@ -8311,7 +8326,7 @@ function drawEatRing(cx, o, k) {
    (crit-eng-eat #20): it returns a TextMetrics object and this is a
    draw loop. */
 function drawEatWord(cx, o, k) {
-    var sx = Math.round(punchWX(isoX(o.x, o.y))), sy = Math.round(punchWY(isoY(o.x, o.y) + TILE_H / 2 - o.z - k * 26));
+    var sx = Math.round(punchWX(isoX(o.x, o.y))), sy = Math.round(punchWY(isoYA(o.x, o.y) - o.z - k * 26));
     var i, cut, bw, a = clamp((1 - k) * 2.2, 0, 1);
     cx.save(); cx.textAlign = 'center'; cx.font = o.font; cx.globalAlpha = a;
     if (!o.w) o.w = cx.measureText('EAT').width;
@@ -8465,8 +8480,8 @@ function eatDrain(f, n, h, d) {
    at u = 1, so it vanished 6.6% short of your chest. It is flagged,
    drawn once at k = 1, and spliced on the following frame. */
 function drawEatMote(cx, m, k) {
-    var u = k * k, px = isoX(RT.px, RT.py), py = isoY(RT.px, RT.py) + TILE_H / 2 - 26;
-    var x0 = isoX(m.x0, m.y0), y0 = isoY(m.x0, m.y0) + TILE_H / 2 - m.z0, j, uu, mx, my, s;
+    var u = k * k, px = isoX(RT.px, RT.py), py = isoYA(RT.px, RT.py) - 26;
+    var x0 = isoX(m.x0, m.y0), y0 = isoYA(m.x0, m.y0) - m.z0, j, uu, mx, my, s;
     for (j = 0; j < 3; j++) {
         uu = clamp(u - j * 0.06, 0, 1);
         mx = Math.round(lerp(x0, px, uu)); my = Math.round(lerp(y0, py, uu) - Math.sin(uu * Math.PI) * m.arc);
@@ -8569,7 +8584,7 @@ function drawEatWorld(cx, dt, st) {
         cx.globalCompositeOperation = 'lighter';
         cx.globalAlpha = clamp(st.fed * 0.05, 0, 0.4);
         cx.fillStyle = FAMS.eat.glow;
-        sx = isoX(RT.px, RT.py); sy = isoY(RT.px, RT.py) + TILE_H / 2;
+        sx = isoX(RT.px, RT.py); sy = isoYA(RT.px, RT.py);
         cx.beginPath(); cx.ellipse(sx, sy - 22, 11, 20, 0, 0, TAU); cx.fill();
         cx.restore();
     }
@@ -8594,7 +8609,7 @@ function drawEatWorld(cx, dt, st) {
 function drawEatHusk(cx, o, k) {
     var fall = k < 0.06 ? 0 : k * k * 40;
     var sx = Math.round(isoX(o.x, o.y)) + o.ox;
-    var sy = Math.round(isoY(o.x, o.y) + TILE_H / 2) + o.oy + fall;
+    var sy = Math.round(isoYA(o.x, o.y)) + o.oy + fall;
     cx.globalAlpha = 1 - k * k;
     cx.fillStyle = EAT_BITE; cx.fillRect(sx, sy, o.w, o.h);
     cx.fillStyle = partCol(EAT_CHAR, 0.6 * (1 - k));
@@ -8603,7 +8618,7 @@ function drawEatHusk(cx, o, k) {
 }
 function drawEatPlus(cx, o, k) {
     var sx = Math.round(punchWX(isoX(o.x, o.y)));
-    var sy = Math.round(punchWY(isoY(o.x, o.y) + TILE_H / 2 - o.z - k * 22));
+    var sy = Math.round(punchWY(isoYA(o.x, o.y) - o.z - k * 22));
     cx.save(); cx.textAlign = 'center';
     cx.globalAlpha = clamp((1 - k) * 2.2, 0, 1);
     cx.font = 'bold ' + o.px + 'px "Press Start 2P", monospace';
@@ -8715,7 +8730,7 @@ var IGHT_CALL = {
             cx.globalAlpha = al[j];
             cx.font = 'bold ' + sz[j] + 'px "Press Start 2P", monospace';
             cx.fillStyle = P.col;
-            cx.fillText(c.word, isoX(gx, gy), isoY(gx, gy) + TILE_H / 2 - 26);
+            cx.fillText(c.word, isoX(gx, gy), isoYA(gx, gy) - 26);
         }
         cx.globalAlpha = 1;
         cx.font = 'bold ' + (12 + c.near * 1.6).toFixed(1) + 'px "Press Start 2P", monospace';
@@ -9019,7 +9034,7 @@ function ightBody(cx, f, h, sx, sy) {
    expiring, which is a tactical read the game has never offered.
    Suppressed for folk. */
 function drawIghtMarks(cx, f, g) {
-    var sx = Math.round(isoX(f.x, f.y)), sy = Math.round(isoY(f.x, f.y) + TILE_H / 2);
+    var sx = Math.round(isoX(f.x, f.y)), sy = Math.round(isoYA(f.x, f.y));
     var h = foeH(f), w = Math.round((f.def.boss ? 100 : f.r * 26)), i, cxx, cyy, dx, dy;
     var end = clamp(f.revealed / 0.8, 0, 1), inw = (1 - end) * 4, drop = (1 - end) * 3;
     if (f.def.folk) return;
@@ -9123,7 +9138,7 @@ function drawIghtWorld(cx, dt, st) {
         drawIghtMarks(cx, f, g);
     }
     if (st.kick > 0) {                            // the actor's shadow, thrown backwards, hard
-        var ax = isoX(RT.px, RT.py), ay = isoY(RT.px, RT.py) + TILE_H / 2;
+        var ax = isoX(RT.px, RT.py), ay = isoYA(RT.px, RT.py);
         cx.fillStyle = 'rgba(8,6,12,.55)';
         cx.beginPath();
         cx.ellipse(ax - Math.cos(st.ka) * 7, ay - Math.sin(st.ka) * 3.5, 20, 4, 0, 0, TAU);
@@ -9131,8 +9146,8 @@ function drawIghtWorld(cx, dt, st) {
     }
 }
 function drawIghtSpoke(cx, o, k) {
-    var px = isoX(RT.px, RT.py), py = isoY(RT.px, RT.py) + TILE_H / 2 - 22;
-    var tx = isoX(o.x, o.y), ty = isoY(o.x, o.y) + TILE_H / 2 - o.h * 0.55;
+    var px = isoX(RT.px, RT.py), py = isoYA(RT.px, RT.py) - 22;
+    var tx = isoX(o.x, o.y), ty = isoYA(o.x, o.y) - o.h * 0.55;
     var a = clamp((1 - k) * 1.8, 0, 1) * T('ightSpoke'), u = clamp(k * 3.2, 0, 1);
     var ex = lerp(px, tx, u), ey = lerp(py, ty, u);
     cx.save(); cx.globalCompositeOperation = 'lighter';
@@ -9143,7 +9158,7 @@ function drawIghtSpoke(cx, o, k) {
     cx.restore();
 }
 function drawIghtPin(cx, o, k) {
-    var sx = Math.round(isoX(o.x, o.y)), sy = Math.round(isoY(o.x, o.y) + TILE_H / 2 - o.h * 0.6);
+    var sx = Math.round(isoX(o.x, o.y)), sy = Math.round(isoYA(o.x, o.y) - o.h * 0.6);
     var travel = o.from * (1 - k) * (1 - k), bl = 18 + o.n * 2;
     cx.fillStyle = partCol(IGHT_LIT, clamp((1 - k) * 2, 0, 1));
     cx.fillRect(sx - travel - bl, sy - 1, bl, 2);
@@ -9157,7 +9172,7 @@ function drawIghtPin(cx, o, k) {
    nothing. The first 8% draws the whole plate in #fffbe8 rather than
    #ffe66e. That is the rationed near-white and it is 34ms. */
 function drawIghtPeel(cx, o, k) {
-    var sx = Math.round(isoX(o.x, o.y)), sy = Math.round(isoY(o.x, o.y) + TILE_H / 2);
+    var sx = Math.round(isoX(o.x, o.y)), sy = Math.round(isoYA(o.x, o.y));
     var w = o.w, h = o.h, u = k, drop = Math.min(u * u * 210, h), a = clamp((1 - k) * 1.6, 0, 1);
     var col = k < 0.08 ? '#fffbe8' : '#ffe66e';
     cx.save(); cx.translate(sx, sy); cx.globalAlpha = a; cx.fillStyle = col;
@@ -9169,7 +9184,7 @@ function drawIghtPeel(cx, o, k) {
     cx.restore();
 }
 function drawIghtShutter(cx, o, k) {
-    var sx = Math.round(isoX(o.x, o.y)), sy = Math.round(isoY(o.x, o.y) + TILE_H / 2 - 26);
+    var sx = Math.round(isoX(o.x, o.y)), sy = Math.round(isoYA(o.x, o.y) - 26);
     var g = Math.round(k * 5);
     cx.fillStyle = '#ffe66e';
     cx.fillRect(sx - 9, sy - 1 - g, 18, 2);
@@ -9178,7 +9193,7 @@ function drawIghtShutter(cx, o, k) {
     cx.fillRect(sx - 1, sy - g, 2, g * 2);
 }
 function drawIghtMiss(cx, o, k) {
-    var sx = isoX(o.x, o.y), sy = isoY(o.x, o.y) + TILE_H / 2;
+    var sx = isoX(o.x, o.y), sy = isoYA(o.x, o.y);
     cx.save(); cx.globalCompositeOperation = 'lighter';
     cx.globalAlpha = (1 - k) * 0.5; cx.fillStyle = FAMS.ight.col;
     cx.translate(sx, sy); cx.scale(1, 0.5);
@@ -9274,7 +9289,7 @@ var ERD_CALL = {
             if (!(tk[i + 2] > 0)) continue;
             cx.fillStyle = partCol(ERD_COL, 0.55);
             cx.fillRect(Math.round(isoX(tk[i], tk[i + 1])) - 1,
-                        Math.round(isoY(tk[i], tk[i + 1]) + TILE_H / 2 - 30), 2, 6);
+                        Math.round(isoYA(tk[i], tk[i + 1]) - 30), 2, 6);
         }
         cx.textAlign = 'center';
         cx.font = 'bold 12px "Press Start 2P", monospace';
@@ -9549,7 +9564,7 @@ function erdBody(cx, f, h, sx, sy) {
    silhouette, so they are drawn at whole pixels and are visible on a
    frozen body, which is correct, because a body can be both. */
 function drawErdGag(cx, f, g) {
-    var sx = Math.round(isoX(f.x, f.y)), sy = Math.round(isoY(f.x, f.y) + TILE_H / 2);
+    var sx = Math.round(isoX(f.x, f.y)), sy = Math.round(isoYA(f.x, f.y));
     var h = foeH(f), n = g.n || 1;
     var w = Math.round(f.def.boss ? 100 : f.r * 50);
     var bh = Math.round(clamp(T('erdGag') + Math.min(3, n / 3), 3, 14));
@@ -9704,7 +9719,7 @@ function drawErdWorld(cx, dt, st) {
    because there is no frame in which you see where the bars came
    from. Three frames at 144Hz, one at 60, free. */
 function drawErdClap(cx, o) {
-    var sx = Math.round(isoX(o.x, o.y)), sy = Math.round(isoY(o.x, o.y) + TILE_H / 2);
+    var sx = Math.round(isoX(o.x, o.y)), sy = Math.round(isoYA(o.x, o.y));
     var t = o.t, top = Math.round(sy - o.h - 8), bh = o.h + 10;
     var u, dist, bw, i, seg, sh2, y2, hole = o.nn >= T('stackMax');
     var t2 = o.CT + o.RH, t3 = t2 + 0.05, t4 = t3 + o.VT;
@@ -9776,7 +9791,7 @@ function drawErdClap(cx, o) {
 function drawErdGust(cx, o, k) {
     var u = 1 - Math.pow(2, -11 * k), r = o.r * u * TILE_W / 2, i, a;
     cx.save();
-    cx.translate(Math.round(isoX(o.x, o.y)), Math.round(isoY(o.x, o.y) + TILE_H / 2));
+    cx.translate(Math.round(isoX(o.x, o.y)), Math.round(isoYA(o.x, o.y)));
     cx.scale(1, 0.5);
     cx.fillStyle = partCol(ERD_COL, 0.8);
     for (i = 0; i < 12; i++) {
@@ -9791,7 +9806,7 @@ function drawErdGust(cx, o, k) {
    the detonation's screen rule under the line (see 12.13): different
    plane, different colour, different anchor. */
 function drawErdRule(cx, o) {
-    var sx = Math.round(isoX(RT.px, RT.py)), sy = Math.round(isoY(RT.px, RT.py) + TILE_H / 2);
+    var sx = Math.round(isoX(RT.px, RT.py)), sy = Math.round(isoYA(RT.px, RT.py));
     var t = o.t, hw = o.hw * TILE_W / 2, u, i, tx;
     if (t < 0.10) u = 1 - Math.pow(2, -11 * (t / 0.10));
     else if (t < 0.16) u = 1;
@@ -9817,13 +9832,13 @@ function drawErdChips(cx, st) {
     if (!st.chips.length) return;
     for (i = 0; i < st.chips.length; i++) {
         o = st.chips[i];
-        sx = Math.round(isoX(o.x, o.y)); sy = Math.round(isoY(o.x, o.y) + TILE_H / 2 - o.z);
+        sx = Math.round(isoX(o.x, o.y)); sy = Math.round(isoYA(o.x, o.y) - o.z);
         cx.fillStyle = o.lit ? partCol(ERD_LIT, 1) : partCol(ERD_COL, 1);
         cx.fillRect(sx, sy, o.lg, 2);
     }
 }
 function drawErdCounter(cx, o, k) {
-    var sx = Math.round(isoX(o.x, o.y)), sy = Math.round(isoY(o.x, o.y) + TILE_H / 2);
+    var sx = Math.round(isoX(o.x, o.y)), sy = Math.round(isoYA(o.x, o.y));
     var u = clamp(k / 0.44, 0, 1), r, i, a, m;
     if (k < 0.44) {
         r = (o.r + 0.6 + u * 2.2) * TILE_W / 2;
@@ -9859,7 +9874,7 @@ function drawErdCounter(cx, o, k) {
    right as it rises; this one is struck from the left and does not
    rise, because a counter is not a death. */
 function drawErdStrike(cx, o, k) {
-    var sx = Math.round(isoX(o.x, o.y)), sy = Math.round(isoY(o.x, o.y) + TILE_H / 2 - o.z);
+    var sx = Math.round(isoX(o.x, o.y)), sy = Math.round(isoYA(o.x, o.y) - o.z);
     var w, bx;
     cx.save(); cx.textAlign = 'center';
     cx.font = 'bold 9px "Press Start 2P", monospace';
@@ -9875,7 +9890,7 @@ function drawErdStrike(cx, o, k) {
     cx.restore(); cx.textAlign = 'left';
 }
 function drawErdShut(cx, o, k) {
-    var sx = Math.round(isoX(o.x, o.y)) + o.ox, sy = Math.round(isoY(o.x, o.y) + TILE_H / 2 - o.z);
+    var sx = Math.round(isoX(o.x, o.y)) + o.ox, sy = Math.round(isoYA(o.x, o.y) - o.z);
     var hh;
     if (k < 0.55) { cx.fillStyle = partCol(ERD_INK, 0.98); cx.fillRect(sx - 5, sy - 6, 11, 10); return; }
     hh = Math.round(5 * (1 - (k - 0.55) / 0.45));
@@ -9885,7 +9900,7 @@ function drawErdShut(cx, o, k) {
     cx.fillRect(sx - 5, sy - 1 - hh, 11, 1); cx.fillRect(sx - 5, sy - 2 + hh, 11, 1);
 }
 function drawErdOpen(cx, o, k) {
-    var sx = Math.round(isoX(o.x, o.y)), sy = Math.round(isoY(o.x, o.y) + TILE_H / 2 - 26);
+    var sx = Math.round(isoX(o.x, o.y)), sy = Math.round(isoYA(o.x, o.y) - 26);
     var px = Math.round(-Math.sin(o.a) * k * 7), py = Math.round(Math.cos(o.a) * k * 7);
     cx.fillStyle = partCol(ERD_LIT, 1);
     cx.fillRect(sx + px - 1, sy + py - 3, 3, 7);
@@ -10095,7 +10110,7 @@ function arkSour(f, s, i) {
    A screen registration at ord 48 is the only place the word survives
    the family's own dim, and it costs one extra regFx line. */
 function drawArkWord(cx, o, k) {
-    var sx = Math.round(punchWX(isoX(o.x, o.y))), sy = Math.round(punchWY(isoY(o.x, o.y) + TILE_H / 2 - o.z - k * 26));
+    var sx = Math.round(punchWX(isoX(o.x, o.y))), sy = Math.round(punchWY(isoYA(o.x, o.y) - o.z - k * 26));
     cx.save(); cx.textAlign = 'center';
     cx.font = 'bold ' + o.px + 'px "Press Start 2P", monospace';
     cx.globalAlpha = clamp((1 - k) * 2.4, 0, 1);
@@ -10185,7 +10200,7 @@ function arkDet(f, n, d) {
    does it. */
 function arkBody(cx, f, h, sx, sy) {
     var g = famBag(f, 'ark'), d = foeSil(f.def.draw), spr = foeSilSpr(f.def.draw, '#271e3a');
-    var a = Math.atan2(sy - (isoY(RT.px, RT.py) + TILE_H / 2), sx - isoX(RT.px, RT.py));
+    var a = Math.atan2(sy - (isoYA(RT.px, RT.py)), sx - isoX(RT.px, RT.py));
     var lv = g.line, i, cols, cw, top, ang, lift;
     if (!(lv > 0)) return;
     cx.save();
@@ -10285,7 +10300,7 @@ function arkCloakK() {
    whenever you face west. */
 var ARK_LINE = 'she walked out past the mill, the well';
 function drawArkCloak(cx, k) {
-    var sx = isoX(RT.px, RT.py), sy = isoY(RT.px, RT.py) + TILE_H / 2;
+    var sx = isoX(RT.px, RT.py), sy = isoYA(RT.px, RT.py);
     var n = ARK_LINE.length, keep = Math.ceil(n * clamp(RT.conceal / 4, 0, 1)), i, a;
     cx.save();
     cx.translate(sx, sy); cx.scale(1, 0.5);
@@ -10389,7 +10404,7 @@ function drawArkWorld(cx, dt, st) {
     for (i = 0; i < st.keep.length; i++) {
         o = st.keep[i];
         cx.save();
-        cx.translate(Math.round(isoX(o.x, o.y)), Math.round(isoY(o.x, o.y) + TILE_H / 2));
+        cx.translate(Math.round(isoX(o.x, o.y)), Math.round(isoYA(o.x, o.y)));
         cx.scale(1, 0.5);
         cx.fillStyle = partCol(ARK_DEEP, 0.5);
         cx.beginPath(); cx.arc(0, 0, o.r * TILE_W / 2, 0, TAU); cx.fill();
@@ -10422,7 +10437,7 @@ function drawArkStain(cx, o) {
     var age = clamp(o.t / (o.grow || 0.3), 0, 1), fade = o.life ? clamp((o.life - o.t) / 0.8, 0, 1) : 1;
     var r = o.r * (0.35 + 0.65 * (1 - (1 - age) * (1 - age))) * TILE_W / 2;
     cx.save();
-    cx.translate(Math.round(isoX(o.x, o.y)), Math.round(isoY(o.x, o.y) + TILE_H / 2));
+    cx.translate(Math.round(isoX(o.x, o.y)), Math.round(isoYA(o.x, o.y)));
     cx.scale(1, 0.5);
     cx.fillStyle = partCol(ARK_DEEP, o.a * fade);
     cx.beginPath(); cx.arc(0, 0, r, 0, TAU); cx.fill();
@@ -10431,7 +10446,7 @@ function drawArkStain(cx, o) {
     cx.restore();
 }
 function drawArkScratch(cx, o, k) {
-    var sx = Math.round(isoX(o.x, o.y)), sy = Math.round(isoY(o.x, o.y) + TILE_H / 2), i, a, l;
+    var sx = Math.round(isoX(o.x, o.y)), sy = Math.round(isoYA(o.x, o.y)), i, a, l;
     cx.save(); cx.translate(sx, sy); cx.scale(1, 0.5);
     cx.strokeStyle = partCol(ARK_RIM, (1 - k) * 0.55 * T('vfxRimGround')); cx.lineWidth = 1;
     cx.beginPath();
@@ -10458,7 +10473,7 @@ function drawArkScreen(cx, dt) {
    out in front of you. It is the only detonation in the game whose
    verb is deletion. */
 function drawArkUnprint(cx, o, k) {
-    var sx = Math.round(punchWX(isoX(o.x, o.y))), sy = Math.round(punchWY(isoY(o.x, o.y) + TILE_H / 2 - o.z));
+    var sx = Math.round(punchWX(isoX(o.x, o.y))), sy = Math.round(punchWY(isoYA(o.x, o.y) - o.z));
     var w = 13, n = o.n, i, x0, u;
     if (!n) return;
     cx.save();
@@ -10591,7 +10606,7 @@ var ILL_CALL = {
             if (age * (c.max || 0.58) < gate[j]) continue;
             gx = c.x - c.vx * (j + 1) * 0.042; gy = c.y - c.vy * (j + 1) * 0.042;
             cx.globalAlpha = al[j]; cx.fillStyle = P.col;
-            cx.fillText(w.slice(j + 1), isoX(gx, gy), isoY(gx, gy) + TILE_H / 2 - 26);
+            cx.fillText(w.slice(j + 1), isoX(gx, gy), isoYA(gx, gy) - 26);
         }
         cx.globalAlpha = 1;
         cx.fillStyle = '#08060c'; cx.fillText(w, sx + 1.5, sy + 1.5);
@@ -10743,7 +10758,7 @@ function illDet(f, n, d) {
    counting syllables. Counting beats measuring, and it costs n
    fillRects. */
 function drawIllWord(cx, o, k) {
-    var sx = Math.round(punchWX(isoX(o.x, o.y))), sy = Math.round(punchWY(isoY(o.x, o.y) + TILE_H / 2 - o.z));
+    var sx = Math.round(punchWX(isoX(o.x, o.y))), sy = Math.round(punchWY(isoYA(o.x, o.y) - o.z));
     var a = k < 0.79 ? 1 : clamp((1 - k) / 0.21, 0, 1), i, n = Math.min(8, o.n), w, sx0;
     cx.save(); cx.textAlign = 'center'; cx.globalAlpha = a;
     cx.font = 'bold ' + Math.round(o.px) + 'px "Press Start 2P", monospace';
@@ -10762,7 +10777,7 @@ function drawIllWord(cx, o, k) {
 function drawIllRing(cx, o, k, held) {
     var r = (held ? o.r0 : lerp(o.r0, o.r1, 1 - (1 - k) * (1 - k))) * TILE_W / 2, i, a0;
     cx.save();
-    cx.translate(Math.round(isoX(o.x, o.y)), Math.round(isoY(o.x, o.y) + TILE_H / 2));
+    cx.translate(Math.round(isoX(o.x, o.y)), Math.round(isoYA(o.x, o.y)));
     cx.scale(1, 0.5);
     cx.strokeStyle = partCol(ILL_COLR, held ? 0.9 : 1 - k * 0.3); cx.lineWidth = 2;
     for (i = 0; i < 3; i++) {
@@ -11070,7 +11085,7 @@ function drawIllShard(cx, s) {
     if (s.t >= 0.12 || !spr) spr = SPR['ice.' + s.key] || spr;
     if (!spr) return;
     dx = Math.round(isoX(s.x, s.y) + s.ox);
-    dy = Math.round(isoY(s.x, s.y) + TILE_H / 2 - s.z);
+    dy = Math.round(isoYA(s.x, s.y) - s.z);
     fx = (s.flip & 1) ? -1 : 1; fy = (s.flip & 2) ? -1 : 1;
     cx.save();
     cx.translate(dx + dst / 2, dy + dst / 2); cx.scale(fx, fy);
@@ -11084,7 +11099,7 @@ function drawIllShard(cx, s) {
    asked the family to stop being Ice and be HER sound, and this is
    the sentence that does it. */
 function drawIllPool(cx, f) {
-    var sx = Math.round(isoX(f.x, f.y)), sy = Math.round(isoY(f.x, f.y) + TILE_H / 2);
+    var sx = Math.round(isoX(f.x, f.y)), sy = Math.round(isoYA(f.x, f.y));
     var r = f.r * 26;
     cx.save(); cx.translate(sx, sy); cx.scale(1, 0.5);
     cx.globalCompositeOperation = 'lighter';
@@ -11220,14 +11235,14 @@ function drawIllWorld(cx, dt, st) {
 function drawIllHalo(cx, o, k) {
     var spr = SPR['ice.' + o.key + '.2'] || SPR['ice.' + o.key];
     if (!spr) return;
-    var sx = isoX(o.x, o.y), sy = isoY(o.x, o.y) + TILE_H / 2;
+    var sx = isoX(o.x, o.y), sy = isoYA(o.x, o.y);
     cx.save(); cx.globalAlpha = 0.55 * (1 - k);
     cx.translate(sx, sy); cx.scale(1.35, 1.35);
     blit(cx, spr, 0, 0);
     cx.restore();
 }
 function drawIllFizz(cx, o, k) {
-    var sx = isoX(o.x, o.y), sy = isoY(o.x, o.y) + TILE_H / 2 - 24;
+    var sx = isoX(o.x, o.y), sy = isoYA(o.x, o.y) - 24;
     cx.save(); cx.textAlign = 'center';
     cx.globalAlpha = (1 - k) * 0.5;
     cx.font = 'bold 11px "Press Start 2P", monospace';
@@ -11257,7 +11272,7 @@ function drawCuts(cx, dt) {
         var c = c2[i]; c.t -= dt;
         if (c.t <= 0) { c2.splice(i, 1); continue; }
         var k = 1 - c.t / c.max;
-        var sx = isoX(c.x, c.y), sy = isoY(c.x, c.y) + TILE_H / 2 - 34 - k * 16;
+        var sx = isoX(c.x, c.y), sy = isoYA(c.x, c.y) - 34 - k * 16;
         var size = c.big ? 15 : 9;
         cx.save();
         cx.font = 'bold ' + size + 'px "Press Start 2P", monospace';
@@ -11428,7 +11443,7 @@ function draw(rdt) {
     drawLooks(cx);
     drawRings(cx, dt);
     if (RT.moveTo && !S.opts.wasd) {
-        var mx = isoX(RT.moveTo.x, RT.moveTo.y), my = isoY(RT.moveTo.x, RT.moveTo.y) + TILE_H / 2;
+        var mx = isoX(RT.moveTo.x, RT.moveTo.y), my = isoYA(RT.moveTo.x, RT.moveTo.y);
         cx.save(); cx.translate(mx, my); cx.scale(1, 0.5);
         cx.strokeStyle = 'rgba(200,190,220,.4)'; cx.lineWidth = 1.5;
         cx.beginPath(); cx.arc(0, 0, 7 + Math.sin(RT.t * 8) * 2, 0, TAU); cx.stroke(); cx.restore();
@@ -11530,7 +11545,7 @@ function drawCalls(cx) {
            range under 2.4 tiles it landed without ever visibly moving
            (crit-eng-proj 13). */
         sx = Math.round(isoX(R.step ? c.qx : c.x, R.step ? c.qy : c.y));
-        sy = Math.round(isoY(R.step ? c.qx : c.x, R.step ? c.qy : c.y) + TILE_H / 2);
+        sy = Math.round(isoYA(R.step ? c.qx : c.x, R.step ? c.qy : c.y));
         cx.save();
         /* THE GROUND MARK. One flat ellipse per call per frame on the
            ground plane at the standard 1:0.5, which is what makes the
@@ -11586,7 +11601,7 @@ function drawCalls(cx) {
 }
 function drawFproj(cx) {
     for (var i = 0; i < RT.fproj.length; i++) {
-        var p = RT.fproj[i], sx = isoX(p.x, p.y), sy = isoY(p.x, p.y) + TILE_H / 2 - 24;
+        var p = RT.fproj[i], sx = isoX(p.x, p.y), sy = isoYA(p.x, p.y) - 24;
         cx.save(); cx.globalCompositeOperation = 'lighter';
         var g = cx.createRadialGradient(sx, sy, 1, sx, sy, 9);
         g.addColorStop(0, 'rgba(235,225,250,.9)'); g.addColorStop(1, 'rgba(150,140,190,0)');
@@ -14469,7 +14484,7 @@ function coversSomeone(o, sp, mxc, myc) {
     for (var i = 0; i < RT.hide.length; i++) {
         var a = RT.hide[i];
         if (a.k >= k) continue;                              // in front of it, or is it
-        var sx = isoX(a.x, a.y), sy = isoY(a.x, a.y) + TILE_H / 2;
+        var sx = isoX(a.x, a.y), sy = isoYA(a.x, a.y);
         var sp2 = paintSpan(lo, sx - mxc);
         if (!sp2) continue;
         var top = myc + sp2.top, bot = myc + sp2.bot;
@@ -15123,7 +15138,13 @@ PAINT.fence = function (g, c) {
     // row of sticks with its rails stacked up at one end.
     function at(q) {
         var u = long ? c.bw * q : c.bw / 2, v = long ? c.bh / 2 : c.bh * q;
-        return [c.lx(u, v), c.ly(u, v) + TILE_H / 2];
+        /* No + TILE_H/2 here. This is sprite-local space, where lx/ly
+           already put the footprint centre at the origin, and every other
+           painter and contactShadow work in it unshifted. It was a patch
+           for the actor offset that used to live in isoY's callers, and
+           it put nine fences' rails half a tile off their own contact
+           shadow and collision box. */
+        return [c.lx(u, v), c.ly(u, v)];
     }
     var A = at(0), B = at(1);
     var gap0 = 0.52, gap1 = 0.72;                                              // a stretch nobody has mended
@@ -15688,7 +15709,7 @@ function drawLights(cx) {
     if (!RT.dead) ls.push({ x: RT.px, y: RT.py, r: 3.4, c: '255,214,150', i: 0.8, self: 1 });
     cx.globalCompositeOperation = 'lighter';
     for (var i = 0; i < ls.length; i++) {
-        var l = ls[i], sx = isoX(l.x, l.y), sy = isoY(l.x, l.y) + TILE_H / 2;
+        var l = ls[i], sx = isoX(l.x, l.y), sy = isoYA(l.x, l.y);
         var rad = l.r * 30;
         if (sx < -rad || sx > VW + rad || sy < -rad * 2 || sy > VH + rad * 2) continue;
         /* The town's own lamps dip while a rhyme goes off and come
@@ -15764,7 +15785,7 @@ function freeVig() { VIG.forEach(function (c) { if (c) { c.width = c.height = 0;
    duller once you have read it. */
 function drawLooks(cx) {
     (place().looks || []).forEach(function (l, i) {
-        var sx = isoX(l.x, l.y), sy = isoY(l.x, l.y) + TILE_H / 2;
+        var sx = isoX(l.x, l.y), sy = isoYA(l.x, l.y);
         var near = Math.hypot(l.x - RT.px, l.y - RT.py) < 2.4;
         var read = !!(S.looked && S.looked[lookKey(l)]);
         var pu = 0.5 + Math.sin(RT.t * 2.2 + i * 1.7) * 0.5;
@@ -15782,7 +15803,7 @@ function drawLooks(cx) {
 function drawExits(cx) {
     (place().exits || []).forEach(function (e) {
         var open = exitOpen(e);
-        var sx = isoX(e.x, e.y), sy = isoY(e.x, e.y) + TILE_H / 2;
+        var sx = isoX(e.x, e.y), sy = isoYA(e.x, e.y);
         cx.save(); cx.translate(sx, sy); cx.scale(1, 0.5);
         var pul = 0.35 + Math.sin(RT.t * 2.4) * 0.12;
         cx.strokeStyle = open ? 'rgba(201,169,74,' + pul + ')' : 'rgba(120,110,130,.22)';
@@ -15845,7 +15866,7 @@ var GESTURE = {
 };
 function drawNpc(cx, n) {
     var w2 = n.id ? npcRT(n.id) : { x: n.x, y: n.y, bob: RT.t * 2.4, moving: 0, face: 1 };
-    var sx = isoX(w2.x, w2.y), sy = isoY(w2.x, w2.y) + TILE_H / 2;
+    var sx = isoX(w2.x, w2.y), sy = isoYA(w2.x, w2.y);
     if (sx < -70 || sx > VW + 70 || sy < -90 || sy > VH + 90) return;
     // standing still is a slow breath; walking is a step; the child skips
     var stride = w2.moving ? (n.skip ? 5.5 : 2.2) : 0.9;
@@ -15909,7 +15930,7 @@ function drawTalkMarks(cx) {
 }
 function drawPrompt(cx) {
     var o = RT.prompt; if (!o || RT.dialog) return;
-    var sx = isoX(o.x, o.y), sy = isoY(o.x, o.y) + TILE_H / 2;
+    var sx = isoX(o.x, o.y), sy = isoYA(o.x, o.y);
     var txt = (o.shut ? '' : 'E — ') + o.label;
     cx.save(); cx.textAlign = 'center'; cx.font = '11px "Pixelify Sans"';
     var w = cx.measureText(txt).width + 16;

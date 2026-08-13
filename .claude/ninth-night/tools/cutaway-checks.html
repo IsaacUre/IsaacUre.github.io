@@ -187,6 +187,24 @@ CASES.forEach(function (c) {
     ck(n === 0, 'the baked vignette matches the live one in all four corners', n + ' of 14400 px differ, worst ' + worst);
 })();
 
+/* Actors and the ground have to agree about where world (x, y) is.
+   moveActor clamps you to size - 0.5, which is the middle of the last
+   tile, so at the clamp there must still be half a tile of floor south
+   of your feet. When actors carried an extra TILE_H/2 they were drawn at
+   the projection of (x+0.5, y+0.5) instead, which at the clamp is the
+   outer brink of the world, and the character stood with both boots over
+   the edge. Sample straight down from the feet and look for ground. */
+[['mark', 12.5, 10.5], ['square', 16.5, 14.5], ['hollow', 14.5, 12.5]].forEach(function (c) {
+    settle(c[0], c[1], c[2], 80);
+    var sx = Math.round(1120 / 2 + (c[1] - c[2]) * 29 - RT.world.cam.x);
+    var sy = Math.round(84 + (c[1] + c[2]) * 14.5 - RT.world.cam.y);
+    // 6px below the feet, which is well inside half a tile (14.5px)
+    var d = gx.getImageData(sx - 3, sy + 6, 7, 3).data, lit = 0;
+    for (var i = 0; i < d.length; i += 4) if (d[i] + d[i + 1] + d[i + 2] > 26) lit++;
+    ck(lit >= 15, c[0] + ': there is still ground under your feet at the south-east clamp',
+       lit + ' of 21 samples are floor rather than the void');
+});
+
 say('');
 say(pass + ' passed, ' + fail + ' failed');
 out.className = fail ? 'f' : 'p';
