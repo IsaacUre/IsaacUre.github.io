@@ -171,6 +171,9 @@ var STEPS = [
       click(byName('Cancel'));
       waitFor('Select World again', function () { return startsWith('SMP with malachi'); }, function (still) {
         line(!!still, 'cancelling the confirm keeps the world');
+        // going back must not rebuild Select World, or the selection is lost
+        line(window.MC.__proof.menu().sel === 'w3', 'cancelling the confirm keeps the world selected');
+        line(!byName('Play Selected World').disabled, 'and Play Selected World is still enabled');
         next();
       });
     });
@@ -179,7 +182,20 @@ var STEPS = [
     key('Escape');
     waitFor('the title screen again', function () { return byName('Singleplayer'); }, function () {
       line(true, 'Escape returns from Select World to the title screen');
+      line(window.MC.__proof.menu().prev.length === 0, 'the back stack is empty at the title screen');
       next();
+    });
+  },
+  /* Re-entering a screen from the title builds a fresh one — vanilla makes a
+     new Screen object, so the search box and the selection do not survive. */
+  function reentryIsFresh(next) {
+    click(byName('Singleplayer'));
+    waitFor('Select World', function () { return byName('Create New World'); }, function () {
+      var st = window.MC.__proof.menu();
+      line(!st.sel, 're-entering Select World clears the previous selection');
+      line(byName('Play Selected World').disabled, 'and Play Selected World is greyed again');
+      key('Escape');
+      waitFor('the title screen', function () { return byName('Singleplayer'); }, function () { next(); });
     });
   },
   function createWorld(next) {

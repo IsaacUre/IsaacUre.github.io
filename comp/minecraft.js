@@ -5578,6 +5578,9 @@
         s.t = DAY_MS * 0.30;   // mid-morning. Noon is flat and dusk is a different screen's job.
         s.weather = 0;
         s.hp = 20; s.food = 20;
+        // snd() reads S, and S is this while the menu is up: without these the
+        // button clicks ignore a Sound: OFF set on the last world played
+        s.snd = optLoad().snd; s.mus = optLoad().mus;
         /* Scoring the view calls heightAt, which reads the world type and seed
            off S — so S has to already BE this world. Doing it the other way
            round sited the panorama camera using the previous world's terrain,
@@ -5950,13 +5953,26 @@
             m.ui.innerHTML = '';
         }
     }
+    /* Arriving at a screen resets its own scratch state. Vanilla builds a new
+       Screen object every time, so a second visit to Select World has an empty
+       search box and nothing selected; without this both persist and the
+       server list never re-pings. */
+    function mnEnter(m) {
+        var scr = MN_SCR[m.scr];
+        if (scr && scr.enter) scr.enter(m);
+    }
     function mnGo(m, scr, keep) {
         if (!keep) m.prev.push(m.scr);
         m.scr = scr;
         m.hover = -1; m.focus = -1; m.msg = null;
         m.sig = '';                       // force a full rebuild: the widgets are different things now
         m.dirty = true;
+        mnEnter(m);
     }
+    /* Going back does NOT re-enter: vanilla keeps the parent Screen object
+       alive underneath, so cancelling a delete confirm lands on the same
+       Select World with the same world still highlighted. Only a descent
+       through mnGo builds a fresh screen. */
     function mnBack(m) {
         var to = m.prev.pop() || 'title';
         m.scr = to; m.hover = -1; m.focus = -1; m.msg = null; m.sig = ''; m.dirty = true;
@@ -6010,6 +6026,7 @@
             k.style.width = (b2.w * s) + 'px';
             k.style.height = (b2.h * s) + 'px';
             k.disabled = !b2.enabled;
+            k.tabIndex = m.inert ? -1 : 0;
             /* A cycle button IS its value — "Game Mode: Survival" becomes
                "Game Mode: Hardcore" without the widget list changing shape. If
                the name is only written on a rebuild, a screen reader keeps
@@ -6114,8 +6131,13 @@
            rate said it should, which on a slow machine is a hang. */
         if (scr.tick) scr.tick(m, dt);
         if (scr.bg !== 'dirt' && scr.bg !== 'flat') { RT.fov = MN_FOV; mnPanoCam(m, dt); drawFrame(); }
+        /* While the widgets are still invisible they are not interactive at
+           all. pointer-events alone is not enough: a button with no pointer
+           events is still in the tab order, so Tab-then-Enter could start a
+           world off a screen that had not been drawn yet. */
         var a = scr.bg === 'pano' ? mnGuiAlpha(m) : 1;
-        m.ui.style.pointerEvents = a < 0.02 ? 'none' : '';
+        m.inert = a < 0.02;
+        m.ui.style.pointerEvents = m.inert ? 'none' : '';
         if (m.dirty || scr.live !== false) mnPaint(m, scr);
     }
     function mnPaint(m, scr) {
@@ -8672,7 +8694,7 @@
                 var m = RT && RT.menu;
                 if (!m) return null;
                 return { scr: m.scr, sel: m.d.sel, msel: m.d.msel, mx: m.mx, scale: m.scale, sig: m.sig,
-                    hover: m.hover, focus: m.focus,
+                    hover: m.hover, focus: m.focus, prev: m.prev.slice(),
                     w: m.widgets.map(function (b) { return b.id + ':' + (b.enabled ? '' : 'off') + (b.st || 0); }) };
             } },
         hours: function () { var s = S || sLoad(); return s ? (s.hrs || 0) : 0; }
