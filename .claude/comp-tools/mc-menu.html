@@ -1,0 +1,172 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>mc-menu</title>
+<!-- Hosts the Minecraft title screen at native size, outside the desktop shell,
+     so a headless --screenshot at the window size crops to the game and nothing
+     else. The shell draws the game into a ~1080px window inside a picture of
+     Windows; this is the same code at whatever size you ask for.
+
+       ?w=1080&h=620       the game surface size (default 1080x620)
+       &click=Singleplayer,Create New World
+                           press these, by accessible name, in order, once the
+                           menu has settled. Real click events on the real
+                           controls — the same path a player takes.
+       &type=my world      type into the focused text field (real key events)
+       &key=Escape,Tab     real keydown/keyup at the menu layer
+       &settle=1200        ms to wait for the panorama to finish generating
+       &step=600           ms between actions
+       &proof=font         ignore all of the above and draw a font specimen
+
+     Everything here drives the shipped controls rather than any dev handle.
+     A build once shipped where the layout was perfect and nothing was
+     clickable, because the DOM layer and the painter had drifted apart. -->
+<style>
+  html, body { margin: 0; padding: 0; overflow: hidden; background: #101014; }
+  #host { position: absolute; left: 0; top: 0; }
+  #proof { position: absolute; left: 0; top: 0; background: #202024; image-rendering: pixelated; }
+  /* off by default: it sits over the game and every screenshot picked it up.
+     ?log=1 puts it back when you are chasing something. */
+  #log { position: absolute; right: 4px; bottom: 4px; color: #7f7; font: 11px monospace; white-space: pre; text-align: right; display: none; }
+  body.log #log { display: block; }
+</style>
+<link rel="stylesheet" href="/comp/comp.css">
+<div id="host"></div>
+<div id="log"></div>
+<script src="/comp/minecraft.js"></script>
+<script>
+var Q = new URLSearchParams(location.search);
+var W = +(Q.get('w') || 1080), H = +(Q.get('h') || 620);
+var log = document.getElementById('log');
+if (Q.get('log')) document.body.classList.add('log');
+function say(s) { log.textContent += s + '\n'; }
+
+if (Q.get('proof')) { drawProof(); }
+else { boot(); }
+
+function boot() {
+  var host = document.getElementById('host');
+  host.style.width = W + 'px';
+  host.style.height = H + 'px';
+  host.innerHTML = window.MC.render();
+  window.MC.init(host, { version: Q.get('ver') || '26.2', installation: 'Latest release' });
+
+  /* Poll for the control, never sleep for it. Headless runs virtual time, so
+     the panorama world takes tens of virtual seconds to generate and any fixed
+     settle either misses the title screen or wastes the budget. */
+  var step = +(Q.get('step') || 260), TIMEOUT = +(Q.get('to') || 40000);
+  waitFor(function () { return byName('Singleplayer') || byName('Done') || byName('Back'); }, run,
+    function () { say('never reached the menu'); document.title = 'mc-menu: no menu'; });
+
+  function ui() { return host.querySelector('.mc-mui'); }
+  function byName(n) {
+    var all = ui().querySelectorAll('[aria-label]');
+    for (var i = 0; i < all.length; i++) if (all[i].getAttribute('aria-label') === n) return all[i];
+    return null;
+  }
+  function waitFor(test, ok, fail) {
+    var waited = 0;
+    (function tick() {
+      var v;
+      try { v = test(); } catch (e) { v = null; }
+      if (v) return ok(v);
+      if ((waited += 50) > TIMEOUT) return fail ? fail() : ok(null);
+      setTimeout(tick, 50);
+    })();
+  }
+  function run() {
+    var acts = [];
+    (Q.get('click') || '').split(',').filter(Boolean).forEach(function (n) {
+      acts.push(function (done) {
+        waitFor(function () { return byName(n); }, function (el) { press(n, el); done(); },
+          function () { say('MISS ' + n); done(); });
+      });
+    });
+    function press(n, el) {
+        if (el.disabled) { say('DISABLED ' + n); return; }
+        var r = el.getBoundingClientRect();
+        var o = { clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, bubbles: true, cancelable: true, button: 0, detail: 1 };
+        el.dispatchEvent(new MouseEvent('mousemove', o));
+        el.dispatchEvent(new MouseEvent('mousedown', o));
+        el.dispatchEvent(new MouseEvent('mouseup', o));
+        el.dispatchEvent(new MouseEvent('click', o));
+        say('OK ' + n);
+    }
+    if (Q.get('type')) acts.push(function (done) {
+      var el = document.activeElement, ins;
+      if (!el || el.tagName !== 'INPUT') { ins = ui().querySelectorAll('input'); el = ins[0]; }
+      if (!el) { say('NO INPUT'); return done(); }
+      el.focus();
+      el.value = Q.get('type');
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      say('TYPED ' + Q.get('type'));
+      done();
+    });
+    (Q.get('key') || '').split(',').filter(Boolean).forEach(function (k) {
+      acts.push(function (done) {
+        var t = document.activeElement && ui().contains(document.activeElement) ? document.activeElement : ui();
+        t.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+        t.dispatchEvent(new KeyboardEvent('keyup', { key: k, bubbles: true, cancelable: true }));
+        say('KEY ' + k);
+        done();
+      });
+    });
+    (function next(i) {
+      if (i >= acts.length) {
+        // let the entrance fade finish before anything photographs the result
+        setTimeout(function () {
+          var st = window.MC.__proof.menu();
+          if (st) say(st.scr + ' hover=' + st.hover + ' focus=' + st.focus + '\n' + st.w.join(' '));
+          document.title = 'mc-menu ready';
+        }, 2600);
+        return;
+      }
+      acts[i](function () { setTimeout(function () { next(i + 1); }, step); });
+    })(0);
+  }
+}
+
+/* The font specimen. Every glyph, every advance, and the strings the menu
+   actually draws — the only way to judge letterforms is at 1:1 blown up. */
+function drawProof() {
+  document.getElementById('host').remove();
+  var cv = document.createElement('canvas');
+  cv.id = 'proof';
+  var Z = 4, cw = 300, ch = 210;
+  cv.width = cw * Z; cv.height = ch * Z;
+  cv.style.width = (cw * Z) + 'px';
+  document.body.appendChild(cv);
+  var cx = cv.getContext('2d');
+  cx.imageSmoothingEnabled = false;
+  cx.setTransform(Z, 0, 0, Z, 0, 0);
+  cx.fillStyle = '#202024'; cx.fillRect(0, 0, cw, ch);
+  var t = window.MC.__proof;
+  if (!t) { cx.fillStyle = '#f66'; cx.fillRect(0, 0, 20, 20); return; }
+  var rows = [
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
+    'abcdefghijklmnopqrstuvwxyz',
+    '0123456789 !"#$%&\'()*+,-./',
+    ':;<=>?@[\\]^_`{|}~ áéíóú ñç',
+    'Singleplayer  Multiplayer',
+    'Minecraft Realms  Options...',
+    'Quit Game  Create New World',
+    'Play Selected World  Cancel',
+    "'world (1)' will be lost forever!",
+    'Survival Mode, Version: 26.2',
+    'Also try NINTH NIGHT!'
+  ];
+  for (var i = 0; i < rows.length; i++) t.text(cx, rows[i], 4, 6 + i * 12, '#ffffff');
+  // the advance table, against the real game's measured widths
+  var want = { ' ': 4, '!': 2, '"': 4, '#': 6, '$': 6, '%': 6, '&': 6, "'": 2, '(': 4, ')': 4, '*': 4,
+    '+': 6, ',': 2, '-': 6, '.': 2, '/': 6, ':': 2, ';': 2, '<': 5, '=': 6, '>': 5, '?': 6, '@': 7,
+    'I': 4, '[': 4, '\\': 6, ']': 4, '^': 6, '_': 6, '`': 3, 'f': 5, 'i': 2, 'j': 6, 'k': 5, 'l': 3,
+    't': 4, '{': 4, '|': 2, '}': 4, '~': 7 };
+  var bad = [], k;
+  for (k in want) if (t.adv(k) !== want[k]) bad.push(k + ':' + t.adv(k) + '/' + want[k]);
+  for (var c = 65; c <= 90; c++) { k = String.fromCharCode(c); if (k !== 'I' && t.adv(k) !== 6) bad.push(k + ':' + t.adv(k) + '/6'); }
+  for (c = 48; c <= 57; c++) { k = String.fromCharCode(c); if (t.adv(k) !== 6) bad.push(k + ':' + t.adv(k) + '/6'); }
+  t.text(cx, bad.length ? 'ADVANCE MISMATCH: ' + bad.join(' ') : 'ADVANCES MATCH THE GAME', 4, 142, bad.length ? '#ff5555' : '#55ff55');
+  document.title = bad.length ? ('mc-menu proof: ' + bad.length + ' bad') : 'mc-menu proof: ok';
+  // the wordmark at 1:1
+  cx.drawImage(t.logo(), 4, 154);
+}
+</script>
