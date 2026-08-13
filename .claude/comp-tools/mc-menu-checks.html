@@ -415,6 +415,39 @@ var STEPS = [
       }, 200);
     });
   },
+  /* The house thrash: mash the menu and make sure it neither throws nor gets
+     stuck somewhere with no way out. Deterministic order, so a failure is
+     reproducible. */
+  function thrash(next) {
+    var keys = ['Escape', 'Tab', 'Enter', ' ', 'w', 'q', 'F3', 'ArrowDown', 'e', 't'];
+    var i = 0;
+    (function round() {
+      if (i >= 60) {
+        // whatever it did, Escape must climb back to the title screen
+        var esc = 0;
+        (function out() {
+          if (byName('Singleplayer') || esc > 12) {
+            line(!!byName('Singleplayer'), 'Escape always climbs back to the title screen after a thrash');
+            line(errs === 0, 'the thrash produced no console errors (' + errs + ')');
+            return next();
+          }
+          esc++; key('Escape');
+          setTimeout(out, 120);
+        })();
+        return;
+      }
+      var all = ui().querySelectorAll('[aria-label]');
+      if (all.length) {
+        var el = all[(i * 7) % all.length];
+        // never press the two that leave the menu for a world or the desktop
+        var n = el.getAttribute('aria-label');
+        if (n !== 'Play Selected World' && n !== 'Create New World' && n !== 'Quit Game' && !/^world|^SMP|^creative|^harness|^New World/.test(n)) click(el);
+      }
+      key(keys[i % keys.length]);
+      i++;
+      setTimeout(round, 40);
+    })();
+  },
   function noWorldKeysLeak(next) {
     // the world's own keydown handler must stand down while a menu is up
     var mc = host().querySelector('.mc');
