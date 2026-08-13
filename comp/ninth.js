@@ -12744,7 +12744,15 @@ var PLACES = {
         n: 'Bern\'s house', sub: 'he has kept the part for forty years and never played it',
         floor: 'room', calm: 1, mends: 1, w: 11, h: 9, night: 1, indoor: 1,
         props: [
-            { t: 'wall', b: [0, 0, 11, 0.6] }, { t: 'wall', b: [0, 0, 0.6, 9] }, { t: 'wall', b: [10.4, 0, 0.6, 9] },
+            /* North and west only. In this projection the two faces
+               nearest the eye are the south and the east, and the iso
+               cutaway convention drops both: the room is an L and the
+               floor edge reads as the wall line, which is what the south
+               has always done here. The east wall used to be kept, which
+               put a nine tile wall between the camera and the whole
+               south-east quarter of the room, and Bern's bed lost 81% of
+               its top face to it. */
+            { t: 'wall', b: [0, 0, 11, 0.6] }, { t: 'wall', b: [0, 0, 0.6, 9] },
             { t: 'table', b: [4.2, 3.4, 2.6, 1.6] },
             { t: 'bed', b: [8.2, 1.2, 1.8, 3.2] },
             { t: 'shelf', b: [1, 1.2, 2.4, 0.8] },
@@ -12762,7 +12770,7 @@ var PLACES = {
         n: 'The chandler\'s shop', sub: 'she sells the lamps the whole town sets out',
         floor: 'room', calm: 1, mends: 1, w: 12, h: 9, night: 1, indoor: 1,
         props: [
-            { t: 'wall', b: [0, 0, 12, 0.6] }, { t: 'wall', b: [0, 0, 0.6, 9] }, { t: 'wall', b: [11.4, 0, 0.6, 9] },
+            { t: 'wall', b: [0, 0, 12, 0.6] }, { t: 'wall', b: [0, 0, 0.6, 9] },   // near walls dropped, see bernhouse
             { t: 'counter', b: [3.4, 4.4, 4.8, 1.2] },
             { t: 'shelf', b: [1, 1.2, 3.2, 0.8] }, { t: 'shelf', b: [7.4, 1.2, 3.4, 0.8] },
             { t: 'vat', b: [1.2, 6.2, 1.8, 1.8] },
@@ -12907,7 +12915,14 @@ var PLACES = {
         floor: 'town', w: 17, h: 15, night: 1, script: 'a3', a3: 1, oneway: 1,
         props: [
             { t: 'house', b: [0, 0, 3.4, 2.6] }, { t: 'house', b: [13.6, 0, 3.4, 2.8] },
-            { t: 'house', b: [0, 12.4, 3.6, 2.6] }, { t: 'house', b: [13.4, 12.2, 3.6, 2.8] },
+            /* The south-east corner is the near corner: in this projection
+               a building there opens an occlusion cone up and to the left
+               across the whole square, which is exactly where the town is
+               sitting. Seven of the twenty-four were behind this house and
+               one of them was inside it. The square's own shut line says
+               "They have the boards up on the cart already", so the thing
+               that stands in the near corner on the night is the cart. */
+            { t: 'house', b: [0, 12.4, 3.6, 2.6] }, { t: 'cart', b: [14.6, 13.4, 2.2, 1.2] },
             { t: 'stagewip', b: [4.6, 1.0, 8, 3.2] },
             { t: 'foot', b: [4.6, 4.3, 8, 0.35] }
         ],
@@ -14159,13 +14174,58 @@ function propSprite(t, bw, bh, v, mayBuild) {
    "is this prop covering that person" has to ask about the paint. */
 /* What the sprite covers, in local coordinates. Derived, not measured:
    reading the pixels back to find out cost half a megabyte per prop and
-   put the whole game's build cost back where it started. It does not
-   need measuring — `hgt + over` IS where the paint stops, because that
-   is exactly the room the canvas was sized to give it, and the eaves
-   are the only thing that reaches past the footprint sideways. */
+   put the whole game's build cost back where it started.
+
+   It used to say `hgt + over` IS where the paint stops, "because that is
+   exactly the room the canvas was sized to give it". It is not. Look at
+   propSprite: `ay = SPRITE_PAD + ceil(rry + hgt + over)`. The rry is in
+   there because the footprint's NORTH corner already sits at local
+   y = -rry before anything is extruded upward, so a wall's far end
+   reaches -(rry + hgt). Dropping that term made the declared top short
+   by up to 91px — the chandler's north wall by 91, Bern's by 84, the
+   stage footlights by 81, the curtain by 73 — for 58 of the 96 prop
+   instances in the game. contactShadow's outer ring is 1.18 of the
+   footprint too, wider than the 1.15 that was here. Both corrected. */
 function paintedBox(c) {
     var over = c.d.over || 0;
-    return { x0: -c.rrx * 1.15, x1: c.rrx * 1.15, y0: -(c.hgt + over), y1: c.rry + 4 };
+    return {
+        rrx: c.rrx, rry: c.rry, sk: c.sk,
+        ex: (c.bw - c.bh) * TILE_H / 4,      // the y of the east and west corners
+        hgt: c.hgt,                          // the walls, which are the same height all across
+        up: c.hgt + over,                    // and the roof on top of them, which is not
+        x0: -c.rrx * 1.18, x1: c.rrx * 1.18, // the outer ring of the contact shadow
+        y0: -(c.rry + c.hgt + over), y1: c.rry * 1.18 + 4
+    };
+}
+/* The vertical span the paint occupies at one local x, which is the
+   footprint diamond at that x swept upward by hgt + over.
+
+   The bounding box is not good enough for this. A fence is 0.5 by 8.4
+   tiles, so its box is 300px wide and 180 tall while the fence itself is
+   a ribbon along one diagonal of it; testing the box makes every prop in
+   the place fade for somebody standing nowhere near them. The diamond is
+   two lines up and two lines down and costs about the same. */
+/* The four corners, from spriteCtx: N is (-sk, -rry), E is (rrx, ex),
+   S is (sk, rry), W is (-rrx, -ex). N is always the topmost and S the
+   bottommost, and W and E are always the leftmost and rightmost, so each
+   hull is exactly two segments whichever way the footprint is long. */
+function paintSpan(lo, lx) {
+    if (lx < -lo.rrx || lx > lo.rrx) return null;
+    var top, bot;
+    // upper boundary: west corner -> north corner -> east corner
+    if (lx <= -lo.sk) top = lerp(-lo.ex, -lo.rry, (lx + lo.rrx) / Math.max(1e-6, lo.rrx - lo.sk));
+    else              top = lerp(-lo.rry, lo.ex, (lx + lo.sk) / Math.max(1e-6, lo.rrx + lo.sk));
+    // lower boundary: west corner -> south corner -> east corner
+    if (lx <= lo.sk) bot = lerp(-lo.ex, lo.rry, (lx + lo.rrx) / Math.max(1e-6, lo.rrx + lo.sk));
+    else             bot = lerp(lo.rry, lo.ex, (lx - lo.sk) / Math.max(1e-6, lo.rrx - lo.sk));
+    /* The extrusion is `hgt` everywhere, but the headroom above it is not:
+       `over` is a roof or a canopy, and a roof is at its ridge in the
+       middle of the footprint and down at the eave by the corners. Sweeping
+       the full hgt + over across the whole width makes a house into a tall
+       rectangular curtain and reports people occluded who are nowhere near
+       it, which is how a third of the Act 3 audience looked hidden. */
+    var taper = lo.up - (lo.up - lo.hgt) * Math.abs(lx) / Math.max(1e-6, lo.rrx);
+    return { top: top - taper, bot: bot + 4 };
 }
 /* sprite-local point to screen. Local (0,0) is the footprint centre, and
    the sprite is blitted so that centre lands on (mxc, myc). */
@@ -14322,18 +14382,37 @@ var T_CUT = 0.56;                            // how much of a roof is left when 
 // they cannot outlive the place they were measured in
 onPlaceChange(function () { RT.world.cut = {}; });
 /* Only things that sort BEHIND this prop can be hidden by it, and only
-   the part of them that is actually inside the paint. Feet and head are
-   tested separately so a tall figure half behind a wall still counts. */
+   the part of them that is actually inside the paint.
+
+   This asked whether the prop swallows you WHOLE: `sy - a.h < y0` bailed
+   the moment your head was above the declared top of the paint, which is
+   the opposite of what the comment above it used to promise. Against a
+   top that was also up to 91px too low (see paintedBox) the two errors
+   compounded and the cutaway simply stopped: 67 tiles of walkable ground
+   across eleven places put you entirely behind a wall with nothing
+   thinning, a fifth of the chandler's floor among them. It is an overlap
+   test now, which is what "a tall figure half behind a wall still
+   counts" always meant.
+
+   The `< 24` guard below has never fired: over the 89 authored prop
+   instances the smallest box is 33 by 34. It is kept as a floor for
+   whatever gets authored next, at a size that means something now that
+   the box is measured properly. */
 function coversSomeone(o, sp, mxc, myc) {
     var k = o.b[0] + o.b[2] / 2 + o.b[1] + o.b[3] / 2;
-    var lo = sp.box, x0 = mxc + lo.x0, x1 = mxc + lo.x1, y0 = myc + lo.y0, y1 = myc + lo.y1;
-    if (x1 - x0 < 24 || y1 - y0 < 24) return false;          // low things never hide anybody
+    var lo = sp.box;
+    if (lo.rrx * 2 < 24 || lo.up + lo.rry < 24) return false;   // low things never hide anybody
     for (var i = 0; i < RT.hide.length; i++) {
         var a = RT.hide[i];
         if (a.k >= k) continue;                              // in front of it, or is it
         var sx = isoX(a.x, a.y), sy = isoY(a.x, a.y) + TILE_H / 2;
-        if (sx < x0 || sx > x1) continue;
-        if (sy > y1 || sy - a.h < y0) continue;
+        var sp2 = paintSpan(lo, sx - mxc);
+        if (!sp2) continue;
+        var top = myc + sp2.top, bot = myc + sp2.bot;
+        // how much of the figure is inside the paint. A well or a counter
+        // takes your knees and that is not worth thinning a whole prop for;
+        // a wall that takes your head is
+        if (Math.min(sy, bot) - Math.max(sy - a.h, top) < a.h * 0.55) continue;
         return true;
     }
     return false;
@@ -14626,10 +14705,18 @@ PAINT.house = function (g, c) {
     for (var so = 0; so < 6; so++) px(g, lx2 - tw[so] / 2, ly2 - 12 - so * 2, tw[so], 2, 'rgba(11,9,18,' + (0.4 - so * 0.05).toFixed(2) + ')');
     poly(g, [[lx2 - 7, ly2], [lx2 + 7, ly2], [lx2 + 11, sw[2][1] > se[2][1] ? se[2][1] : se[3][1]], [lx2 - 11, se[3][1]]], 'rgba(255,190,96,.07)');
 
-    /* ── the roof ── */
+    /* ── the roof ──
+       Draw far then near, always. Which one is LIT is a different question
+       and it is about the wall underneath, not about the eye: for the
+       west-east ridge the near plane's eave runs south to west, so it sits
+       over the lit sw wall; for the north-south ridge it runs south to
+       east, over the shadowed se wall. Painting the near one lit either
+       way put a bright roof on a dark wall on every flipped house in the
+       game, which is half of them, and a roof lit from the wrong side is
+       the one thing that makes a building read as a sticker. */
     var paint = thatched ? thatchPlane : slatePlane;
-    paint(g, farPlane, rng, false);
-    paint(g, nearPlane, rng, true);
+    paint(g, farPlane, rng, flip);
+    paint(g, nearPlane, rng, !flip);
     // the gable end: a triangle of wall with a vent in it
     poly(g, gable, thatched ? '#3b3644' : '#37323f');
     dither(g, [gable[0], gable[1], gable[2], gable[0]], 'rgba(24,20,30,.4)', 0.2, rng);
@@ -15543,12 +15630,40 @@ function drawVignette(cx) {
        the extended rect is about 650 away, so fullRect is safe with no
        change to the stops. */
     var sq = RT.flash * 70, cxx = lerp(VW / 2, pz.bx, clamp(RT.flash * 1.4, 0, 0.45));
+    /* Rest is the common case by a very long way, and at rest this is the
+       same 650,000 pixels of three stop gradient every frame forever. On a
+       software canvas that measured 2.3 to 2.8ms, which is 62% of the
+       square's world frame and rather more than all eight of its lamps put
+       together; a blit is 0.08. So the still version is baked once per
+       kind and only a frame that is actually moving the frame pays for the
+       gradient. */
+    if (sq === 0 && cxx === VW / 2) { cx.drawImage(vigBake(ind), -14, -14); return; }
+    cx.fillStyle = vigGrad(cx, cxx, ind, sq); fullRect(cx);   // was fillRect(0,0,VW,VH): a 0.8 alpha wash nine pixels short of one edge
+}
+function vigGrad(cx, cxx, ind, sq) {
     var vg = cx.createRadialGradient(cxx, VH / 2 - 30, (ind ? 300 : 250) - sq, cxx, VH / 2, 680);
     vg.addColorStop(0, 'rgba(4,3,8,0)');
     vg.addColorStop(0.55, ind ? 'rgba(7,4,7,.2)' : 'rgba(4,3,8,.3)');
     vg.addColorStop(1, ind ? 'rgba(8,5,8,.6)' : 'rgba(4,3,8,.8)');
-    cx.fillStyle = vg; fullRect(cx);              // was fillRect(0,0,VW,VH): a 0.8 alpha wash nine pixels short of one edge
+    return vg;
 }
+/* Two of them, indoor and out, painted the first time each is asked for.
+   fullRect covers -14 to VW+14 because the shake translates the whole
+   world and the wash must not come up short of an edge, so the bake is
+   that size and is blitted at -14,-14 inside the same transform. */
+var VIG = [null, null];
+function vigBake(ind) {
+    var i = ind ? 1 : 0;
+    if (VIG[i]) return VIG[i];
+    var cv = document.createElement('canvas');
+    cv.width = VW + 28; cv.height = VH + 28;
+    var g = cv.getContext('2d');
+    g.translate(14, 14);                       // so the gradient is still centred on the canvas, not on the bake
+    g.fillStyle = vigGrad(g, VW / 2, ind, 0);
+    g.fillRect(-14, -14, VW + 28, VH + 28);
+    return (VIG[i] = cv);
+}
+function freeVig() { VIG.forEach(function (c) { if (c) { c.width = c.height = 0; } }); VIG[0] = VIG[1] = null; }
 /* Something you can look at has to be visible before you are told
    you can look at it. A small mark, brighter once you are close,
    duller once you have read it. */
@@ -15980,6 +16095,7 @@ function close() {
     }
     freeFloors();       // the cache is megabytes of prerendered ground; it does not outlive the window
     freeSprites();      // and neither do the prop bitmaps
+    freeVig();          // nor the two baked vignettes
     freeGlows();        // eleven 64 KB banded radials, same rule
     if (S) sSave();
     if (window.__ninth) delete window.__ninth;

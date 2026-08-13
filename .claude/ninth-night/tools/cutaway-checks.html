@@ -1,0 +1,195 @@
+<!doctype html>
+<!-- Does the roof actually come off?
+
+     The cutaway is the one thing in the world layer with no visible tell
+     when it is wrong: a prop that should have thinned and did not looks
+     exactly like a prop that had nothing to thin for. So this asserts on
+     two things at once, and they are independent.
+
+     RT.world.cut[i] is the game's own per-prop fade, eased toward T_CUT
+     when coversSomeone says yes. That says whether the rule FIRED.
+
+     Then it reads the canvas back twice from the same standing position,
+     once as the game draws it and once with every fade pinned at 1, and
+     counts the pixels that change over the figure. That says whether the
+     fade DID anything. Moving the player away is not a usable control:
+     the lantern goes with them and relights the whole box.
+
+     Run it the way playtest.html is run:
+       chrome --headless=new --disable-gpu --no-sandbox \
+         --virtual-time-budget=45000 --dump-dom \
+         "http://localhost:8571/.claude/ninth-night/tools/cutaway-checks.html?dev=ninth"
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="/comp/comp.css">
+<style>
+  html, body { margin: 0; background: #0b0910; color: #d8d2e2; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; }
+  #host { position: absolute; left: -4000px; top: 0; width: 1120px; height: 580px; }
+  #out { padding: 16px 20px; white-space: pre; }
+  .p { color: #7fd8a8; } .f { color: #ff6a78; } .n { color: #8a8296; }
+</style>
+</head>
+<body>
+<div id="host"></div>
+<pre id="out">running</pre>
+<script src="/comp/ninth.js"></script>
+<script>
+var host = document.getElementById('host'), out = document.getElementById('out');
+host.innerHTML = window.NINTH.render();
+window.NINTH.init(host);
+var N = window.__ninth, RT = N.RT();
+var cv = document.querySelector('.nn-cv'), gx = cv.getContext('2d', { willReadFrequently: true });
+
+var lines = [], pass = 0, fail = 0;
+function say(s) { lines.push(s); }
+function ck(ok, what, detail) {
+    (ok ? pass++ : fail++);
+    say((ok ? 'PASS  ' : 'FAIL  ') + what + (detail ? '   [' + detail + ']' : ''));
+}
+
+/* Put the player somewhere and settle. The cutaway EASES, so one frame is
+   never enough: it needs long enough for pow(0.004, dt) to converge. */
+function settle(place, x, y, frames) {
+    N.place(place);
+    RT = N.RT();
+    RT.px = x; RT.py = y;
+    RT.world.cut = {};
+    for (var i = 0; i < (frames || 120); i++) N.tick(1);
+}
+// the lowest fade any prop in the place is holding: 1 means nothing thinned
+function minCut() {
+    var c = RT.world.cut, lo = 1;
+    for (var k in c) if (c[k] < lo) lo = c[k];
+    return lo;
+}
+/* Whether the fade is doing anything you can see, which is a different
+   question from whether it fired.
+
+   Moving the player away is not a usable control: the lantern goes with
+   them and relights the whole box, so every pixel differs whatever the
+   roof did. The control that isolates the roof is the roof. Render the
+   frame twice from the same standing position, once with every fade
+   pinned at 1 and once at its settled value, and count the pixels that
+   change in a box over the figure. */
+function fadeDelta(place, x, y) {
+    settle(place, x, y, 140);
+    var settled = {}, k;
+    for (k in RT.world.cut) settled[k] = RT.world.cut[k];
+    var sx = Math.round(1120 / 2 + (x - y) * 29 - RT.world.cam.x);
+    var sy = Math.round(84 + (x + y) * 14.5 + 14.5 - RT.world.cam.y);
+    var bx = Math.max(0, sx - 13), by = Math.max(0, sy - 44), bw = 26, bh = 46;
+    if (bx + bw > 1120 || by + bh > 580 || by < 0) return { sig: -1, noise: -1 };
+    function grab() { return gx.getImageData(bx, by, bw, bh).data; }
+    function diff(a, b) {
+        var n = 0;
+        for (var i = 0; i < a.length; i += 4)
+            if (Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2]) > 20) n++;
+        return n;
+    }
+    function tickHolding(v) {                          // one frame, fades pinned where I put them
+        var s = {}, q; for (q in RT.world.cut) s[q] = v == null ? RT.world.cut[q] : v;
+        N.tick(1);
+        for (q in s) RT.world.cut[q] = s[q];
+        N.tick(1);
+        for (q in s) RT.world.cut[q] = s[q];
+    }
+    /* The figure breathes and the lantern flickers, so two renders one tick
+       apart differ even when nothing about the roof changed. Measure that
+       noise floor across one tick first, then measure the fade across one
+       tick, and compare like with like. Without this the empty arena
+       reported 178 changed pixels for a roof that does not exist. */
+    var a = grab();
+    tickHolding(null);
+    var a2 = grab();
+    var noise = diff(a, a2);
+    tickHolding(1);                                    // now with nothing thinned
+    var b = grab();
+    var sig = diff(a2, b);
+    for (k in settled) RT.world.cut[k] = settled[k];
+    return { sig: sig, noise: noise };
+}
+
+/* Each case: a place, a spot, and whether a prop is supposed to be in the
+   way there. The spots were picked by hand off the geometry, not by
+   running the code and writing down what it did. */
+var CASES = [
+    // behind: the prop sorts after you and its paint is over your body
+    { p: 'square',    x: 14.6, y: 12.4, hidden: 1, what: 'behind the south-east house' },
+    { p: 'square',    x: 0.5,  y: 9.2,  hidden: 1, what: 'behind the south-west house' },
+    { p: 'square',    x: 7.0,  y: 3.0,  hidden: 1, what: 'behind the half built stage' },
+    { p: 'chandler',  x: 1.0,  y: 5.8,  hidden: 1, what: 'behind the tallow vat' },
+    { p: 'bernhouse', x: 6.1,  y: 2.5,  hidden: 1, what: 'behind the lamp on Bern’s floor' },
+    { p: 'village',   x: 0.5,  y: 6.6,  hidden: 1, what: 'behind Grelling’s west house' },
+    // clear: nothing sorts after you at all, so nothing may thin
+    { p: 'square',    x: 8.5,  y: 13.6, hidden: 0, what: 'out in the open, south of the well' },
+    { p: 'arena',     x: 8.5,  y: 8.5,  hidden: 0, what: 'the empty arena' },
+    { p: 'lane',      x: 6.2,  y: 14.5, hidden: 0, what: 'the open lane' },
+    { p: 'hollow',    x: 7.5,  y: 11.0, hidden: 0, what: 'the open hollow' },
+    { p: 'stage',     x: 6.5,  y: 8.0,  hidden: 0, what: 'downstage, well clear of the curtain' },
+    { p: 'mark',      x: 6.5,  y: 8.6,  hidden: 0, what: 'south of the marker stone' }
+];
+
+CASES.forEach(function (c) {
+    settle(c.p, c.x, c.y, 140);
+    var m = minCut();
+    if (c.hidden) ck(m < 0.75, c.p + ': the roof comes off ' + c.what, 'fade ' + m.toFixed(2));
+    else          ck(m > 0.995, c.p + ': nothing thins ' + c.what, 'fade ' + m.toFixed(2));
+});
+
+/* And the point of all of it: can you see yourself. Only the hidden cases
+   are interesting here, and the bar is that a decent share of the figure
+   survives, not that it is untouched. */
+CASES.forEach(function (c) {
+    var d = fadeDelta(c.p, c.x, c.y);
+    var detail = d.sig + ' px against a noise floor of ' + d.noise;
+    if (c.hidden) ck(d.sig > d.noise + 30, c.p + ': the fade changes what you see ' + c.what, detail);
+    // the floor moves a little between ticks because the figure breathes,
+    // so 'nothing' means nothing beyond that rather than exactly zero
+    else          ck(d.sig <= d.noise + 40, c.p + ': the fade changes nothing ' + c.what, detail);
+});
+
+/* The vignette is baked at rest and drawn live while the frame is
+   narrowing onto a blast. The two have to be the same picture, and a
+   gradient centre that drifts by the bake's own padding is exactly the
+   kind of thing nobody notices.
+
+   Compare the four corners only. The middle of the canvas carries the
+   scene title and the narration, both of which are on their own timers,
+   so a whole-canvas diff measures the typewriter rather than the wash.
+   The corners are where the vignette is deepest and nothing else moves. */
+(function () {
+    settle('square', 8.5, 10, 60);
+    function corners() {
+        var g = [];
+        [[0, 0], [1120 - 60, 0], [0, 580 - 60], [1120 - 60, 580 - 60]].forEach(function (c) {
+            g.push(gx.getImageData(c[0], c[1], 60, 60).data);
+        });
+        return g;
+    }
+    var a = corners();
+    RT.flash = 0.0001;                 // any non-zero flash takes the live path
+    N.tick(1);
+    var b = corners();
+    RT.flash = 0;
+    N.tick(1);
+    var worst = 0, n = 0;
+    for (var q = 0; q < a.length; q++) {
+        for (var i = 0; i < a[q].length; i += 4) {
+            var d = Math.abs(a[q][i] - b[q][i]) + Math.abs(a[q][i + 1] - b[q][i + 1]) + Math.abs(a[q][i + 2] - b[q][i + 2]);
+            if (d > worst) worst = d;
+            if (d > 4) n++;
+        }
+    }
+    ck(n === 0, 'the baked vignette matches the live one in all four corners', n + ' of 14400 px differ, worst ' + worst);
+})();
+
+say('');
+say(pass + ' passed, ' + fail + ' failed');
+out.className = fail ? 'f' : 'p';
+out.textContent = lines.join('\n');
+document.title = fail ? ('CUTAWAY FAIL ' + fail) : ('CUTAWAY OK ' + pass);
+</script>
+</body>
+</html>
