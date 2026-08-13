@@ -7646,6 +7646,34 @@ function mcSeedSaves() {
             items: w.region.map(function (r) { return { n: r, t: 'sys', size: fmtKb(900 + fsHash(w.n + r) % 3300) }; }), empty: '' };
     });
 }
+/* —— the bridge the game talks to the machine through ——
+   The title screen needs three things the desktop owns: a way to quit (which
+   here means closing the window), a way to keep .minecraft/saves honest now
+   that the game actually has worlds, and a way to open a folder in Explorer
+   from the Edit World screen. Everything else it does itself. */
+window.MCHOST = {
+    quit: function () { closeWin('minecraft'); },
+    openFolder: function (path) { openApp('explorer', path); },
+    skin: function () { return mcSkin(); },
+    /* The four folders in .minecraft/saves were lore until the game grew a
+       world list. Now the list is the truth and this makes the folders agree
+       with it — same shape mcSeedSaves built, so Explorer needs no changes. */
+    saves: function (list) {
+        if (!list || !list.length) return;
+        FS['.minecraft/saves'] = { items: list.map(function (w) { return { n: w.folder || w.name, t: 'folder', go: '.minecraft/saves/' + (w.folder || w.name) }; }),
+            empty: 'No worlds yet.' };
+        list.forEach(function (w) {
+            var f = w.folder || w.name, key = '.minecraft/saves/' + f;
+            var it = [{ n: 'level.dat', t: 'sys', size: fmtKb(60 + fsHash(f) % 60) }, { n: 'icon.png', t: 'img', size: '3 KB' },
+                { n: 'region', t: 'folder', go: key + '/region' }];
+            FS[key] = { items: it, empty: '' };
+            FS[key + '/region'] = { items: ['r.0.0.mca', 'r.-1.0.mca'].map(function (r) {
+                return { n: r, t: 'sys', size: fmtKb(900 + fsHash(f + r) % 3300) }; }), empty: '' };
+        });
+        syncFsBody();
+    }
+};
+
 function mcSeedShots() {
     FS['.minecraft/screenshots'] = { items: ['2019-06-14_20.41.05.png', '2019-07-02_23.58.11.png', '2020-03-19_01.12.44.png']
         .map(function (n) { return { n: n, t: 'img', size: fmtKb(600 + fsHash(n) % 3200) }; }), empty: 'F2 in game takes a screenshot. These are from the before times.' };
@@ -8572,7 +8600,8 @@ var APPS = {
         onClose: function () { if (window.TERRA) bankPlaytime('terraria', window.TERRA.close() || 0); } },
     minecraft: { title: 'Minecraft', icon: 'ic-minecraft', w: 1080, h: 660,
         render: function () { return window.MC ? window.MC.render() : '<p style="padding:24px">The world fell into the void (minecraft.js missing).</p>'; },
-        init: function (el) { if (window.MC) window.MC.init(el); },
+        // the launcher has always passed { version, installation, skin }; the title screen is the first thing that reads it
+        init: function (el, id, arg) { if (window.MC) window.MC.init(el, arg); },
         onFocus: function (el) { var r = el.querySelector('.mc'); if (r) r.focus(); },
         onMinimize: function () { if (window.MC && window.MC.suspend) window.MC.suspend(); },   // hidden worlds pause; nobody dies off-screen
         onRestore: function (el) { var r = el.querySelector('.mc'); if (r) r.focus(); },

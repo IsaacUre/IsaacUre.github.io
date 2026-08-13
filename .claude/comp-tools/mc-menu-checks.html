@@ -1,0 +1,547 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>mc-menu-checks</title>
+<!-- Acceptance suite for the Minecraft title screen. Drives the shipped
+     controls with real mouse and keyboard events and asserts on the state that
+     results, then prints PASS/FAIL lines a headless run can read:
+
+       chrome --headless=new --disable-gpu --no-sandbox --virtual-time-budget=180000 \
+         --dump-dom "http://localhost:PORT/.claude/comp-tools/mc-menu-checks.html" \
+         | grep -o '<h1 id="h">[^<]*</h1>'
+
+     Everything here goes through .mc-mui — the same DOM layer a player clicks.
+     Nothing reaches into the module. The one exception is reading localStorage,
+     which is the only way to prove a save was or was not written. -->
+<style>
+  html, body { margin: 0; background: #101014; color: #ddd; font: 12px monospace; }
+  /* on screen and at native size: a visibility:hidden host makes every control
+     unfocusable, which silently turns the keyboard checks into a lie */
+  #host { position: absolute; left: 0; top: 0; width: 1080px; height: 620px; }
+  #out { position: absolute; left: 1090px; top: 0; white-space: pre; }
+  .p { color: #6f6; } .f { color: #f66; }
+</style>
+<link rel="stylesheet" href="/comp/comp.css">
+<h1 id="h">running…</h1>
+<div id="host"></div>
+<div id="out"></div>
+<script src="/comp/minecraft.js"></script>
+<script>
+var out = document.getElementById('out'), pass = 0, fail = 0, errs = 0;
+window.onerror = function (m) { errs++; line(false, 'window.onerror: ' + m); };
+var _err = console.error; console.error = function () { errs++; _err.apply(console, arguments); };
+
+function line(ok, msg) {
+  (ok ? pass++ : fail++);
+  var d = document.createElement('div');
+  d.className = ok ? 'p' : 'f';
+  d.textContent = (ok ? 'PASS ' : 'FAIL ') + msg;
+  out.appendChild(d);
+}
+function host() { return document.getElementById('host'); }
+function ui() { return host().querySelector('.mc-mui'); }
+function names() {
+  var o = [], a = ui().querySelectorAll('[aria-label]');
+  for (var i = 0; i < a.length; i++) o.push(a[i].getAttribute('aria-label'));
+  return o;
+}
+function byName(n) {
+  var a = ui().querySelectorAll('[aria-label]');
+  for (var i = 0; i < a.length; i++) if (a[i].getAttribute('aria-label') === n) return a[i];
+  return null;
+}
+function startsWith(p) {
+  var a = ui().querySelectorAll('[aria-label]');
+  for (var i = 0; i < a.length; i++) if (a[i].getAttribute('aria-label').indexOf(p) === 0) return a[i];
+  return null;
+}
+function click(el) {
+  if (!el) return false;
+  var r = el.getBoundingClientRect();
+  var o = { clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, bubbles: true, cancelable: true, button: 0, detail: 1 };
+  el.dispatchEvent(new MouseEvent('mousemove', o));
+  el.dispatchEvent(new MouseEvent('mousedown', o));
+  el.dispatchEvent(new MouseEvent('mouseup', o));
+  el.dispatchEvent(new MouseEvent('click', o));
+  return true;
+}
+function key(k, target) {
+  var t = target || (ui().contains(document.activeElement) ? document.activeElement : ui());
+  t.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+  t.dispatchEvent(new KeyboardEvent('keyup', { key: k, bubbles: true, cancelable: true }));
+}
+function type(el, v) {
+  el.focus();
+  el.value = v;
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+}
+/* Run a command through the game's own chat input handler. Not through the 't'
+   key, because leaving the pause menu asks for pointer lock, headless refuses
+   it, and lockFailed puts the menu straight back up. */
+function chatRun(cmd, then) {
+  var inp = host().querySelector('.mc-chatin');
+  inp.value = cmd;
+  inp.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+  setTimeout(function () { then(host().querySelector('.mc-chatlog').textContent || ''); }, 250);
+}
+function waitFor(what, test, then) {
+  var waited = 0;
+  (function tick() {
+    var v = null;
+    try { v = test(); } catch (e) { v = null; }
+    if (v) return then(v);
+    /* Generous, because this runs under --virtual-time-budget where an
+       animation frame is scarce: the connect sequence takes 3.25s of
+       accumulated dt, which can be a couple of virtual minutes of polling. */
+    if ((waited += 50) > 240000) { line(false, 'timed out waiting for ' + what); return then(null); }
+    setTimeout(tick, 50);
+  })();
+}
+
+/* Quit Game asks the desktop to close the window. Outside the shell there is
+   no desktop, so stand one up and record the call. */
+var quitCalls = 0, folderOpened = null, savesPushed = null;
+window.MCHOST = {
+  quit: function () { quitCalls++; },
+  openFolder: function (p) { folderOpened = p; },
+  skin: function () { return { n: 'URE BOY' }; },
+  saves: function (l) { savesPushed = l; }
+};
+
+try { localStorage.removeItem('comp_mc'); localStorage.removeItem('comp_mc_worlds'); localStorage.removeItem('comp_mc_opts'); } catch (e) {}
+
+host().innerHTML = window.MC.render();
+window.MC.init(host(), { version: '26.2', installation: 'Latest release' });
+
+var STEPS = [
+  function titleUp(next) {
+    waitFor('the title screen', function () { return byName('Singleplayer'); }, function () {
+      var n = names();
+      line(!!byName('Singleplayer'), 'title has Singleplayer');
+      line(!!byName('Multiplayer'), 'title has Multiplayer');
+      line(!!byName('Minecraft Realms'), 'title has Minecraft Realms');
+      line(!!byName('Options...'), 'title has Options...');
+      line(!!byName('Quit Game'), 'title has Quit Game');
+      line(!!byName('Language'), 'title has the Language icon');
+      line(!!byName('Accessibility Settings'), 'title has the Accessibility icon');
+      line(!!startsWith('A fan recreation'), 'title has the attribution line');
+      line(n.length === 8, 'title has exactly 8 controls (got ' + n.length + ')');
+      next();
+    });
+  },
+  function panoramaNotSaved(next) {
+    line(!localStorage.getItem('comp_mc'), 'the panorama world was not written to comp_mc');
+    line(!!localStorage.getItem('comp_mc_worlds'), 'the world index exists');
+    line(savesPushed && savesPushed.length === 4, 'the four .minecraft/saves worlds were pushed to the desktop');
+    next();
+  },
+  function selectWorld(next) {
+    click(byName('Singleplayer'));
+    waitFor('Select World', function () { return byName('Create New World'); }, function () {
+      line(!!byName('Play Selected World'), 'Select World has Play Selected World');
+      line(byName('Play Selected World').disabled, 'Play Selected World is greyed with no selection');
+      line(byName('Edit').disabled, 'Edit is greyed with no selection');
+      line(byName('Delete').disabled, 'Delete is greyed with no selection');
+      line(byName('Re-Create').disabled, 'Re-Create is greyed with no selection');
+      line(!byName('Cancel').disabled, 'Cancel is never greyed');
+      line(!!startsWith('world.'), 'the world "world" is listed');
+      line(!!startsWith('SMP with malachi'), 'the world "SMP with malachi" is listed');
+      next();
+    });
+  },
+  function selectingEnables(next) {
+    // click the row, but on the text rather than the 32px icon, which joins
+    var row = startsWith('SMP with malachi');
+    var r = row.getBoundingClientRect();
+    var o = { clientX: r.left + 150, clientY: r.top + 10, bubbles: true, cancelable: true, button: 0, detail: 1 };
+    row.dispatchEvent(new MouseEvent('mousemove', o));
+    row.dispatchEvent(new MouseEvent('mousedown', o));
+    row.dispatchEvent(new MouseEvent('click', o));
+    /* Poll, never sleep: under virtual time a setTimeout fires before the next
+       animation frame, so a fixed wait reads the widget list from before the
+       click and reports a selection bug that is not there. */
+    waitFor('Play Selected World to enable', function () { return !byName('Play Selected World').disabled; }, function () {
+      var st = window.MC.__proof.menu();
+      line(st && st.sel === 'w3', 'clicking a row selects that world (sel=' + (st && st.sel) + ')');
+      line(!byName('Play Selected World').disabled, 'selecting a world enables Play Selected World');
+      line(!byName('Delete').disabled, 'selecting a world enables Delete');
+      next();
+    });
+  },
+  function deleteConfirms(next) {
+    click(byName('Delete'));
+    waitFor('the delete confirm', function () { return byName('Delete') && byName('Cancel') && !byName('Re-Create'); }, function (ok) {
+      line(!!ok, 'Delete opens a confirm dialog');
+      click(byName('Cancel'));
+      waitFor('Select World again', function () { return startsWith('SMP with malachi'); }, function (still) {
+        line(!!still, 'cancelling the confirm keeps the world');
+        // going back must not rebuild Select World, or the selection is lost
+        line(window.MC.__proof.menu().sel === 'w3', 'cancelling the confirm keeps the world selected');
+        line(!byName('Play Selected World').disabled, 'and Play Selected World is still enabled');
+        next();
+      });
+    });
+  },
+  /* Typing changes which rows match, which changes the widget list, which
+     rebuilds the DOM layer the search box lives in. Setting .value once never
+     caught this — it takes a second keystroke to notice the box is gone. */
+  function searchKeepsFocus(next) {
+    var box = byName('search for worlds');
+    box.focus();
+    line(document.activeElement === box, 'the search box can take focus');
+    var word = 'wor', i = 0;
+    (function tap() {
+      if (i >= word.length) {
+        var now = ui().querySelector('input');
+        line(document.activeElement === now, 'the search box still has focus after ' + word.length + ' keystrokes');
+        line(now && now.value === word, 'and it still holds what was typed (' + (now && now.value) + ')');
+        waitFor('the filter to apply', function () { return !startsWith('SMP with malachi'); }, function (gone) {
+          line(!!gone, 'the filter excluded what does not match');
+          line(!!startsWith('world.'), 'and kept what does');
+          // clear it again for the steps that follow
+          var el = ui().querySelector('input');
+          el.focus(); el.value = ''; el.dispatchEvent(new Event('input', { bubbles: true }));
+          waitFor('the unfiltered list', function () { return startsWith('SMP with malachi'); }, function () { next(); });
+        });
+        return;
+      }
+      var el = ui().querySelector('input');
+      el.value = word.slice(0, i + 1);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      i++;
+      setTimeout(tap, 150);
+    })();
+  },
+  /* A focused button owns Enter. The screen-level Enter shortcut used to run
+     first and preventDefault() the button's own activation, so Enter on Cancel
+     launched the selected world. */
+  function enterBelongsToTheButton(next) {
+    var row = startsWith('SMP with malachi');
+    var r = row.getBoundingClientRect();
+    var o = { clientX: r.left + 150, clientY: r.top + 10, bubbles: true, cancelable: true, button: 0, detail: 1 };
+    row.dispatchEvent(new MouseEvent('mousemove', o));
+    row.dispatchEvent(new MouseEvent('mousedown', o));
+    row.dispatchEvent(new MouseEvent('click', o));
+    waitFor('a selection', function () { return !byName('Play Selected World').disabled; }, function () {
+      var cancel = byName('Cancel');
+      cancel.focus();
+      key('Enter', cancel);
+      cancel.click();   // what the browser does for Enter on a focused button
+      waitFor('the title screen', function () { return byName('Singleplayer'); }, function (t) {
+        line(!!t, 'Enter on a focused Cancel cancels instead of playing the selection');
+        line(host().querySelector('.mc-load').style.display === 'none', 'and no world started loading');
+        next();
+      });
+    });
+  },
+  function escGoesBack(next) {
+    key('Escape');
+    waitFor('the title screen again', function () { return byName('Singleplayer'); }, function () {
+      line(true, 'Escape returns from Select World to the title screen');
+      line(window.MC.__proof.menu().prev.length === 0, 'the back stack is empty at the title screen');
+      next();
+    });
+  },
+  /* Re-entering a screen from the title builds a fresh one — vanilla makes a
+     new Screen object, so the search box and the selection do not survive. */
+  function reentryIsFresh(next) {
+    click(byName('Singleplayer'));
+    waitFor('Select World', function () { return byName('Create New World'); }, function () {
+      var st = window.MC.__proof.menu();
+      line(!st.sel, 're-entering Select World clears the previous selection');
+      line(byName('Play Selected World').disabled, 'and Play Selected World is greyed again');
+      key('Escape');
+      waitFor('the title screen', function () { return byName('Singleplayer'); }, function () { next(); });
+    });
+  },
+  function createWorld(next) {
+    click(byName('Singleplayer'));
+    waitFor('Select World', function () { return byName('Create New World'); }, function () {
+      click(byName('Create New World'));
+      waitFor('Create New World', function () { return byName('World Name'); }, function () {
+        line(!!byName('Game'), 'Create New World has a Game tab');
+        line(!!byName('World'), 'Create New World has a World tab');
+        line(!!byName('More'), 'Create New World has a More tab');
+        line(!!byName('Game Mode: Survival'), 'Game Mode starts on Survival');
+        type(byName('World Name'), 'harness world');
+        click(byName('Game Mode: Survival'));
+        waitFor('Game Mode to reach Hardcore', function () { return byName('Game Mode: Hardcore'); }, function (hc) {
+          line(!!hc, 'Game Mode cycles Survival to Hardcore');
+          line(byName('Difficulty: Hard') && byName('Difficulty: Hard').disabled, 'Hardcore locks Difficulty on Hard');
+          click(byName('Game Mode: Hardcore'));
+          waitFor('Game Mode to reach Creative', function () { return byName('Game Mode: Creative'); }, function (cr) {
+            line(!!cr, 'Game Mode cycles Hardcore to Creative');
+            click(byName('World'));
+            waitFor('the World tab', function () { return byName('Seed for the world generator'); }, function (sd) {
+              line(!!sd, 'the World tab shows the seed field');
+              type(byName('Seed for the world generator'), '4114');
+              click(byName('Game'));
+              waitFor('the Game tab again', function () { return byName('World Name'); }, function () { next(); });
+            });
+          });
+        });
+      });
+    });
+  },
+  function createGenerates(next) {
+    click(byName('Create New World'));
+    waitFor('the world to finish generating', function () {
+      var ld = host().querySelector('.mc-load');
+      return ld && ld.style.display === 'none' && host().querySelector('.mc-pause').style.display !== 'none';
+    }, function () {
+      line(true, 'Create New World generates a world and lands in it');
+      var idx = JSON.parse(localStorage.getItem('comp_mc_worlds') || '[]');
+      var made = idx.filter(function (w) { return w.name === 'harness world'; })[0];
+      line(!!made, 'the new world is in the index');
+      line(made && made.seed === 4114, 'the typed seed 4114 was used (got ' + (made && made.seed) + ')');
+      line(made && made.gm === 1 && !made.hardcore, 'Game Mode cycled Survival to Hardcore to Creative (gm=' + (made && made.gm) + ')');
+      var live = JSON.parse(localStorage.getItem('comp_mc') || 'null');
+      line(live && live.seed === 4114, 'comp_mc now holds the played world');
+      line(savesPushed && savesPushed.length === 5, 'the desktop saves folder gained the new world');
+      // Allow Cheats was left OFF on the create screen, so this world has no commands
+      line(window.MC.__proof.save().cheats === false, 'the world records Allow Cheats: OFF');
+      chatRun('/seed', function (log) {
+        line(/Unknown or incomplete command/.test(log), 'with cheats off, /seed is refused as an unknown command');
+        line(!/Seed: \[/.test(log), 'and it does not print the seed');
+        next();
+      });
+    });
+  },
+  function quitToTitle(next) {
+    var btn = host().querySelector('.mc-totitle');
+    line(!!btn, 'the pause menu has Save and Quit to Title');
+    btn.click();
+    waitFor('the title screen after quitting the world', function () { return byName('Singleplayer'); }, function () {
+      line(true, 'Save and Quit to Title returns to the title screen');
+      var live = JSON.parse(localStorage.getItem('comp_mc') || 'null');
+      line(live && live.seed === 4114, 'quitting to title did not overwrite the save with the panorama');
+      next();
+    });
+  },
+  function worldPersists(next) {
+    click(byName('Singleplayer'));
+    waitFor('Select World', function () { return byName('Create New World'); }, function () {
+      line(!!startsWith('harness world'), 'the created world is in the list after quitting to title');
+      key('Escape');
+      setTimeout(next, 300);
+    });
+  },
+  function multiplayer(next) {
+    waitFor('the title screen', function () { return byName('Multiplayer'); }, function () {
+      click(byName('Multiplayer'));
+      waitFor('the multiplayer warning', function () { return byName('Proceed'); }, function () {
+        line(true, 'Multiplayer shows the third-party-play warning first');
+        click(byName('Proceed'));
+        waitFor('the server list', function () { return byName('Direct Connection'); }, function () {
+          var st0 = window.MC.__proof.menu();
+          line(st0.hover === -1 && st0.focus === -1,
+            'changing screen clears hover and focus (hover=' + st0.hover + ' focus=' + st0.focus + ')');
+          line(!!byName('Join Server'), 'the server list has Join Server');
+          line(byName('Join Server').disabled, 'Join Server is greyed with nothing selected');
+          line(!!startsWith("malachi's server"), 'the saved servers are listed');
+          click(startsWith('ureboy.smp'));
+          waitFor('Join Server to enable', function () { return !byName('Join Server').disabled; }, function () {
+            line(!byName('Join Server').disabled, 'selecting a server enables Join Server');
+            click(byName('Join Server'));
+            waitFor('the disconnect screen', function () { return byName('Back to Server List'); }, function (el) {
+              var d = window.MC.__proof.menu();
+              line(!!el, 'joining runs the connect sequence and then refuses (scr=' + (d && d.scr) + ' w=' + (d && d.w.join(',')) + ')');
+              if (el) click(el);
+              setTimeout(next, 300);
+            });
+          });
+        });
+      });
+    });
+  },
+  function options(next) {
+    key('Escape');
+    waitFor('the title screen', function () { return byName('Options...'); }, function () {
+      click(byName('Options...'));
+      waitFor('Options', function () { return byName('Video Settings...'); }, function () {
+        line(!!byName('Done'), 'Options has Done');
+        line(!!byName('Controls...'), 'Options has Controls...');
+        line(!!byName('Credits & Attribution...'), 'Options has Credits & Attribution...');
+        click(byName('Video Settings...'));
+        waitFor('Video Settings', function () { return byName('GUI Scale: Auto'); }, function () {
+          click(byName('GUI Scale: Auto'));
+          waitFor('GUI Scale to cycle', function () { return byName('GUI Scale: 1'); }, function (one) {
+            line(!!one, 'GUI Scale cycles and takes effect');
+            var o = JSON.parse(localStorage.getItem('comp_mc_opts') || '{}');
+            line(o.guiScale === 1, 'the GUI scale was persisted');
+            if (one) click(one);   // Auto -> 1 -> 2, so the next step is 2, not a wrap
+            waitFor('GUI Scale to reach 2', function () { return byName('GUI Scale: 2'); }, function (two) {
+              line(!!two, 'GUI Scale keeps cycling (1 to 2)');
+              key('Escape');
+              waitFor('Options', function () { return byName('Video Settings...'); }, function () {
+                key('Escape');
+                next();
+              });
+            });
+          });
+        });
+      });
+    });
+  },
+  function keyboard(next) {
+    waitFor('the title screen', function () { return byName('Singleplayer'); }, function () {
+      var b = byName('Singleplayer');
+      b.focus();
+      line(document.activeElement === b, 'a title button can take keyboard focus');
+      b.click();   // what Enter on a focused button produces
+      waitFor('Select World by keyboard', function () { return byName('Create New World'); }, function () {
+        line(true, 'activating a focused button from the keyboard works');
+        key('Escape');
+        setTimeout(next, 300);
+      });
+    });
+  },
+  /* The World Type control claims four generators. Prove the one that changes
+     the terrain function outright actually does. */
+  function superflatIsFlat(next) {
+    waitFor('the title screen', function () { return byName('Singleplayer'); }, function () {
+      click(byName('Singleplayer'));
+      waitFor('Select World', function () { return byName('Create New World'); }, function () {
+        click(byName('Create New World'));
+        waitFor('Create New World', function () { return byName('Allow Cheats: OFF'); }, function () {
+          click(byName('Allow Cheats: OFF'));   // this one gets commands, to prove the gate swings both ways
+          waitFor('cheats on', function () { return byName('Allow Cheats: ON'); }, function (on) {
+            line(!!on, 'Allow Cheats toggles to ON');
+            click(byName('World'));
+          waitFor('the World tab', function () { return byName('World Type: Default'); }, function () {
+            click(byName('World Type: Default'));
+            waitFor('Superflat', function () { return byName('World Type: Superflat'); }, function (sf) {
+              line(!!sf, 'World Type cycles Default to Superflat');
+              click(byName('Create New World'));
+              waitFor('the flat world', function () {
+                var ld = host().querySelector('.mc-load');
+                return ld && ld.style.display === 'none' && host().querySelector('.mc-pause').style.display !== 'none';
+              }, function () {
+                var p = window.MC.__proof;
+                line(p.save().wtype === 'Superflat', 'the world was created as Superflat');
+                /* Ground at y=4 and clear sky at y=12 across the loaded area.
+                   Not y=5 or y=6: a superflat world still has biomes, so grass
+                   tufts and a three-tall cactus legitimately stand on it. */
+                var cols = [[8, 8], [40, -40], [-50, 30], [60, 60]], flat = true, note = '';
+                cols.forEach(function (c) {
+                  var g = p.probe(c[0], 4, c[1]), sky = p.probe(c[0], 12, c[1]);
+                  if (g === 0 || sky !== 0) { flat = false; note += ' (' + c + ' y4=' + g + ' y12=' + sky + ')'; }
+                });
+                line(flat, 'every column is ground at y=4 and open sky at y=12' + note);
+                line(p.probe(8, 20, 8) === 0, 'there is nothing at y=20 — the sea did not flood it');
+                chatRun('/seed', function (log) {
+                  line(/Seed: \[/.test(log), 'with cheats on, /seed still works');
+                  var btn = host().querySelector('.mc-totitle');
+                  btn.click();
+                  waitFor('the title screen', function () { return byName('Singleplayer'); }, function () {
+                    var st = window.MC.__proof.save();
+                    line(st && st.wtype === 'Default', 'the panorama world is Default, not the Superflat one just left');
+                    next();
+                  });
+                });
+              });
+            });
+          });
+          });
+        });
+      });
+    });
+  },
+  /* The attribution line is a real widget in the game (it opens the credits)
+     and so is this one. It is also the only place the page says out loud that
+     it is not Mojang's, so it had better work. */
+  /* A list clamped only at zero could be wheeled off the bottom of the window
+     with no way back — nothing else ever reduced the offset. */
+  function wheelCannotEmptyAList(next) {
+    waitFor('the title screen', function () { return byName('Language'); }, function () {
+      click(byName('Language'));
+      waitFor('the Language screen', function () { return byName('English (US)'); }, function () {
+        var u = ui();
+        for (var i = 0; i < 40; i++) u.dispatchEvent(new WheelEvent('wheel', { deltaY: 120, bubbles: true, cancelable: true }));
+        waitFor('the list to settle', function () { return byName('Done'); }, function () {
+          line(!!byName('English (US)') || !!byName('Português (Brasil)'),
+            'forty wheel notches cannot scroll the language list into the void');
+          click(byName('Done'));
+          waitFor('the title screen', function () { return byName('Singleplayer'); }, function () { next(); });
+        });
+      });
+    });
+  },
+  function creditsLine(next) {
+    waitFor('the title screen', function () { return startsWith('A fan recreation'); }, function (el) {
+      click(el);
+      waitFor('Credits & Attribution', function () { return byName('Back'); }, function (back) {
+        line(!!back, 'the attribution line opens Credits & Attribution');
+        click(back);
+        waitFor('the title screen', function () { return byName('Singleplayer'); }, function () {
+          line(true, 'Back returns to the title screen');
+          next();
+        });
+      });
+    });
+  },
+  function quitGame(next) {
+    waitFor('the title screen', function () { return byName('Quit Game'); }, function () {
+      click(byName('Quit Game'));
+      setTimeout(function () {
+        line(quitCalls === 1, 'Quit Game asks the desktop to close the window');
+        next();
+      }, 200);
+    });
+  },
+  /* The house thrash: mash the menu and make sure it neither throws nor gets
+     stuck somewhere with no way out. Deterministic order, so a failure is
+     reproducible. */
+  function thrash(next) {
+    var keys = ['Escape', 'Tab', 'Enter', ' ', 'w', 'q', 'F3', 'ArrowDown', 'e', 't'];
+    var i = 0;
+    (function round() {
+      if (i >= 60) {
+        // whatever it did, Escape must climb back to the title screen
+        var esc = 0;
+        (function out() {
+          if (byName('Singleplayer') || esc > 12) {
+            line(!!byName('Singleplayer'), 'Escape always climbs back to the title screen after a thrash');
+            line(errs === 0, 'the thrash produced no console errors (' + errs + ')');
+            return next();
+          }
+          esc++; key('Escape');
+          setTimeout(out, 120);
+        })();
+        return;
+      }
+      var all = ui().querySelectorAll('[aria-label]');
+      if (all.length) {
+        var el = all[(i * 7) % all.length];
+        // never press the two that leave the menu for a world or the desktop
+        var n = el.getAttribute('aria-label');
+        if (n !== 'Play Selected World' && n !== 'Create New World' && n !== 'Quit Game' && !/^world|^SMP|^creative|^harness|^New World/.test(n)) click(el);
+      }
+      key(keys[i % keys.length]);
+      i++;
+      setTimeout(round, 40);
+    })();
+  },
+  function noWorldKeysLeak(next) {
+    // the world's own keydown handler must stand down while a menu is up
+    var mc = host().querySelector('.mc');
+    ['w', 'q', 'F3', ' '].forEach(function (k) { key(k, ui()); });
+    setTimeout(function () {
+      line(host().querySelector('.mc-debug').style.display === 'none', 'F3 on the menu did not open the debug overlay');
+      line(!!byName('Quit Game'), 'the menu survived a mash of world keys');
+      next();
+    }, 200);
+  }
+];
+
+(function run(i) {
+  if (i >= STEPS.length) {
+    line(errs === 0, 'no console errors or exceptions (' + errs + ')');
+    var h = document.getElementById('h');
+    h.textContent = (fail ? 'FAIL' : 'PASS') + ' ' + pass + '/' + (pass + fail) + ' checks, ' + errs + ' errors';
+    document.title = h.textContent;
+    return;
+  }
+  try { STEPS[i](function () { run(i + 1); }); }
+  catch (e) { line(false, 'step ' + i + ' threw: ' + e.message); run(i + 1); }
+})(0);
+</script>
