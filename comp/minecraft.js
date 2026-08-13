@@ -5892,7 +5892,18 @@
        is what the Options screen edits when it is reached from the title
        screen and there is no world to edit. Applied onto S when a world
        opens. Mirrored into the launcher's options.txt by comp.js. */
-    var OPT_DEF = { guiScale: 0, fov: 70, rd: 8, lang: 'en_us', splash: true, snd: true, mus: true, diff: 2, vsync: true, autoJump: false, sens: 100 };
+    /* Every key an option screen writes has to be listed here: optLoad rebuilds
+       OPT from this table, so a setting saved under a key it does not know is
+       written to storage and then thrown away on the next load. */
+    var OPT_DEF = {
+        guiScale: 0, fov: 70, rd: 8, lang: 'en_us', splash: true, diff: 2,
+        snd: true, mus: true,                       // Music & Sounds
+        fancy: true, vsync: true, bob: true, clouds: true,   // Video Settings
+        autoJump: false, sens: 100, invert: false,  // Controls and Mouse Settings
+        panoStill: false, noShake: false,           // Accessibility
+        chat: 0, sug: true,                         // Chat Settings
+        mpwarn: true                                // the third-party-play warning is shown until it is dismissed
+    };
     var OPT = null;
     function optLoad() {
         if (OPT) return OPT;
@@ -6216,6 +6227,7 @@
             list[0].gm = old.gm || 0;
             list[0].diff = old.diff == null ? 2 : old.diff;
             list[0].hrs = old.hrs || 0;
+            list[0].cheats = true;   // it predates the switch and had every command; do not take them away
             list[0].played = Date.now();
             list[0].ver = RT && RT.ver ? RT.ver : '26.2';
             old.wid = list[0].id;
@@ -6306,10 +6318,13 @@
         paint: function (cx, m, W, H) {
             cx.fillStyle = '#0f0f13';
             cx.fillRect(0, 0, W, H);
-            var lg = mnLogo(), lw = MN_LOGO_W >> 1, lh = MN_LOGO_H >> 1;
+            /* At 1:1. Halving pixel art with smoothing off just throws away
+               every other column and the wordmark comes out gap-toothed. */
+            var lg = mnLogo(), half = W < MN_LOGO_W + 24;
+            var lw = half ? MN_LOGO_W >> 1 : MN_LOGO_W, lh = half ? MN_LOGO_H >> 1 : MN_LOGO_H;
             cx.save();
             cx.globalAlpha = 0.28 + 0.72 * Math.min(1, m.t / 0.5);
-            cx.drawImage(lg, Math.round(W / 2 - lw / 2), Math.round(H / 2 - 40), lw, lh);
+            cx.drawImage(lg, Math.round(W / 2 - lw / 2), Math.round(H / 2 - 46), lw, lh);
             cx.restore();
             var bw = 200, bx = Math.round((W - bw) / 2), by = Math.round(H / 2 + 12);
             mnRect(cx, bx - 1, by - 1, bw + 2, 7, '#ffffff');
@@ -7922,6 +7937,13 @@
         var nameAt = rd.i, name = stripNs(rd.word()).toLowerCase();
         if (!name) return;
         var c = CMDS[name];
+        /* Allow Cheats, off the Create New World screen. Every command this
+           world understands is a cheat command, so a world created with the
+           switch off simply does not have them — which is what vanilla looks
+           like from the chat box, since the commands are never registered.
+           Only an explicit false counts: worlds that predate the switch have
+           no opinion and keep everything they had. */
+        if (c && S && S.cheats === false) c = null;
         if (!c) {
             chatErr('Unknown or incomplete command, see below for error');
             chatErr(raw.slice(0, 1 + nameAt + name.length) + '<--[HERE]');
@@ -8645,7 +8667,7 @@
         // real controls and only ever use this to see what happened afterwards
         __proof: { text: mfText, adv: mfAdvance, width: mfWidth, logo: mnLogo,
             probe: function (x, y, z) { return getB(x, y, z); },
-            save: function () { return S ? { seed: S.seed, wtype: S.wtype, py: S.py, gm: S.gm, diff: S.diff, wid: S.wid } : null; },
+            save: function () { return S ? { seed: S.seed, wtype: S.wtype, py: S.py, gm: S.gm, diff: S.diff, wid: S.wid, cheats: S.cheats } : null; },
             menu: function () {
                 var m = RT && RT.menu;
                 if (!m) return null;

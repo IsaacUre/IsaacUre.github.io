@@ -74,6 +74,15 @@ function type(el, v) {
   el.value = v;
   el.dispatchEvent(new Event('input', { bubbles: true }));
 }
+/* Run a command through the game's own chat input handler. Not through the 't'
+   key, because leaving the pause menu asks for pointer lock, headless refuses
+   it, and lockFailed puts the menu straight back up. */
+function chatRun(cmd, then) {
+  var inp = host().querySelector('.mc-chatin');
+  inp.value = cmd;
+  inp.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+  setTimeout(function () { then(host().querySelector('.mc-chatlog').textContent || ''); }, 250);
+}
 function waitFor(what, test, then) {
   var waited = 0;
   (function tick() {
@@ -217,7 +226,13 @@ var STEPS = [
       var live = JSON.parse(localStorage.getItem('comp_mc') || 'null');
       line(live && live.seed === 4114, 'comp_mc now holds the played world');
       line(savesPushed && savesPushed.length === 5, 'the desktop saves folder gained the new world');
-      next();
+      // Allow Cheats was left OFF on the create screen, so this world has no commands
+      line(window.MC.__proof.save().cheats === false, 'the world records Allow Cheats: OFF');
+      chatRun('/seed', function (log) {
+        line(/Unknown or incomplete command/.test(log), 'with cheats off, /seed is refused as an unknown command');
+        line(!/Seed: \[/.test(log), 'and it does not print the seed');
+        next();
+      });
     });
   },
   function quitToTitle(next) {
@@ -315,8 +330,11 @@ var STEPS = [
       click(byName('Singleplayer'));
       waitFor('Select World', function () { return byName('Create New World'); }, function () {
         click(byName('Create New World'));
-        waitFor('Create New World', function () { return byName('World'); }, function () {
-          click(byName('World'));
+        waitFor('Create New World', function () { return byName('Allow Cheats: OFF'); }, function () {
+          click(byName('Allow Cheats: OFF'));   // this one gets commands, to prove the gate swings both ways
+          waitFor('cheats on', function () { return byName('Allow Cheats: ON'); }, function (on) {
+            line(!!on, 'Allow Cheats toggles to ON');
+            click(byName('World'));
           waitFor('the World tab', function () { return byName('World Type: Default'); }, function () {
             click(byName('World Type: Default'));
             waitFor('Superflat', function () { return byName('World Type: Superflat'); }, function (sf) {
@@ -338,16 +356,36 @@ var STEPS = [
                 });
                 line(flat, 'every column is ground at y=4 and open sky at y=12' + note);
                 line(p.probe(8, 20, 8) === 0, 'there is nothing at y=20 — the sea did not flood it');
-                var btn = host().querySelector('.mc-totitle');
-                btn.click();
-                waitFor('the title screen', function () { return byName('Singleplayer'); }, function () {
-                  var st = window.MC.__proof.save();
-                  line(st && st.wtype === 'Default', 'the panorama world is Default, not the Superflat one just left');
-                  next();
+                chatRun('/seed', function (log) {
+                  line(/Seed: \[/.test(log), 'with cheats on, /seed still works');
+                  var btn = host().querySelector('.mc-totitle');
+                  btn.click();
+                  waitFor('the title screen', function () { return byName('Singleplayer'); }, function () {
+                    var st = window.MC.__proof.save();
+                    line(st && st.wtype === 'Default', 'the panorama world is Default, not the Superflat one just left');
+                    next();
+                  });
                 });
               });
             });
           });
+          });
+        });
+      });
+    });
+  },
+  /* The attribution line is a real widget in the game (it opens the credits)
+     and so is this one. It is also the only place the page says out loud that
+     it is not Mojang's, so it had better work. */
+  function creditsLine(next) {
+    waitFor('the title screen', function () { return startsWith('A fan recreation'); }, function (el) {
+      click(el);
+      waitFor('Credits & Attribution', function () { return byName('Back'); }, function (back) {
+        line(!!back, 'the attribution line opens Credits & Attribution');
+        click(back);
+        waitFor('the title screen', function () { return byName('Singleplayer'); }, function () {
+          line(true, 'Back returns to the title screen');
+          next();
         });
       });
     });

@@ -75,7 +75,11 @@ function boot() {
   }
   function run() {
     var acts = [];
-    (Q.get('click') || '').split(',').filter(Boolean).forEach(function (n) {
+    // '|' rather than ',': accessible names have commas in them, and splitting
+    // on those turned "A fan recreation. Not Mojang, not affiliated." into two
+    // targets that both missed
+    function parts(s) { return (s || '').split(s && s.indexOf('|') >= 0 ? '|' : ',').filter(Boolean); }
+    parts(Q.get('click')).forEach(function (n) {
       acts.push(function (done) {
         waitFor(function () { return byName(n); }, function (el) { press(n, el); done(); },
           function () { say('MISS ' + n); done(); });
@@ -101,7 +105,7 @@ function boot() {
       say('TYPED ' + Q.get('type'));
       done();
     });
-    (Q.get('key') || '').split(',').filter(Boolean).forEach(function (k) {
+    parts(Q.get('key')).forEach(function (k) {
       acts.push(function (done) {
         var t = document.activeElement && ui().contains(document.activeElement) ? document.activeElement : ui();
         t.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
