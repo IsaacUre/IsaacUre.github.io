@@ -1,5 +1,17 @@
 # NINTH NIGHT: QC of the map and the buildings
 
+> **Fixed.** Everything below was found on 12 August 2026 and fixed on the
+> 13th, in the eight commits that follow this file into `main`. It is kept
+> as the record of what was wrong and why, not as a list of open work. The
+> line numbers were correct against the file at `b185019` and have drifted
+> again since; grep for the symbol.
+>
+> Three harnesses came out of the fixing and they are the reason to keep
+> reading this: `tools/critical-path.html` walks the acceptance floor,
+> `tools/cutaway-checks.html` asserts the world layer's render rules
+> against the canvas, and `audit-geometry.js` grew nine checks, one for
+> each class of thing in here that got past it.
+
 12 August 2026. Read-only pass over the world layer of `comp/ninth.js`. Nothing
 under `comp/` was changed.
 
