@@ -1,0 +1,78 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>mc-shot</title>
+<!--
+  Sprint QC for comp/minecraft.js: four panels of the SAME world, same spot,
+  so the only thing that differs is the lens.
+
+    C0  walking, fovM 1.000        C1  sprinting, fovM 1.150
+    C2  sprinting, head down       C3  1:1 crop of C2, where the dust is
+
+  The pane's screenshot action hangs on this canvas and rAF is frozen there,
+  so shoot it headless and step the frames by hand:
+
+    chrome --headless=new --disable-gpu --no-sandbox --hide-scrollbars \
+      --use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader \
+      --window-size=2830,560 --force-device-scale-factor=2 \
+      --virtual-time-budget=20000 --screenshot=out.png \
+      http://localhost:<port>/.claude/comp-tools/mc-shot.html
+
+  Every panel prints its own state, so a shot that went wrong says so rather
+  than looking plausible: an early version killed the player with /kill @e and
+  the two frames matched perfectly, both of them dead.
+-->
+
+<style>
+html,body{margin:0;background:#111;color:#0f0;font:14px monospace;overflow:hidden}
+#f{border:0;width:1200px;height:760px;position:absolute;left:-4000px;top:0}
+canvas{display:block;image-rendering:pixelated;width:718px}
+.row{display:flex;gap:8px;padding:6px}
+</style>
+<iframe id="f" src="/comp/?dev=mc&mcdev=kit&mcseed=1337"></iframe>
+<div class="row"><div><b id="l0"></b><canvas id="c0"></canvas></div><div><b id="l1"></b><canvas id="c1"></canvas></div><div><b id="l2"></b><canvas id="c2"></canvas></div><div><b id="l3"></b><canvas id="c3" style="width:560px"></canvas></div></div>
+<script>
+var f = document.getElementById('f');
+f.onload = function () {
+    var w = f.contentWindow, doc = f.contentDocument, tries = 0;
+    (function wait() {
+        if (!w.__mc || !w.__mc.state) { if (tries++ < 400) return setTimeout(wait, 25); return; }
+        for (var i = 0; i < 600; i++) w.__mc.step(16.7);
+        if (!w.__mc.state().ready) { if (tries++ < 400) return setTimeout(wait, 25); return; }
+        var root = doc.querySelector('.mc'); root.focus();
+        var cv = doc.querySelector('.mc-cv');
+        function down(k) { root.dispatchEvent(new w.KeyboardEvent('keydown', { key: k, bubbles: true })); }
+        function up(k) { root.dispatchEvent(new w.KeyboardEvent('keyup', { key: k, bubbles: true })); }
+        function steps(n) { for (var i = 0; i < n; i++) w.__mc.step(16.7); }
+        function grab(id, tag) {
+            var out = document.getElementById(id), g = out.getContext('2d');
+            out.width = cv.width; out.height = cv.height;
+            g.drawImage(cv, 0, 0);
+            var s = w.__mc.state(), d = w.__mc.dbg();
+            document.getElementById(tag).textContent = id.toUpperCase() +
+                ' xyz ' + s.px.toFixed(2) + ' ' + s.py.toFixed(2) + ' ' + s.pz.toFixed(2) +
+                ' seed ' + s.seed + ' sprint=' + d.sprint + ' fovM=' + d.fovM.toFixed(3) + ' parts=' + d.parts +
+                ' paused=' + d.paused + ' dead=' + d.dead + ' hp=' + s.hp + ' food=' + s.food;
+        }
+        // creative for the whole shoot: mobs that spawned during boot can't
+        // interrupt it, and sprinting behaves the same on foot either way
+        w.__mc.chat('/gamerule doMobSpawning false'); w.__mc.chat('/gamemode creative'); steps(3);
+        var REF = [10.5, 42, 8.5], YAW = 3.14, PIT = -0.05;
+        function park() { w.__mc.tp(REF[0], REF[1], REF[2]); w.__mc.look(YAW, PIT); }
+        park(); steps(40); park(); steps(1);
+        grab('c0', 'l0');                       // walking: fovM 1.00
+        down('w'); up('w'); down('w'); steps(25);   // double-tap W, let the lens ease open
+        park(); steps(1);
+        grab('c1', 'l1');                       // sprinting: fovM 1.15
+        // and again with the head down, where the sprint dust lives
+        PIT = 0.9; park(); steps(6);
+        grab('c2', 'l2');
+        // 1:1 crop of the middle of that frame, so the dust is readable
+        var z = document.getElementById('c3'), zg = z.getContext('2d');
+        var zw = 140, zh = 90, zx = ((cv.width - zw) / 2) | 0, zy = ((cv.height - zh) / 2) | 0;
+        z.width = zw; z.height = zh;
+        zg.drawImage(cv, zx, zy, zw, zh, 0, 0, zw, zh);
+        document.getElementById('l3').textContent = 'C2 crop ' + zw + 'x' + zh + ' @ ' + zx + ',' + zy;
+        up('w');
+    })();
+};
+</script>
