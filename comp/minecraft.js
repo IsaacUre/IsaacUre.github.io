@@ -1110,8 +1110,13 @@
                     var chh = 1 + (hash2(wx + 3, wz + 5) * 3 | 0);
                     for (var cc = 0; cc < chh && h + 1 + cc < CH; cc++) bl[lx | (lz << 4) | ((h + 1 + cc) << 8)] = CACTUS;
                 }
-                // sugar cane grows on grass/sand/dirt beside water
-                if (bl[a1] === AIR && (top === GRASS || top === SAND || top === DIRT) && hash2(wx * 5 - 17, wz * 5 + 23) < 0.05) {
+                /* Sugar cane grows on grass/sand/dirt beside water. "Beside
+                   water" is a neighbouring column below sea level — which in a
+                   superflat world is EVERY column, since the ground sits at 4
+                   and the sea that would have filled it is never placed. Ask
+                   whether this world has a sea at all first, or the flat world
+                   comes up carpeted in cane. */
+                if (!wtFlat() && bl[a1] === AIR && (top === GRASS || top === SAND || top === DIRT) && hash2(wx * 5 - 17, wz * 5 + 23) < 0.05) {
                     if (heightAt(wx + 1, wz) < SEA || heightAt(wx - 1, wz) < SEA || heightAt(wx, wz + 1) < SEA || heightAt(wx, wz - 1) < SEA) {
                         var sh = 1 + (hash2(wx + 9, wz - 9) * 3 | 0);
                         for (var su = 0; su < sh && h + 1 + su < CH; su++) bl[lx | (lz << 4) | ((h + 1 + su) << 8)] = SUGARCANE;
@@ -5172,7 +5177,7 @@
         /* The panorama renders at 85°; leaving that set would hand the world
            the title screen's field of view. fovM is the sprint stretch and
            belongs to the world that was just thrown away. */
-        RT.fov = 0; RT.fovM = 1;
+        RT.fov = 0; RT.fovM = 1; RT.fly = false;
         chunkCacheDrop();
     }
     function mnFreshWorld(w) {
@@ -5201,13 +5206,32 @@
         S.snd = o.snd; S.mus = o.mus;     // the options the menu just edited win over whatever the world remembered
         if (!S.inv || !S.inv.length) S.inv = new Array(36).fill(null);
         if (!S.armor) S.armor = [null, null, null, null];
+        if (S.xpl == null) { S.xpl = 0; S.xp = 0; }
+        if (S.weather == null) { S.weather = 0; S.wt = 120; }
         normalizeCmdState();
+        /* The same revival init() does, because this is now the other way into
+           a world. A save written while the death screen was up has hp 0, and
+           arriving with RT.dead set and no death screen is a world where
+           nothing responds: showPause returns early on RT.dead, and movement,
+           mining, placing and the inventory are all gated on !RT.dead. There
+           is no way out of it and it re-saves itself on close. */
+        if (S.hp <= 0) {
+            S.hp = 20; S.food = 20; S.sat = 5; S.air = 10;
+            var dsp = S.spawn || S.wspawn;
+            if (dsp) { S.px = dsp[0]; S.py = dsp[1]; S.pz = dsp[2]; }
+        }
         if (!S.wspawn) {
             S.wspawn = findSpawn();
             S.px = S.wspawn[0]; S.py = S.wspawn[1]; S.pz = S.wspawn[2];
         }
         if (!blob && w.bonus) S.bonusPending = true;
-        RT.baseHrs = S.hrs || 0; RT.playT = 0; RT.dead = S.hp <= 0; RT.fallY = S.py;
+        /* Bank the world we are leaving before resetting the clock, or the
+           desktop only ever gets the playtime of the last world of a session. */
+        RT.bankT = (RT.bankT || 0) + RT.playT;
+        RT.baseHrs = S.hrs || 0; RT.playT = 0; RT.dead = false; RT.fallY = S.py;
+        // flight belongs to the world that granted it, not to the session
+        RT.fly = !!S.fly && (S.gm === 1 || S.gm === 3);
+        RT.vy = 0; RT.sprint = false; RT.swing = 0; RT.sleep = 0;
         var ld = RT.el.querySelector('.mc-load');
         ld.querySelector('h3').textContent = 'Building terrain…';
         ld.style.display = '';
@@ -5224,6 +5248,9 @@
         if (RT.paused) hidePause();
         if (RT.panel) closePanel(true);
         RT.el.querySelector('.mc-load').style.display = 'none';
+        // the debug overlay belongs to the world; it would sit frozen over the menu
+        RT.f3 = false;
+        RT.el.querySelector('.mc-debug').style.display = 'none';
         mnTeardownWorld();
         S = mnPanoSave();
         var m = mnOpen('loading', false);   // vanilla only fades in on first launch
@@ -5409,10 +5436,11 @@
         'ó': ['o', 'acute'], 'ò': ['o', 'grave'], 'ô': ['o', 'circ'], 'õ': ['o', 'tilde'], 'ö': ['o', 'uml'],
         'ú': ['u', 'acute'], 'ù': ['u', 'grave'], 'û': ['u', 'circ'], 'ü': ['u', 'uml'],
         'ñ': ['n', 'tilde'], 'ç': ['c', 'cedil'], 'ý': ['y', 'acute'],
-        'Á': ['A', 'acute'], 'À': ['A', 'grave'], 'Â': ['A', 'circ'], 'Ã': ['A', 'tilde'], 'Ä': ['A', 'uml'], 'Å': ['A', 'ring'],
-        'É': ['E', 'acute'], 'È': ['E', 'grave'], 'Ê': ['E', 'circ'], 'Ë': ['E', 'uml'],
-        'Í': ['I', 'acute'], 'Ó': ['O', 'acute'], 'Ö': ['O', 'uml'], 'Õ': ['O', 'tilde'],
-        'Ú': ['U', 'acute'], 'Ü': ['U', 'uml'], 'Ñ': ['N', 'tilde'], 'Ç': ['C', 'cedil']
+        /* Only the cedilla can be composed onto a capital: caps already occupy
+           rows 0-6, so every mark that sits above the letter would be drawn on
+           top of it. The rest are deliberately absent and fall back to the
+           unknown-glyph box, which is honest about what this face can spell. */
+        'Ç': ['C', 'cedil']
     };
 
     var MF = null;   // { g: {ch: {w,h,px}}, atlas: {color: canvas}, map: {ch:[x,y,w]} }
@@ -5436,17 +5464,22 @@
             for (i = 0; i < mark.rows.length; i++) {
                 var y = mark.y + i;
                 if (y < 0 || y >= MF_ROWS) continue;
-                // centre the mark over the letter, then OR it into that row
-                var off = Math.max(0, (base.w - 5) >> 1), src = mark.rows[i], cur = rows[y] || '', line = '';
+                // centre the mark over the letter, then OR it into that row.
+                // The mark is not always 5 wide and the base is not always 5
+                // wide either, so measure both rather than assuming.
+                var src = mark.rows[i];
+                var off = Math.max(0, Math.round((base.w - src.replace(/\.+$/, '').length) / 2));
+                var cur = rows[y] || '', line = '';
                 for (var x = 0; x < Math.max(cur.length, off + src.length); x++) {
                     var a = cur.charAt(x) === '#', b = src.charAt(x - off) === '#';
                     line += (a || b) ? '#' : '.';
                 }
-                rows[y] = line;
+                // a diacritic never widens the letter it sits on: letting the
+                // mark's trailing blanks extend the row made ç a pixel wider
+                // than c, and "Français" came out with a gap after the ç
+                rows[y] = line.slice(0, base.w);
             }
-            var wmax = base.w;
-            for (i = 0; i < rows.length; i++) if (rows[i].length > wmax) wmax = rows[i].length;
-            g[ch] = { w: wmax, rows: rows };
+            g[ch] = { w: base.w, rows: rows };
         }
         MF = { g: g, atlas: {}, map: null, w: 0, h: 0 };
         return MF;
@@ -5641,6 +5674,10 @@
         return b;
     }
     function mnRow(m, i) { return m.rowTop + i * 24; }   // vanilla's 24px button pitch
+    /* Every list clamps at BOTH ends. Clamping only at zero let one wheel
+       gesture push the entries off the bottom of the window with no way back,
+       because nothing else ever reduced the offset. */
+    function mnScroll(v, total, span) { return Math.max(0, Math.min(v, Math.max(0, total - span))); }
 
     /* — painting —
        All of these draw in GUI pixels; mnPaint has already scaled the context. */
@@ -5952,6 +5989,10 @@
             m.ui.style.display = 'none';
             m.ui.innerHTML = '';
         }
+        /* Keys land on the game root, not on a button that no longer exists.
+           Without this, Escape did nothing after starting a world from the
+           menu, because focus was still on the removed shadow layer. */
+        RT.el.focus();
     }
     /* Arriving at a screen resets its own scratch state. Vanilla builds a new
        Screen object every time, so a second visit to Select World has an empty
@@ -5995,6 +6036,16 @@
         var w = m.widgets, sig = '', i;
         for (i = 0; i < w.length; i++) sig += w[i].k + w[i].id + '|';
         if (sig !== m.sig) {
+            /* Typing in the search box changes which rows exist, which changes
+               the signature, which rebuilds this layer — and the box the player
+               is typing into is one of the nodes destroyed. Remember who had
+               focus by widget id (not index: the indices are what moved) and
+               where the caret was, then put it back. */
+            var act = document.activeElement, keepId = null, selA = 0, selB = 0;
+            if (act && act.parentNode === m.ui) {
+                keepId = act.getAttribute('data-id');
+                if (act.tagName === 'INPUT') { selA = act.selectionStart; selB = act.selectionEnd; }
+            }
             m.sig = sig;
             m.ui.innerHTML = '';
             for (i = 0; i < w.length; i++) {
@@ -6013,9 +6064,19 @@
                 }
                 el.className = 'mc-mw';
                 el.setAttribute('data-i', String(i));
+                el.setAttribute('data-id', b.id);
                 el.setAttribute('aria-label', b.aria || b.label || b.id);
                 if (b.k !== 'input') el.textContent = b.aria || b.label || '';
                 m.ui.appendChild(el);
+            }
+            if (keepId) {
+                var back = m.ui.querySelector('[data-id="' + keepId + '"]');
+                if (back && !back.disabled) {
+                    back.focus();
+                    if (back.tagName === 'INPUT' && back.setSelectionRange) {
+                        try { back.setSelectionRange(selA, selB); } catch (e) {}
+                    }
+                }
             }
         }
         var kids = m.ui.children;
@@ -6097,6 +6158,23 @@
         ui.addEventListener('keydown', function (ev) {
             var mm = RT && RT.menu; if (!mm) return;
             var scr = MN_SCR[mm.scr];
+            var onBtn = ev.target && ev.target.tagName === 'BUTTON';
+            /* A focused button owns Enter and Space — they activate it. The
+               screen-level Enter shortcut (which plays the selected world) is
+               for when focus is on the list or the search box; letting it run
+               here, and then preventDefault()ing, meant Enter on Cancel
+               launched the selection instead of cancelling. */
+            if (onBtn && (ev.key === 'Enter' || ev.key === ' ')) { ev.stopPropagation(); return; }
+            /* Arrow keys nudge a focused slider, which is the only way to work
+               one without a mouse — its click handler reads the pointer. */
+            if (onBtn === false || onBtn) {
+                var wi = +ev.target.getAttribute('data-i'), wb = mm.widgets[wi];
+                if (wb && wb.k === 'draw' && wb.slide && (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight')) {
+                    wb.slide(mm, ev.key === 'ArrowRight' ? 0.05 : -0.05);
+                    ev.preventDefault(); ev.stopPropagation(); mm.dirty = true;
+                    return;
+                }
+            }
             if (scr && scr.key && scr.key(mm, ev)) { ev.preventDefault(); ev.stopPropagation(); mm.dirty = true; return; }
             if (ev.key === 'Escape') {
                 if (mm.scr !== 'title') { mnBack(mm); ev.preventDefault(); }
@@ -6128,8 +6206,16 @@
         var scr = MN_SCR[m.scr] || MN_SCR.title;
         /* Anything that moves on its own moves on dt, not on a frame count.
            Counting paints made the connect sequence take as long as the frame
-           rate said it should, which on a slow machine is a hang. */
-        if (scr.tick) scr.tick(m, dt);
+           rate said it should, which on a slow machine is a hang.
+
+           Re-resolve afterwards: a tick is exactly the thing that changes
+           screen on its own (the connect sequence ending in a refusal), and
+           painting the screen we looked up before it ran left the new screen
+           current with the old screen's widgets drawn over it. */
+        if (scr.tick) {
+            scr.tick(m, dt);
+            scr = MN_SCR[m.scr] || MN_SCR.title;
+        }
         if (scr.bg !== 'dirt' && scr.bg !== 'flat') { RT.fov = MN_FOV; mnPanoCam(m, dt); drawFrame(); }
         /* While the widgets are still invisible they are not interactive at
            all. pointer-events alone is not enough: a button with no pointer
@@ -6138,7 +6224,8 @@
         var a = scr.bg === 'pano' ? mnGuiAlpha(m) : 1;
         m.inert = a < 0.02;
         m.ui.style.pointerEvents = m.inert ? 'none' : '';
-        if (m.dirty || scr.live !== false) mnPaint(m, scr);
+        // repaint when something changed, or when the screen animates on its own
+        if (m.dirty || scr.live) mnPaint(m, scr);
     }
     function mnPaint(m, scr) {
         var cx = m.cx, s = m.scale;
@@ -6175,7 +6262,18 @@
                     cx.fillRect(b.x - 1, b.y, 1, b.h); cx.fillRect(b.x + b.w, b.y, 1, b.h);
                 }
             } else if (b.k === 'input') mnInput(cx, m, b, i);
-            else if (b.k === 'draw' && b.draw) b.draw(cx, b, i === m.hover, i === m.focus);
+            else if (b.k === 'draw' && b.draw) {
+                /* A row scrolled half out of its list must be cut off at the
+                   list's edge. These are drawn after the screen's own paint, so
+                   without a clip a partly-scrolled entry lands on top of the
+                   title, the search box and the edge shadows. */
+                if (b.clip) {
+                    cx.save();
+                    cx.beginPath(); cx.rect(b.clip[0], b.clip[1], b.clip[2], b.clip[3]); cx.clip();
+                    b.draw(cx, b, i === m.hover, i === m.focus);
+                    cx.restore();
+                } else b.draw(cx, b, i === m.hover, i === m.focus);
+            }
         }
         if (m.msg) {   // a transient line under the buttons: "Deleting…", an error
             mfCenter(cx, m.msg, W / 2, H - 42, MC_RED);
@@ -6225,11 +6323,16 @@
         { id: 'w3', name: 'SMP with malachi', seed: 20160411, gm: 0, diff: 2, cheats: true, played: '2020-03-19T01:12:00', ver: '1.15.2' },
         { id: 'w4', name: 'creative flat test', seed: 7, gm: 1, diff: 0, cheats: true, played: '2021-11-08T18:22:00', ver: '1.17.1', type: 'Superflat' }
     ];
+    /* An empty index is an answer, not a missing one. Treating [] as "never
+       seeded" meant deleting your last world resurrected all four lore worlds
+       and re-ran the legacy comp_mc adoption on top of them. */
     function wsRead() {
-        try { var v = JSON.parse(localStorage.getItem(WS_IDX) || 'null'); if (v && v.length) return v; } catch (e) {}
+        try { var v = JSON.parse(localStorage.getItem(WS_IDX) || 'null'); if (Array.isArray(v)) return v; } catch (e) {}
         return null;
     }
-    function wsWrite(list) { try { localStorage.setItem(WS_IDX, JSON.stringify(list)); } catch (e) {} }
+    function wsWrite(list) {
+        try { localStorage.setItem(WS_IDX, JSON.stringify(list)); return true; } catch (e) { return false; }
+    }
     function wsIndex() {
         var list = wsRead();
         if (list) return list;
@@ -6292,7 +6395,7 @@
             type: o.type || 'Default', created: Date.now(), played: Date.now(), hrs: 0,
             ver: RT && RT.ver ? RT.ver : '26.2' };
         l.unshift(w);
-        wsWrite(l);
+        if (!wsWrite(l)) return null;   // storage full or blocked: say so rather than opening a world that was never saved
         wsSyncFS();
         return w;
     }
@@ -6361,7 +6464,7 @@
        a 24px pitch, then a row 84px below the first holding two 98px buttons
        between two 20x20 icon buttons. */
     MN_SCR.title = {
-        bg: 'pano',
+        bg: 'pano', live: true,   // the splash pulses twice a second whether or not anything was clicked
         layout: function (m, W, H) {
             var j = ((H / 4) | 0) + 48, x = (W / 2 | 0) - 100, r = j + 84, w = [];
             w.push(mnBtn('sp', x, j, MN_BW, MN_BH, 'Singleplayer', function (mm) { mnGo(mm, 'world'); }));
@@ -6423,7 +6526,7 @@
     MN_SCR.world = {
         bg: 'dirt',
         enter: function (m) { m.d.sel = null; m.d.scroll = 0; m.d.q = ''; },
-        wheel: function (m, dy) { m.d.scroll = Math.max(0, (m.d.scroll || 0) + (dy > 0 ? 18 : -18)); },
+        wheel: function (m, dy) { m.d.scroll = mnScroll((m.d.scroll || 0) + (dy > 0 ? 18 : -18), MN_SCR.world.rows(m).length * MN_ROWH + 8, m.H - 112); },
         rows: function (m) {
             var q = (m.d.q || '').toLowerCase(), l = wsIndex(), out = [];
             for (var i = 0; i < l.length; i++) if (!q || l[i].name.toLowerCase().indexOf(q) >= 0) out.push(l[i]);
@@ -6442,6 +6545,7 @@
                 var ry = top + 4 - (m.d.scroll || 0) + i * MN_ROWH;
                 if (ry + MN_ROWH < top || ry > bot) continue;
                 w.push({ k: 'draw', id: 'r' + rows[i].id, x: rl, y: ry, w: 270, h: MN_ROWH - 4, enabled: true,
+                    clip: [0, top, W, bot - top],
                     aria: rows[i].name + '. ' + wsInfoLine(rows[i]), world: rows[i],
                     on: (function (ww, at) {
                         return function (mm) {
@@ -6466,8 +6570,11 @@
             w.push(mnBtn('recreate', cxp + 4, H - 28, 72, 20, 'Re-Create', function (mm) {
                 var ww = wsGet(mm.d.sel); if (!ww) return;
                 mnGo(mm, 'create');
-                mm.d.cw = mnCreateDefaults();
-                mm.d.cw.name = ww.name; mm.d.cw.seed = String(ww.seed); mm.d.cw.gm = ww.gm; mm.d.cw.diff = ww.diff;
+                // re-create means the same world again: carry every setting, not just the name and seed
+                var c = mm.d.cw = mnCreateDefaults();
+                c.name = ww.name; c.seed = String(ww.seed); c.gm = ww.gm; c.diff = ww.diff;
+                c.cheats = !!ww.cheats; c.hardcore = !!ww.hardcore; c.bonus = !!ww.bonus;
+                c.type = Math.max(0, MN_WTYPE.indexOf(ww.type || 'Default'));
             }, { enabled: can }));
             w.push(mnBtn('cancel', cxp + 82, H - 28, 72, 20, 'Cancel', function (mm) { mnBack(mm); }));
             return w;
@@ -6515,11 +6622,11 @@
        worlds never look alike and the picture is not a lie. */
     var MN_ICON = {};
     function mnWorldIcon(cx, w, x, y) {
-        var key = w.id + ':' + w.seed;
+        var key = w.id + ':' + w.seed + ':' + (w.icon || 0);
         if (!MN_ICON[key]) {
             var cv = document.createElement('canvas');
             cv.width = 32; cv.height = 32;
-            var c = cv.getContext('2d'), rnd = mulb(w.seed | 0);
+            var c = cv.getContext('2d'), rnd = mulb((w.seed | 0) + (w.icon || 0) * 7919);
             var sky = c.createLinearGradient(0, 0, 0, 20);
             sky.addColorStop(0, '#4a7ec8'); sky.addColorStop(1, '#a8c8e8');
             c.fillStyle = sky; c.fillRect(0, 0, 32, 32);
@@ -6550,8 +6657,14 @@
     }
     function mnSlider(id, x, y, w, h, label, frac, set) {
         return { k: 'draw', id: id, x: x, y: y, w: w, h: h, enabled: true, aria: label, label: label,
+            /* Arrow keys, for a slider reached by Tab. Without this the click
+               handler runs with no pointer position and stores NaN, which
+               erases the handle and persists as null. */
+            slide: function (mm, d) { set(mm, Math.max(0, Math.min(1, frac + d))); },
             on: function (mm, b) {
+                if (mm.mx == null || !isFinite(mm.mx)) return;   // keyboard activation: the arrows do this instead
                 var f = Math.max(0, Math.min(1, (mm.mx - b.x - 4) / (b.w - 8)));
+                if (!isFinite(f)) return;
                 set(mm, f);
             },
             draw: function (cx, b, hover, focus) {
@@ -6646,7 +6759,9 @@
                     function (mm, n) {
                         mm.d.cw.hardcore = n === 1;
                         mm.d.cw.gm = n === 2 ? 1 : 0;
-                        if (n === 1) { mm.d.cw.diff = 3; mm.d.cw.cheats = false; }
+                        // hardcore greys out difficulty, cheats and the bonus chest — and clears them,
+                        // or a disabled switch still puts a chest in the world
+                        if (n === 1) { mm.d.cw.diff = 3; mm.d.cw.cheats = false; mm.d.cw.bonus = false; }
                     }));
                 y += 28;
                 w.push(mnCycle('df', cxp - 105, y, 210, 20, 'Difficulty', MN_DIFF, c.diff,
@@ -6703,6 +6818,7 @@
         var w = wsCreate({ name: (c.name || 'New World').trim() || 'New World', seed: seed, gm: c.gm,
             hardcore: c.hardcore, diff: c.hardcore ? 3 : c.diff, cheats: c.cheats,
             structures: c.structures, bonus: c.bonus, type: MN_WTYPE[c.type] });
+        if (!w) { m.msg = 'Could not save the world list. Is storage full?'; return; }
         m.d.cw = null;
         mnPlay(m, w.id);
     }
@@ -6721,8 +6837,12 @@
                     wsTouch(mm.d.sel, { name: (mm.d.ed || '').trim() || 'World' });
                     mnBack(mm);
                 }),
+                /* The icon is generated, so "reset" has to change the thing it
+                   is generated from — clearing a cache keyed on id and seed
+                   only ever redrew the identical picture. */
                 mnBtn('icon', cxp - 100, 134, 200, 20, 'Reset Icon', function (mm) {
-                    var ww = wsGet(mm.d.sel); if (ww) delete MN_ICON[ww.id + ':' + ww.seed];
+                    var ww = wsGet(mm.d.sel);
+                    if (ww) wsTouch(ww.id, { icon: ((ww.icon || 0) + 1) % 1000 });
                     mm.msg = 'Icon reset.';
                 }),
                 mnBtn('folder', cxp - 100, 158, 200, 20, 'Open World Folder', function (mm) {
@@ -6801,7 +6921,7 @@
     MN_SCR.mp = {
         bg: 'dirt',
         enter: function (m) { m.d.msel = -1; m.d.mscroll = 0; m.d.pingT = 0; },
-        wheel: function (m, dy) { m.d.mscroll = Math.max(0, (m.d.mscroll || 0) + (dy > 0 ? 18 : -18)); },
+        wheel: function (m, dy) { m.d.mscroll = mnScroll((m.d.mscroll || 0) + (dy > 0 ? 18 : -18), (MN_SERVERS.length + 1) * MN_ROWH + 8, m.H - 96); },
         live: true,
         layout: function (m, W, H) {
             var w = [], cxp = W / 2 | 0, top = 32, bot = H - 64, rl = cxp - 150, i;
@@ -6809,6 +6929,7 @@
                 var ry = top + 4 - (m.d.mscroll || 0) + i * MN_ROWH;
                 if (ry + MN_ROWH < top || ry > bot) continue;
                 w.push({ k: 'draw', id: 's' + i, x: rl, y: ry, w: 305, h: MN_ROWH - 4, enabled: true,
+                    clip: [0, top, W, bot - top],
                     aria: MN_SERVERS[i].n, si: i, draw: mnServerRow,
                     on: (function (n) {
                         return function (mm) {
@@ -6897,10 +7018,11 @@
         refuse: ['Failed to connect to the server', 'Connection refused: no further information'],
         white: ['Failed to connect to the server', 'You are not white-listed on this server!']
     };
-    function mnJoin(m, i) {
-        var s = MN_SERVERS[i];
+    function mnJoin(m, i) { mnJoinServer(m, MN_SERVERS[i]); }
+    function mnJoinServer(m, s) {
         if (!s) return;
         m.d.conn = { t: 0, step: 0, s: s, stop: s.ping < 0 ? 1 : 5 };
+        m.d.dcBack = m.scr;         // the disconnect screen goes back where the join started
         mnGo(m, 'connect');
     }
     MN_SCR.connect = {
@@ -6933,10 +7055,11 @@
     MN_SCR.disconnect = {
         bg: 'dirt',
         layout: function (m, W, H) {
-            /* Pop back to the server list rather than pushing another copy of
-               it: the connect screen already put one on the stack, and pushing
-               again left Escape bouncing the list off itself. */
-            return [mnBtn('back', (W / 2 | 0) - 100, H / 2 + 30, 200, 20, 'Back to Server List', function (mm) {
+            /* Pop back to whatever started the join — the server list, or the
+               Direct Connection screen. The connect screen already put that on
+               the stack, so this pops rather than pushing another copy. */
+            var lbl = m.d.dcBack === 'direct' ? 'Back' : 'Back to Server List';
+            return [mnBtn('back', (W / 2 | 0) - 100, H / 2 + 30, 200, 20, lbl, function (mm) {
                 mm.d.dc = null; mnBack(mm);
             })];
         },
@@ -6956,9 +7079,11 @@
             return [
                 { k: 'input', id: 'ip', x: cxp - 100, y: 116, w: 200, h: 20, value: m.d.ip, max: 128, enabled: true,
                     aria: 'Server Address', title: 'Server Address', set: function (mm, v) { mm.d.ip = v; } },
+                /* Connect to it without adding it to the saved list — vanilla's
+                   Direct Connection does not save the address, and appending
+                   one dead entry per attempt was filling the list up. */
                 mnBtn('join', cxp - 100, ((H / 4) | 0) + 108, 200, 20, 'Join Server', function (mm) {
-                    MN_SERVERS.push({ n: mm.d.ip.trim(), ip: mm.d.ip.trim(), motd: '', ping: -1, max: 0, on: 0, fail: 'dns' });
-                    mnJoin(mm, MN_SERVERS.length - 1);
+                    mnJoinServer(mm, { n: mm.d.ip.trim(), ip: mm.d.ip.trim(), motd: '', ping: -1, max: 0, on: 0, fail: 'dns' });
                 }, { enabled: valid }),
                 mnBtn('cancel', cxp - 100, ((H / 4) | 0) + 132, 200, 20, 'Cancel', function (mm) { mnBack(mm); })
             ];
@@ -7076,13 +7201,14 @@
     ];
     MN_SCR.lang = {
         bg: 'dirt',
-        wheel: function (m, dy) { m.d.lscroll = Math.max(0, (m.d.lscroll || 0) + (dy > 0 ? 16 : -16)); },
+        wheel: function (m, dy) { m.d.lscroll = mnScroll((m.d.lscroll || 0) + (dy > 0 ? 16 : -16), MN_LANGS.length * 18 + 8, m.H - 72); },
         layout: function (m, W, H) {
             var w = [], cxp = W / 2 | 0, top = 32, bot = H - 40, o = optLoad();
             for (var i = 0; i < MN_LANGS.length; i++) {
                 var y = top + 4 - (m.d.lscroll || 0) + i * 18;
                 if (y < top || y + 16 > bot) continue;
                 w.push({ k: 'draw', id: 'l' + i, x: cxp - 100, y: y, w: 200, h: 16, enabled: true,
+                    clip: [0, top, W, bot - top],
                     aria: MN_LANGS[i].n, li: i,
                     on: (function (id) { return function () { optLoad().lang = id; optSave(); }; })(MN_LANGS[i].id),
                     draw: function (cx, b, hover) {
@@ -8644,7 +8770,8 @@
     /* ── lifecycle + export ─────────────────────────────────── */
     function close() {
         if (!RT) return 0;
-        var hrs = RT.playT / 3600;
+        // every world played this session, not just the one open when it closed
+        var hrs = ((RT.bankT || 0) + RT.playT) / 3600;
         if (RT.panel) closePanel(true);   // fold cursor + crafting-grid items back before the save (else they vanish)
         sSave();
         cancelAnimationFrame(RT.raf);

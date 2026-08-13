@@ -89,7 +89,10 @@ function waitFor(what, test, then) {
     var v = null;
     try { v = test(); } catch (e) { v = null; }
     if (v) return then(v);
-    if ((waited += 50) > 60000) { line(false, 'timed out waiting for ' + what); return then(null); }
+    /* Generous, because this runs under --virtual-time-budget where an
+       animation frame is scarce: the connect sequence takes 3.25s of
+       accumulated dt, which can be a couple of virtual minutes of polling. */
+    if ((waited += 50) > 240000) { line(false, 'timed out waiting for ' + what); return then(null); }
     setTimeout(tick, 50);
   })();
 }
@@ -174,6 +177,58 @@ var STEPS = [
         // going back must not rebuild Select World, or the selection is lost
         line(window.MC.__proof.menu().sel === 'w3', 'cancelling the confirm keeps the world selected');
         line(!byName('Play Selected World').disabled, 'and Play Selected World is still enabled');
+        next();
+      });
+    });
+  },
+  /* Typing changes which rows match, which changes the widget list, which
+     rebuilds the DOM layer the search box lives in. Setting .value once never
+     caught this — it takes a second keystroke to notice the box is gone. */
+  function searchKeepsFocus(next) {
+    var box = byName('search for worlds');
+    box.focus();
+    line(document.activeElement === box, 'the search box can take focus');
+    var word = 'wor', i = 0;
+    (function tap() {
+      if (i >= word.length) {
+        var now = ui().querySelector('input');
+        line(document.activeElement === now, 'the search box still has focus after ' + word.length + ' keystrokes');
+        line(now && now.value === word, 'and it still holds what was typed (' + (now && now.value) + ')');
+        waitFor('the filter to apply', function () { return !startsWith('SMP with malachi'); }, function (gone) {
+          line(!!gone, 'the filter excluded what does not match');
+          line(!!startsWith('world.'), 'and kept what does');
+          // clear it again for the steps that follow
+          var el = ui().querySelector('input');
+          el.focus(); el.value = ''; el.dispatchEvent(new Event('input', { bubbles: true }));
+          waitFor('the unfiltered list', function () { return startsWith('SMP with malachi'); }, function () { next(); });
+        });
+        return;
+      }
+      var el = ui().querySelector('input');
+      el.value = word.slice(0, i + 1);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      i++;
+      setTimeout(tap, 150);
+    })();
+  },
+  /* A focused button owns Enter. The screen-level Enter shortcut used to run
+     first and preventDefault() the button's own activation, so Enter on Cancel
+     launched the selected world. */
+  function enterBelongsToTheButton(next) {
+    var row = startsWith('SMP with malachi');
+    var r = row.getBoundingClientRect();
+    var o = { clientX: r.left + 150, clientY: r.top + 10, bubbles: true, cancelable: true, button: 0, detail: 1 };
+    row.dispatchEvent(new MouseEvent('mousemove', o));
+    row.dispatchEvent(new MouseEvent('mousedown', o));
+    row.dispatchEvent(new MouseEvent('click', o));
+    waitFor('a selection', function () { return !byName('Play Selected World').disabled; }, function () {
+      var cancel = byName('Cancel');
+      cancel.focus();
+      key('Enter', cancel);
+      cancel.click();   // what the browser does for Enter on a focused button
+      waitFor('the title screen', function () { return byName('Singleplayer'); }, function (t) {
+        line(!!t, 'Enter on a focused Cancel cancels instead of playing the selection');
+        line(host().querySelector('.mc-load').style.display === 'none', 'and no world started loading');
         next();
       });
     });
@@ -288,7 +343,8 @@ var STEPS = [
             line(!byName('Join Server').disabled, 'selecting a server enables Join Server');
             click(byName('Join Server'));
             waitFor('the disconnect screen', function () { return byName('Back to Server List'); }, function (el) {
-              line(!!el, 'joining runs the connect sequence and then refuses');
+              var d = window.MC.__proof.menu();
+              line(!!el, 'joining runs the connect sequence and then refuses (scr=' + (d && d.scr) + ' w=' + (d && d.w.join(',')) + ')');
               if (el) click(el);
               setTimeout(next, 300);
             });
@@ -393,6 +449,23 @@ var STEPS = [
   /* The attribution line is a real widget in the game (it opens the credits)
      and so is this one. It is also the only place the page says out loud that
      it is not Mojang's, so it had better work. */
+  /* A list clamped only at zero could be wheeled off the bottom of the window
+     with no way back — nothing else ever reduced the offset. */
+  function wheelCannotEmptyAList(next) {
+    waitFor('the title screen', function () { return byName('Language'); }, function () {
+      click(byName('Language'));
+      waitFor('the Language screen', function () { return byName('English (US)'); }, function () {
+        var u = ui();
+        for (var i = 0; i < 40; i++) u.dispatchEvent(new WheelEvent('wheel', { deltaY: 120, bubbles: true, cancelable: true }));
+        waitFor('the list to settle', function () { return byName('Done'); }, function () {
+          line(!!byName('English (US)') || !!byName('Português (Brasil)'),
+            'forty wheel notches cannot scroll the language list into the void');
+          click(byName('Done'));
+          waitFor('the title screen', function () { return byName('Singleplayer'); }, function () { next(); });
+        });
+      });
+    });
+  },
   function creditsLine(next) {
     waitFor('the title screen', function () { return startsWith('A fan recreation'); }, function (el) {
       click(el);

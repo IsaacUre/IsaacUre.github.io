@@ -81,8 +81,12 @@ function boot() {
     function parts(s) { return (s || '').split(s && s.indexOf('|') >= 0 ? '|' : ',').filter(Boolean); }
     parts(Q.get('click')).forEach(function (n) {
       acts.push(function (done) {
-        waitFor(function () { return byName(n); }, function (el) { press(n, el); done(); },
-          function () { say('MISS ' + n); done(); });
+        // wait for it to exist AND be usable: a control often appears greyed and
+        // only lights up a frame later, once the click that selected something
+        // has been painted
+        waitFor(function () { var e = byName(n); return e && !e.disabled ? e : null; },
+          function (el) { press(n, el); done(); },
+          function () { say(byName(n) ? 'STILL DISABLED ' + n : 'MISS ' + n); done(); });
       });
     });
     function press(n, el) {
