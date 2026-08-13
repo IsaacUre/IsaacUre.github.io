@@ -74,11 +74,20 @@ Then read the PNG. Reading screenshots is a bug finding tool, not a
 formality: two bugs in the world layer were found purely by looking at
 one.
 
-**Whatever reads the PNG back downscales it to about 280 pixels wide.**
-A 1120x580 canvas seen at 280 is quarter scale, and at quarter scale a
-rhyme pip is two pixels of mud and a frost crust is nothing at all. A
-crop wider than 280 is a crop you cannot actually see. Crop tight and
-crop at 1:1.
+**Whatever reads the PNG back downscales it, and how hard is not
+constant.** It has come back at 280 wide off a 1120 shot and at 2000
+wide off a 2400 shot in the same afternoon, so do not plan around a
+number. Assume you will lose detail and buy some back up front. Two ways,
+for different jobs:
+
+- **Crop tight and crop at 1:1**, which is what `shot.py` does. Its
+  presets are 280 wide. Use this to read a rhyme pip or a frost crust.
+- **Shoot at `--force-device-scale-factor=2`**, which puts 2400px on
+  disk for a full canvas. Use this to judge a whole place, where you want
+  the composition rather than the pixels.
+
+Either way, if a shot comes back too small to see, take it again smaller
+and closer rather than squinting at it.
 
 ## The three harnesses under `tools/`
 
@@ -94,6 +103,32 @@ works in the shell.
 | `vfx-lab.html` | one combat scenario, set up and stepped to a chosen frame |
 | `playtest.html` | the whole verb set driven by real key events, pass or fail as text |
 
+`canvas.html` takes every `devDemo` param plus three of its own:
+
+| param | does |
+|---|---|
+| `hz=<n>` | zoom, nearest neighbour. 1 is the whole canvas, 2 is a 600x310 region, 4 and you are reading pixels |
+| `hx=`,`hy=` | top-left of the region, in canvas pixels |
+| `hw=x,y` | aim the zoom at a WORLD TILE instead. Use this one. The camera has already moved by the time you know where a prop is |
+
+```bash
+"/c/Program Files/Google/Chrome/Application/chrome.exe" \
+  --headless=new --disable-gpu --no-sandbox --hide-scrollbars \
+  --window-size=1200,620 --force-device-scale-factor=2 \
+  --virtual-time-budget=9000 --screenshot="C:/absolute/path/out.png" \
+  "http://localhost:8571/.claude/ninth-night/tools/canvas.html?dev=ninth&nwipe=1&ndev=square&nfr=300&nat=8,10&hz=2&hw=8,8"
+```
+
+Two things it does not do. It has no Google Fonts link, so text renders
+in a fallback face and glyph-level judgements from one of its captures
+are not the shipped metrics. And `devDemo` can only mark one place
+visited, so the map screen is uncapturable in its real state from a
+single URL: use `--user-data-dir=<dir>` across several loads for that.
+
+`nfr` has to be at least 240 in it. Sprites are painted on a 5ms per
+frame budget, so a low `nfr` gives you the plain solid fallback bodies
+and a bug report that is the harness's fault.
+
 `vfx-lab.html` takes `?scene=rhyme|call|status|slant|sour|reprise|stanza`
 plus `f=` the sound, `n=` stacks, `foes=`, `kind=`, `tank=` a hp
 multiplier so a detonation does not kill what you came to photograph,
@@ -104,7 +139,7 @@ python .claude/ninth-night/tools/shot.py <name> "scene=rhyme&f=ill&n=6&foes=4" r
 ```
 
 The last argument is a crop preset (`ring`, `pips`, `slam`, `hud`, and
-others) or `x,y,w,h`, all of them 280 wide for the reason above.
+others) or `x,y,w,h`, all of them 280 wide so they survive the read back.
 
 `playtest.html` is the one that matters, and it is the answer to the one
 rule. It dispatches real `KeyboardEvent`s and real `PointerEvent`s at the

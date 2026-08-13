@@ -1,0 +1,56 @@
+<!doctype html>
+<!-- QC capture harness.
+
+     The game inside the fake desktop draws its 1120x580 canvas into a
+     1160x720 window, so a headless screenshot of /comp/ is the canvas at
+     about a third of its own resolution, inside a picture of Windows. This
+     page hosts the same game at exactly 1120x580, and can zoom into a
+     region of it, so a screenshot is the canvas and nothing else.
+
+     Same URL params as /comp/?dev=ninth&... — devDemo reads location.search.
+     Three extra, all prefixed h so they cannot collide with devDemo's n*:
+
+       hz=<n>      zoom. nearest neighbour, so 4 means you are reading pixels
+       hx=,hy=     top-left of the region to show, in canvas pixels
+
+     Capture at --window-size=1200,620 --force-device-scale-factor=2, which
+     is the largest thing that survives being read back.
+
+     Not part of the site. Lives here beside combat-checks.html. -->
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="/comp/comp.css">
+<style>
+  html, body { margin: 0; padding: 0; background: #06050a; overflow: hidden; }
+  #host { position: absolute; width: 1120px; height: 580px; transform-origin: 0 0;
+          image-rendering: pixelated; }
+</style>
+</head>
+<body>
+<div id="host"></div>
+<script src="/comp/ninth.js"></script>
+<script>
+  var q = {};
+  location.search.slice(1).split('&').forEach(function (kv) { var a = kv.split('='); q[a[0]] = decodeURIComponent(a[1] || ''); });
+  var z = +q.hz || 1, hx = +q.hx || 0, hy = +q.hy || 0;
+  var h = document.getElementById('host');
+  h.innerHTML = window.NINTH.render();
+  window.NINTH.init(h);
+  document.querySelector('.nn').focus();
+  /* hw=x,y aims the zoom at a WORLD tile instead of a canvas pixel, which is
+     the only sane way to point at a prop: the camera has already moved by the
+     time you know where anything is. Same projection constants as the game,
+     plus wherever the camera ended up. */
+  if (q.hw && window.__ninth) {
+      var w = q.hw.split(','), c = window.__ninth.RT().world.cam;
+      var sx = 560 + (+w[0] - +w[1]) * 29 - c.x;
+      var sy = 84 + (+w[0] + +w[1]) * 14.5 - c.y;
+      hx = sx - 300 / z; hy = sy - 155 / z;      // 600x310 CSS of viewport, centred
+  }
+  h.style.transform = 'scale(' + z + ')';
+  h.style.left = (-hx * z) + 'px';
+  h.style.top = (-hy * z) + 'px';
+</script>
+</body>
+</html>
