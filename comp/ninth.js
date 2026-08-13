@@ -15070,21 +15070,27 @@ PAINT.wheel = function (g, c) {                          // the frame; the wheel
 LIVE.wheel = function (cx, o, mxc, myc, sp) {
     var hgt = propDef('wheel').h, cy = anchorAt(sp, 'hub', mxc, myc).y, wr = Math.min(34, hgt * 0.46);
     var an0 = RT.t * 0.25;
-    cx.strokeStyle = '#3a3022'; cx.lineWidth = 6;
-    cx.beginPath(); cx.arc(mxc, cy, wr, 0, TAU); cx.stroke();
-    cx.strokeStyle = '#57492f'; cx.lineWidth = 3;
-    cx.beginPath(); cx.arc(mxc, cy, wr, 0, TAU); cx.stroke();
+    /* The rim as a ring of short straight runs rather than one stroked
+       arc. Every other line in the game goes through line(), which rounds
+       both ends and sits them on the half pixel; a smooth circle in the
+       middle of it was the one moving thing in Wick and the one thing not
+       made of pixels. */
+    for (var rr = 0; rr < 24; rr++) {
+        var a1 = rr / 24 * TAU + an0 * 0.0, a2 = (rr + 1) / 24 * TAU;
+        line(cx, mxc + Math.cos(a1) * wr, cy + Math.sin(a1) * wr,
+                 mxc + Math.cos(a2) * wr, cy + Math.sin(a2) * wr, '#3a3022', 6);
+        line(cx, mxc + Math.cos(a1) * wr, cy + Math.sin(a1) * wr,
+                 mxc + Math.cos(a2) * wr, cy + Math.sin(a2) * wr, '#57492f', 3);
+    }
     for (var sp = 0; sp < 12; sp++) {
         var an = sp / 12 * TAU + an0;
-        cx.strokeStyle = sp % 2 ? '#4a3d2a' : '#5c4c34'; cx.lineWidth = 2;
-        cx.beginPath(); cx.moveTo(mxc, cy); cx.lineTo(mxc + Math.cos(an) * wr, cy + Math.sin(an) * wr); cx.stroke();
+        line(cx, mxc, cy, mxc + Math.cos(an) * wr, cy + Math.sin(an) * wr, sp % 2 ? '#4a3d2a' : '#5c4c34', 2);
         // paddles: the part that actually catches the water
         var px2 = mxc + Math.cos(an) * wr, py2 = cy + Math.sin(an) * wr;
         // One paddle has been mended. It is the only new wood anywhere in
         // Wick, and it is on the one machine the town still needs.
         var mended = sp === 4;
-        cx.strokeStyle = mended ? '#6a5535' : '#2e2618'; cx.lineWidth = 4;
-        cx.beginPath(); cx.moveTo(px2, py2); cx.lineTo(px2 - Math.sin(an) * 6, py2 + Math.cos(an) * 6); cx.stroke();
+        line(cx, px2, py2, px2 - Math.sin(an) * 6, py2 + Math.cos(an) * 6, mended ? '#6a5535' : '#2e2618', 4);
         if (mended) {
             cx.fillStyle = '#8a8079';
             cx.fillRect(Math.round(px2 - Math.sin(an) * 2 - 1), Math.round(py2 + Math.cos(an) * 2 - 1), 2, 2);
@@ -15434,13 +15440,16 @@ PAINT.hedge = function (g, c) {
     var n = Math.max(5, Math.round((long ? c.bw : c.bh) * 3));
     for (var pass = 0; pass < 3; pass++) {
         var col = ['#16220f', '#22331a', '#334a26'][pass];
-        var lift = pass * 3;
+        // the passes stack UP from the ground rather than all sitting at
+        // hgt: the bottom of the lowest one used to be fourteen pixels
+        // clear of the contact shadow it casts, so the hedge floated
+        var lift = pass * 5;
         for (var i = 0; i <= n; i++) {
             var q = i / n;
             var hx = long ? c.lx(c.bw * q, c.bh / 2) : c.lx(c.bw / 2, c.bh * q);
             var hy = long ? c.ly(c.bw * q, c.bh / 2) : c.ly(c.bw / 2, c.bh * q);
             g.fillStyle = col;
-            g.beginPath(); g.ellipse(hx + (rng() - 0.5) * 6, hy - hgt - lift + (rng() - 0.5) * 5, 9 + rng() * 5, 6 + rng() * 4, 0, 0, TAU); g.fill();
+            pxEllipse(g, hx + (rng() - 0.5) * 6, hy - hgt * 0.4 - lift + (rng() - 0.5) * 5, 9 + rng() * 5, 6 + rng() * 4, col);
         }
     }
     for (var t = 0; t < 40; t++) {                                              // twigs poking out of a hedge nobody cuts
