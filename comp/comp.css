@@ -2000,17 +2000,27 @@ span.st-newsart .ic { width: 40px; height: 40px; }
    Slot frames, hearts, mana stars, coin denominations, a live
    minimap, a stack-on-cursor inventory with equip slots, a
    fog-of-war map and a rebindable-controls panel. All .tr-*. */
-.tr { position: relative; background: #0c0e18; min-width: 0; overflow: hidden; outline: 0; cursor: crosshair; font-family: var(--f-ui); }
+/* Terraria's entire UI is one typeface — Andy Bold, a casual rounded humanist bold, not a pixel
+   font. The stack falls back through the closest widely-installed faces. */
+.tr { position: relative; background: #0c0e18; min-width: 0; overflow: hidden; outline: 0; cursor: crosshair;
+    font-family: 'Andy', 'Comic Sans MS', 'Trebuchet MS', system-ui, sans-serif; font-weight: 700; }
 .tr-cv { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
 .tr-hud { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
 .tr-topleft { position: absolute; top: 8px; left: 8px; pointer-events: auto; max-width: calc(100% - 16px); }
 .tr-topright { position: absolute; top: 8px; right: 8px; display: flex; flex-direction: column; align-items: flex-end; gap: 5px; pointer-events: auto; }
 
-/* slots (shared: hotbar + panel) */
-.tr-slot { position: relative; width: 36px; height: 36px; background: rgba(18, 22, 38, .82); border: 2px solid rgba(120, 130, 160, .5); border-radius: 2px; display: grid; place-items: center; cursor: pointer; transition: border-color .08s, background .08s; }
-.tr-slot:hover { border-color: rgba(190, 200, 230, .8); }
-.tr-slot.sel { border-color: #ffcf3a; background: rgba(58, 50, 22, .85); box-shadow: 0 0 0 1px rgba(255,207,58,.4), inset 0 0 8px rgba(255,207,58,.15); }
-.tr-slot.eq { background: rgba(30, 26, 48, .82); border-color: rgba(150, 130, 200, .45); }
+/* slots (shared: hotbar + panel)
+   Terraria's slot is a flat indigo tile with a NEAR-BLACK border (darker than the fill, not
+   lighter) and chamfered corners, and the selected hotbar slot is not a highlighted outline —
+   the whole interior turns solid gold. */
+.tr-slot { position: relative; width: 36px; height: 36px; background: rgba(63, 65, 151, .82); border: 2px solid #121226; display: grid; place-items: center; cursor: pointer; transition: transform .08s, background .08s;
+    clip-path: polygon(6px 0, calc(100% - 6px) 0, 100% 6px, 100% calc(100% - 6px), calc(100% - 6px) 100%, 6px 100%, 0 calc(100% - 6px), 0 6px); }
+.tr-slot:hover { background: rgba(84, 87, 186, .9); }
+.tr-slot.sel { background: linear-gradient(45deg, #ffc500, #ffe61e 55%, #ffff84); border-color: #1e1905; }
+.tr-slot.sel .tri { filter: drop-shadow(0 0 1px rgba(0,0,0,.5)); }
+.tr-hotbar .tr-slot { opacity: .86; }
+.tr-hotbar .tr-slot.sel { opacity: 1; transform: scale(1.1); z-index: 1; }
+.tr-slot.eq { background: rgba(45, 85, 105, .85); }
 /* item slots show the baked 16x16 item sprite itself — integer-scaled, never filtered */
 .tr .tri { image-rendering: pixelated; background-size: 100% 100%; background-repeat: no-repeat; }
 .tr-slot .tri { width: 32px; height: 32px; display: block; }
@@ -2018,30 +2028,33 @@ span.st-newsart .ic { width: 40px; height: 40px; }
 .tr-slot u { position: absolute; left: 2px; top: -1px; font-size: .55rem; text-decoration: none; color: rgba(255,255,255,.5); text-shadow: 0 1px 0 #000; }
 .tr-slot .tr-ph { font-size: .8rem; color: rgba(160,170,200,.4); font-style: normal; }
 
-.tr-hotbar { display: flex; gap: 3px; flex-wrap: wrap; }
-.tr-selname { margin-top: 5px; font-size: .72rem; color: #fff; text-shadow: 0 1px 2px #000; opacity: 0; transform: translateY(-2px); transition: opacity .2s, transform .2s; height: 14px; }
+.tr-hotbar { display: flex; gap: 4px; flex-wrap: wrap; align-items: flex-start; }
+.tr-selname { margin-top: 7px; font-size: .74rem; color: #dcdcdc; opacity: 0; transform: translateY(-2px); transition: opacity .2s, transform .2s; height: 14px; }
 .tr-selname.on { opacity: 1; transform: none; }
-.tr-vitals { margin-top: 6px; }
-.tr-hearts, .tr-stars { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; max-width: 300px; }
-.tr-stars { margin-top: 3px; }
-.tr-heart { width: 13px; height: 12px; background: #e8455f; clip-path: polygon(50% 100%, 0 42%, 0 14%, 24% 0, 50% 20%, 76% 0, 100% 14%, 100% 42%); box-shadow: inset -2px -2px 0 rgba(120,0,20,.4); }
-.tr-heart.half { background: linear-gradient(90deg, #e8455f 50%, #5a2028 50%); }
-.tr-heart.empty { background: #3a2028; }
-.tr-star { width: 12px; height: 12px; background: #6ea0ff; clip-path: polygon(50% 0, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%); box-shadow: inset -1px -1px 0 rgba(20,40,120,.4); }
-.tr-star.half { opacity: .55; }
-.tr-star.empty { background: #26324a; }
-.tr-hearts b, .tr-stars b { font-size: .64rem; color: #fff; text-shadow: 0 1px 0 #000; margin-left: 4px; }
-.tr-coins { display: flex; gap: 4px; }
+/* life top-right in rows of ten, mana in a column down the right edge — Terraria's layout */
+.tr-vitals { display: flex; align-items: flex-start; gap: 6px; }
+.tr-hearts { display: grid; grid-template-columns: repeat(10, 22px); justify-content: end; }
+.tr-stars { display: flex; flex-direction: column; align-items: center; }
+.tr-heart, .tr-star { width: 22px; height: 22px; background-image: var(--tr-heart); background-size: 100% 100%; image-rendering: pixelated; }
+.tr-star { height: 24px; background-image: var(--tr-star); }
+.tr-hearts b, .tr-stars b { grid-column: 1 / -1; font-size: .66rem; color: #dcdcdc; text-align: right; font-weight: 400; margin-bottom: 1px; }
+.tr-coins { display: flex; gap: 4px; margin-top: 3px; }
 .tr-coin { position: relative; padding-left: 12px; font-size: .68rem; color: #fff; text-shadow: 0 1px 0 #000; }
 .tr-coin::before { content: ''; position: absolute; left: 0; top: 2px; width: 9px; height: 9px; border-radius: 50%; box-shadow: inset -1px -1px 0 rgba(0,0,0,.35); }
 .tr-coin.g::before { background: #f0c840; } .tr-coin.s::before { background: #d0d4dc; } .tr-coin.c::before { background: #c07038; }
-.tr-buffs { display: flex; gap: 3px; flex-wrap: wrap; justify-content: flex-end; max-width: 160px; }
-.tr-buff { position: relative; width: 20px; height: 20px; border: 1px solid rgba(120,130,160,.5); background: rgba(14,18,34,.8); display: grid; place-items: center; }
-.tr-buff i { width: 12px; height: 12px; background: var(--bc); border-radius: 3px; box-shadow: inset -2px -2px 0 rgba(0,0,0,.35); }
-.tr-buff u { position: absolute; right: 0; bottom: -1px; font-style: normal; font-size: .5rem; color: #fff; text-shadow: 0 1px 0 #000; }
-.tr-mini { width: 132px; height: 132px; image-rendering: pixelated; border: 2px solid rgba(120,130,160,.45); border-radius: 3px; background: #05070e; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.5); }
-.tr-mini:hover { border-color: rgba(190,200,230,.7); }
-.tr-depth { position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); font-size: .68rem; color: rgba(255,255,255,.72); text-shadow: 0 1px 0 #000; pointer-events: none; }
+/* buff icons sit bare under the hotbar at 40% opacity — no slot frame behind them */
+.tr-buffs { display: flex; gap: 6px; flex-wrap: wrap; max-width: 340px; margin-top: 8px; }
+.tr-buff { position: relative; width: 28px; height: 28px; display: grid; place-items: center; opacity: .4; transition: opacity .12s; }
+.tr-buff:hover { opacity: 1; }
+.tr-buff i { width: 22px; height: 22px; background: var(--bc); border-radius: 4px; box-shadow: inset -3px -3px 0 rgba(0,0,0,.35), 0 0 0 2px rgba(10,12,26,.8); }
+.tr-buff u { position: absolute; left: 0; right: 0; bottom: -11px; text-align: center; font-style: normal; font-size: .56rem; color: #dcdcdc; }
+/* the minimap's carved wood-and-gold frame is one of Terraria's most recognisable UI elements */
+.tr-mini { width: 132px; height: 132px; image-rendering: pixelated; background: #05070e; cursor: pointer;
+    border: 5px solid #8c6f2a; border-radius: 2px;
+    box-shadow: 0 0 0 2px #2f261f, inset 0 0 0 2px #54481e, 0 0 0 4px #54481e, 0 3px 10px rgba(0,0,0,.6); }
+.tr-mini:hover { border-color: #b9973b; }
+.tr-depth { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; margin-top: 12px; font-size: .68rem; color: #dcdcdc; pointer-events: none; }
+.tr-depth span { text-shadow: 2px 0 0 #000, -2px 0 0 #000, 0 2px 0 #000, 0 -2px 0 #000; }
 .tr-breath { position: absolute; bottom: 44px; left: 50%; transform: translateX(-50%); width: 120px; height: 8px; background: rgba(0,0,0,.5); border: 1px solid rgba(120,180,255,.6); pointer-events: none; }
 .tr-breath::after { content: ''; display: block; height: 100%; width: var(--b, 100%); background: linear-gradient(180deg, #7ac0ff, #2a6ad0); transition: width .1s; }
 .tr-hint { position: absolute; bottom: 4px; left: 0; right: 0; text-align: center; font-size: .62rem; color: rgba(255,255,255,.42); text-shadow: 0 1px 0 #000; pointer-events: none; z-index: 2; }

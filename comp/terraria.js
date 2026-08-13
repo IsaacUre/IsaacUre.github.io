@@ -64,30 +64,40 @@ var SOLID = {};
 var STATION = {}; STATION[T_BENCH] = 'bench'; STATION[T_FURNACE] = 'furnace'; STATION[T_ANVIL] = 'anvil';
 STATION[T_TABLE] = 'table'; STATION[T_HELLFORGE] = 'hellforge'; STATION[T_BOTTLE] = 'bottle';
 
-/* Tile colours [main, shade, edge-hi], hand-matched against Terraria's own block palette
-   (dirt 151,107,75 · stone 128,128,136 · sand 212,192,100 · mud 92,68,73 · demonite 98,95,167 …). */
+/* Tile colours [dominant, shadow, highlight]. The dominant tone is Terraria's own MAP colour for
+   that block, which — as it happens — is also the single most common pixel in its texture, so the
+   minimap and the world agree the way they do in game. Values are read off MapHelper and off the
+   1.4.5.6 tile sheets, not eyeballed. */
 var TCOL = {};
-TCOL[T_DIRT] = ['#976b4b', '#6e4b32', '#ab7d5b']; TCOL[T_GRASS] = ['#37a83f', '#215f26', '#55c454'];
-TCOL[T_STONE] = ['#808088', '#5c5c66', '#9d9da8']; TCOL[T_PLANK] = ['#8e6a3c', '#5f462a', '#ab8258'];
-TCOL[T_TRUNK] = ['#7a5b36', '#4c3620', '#98744a']; TCOL[T_LEAF] = ['#2e9b34', '#1a6621', '#48c045'];
-TCOL[T_SAND] = ['#d4c064', '#a99646', '#efdc8a']; TCOL[T_SNOW] = ['#d3ecf1', '#a5c1d1', '#ffffff'];
-TCOL[T_ICE] = ['#90c3e8', '#6796bf', '#c4e6fb']; TCOL[T_MUD] = ['#5c4449', '#3d2c30', '#75585d'];
-TCOL[T_JGRASS] = ['#82b52c', '#4d7016', '#a5d846']; TCOL[T_CLAY] = ['#925144', '#69382e', '#ae6757'];
-TCOL[T_SILT] = ['#6a6b76', '#4b4c55', '#84858f']; TCOL[T_ASH] = ['#46383c', '#2d2326', '#5e4d52'];
-TCOL[T_HELLSTONE] = ['#b74a18', '#742c0d', '#e8763a']; TCOL[T_OBSIDIAN] = ['#3d3a4e', '#242235', '#585472'];
-TCOL[T_COBWEB] = ['#c9d2de', '#97a3b2', '#eef3f9']; TCOL[T_CLOUD] = ['#dee8ff', '#b3c4e4', '#ffffff'];
-TCOL[T_EBON] = ['#52496e', '#342e4b', '#706592']; TCOL[T_CGRASS] = ['#75639e', '#463a68', '#9483bc'];
-/* ores: [nugget, host-rock shade, nugget highlight] — the rock behind is stone/ash, painted first */
-TCOL[T_COPPER] = ['#b45a1e', '#5c5c66', '#e08e42']; TCOL[T_IRON] = ['#8d7963', '#5c5c66', '#c0ad96'];
-TCOL[T_SILVER] = ['#c8d1e8', '#5c5c66', '#f2f6ff']; TCOL[T_GOLD] = ['#ddb828', '#5c5c66', '#ffe066'];
-TCOL[T_DEMONITE] = ['#625fa7', '#3a3860', '#8a86d4']; TCOL[T_METEOR] = ['#8a5b4a', '#4f3730', '#b8836c'];
-TCOL[T_AMETHYST] = ['#a040d0', '#5c5c66', '#cd7bf0']; TCOL[T_TOPAZ] = ['#e0a020', '#5c5c66', '#ffcb56'];
-TCOL[T_SAPPHIRE] = ['#2c6ae0', '#5c5c66', '#5f9bfb']; TCOL[T_EMERALD] = ['#1fb040', '#5c5c66', '#4ee06d'];
-TCOL[T_RUBY] = ['#d02c3f', '#5c5c66', '#f4616f']; TCOL[T_DIAMOND] = ['#b8ebf0', '#5c5c66', '#eafcff'];
-TCOL[T_PLATFORM] = ['#8e6a3c', '#5f462a', '#ab8258'];
+TCOL[T_DIRT] = ['#976b4b', '#725138', '#ac7a66']; TCOL[T_GRASS] = ['#1cd85e', '#0d6524', '#1e9648'];
+TCOL[T_STONE] = ['#808080', '#404040', '#cbcbcb']; TCOL[T_PLANK] = ['#78553c', '#563e2c', '#bf8f6f'];
+TCOL[T_TRUNK] = ['#78553c', '#563e2c', '#976b4b']; TCOL[T_LEAF] = ['#1d9045', '#0a4a1b', '#1bcf5a'];
+TCOL[T_SAND] = ['#baa854', '#8b833b', '#d4c064']; TCOL[T_SNOW] = ['#bedfe8', '#80b4e2', '#e5eef5'];
+TCOL[T_ICE] = ['#64bfff', '#2869f0', '#f4feff']; TCOL[T_MUD] = ['#5c4449', '#49393f', '#7d615d'];
+TCOL[T_JGRASS] = ['#8fd71d', '#28650d', '#63971f']; TCOL[T_CLAY] = ['#925144', '#6f4945', '#a36961'];
+TCOL[T_SILT] = ['#595353', '#31333d', '#7e786a']; TCOL[T_ASH] = ['#44444c', '#323246', '#78626a'];
+TCOL[T_HELLSTONE] = ['#662222', '#3a1e14', '#f3b993']; TCOL[T_OBSIDIAN] = ['#2b2854', '#252525', '#7e80c4'];
+TCOL[T_COBWEB] = ['#c1cacb', '#9eadae', '#e2e9ea']; TCOL[T_CLOUD] = ['#dfffff', '#8dd9ff', '#ffffff'];
+TCOL[T_EBON] = ['#624b6b', '#3e2d4b', '#948e99']; TCOL[T_CGRASS] = ['#8d89df', '#444572', '#6d6aae'];
+/* ores: Terraria does NOT draw grey rock with metal lumps on it — the whole tile is the ore's own
+   palette, stone-shaped rubble re-tinted into the metal's hue, with a couple of near-white sparks */
+TCOL[T_COPPER] = ['#964316', '#4e3326', '#ffe5b7']; TCOL[T_IRON] = ['#8c6550', '#2e2720', '#eae6e2'];
+TCOL[T_SILVER] = ['#b9c2c3', '#1a2428', '#f6f9fa']; TCOL[T_GOLD] = ['#b9a417', '#4e4d36', '#fff9b7'];
+TCOL[T_DEMONITE] = ['#625fa7', '#282828', '#beb7e9']; TCOL[T_METEOR] = ['#685654', '#331b29', '#e4a2ae'];
+TCOL[T_AMETHYST] = ['#8c3aa6', '#404040', '#f2baf6']; TCOL[T_TOPAZ] = ['#a0763a', '#404040', '#fff953'];
+TCOL[T_SAPPHIRE] = ['#6e8cb6', '#404040', '#71cfff']; TCOL[T_EMERALD] = ['#389661', '#404040', '#53ffc0'];
+TCOL[T_RUBY] = ['#c46072', '#404040', '#ffa1c4']; TCOL[T_DIAMOND] = ['#7dbfc5', '#404040', '#b6f4f3'];
+TCOL[T_PLATFORM] = ['#78553c', '#563e2c', '#bf8f6f'];
 
-var GEMCOL = {}; GEMCOL[T_AMETHYST] = '#a040d0'; GEMCOL[T_TOPAZ] = '#e0a020'; GEMCOL[T_SAPPHIRE] = '#2c6ae0';
-GEMCOL[T_EMERALD] = '#1fb040'; GEMCOL[T_RUBY] = '#d02c3f'; GEMCOL[T_DIAMOND] = '#b8ebf0';
+/* [mid, dark, highlight, outline, shadow] for the gem inclusions in a gemstone block */
+var GEMPAL = {};
+GEMPAL[T_SAPPHIRE] = ['#2a82fa', '#1a49c0', '#71cfff', '#060c32', '#1b2a87'];
+GEMPAL[T_RUBY] = ['#fa2a51', '#c01a41', '#ffa1c4', '#2f060f', '#861c2b'];
+GEMPAL[T_EMERALD] = ['#05c95d', '#15952d', '#53ffc0', '#042b0b', '#176b1d'];
+GEMPAL[T_TOPAZ] = ['#c78b09', '#9d480f', '#fff953', '#310b02', '#7b1d07'];
+GEMPAL[T_AMETHYST] = ['#a30bd5', '#6524a2', '#f2baf6', '#13082f', '#432591'];
+GEMPAL[T_DIAMOND] = ['#19d1e7', '#267c8e', '#b6f4f3', '#002759', '#2e4654'];
+var GEMCOL = {}; GEMS.forEach(function (g) { GEMCOL[g] = GEMPAL[g][0]; });
 
 /* hardness (mining progress to break) */
 var HARD = {};
@@ -372,7 +382,9 @@ function sLoad() {
     if (S) return S;
     var raw = null;
     try { raw = JSON.parse(localStorage.getItem('comp_terraria') || 'null'); } catch (e) { raw = null; }
-    if (raw && raw.v === 2) { S = raw; return S; }
+    // merge over the defaults rather than adopting the blob wholesale: a save written by an older
+    // build (or a harness) that is missing a field should get the default, not undefined
+    if (raw && raw.v === 2) { S = fresh(); for (var k in raw) if (raw[k] !== undefined) S[k] = raw[k]; return S; }
     S = fresh();
     if (raw && raw.v === 1) {   // migrate v1: carry achievement/coin/stat progress forward, regen world
         if (raw.ach) S.ach = raw.ach;
@@ -547,12 +559,21 @@ function genWorld(seed) {
     for (x = 4; x < W - 4; x += 4 + Math.floor(R() * 8)) {
         var g2 = Math.round(surf[x]), st = get(x, g2), bio = biomeAt(x);
         if (st !== T_GRASS && st !== T_JGRASS && st !== T_SNOW) continue;
-        var th = 5 + Math.floor(R() * 6);
+        var th = 5 + Math.floor(R() * 12);               // WorldGen.GrowTree: genRand.Next(5, 17)
         for (var t2 = 1; t2 <= th; t2++) if (g2 - t2 > 1) set(x, g2 - t2, T_TRUNK);
-        var leafC = bio === 'jungle' ? T_JGRASS : bio === 'snow' ? T_LEAF : T_LEAF;
-        for (oy = -3; oy <= 1; oy++) for (ox = -2; ox <= 2; ox++) {
-            ty = g2 - th + oy; tx = x + ox;
-            if (tx > 0 && tx < W && ty > 0 && Math.abs(ox) + Math.abs(oy) < 4 && get(tx, ty) === T_AIR) set(tx, ty, T_LEAF);
+        // Boreal trees carry no foliage at all — bare twigs and snow caps — so the snow biome gets
+        // no canopy tiles, and one forest tree in eight ends in a bare stub, exactly as in game.
+        if (bio === 'snow' || R() < 0.125) continue;
+        // The tree TOP is a FIXED 5x5 crown whatever the trunk's height: two tiles either side and
+        // four above the topmost trunk tile. A canopy that scales with the tree, or a triangle of
+        // leaves, is the commonest tell of a fake Terraria tree.
+        var CROWN = [[-4, 1], [-3, 2], [-2, 2], [-1, 2], [0, 1]];
+        for (var cw = 0; cw < CROWN.length; cw++) {
+            oy = CROWN[cw][0];
+            for (ox = -CROWN[cw][1]; ox <= CROWN[cw][1]; ox++) {
+                ty = g2 - th + oy; tx = x + ox;
+                if (tx > 0 && tx < W && ty > 0 && get(tx, ty) === T_AIR) set(tx, ty, T_LEAF);
+            }
         }
     }
 
@@ -663,7 +684,8 @@ function invTake(id, n) {
     for (var i = 0; i < S.inv.length && n > 0; i++) { var s = S.inv[i]; if (s && s.id === id) { var take = Math.min(s.c, n); s.c -= take; n -= take; if (!s.c) S.inv[i] = null; } }
 }
 function invGive(id, n) {
-    var max = ITEMS[id] ? (ITEMS[id].max || 1) : 1, i;
+    if (!ITEMS[id]) return n;                 // never let an unknown id into a slot: everything
+    var max = ITEMS[id].max || 1, i;          // downstream reads ITEMS[id] without checking
     for (i = 0; i < S.inv.length && n > 0; i++) { var s = S.inv[i]; if (s && s.id === id && s.c < max) { var add = Math.min(max - s.c, n); s.c += add; n -= add; } }
     for (i = 0; i < S.inv.length && n > 0; i++) { if (!S.inv[i]) { var put = Math.min(max, n); S.inv[i] = { id: id, c: put }; n -= put; } }
     return n;
@@ -709,16 +731,19 @@ function render() {
     return '<div class="tr" tabindex="0">' +
         '<canvas class="tr-cv"></canvas>' +
         '<div class="tr-hud">' +
+          // Terraria's HUD: hotbar top-left with the buff row under it; life hearts top-RIGHT with
+          // the mana stars in a column down the right edge, the minimap under them, and the depth
+          // readout under that. Vitals under the hotbar is the layout of a different game.
           '<div class="tr-topleft">' +
             '<div class="tr-hotbar"></div>' +
-            '<div class="tr-vitals"><div class="tr-hearts"></div><div class="tr-stars"></div></div>' +
+            '<div class="tr-buffs"></div>' +
           '</div>' +
           '<div class="tr-topright">' +
+            '<div class="tr-vitals"><div class="tr-hearts"></div><div class="tr-stars"></div></div>' +
             '<div class="tr-coins"></div>' +
-            '<div class="tr-buffs"></div>' +
             '<canvas class="tr-mini" width="132" height="132"></canvas>' +
+            '<div class="tr-depth"></div>' +
           '</div>' +
-          '<div class="tr-depth"></div>' +
           '<div class="tr-breath" hidden></div>' +
         '</div>' +
         '<div class="tr-panel" hidden></div>' +
@@ -772,6 +797,7 @@ function init(el) {
     if (!S.buffs) S.buffs = {};
     if (!S.explored) S.explored = '';
     RT.explored = S.explored ? unpackBytes(S.explored, W * H) : new Uint8Array(W * H);
+    if (!S.maxhp) { S.maxhp = 100; S.hp = 100; }
     if (!S.maxmana) { S.maxmana = 20; S.mana = 20; }
     if (S.hp <= 0) { S.hp = S.maxhp; if (S.spawnx != null) { S.px = S.spawnx; S.py = S.spawny; } }
 
@@ -800,6 +826,7 @@ function init(el) {
     if (tdev === 'map') RT.openMap = true;
 
     wireInput(root);
+    bakeVitalIcons(root);
     paintAll();
     if (RT.openPanel) togglePanel(true);
     RT.last = performance.now();
@@ -1715,23 +1742,34 @@ function toast(msg) {
 }
 
 /* ─────────────── drawing ─────────────── */
-function skyColor() {
-    var t = S.time;
-    function lc(a, b, k) { return [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k]; }
-    var day = [122, 178, 235], dusk = [214, 120, 70], night = [12, 14, 34], dawn = [110, 120, 180];
-    if (t < DAY - 34) return day;
-    if (t < DAY) return lc(day, dusk, (t - (DAY - 34)) / 34);
-    if (t < DAY + 26) return lc(dusk, night, (t - DAY) / 26);
-    if (t < CYCLE - 30) return night;
-    if (t < CYCLE - 12) return lc(night, dawn, (t - (CYCLE - 30)) / 18);
-    return lc(dawn, day, (t - (CYCLE - 12)) / 12);
+/* Terraria has TWO colours here and homages constantly conflate them. ColorOfTheSkies is a
+   MULTIPLIER applied to the sky texture, every parallax layer, the clouds and the stars — there is
+   no separate night palette, midnight is the same art at four percent. tileColor is a desaturated
+   copy of it (each channel pulled 30% toward the mean) used as the world's ambient light.
+   Straight off Main.SetBackColor; our shorter day maps onto the same fractions of the cycle. */
+function skyTint() {
+    var n;
+    if (!isNight()) {
+        var td = S.time / DAY;
+        if (td < 0.25) { n = td / 0.25; return [230 * n + 25, 220 * n + 35, 220 * n + 35]; }
+        if (td > 0.85) { n = 1 - (td - 0.85) * 20 / 3; return [200 * n + 35, 85 * n + 35, 135 * n + 35]; }
+        if (td > 0.70) { n = 1 - (td - 0.70) * 20 / 3; return [20 * n + 235, 135 * n + 120, 85 * n + 170]; }
+        return [255, 255, 255];
+    }
+    var tn = (S.time - DAY) / NIGHT, MOONFLOOR = 15;
+    var c = tn < 0.5 ? (n = 1 - tn / 0.5, [30 * n + 5, 30 * n + 5, 30 * n + 5])
+                     : (n = (tn - 0.5) * 2, [20 * n + 5, 30 * n + 5, 30 * n + 5]);
+    return [Math.max(c[0], MOONFLOOR), Math.max(c[1], MOONFLOOR), Math.max(c[2], MOONFLOOR)];
+}
+function skyColor() {                       // kept for the minimap/UI: the tint as a colour
+    var s = skyTint();
+    return [s[0] * 0.31, s[1] * 0.38, s[2] * 0.96];
 }
 function dayLight() {
-    var t = S.time;
-    if (t < DAY - 34) return 1;
-    if (t < DAY) return 1 - 0.82 * (t - (DAY - 34)) / 34;
-    if (t < CYCLE - 26) return 0.18;
-    return 0.18 + 0.82 * (t - (CYCLE - 26)) / 26;
+    var s = skyTint();
+    // ApplyColorOfTheSkiesToTiles: 30% desaturation, then the mean is the ambient light value
+    var r = (s[0] + s[1] + s[2] + s[0] * 7) / 10, g = (s[0] + s[1] + s[2] + s[1] * 7) / 10, b = (s[0] + s[1] + s[2] + s[2] * 7) / 10;
+    return clamp((r + g + b) / 3 / 255, 0.06, 1);
 }
 function draw() {
     var cv = RT.cv, host = RT.root;
@@ -1814,7 +1852,12 @@ function draw() {
     }
     var d2 = S.py / TS;
     var depthT = d2 < 30 ? 'Space' : d2 < 66 ? 'Surface' : d2 < 96 ? 'Underground' : d2 < HELL ? 'Caverns' : 'Underworld';
-    RT.root.querySelector('.tr-depth').textContent = depthT + ' · ' + (isNight() ? '🌙 Night' : '☀ Day') + ' ' + S.day + ' · ' + biomeLabel(biomeAtX(Math.floor(S.px / TS)));
+    // Terraria prints depth as feet with a foot mark, two feet per tile, zero at the surface line
+    var feet = Math.abs(Math.round((d2 - 66) * 2));
+    RT.root.querySelector('.tr-depth').innerHTML =
+        '<span>' + (depthT === 'Surface' ? 'Level' : feet + "'") + ' ' + depthT + '</span>' +
+        '<span>' + biomeLabel(biomeAtX(Math.floor(S.px / TS))) + '</span>' +
+        '<span>' + (isNight() ? '🌙 Night' : '☀ Day') + ' ' + S.day + '</span>';
     paintMini();
     if (RT.mapOpen && RT.anim % 8 === 0) paintMap();
 }
@@ -1824,44 +1867,53 @@ function draw() {
    comes back as a gentle additive bloom only where the light actually is. */
 function drawLighting(x, L, LC, x0, y0, lw, lh, cx, cy) {
     var dx0 = x0 * TS - cx, dy0 = y0 * TS - cy, dw = lw * TS, dh = lh * TS;
-    var lcv = RT.lightCv, glo = RT.glowCv;
-    if (!lcv) { lcv = RT.lightCv = document.createElement('canvas'); glo = RT.glowCv = document.createElement('canvas'); }
-    if (lcv.width !== lw || lcv.height !== lh) { lcv.width = glo.width = lw; lcv.height = glo.height = lh; }
-    var lg2 = lcv.getContext('2d'), gg = glo.getContext('2d');
-    // reuse the pixel buffers: allocating two of these every frame was enough garbage to make
-    // the collector stall a frame every couple of seconds
-    if (!RT.lightImg || RT.lightImg.width !== lw || RT.lightImg.height !== lh) {
-        RT.lightImg = lg2.createImageData && lg2.createImageData(lw, lh);
-        RT.glowImg = gg.createImageData && gg.createImageData(lw, lh);
+    var SUB = 4, sw = lw * SUB, sh = lh * SUB;             // four sub-cells per tile: 4-device-px bands
+    var lcv = RT.lightCv;
+    if (!lcv) lcv = RT.lightCv = document.createElement('canvas');
+    if (lcv.width !== sw || lcv.height !== sh) { lcv.width = sw; lcv.height = sh; }
+    var lg2 = lcv.getContext('2d');
+    // reuse the pixel buffer: allocating one of these every frame was enough garbage to make the
+    // collector stall a frame every couple of seconds
+    if (!RT.lightImg || RT.lightImg.width !== sw || RT.lightImg.height !== sh) {
+        RT.lightImg = lg2.createImageData && lg2.createImageData(sw, sh);
     }
-    var img = RT.lightImg, gim = RT.glowImg;
-    if (!img || !img.data || !gim || !gim.data) {          // no ImageData (headless shim): flat fallback
+    var img = RT.lightImg;
+    if (!img || !img.data) {                               // no ImageData (headless shim): flat fallback
         for (var ty2 = 0; ty2 < lh; ty2++) for (var tx2 = 0; tx2 < lw; tx2++) {
-            var li2 = ty2 * lw + tx2, lv2 = L[li2];
+            var lv2 = clamp(L[ty2 * lw + tx2] * LGLOBAL, 0, 1);
             if (lv2 >= 0.98) continue;
-            x.fillStyle = 'rgba(6,7,16,' + (1 - lv2).toFixed(2) + ')';
+            x.fillStyle = 'rgba(0,0,0,' + (1 - lv2).toFixed(2) + ')';
             x.fillRect((x0 + tx2) * TS - cx, (y0 + ty2) * TS - cy, TS, TS);
         }
         return;
     }
-    var d = img.data, gd = gim.data;
-    for (var i = 0, n = lw * lh; i < n; i++) {
-        var lv = L[i], col = LC[i], o = i * 4;
-        d[o] = 6; d[o + 1] = 7; d[o + 2] = 16; d[o + 3] = Math.round(clamp(1 - lv, 0, 1) * 255);
-        if (col && lv > 0.12) {
-            gd[o] = col[0]; gd[o + 1] = col[1]; gd[o + 2] = col[2];
-            gd[o + 3] = Math.round(clamp((lv - 0.12) * 0.34, 0, 1) * 255);
-        } else gd[o + 3] = 0;
+    /* Terraria slices each block into a 4/8/4 grid and colours every slice with the mean of its own
+       tile light and the neighbour it leans towards. That is the whole reason light in a screenshot
+       steps in quarter-tile bands instead of either blurring or blocking out per tile. */
+    var d = img.data;
+    for (var ty = 0; ty < lh; ty++) for (var tx = 0; tx < lw; tx++) {
+        var i = ty * lw + tx, lv = L[i], c = LC[i];
+        var up = ty > 0 ? L[i - lw] : lv, dn = ty < lh - 1 ? L[i + lw] : lv;
+        var lf = tx > 0 ? L[i - 1] : lv, rt = tx < lw - 1 ? L[i + 1] : lv;
+        for (var sy = 0; sy < SUB; sy++) for (var sx = 0; sx < SUB; sx++) {
+            var v = lv;
+            if (sy === 0) v = (v + up) * 0.5; else if (sy === SUB - 1) v = (v + dn) * 0.5;
+            if (sx === 0) v = (v + lf) * 0.5; else if (sx === SUB - 1) v = (v + rt) * 0.5;
+            v = clamp(v * LGLOBAL, 0, 1);
+            var cc = c || COL_WHITE, o = ((ty * SUB + sy) * sw + (tx * SUB + sx)) * 4;
+            d[o] = cc[0] * v; d[o + 1] = cc[1] * v; d[o + 2] = cc[2] * v; d[o + 3] = 255;
+        }
     }
-    lg2.putImageData(img, 0, 0); gg.putImageData(gim, 0, 0);
-    x.imageSmoothingEnabled = true;
-    x.drawImage(lcv, dx0, dy0, dw, dh);
+    lg2.putImageData(img, 0, 0);
+    // multiply, exactly as the game tints each tile by its light colour — a torch warms what it
+    // touches instead of laying an orange wash over the top of it
     var prev = x.globalCompositeOperation;
-    x.globalCompositeOperation = 'lighter';
-    x.drawImage(glo, dx0, dy0, dw, dh);
-    x.globalCompositeOperation = prev;
+    x.globalCompositeOperation = 'multiply';
     x.imageSmoothingEnabled = false;
+    x.drawImage(lcv, dx0, dy0, dw, dh);
+    x.globalCompositeOperation = prev;
 }
+var COL_WHITE = [255, 255, 255];
 function biomeLabel(b) { return { forest: 'Forest', snow: 'Snow', desert: 'Desert', jungle: 'Jungle', corrupt: 'Corruption', ocean: 'Ocean' }[b] || 'Forest'; }
 
 /* tiles that animate every frame and therefore cannot live in the terrain cache */
@@ -1899,19 +1951,31 @@ function drawBranch(g, sx, sy, tx, ty) {
     for (var dn = 1; dn <= 3; dn++) {                                  // nor down among the roots
         if (ty + dn >= H || RT.w[(ty + dn) * W + col] !== T_TRUNK) return;
     }
-    // a different seed per side, so a trunk almost never sprouts two branches at the same height
-    if (hsh(col * 9 + (lft ? 5 : 137), ty) < 0.84) return;             // roughly one row in six
-    var bm = '#7a5b36', bd = '#4c3620', lf = TCOL[T_LEAF];
-    for (var q = 0; q < 5; q++) {
-        var qx = lft ? sx + q : sx + TS - 1 - q, qy = sy + 4 - q * 0.5;
-        g.fillStyle = q > 2 ? bd : bm; g.fillRect(qx, qy, 1, 1.5);
+    // a different seed per side, and never on the same side as the row below — GrowTree re-rolls
+    // exactly that case, which is why Terraria branches never stack down one flank
+    var h0 = hsh(col * 9 + (lft ? 5 : 137), ty);
+    if (h0 < 0.7) return;                                              // ~30% of interior rows
+    if (hsh(col * 9 + (lft ? 5 : 137), ty + 1) >= 0.7) return;
+    var snowy = biomeAtX(col) === 'snow';
+    var bm = '#78553c', bd = '#563e2c', bx = '#3a302a', lf = TCOL[T_LEAF];
+    // the limb: out and slightly UP off the trunk, so the clump below it reads as hanging
+    for (var q = 0; q < 6; q++) {
+        var qx = lft ? sx + q * 0.7 : sx + TS - 0.7 - q * 0.7, qy = sy + 3.5 - q * 0.28;
+        g.fillStyle = q > 3 ? bx : q > 1 ? bd : bm; g.fillRect(qx, qy, 0.9, 1.2);
     }
-    var ex = lft ? sx + 4 : sx + TS - 5, ey = sy + 1.5;                // a leaf tuft on the end
+    var ex = lft ? sx + 3.6 : sx + TS - 3.6, ey = sy + 2.6;
+    if (snowy || hsh(col * 3 + 7, ty) > 0.66) {                        // one branch in three is a bare stub
+        if (snowy) { g.fillStyle = '#e8f0f8'; g.fillRect(ex - 1.6, ey - 1.4, 3.2, 0.9); g.fillRect(ex - 0.9, ey - 2, 1.8, 0.7); }
+        return;
+    }
+    // a leafy branch is a clump that DROOPS below its limb — never a twig poking sideways
+    g.fillStyle = '#17331c';
+    g.fillRect(ex - 2.4, ey - 1.2, 4.8, 4.4); g.fillRect(ex - 1.7, ey - 1.9, 3.4, 5.4);
     g.fillStyle = lf[1];
-    g.fillRect(ex - 1.5, ey - 0.5, 4, 2.5); g.fillRect(ex - 0.5, ey - 1.5, 3, 3.5);
+    g.fillRect(ex - 2, ey - 0.9, 4, 3.8); g.fillRect(ex - 1.4, ey - 1.5, 2.8, 4.7);
     g.fillStyle = lf[0];
-    g.fillRect(ex - 1, ey - 1, 3, 2.5); g.fillRect(ex, ey - 2, 2, 3);
-    g.fillStyle = lf[2]; g.fillRect(ex - 0.5, ey - 1.5, 1.5, 1);
+    g.fillRect(ex - 1.6, ey - 0.6, 3.2, 2.6); g.fillRect(ex - 1, ey - 1.2, 2, 3.6);
+    g.fillStyle = lf[2]; g.fillRect(ex - 1.2, ey - 1.1, 1.4, 0.9); g.fillRect(ex - 0.4, ey + 0.8, 0.8, 0.7);
 }
 /* Vines. Any grass block with air under it trails one, longer in the jungle — the single strongest
    silhouette cue that you are looking at Terraria and not a generic side-scroller. Each segment is
@@ -2126,10 +2190,41 @@ function frameOpaque(t, k) {
     return ((k & 15) | ((k >> 4) & 15)) === 15;
 }
 
-/* ── the material itself: a full 16x16 of texture, no borders ── */
+/* ── the material itself: a full 16x16 of texture, no borders ──
+   Every Terraria block texture is drawn on a TWO-PIXEL grid: not one feature in any of the sheets
+   is a single pixel wide or tall. 1px noise is the fastest way to make a repaint read as "not
+   Terraria", so every helper below stamps 2x2, 4x2 or 4x4 chips and nothing smaller. */
+function chip(g, c, ax, ay, w2, h2) { g.fillStyle = c; g.fillRect(ax * 2, ay * 2, w2 * 2, h2 * 2); }
+/* four big 4x4 blobs on a flat field — dirt, mud and clay share one template, recoloured */
+function soilMaterial(g, pal, sd) {
+    var spots = [[1, 1, 1], [4, 2, 0], [5, 4, 1], [2, 6, 0]];
+    for (var i = 0; i < spots.length; i++) {
+        var s = spots[(i + (sd % 4)) % spots.length];
+        chip(g, pal[s[2] ? 2 : 1], (s[0] + (hsh(sd, i) * 2 | 0)) % 6, (s[1] + (hsh(sd + 9, i) * 2 | 0)) % 6, 2, 2);
+    }
+}
+/* ~24 scattered 2x2 dots — sand, snow, ash and silt share one template */
+function grainMaterial(g, pal, sd) {
+    for (var i = 0; i < 26; i++) {
+        var gx = (hsh(sd, i) * 8) | 0, gy = (hsh(sd + 31, i) * 8) | 0;
+        chip(g, hsh(sd + 61, i) > 0.64 ? pal[2] : pal[1], gx, gy, 1, 1);
+    }
+}
+/* dense interlocking rubble in 2x2 and 4x2 chips — stone, and every ore, which is the same
+   rubble re-tinted rather than grey rock with lumps stuck on it */
+function rubbleMaterial(g, tones, sd, spark, sparkN) {
+    for (var i = 0; i < 46; i++) {
+        var rx = (hsh(sd, i) * 8) | 0, ry = (hsh(sd + 17, i) * 8) | 0;
+        var wide = hsh(sd + 41, i) > 0.62;
+        chip(g, tones[(hsh(sd + 5, i) * tones.length) | 0], rx, ry, wide ? 2 : 1, 1);
+    }
+    for (var s = 0; s < (sparkN || 0); s++) {
+        chip(g, spark, 1 + ((hsh(sd + 77, s) * 6) | 0), 1 + ((hsh(sd + 83, s) * 6) | 0), 1, 1);
+    }
+}
 function paintMaterial(g, t, v) {
     var col = TCOL[t] || ['#f0f', '#a0a', '#f8f'];
-    var mat = hostOf(t);                                        // grass paints dirt, ore paints stone
+    var mat = hostOf(t);                                        // grass paints dirt, gems paint stone
     var mc = TCOL[mat] || col, base = mc[0], dk = mc[1], lt = mc[2] || mc[0];
     var sd = t * 31 + v * 7;
 
@@ -2137,272 +2232,239 @@ function paintMaterial(g, t, v) {
     if (t === T_CLOUD) return cloudMaterial(g, v);
 
     g.fillStyle = base; g.fillRect(0, 0, TPX, TPX);
-    grain(g, base, sd + 3, 44, 0.5);
 
-    if (mat === T_DIRT || mat === T_MUD || mat === T_CLAY || mat === T_SILT) {
-        // clods: soft rounded blobs, a lit top-left face and a shadow under
-        var clod = [[2, 3, 5, 4], [9, 2, 5, 4], [4, 9, 6, 4], [11, 8, 4, 5], [0, 7, 3, 4]];
-        for (var i = 0; i < clod.length; i++) {
-            var c0 = clod[i], j = (i + v) % clod.length, cx0 = clod[j][0], cy0 = clod[j][1];
-            g.globalAlpha = 0.30; g.fillStyle = shade(base, 1.22);
-            g.fillRect(cx0, cy0, c0[2], 1); g.fillRect(cx0, cy0, 1, c0[3]);
-            g.globalAlpha = 0.34; g.fillStyle = shade(base, 0.74);
-            g.fillRect(cx0, cy0 + c0[3] - 1, c0[2], 1); g.fillRect(cx0 + c0[2] - 1, cy0, 1, c0[3]);
-        }
-        g.globalAlpha = 0.5; g.fillStyle = shade(base, 0.6);   // small pebbles
-        for (var p = 0; p < 5; p++) g.fillRect((hsh(sd, p) * 14) | 0, (hsh(sd + 40, p) * 14) | 0, 1, 1);
-        g.globalAlpha = 1;
-    } else if (mat === T_STONE || mat === T_EBON || mat === T_OBSIDIAN || mat === T_ASH || mat === T_HELLSTONE || ORE_ITEM[t] || GEMCOL[t]) {
-        // Mottled rock. Terraria's stone reads as noise with a few short fissures, NOT a lattice —
-        // so nothing here touches the tile border, or the seams would join up across a whole cliff
-        // face and turn it into fish scales.
-        var patch = [[[1, 2, 5, 4], [8, 1, 6, 3], [3, 8, 6, 5], [10, 9, 5, 4], [6, 13, 5, 2]],
-                     [[2, 1, 6, 3], [9, 4, 5, 5], [1, 7, 5, 6], [8, 11, 6, 4], [12, 1, 3, 2]],
-                     [[4, 2, 6, 5], [1, 4, 3, 6], [11, 3, 4, 6], [3, 10, 6, 4], [10, 11, 5, 3]]][v];
-        for (var s2 = 0; s2 < patch.length; s2++) {
-            var pt = patch[s2], up2 = s2 % 2 === 0;
-            g.globalAlpha = up2 ? 0.26 : 0.22;
-            g.fillStyle = shade(base, up2 ? 1.2 : 0.8);
-            g.fillRect(pt[0], pt[1], pt[2], pt[3]);
-            g.globalAlpha = up2 ? 0.3 : 0.26;
-            g.fillStyle = shade(base, up2 ? 1.38 : 0.68);
-            g.fillRect(pt[0], pt[1], pt[2] - 1, 1);
-        }
-        g.globalAlpha = 0.42; g.fillStyle = shade(base, 0.58);      // short fissures, kept off the edges
-        var fis = [[3, 5, 1, 4], [9, 8, 1, 3], [6, 2, 3, 1], [11, 12, 3, 1], [2, 11, 1, 3]];
-        for (var f2 = 0; f2 < 3; f2++) { var fr2 = fis[(f2 + v) % fis.length]; g.fillRect(fr2[0], fr2[1], fr2[2], fr2[3]); }
-        g.globalAlpha = 0.5; g.fillStyle = shade(base, 0.55);       // grit
-        for (var p2 = 0; p2 < 6; p2++) g.fillRect(1 + ((hsh(sd + 3, p2) * 13) | 0), 1 + ((hsh(sd + 47, p2) * 13) | 0), 1, 1);
-        g.globalAlpha = 1;
-    } else if (mat === T_SAND) {
-        g.globalAlpha = 0.55;
-        for (var s3 = 0; s3 < 34; s3++) {
-            var hx = hsh(sd + 5, s3), hy = hsh(sd + 61, s3);
-            g.fillStyle = hx > 0.55 ? shade(base, 1.16) : shade(base, 0.84);
-            g.fillRect((hx * TPX) | 0, (hy * TPX) | 0, 1, 1);
-        }
-        g.globalAlpha = 0.25; g.fillStyle = shade(base, 0.88);   // faint wind bands
-        g.fillRect(0, 5 + v, TPX, 1); g.fillRect(0, 11 - v, TPX, 1);
-        g.globalAlpha = 1;
-    } else if (mat === T_SNOW) {
-        g.globalAlpha = 0.45; g.fillStyle = '#b9cfe0';
-        g.fillRect(3, 5 + v, 4, 2); g.fillRect(9, 9, 4, 2); g.fillRect(6, 12, 3, 1);
-        g.globalAlpha = 0.95; g.fillStyle = '#fff';
-        g.fillRect(2, 2, 3, 1); g.fillRect(10, 4 + v, 3, 1); g.fillRect(5, 9, 2, 1);
-        g.globalAlpha = 1;
-    } else if (mat === T_ICE) {
-        g.globalAlpha = 0.5; g.fillStyle = '#e2f4ff';
-        g.beginPath(); g.moveTo(2, 14); g.lineTo(8 + v, 1); g.lineTo(11 + v, 1); g.lineTo(5, 14); g.closePath(); g.fill();
-        g.globalAlpha = 0.35; g.fillStyle = '#ffffff';
-        g.beginPath(); g.moveTo(10, 15); g.lineTo(14, 6); g.lineTo(16, 6); g.lineTo(13, 15); g.closePath(); g.fill();
-        g.globalAlpha = 0.4; g.fillStyle = shade(base, 0.7); g.fillRect(0, 8, TPX, 1);
-        g.globalAlpha = 1;
-    } else if (mat === T_PLANK || mat === T_PLATFORM || mat === T_TRUNK) {
-        // two courses of board with vertical grain and a nail at each end, like Terraria's Wood
-        g.globalAlpha = 0.6; g.fillStyle = shade(base, 0.58);
-        g.fillRect(0, 7, TPX, 1); g.fillRect(0, 15, TPX, 1);
-        g.globalAlpha = 0.4; g.fillStyle = shade(base, 1.28);
-        g.fillRect(0, 0, TPX, 1); g.fillRect(0, 8, TPX, 1);
-        g.globalAlpha = 0.35; g.fillStyle = shade(base, 0.72);
-        for (var w2 = 0; w2 < 7; w2++) {
-            var gx = 1 + ((hsh(sd, w2) * 14) | 0), gy = w2 < 4 ? 2 : 10;
-            g.fillRect(gx, gy + ((hsh(sd + 9, w2) * 3) | 0), 1, 3);
-        }
-        g.globalAlpha = 0.55; g.fillStyle = shade(base, 0.5);
-        g.fillRect(2, 3, 1, 1); g.fillRect(13, 3, 1, 1); g.fillRect(2, 11, 1, 1); g.fillRect(13, 11, 1, 1);
-        g.globalAlpha = 1;
-    } else if (mat === T_LEAF) {
-        // overlapping leaf clusters, lit from the upper left, that tile seamlessly into a canopy
-        for (var l = 0; l < 9; l++) {
-            var lx = ((hsh(sd + 2, l) * 18) | 0) - 2, ly = ((hsh(sd + 55, l) * 18) | 0) - 2;
-            var big = hsh(sd + 19, l) > 0.5;
-            g.fillStyle = hsh(sd + 7, l) > 0.45 ? shade(base, 0.84) : shade(base, 1.06);
-            g.fillRect(lx, ly, big ? 5 : 4, big ? 4 : 3);
-            g.fillStyle = hsh(sd + 7, l) > 0.45 ? shade(base, 1.0) : shade(base, 1.2);
-            g.fillRect(lx, ly, big ? 4 : 3, 1); g.fillRect(lx, ly, 1, big ? 3 : 2);
-        }
-        for (var l2 = 0; l2 < 5; l2++) {                    // speckle so no two canopy tiles match
-            g.fillStyle = hsh(sd + 33, l2) > 0.5 ? lt : '#1a5c20';
-            g.fillRect((hsh(sd + 12, l2) * 15) | 0, (hsh(sd + 71, l2) * 15) | 0, 1, 1);
-        }
-    }
-
-    if (t === T_HELLSTONE) {                       // molten veins glowing through the rock
-        g.globalAlpha = 0.95; g.fillStyle = '#ff8a2a';
-        g.fillRect(3, 3 + v, 1, 6); g.fillRect(4, 8 + v, 3, 1); g.fillRect(10, 2, 1, 5); g.fillRect(8, 11, 5, 1);
-        g.globalAlpha = 0.75; g.fillStyle = '#ffe0a0';
-        g.fillRect(3, 4 + v, 1, 2); g.fillRect(10, 3, 1, 2); g.fillRect(9, 11, 2, 1);
-        g.globalAlpha = 1;
-    }
-    if (t === T_OBSIDIAN) {                        // glassy: hard specular streaks
-        g.globalAlpha = 0.5; g.fillStyle = '#8e86c4';
-        g.fillRect(3, 2, 1, 4); g.fillRect(10, 7, 1, 5); g.fillRect(6, 10, 3, 1);
-        g.globalAlpha = 1;
-    }
     if (ORE_ITEM[t] && t !== T_HELLSTONE) {
-        // Terraria ore: irregular blobs of metal set into the rock, each lit from the upper left
-        var oc = col[0], hi = col[2] || shade(oc, 1.4);
-        var vein = [[[3, 3, 3, 3], [9, 5, 3, 2], [6, 10, 3, 3], [12, 11, 2, 2]],
-                    [[5, 2, 3, 2], [2, 7, 3, 3], [10, 8, 3, 3], [7, 12, 2, 2]],
-                    [[2, 5, 3, 3], [8, 2, 3, 3], [11, 9, 2, 3], [5, 11, 3, 2]]][v];
-        for (var n2 = 0; n2 < vein.length; n2++) {
-            var b0 = vein[n2], nx = b0[0], ny = b0[1], nw = b0[2], nh = b0[3];
-            g.fillStyle = 'rgba(0,0,0,.45)'; g.fillRect(nx, ny + 1, nw, nh);
-            g.fillStyle = oc; g.fillRect(nx, ny, nw, nh);
-            g.fillStyle = hi; g.fillRect(nx, ny, nw - 1, 1); g.fillRect(nx, ny, 1, nh - 1);
-            g.fillStyle = shade(oc, 0.6); g.fillRect(nx + nw - 1, ny + 1, 1, nh - 1); g.fillRect(nx + 1, ny + nh - 1, nw - 1, 1);
-            if (nw > 3) { g.fillStyle = 'rgba(255,255,255,.8)'; g.fillRect(nx + 1, ny + 1, 1, 1); }
+        // the ore's own palette all the way through — 44-63% dark "rock" tones, the rest metal,
+        // and only a couple of near-white 2x2 sparks that actually read as shiny
+        var op = ORE_TONE[t];
+        g.fillStyle = op[0]; g.fillRect(0, 0, TPX, TPX);
+        rubbleMaterial(g, op, sd + 3, col[2], 3);
+        return;
+    }
+    if (mat === T_DIRT || mat === T_MUD || mat === T_CLAY) {
+        soilMaterial(g, mc, sd);
+    } else if (mat === T_SAND || mat === T_SNOW || mat === T_ASH || mat === T_SILT) {
+        grainMaterial(g, mc, sd);
+    } else if (mat === T_STONE || GEMCOL[t]) {
+        rubbleMaterial(g, STONE_TONE, sd, '#cbcbcb', 0);
+    } else if (mat === T_EBON) {
+        rubbleMaterial(g, ['#624b6b', '#543c50', '#5e577a', '#726a96', '#3e2d4b'], sd, '#948e99', 1);
+    } else if (mat === T_OBSIDIAN) {
+        rubbleMaterial(g, ['#2b2854', '#252525', '#4a477f', '#41414d'], sd, '#7e80c4', 4);
+    } else if (mat === T_HELLSTONE) {
+        rubbleMaterial(g, ['#662222', '#4e2424', '#8e4242', '#3a1e14', '#282828', '#535353'], sd, '#c12b2b', 3);
+        chip(g, '#ee6646', 1 + ((hsh(sd + 5, 0) * 6) | 0), 1 + ((hsh(sd + 6, 1) * 6) | 0), 1, 1);
+        chip(g, '#ee6646', 1 + ((hsh(sd + 7, 2) * 6) | 0), 1 + ((hsh(sd + 8, 3) * 6) | 0), 1, 1);
+        chip(g, '#f3b993', 1 + ((hsh(sd + 9, 4) * 6) | 0), 1 + ((hsh(sd + 10, 5) * 6) | 0), 1, 1);
+    } else if (mat === T_ICE) {
+        // big angular facets, a couple of shadow wedges and four sparkle pixels
+        var ip = ['#64bfff', '#b0d2ff', '#ddf5ff', '#2898f0'];
+        for (var f = 0; f < 12; f++) {
+            var fx = (hsh(sd + 2, f) * 7) | 0, fy = (hsh(sd + 19, f) * 7) | 0;
+            chip(g, ip[(hsh(sd + 23, f) * 4) | 0], fx, fy, hsh(sd + 29, f) > 0.5 ? 2 : 1, hsh(sd + 37, f) > 0.6 ? 2 : 1);
+        }
+        chip(g, '#2869f0', 1 + v, 5, 2, 1); chip(g, '#f4feff', 4, 1 + v, 1, 1); chip(g, '#f4feff', 6, 6 - v, 1, 1);
+    } else if (mat === T_PLANK || mat === T_PLATFORM || mat === T_TRUNK) {
+        // horizontal plank banding: five near-equal browns in 2px-tall runs of 4-12px, row pairs
+        // alternating light and dark. Terraria's wood is grain, never rubble.
+        var wp = ['#78553c', '#a97d5d', '#bf8f6f', '#976b4b', '#563e2c'];
+        for (var row = 0; row < 8; row++) {
+            var at = 0;
+            while (at < 8) {
+                var run = 2 + ((hsh(sd + row * 13, at) * 4) | 0);
+                if (at + run > 8) run = 8 - at;
+                chip(g, wp[(hsh(sd + row * 7 + 3, at) * wp.length) | 0], at, row, run, 1);
+                at += run;
+            }
+        }
+        chip(g, '#563e2c', 0, 3, 8, 1); chip(g, '#563e2c', 0, 7, 8, 1);   // the seam between courses
+    } else if (mat === T_LEAF) {
+        // Terraria foliage: a dark interior with individual rounded leaf clumps stamped over it,
+        // each lit on its upper-left. The dark base is what stops a canopy reading as one flat
+        // green slab — you see gaps between the leaves, not a painted rectangle.
+        g.fillStyle = shade(base, 0.5); g.fillRect(0, 0, TPX, TPX);
+        var clump = [[1, 1], [6, 0], [11, 2], [3, 5], [8, 5], [13, 6], [0, 9], [5, 9], [10, 10], [14, 11], [2, 13], [7, 13], [12, 14]];
+        for (var l = 0; l < clump.length; l++) {
+            var lx = clump[l][0] + (((hsh(sd + 2, l) * 3) | 0) - 1), ly = clump[l][1] + (((hsh(sd + 55, l) * 3) | 0) - 1);
+            var tone = hsh(sd + 7, l), lc = tone > 0.72 ? lt : tone > 0.34 ? base : shade(base, 0.78);
+            g.fillStyle = lc;                                // a 4x3 leaf with its corners knocked off
+            g.fillRect(lx + 1, ly, 3, 1); g.fillRect(lx, ly + 1, 5, 2); g.fillRect(lx + 1, ly + 3, 3, 1);
+            g.fillStyle = shade(lc, 1.22);
+            g.fillRect(lx + 1, ly, 2, 1); g.fillRect(lx, ly + 1, 1, 1);
+            g.fillStyle = shade(lc, 0.7);
+            g.fillRect(lx + 3, ly + 3, 2, 1);
         }
     }
-    if (GEMCOL[t]) {
-        // A pocket of two or three small crystals scattered differently per variant, so a vein
-        // reads as a gem deposit rather than the same big jewel stamped in a row.
-        var gc = GEMCOL[t];
-        var clus = [[[5, 6, 4], [11, 10, 3], [9, 4, 2]],
-                    [[10, 6, 4], [5, 11, 3], [3, 5, 2]],
-                    [[8, 9, 4], [4, 4, 3], [12, 12, 2]]][v];
-        for (var cq = 0; cq < clus.length; cq++) {
-            var gx0 = clus[cq][0], gy0 = clus[cq][1], gr = clus[cq][2];
-            g.fillStyle = 'rgba(0,0,0,.45)';
-            g.beginPath(); g.moveTo(gx0, gy0 - gr + 1); g.lineTo(gx0 + gr, gy0 + 1); g.lineTo(gx0, gy0 + gr + 1); g.lineTo(gx0 - gr, gy0 + 1); g.closePath(); g.fill();
-            g.fillStyle = gc;
-            g.beginPath(); g.moveTo(gx0, gy0 - gr); g.lineTo(gx0 + gr, gy0); g.lineTo(gx0, gy0 + gr); g.lineTo(gx0 - gr, gy0); g.closePath(); g.fill();
-            g.fillStyle = shade(gc, 1.55);
-            g.beginPath(); g.moveTo(gx0, gy0 - gr); g.lineTo(gx0 + gr - 1, gy0); g.lineTo(gx0, gy0); g.closePath(); g.fill();
-            g.fillStyle = shade(gc, 0.55);
-            g.beginPath(); g.moveTo(gx0, gy0); g.lineTo(gx0 + gr - 1, gy0); g.lineTo(gx0, gy0 + gr); g.closePath(); g.fill();
-            if (gr > 2) { g.fillStyle = 'rgba(255,255,255,.95)'; g.fillRect(gx0 - 1, gy0 - gr + 1, 1, 2); }
+
+    if (GEMPAL[t]) {
+        // A gemstone block is stone with roughly six ISOLATED 2x2 inclusions — about 11% of the
+        // tile. The big faceted jewel a homage wants to draw is the separate wild-gem object, and
+        // even that only covers a third of its tile.
+        var gp = GEMPAL[t];
+        for (var cq = 0; cq < 6; cq++) {
+            var gx0 = (hsh(sd + 11, cq) * 7) | 0, gy0 = (hsh(sd + 43, cq) * 7) | 0;
+            chip(g, gp[3], gx0, gy0, 1, 1);
+            chip(g, cq % 3 === 0 ? gp[2] : cq % 3 === 1 ? gp[0] : gp[1], gx0, gy0, 1, 1);
         }
+        chip(g, gp[4], (hsh(sd + 71, 1) * 7) | 0, (hsh(sd + 73, 2) * 7) | 0, 1, 1);
     }
 }
+/* Terraria's stone: five tones, and nearly a third of the tile is the near-black #404040. That
+   dark share is what makes stone read as cave rock instead of concrete. */
+var STONE_TONE = ['#808080', '#404040', '#404040', '#636363', '#cbcbcb', '#a5a5a5'];
+/* per-ore rubble palettes, dark tones first, in the shares measured off the sheets */
+var ORE_TONE = {};
+ORE_TONE[T_COPPER] = ['#4e3326', '#71391f', '#895e49', '#cd8647', '#b75819', '#ff9261', '#964316'];
+ORE_TONE[T_IRON] = ['#696969', '#573c3c', '#2e2720', '#8c6550', '#bd9f8b'];
+ORE_TONE[T_SILVER] = ['#545d60', '#1a2428', '#3d4849', '#abb6b7', '#7a8c90'];
+ORE_TONE[T_GOLD] = ['#4e4d36', '#7a5c0a', '#b9a417', '#947e18', '#b69531', '#e7d541', '#e9cf89'];
+ORE_TONE[T_DEMONITE] = ['#2f2f2f', '#625fa7', '#7875b3', '#9288cc', '#444572', '#585086'];
+ORE_TONE[T_METEOR] = ['#331b29', '#5a2e40', '#5f4752', '#936857', '#685654', '#af9385', '#df9f89'];
+/* Cobweb is over half transparent — a lattice of 2x2 dots in two greys, not a drawn spider web */
 function webMaterial(g, v) {
-    g.strokeStyle = 'rgba(228,234,244,.85)'; g.lineWidth = 1;
-    g.beginPath();
-    g.moveTo(0, 0); g.lineTo(TPX, TPX); g.moveTo(TPX, 0); g.lineTo(0, TPX);
-    g.moveTo(8, 0); g.lineTo(8, TPX); g.moveTo(0, 8); g.lineTo(TPX, 8);
-    g.stroke();
-    g.strokeStyle = 'rgba(228,234,244,.5)';
-    for (var r = 3 + v; r < 8; r += 3) {
-        g.beginPath(); g.moveTo(8, 8 - r); g.lineTo(8 + r, 8); g.lineTo(8, 8 + r); g.lineTo(8 - r, 8); g.closePath(); g.stroke();
+    var tone = ['#c1cacb', '#9eadae'];
+    for (var i = 0; i < 26; i++) {
+        var wx = (hsh(v * 13 + 3, i) * 8) | 0, wy = (hsh(v * 13 + 51, i) * 8) | 0;
+        chip(g, tone[i % 2], wx, wy, 1, 1);
     }
+    for (var d = 0; d < 8; d++) { chip(g, tone[0], d, d, 1, 1); chip(g, tone[1], 7 - d, d, 1, 1); }
 }
+/* four near-whites and no dark tone anywhere — a cloud block has no black rim */
 function cloudMaterial(g, v) {
-    g.fillStyle = '#fbfdff'; g.beginPath();
-    g.arc(4 + v, 9, 5.5, 0, 7); g.arc(11, 7 + v, 5.5, 0, 7); g.arc(8, 12, 5, 0, 7); g.fill();
-    g.globalAlpha = 0.45; g.fillStyle = '#b9c9e6'; g.fillRect(1, 12, 14, 3); g.globalAlpha = 1;
+    var tone = ['#dfffff', '#ffffff', '#b9ebff', '#8dd9ff'];
+    g.fillStyle = tone[0]; g.fillRect(0, 0, TPX, TPX);
+    for (var i = 0; i < 16; i++) {
+        var cx0 = (hsh(v * 7 + 1, i) * 7) | 0, cy0 = (hsh(v * 7 + 29, i) * 7) | 0;
+        chip(g, i % 5 === 4 ? tone[2] : tone[1], cx0, cy0, 2, 1);
+    }
+    chip(g, tone[3], 1, 6, 6, 1);
 }
 
-/* ── edges: the dark rim, bevel and rounded corner Terraria bakes into every exposed face ── */
+/* ── edges ──
+   Terraria's exposed face is a SIX-pixel graded rim built from three 2px bands — near-black
+   outline, brightest tone, mid tone — and 4x2 bites are punched out of the outline, sliding the
+   whole rim down two pixels inside the bite. That chewed silhouette is why a dirt surface never
+   reads as a ruled line. Interior faces get nothing at all: two adjacent blocks of the same
+   material are a continuous field with no seam, no bevel and no divider. */
+var RIM = {};
+RIM[T_DIRT] = ['#1e130c', '#bf8f6f', '#a97d5d']; RIM[T_MUD] = ['#1e1518', '#87656c', '#6f5359'];
+RIM[T_CLAY] = ['#2b1612', '#bf756d', '#af5e51']; RIM[T_SAND] = ['#3a3112', '#dfdb93', '#d3c66f'];
+RIM[T_SNOW] = ['#162e66', '#f2f8fc', '#e3f2f7']; RIM[T_ASH] = ['#201b22', '#8f7579', '#655a66'];
+RIM[T_SILT] = ['#161820', '#a69296', '#6a6b76']; RIM[T_STONE] = ['#171717', '#cbcbcb', '#a5a5a5'];
+RIM[T_EBON] = ['#030204', '#948e99', '#726a96']; RIM[T_ICE] = ['#2820a8', '#ddf5ff', '#b0d2ff'];
+RIM[T_HELLSTONE] = ['#1d0f0a', '#f3b993', '#8e4242'];
+RIM[T_PLANK] = ['#291e15']; RIM[T_TRUNK] = ['#291e15']; RIM[T_PLATFORM] = ['#291e15'];
+RIM[T_OBSIDIAN] = ['#0f0e22'];                       // wood and obsidian: one solid unbroken band
+RIM[T_COPPER] = ['#37050a', '#ff9261', '#cd8647']; RIM[T_IRON] = ['#341f1f', '#eae6e2', '#bd9f8b'];
+RIM[T_SILVER] = ['#1a2428', '#f6f9fa', '#abb6b7']; RIM[T_GOLD] = ['#3e2e19', '#fff9b7', '#b9a417'];
+RIM[T_DEMONITE] = ['#13121f', '#beb7e9', '#9288cc']; RIM[T_METEOR] = ['#270f1d', '#e4a2ae', '#af9385'];
+RIM[T_GRASS] = ['#03200b', '#1cd85e', '#1e9648']; RIM[T_CGRASS] = ['#0f0f1d', '#8d89df', '#6d6aae'];
+RIM[T_JGRASS] = ['#0c2202', '#8fd71d', '#63971f']; RIM[T_LEAF] = ['#17331c', '#1bcf5a', '#1d9045'];
+GEMS.forEach(function (gm) { RIM[gm] = RIM[T_STONE]; });
+var NONOTCH = {}; NONOTCH[T_PLANK] = NONOTCH[T_TRUNK] = NONOTCH[T_PLATFORM] = NONOTCH[T_OBSIDIAN] = 1;
+function rimOf(t) { return RIM[t] || RIM[hostOf(t)] || ['#141414', shade((TCOL[t] || ['#888'])[0], 1.35), (TCOL[t] || ['#888'])[0]]; }
+/* one exposed face. dir 0=up 1=down 2=left 3=right. */
+function paintRim(g, t, dir, v, deep) {
+    var r = rimOf(t), notch = !NONOTCH[t], sd = t * 17 + v * 5 + dir;
+    // the full three-band rim only runs along the lit top face; the other three get outline plus
+    // one tone, or a block with all four faces open would be rim all the way to its middle
+    var bands = deep || (dir === 0 ? r.length : Math.min(2, r.length));
+    for (var q = 0; q < 4; q++) {                    // four 4px groups across the face
+        var bite = notch && hsh(sd, q) > 0.5 ? 2 : 0;
+        for (var b = 0; b < bands && b * 2 + bite < TPX; b++) {
+            var col = r[Math.min(b, r.length - 1)];
+            var off = b * 2 + bite;
+            g.fillStyle = col;
+            if (dir === 0) { if (bite) g.clearRect(q * 4, 0, 4, bite); g.fillRect(q * 4, off, 4, 2); }
+            else if (dir === 1) { if (bite) g.clearRect(q * 4, TPX - bite, 4, bite); g.fillRect(q * 4, TPX - off - 2, 4, 2); }
+            else if (dir === 2) { if (bite) g.clearRect(0, q * 4, bite, 4); g.fillRect(off, q * 4, 2, 4); }
+            else { if (bite) g.clearRect(TPX - bite, q * 4, bite, 4); g.fillRect(TPX - off - 2, q * 4, 2, 4); }
+        }
+    }
+}
 function frameEdges(g, t, k, v) {
-    if (t === T_COBWEB || t === T_CLOUD) return;
+    if (t === T_COBWEB) return;
     var oU = !(k & 1), oD = !(k & 2), oL = !(k & 4), oR = !(k & 8);       // not the same family
     var bU = !!(k & 16), bD = !!(k & 32), bL = !!(k & 64), bR = !!(k & 128);   // eroding into earth
     var mat = hostOf(t);
     var mc = TCOL[mat] || TCOL[t] || ['#888'], base = mc[0];
-    var gc = (TCOL[t] || mc)[0];
-    // a blended face gets no rim and no bevel — just a ragged fringe of its own material, which is
-    // what makes dirt finger into stone instead of butting up against it
+    // a blended face gets no rim and no outline at all — just the two palettes dithered together,
+    // which is what makes dirt finger into stone instead of butting up against it
     if (bU || bD || bL || bR) blendFringe(g, t, base, bU, bD, bL, bR, v);
     oU = oU && !bU; oD = oD && !bD; oL = oL && !bL; oR = oR && !bR;
-    if (GRASSY[t] !== undefined) grassSkin(g, t, oU, oD, oL, oR, v);
-    var rimU = GRASSY[t] !== undefined && oU ? shade(gc, 0.5) : shade(base, 0.5);
-    var rimS = GRASSY[t] !== undefined ? shade(gc, 0.45) : shade(base, 0.45);
-    var leafy = t === T_LEAF;
-
-    if (oU) {
-        if (!leafy) {
-            g.globalAlpha = 0.32; g.fillStyle = '#fff'; g.fillRect(0, 1, TPX, 1);    // sunlit lip
-            g.globalAlpha = 0.9; g.fillStyle = rimU; g.fillRect(0, 0, TPX, 1);
-            g.globalAlpha = 1;
-        }
-        if (SOFT[t]) for (var i = 0; i < TPX; i++) if (hsh(t * 5 + v, i) > 0.68) g.clearRect(i, 0, 1, 1);
+    var grassy = GRASSY[t] !== undefined, leafy = t === T_LEAF;
+    if (grassy) grassSkin(g, t, oU, oD, oL, oR, v);            // grass runs 10px deep, not 6
+    else if (t === T_CLOUD) {
+        if (oU) paintRim(g, t, 0, v, 2); if (oD) paintRim(g, t, 1, v, 2);
+        if (oL) paintRim(g, t, 2, v, 2); if (oR) paintRim(g, t, 3, v, 2);
+    } else if (leafy) {
+        // Foliage has no straight edge anywhere: every exposed column of a leaf tile is bitten to
+        // a different depth, so a canopy reads as a leafy mass rather than outlined squares.
+        if (oU) for (var lu = 0; lu < TPX; lu += 2) g.clearRect(lu, 0, 2, 2 * ((hsh(v * 7 + 1, lu) * 2.4) | 0));
+        if (oD) for (var ld = 0; ld < TPX; ld += 2) { var db = 2 * ((hsh(v * 7 + 5, ld) * 2.4) | 0); if (db) g.clearRect(ld, TPX - db, 2, db); }
+        if (oL) for (var ll = 0; ll < TPX; ll += 2) g.clearRect(0, ll, 2 * ((hsh(v * 7 + 9, ll) * 2.4) | 0), 2);
+        if (oR) for (var lr = 0; lr < TPX; lr += 2) { var rb = 2 * ((hsh(v * 7 + 13, lr) * 2.4) | 0); if (rb) g.clearRect(TPX - rb, lr, rb, 2); }
+    } else {
+        if (oU) paintRim(g, t, 0, v);
+        if (oD) paintRim(g, t, 1, v);
+        if (oL) paintRim(g, t, 2, v);
+        if (oR) paintRim(g, t, 3, v);
     }
-    if (oD) {
-        if (!leafy) {
-            g.globalAlpha = 0.34; g.fillStyle = '#000'; g.fillRect(0, TPX - 2, TPX, 1);
-            g.globalAlpha = 0.9; g.fillStyle = shade(base, 0.4); g.fillRect(0, TPX - 1, TPX, 1);
-            g.globalAlpha = 1;
-        }
-        if (SOFT[t]) for (var i2 = 0; i2 < TPX; i2++) if (hsh(t * 5 + v + 17, i2) > 0.78) g.clearRect(i2, TPX - 1, 1, 1);
+    // corners come off as a chipped 4x2 + 2x4 notch, so a block corner is never square
+    if (t === T_CLOUD || NONOTCH[t]) return;
+    function chipCorner(cx0, cy0, sxd, syd) {
+        g.clearRect(sxd > 0 ? cx0 : cx0 - 1, syd > 0 ? cy0 : cy0 - 1, 2, 2);
     }
-    if (oL && !leafy) {
-        g.globalAlpha = 0.16; g.fillStyle = '#fff'; g.fillRect(1, 0, 1, TPX);
-        g.globalAlpha = 0.85; g.fillStyle = GRASSY[t] !== undefined ? rimS : shade(base, 0.46); g.fillRect(0, 0, 1, TPX);
-        g.globalAlpha = 1;
-    }
-    if (oR && !leafy) {
-        g.globalAlpha = 0.24; g.fillStyle = '#000'; g.fillRect(TPX - 2, 0, 1, TPX);
-        g.globalAlpha = 0.85; g.fillStyle = GRASSY[t] !== undefined ? rimS : shade(base, 0.42); g.fillRect(TPX - 1, 0, 1, TPX);
-        g.globalAlpha = 1;
-    }
-    // Foliage has no straight edge anywhere: every exposed column of a leaf tile is bitten to a
-    // different depth, so a canopy reads as a leafy mass rather than a stack of outlined squares.
-    if (leafy) {
-        if (oU) for (var lu = 0; lu < TPX; lu++) g.clearRect(lu, 0, 1, 1 + ((hsh(v * 7 + 1, lu) * 3) | 0));
-        if (oD) for (var ld = 0; ld < TPX; ld++) { var db = 1 + ((hsh(v * 7 + 5, ld) * 3) | 0); g.clearRect(ld, TPX - db, 1, db); }
-        if (oL) for (var ll = 0; ll < TPX; ll++) g.clearRect(0, ll, 1 + ((hsh(v * 7 + 9, ll) * 3) | 0), 1);
-        if (oR) for (var lr = 0; lr < TPX; lr++) { var rb = 1 + ((hsh(v * 7 + 13, lr) * 3) | 0); g.clearRect(TPX - rb, lr, rb, 1); }
-    }
-    // rounded outer corners: a hard bite plus a half-strength diagonal, so blocks read as blocks
-    var soft = leafy ? 2 : 1;
-    function round(cx0, cy0, sx0, sy0) {
-        var bx = sx0 > 0 ? cx0 : cx0 - soft + 1, by = sy0 > 0 ? cy0 : cy0 - soft + 1;
-        g.clearRect(bx, by, soft, soft);
-        g.globalCompositeOperation = 'destination-out'; g.globalAlpha = 0.55;
-        g.fillStyle = '#000';
-        g.fillRect(sx0 > 0 ? bx + soft : bx - soft, by, soft, soft);
-        g.fillRect(bx, sy0 > 0 ? by + soft : by - soft, soft, soft);
-        g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
-    }
-    if (oU && oL) round(0, 0, 1, 1);
-    if (oU && oR) round(TPX - 1, 0, -1, 1);
-    if (oD && oL) round(0, TPX - 1, 1, -1);
-    if (oD && oR) round(TPX - 1, TPX - 1, -1, -1);
+    if (oU && oL) chipCorner(0, 0, 1, 1);
+    if (oU && oR) chipCorner(TPX - 1, 0, -1, 1);
+    if (oD && oL) chipCorner(0, TPX - 1, 1, -1);
+    if (oD && oR) chipCorner(TPX - 1, TPX - 1, -1, -1);
 }
-/* The eroded boundary between two natural materials: a soft, uneven band of this tile's own colour
-   reaching a pixel or two into the face, so neither side ends on a straight line.
+/* The eroded boundary between two natural materials: for six pixels inward the two palettes
+   interpenetrate as 2x2 chips, with the foreign colour's share falling off to nothing. There is
+   no outline pixel anywhere on a merged face.
    MUST only fill, never clear or composite out — frameOpaque() counts a blended face as covered,
    and punching transparency here would put the sky back through the seam. */
 function blendFringe(g, t, base, bU, bD, bL, bR, v) {
     var hi = shade(base, 1.16), lo = shade(base, 0.8), sd = t * 9 + v * 3;
-    g.globalAlpha = 0.55;
-    if (bU) for (var a = 0; a < TPX; a++) { g.fillStyle = hsh(sd, a) > 0.5 ? hi : lo; g.fillRect(a, 0, 1, 1 + ((hsh(sd + 2, a) * 2) | 0)); }
-    if (bD) for (var b = 0; b < TPX; b++) { var d = 1 + ((hsh(sd + 5, b) * 2) | 0); g.fillStyle = hsh(sd + 7, b) > 0.5 ? lo : hi; g.fillRect(b, TPX - d, 1, d); }
-    if (bL) for (var c = 0; c < TPX; c++) { g.fillStyle = hsh(sd + 11, c) > 0.5 ? hi : lo; g.fillRect(0, c, 1 + ((hsh(sd + 13, c) * 2) | 0), 1); }
-    if (bR) for (var e = 0; e < TPX; e++) { var f = 1 + ((hsh(sd + 17, e) * 2) | 0); g.fillStyle = hsh(sd + 19, e) > 0.5 ? lo : hi; g.fillRect(TPX - f, e, f, 1); }
-    g.globalAlpha = 1;
+    function band(dir) {
+        for (var lane = 0; lane < 8; lane++) for (var d = 0; d < 3; d++) {
+            // share falls 90% -> 0% across three 2px steps
+            if (hsh(sd + dir * 31 + d * 7, lane) > [0.12, 0.45, 0.78][d]) continue;
+            var c = hsh(sd + dir * 13 + 3, lane + d * 8) > 0.5 ? hi : lo;
+            if (dir === 0) chip(g, c, lane, d, 1, 1);
+            else if (dir === 1) chip(g, c, lane, 7 - d, 1, 1);
+            else if (dir === 2) chip(g, c, d, lane, 1, 1);
+            else chip(g, c, 7 - d, lane, 1, 1);
+        }
+        // the two pixels nearest the seam are solidly this tile's own material
+        if (dir === 0) { g.fillStyle = base; g.fillRect(0, 0, TPX, 2); }
+        else if (dir === 1) { g.fillStyle = base; g.fillRect(0, TPX - 2, TPX, 2); }
+        else if (dir === 2) { g.fillStyle = base; g.fillRect(0, 0, 2, TPX); }
+        else { g.fillStyle = base; g.fillRect(TPX - 2, 0, 2, TPX); }
+    }
+    if (bU) band(0); if (bD) band(1); if (bL) band(2); if (bR) band(3);
 }
-/* grass only skins the faces that touch air — a buried grass block is just dirt, exactly as in game */
+/* grass only skins the faces that touch air — a buried grass block is just dirt, exactly as in
+   game. The skin is a five-band 2px gradient running ten pixels inward: near-black green outline,
+   bright, mid, dark, dirt shadow, then plain dirt. */
 function grassSkin(g, t, oU, oD, oL, oR, v) {
-    var c = TCOL[t], base = c[0], lt = c[2], dk = c[1];
-    if (oU) {
-        g.fillStyle = base; g.fillRect(0, 0, TPX, 6);
-        g.fillStyle = lt; g.fillRect(0, 0, TPX, 2);
-        for (var i = 0; i < TPX; i++) {                       // the turf frays into the soil below it
-            var dpt = 6 + ((hsh(t * 3 + v, i) * 3) | 0);
-            g.fillStyle = base; g.fillRect(i, 6, 1, dpt - 6);
-            g.fillStyle = dk; g.fillRect(i, dpt, 1, 1);
+    var r = RIM[t] || RIM[T_GRASS], c = TCOL[t], dirt = TCOL[hostOf(t)] || TCOL[T_DIRT];
+    var ramp = [r[0], r[1], r[2], c[1], dirt[1]];
+    function face(dir) {
+        for (var q = 0; q < 4; q++) {
+            var bite = hsh(t * 17 + v * 5 + dir, q) > 0.5 ? 2 : 0;
+            for (var b = 0; b < ramp.length && b * 2 + bite < TPX; b++) {
+                var off = b * 2 + bite;
+                g.fillStyle = ramp[b];
+                if (dir === 0) { if (bite) g.clearRect(q * 4, 0, 4, bite); g.fillRect(q * 4, off, 4, 2); }
+                else if (dir === 1) { if (bite) g.clearRect(q * 4, TPX - bite, 4, bite); g.fillRect(q * 4, TPX - off - 2, 4, 2); }
+                else if (dir === 2) { if (bite) g.clearRect(0, q * 4, bite, 4); g.fillRect(off, q * 4, 2, 4); }
+                else { if (bite) g.clearRect(TPX - bite, q * 4, bite, 4); g.fillRect(TPX - off - 2, q * 4, 2, 4); }
+            }
         }
     }
-    if (oL) {
-        var lh2 = oU ? TPX : 10;
-        for (var j = 0; j < lh2; j++) {
-            var wdt = 3 + ((hsh(t + v + 3, j) * 2) | 0);
-            g.fillStyle = base; g.fillRect(0, j, wdt, 1);
-            g.fillStyle = dk; g.fillRect(wdt, j, 1, 1);
-        }
-        g.fillStyle = lt; g.fillRect(0, 0, 2, oU ? TPX : 7);
-    }
-    if (oR) {
-        var rh2 = oU ? TPX : 10;
-        for (var j2 = 0; j2 < rh2; j2++) {
-            var wd2 = 3 + ((hsh(t + v + 8, j2) * 2) | 0);
-            g.fillStyle = base; g.fillRect(TPX - wd2, j2, wd2, 1);
-            g.fillStyle = dk; g.fillRect(TPX - wd2 - 1, j2, 1, 1);
-        }
-        g.fillStyle = lt; g.fillRect(TPX - 2, 0, 2, oU ? TPX : 7);
-    }
-    if (oD && !oU) { g.fillStyle = base; g.fillRect(0, TPX - 3, TPX, 3); g.fillStyle = dk; g.fillRect(0, TPX - 4, TPX, 1); }
+    if (oL) face(2); if (oR) face(3); if (oD) face(1); if (oU) face(0);
 }
 
 /* ── background walls: framed too, with the deep shadow Terraria puts where a wall meets open air ── */
@@ -2592,35 +2654,52 @@ function bakeObj(k) {
         rect(3, 13, 10, 2, '#8fb4c6');
         rect(4, 8, 2, 5, 'rgba(255,255,255,.5)');
         rect(4, 11, 8, 3, 'rgba(120,190,230,.7)');                    // liquid
-    } else if (k.charAt(0) === 'b' && k.slice(0, 4) === 'bark' || k === 'root') {
-        var bl = '#98744a', bm = '#7a5b36', bd = '#4c3620', bx = '#3a2817';
-        var bv = k === 'root' ? 9 : (+k.charAt(4) || 0);               // bark0 / bark1 / bark2
-        rect(2, 0, 12, 16, bm);
-        rect(2, 0, 2, 16, bl); rect(12, 0, 2, 16, bd);
-        rect(1, 0, 1, 16, bx); rect(14, 0, 1, 16, bx);                // dark bark outline
-        for (var b3 = 0; b3 < 5; b3++) {                              // vertical bark grooves
-            var gx2 = 4 + ((hsh(bv * 13 + 4, b3) * 8) | 0), gy2 = (hsh(bv * 7 + 11, b3) * 12) | 0;
-            rect(gx2, gy2, 1, 3 + ((hsh(bv + 21, b3) * 3) | 0), bd);
+    } else if (k.slice(0, 4) === 'bark' || k.slice(0, 4) === 'root') {
+        /* Terraria's trunk fills its tile and then some — the sprite is 20px drawn into a 16px cell,
+           so a tree reads as a solid column of bark rather than a stick with sky either side.
+           Ramp sampled off the real sheet: outline 3A302A, shadow 563E2C, mid 78553C, light 976B4B. */
+        var bl = '#976b4b', bm = '#78553c', bd = '#563e2c', bx = '#3a302a';
+        var isRoot = k.slice(0, 4) === 'root', rootL = k === 'rootL' || k === 'rootB', rootR = k === 'rootR' || k === 'rootB';
+        var bv = isRoot ? 9 : (+k.charAt(4) || 0);                     // bark0 / bark1 / bark2
+        rect(1, 0, 14, 16, bm);
+        rect(1, 0, 3, 16, bl); rect(11, 0, 3, 16, bd);                // lit left face, shaded right
+        rect(0, 0, 1, 16, bx); rect(14, 0, 2, 16, bx);                // dark bark outline
+        for (var b3 = 0; b3 < 7; b3++) {                              // long vertical bark grooves
+            var gx2 = 3 + ((hsh(bv * 13 + 4, b3) * 9) | 0), gy2 = (hsh(bv * 7 + 11, b3) * 13) | 0;
+            rect(gx2, gy2, 1, 4 + ((hsh(bv + 21, b3) * 6) | 0), bd);
+            rect(gx2 + 1, gy2, 1, 3 + ((hsh(bv + 33, b3) * 4) | 0), shade(bm, 1.12));
         }
         if (bv !== 1) {                                               // a knot, but not on every tile
-            var ky = bv === 2 ? 10 : 4, kx = bv === 2 ? 8 : 5;
-            rect(kx, ky, 2, 2, bx); rect(kx, ky, 1, 1, bm);
+            var ky = bv === 2 ? 10 : 4, kx = bv === 2 ? 8 : 4;
+            rect(kx, ky, 3, 3, bx); rect(kx + 1, ky + 1, 1, 1, bm);
         }
-        if (k === 'root') {                                           // the base flares into roots
-            rect(0, 11, 2, 5, bm); rect(14, 11, 2, 5, bm);
-            rect(0, 11, 1, 5, bl); rect(15, 11, 1, 5, bd);
-            rect(0, 10, 3, 1, bd); rect(13, 10, 3, 1, bd);
-            rect(2, 15, 12, 1, bx);
+        if (isRoot) {                                                 // the base flares into roots
+            if (rootL) {
+                rect(0, 9, 3, 7, bm); rect(0, 9, 1, 7, bl);
+                rect(0, 8, 4, 1, bx); rect(1, 12, 1, 4, bd);
+            }
+            if (rootR) {
+                rect(13, 9, 3, 7, bm); rect(15, 9, 1, 7, bd);
+                rect(12, 8, 4, 1, bx); rect(14, 12, 1, 4, bx);
+            }
+            rect(1, 15, 14, 1, bx);
         }
-    } else if (k === 'crown') {
-        var lf = '#2e9b34', lfL = '#48c045', lfD = '#1a6621';
-        var blob = [[2, 4, 6, 5], [8, 3, 6, 5], [0, 7, 6, 5], [10, 7, 6, 5], [5, 8, 6, 5], [5, 1, 6, 4]];
-        for (var cb = 0; cb < blob.length; cb++) {
-            var bb = blob[cb];
-            g.fillStyle = cb % 2 ? lfD : lf; g.fillRect(bb[0], bb[1], bb[2], bb[3]);
-            g.fillStyle = cb % 2 ? lf : lfL; g.fillRect(bb[0], bb[1], bb[2] - 1, 1);
+    } else if (k === 'stub' || k === 'snowcap') {
+        /* the sawn-off top of a canopy-less tree: a couple of dead twigs, and in the snow biome a
+           load of snow sitting on them — boreal trees have no foliage whatsoever */
+        var sbm = '#78553c', sbd = '#563e2c', sbx = '#3a302a';
+        rect(1, 12, 14, 4, sbm); rect(1, 12, 3, 4, '#976b4b'); rect(11, 12, 3, 4, sbd);
+        rect(0, 12, 1, 4, sbx); rect(14, 12, 2, 4, sbx); rect(1, 11, 14, 1, sbx);
+        for (var tw = 0; tw < 4; tw++) {                               // twigs forking off the cap
+            var twx = [3, 6, 9, 12][tw], twh = [5, 8, 6, 4][tw], lean = tw % 2 ? 1 : -1;
+            rect(twx, 12 - twh, 1, twh, sbd);
+            rect(twx + lean, 13 - twh, 1, 2, sbx);
         }
-        for (var cs = 0; cs < 8; cs++) g.fillRect((hsh(77, cs) * 15) | 0, 2 + ((hsh(91, cs) * 11) | 0), 1, 1);
+        if (k === 'snowcap') {
+            rect(1, 9, 14, 3, '#e8f0f8'); rect(2, 8, 12, 1, '#ffffff');
+            rect(3, 5, 3, 1, '#e8f0f8'); rect(8, 3, 3, 1, '#e8f0f8'); rect(11, 7, 3, 1, '#e8f0f8');
+            rect(1, 11, 14, 1, '#c2d4e2');
+        }
     } else if (k === 'sapling') {
         rect(7, 9, 2, 7, '#6b4a28');
         rect(4, 5, 8, 4, '#2e9b34'); rect(5, 3, 6, 3, '#48c045'); rect(6, 2, 4, 2, '#48c045');
@@ -2634,12 +2713,15 @@ function bakeObj(k) {
    used for the world drop, the held item in the player's hand AND the inventory icon, so what you
    pick up is pixel-for-pixel what sits in the slot. */
 var _itemArt = {}, _itemURL = {};
+/* [base, light, dark, helmet silhouette] — Terraria's early armour reads by shape as much as by
+   colour: copper is a low skullcap, iron a wide flared kettle brim, silver and gold a tall crested
+   helm with a swept-back plume. */
 var IMAT = {
-    wood:     ['#8e6a3c', '#ab8258', '#5f462a'],
-    copper:   ['#b45a1e', '#e08e42', '#7a3a10'],
-    iron:     ['#9a9086', '#c6bfb6', '#645b52'],
-    silver:   ['#c8d1e8', '#f2f6ff', '#8d95ab'],
-    gold:     ['#ddb828', '#ffe066', '#9a7810'],
+    wood:     ['#8e6a3c', '#ab8258', '#5f462a', 'cap'],
+    copper:   ['#d5651a', '#f0a266', '#a42e00', 'cap'],
+    iron:     ['#9a9087', '#e3d9ce', '#4d4338', 'brim'],
+    silver:   ['#cecee6', '#eeeeff', '#8888a0', 'crest'],
+    gold:     ['#eed122', '#fffc90', '#af7d11', 'crest'],
     demonite: ['#625fa7', '#8a86d4', '#3c3a68'],
     meteor:   ['#8a5b4a', '#b8836c', '#573528'],
     hell:     ['#b74a18', '#e8763a', '#742c0d'],
@@ -2950,79 +3032,361 @@ OBJ_FOR[T_BENCH] = 'bench'; OBJ_FOR[T_FURNACE] = 'furnace'; OBJ_FOR[T_HELLFORGE]
 OBJ_FOR[T_ANVIL] = 'anvil'; OBJ_FOR[T_TABLE] = 'table'; OBJ_FOR[T_CHAIR] = 'chair';
 OBJ_FOR[T_DOOR] = 'door'; OBJ_FOR[T_BOTTLE] = 'bottle'; OBJ_FOR[T_CHEST] = 'chest';
 
+/* ═══════════════ backdrop ═══════════════
+   Terraria never shows bare sky behind the world. Above ground there are three drifting
+   layers of hills and treeline that change with the biome; below ground the sky is
+   replaced by a wall of rock that darkens through the dirt, cavern and underworld
+   layers. Empty blue behind the terrain is the loudest tell that a homage is not the
+   real thing, so each layer is baked once into a tileable strip and blitted at its own
+   parallax rate. */
+/* Every surface layer in Terraria is literally TWO flat colours with hard pixel edges — no
+   gradient, no fog, no anti-aliasing. Depth is signalled by the hue rotating toward the sky blue
+   and the value rising, which is why the far tree band (#428086) is teal rather than green and the
+   mountains (#6A9DCE) are bluer than most of the sky. All values measured off the shipped sheets. */
+var SCW = 512, SCH = 176;                   // one tileable scenery strip, in world px
+var SCEN = {
+    /* [far, mid, near] body colour + highlight, and the tree the layer grows */
+    // the forest BACKGROUND bands are rows of flat conifer silhouettes even though the foreground
+    // trees are round-canopied — Background_11 is sixteen spruce shapes on a solid slab
+    forest:  { c: ['#428086', '#35786f', '#286f58'], hi: ['#42998b', '#359676', '#289260'], tree: 'conifer' },
+    snow:    { c: ['#467b9c', '#3e718e', '#2b5a76'], hi: ['#8dc8e9', '#5a8faa', '#4a7a9d'], tree: 'conifer' },
+    desert:  { c: ['#b6b272', '#c4be64', '#c4be64'], hi: ['#cdd7a4', '#d2e199', '#d2e199'], tree: 'cactus' },
+    jungle:  { c: ['#4c8897', '#3a8060', '#3d7c26'], hi: ['#5a99a6', '#489070', '#408b2e'], tree: 'jungle' },
+    corrupt: { c: ['#7885a8', '#747a90', '#717078'], hi: ['#8a96b8', '#868ca0', '#83828a'], tree: 'dead' },
+    ocean:   { c: ['#1544ba', '#1544ba', '#4b9ea1'], hi: ['#2a5ad0', '#2a5ad0', '#4fadad'], tree: 'palm' }
+};
+/* the two mountain bands sit behind everything at parallax 0.15 and are bluer than the sky */
+var MTN = [['#6a9dce', '#6ca7d5'], ['#4b8c9a', '#4e9ba5']];
+var _scen = {}, _mtn = [];
+/* the mountain ridge behind the tree bands: a jagged silhouette over a solid slab, two colours */
+function mtnArt(i) {
+    if (_mtn[i]) return _mtn[i];
+    var m = mkc(SCW, SCH), g = m.g, R = rng(0x33aa + i * 617), base = MTN[i][0], hi = MTN[i][1];
+    var y0 = 62 + i * 22;
+    function ridge(px) {
+        var u = px / SCW * Math.PI * 2;
+        return y0 - Math.sin(u * 1.5 + i) * 26 - Math.sin(u * 4 + i * 2) * 11 - Math.sin(u * 9) * 4;
+    }
+    g.fillStyle = base;
+    g.beginPath(); g.moveTo(0, SCH);
+    for (var px = 0; px <= SCW; px++) g.lineTo(px, Math.round(ridge(px)));
+    g.lineTo(SCW, SCH); g.closePath(); g.fill();
+    g.fillStyle = hi;                                   // one lit facet per peak, flat, no gradient
+    for (px = 0; px < SCW; px++) { var ry = Math.round(ridge(px)); if (ridge(px + 2) > ry) g.fillRect(px, ry, 1, 5); }
+    return (_mtn[i] = m.c);
+}
+function sceneryArt(bio, d) {
+    var key = bio + d, got = _scen[key];
+    if (got) return got;
+    var S0 = SCEN[bio] || SCEN.forest, base = S0.c[d], hiC = (S0.hi || S0.c)[d];
+    var m = mkc(SCW, SCH), g = m.g, R = rng(0x5eed + d * 977 + bio.charCodeAt(0) * 31);
+    var amp = [8, 14, 22][d], baseY = [58, 74, 96][d], tsc = [1.0, 1.5, 2.2][d];
+    /* the hill profile: two sines plus a jitter, sampled per world pixel and wrapped so the
+       strip tiles without a seam */
+    function hy(px) {
+        var u = px / SCW * Math.PI * 2;
+        return baseY - Math.sin(u * 2 + d) * amp - Math.sin(u * 5 + d * 2) * amp * 0.4;
+    }
+    g.fillStyle = base;
+    g.beginPath(); g.moveTo(0, SCH);
+    for (var px = 0; px <= SCW; px++) g.lineTo(px, hy(px));
+    g.lineTo(SCW, SCH); g.closePath(); g.fill();
+    g.fillStyle = hiC;                                            // a lit crest along the ridge
+    for (px = 0; px < SCW; px++) g.fillRect(px, hy(px), 1, 2);
+    /* trees along the ridge — big, chunky and two-tone. The source art is drawn at 2.5x on screen,
+       so a single conifer is over a hundred pixels tall; small fussy trees read as the wrong game. */
+    var gap = [30, 26, 22][d], dk = base, lt = hiC;
+    for (var tx = gap * 0.5; tx < SCW; tx += gap * (0.7 + R() * 0.7)) {
+        var ty = hy(tx), h2 = (7 + R() * 6) * tsc, w2 = (4 + R() * 3) * tsc;
+        if (S0.tree === 'conifer') {
+            g.fillStyle = dk;
+            for (var tier = 0; tier < 3; tier++) {
+                var tw = w2 * (1 - tier * 0.26), th = h2 * 0.45;
+                g.beginPath(); g.moveTo(tx, ty - h2 - tier * th * 0.62);
+                g.lineTo(tx + tw, ty - h2 * 0.1 - tier * th * 0.62); g.lineTo(tx - tw, ty - h2 * 0.1 - tier * th * 0.62);
+                g.closePath(); g.fill();
+            }
+        } else if (S0.tree === 'cactus') {
+            g.fillStyle = dk;
+            g.fillRect(tx - w2 * 0.22, ty - h2, w2 * 0.44, h2);
+            g.fillRect(tx - w2 * 0.7, ty - h2 * 0.6, w2 * 0.5, w2 * 0.3);
+            g.fillRect(tx - w2 * 0.7, ty - h2 * 0.75, w2 * 0.28, h2 * 0.3);
+        } else if (S0.tree === 'dead') {
+            g.fillStyle = dk;
+            g.fillRect(tx - 0.6 * tsc, ty - h2, 1.4 * tsc, h2);
+            g.fillRect(tx - w2 * 0.8, ty - h2 * 0.82, w2 * 0.8, 1 * tsc);
+            g.fillRect(tx, ty - h2 * 0.95, w2 * 0.8, 1 * tsc);
+        } else if (S0.tree === 'palm') {
+            g.fillStyle = dk;
+            g.fillRect(tx - 0.5 * tsc, ty - h2, 1.2 * tsc, h2);
+            for (var fr = -1; fr <= 1; fr += 2) {
+                g.beginPath(); g.moveTo(tx, ty - h2);
+                g.quadraticCurveTo(tx + fr * w2, ty - h2 - w2 * 0.5, tx + fr * w2 * 1.5, ty - h2 + w2 * 0.4);
+                g.quadraticCurveTo(tx + fr * w2 * 0.6, ty - h2 - w2 * 0.1, tx, ty - h2 + 1);
+                g.closePath(); g.fill();
+            }
+        } else {                                                   // round / jungle canopy
+            var lobes = S0.tree === 'jungle' ? 5 : 4;
+            g.fillStyle = dk; g.fillRect(tx - 0.7 * tsc, ty - h2 * 0.6, 1.6 * tsc, h2 * 0.6);
+            for (var lo = 0; lo < lobes; lo++) {
+                var la = lo / lobes * 6.283, lr = w2 * (0.55 + R() * 0.35);
+                g.beginPath(); g.arc(tx + Math.cos(la) * w2 * 0.5, ty - h2 * 0.82 + Math.sin(la) * w2 * 0.42, lr, 0, 7); g.fill();
+            }
+            g.fillStyle = lt;
+            g.beginPath(); g.arc(tx - w2 * 0.3, ty - h2 * 1.05, w2 * 0.42, 0, 7); g.fill();
+            g.fillStyle = dk;
+        }
+    }
+    return (_scen[key] = m.c);
+}
+/* the rock face behind an unwalled cave — Terraria's underground background, banded by layer.
+   Underground is warm brown dirt (#583D2E family), Cavern is a desaturated warm grey (#3F3933
+   family), the magma layer is darker still with orange lava flecks. Measured off Background_2/3/5. */
+var UNDER_BAND = [[46, '#583d2e'], [96, '#4a3428'], [120, '#3f3933'], [160, '#4a433c'], [HELL, '#3a332c'], [H, '#43100d']];
+function underColor(tileY) {
+    for (var i = 0; i < UNDER_BAND.length; i++) if (tileY < UNDER_BAND[i][0]) {
+        var prev = i ? UNDER_BAND[i - 1] : UNDER_BAND[0];
+        var k = clamp((tileY - prev[0]) / Math.max(1, UNDER_BAND[i][0] - prev[0]), 0, 1);
+        var a = prev[1], b = UNDER_BAND[i][1];
+        var an = parseInt(a.slice(1), 16), bn = parseInt(b.slice(1), 16);
+        return [lerp((an >> 16) & 255, (bn >> 16) & 255, k), lerp((an >> 8) & 255, (bn >> 8) & 255, k), lerp(an & 255, bn & 255, k)];
+    }
+    return [40, 30, 34];
+}
+var _rockBg = null;
+function rockBgArt() {
+    if (_rockBg) return _rockBg;
+    var n = 128, m = mkc(n, n), g = m.g;
+    for (var i = 0; i < 260; i++) {                       // craggy shading only — the band colour shows through
+        var bx = hsh(i, 3) * n, by = hsh(i, 11) * n, bw = 6 + hsh(i, 19) * 22, bh = 5 + hsh(i, 29) * 18;
+        g.globalAlpha = 0.05 + hsh(i, 37) * 0.09;
+        g.fillStyle = hsh(i, 41) > 0.5 ? '#000' : '#fff';
+        g.beginPath(); g.ellipse ? g.ellipse(bx, by, bw * 0.5, bh * 0.5, 0, 0, 7) : g.arc(bx, by, bw * 0.4, 0, 7); g.fill();
+    }
+    g.globalAlpha = 0.22; g.fillStyle = '#000';
+    for (var c = 0; c < 22; c++) {                        // fissures
+        var fx = hsh(c, 61) * n, fy = hsh(c, 67) * n;
+        g.fillRect(fx, fy, 1, 6 + hsh(c, 71) * 16);
+        g.fillRect(fx, fy, 5 + hsh(c, 73) * 12, 1);
+    }
+    g.globalAlpha = 1;
+    return (_rockBg = m.c);
+}
+/* the backdrop gradient, sampled off Background_0: a saturated violet-blue at the top of the
+   surface band easing to periwinkle at the bottom. It is never cyan, never pale, and there is no
+   white horizon band — a pale sky-blue is the loudest single tell in a Terraria homage. */
+var SKY_TOP = [77, 89, 245], SKY_BOT = [132, 170, 248];
+/* Terraria's clouds are NOT white: one four-value ramp for all of them, bottoming out at a solid
+   mid-blue. The distant pass additionally loses red and green but keeps blue, so far clouds read
+   blue-grey against the sky — low contrast, not the high-contrast white puffs homages reach for. */
+var CLOUDPAL = ['#daecf2', '#c6e0f4', '#b0d4ef', '#97c5e7'];
+var CLOUDFAR = ['#a8c4dc', '#9bbcdb', '#8db2d7', '#7ba4cf'];
+var _cloudArt = [];
+function cloudArt(i, far) {
+    var key = (far ? 'f' : 'n') + i;
+    if (_cloudArt[key]) return _cloudArt[key];
+    var pal = far ? CLOUDFAR : CLOUDPAL;
+    var w = [46, 34, 30, 40, 26][i % 5], h = [18, 12, 14, 11, 9][i % 5];
+    var m = mkc(w, h), g = m.g, R = rng(0xc10d + i * 131);
+    for (var lo = 0; lo < 7; lo++) {                    // stacked rounded lobes, flat-bottomed
+        var lx = 4 + R() * (w - 10), ly = h - 3 - R() * (h - 6), lr = 3 + R() * (h * 0.4);
+        g.fillStyle = pal[lo % 2 ? 1 : 0];
+        g.beginPath(); g.arc(lx, ly, lr, 0, 7); g.fill();
+    }
+    g.fillStyle = pal[0]; g.fillRect(2, h - 5, w - 4, 3);
+    g.fillStyle = pal[2]; g.fillRect(2, h - 3, w - 4, 2);
+    g.fillStyle = pal[3]; g.fillRect(3, h - 2, w - 6, 1);
+    return (_cloudArt[key] = m.c);
+}
+var _sunArt = null;
+function sunArt() {
+    if (_sunArt) return _sunArt;
+    var n = 46, m = mkc(n, n), g = m.g, c = n / 2;
+    // the halo is baked into Sun.xnb as a wide alpha falloff, not drawn as a separate glow
+    var stops = [[7, 1], [9.5, 0.58], [12, 0.38], [14.5, 0.22], [17, 0.11], [19.5, 0.04], [22, 0.01]];
+    for (var i = stops.length - 1; i >= 0; i--) {
+        g.globalAlpha = stops[i][1]; g.fillStyle = '#fff6cc';
+        g.beginPath(); g.arc(c, c, stops[i][0], 0, 7); g.fill();
+    }
+    g.globalAlpha = 1;
+    return (_sunArt = m.c);
+}
 function drawSky(x, vw, vh, cx, cy) {
-    var sk = skyColor(), dl = dayLight();
-    var skKey = (sk[0] | 0) + ':' + (sk[1] | 0) + ':' + (sk[2] | 0) + ':' + (vh | 0);
+    var tint = skyTint(), dl = dayLight();
+    var cyTile = cy / TS;
+    var atmo = clamp((cyTile - 2) / 26, 0.06, 1);             // space goes black above the sky band
+    var f = [tint[0] / 255 * atmo, tint[1] / 255 * atmo, tint[2] / 255 * atmo];
+    function tinted(base, k) {
+        return 'rgb(' + Math.min(255, base[0] * f[0] * (k || 1) | 0) + ',' +
+               Math.min(255, base[1] * f[1] * (k || 1) | 0) + ',' + Math.min(255, base[2] * f[2] * (k || 1) | 0) + ')';
+    }
+    var skKey = tinted(SKY_TOP) + '|' + tinted(SKY_BOT) + '|' + (vh | 0);
     if (RT.skyKey !== skKey) {
         var grd = x.createLinearGradient(0, 0, 0, vh);
-        grd.addColorStop(0, 'rgb(' + (sk[0] * 0.74 | 0) + ',' + (sk[1] * 0.78 | 0) + ',' + (sk[2] | 0) + ')');
-        grd.addColorStop(0.65, 'rgb(' + (sk[0] | 0) + ',' + (sk[1] | 0) + ',' + (sk[2] | 0) + ')');
-        grd.addColorStop(1, 'rgb(' + Math.min(255, sk[0] * 1.12) + ',' + Math.min(255, sk[1] * 1.08) + ',' + Math.min(255, sk[2] * 1.02) + ')');
+        grd.addColorStop(0, tinted(SKY_TOP));
+        grd.addColorStop(1, tinted(SKY_BOT));
         RT.skyGrad = grd; RT.skyKey = skKey;
     }
     x.fillStyle = RT.skyGrad; x.fillRect(0, 0, vw, vh);
-    if (cy > 40 * TS) { var u = clamp((cy - 40 * TS) / (60 * TS), 0, 1); x.fillStyle = 'rgba(8,7,14,' + (u * 0.85).toFixed(2) + ')'; x.fillRect(0, 0, vw, vh); }
-    if (dl < 0.55) {
-        for (var st = 0; st < 70; st++) {
-            var sx2 = (st * 97 + 17) % vw, sy2 = (st * 61 + (st % 5) * 23) % Math.floor(vh * 0.62);
-            var tw = 0.55 + 0.45 * Math.sin((RT.anim || 0) / 22 + st);
-            x.globalAlpha = (0.85 - dl) * tw; x.fillStyle = st % 7 ? '#fff' : '#cfe0ff';
-            x.fillRect(sx2, sy2, 0.5, 0.5);
+
+    // Stars are pure greyscale and their brightness falls straight out of the sky colour; the
+    // twinkle scales the SPRITE, it is not an alpha fade. They vanish once the sky reaches 155.
+    var starV = (255 - tint[0] - 100) * 1.4;
+    if (starV > 2) {
+        for (var st = 0; st < 150; st++) {
+            var sxx = ((st * 149 + 37) % 1920) / 1920 * vw, syy = ((st * 233 + 61) % 1200) / 1200 * vh * 0.8;
+            var tw = 0.6 + 0.4 * Math.abs(Math.sin((RT.anim || 0) * (0.004 + (st % 9) * 0.0009) + st));
+            var sz = (0.5 + (st % 5) * 0.12) * tw, v = clamp(starV * tw, 0, 255) | 0;
+            x.fillStyle = 'rgb(' + v + ',' + v + ',' + v + ')';
+            x.fillRect(sxx - sz * 0.35, syy - sz * 1.6, sz * 0.7, sz * 3.2);   // a 4-point sparkle
+            x.fillRect(sxx - sz * 1.6, syy - sz * 0.35, sz * 3.2, sz * 0.7);
         }
+    }
+    // Sun and moon travel a PARABOLA — linear in x, quadratic in y — and grow toward the apex
+    var arcT = isNight() ? (S.time - DAY) / NIGHT : S.time / DAY;
+    var q = (2 * arcT - 1) * (2 * arcT - 1);
+    var ox = arcT * (vw + 60) - 30, oy2 = 14 + q * 30;
+    if (isNight()) {
+        var mr = (1.2 - q * 0.4) * 9, ph = (S.day % 8);
+        x.fillStyle = '#a09a8e'; x.beginPath(); x.arc(ox, oy2, mr, 0, 7); x.fill();
+        x.fillStyle = '#7d786e';                                    // craters
+        x.beginPath(); x.arc(ox - mr * 0.3, oy2 - mr * 0.2, mr * 0.22, 0, 7);
+        x.arc(ox + mr * 0.35, oy2 + mr * 0.3, mr * 0.16, 0, 7); x.fill();
+        if (ph !== 0) {                                             // the terminator sweeps across
+            var off = (ph <= 4 ? ph : 8 - ph) / 4 * mr * 2, side = ph <= 4 ? -1 : 1;
+            x.globalCompositeOperation = 'destination-out';
+            x.beginPath(); x.arc(ox + side * off, oy2, mr, 0, 7); x.fill();
+            x.globalCompositeOperation = 'source-over';
+        }
+    } else {
+        var sc = (1.2 - q * 0.4) * 1.1, sa = sunArt();
+        x.globalAlpha = clamp(atmo, 0, 1);
+        x.drawImage(sa, ox - 23 * sc, oy2 - 23 * sc, 46 * sc, 46 * sc);
         x.globalAlpha = 1;
     }
-    var arcT = isNight() ? (S.time - DAY) / NIGHT : S.time / DAY;
-    var ox = vw * arcT, oy2 = vh * 0.28 - Math.sin(arcT * Math.PI) * vh * 0.2;
-    if (isNight()) {
-        x.fillStyle = 'rgba(232,232,244,.20)'; x.beginPath(); x.arc(ox, oy2, 10, 0, 7); x.fill();
-        x.fillStyle = '#e8e8f4'; x.beginPath(); x.arc(ox, oy2, 6, 0, 7); x.fill();
-        x.fillStyle = 'rgba(190,190,210,.65)'; x.beginPath(); x.arc(ox - 2, oy2 + 1.5, 1.4, 0, 7); x.arc(ox + 2, oy2 - 1, 1, 0, 7); x.fill();
-    } else {
-        x.fillStyle = 'rgba(255,224,122,.22)'; x.beginPath(); x.arc(ox, oy2, 12, 0, 7); x.fill();
-        x.fillStyle = '#ffe07a'; x.beginPath(); x.arc(ox, oy2, 7, 0, 7); x.fill();
-        x.fillStyle = '#fff6cc'; x.beginPath(); x.arc(ox, oy2, 4, 0, 7); x.fill();
-    }
-    // layered parallax clouds
-    for (var lay = 0; lay < 2; lay++) {
-        x.globalAlpha = (lay ? 0.34 : 0.6) * dl + 0.08; x.fillStyle = '#fff';
-        for (var c = 0; c < 6; c++) {
-            var sp = lay ? 0.12 : 0.28;
-            var cxp = (((c * 150 + lay * 70 + (RT.anim || 0) * (lay ? 0.02 : 0.05) - cx * sp) % (vw + 160)) + vw + 160) % (vw + 160) - 80;
-            var cyp = (lay ? 14 : 30) + (c % 3) * 20, w2 = lay ? 22 : 32, h2 = lay ? 5 : 7;
-            x.fillRect(cxp, cyp, w2, h2); x.fillRect(cxp + 5, cyp - 3.5, w2 * 0.55, h2 * 0.8);
-            x.fillRect(cxp + w2 * 0.5, cyp - 2, w2 * 0.4, h2 * 0.7);
+    // three cloud passes at their real parallax rates. Terraria's clouds are not white: the ramp
+    // bottoms out at a solid mid-blue, and the far pass loses red and green but keeps blue.
+    var wind = 0.4;
+    for (var lay = 0; lay < 3; lay++) {
+        var par = [0.07, 0.17, 0.23][lay], cs = [0.85, 1.0, 1.2][lay];
+        var yBase = [8, 22, 40][lay], span = vw + 220;
+        x.globalAlpha = clamp(atmo * (0.55 + lay * 0.22), 0, 1);
+        for (var c = 0; c < 7; c++) {
+            var art = cloudArt((lay * 7 + c) % 5, lay === 0);
+            var drift = (RT.anim || 0) * wind * par * 0.08;
+            var cxp = (((c * 191 + lay * 83 + drift - cx * par) % span) + span) % span - 110;
+            var cyp = yBase + ((c * 37 + lay * 19) % 34) - (cy - 46 * TS) * par * 0.5;
+            var cw = art.width * cs, ch = art.height * cs;
+            if (cyp > vh || cyp + ch < -20) continue;
+            x.drawImage(art, cxp, cyp, cw, ch);
         }
     }
     x.globalAlpha = 1;
-    // distant treeline / hills
-    var hillY = vh - (46 * TS - cy) * 0.4;
-    x.fillStyle = 'rgba(38,64,48,' + (0.4 * dl + 0.12) + ')';
-    for (var h = -40; h < vw + 40; h += 34) {
-        var hy = hillY + Math.sin((h + cx * 0.3) / 55) * 12;
-        x.beginPath(); x.moveTo(h - 18, vh); x.lineTo(h, hy); x.lineTo(h + 18, vh); x.fill();
+    drawScenery(x, vw, vh, cx, cy, f, atmo);
+    drawUnderBg(x, vw, vh, cx, cy);
+}
+/* the three drifting hill layers, tinted by the daylight so they go dark at night with everything else */
+function drawScenery(x, vw, vh, cx, cy, f, atmo) {
+    if (cy / TS > 78) return;                             // underground: the rock face takes over
+    var bio = biomeAtX(clamp(Math.floor((cx + vw / 2) / TS), 0, W - 1));
+    var S0 = SCEN[bio] || SCEN.forest;
+    var cy0 = 46 * TS - vh * 0.55;                        // camera height at which the strips sit true
+    // the whole backdrop shares ONE global tint — there is no separate night palette for it
+    var mul = Math.max(f[0], Math.max(f[1], f[2]));
+    x.save();
+    x.globalAlpha = clamp(mul * 1.15, 0.03, 1);
+    /* Terraria's real parallax rates: mountains 0.15, then the three biome bands at 0.40 / 0.43 /
+       0.49. The vertical rate roughly matches the horizontal. */
+    function band(art, ph, pv, yOff, fill) {
+        var sy = vh * 0.55 - (cy - cy0) * pv - SCH * 0.36 + yOff;
+        if (sy > vh || sy + SCH < -60) return;
+        var sx = -(cx * ph) % SCW; if (sx > 0) sx -= SCW;
+        for (var px = sx; px < vw; px += SCW) x.drawImage(art, px, sy);
+        if (sy + SCH < vh) { x.fillStyle = fill; x.fillRect(0, sy + SCH - 1, vw, vh - sy - SCH + 1); }
     }
+    band(mtnArt(0), 0.15, 0.30, -34, MTN[0][0]);
+    band(mtnArt(1), 0.15, 0.32, -18, MTN[1][0]);
+    for (var d = 0; d < 3; d++) band(sceneryArt(bio, d), [0.40, 0.43, 0.49][d], [0.44, 0.50, 0.58][d], d * 6, S0.c[d]);
+    x.restore();
+    x.globalAlpha = 1;
+}
+/* below the surface the sky is gone: Terraria shows a rock face that darkens by layer */
+/* UBG_TOP is the layer boundary, not the grass line: the deepest the terrain ever dips is row 70,
+   and painting rock behind anything shallower would put stone in the sky over the ocean. */
+var UBG_TOP = 66, UBG_RAMP = 14;
+function drawUnderBg(x, vw, vh, cx, cy) {
+    var botTile = (cy + vh) / TS;
+    if (botTile < UBG_TOP) return;
+    var art = rockBgArt(), n = 128;
+    var ox = -(cx * 0.35) % n; if (ox > 0) ox -= n;
+    var oy = -(cy * 0.35) % n; if (oy > 0) oy -= n;
+    // one tinted band every 4 tiles keeps the layer gradient smooth without a per-pixel gradient
+    var band = 4 * TS, y0 = Math.floor(cy / band) * band, deepest = 0;
+    x.save();
+    for (var wy = y0; wy < cy + vh; wy += band) {
+        var row = wy / TS, a = clamp((row - UBG_TOP) / UBG_RAMP, 0, 1);
+        if (a <= 0.01) continue;
+        var col = underColor(row + 2), sy = wy - cy;
+        x.globalAlpha = a;
+        x.fillStyle = 'rgb(' + (col[0] | 0) + ',' + (col[1] | 0) + ',' + (col[2] | 0) + ')';
+        x.fillRect(0, sy, vw, band + 1);
+        deepest = Math.max(deepest, a);
+    }
+    x.globalAlpha = 0.5 * deepest;
+    x.beginPath(); x.rect(0, Math.max(0, (UBG_TOP * TS - cy)), vw, vh); x.clip();
+    for (var ry = oy; ry < vh; ry += n) for (var rx = ox; rx < vw; rx += n) x.drawImage(art, rx, ry);
+    x.globalAlpha = 1;
+    x.restore();
 }
 function sk2rgb(sk) { return 'rgb(' + (sk[0] | 0) + ',' + (sk[1] | 0) + ',' + (sk[2] | 0) + ')'; }
+/* Liquid palettes, sampled off the game's own water_N sheets. Each style is three punchy bands —
+   a dark body, a mid tone and a much lighter highlight — not a subtle gradient. Water draws at 60%
+   alpha so the terrain behind genuinely shows through; lava at 95%, which hides everything. */
+var LIQPAL = {
+    forest:  ['#093dbf', '#336bf9', '#93b1fd'], ocean:   ['#094cbf', '#337cf9', '#93bafd'],
+    under:   ['#243c94', '#6c6cb2', '#c6b5d7'], cavern:  ['#413b65', '#8d6e92', '#ccbbb5'],
+    jungle:  ['#07918e', '#07dfbc', '#93fdc4'], snow:    ['#0989bf', '#50c7fa', '#b4ebfe'],
+    corrupt: ['#3b1d83', '#6240b0', '#9482be'], desert:  ['#20a875', '#4ee0c5', '#a0f0ef'],
+    lava:    ['#fd2003', '#fd5b03', '#fd7f03']
+};
+function waterStyle(tx, ty) {
+    var bio = biomeAtX(tx);
+    if (bio === 'jungle' || bio === 'snow' || bio === 'corrupt' || bio === 'desert' || bio === 'ocean') return LIQPAL[bio];
+    if (ty > 110) return LIQPAL.cavern;
+    if (ty > 66) return LIQPAL.under;
+    return LIQPAL.forest;
+}
 function drawLiquid(x, sx, sy, m, kind, above, tx, ty) {
     var full = above > 4, lvl = full ? TS : Math.max(0.5, m / LMAX * TS);
-    var top = sy + (TS - lvl);
-    if (kind === LQ_LAVA) {
-        var pulse = 0.5 + 0.5 * Math.sin(((RT.anim || 0) + tx * 9 + ty * 5) / 16);
-        x.fillStyle = 'rgba(214,64,16,.95)'; x.fillRect(sx, top, TS, lvl);
-        x.globalAlpha = 0.35 + pulse * 0.35; x.fillStyle = '#ff8a2a'; x.fillRect(sx, top, TS, lvl); x.globalAlpha = 1;
-        if (!full) { x.fillStyle = '#ffc46a'; x.fillRect(sx, top, TS, 0.5); }
-        x.globalAlpha = 0.5; x.fillStyle = '#ffe9a0';
-        x.fillRect(sx + 1.5 + Math.sin(((RT.anim || 0) + tx * 13) / 20), top + lvl * 0.45, 1, 0.5);
+    if (lvl < TS * 0.25) return;                      // MIN_LIQUID_SIZE: a thin film is not drawn
+    var top = sy + (TS - lvl), lava = kind === LQ_LAVA;
+    var pal = lava ? LIQPAL.lava : waterStyle(tx, ty);
+    var anim = RT.anim || 0;
+    x.globalAlpha = lava ? 0.95 : 0.6;
+    x.fillStyle = pal[0]; x.fillRect(sx, top, TS, lvl);
+    // the sixteen-frame texture animation is wind-driven; here it is a slow banded shimmer
+    var fr = ((anim / 6) | 0) % 16;
+    x.fillStyle = pal[1];
+    for (var b = 0; b < 3; b++) {
+        var by = top + ((b * 3 + fr * 0.5 + tx * 1.7) % Math.max(1, lvl));
+        if (by < top + lvl - 0.5) x.fillRect(sx, by, TS, 1);
+    }
+    if (!full) {
+        // only an open-topped cell gets the wavy surface strip
+        var wob = Math.sin(anim / 14 + tx * 0.9) * 0.4;
+        x.fillStyle = pal[2]; x.fillRect(sx, top + wob, TS, 1.5);
+        x.fillStyle = pal[1]; x.fillRect(sx, top + wob + 1.5, TS, 1);
+    }
+    x.globalAlpha = 1;
+    if (lava) {                                        // the pulse is the light, not the liquid
+        x.globalAlpha = 0.28 + 0.16 * Math.sin((anim + tx * 9 + ty * 5) / 21);
+        x.fillStyle = pal[2]; x.fillRect(sx, top, TS, lvl);
         x.globalAlpha = 1;
-    } else {
-        // a wavy surface line makes water read as water instead of a blue box
-        var wob = full ? 0 : Math.sin(((RT.anim || 0) / 14) + tx * 0.9) * 0.4;
-        x.fillStyle = 'rgba(44,102,196,.62)'; x.fillRect(sx, top + wob, TS, lvl - wob);
-        x.fillStyle = 'rgba(96,160,235,.35)'; x.fillRect(sx, top + wob, TS, Math.min(lvl, 2));
-        if (!full) { x.fillStyle = 'rgba(178,222,255,.8)'; x.fillRect(sx, top + wob, TS, 0.5); }
-        x.globalAlpha = 0.3; x.fillStyle = '#cfe8ff';
-        x.fillRect(sx + 2, top + wob + 1.5, 1.5, 0.5); x.fillRect(sx + 5.5, top + wob + 3, 1, 0.5);
-        x.globalAlpha = 1;
+        if (hsh(tx, ty + (anim / 40 | 0)) > 0.986) {   // the occasional bubble
+            x.fillStyle = pal[2]; x.fillRect(sx + 2 + (hsh(tx, ty) * 4 | 0), top + lvl * 0.4, 1, 1);
+        }
+    } else if (hsh(tx, ty + (anim / 30 | 0)) > 0.994 && !full) {
+        x.fillStyle = 'rgba(255,255,255,.85)'; x.fillRect(sx + 3, top - 0.5, 1, 1);   // surface glint
     }
 }
 function drawTile(x, t, sx, sy, tx, ty, mask) {
@@ -3052,21 +3416,33 @@ function drawTile(x, t, sx, sy, tx, ty, mask) {
     // block placed on grass must smother the blades, and "not my family" is not the same as "air".
     var up = ty > 0 ? RT.w[(ty - 1) * W + tx] : T_AIR;
     if (GRASSY[t] !== undefined && !SOLID[up] && up !== T_PLATFORM) {
-        var gc2 = (TCOL[t] || [])[2] || '#4fd44b', gd2 = (TCOL[t] || [])[0] || '#37a83f';
-        var h1 = hsh(tx, ty), h2 = hsh(tx + 7, ty + 3), h3 = hsh(tx + 31, ty), h4 = hsh(tx + 53, ty);
-        x.fillStyle = gc2;
-        x.fillRect(sx + 0.5, sy - 1.5 - h1 * 1.5, 0.5, 1.5 + h1 * 1.5);
-        x.fillRect(sx + 2.5, sy - 1 - h2 * 2, 0.5, 1 + h2 * 2);
-        x.fillRect(sx + 4.5, sy - 1 - h4, 0.5, 1 + h4);
-        x.fillStyle = gd2;
-        x.fillRect(sx + 6.5, sy - 1.5 - h1, 0.5, 1.5 + h1);
-        if (h3 > 0.8) {                                    // the odd flower or tall blade, as Terraria scatters
-            x.fillStyle = gd2; x.fillRect(sx + 3.5, sy - 6, 0.5, 6);
-            x.fillStyle = gc2; x.fillRect(sx + 3, sy - 4.5, 0.5, 1); x.fillRect(sx + 4, sy - 3.5, 0.5, 1);
-            if (h3 > 0.9) {
-                var fc = h3 > 0.95 ? '#f0e05a' : h3 > 0.93 ? '#e86a8a' : '#8ab4f0';
-                x.fillStyle = fc; x.fillRect(sx + 3, sy - 7.5, 1.5, 1.5);
-                x.fillStyle = '#fff8d0'; x.fillRect(sx + 3.5, sy - 7, 0.5, 0.5);
+        /* Terraria's blades are a separate 16x20 tile that sinks four pixels into the block below,
+           two art-pixels wide, stepping two across every four up so they CURVE outward from the
+           middle, and mirrored on alternate columns. Hairline vertical spikes are the giveaway. */
+        var gp = TCOL[t] || TCOL[T_GRASS], lo = gp[1], mid = gp[2], hi = gp[0];
+        var seed = hsh(tx, ty), mir = tx % 2 === 0 ? -1 : 1;
+        var blades = 2 + ((hsh(tx + 7, ty) * 3) | 0);
+        for (var bl = 0; bl < blades; bl++) {
+            var bh = 2 + hsh(tx + bl * 13, ty) * 5;                 // 4-14 Terraria px tall
+            var bx0 = sx + 1 + bl * 2.4 + hsh(tx + 3, bl) * 0.8;
+            var lean = (bl - (blades - 1) / 2) * 0.6 * mir;
+            for (var seg = 0; seg < bh; seg += 1) {
+                var t3 = seg / Math.max(1, bh);
+                x.fillStyle = seg > bh - 1.5 ? mid : t3 > 0.5 ? mid : lo;
+                x.fillRect(bx0 + lean * t3, sy - seg - 1, 1, 1);
+            }
+        }
+        if (seed > 0.72) {                                          // a taller stalk, sometimes flowered
+            var sh2 = 5 + hsh(tx + 41, ty) * 3, fx0 = sx + 3 + hsh(tx + 5, ty) * 2;
+            for (var s3 = 0; s3 < sh2; s3++) { x.fillStyle = s3 > sh2 * 0.6 ? mid : lo; x.fillRect(fx0, sy - s3 - 1, 1, 1); }
+            x.fillStyle = hi; x.fillRect(fx0 - 1, sy - sh2 * 0.6, 1, 1); x.fillRect(fx0 + 1, sy - sh2 * 0.4, 1, 1);
+            if (seed > 0.88) {                                      // the bloom: 4-6px of a contrasting hue
+                var fl = seed > 0.965 ? ['#8835e5', '#5415a1', '#380d65'] :
+                         seed > 0.94 ? ['#d5ff1b', '#e7db3a', '#958b13'] :
+                         seed > 0.915 ? ['#f2aab8', '#e45e78', '#b1364f'] : ['#b4ebfe', '#50c7fa', '#0989bf'];
+                x.fillStyle = fl[2]; x.fillRect(fx0 - 1, sy - sh2 - 3, 3, 3);
+                x.fillStyle = fl[1]; x.fillRect(fx0 - 1, sy - sh2 - 3, 2, 2);
+                x.fillStyle = fl[0]; x.fillRect(fx0 - 1, sy - sh2 - 3, 1, 1);
             }
         }
     }
@@ -3095,12 +3471,19 @@ function drawPlatform(x, sx, sy, tx, ty) {
 function drawTrunk(x, sx, sy, tx, ty) {
     var below = ty < H - 1 ? RT.w[(ty + 1) * W + tx] : T_STONE;
     var above = ty > 0 ? RT.w[(ty - 1) * W + tx] : T_AIR;
-    x.drawImage(objArt(below === T_TRUNK ? 'bark' + ((hsh(tx * 5 + 3, ty) * 3) | 0) : 'root'), sx, sy, TS, TS);
-    if (above !== T_TRUNK && above !== T_LEAF) {                 // the crown of the tree
-        x.drawImage(objArt('crown'), sx, sy - 3, TS, TS);        // rows above are painted first, so
-        return;                                                  // the upward overhang survives
+    if (below !== T_TRUNK) {
+        // the base flares into roots, and the flare is asymmetric — GrowTree rolls both / right /
+        // left at a third each, so a row of trees never looks stamped from one die
+        var rv = (hsh(tx * 13 + 5, ty) * 3) | 0;
+        x.drawImage(objArt(rv === 0 ? 'rootB' : rv === 1 ? 'rootR' : 'rootL'), sx, sy, TS, TS);
+    } else {
+        x.drawImage(objArt('bark' + ((hsh(tx * 5 + 3, ty) * 3) | 0)), sx, sy, TS, TS);
     }
-    // a branch stub reaching into whichever side the canopy grew on
+    if (above !== T_TRUNK && above !== T_LEAF) {
+        // no canopy above: either the one tree in eight that ends in a bare stub, or a boreal tree,
+        // which carries snow on bare twigs rather than any foliage at all
+        x.drawImage(objArt(biomeAtX(tx) === 'snow' ? 'snowcap' : 'stub'), sx, sy - 3, TS, TS);
+    }
 }
 /* the canopy frames like any other tile, so its outer edge gets a chewed leafy silhouette
    instead of the square block of green a naive fill would give */
@@ -3120,45 +3503,77 @@ function drawLeaf(x, sx, sy, tx, ty) {
     x.drawImage(tileFrame(T_LEAF, k, v), sx, sy, TS, TS);
 }
 
-var COL_TORCH = [255, 150, 40], COL_LAVA = [255, 120, 30], COL_HELL = [255, 90, 40], COL_FORGE = [255, 150, 60], COL_MANA = [120, 150, 255];
+/* Light source colours, straight off Terraria's TileLightScanner. The big surprise for anyone
+   eyeballing it: a torch is very nearly WHITE (1.0, 0.95, 0.8), not orange — the orange people
+   remember is the flame sprite, not the light. Raw gem ore and Hellstone emit nothing at all;
+   the Underworld's glow is an ambient term applied to every open tile down there. */
+var COL_TORCH = [255, 242, 204], COL_LAVA = [255, 153, 51], COL_HELL = [255, 153, 51],
+    COL_FORGE = [255, 140, 70], COL_MANA = [160, 170, 255], COL_HEART = [255, 120, 150],
+    COL_HELMET = [255, 222, 180];
+/* Terraria's LightMap decay is multiplicative per tile: a 1.0 source reaches 42 tiles through air
+   and 7 through rock, and anything under 0.0185 stops dead rather than fading out. */
+var LDEC_AIR = 0.91, LDEC_SOLID = 0.56, LDEC_WATER = 0.80, LCUT = 0.0185, LGLOBAL = 1.2;
+var SURF_LINE = 72;                    // worldSurface: daylight is INJECTED above this row, not cast
+var LAMB = 0.055;                      // the game floors at zero; a hair of ambient keeps caves mineable
+/* one line of the separable max-flood, in one direction — Terraria's LightMap.BlurLine */
+function blurLine(L, col, dec, start, end, stride) {
+    var v = 0, vc = null;
+    for (var i = start; i !== end; i += stride) {
+        if (v < L[i]) { v = L[i]; vc = col[i]; }
+        else if (v >= LCUT) { L[i] = v; if (vc && !col[i]) col[i] = vc; }
+        else { v = 0; vc = null; }
+        v *= dec[i];
+    }
+}
 function computeLight(x0, y0, lw, lh, dl) {
     // reuse the light buffers across frames — a fresh Float32Array plus a 4k-element array every
     // frame was the single biggest source of garbage, and it showed up as periodic frame stalls
     var n = lw * lh;
-    if (!RT.lbufL || RT.lbufN !== n) { RT.lbufL = new Float32Array(n); RT.lbufC = new Array(n); RT.lbufN = n; }
-    var L = RT.lbufL, col = RT.lbufC, wall = RT.wall, w = RT.w;
-    L.fill(0);
-    for (var ci = 0; ci < n; ci++) col[ci] = null;
-    for (var tx = 0; tx < lw; tx++) {
-        var open = true, wx = x0 + tx;
-        for (var wy = 0; wy < y0; wy++) if (SOLID[w[wy * W + wx]]) { open = false; break; }
-        for (var ty = 0; ty < lh; ty++) {
-            var gy = y0 + ty, gi = gy * W + wx, wt = w[gi], i = ty * lw + tx;
-            if (open && SOLID[wt]) open = false;
-            var skyOpen = open && wall[gi] === WL_NONE;
-            if (skyOpen) L[i] = dl;
+    if (!RT.lbufL || RT.lbufN !== n) {
+        RT.lbufL = new Float32Array(n); RT.lbufC = new Array(n); RT.lbufD = new Float32Array(n); RT.lbufN = n;
+    }
+    var L = RT.lbufL, col = RT.lbufC, dec = RT.lbufD, wall = RT.wall, w = RT.w;
+    var hellPulse = 0.55 + Math.sin((RT.anim || 0) / 30) * 0.08;
+    var lavaPulse = 0.55 + (Math.sin((RT.anim || 0) / 21) * 0.5 + 0.5) * 0.09;
+    for (var ty = 0; ty < lh; ty++) {
+        var gy = y0 + ty, hell = clamp((gy - (HELL - 8)) / 10, 0, 1);
+        for (var tx = 0; tx < lw; tx++) {
+            var wx = x0 + tx, gi = gy * W + wx, wt = w[gi], i = ty * lw + tx, sol = SOLID[wt];
+            var wet = RT.lq[gi] > 12;
+            dec[i] = sol ? LDEC_SOLID : wet ? LDEC_WATER : LDEC_AIR;
+            col[i] = null;
+            // sunlight is injected into every bare-walled, non-solid tile above the surface line —
+            // which is why a shallow cave is bright at noon and a walled house is not
+            L[i] = (gy <= SURF_LINE && !sol && wall[gi] === WL_NONE) ? dl : LAMB;
+            if (hell > 0 && !sol) { L[i] = Math.max(L[i], hellPulse * hell); col[i] = COL_HELL; }
             if (wt === T_TORCH) { L[i] = 1; col[i] = COL_TORCH; }
-            else if (RT.lk[gi] === LQ_LAVA && RT.lq[gi] > 0) { L[i] = Math.max(L[i], 0.8); col[i] = COL_LAVA; }
-            else if (wt === T_HELLSTONE) { L[i] = Math.max(L[i], 0.4); col[i] = COL_HELL; }
-            else if (wt === T_FURNACE || wt === T_HELLFORGE) { L[i] = Math.max(L[i], 0.72); col[i] = COL_FORGE; }
-            else if (wt === T_HEARTC) L[i] = Math.max(L[i], 0.5);
-            else if (wt === T_MANAC) { L[i] = Math.max(L[i], 0.5); col[i] = COL_MANA; }
-            else if (GEMCOL[wt]) L[i] = Math.max(L[i], 0.35);
+            else if (RT.lk[gi] === LQ_LAVA && RT.lq[gi] > 0) { L[i] = Math.max(L[i], lavaPulse); col[i] = COL_LAVA; }
+            else if (wt === T_FURNACE || wt === T_HELLFORGE) { L[i] = Math.max(L[i], 0.85); col[i] = COL_FORGE; }
+            else if (wt === T_HEARTC) { L[i] = Math.max(L[i], 0.45); col[i] = COL_HEART; }
+            else if (wt === T_MANAC) { L[i] = Math.max(L[i], 0.45); col[i] = COL_MANA; }
         }
     }
-    var pxl = Math.floor((S.px + 5) / TS) - x0, pyl = Math.floor((S.py + 10) / TS) - y0, pg = S.buffs.shine ? 0.85 : 0.42;
-    if (pxl >= 0 && pxl < lw && pyl >= 0 && pyl < lh) L[pyl * lw + pxl] = Math.max(L[pyl * lw + pxl], pg);
-    // a whisper of ambient: pitch black hides the tile art entirely, and you cannot mine what you
-    // cannot see. Deep caves stay moody, they just stop being a black rectangle.
-    for (var a = 0, an = lw * lh; a < an; a++) if (L[a] < 0.085) L[a] = 0.085;
-    for (var pass = 0; pass < 7; pass++) {
-        for (var y = 0; y < lh; y++) for (var xx = 0; xx < lw; xx++) {
-            var ii = y * lw + xx, f = SOLID[w[(y0 + y) * W + (x0 + xx)]] ? 0.6 : 0.82, best = L[ii], bc = col[ii], nv;
-            if (xx > 0)      { nv = L[ii - 1] * f;  if (nv > best) { best = nv; if (col[ii - 1]) bc = col[ii - 1]; } }
-            if (xx < lw - 1) { nv = L[ii + 1] * f;  if (nv > best) { best = nv; if (col[ii + 1]) bc = col[ii + 1]; } }
-            if (y > 0)       { nv = L[ii - lw] * f; if (nv > best) { best = nv; if (col[ii - lw]) bc = col[ii - lw]; } }
-            if (y < lh - 1)  { nv = L[ii + lw] * f; if (nv > best) { best = nv; if (col[ii + lw]) bc = col[ii + lw]; } }
-            L[ii] = best; if (bc && !col[ii]) col[ii] = bc;
+    // the player carries a miner's light. Terraria itself only does this with a Mining Helmet, but a
+    // pitch-black cave you cannot mine your way out of is worse than the small liberty — so it is at
+    // least the helmet's own colour and value rather than an arbitrary halo.
+    var pxl = Math.floor((S.px + 5) / TS) - x0, pyl = Math.floor((S.py + 10) / TS) - y0, pg = S.buffs.shine ? 0.95 : 0.55;
+    if (pxl >= 0 && pxl < lw && pyl >= 0 && pyl < lh) {
+        var pi = pyl * lw + pxl;
+        if (L[pi] < pg) { L[pi] = pg; col[pi] = COL_HELMET; }
+    }
+    // two passes, each sweeping every column then every row in both directions. Separable, so the
+    // falloff is a rounded diamond rather than a circle — exactly as the real engine looks.
+    for (var pass = 0; pass < 2; pass++) {
+        for (var c = 0; c < lw; c++) { blurLine(L, col, dec, c, c + lh * lw, lw); blurLine(L, col, dec, c + (lh - 1) * lw, c - lw, -lw); }
+        for (var r = 0; r < lh; r++) { blurLine(L, col, dec, r * lw, r * lw + lw, 1); blurLine(L, col, dec, r * lw + lw - 1, r * lw - 1, -1); }
+    }
+    // Main.DrawBlack: in the surface band anything under 40% of the daylight is forced to solid
+    // black, which is why a cave mouth at noon is a hard-edged hole and not a soft gradient.
+    var cut = dl * 0.34 / LGLOBAL;
+    if (cut > LCUT) {
+        for (var by = 0; by < lh; by++) {
+            if (y0 + by > SURF_LINE + 1) break;
+            for (var bx = 0; bx < lw; bx++) { var bi = by * lw + bx; if (L[bi] < cut) L[bi] = 0; }
         }
     }
     return { L: L, col: col };
@@ -3171,18 +3586,26 @@ function computeLight(x0, y0, lw, lh, dl) {
    every character is drawn once, facing right. */
 var _pg = null, _pX = 0, _pY = 0, _pF = 1, _pW = 20;
 function pen(g, X, Y, f, w) { _pg = g; _pX = X; _pY = Y; _pF = f < 0 ? -1 : 1; _pW = w; }
+/* Every Terraria character sprite is a half-resolution drawing blown up 2x: decode any of them and
+   every row and every column is duplicated. Snapping the pen to that 2px grid is the single biggest
+   lever on whether a sprite reads as Terraria or as something finer and fussier drawn beside it. */
+function snap2(n) { return Math.round(n / 2) * 2; }
 function P(a, b, w, h, c) {
+    var a2 = snap2(a), b2 = snap2(b), w2 = Math.max(2, snap2(w)), h2 = Math.max(2, snap2(h));
     _pg.fillStyle = c;
-    _pg.fillRect(_pX + (_pF > 0 ? a : _pW - a - w) * 0.5, _pY + b * 0.5, w * 0.5, h * 0.5);
+    _pg.fillRect(_pX + (_pF > 0 ? a2 : _pW - a2 - w2) * 0.5, _pY + b2 * 0.5, w2 * 0.5, h2 * 0.5);
 }
 function Pa(al) { _pg.globalAlpha = al; }
 function Pa1() { _pg.globalAlpha = 1; }
 
-/* Terraria's default character, colour for colour */
+/* Terraria's default character, colour for colour, straight off the Player.cs field initialisers:
+   hair 215,90,55 · skin 255,125,90 · eye 105,90,75 · shirt 175,165,140 · undershirt 160,180,215 ·
+   pants 255,230,175 · shoes 160,105,60. The skin is a saturated salmon-orange, not a naturalistic
+   flesh tone, and the default shirt is a drab grey-tan — both are routinely got wrong. */
 var PC = {
     hair: '#d75a37', hairL: '#ef7a52', hairD: '#a03d21',
     skin: '#ff7d5a', skinD: '#d55a3c', skinL: '#ff9c80',
-    eye: '#4a3f31', shirt: '#af2727', shirtL: '#cf3f3f', shirtD: '#7e1a1a',
+    eye: '#695a4b', shirt: '#afa58c', shirtL: '#cfc5ac', shirtD: '#7d7663',
     under: '#a0b4d7', pants: '#ffe6af', pantsD: '#d9bd85', shoe: '#a0693c', shoeD: '#71481f'
 };
 /* front-leg dx / lift, back-leg dx / lift, front-arm dy, back-arm dy — an eight-frame stride.
@@ -3211,9 +3634,9 @@ function drawPlayer(x, px2, py2) {
     var carrying = def && (swing || def.place === T_TORCH);
     pen(x, px2, py2 + bob * 0.5, f, 20);
 
-    // ── back arm, behind the torso ──
-    P(4, 17 + w[5], 4, 7, shD);
-    P(4, 23 + w[5], 4, 3, cm ? cm[2] : PC.skinD);
+    // ── back arm, behind the torso: in a strict side view it is barely more than a silhouette ──
+    P(4, 17 + w[5], 4, 8, shD);
+    P(4, 24 + w[5], 4, 2, cm ? cm[2] : PC.skinD);
     // ── legs ──
     var fl = air ? 1 : w[0], flL = air ? 3 : w[1], bl = air ? -1 : w[2], blL = air ? 2 : w[3];
     P(5 + bl, 30, 5, 7 - blL, shade(pn, 0.82)); P(4 + bl, 36 - blL, 6, 3, PC.shoeD);
@@ -3227,31 +3650,42 @@ function drawPlayer(x, px2, py2) {
     P(7, 16, 5, 2, PC.under); P(7, 16, 5, 1, shade(PC.under, 1.15));   // undershirt at the collar
     P(5, 16, 1, 11, shL); P(15, 16, 1, 11, shD);
     if (cm) { Pa(0.35); P(7, 19, 2, 5, '#fff'); Pa1(); }         // plate sheen
-    // ── head ──
-    P(5, 5, 11, 12, PC.skin);
-    P(5, 5, 11, 1, PC.skinL); P(5, 15, 11, 2, PC.skinD);
-    P(15, 6, 1, 10, PC.skinD);
-    P(6, 12, 2, 3, PC.skinD);                                    // ear
-    if (hm) {                                                    // helmet: a dome with a visor gap
-        P(4, 2, 13, 7, hm[0]); P(4, 2, 13, 2, hm[1]);
-        P(3, 6, 2, 8, hm[0]); P(15, 6, 2, 6, hm[2]);
-        P(4, 9, 5, 5, hm[0]); P(4, 9, 1, 5, hm[1]);
-        P(9, 9, 2, 2, hm[2]);
-        Pa(0.4); P(6, 3, 7, 1, '#fff'); Pa1();
+    // ── head ── strict side profile with a blunt nose pushing past the eye line
+    P(4, 2, 12, 14, PC.skin);
+    P(4, 2, 12, 2, PC.skinL); P(4, 14, 12, 2, PC.skinD);
+    P(16, 8, 2, 4, PC.skin); P(16, 8, 2, 2, PC.skinL);           // the nose
+    P(14, 12, 4, 2, PC.skinD);
+    P(6, 12, 2, 2, PC.skinD);                                    // ear
+    // exactly one eye, and it is a 4x4 block: two pixels of pure-white sclera with the pupil on
+    // the leading edge. It never blinks and never tracks.
+    P(12, 6, 4, 4, '#ffffff');
+    P(14, 6, 2, 4, PC.eye);
+    if (hm) {
+        // early helmets read by silhouette: copper is a low skullcap, iron a wide flared kettle
+        // brim, silver and gold a tall crested helm with a swept-back plume
+        var big = hm[3] === 'crest', brim = hm[3] === 'brim';
+        P(4, -4, 12, 8, hm[0]); P(4, -4, 12, 2, hm[1]);          // dome
+        P(2, -2, 2, 6, hm[0]); P(16, -2, 2, 6, hm[2]);
+        P(4, 2, 4, 4, hm[0]); P(4, 2, 2, 4, hm[1]);              // cheek guard
+        if (brim) { P(0, 2, 6, 2, hm[2]); P(14, 2, 6, 2, hm[2]); P(0, 0, 4, 2, hm[0]); }
+        if (big) {
+            P(0, -8, 6, 6, hm[1]); P(2, -10, 4, 4, hm[1]);       // the swept-back plume
+            P(0, -6, 2, 6, hm[2]);
+            P(8, -8, 4, 4, hm[1]); P(8, -8, 2, 2, hm[0]);
+        }
+        Pa(0.4); P(6, -2, 8, 2, '#fff'); Pa1();
     } else {
-        P(5, 1, 11, 5, PC.hair);                                 // hair cap
-        P(5, 1, 11, 2, PC.hairL); P(6, 0, 7, 1, PC.hairL);
-        P(3, 3, 3, 8, PC.hair); P(3, 3, 1, 8, PC.hairD);         // back of the hair, ending at the jaw
-        P(2, 4, 1, 5, PC.hairD);
-        P(13, 4, 4, 3, PC.hair); P(16, 5, 1, 3, PC.hairD);       // fringe over the brow
-        P(5, 6, 4, 2, PC.hairD);
-        P(14, 0, 3, 2, PC.hair); P(16, 1, 2, 2, PC.hairD);       // a spike at the crown
+        // Terraria's default hairstyle is a big spiky mop that overhangs the skull rather than
+        // capping it — hair plus head is close to half the sprite's height
+        P(4, -4, 12, 6, PC.hair);
+        P(4, -4, 12, 2, PC.hairL);
+        P(2, -2, 4, 10, PC.hair); P(2, -2, 2, 10, PC.hairD);     // the mop hanging past the jaw
+        P(0, 0, 2, 6, PC.hairD);
+        P(14, -2, 4, 4, PC.hair); P(16, 0, 2, 2, PC.hairD);      // fringe over the brow
+        P(4, 2, 4, 2, PC.hairD);
+        P(12, -6, 4, 4, PC.hair); P(16, -4, 2, 2, PC.hairD);     // a spike at the crown
+        P(6, -6, 4, 2, PC.hairL);
     }
-    // eye: white sclera with the pupil pushed to the outer edge, as Terraria draws it
-    P(10, 9, 6, 6, PC.skinD);
-    P(11, 10, 5, 4, '#fff');
-    P(13, 10, 3, 4, PC.eye);
-    P(13, 10, 3, 1, shade(PC.eye, 0.6));
     // ── front arm + whatever it is holding ──
     var aim = 0;
     if (carrying && (def.kind === 'bow' || def.kind === 'magic')) {
@@ -3274,16 +3708,19 @@ function drawHeldItem(x, def, id, X, Y, f, swinging, aim) {
     if (!gp) { x.drawImage(art, X + (f > 0 ? 7 : -3), Y + 9, 6, 6); return; }
     var ang, hx, hy;
     if (k === 'sword') {
+        // Terraria's swing is one continuous 200.5-degree sweep about the hilt:
+        //   rotation = (itemAnimation/max - 0.5) * -direction * 3.5 - direction * 0.3
+        // running from -2.05 rad (behind the head) through -0.3 (overhead) to +1.45 (down-forward)
         var t0 = clamp((12 - RT.swing) / 12, 0, 1);
-        ang = swinging ? -1.6 + t0 * 3.0 : -0.35;                 // overhead, sweeping down and forward
+        ang = swinging ? (t0 - 0.5) * 3.5 - 0.3 : -0.35;
         hx = X + (f > 0 ? 7.5 : 2.5); hy = Y + (swinging ? 10 + t0 * 2 : 13.5);
     } else if (k === 'bow') {
         ang = (aim || 0) * (f > 0 ? 1 : 1); hx = X + (f > 0 ? 8.5 : 1.5); hy = Y + 10.5;
     } else if (k === 'magic') {
         ang = -0.55 + (aim || 0) * 0.7; hx = X + (f > 0 ? 8 : 2); hy = Y + 12.5;
-    } else {                                                      // pick / axe / hammer
+    } else {                                                      // pick / axe / hammer: same Swing style
         var tw = clamp((12 - RT.swing) / 12, 0, 1);
-        ang = swinging ? 1.15 + tw * 1.7 : 1.3;
+        ang = swinging ? (tw - 0.5) * 3.5 - 0.3 : 1.3;
         hx = X + (f > 0 ? 8 : 2); hy = Y + 12;
     }
     x.save();
@@ -3344,161 +3781,191 @@ function drawFoe(x, f, cx, cy) {
 }
 /* Slime: a translucent gel dome, flat-bottomed, squashing as it lands — plus the two black
    eyes and the little frown Terraria gives it. */
+/* Terraria's slimes have NO eyes and NO mouth — that is a Minecraft/Dragon Quest memory. They are
+   featureless translucent gel: a rounded dome on a flat base, a one-pixel dark rim all the way
+   round, darkest at the lower left, with a single soft highlight blob in the upper RIGHT quadrant.
+   The engine draws them twice — a ~31% alpha pass then a saturated tint pass — which is what makes
+   them read as lit from within rather than as a coloured blob. */
+var SLIMEPAL = {
+    green: ['#123a19', '#247433', '#2f9842', '#3abb52', '#57cb6c'],
+    blue:  ['#0a1c42', '#143884', '#1a49ac', '#205ad4', '#4074e2'],
+    pinky: ['#571033', '#a01e5e', '#d02b7c', '#ee4a9a', '#ff86bf']
+};
 function drawSlime(x, f, fx, fy, flash) {
-    var grounded = SOLID[tileAt(f.x + 4, f.y + 9)], sq = grounded ? 0.8 : -0.6;
-    var rgb = f.pinky ? '255,105,190' : f.green ? '0,205,60' : '0,110,235';
-    var top = fy + 2 + sq, bot = fy + 10, hgt = bot - top, mid = fx + 5;
-    x.fillStyle = flash ? 'rgba(255,255,255,.92)' : 'rgba(' + rgb + ',.62)';
-    x.beginPath();
-    x.moveTo(fx - 0.5, bot);
-    x.bezierCurveTo(fx - 1, top + hgt * 0.15, fx + 2, top, mid, top);
-    x.bezierCurveTo(fx + 8, top, fx + 11, top + hgt * 0.15, fx + 10.5, bot);
-    x.closePath(); x.fill();
-    x.fillStyle = flash ? '#fff' : 'rgba(' + rgb + ',.9)';           // denser base
-    x.fillRect(fx - 0.5, bot - 1, 11, 1);
-    x.fillStyle = 'rgba(255,255,255,.35)';                            // gel shine
-    x.fillRect(fx + 1.5, top + hgt * 0.22, 2.5, 1); x.fillRect(fx + 1, top + hgt * 0.45, 1, 1);
-    var ey = top + hgt * 0.42;
-    x.fillStyle = '#0d0d14';
-    x.fillRect(fx + 2, ey, 1.5, 2); x.fillRect(fx + 6.5, ey, 1.5, 2);
-    x.fillStyle = 'rgba(255,255,255,.85)'; x.fillRect(fx + 2, ey, 0.5, 0.5); x.fillRect(fx + 6.5, ey, 0.5, 0.5);
-    x.fillStyle = '#0d0d14';                                          // the frown
-    x.fillRect(fx + 4, ey + 3, 2.5, 0.5); x.fillRect(fx + 3.5, ey + 2.5, 0.5, 0.5); x.fillRect(fx + 6.5, ey + 2.5, 0.5, 0.5);
-    if (f.pinky) { x.fillStyle = 'rgba(255,255,255,.5)'; x.fillRect(fx + 3, top + 0.5, 4, 0.5); }
-}
-/* Zombie: green flesh, a rotted shirt and both arms locked straight out in front. */
-function drawZombie(x, f, fx, fy, flash, dir) {
-    var beat = (RT.anim >> 3) % 4, sw = (beat === 1 || beat === 3) ? 1 : 0;
-    var sk = flash ? '#fff' : '#7d9a5c', skD = flash ? '#fff' : '#5e7742';
-    var sh = flash ? '#fff' : '#4a5a6e', shD = flash ? '#fff' : '#32404f';
-    var pt = flash ? '#fff' : '#3d4152';
-    pen(x, fx, fy, dir, 20);
-    P(5 + sw, 26, 5, 9 - sw, pt); P(10 - sw, 26, 5, 9 + sw, pt);      // legs
-    P(4 + sw, 34 - sw, 6, 2, '#2a2c38'); P(10 - sw, 34 + sw, 6, 2, '#2a2c38');
-    P(4, 12, 13, 15, sh);                                             // torso
-    P(4, 12, 13, 2, shade(sh, 1.22)); P(4, 24, 13, 3, shD);
-    P(6, 18, 3, 6, shD); P(11, 21, 3, 4, shD);                        // tears in the shirt
-    P(7, 19, 2, 4, skD); P(12, 22, 1, 3, skD);
-    P(15, 15, 7, 5, shD);                                             // the far arm, behind
-    P(21, 15, 5, 5, skD);
-    P(16, 12, 7, 5, sh); P(16, 12, 7, 1, shade(sh, 1.2));             // arms thrust forward
-    P(22, 12, 6, 5, sk); P(22, 12, 6, 1, shade(sk, 1.18));
-    P(27, 13, 2, 3, skD);
-    P(4, 0, 12, 13, sk);                                              // head
-    P(4, 0, 12, 2, shade(sk, 1.2)); P(4, 11, 12, 2, skD);
-    P(15, 1, 1, 11, skD);
-    P(6, 4, 4, 4, '#141a12'); P(11, 4, 4, 4, '#141a12');              // sunken sockets
-    P(7, 5, 2, 2, '#c8d8b0'); P(12, 5, 2, 2, '#c8d8b0');
-    P(7, 9, 7, 1, '#2b2f24'); P(8, 10, 1, 1, '#2b2f24'); P(11, 10, 1, 1, '#2b2f24');
-    P(4, 1, 3, 4, flash ? '#fff' : '#4e5c3c');                        // matted hair
-}
-/* Skeleton: bare bone, a lantern jaw and a visible ribcage. */
-function drawSkeleton(x, f, fx, fy, flash, dir) {
-    var beat = (RT.anim >> 3) % 4, sw = (beat === 1 || beat === 3) ? 1 : 0;
-    var bn = flash ? '#fff' : '#ded9c4', bnL = flash ? '#fff' : '#f2eede', bnD = flash ? '#fff' : '#a9a48d';
-    pen(x, fx, fy, dir, 20);
-    P(6 + sw, 26, 4, 9 - sw, bn); P(11 - sw, 26, 4, 9 + sw, bn);
-    P(6 + sw, 26, 1, 9 - sw, bnL); P(11 - sw, 26, 1, 9 + sw, bnL);
-    P(5 + sw, 34 - sw, 6, 2, bnD); P(10 - sw, 34 + sw, 6, 2, bnD);
-    P(6, 22, 9, 4, bn); P(6, 22, 9, 1, bnL);                          // pelvis
-    P(9, 13, 3, 9, bnD);                                              // spine
-    for (var r = 0; r < 4; r++) {
-        var rw = 11 - r * 1.6;
-        P(10.5 - rw / 2, 13.4 + r * 2.3, rw, 1.4, bn);
-        P(10.5 - rw / 2, 13.4 + r * 2.3, rw, 0.6, bnL);
-    }
-    P(6, 12, 9, 1.4, bn); P(6, 12, 9, 0.6, bnL);                      // collarbone
-    P(3, 13, 3, 9, bn); P(15, 13, 3, 9, bn);                          // arms
-    P(3, 13, 1, 9, bnL); P(15, 13, 1, 9, bnD);
-    P(2, 21, 4, 3, bn); P(15, 21, 4, 3, bn);
-    P(5, 1, 11, 10, bn); P(5, 1, 11, 2, bnL); P(15, 2, 1, 9, bnD);    // skull
-    P(6, 4, 4, 4, '#101018'); P(11, 4, 4, 4, '#101018');
-    P(9, 8, 2, 2, '#101018');                                         // nasal cavity
-    P(6, 11, 9, 2, bn); P(6, 11, 9, 1, bnD);                          // jaw
-    for (var tt = 0; tt < 4; tt++) P(7 + tt * 2, 12, 1, 1, '#2a2a30');
-}
-/* Bat: leathery wings that beat, tucked body, one red eye. */
-function drawBat(x, f, fx, fy, flash, dir) {
-    var wing = (RT.anim >> 2) % 3, lift = [0, -3, 2][wing];
-    var bd = flash ? '#fff' : '#6b4a3a', wg = flash ? '#fff' : '#4a3128', wgL = flash ? '#fff' : '#7d5745';
-    x.save(); x.translate(fx + 5, fy + 5); if (dir < 0) x.scale(-1, 1);
-    x.fillStyle = wg;                                                  // wings
-    x.beginPath(); x.moveTo(-1, -1); x.lineTo(-8, -2 + lift * 0.5); x.lineTo(-6, 1 + lift * 0.3); x.lineTo(-7, 3); x.lineTo(-1, 2); x.closePath(); x.fill();
-    x.beginPath(); x.moveTo(1, -1); x.lineTo(8, -2 + lift * 0.5); x.lineTo(6, 1 + lift * 0.3); x.lineTo(7, 3); x.lineTo(1, 2); x.closePath(); x.fill();
-    x.strokeStyle = wgL; x.lineWidth = 0.5;
-    x.beginPath(); x.moveTo(-1, 0); x.lineTo(-6, 0.5 + lift * 0.35); x.moveTo(1, 0); x.lineTo(6, 0.5 + lift * 0.35); x.stroke();
-    x.lineWidth = 1;
-    x.fillStyle = bd; x.fillRect(-2, -2.5, 4, 6);                      // body
-    x.fillStyle = shade(bd, 1.2); x.fillRect(-2, -2.5, 4, 1);
-    x.fillStyle = bd; x.fillRect(-2, -4.5, 1.5, 2.5); x.fillRect(0.5, -4.5, 1.5, 2.5);   // ears
-    x.fillStyle = '#ff4a4a'; x.fillRect(0.5, -1.5, 1.5, 1.5);
-    x.fillStyle = '#ffc0c0'; x.fillRect(1, -1.5, 0.5, 0.5);
-    x.fillStyle = '#e8e0d8'; x.fillRect(0.5, 0.5, 1, 0.5);             // fangs
-    x.restore();
-}
-/* Hornet: banded abdomen, four beating wings and a stinger. */
-function drawHornet(x, f, fx, fy, flash, dir) {
-    var wg = (RT.anim >> 1) % 2;
-    x.save(); x.translate(fx + 5, fy + 5); if (dir < 0) x.scale(-1, 1);
-    x.globalAlpha = 0.22; x.fillStyle = '#eaf2ff';                      // wings
-    x.beginPath(); x.ellipse ? x.ellipse(-0.5, -3 - wg * 0.8, 3, 0.9, -0.4, 0, 7) : x.arc(-0.5, -3, 1.2, 0, 7); x.fill();
-    x.globalAlpha = 0.45; x.strokeStyle = '#dce8ff'; x.lineWidth = 0.4;
-    x.beginPath(); x.moveTo(1, -1.5); x.lineTo(-3.5, -4 - wg * 0.8); x.moveTo(1.5, -1.5); x.lineTo(-1.5, -4.2 - wg * 0.8); x.stroke();
-    x.globalAlpha = 1; x.lineWidth = 1;
-    var yl = flash ? '#fff' : '#e6c72c', bk = flash ? '#fff' : '#241f14';
-    x.fillStyle = yl; x.fillRect(-5, -2, 8, 5);                         // abdomen
-    x.fillStyle = bk; x.fillRect(-4, -2, 1.5, 5); x.fillRect(-1.5, -2, 1.5, 5); x.fillRect(1, -2, 1.5, 5);
-    x.fillStyle = shade(yl, 1.2); x.fillRect(-5, -2, 8, 0.5);
-    x.fillStyle = flash ? '#fff' : '#3f6b2a'; x.fillRect(3, -2, 3.5, 4); // thorax + head
-    x.fillStyle = '#12121a'; x.fillRect(5, -1.5, 1.5, 1.5);
-    x.fillStyle = '#ff6a6a'; x.fillRect(5.5, -1.5, 0.5, 0.5);
-    x.fillStyle = bk; x.fillRect(-7, 0, 2.5, 1);                        // stinger
-    x.fillStyle = '#d8e030'; x.fillRect(-7.5, 0.2, 1, 0.6);
-    x.restore();
-}
-/* Demon Eye: the flying eyeball, wings and all — the wings are what make it read instantly. */
-function drawDemonEye(x, f, fx, fy, flash, dir) {
-    var beat = Math.sin((RT.anim + f.t) / 4), ex = fx + 4.5, ey = fy + 5;
-    x.save(); x.translate(ex, ey); if (dir < 0) x.scale(-1, 1);
-    // wings behind the eye
-    x.fillStyle = flash ? '#fff' : '#5e1f2a';
-    for (var s = -1; s <= 1; s += 2) {
-        x.save(); x.scale(1, 1);
+    var grounded = SOLID[tileAt(f.x + 4, f.y + 9)];
+    var pal = SLIMEPAL[f.pinky ? 'pinky' : f.green ? 'green' : 'blue'];
+    // two frames, not a squash: wide-and-flat while grounded, taller and narrower in the air
+    var top = fy + (grounded ? 3 : 2), bot = fy + 10, mid = fx + 5, halfW = grounded ? 5.5 : 4.5;
+    function dome(inset, col) {
+        x.fillStyle = col;
         x.beginPath();
-        x.moveTo(s * 2, -1);
-        x.quadraticCurveTo(s * 7, -5 + beat * 2, s * 9, -1 + beat * 2.5);
-        x.quadraticCurveTo(s * 7, 0.5, s * 8, 3 + beat);
-        x.quadraticCurveTo(s * 5, 1.5, s * 2, 2);
+        x.moveTo(mid - halfW + inset, bot - inset * 0.5);
+        x.bezierCurveTo(mid - halfW + inset, top + inset + 1, mid - 3, top + inset, mid, top + inset);
+        x.bezierCurveTo(mid + 3, top + inset, mid + halfW - inset, top + inset + 1, mid + halfW - inset, bot - inset * 0.5);
         x.closePath(); x.fill();
-        x.restore();
     }
-    x.strokeStyle = flash ? '#fff' : '#8a3040'; x.lineWidth = 0.5;
-    x.beginPath(); x.moveTo(2, 0); x.lineTo(7, -2 + beat * 2); x.moveTo(-2, 0); x.lineTo(-7, -2 + beat * 2); x.stroke();
-    x.lineWidth = 1;
-    x.fillStyle = flash ? '#fff' : '#4a1620';                            // the stalk behind
-    x.fillRect(-1.5, 3.5, 3, 2);
-    // eyeball
-    x.fillStyle = flash ? '#fff' : '#e8e2d6';
-    x.beginPath(); x.ellipse ? x.ellipse(0, 0, 5, 4.4, 0, 0, 7) : x.arc(0, 0, 4.7, 0, 7); x.fill();
-    x.fillStyle = 'rgba(168,152,150,.5)';
-    x.beginPath(); x.ellipse ? x.ellipse(0, 1.6, 4.4, 3, 0, 0, Math.PI) : x.arc(0, 1.6, 3.4, 0, Math.PI); x.fill();
-    x.strokeStyle = 'rgba(150,40,40,.5)'; x.lineWidth = 0.5;             // veins
-    x.beginPath(); x.moveTo(-4, -2); x.lineTo(-1.5, -1); x.moveTo(3.5, 1.5); x.lineTo(1.5, 0.8); x.moveTo(-3, 2.5); x.lineTo(-1, 1.5); x.stroke();
-    x.lineWidth = 1;
-    x.fillStyle = flash ? '#fff' : '#8e1c1c';                            // iris
-    x.beginPath(); x.arc(1.8, 0, 2.9, 0, 7); x.fill();
-    x.fillStyle = flash ? '#fff' : '#c03434';
-    x.beginPath(); x.arc(1.8, 0, 1.9, 0, 7); x.fill();
-    x.fillStyle = '#0e0e14'; x.beginPath(); x.arc(2.2, 0, 1.2, 0, 7); x.fill();
-    x.fillStyle = 'rgba(255,255,255,.9)'; x.fillRect(-1.5, -2.5, 1.5, 1.5);
+    if (flash) { dome(0, '#ffffff'); return; }
+    x.globalAlpha = 0.86; dome(0, pal[0]);                   // rim
+    x.globalAlpha = 0.62; dome(0.6, pal[1]);                 // body, translucent — you see through it
+    dome(1.4, pal[2]);
+    x.globalAlpha = 0.7;
+    x.fillStyle = pal[3];                                    // lit upper right
+    x.beginPath(); x.ellipse ? x.ellipse(mid + 1.4, top + 3, 3, 2.2, 0, 0, 7) : x.arc(mid + 1.4, top + 3, 2.6, 0, 7); x.fill();
+    x.fillStyle = pal[4];
+    x.beginPath(); x.ellipse ? x.ellipse(mid + 1.8, top + 2.4, 1.6, 1, 0, 0, 7) : x.arc(mid + 1.8, top + 2.4, 1.2, 0, 7); x.fill();
+    x.globalAlpha = 0.9; x.fillStyle = pal[0];               // denser flat base
+    x.fillRect(mid - halfW, bot - 1, halfW * 2, 1);
+    x.globalAlpha = 1;
+}
+/* Zombie: sickly yellow-olive flesh (not swamp green), a torn maroon shirt, dark matted hair and
+   both arms locked straight out. Only the LEGS animate — head, torso and arms are pixel-identical
+   across all three frames of the real sprite. */
+function drawZombie(x, f, fx, fy, flash, dir) {
+    var beat = (RT.anim >> 3) % 4, sw = (beat === 1 || beat === 3) ? 2 : 0;
+    var sk = flash ? '#fff' : '#d1d68a', skD = flash ? '#fff' : '#979b64', skX = flash ? '#fff' : '#2d2d1d';
+    var sh = flash ? '#fff' : '#812629', shD = flash ? '#fff' : '#3d0d0f';
+    var pt = flash ? '#fff' : '#684427', ptD = flash ? '#fff' : '#2d1c0e';
+    pen(x, fx, fy, dir, 20);
+    P(4 + sw, 26, 6, 10 - sw, pt); P(10 - sw, 26, 6, 10 + sw, pt);    // legs — the only moving part
+    P(4 + sw, 26, 2, 10 - sw, '#9a653a'); P(10 - sw, 26, 2, 10 + sw, '#9a653a');
+    P(4 + sw, 34 - sw, 6, 2, ptD); P(10 - sw, 34 + sw, 6, 2, ptD);
+    P(4, 12, 12, 14, sh);                                             // torso
+    P(4, 12, 12, 2, shade(sh, 1.25)); P(4, 24, 12, 2, shD);
+    P(6, 18, 4, 6, shD); P(10, 20, 4, 4, shD);                        // tears in the shirt
+    P(6, 18, 2, 4, skD); P(12, 22, 2, 2, skD);
+    P(14, 16, 8, 4, shD);                                             // the far arm, behind
+    P(20, 16, 6, 4, skD);
+    P(14, 12, 8, 4, sh); P(14, 12, 8, 2, shade(sh, 1.2));             // arms thrust straight forward
+    P(22, 12, 6, 4, sk); P(22, 12, 6, 2, shade(sk, 1.12));
+    P(4, 0, 12, 12, sk);                                              // head
+    P(4, 0, 12, 2, shade(sk, 1.12)); P(4, 10, 12, 2, skD);
+    P(16, 6, 2, 4, sk);                                               // the muzzle
+    P(2, 0, 4, 8, flash ? '#fff' : '#42413b');                        // matted scalp
+    P(4, 0, 12, 4, flash ? '#fff' : '#42413b');
+    P(4, 0, 12, 2, flash ? '#fff' : '#58574f');
+    P(12, 6, 4, 4, '#f1f1f1'); P(14, 6, 2, 4, skX);                   // one white eye
+    P(8, 10, 6, 2, '#b40000');                                        // the open mouth
+}
+/* Skeleton: bone is a desaturated olive-tan, not white, and the vanilla Skeleton is NOT naked —
+   it wears a ragged blue-grey shirt and brown boots, with a red glint in the socket. */
+function drawSkeleton(x, f, fx, fy, flash, dir) {
+    var beat = (RT.anim >> 2) % 4, sw = (beat === 1 || beat === 3) ? 2 : 0;
+    var bn = flash ? '#fff' : '#b2b28a', bnL = flash ? '#fff' : '#bcbca4', bnD = flash ? '#fff' : '#81815f';
+    var bnX = flash ? '#fff' : '#5b5b3d';
+    var sh = flash ? '#fff' : '#29486b', shL = flash ? '#fff' : '#4678af', shD = flash ? '#fff' : '#111e2c';
+    pen(x, fx, fy, dir, 20);
+    P(6 + sw, 26, 4, 10 - sw, bn); P(10 - sw, 26, 4, 10 + sw, bn);    // legs
+    P(6 + sw, 26, 2, 10 - sw, bnL); P(10 - sw, 26, 2, 10 + sw, bnL);
+    P(4 + sw, 34 - sw, 6, 2, '#684427'); P(10 - sw, 34 + sw, 6, 2, '#684427');   // brown boots
+    P(4 + sw, 34 - sw, 6, 2, '#9a653a');
+    P(6, 22, 8, 4, bnD); P(6, 22, 8, 2, bn);                          // pelvis
+    P(4, 12, 12, 12, sh);                                             // the ragged shirt
+    P(4, 12, 12, 2, shL); P(4, 22, 12, 2, shD);
+    P(6, 18, 4, 4, shD); P(12, 16, 2, 6, shD);                        // rags
+    P(8, 18, 2, 4, bnX);
+    P(2, 12, 4, 10, bn); P(14, 12, 4, 10, bn);                        // bare arms
+    P(2, 12, 2, 10, bnL); P(16, 12, 2, 10, bnD);
+    P(2, 20, 4, 4, bnD); P(14, 20, 4, 4, bnD);
+    P(4, 0, 12, 10, bn); P(4, 0, 12, 2, bnL); P(16, 4, 2, 6, bnD);    // skull
+    P(12, 4, 4, 4, '#242418'); P(12, 4, 2, 2, '#b30c10');             // socket with a red glint
+    P(16, 6, 2, 2, bn);                                               // nasal ridge
+    P(6, 10, 10, 2, bnD);                                             // jaw
+    for (var tt = 0; tt < 4; tt++) P(6 + tt * 2, 10, 2, 2, tt % 2 ? bnX : bnD);
+}
+/* Cave Bat: entirely dark BLUE, never brown, with two single-pixel pure-white eyes — and the body
+   bobs inside the frame across the flap, so the sprite rises and falls while the hitbox travels
+   smoothly. Four flap poses: up, level, down, level. */
+function drawBat(x, f, fx, fy, flash, dir) {
+    var pose = ((RT.anim / 6) | 0) % 4, lift = [-2, 0, 2.4, 0][pose], bob = [-1, 0, 1, 0][pose];
+    var bd = flash ? '#fff' : '#002e4a', bdD = flash ? '#fff' : '#001d2e';
+    var wg = flash ? '#fff' : '#002438', wgL = flash ? '#fff' : '#177fba';
+    x.save(); x.translate(fx + 5, fy + 5 + bob); if (dir < 0) x.scale(-1, 1);
+    x.rotate(clamp((f.vx || 0) * 0.1, -0.4, 0.4));
+    for (var s = -1; s <= 1; s += 2) {                                 // ragged angular wings
+        x.fillStyle = wg;
+        x.beginPath();
+        x.moveTo(s * 1, -1);
+        x.lineTo(s * 5, -1 + lift); x.lineTo(s * 7, 0.5 + lift * 0.6);
+        x.lineTo(s * 5.5, 1 + lift * 0.5); x.lineTo(s * 6.5, 2.6 + lift * 0.3);
+        x.lineTo(s * 3, 1.6); x.lineTo(s * 1, 2);
+        x.closePath(); x.fill();
+        x.fillStyle = wgL; x.fillRect(s > 0 ? 1 : -6.5, -0.5 + lift * 0.7, 5.5, 0.5);
+    }
+    x.fillStyle = bd; x.fillRect(-2, -2, 4, 5);                        // tiny body
+    x.fillStyle = bdD; x.fillRect(-2, 2, 4, 1);
+    x.fillStyle = bd; x.fillRect(-2, -3.5, 1.5, 1.5); x.fillRect(0.5, -3.5, 1.5, 1.5);   // ears
+    x.fillStyle = '#ffffff'; x.fillRect(-1.5, -1, 1, 1); x.fillRect(0.5, -1, 1, 1);
+    x.restore();
+}
+/* Hornet: pink-and-amber with a pale, cold wing — not a yellow-and-black wasp. The composition is
+   diagonal: head and thorax up-left, banded abdomen trailing down-right to the stinger. */
+function drawHornet(x, f, fx, fy, flash, dir) {
+    var wg = ((RT.anim / 2) | 0) % 3, flap = [0, -1, -2][wg];
+    var pk = flash ? '#fff' : '#d17f93', pkD = flash ? '#fff' : '#7e2b4f', pkX = flash ? '#fff' : '#38111d';
+    var am = flash ? '#fff' : '#df9b25', amD = flash ? '#fff' : '#964316', amX = flash ? '#fff' : '#4e220a';
+    x.save(); x.translate(fx + 5, fy + 5); if (dir < 0) x.scale(-1, 1);
+    x.rotate(clamp((f.vx || 0) * 0.1, -0.35, 0.35));
+    x.globalAlpha = 0.75; x.fillStyle = '#95afc1';                     // the pale, cold wing
+    x.beginPath(); x.moveTo(0, -1.5); x.lineTo(4.5, -5 + flap); x.lineTo(6, -3.5 + flap); x.lineTo(1, 0); x.closePath(); x.fill();
+    x.fillStyle = '#bedad8';
+    x.beginPath(); x.moveTo(0.5, -1.8); x.lineTo(4.2, -4.4 + flap); x.lineTo(4.8, -3.6 + flap); x.lineTo(1.2, -1); x.closePath(); x.fill();
+    x.globalAlpha = 1;
+    x.fillStyle = amX;                                                 // abdomen, trailing down-right
+    x.beginPath(); x.moveTo(-0.5, 0); x.lineTo(4.5, 3.5); x.lineTo(3, 5.5); x.lineTo(-1.5, 2); x.closePath(); x.fill();
+    x.fillStyle = am;
+    x.beginPath(); x.moveTo(-0.3, 0.4); x.lineTo(4, 3.5); x.lineTo(3, 4.8); x.lineTo(-1.2, 1.8); x.closePath(); x.fill();
+    x.fillStyle = amD; x.fillRect(0.6, 1.4, 1, 2); x.fillRect(2.2, 2.6, 1, 2);
+    x.fillStyle = '#cfcd43'; x.fillRect(1.4, 2, 0.8, 2);
+    x.fillStyle = amX; x.fillRect(3.4, 4.8, 1.6, 1.6);                 // the stinger
+    x.fillStyle = pkD;                                                 // thorax + head, up-left
+    x.beginPath(); x.moveTo(-4.5, -3.5); x.lineTo(0.5, 0.5); x.lineTo(-1.5, 2); x.lineTo(-5.5, -1.5); x.closePath(); x.fill();
+    x.fillStyle = pk;
+    x.beginPath(); x.moveTo(-4.2, -3); x.lineTo(0, 0.4); x.lineTo(-1.4, 1.4); x.lineTo(-5, -1.4); x.closePath(); x.fill();
+    x.fillStyle = pkX; x.fillRect(-6, -3.5, 2.2, 2.2);                 // head
+    x.fillStyle = '#332159'; x.fillRect(-5.6, -3.1, 1.4, 1.4);         // compound eye
+    x.fillStyle = '#eeb19c'; x.fillRect(-3.4, -2.4, 1, 1);
+    x.restore();
+}
+/* Demon Eye: a bloodshot eyeball with a red fleshy back and a ragged tail of gore flecks — NO
+   wings (those belong to the Hardmode Wandering Eye). The pupil never moves and never tracks; the
+   whole sprite rotates to point along its flight path, and that is the entire animation. */
+function drawDemonEye(x, f, fx, fy, flash, dir) {
+    var ex = fx + 4.5, ey = fy + 5, jitter = ((RT.anim / 8) | 0) % 2;
+    x.save(); x.translate(ex, ey);
+    x.rotate(Math.atan2(f.vy || 0, Math.abs(f.vx || 0.01)) * (dir < 0 ? -1 : 1));
+    if (dir < 0) x.scale(-1, 1);
+    x.fillStyle = flash ? '#fff' : '#651d1d';                            // trailing gore flecks
+    for (var t2 = 0; t2 < 5; t2++) {
+        var tx2 = 4.5 + t2 * 1.2, ty2 = ((t2 + jitter) % 3 - 1) * 1.1;
+        x.fillStyle = flash ? '#fff' : (t2 % 2 ? '#9d2929' : '#651d1d');
+        x.fillRect(tx2, ty2, 1, 1);
+    }
+    x.fillStyle = flash ? '#fff' : '#360909';                            // outline
+    x.beginPath(); x.ellipse ? x.ellipse(0, 0, 5.4, 4.6, 0, 0, 7) : x.arc(0, 0, 5, 0, 7); x.fill();
+    x.fillStyle = flash ? '#fff' : '#b52525';                            // the red fleshy back
+    x.beginPath(); x.ellipse ? x.ellipse(0.4, 0, 4.8, 4, 0, 0, 7) : x.arc(0.4, 0, 4.4, 0, 7); x.fill();
+    x.fillStyle = flash ? '#fff' : '#dc1c1c';
+    x.beginPath(); x.ellipse ? x.ellipse(1.6, -0.6, 3.2, 2.6, 0, 0, 7) : x.arc(1.6, -0.6, 2.8, 0, 7); x.fill();
+    x.fillStyle = flash ? '#fff' : '#f5f5f5';                            // white sclera, facing left
+    x.beginPath(); x.ellipse ? x.ellipse(-1.4, 0, 3.6, 3.8, 0, 0, 7) : x.arc(-1.4, 0, 3.6, 0, 7); x.fill();
+    x.fillStyle = flash ? '#fff' : '#bebebe';
+    x.beginPath(); x.ellipse ? x.ellipse(-1.2, 1.6, 3, 2, 0, 0, 7) : x.arc(-1.2, 1.6, 2.2, 0, 7); x.fill();
+    x.fillStyle = flash ? '#fff' : '#2d329b';                            // blue-violet iris
+    x.beginPath(); x.arc(-2.4, 0, 2.4, 0, 7); x.fill();
+    x.fillStyle = flash ? '#fff' : '#3d44c7';
+    x.beginPath(); x.arc(-2.4, -0.4, 1.6, 0, 7); x.fill();
+    x.fillStyle = '#080808'; x.beginPath(); x.arc(-2.8, 0, 1.2, 0, 7); x.fill();
     x.restore();
 }
 /* town NPCs share the player's build so the town reads as one cast; each is dressed to their
    own Terraria sprite — the Guide's green tunic, the Merchant's grey moustache, the Nurse's cap */
+/* Sampled off the real town-NPC sheets. Two things everyone gets wrong: the Guide's shirt is a
+   desaturated KHAKI, not green, and he wears blue denim — he is the only one of the three in jeans.
+   The Nurse's one saturated accent is her magenta shoes, not pink hair; her hair is blonde. */
 var NPCLOOK = {
-    guide:    { hair: '#6b4a26', hairL: '#8a6234', shirt: '#3f7a46', shirtL: '#57a05e', shirtD: '#2b5730', pants: '#6b5334', shoe: '#4a3826', skin: '#f0b48a' },
-    merchant: { hair: '#b6b6c0', hairL: '#d8d8e0', shirt: '#7d8fa8', shirtL: '#9db0c8', shirtD: '#5a6a80', pants: '#5a4736', shoe: '#3d3128', skin: '#efc0a0' },
-    nurse:    { hair: '#e8567e', hairL: '#ff86a6', shirt: '#f2f2f6', shirtL: '#ffffff', shirtD: '#cfcfd8', pants: '#e2e2ea', shoe: '#d24a66', skin: '#ffcbb0' }
+    guide:    { hair: '#8e510e', hairL: '#c4781f', hairD: '#4f2c0a', shirt: '#a7a67d', shirtL: '#c5c3a9', shirtD: '#605d4a', pants: '#5f7597', shoe: '#23262b', skin: '#ef845a' },
+    merchant: { hair: '#dbd6d6', hairL: '#f7f7f7', hairD: '#989595', shirt: '#ae650e', shirtL: '#d98b2f', shirtD: '#6e3e0e', pants: '#738399', shoe: '#252b33', skin: '#ef845a' },
+    nurse:    { hair: '#cebd10', hairL: '#ffe75a', hairD: '#7b6310', shirt: '#f5f5f5', shirtL: '#ffffff', shirtD: '#a3b2c8', pants: '#cad2e0', shoe: '#ad095e', skin: '#ef845a' }
 };
 function drawNPC(x, n, cx, cy) {
     var nx = n.x - cx, ny = n.y - cy, walking = Math.abs(n.vx) > 0.05;
@@ -3512,19 +3979,21 @@ function drawNPC(x, n, cx, cy) {
     P(10 + w[0], 30, 5, 7 - w[1], k.pants); P(9 + w[0], 36 - w[1], 7, 3, k.shoe);
     P(5, 16, 11, 11, k.shirt); P(5, 16, 11, 2, k.shirtL); P(5, 25, 11, 2, k.shirtD);
     P(5, 16, 1, 11, k.shirtL); P(15, 16, 1, 11, k.shirtD);
-    if (n.kind === 'guide') { P(9, 18, 3, 9, k.shirtD); P(5, 24, 11, 1, '#6b5334'); }   // tunic seam + belt
-    if (n.kind === 'nurse') { P(5, 22, 11, 1, '#d24a66'); P(7, 17, 2, 2, '#d24a66'); }
-    if (n.kind === 'merchant') { P(5, 19, 11, 1, k.shirtD); P(13, 20, 2, 4, '#ddb828'); }   // coin pouch
-    P(5, 5, 11, 12, k.skin); P(5, 5, 11, 1, shade(k.skin, 1.1)); P(5, 15, 11, 2, shade(k.skin, 0.82));
-    P(15, 6, 1, 10, shade(k.skin, 0.82));
-    P(4, 1, 13, 6, k.hair); P(4, 1, 13, 2, k.hairL); P(3, 4, 3, 10, k.hair);
-    if (n.kind === 'merchant') { P(5, 11, 11, 5, k.hair); P(5, 11, 11, 1, k.hairL); P(9, 13, 4, 2, shade(k.skin, 0.8)); }  // full beard
-    if (n.kind === 'nurse') {                                          // cap with the red cross
-        P(4, 0, 13, 4, '#ffffff'); P(4, 0, 13, 1, '#e8e8f0');
-        P(9, 0, 3, 4, '#d8324e'); P(7, 1, 7, 2, '#d8324e');
+    if (n.kind === 'guide') { P(8, 18, 4, 8, k.shirtD); P(4, 24, 12, 2, '#524030'); }   // shirt seam + belt
+    if (n.kind === 'nurse') { P(4, 22, 12, 2, '#d30c24'); P(6, 16, 2, 2, '#d30c24'); }
+    if (n.kind === 'merchant') { P(4, 20, 12, 2, k.shirtD); P(12, 20, 4, 4, '#ddb828'); }   // coin pouch
+    P(4, 4, 12, 12, k.skin); P(4, 4, 12, 2, shade(k.skin, 1.1)); P(4, 14, 12, 2, shade(k.skin, 0.82));
+    P(16, 8, 2, 4, k.skin);                                            // muzzle
+    P(4, -2, 12, 8, k.hair); P(4, -2, 12, 2, k.hairL); P(2, 0, 4, 10, k.hairD);
+    if (n.kind === 'merchant') {                                       // wide brim + a beard to mid-chest
+        P(0, 0, 18, 2, k.shirtD); P(2, -4, 14, 6, k.shirt); P(2, -4, 14, 2, k.shirtL);
+        P(4, 10, 12, 8, k.hair); P(4, 10, 12, 2, k.hairL); P(6, 12, 6, 2, shade(k.skin, 0.8));
     }
-    P(10, 9, 6, 6, shade(k.skin, 0.82));
-    P(11, 10, 5, 4, '#fff'); P(13, 10, 3, 4, n.kind === 'nurse' ? '#3a6a8a' : '#4a3a2a');
+    if (n.kind === 'nurse') {                                          // cap with the red cross
+        P(4, -4, 12, 6, '#f5f5f5'); P(4, -4, 12, 2, '#ffffff');
+        P(8, -4, 4, 6, '#d30c24'); P(6, -2, 8, 2, '#d30c24');
+    }
+    P(12, 6, 4, 4, '#f7f7f7'); P(14, 6, 2, 4, n.kind === 'nurse' ? '#3f6e12' : '#37170c');
     var naY = 17 + w[4];                                               // front arm, counter-swinging
     P(14, naY, 5, 8, k.shirt); P(14, naY, 5, 2, k.shirtL); P(18, naY, 1, 7, k.shirtD);
     P(14, naY + 8, 4, 3, k.skin);
@@ -3773,21 +4242,53 @@ function paintHotbar() {
     // selected item name flash
     var sel = S.inv[S.sel];
     var nm = RT.root.querySelector('.tr-selname');
-    if (!nm) { nm = document.createElement('div'); nm.className = 'tr-selname'; RT.root.querySelector('.tr-topleft').appendChild(nm); }
+    if (!nm) { nm = document.createElement('div'); nm.className = 'tr-selname'; hb.parentNode.insertBefore(nm, hb.nextSibling); }
     if (sel) { nm.textContent = ITEMS[sel.id].n; nm.style.color = RAR[ITEMS[sel.id].rar] || '#fff'; nm.classList.add('on'); clearTimeout(RT._selT); RT._selT = setTimeout(function () { if (nm) nm.classList.remove('on'); }, 1400); }
     if (RT.panel) paintPanel();
 }
 function tipText(id) { var d = ITEMS[id]; var extra = d.dmg ? ' · ' + d.dmg + ' dmg' : d.pow ? ' · pick power ' + d.pow : d.def ? ' · ' + d.def + ' def' : ''; return d.n + extra + (d.tip ? ' — ' + d.tip : ''); }
+/* Terraria never crops or half-fills a heart. Every heart in your maximum is drawn every frame;
+   the one being drained is DIMMED and SHRUNK — v = clamp(30 + 225f, 30, 255), scale = f/4 + 0.75 —
+   so an empty heart is still sitting there at about 12% brightness and 75% size. */
+function vitalHTML(cls, cur, max) {
+    var n = Math.ceil(max / 20), html = '';
+    for (var i = 0; i < n; i++) {
+        var f = clamp(cur - i * 20, 0, 20) / 20;
+        var v = clamp(30 + 225 * f, 30, 255) / 255, sc = clamp(f / 4 + 0.75, 0.75, 1);
+        html += '<span class="' + cls + '" style="opacity:' + v.toFixed(2) + ';transform:scale(' + sc.toFixed(2) + ')"></span>';
+    }
+    return html;
+}
 function paintHearts() {
-    var el = RT.root.querySelector('.tr-hearts'), n = Math.ceil(S.maxhp / 20), html = '';
-    for (var i = 0; i < n; i++) { var fill = clamp(S.hp - i * 20, 0, 20) / 20; html += '<span class="tr-heart' + (fill <= 0 ? ' empty' : fill < 1 ? ' half' : '') + '"></span>'; }
-    el.innerHTML = html + '<b>' + Math.max(0, S.hp) + '</b>';
+    var el = RT.root.querySelector('.tr-hearts');
+    el.innerHTML = '<b>Life: ' + Math.max(0, S.hp) + '/' + S.maxhp + '</b>' + vitalHTML('tr-heart', S.hp, S.maxhp);
 }
 function paintStars() {
-    var el = RT.root.querySelector('.tr-stars'), n = Math.ceil(S.maxmana / 20), html = '';
+    var el = RT.root.querySelector('.tr-stars');
     if (S.maxmana <= 0) { el.innerHTML = ''; return; }
-    for (var i = 0; i < n; i++) { var fill = clamp(S.mana - i * 20, 0, 20) / 20; html += '<span class="tr-star' + (fill <= 0 ? ' empty' : fill < 1 ? ' half' : '') + '"></span>'; }
-    el.innerHTML = html + '<b>' + Math.max(0, S.mana) + '</b>';
+    el.innerHTML = '<b>Mana</b>' + vitalHTML('tr-star', S.mana, S.maxmana);
+}
+/* the heart and star are real pixel sprites, baked once and handed to CSS as a data URL —
+   a clip-path polygon reads as a vector heart, which is exactly what Terraria's is not */
+function bakeVitalIcons(root) {
+    var HEART = ['..###.###..', '.#########.', '###########', '###########', '###########',
+                 '.#########.', '..#######..', '...#####...', '....###....', '.....#.....'];
+    var STAR = ['.....#.....', '....###....', '....###....', '###########', '.#########.',
+                '..#######..', '..#######..', '..##...##..', '.##.....##.', '##.......##'];
+    function bake(rows, pal) {
+        var m = mkc(22, 24), g = m.g;
+        for (var y = 0; y < rows.length; y++) for (var x = 0; x < rows[y].length; x++) {
+            if (rows[y].charAt(x) !== '#') continue;
+            var edge = y === 0 || x === 0 || rows[y].charAt(x - 1) !== '#' || rows[y].charAt(x + 1) !== '#' ||
+                       !rows[y - 1] || rows[y - 1].charAt(x) !== '#' || !rows[y + 1] || rows[y + 1].charAt(x) !== '#';
+            var c = edge ? pal[0] : (x < 4 && y < 4) ? pal[3] : (x > 6 || y > 6) ? pal[1] : pal[2];
+            g.fillStyle = c; g.fillRect(x * 2, y * 2, 2, 2);
+        }
+        g.fillStyle = pal[4]; g.fillRect(6, 4, 2, 2); g.fillRect(8, 2, 2, 2);   // specular
+        return 'url(' + m.c.toDataURL() + ')';
+    }
+    root.style.setProperty('--tr-heart', bake(HEART, ['#390405', '#b01014', '#db1216', '#f71318', '#fe6a6e']));
+    root.style.setProperty('--tr-star', bake(STAR, ['#0a0f3c', '#2b3ded', '#3c52f4', '#5571ff', '#718fff']));
 }
 function paintCoins() {
     var c = S.coins, g = Math.floor(c / 10000), s = Math.floor(c % 10000 / 100), cp = c % 100;

@@ -1,0 +1,148 @@
+<!doctype html><meta charset="utf-8"><title>terraria sprites</title>
+<link rel="stylesheet" href="/comp/comp.css">
+<style>
+  html, body { margin: 0; background: #14161c; font-family: system-ui, sans-serif; color: #ccc; }
+  #stage { position: absolute; left: -4000px; top: 0; width: 900px; height: 560px; display: grid; }
+  #stage .tr { width: 100%; height: 100%; }
+  #out { padding: 8px; }
+  #bar { font: 11px monospace; padding: 4px 8px; color: #9aa; white-space: pre-wrap; }
+</style>
+<div id="bar">loading…</div>
+<div id="stage"></div>
+<div id="out"></div>
+<script src="/comp/terraria.js"></script>
+<script>
+/* Zoomed contact sheets of every baked sprite, so the art can be judged without
+   hunting for it in the world. ?post=PORT posts each sheet as a PNG.
+   sheets=tiles,walls,objects,items,player,foes,npcs,bosses */
+var Q = new URLSearchParams(location.search);
+var POST = Q.get('post'), Z = +(Q.get('z') || 5);
+var stage = document.getElementById('stage'), bar = document.getElementById('bar');
+try { localStorage.setItem('comp_terraria', JSON.stringify({ v: 2, seed: 12345 })); } catch (e) {}
+stage.innerHTML = TERRA.render();
+TERRA.init(stage);
+var T = window.__terra, S = T.S(), RT = T.RT();
+cancelAnimationFrame(RT.raf); RT.raf = 0;
+var A = T.art, TPX = A.TPX, TS = A.TS;
+var W = 420, H = 232;
+
+function sheet(title, cells, cw, ch, cols) {
+  cols = cols || Math.min(cells.length, 10);
+  var rows = Math.ceil(cells.length / cols);
+  var pad = 14, lab = 16, top = 30;
+  var cv = document.createElement('canvas');
+  cv.width = pad + cols * (cw * Z + pad);
+  cv.height = top + rows * (ch * Z + lab + pad);
+  var g = cv.getContext('2d');
+  g.imageSmoothingEnabled = false;
+  g.fillStyle = '#1a1d24'; g.fillRect(0, 0, cv.width, cv.height);
+  g.fillStyle = '#e8ecf4'; g.font = 'bold 15px system-ui'; g.fillText(title, pad, 20);
+  cells.forEach(function (c, i) {
+    var cx = pad + (i % cols) * (cw * Z + pad), cy = top + Math.floor(i / cols) * (ch * Z + lab + pad);
+    g.fillStyle = c.bg || '#2b3040'; g.fillRect(cx, cy, cw * Z, ch * Z);
+    g.save(); g.translate(cx, cy); g.scale(Z, Z);
+    g.imageSmoothingEnabled = false;
+    try { c.draw(g); } catch (e) { g.restore(); g.fillStyle = '#f66'; g.fillText('ERR', cx + 2, cy + 12); g.save(); g.translate(cx, cy); }
+    g.restore();
+    g.imageSmoothingEnabled = false;
+    g.fillStyle = '#9fb0c8'; g.font = '11px system-ui';
+    g.fillText(c.label, cx, cy + ch * Z + 12);
+  });
+  return cv;
+}
+
+/* ── tiles ── every block, as a lone block, a top-exposed block and a buried block ── */
+var TN = { 1:'dirt',2:'grass',3:'stone',4:'plank',5:'trunk',6:'leaf',7:'sand',8:'snow',9:'ice',10:'mud',
+  11:'jgrass',12:'clay',13:'silt',14:'ash',15:'hellstone',16:'obsidian',17:'cobweb',18:'cloud',19:'ebon',20:'cgrass',
+  21:'copper',22:'iron',23:'silver',24:'gold',25:'demonite',26:'meteor',27:'amethyst',28:'topaz',29:'sapphire',
+  30:'emerald',31:'ruby',32:'diamond',44:'platform' };
+function tileCells(mask, tag) {
+  return Object.keys(TN).map(function (k) {
+    var t = +k;
+    return { label: TN[k] + ' ' + tag, draw: function (g) {
+      for (var i = 0; i < 4; i++) g.drawImage(A.tile(t, mask, i % 3), (i % 2) * TPX, ((i / 2) | 0) * TPX);
+    } };
+  });
+}
+/* 255 = fully surrounded by the same family, 0 = isolated */
+var SHEETS = {
+  tiles_solo: function () { return sheet('TILES — isolated block (all faces exposed), 2x2 of variants', tileCells(0, 'solo'), TPX * 2, TPX * 2, 9); },
+  tiles_buried: function () { return sheet('TILES — fully buried (interior)', tileCells(15, 'buried'), TPX * 2, TPX * 2, 9); },
+  tiles_top: function () { return sheet('TILES — top face exposed only', tileCells(14, 'top'), TPX * 2, TPX * 2, 9); },
+  walls: function () {
+    var names = ['none','dirt','stone','wood','ash','sand','snow','jungle','ebon'];
+    return sheet('BACKGROUND WALLS — 3x3 patch, interior frame', names.slice(1).map(function (n, i) {
+      var wl = i + 1, fr = A.wall(wl);
+      return { label: n, draw: function (g) { for (var y = 0; y < 3; y++) for (var x = 0; x < 3; x++) g.drawImage(fr[15], x * TPX, y * TPX); } };
+    }), TPX * 3, TPX * 3, 8);
+  },
+  objects: function () {
+    var ks = ['bench','anvil','pot','chest','table','chair','door','dooropen','platform','sapling','bottle','heart','mana','furnace','hellforge','torch'];
+    return sheet('OBJECTS', ks.map(function (k) {
+      return { label: k, draw: function (g) { try { g.drawImage(A.obj(k), 0, 0); } catch (e) { g.fillStyle = '#f66'; g.fillRect(0, 0, 4, 4); } } };
+    }), TPX, TPX, 8);
+  },
+  items: function () {
+    var ids = Object.keys(T.ITEMS);
+    return sheet('ITEM ICONS', ids.map(function (id) {
+      return { label: id, draw: function (g) { g.drawImage(A.item(id), 0, 0); } };
+    }), TPX, TPX, 16);
+  },
+  player: function () {
+    var poses = [
+      ['idle R', function () { RT.face = 1; RT.ground = 1; RT.vx = 0; RT.anim = 0; RT.swing = 0; S.sel = 99; }],
+      ['idle L', function () { RT.face = -1; RT.ground = 1; RT.vx = 0; RT.anim = 0; RT.swing = 0; S.sel = 99; }],
+      ['walk 2', function () { RT.face = 1; RT.ground = 1; RT.vx = 1; RT.anim = 8; RT.swing = 0; }],
+      ['walk 6', function () { RT.face = 1; RT.ground = 1; RT.vx = 1; RT.anim = 24; RT.swing = 0; }],
+      ['jump', function () { RT.face = 1; RT.ground = 0; RT.vx = 1; RT.anim = 0; RT.swing = 0; }],
+      ['sword mid', function () { RT.face = 1; RT.ground = 1; RT.vx = 0; RT.swing = 6; S.inv[30] = { id: 'csword', c: 1 }; S.sel = 30; }],
+      ['pick mid', function () { RT.face = 1; RT.ground = 1; RT.vx = 0; RT.swing = 6; S.inv[30] = { id: 'cpick', c: 1 }; S.sel = 30; }],
+      ['bow', function () { RT.face = 1; RT.ground = 1; RT.vx = 0; RT.swing = 6; S.inv[30] = { id: 'woodbow', c: 1 }; S.sel = 30; }],
+      ['torch', function () { RT.face = 1; RT.ground = 1; RT.vx = 0; RT.swing = 0; S.inv[30] = { id: 'torch', c: 1 }; S.sel = 30; }],
+      ['iron set', function () { RT.face = 1; RT.ground = 1; RT.vx = 0; RT.swing = 0; S.sel = 99; S.arm = [{ id: 'ihead', c: 1 }, { id: 'ichest', c: 1 }, { id: 'ilegs', c: 1 }]; }],
+      ['gold set', function () { RT.face = 1; RT.ground = 1; RT.vx = 0; RT.swing = 0; S.sel = 99; S.arm = [{ id: 'ghead', c: 1 }, { id: 'gchest', c: 1 }, { id: 'glegs', c: 1 }]; }]
+    ];
+    return sheet('PLAYER — 24x28 world px box', poses.map(function (p) {
+      return { label: p[0], bg: '#38506e', draw: function (g) { S.arm = [null, null, null]; p[1](); A.player(g, 2, 2); S.arm = [null, null, null]; S.sel = 0; } };
+    }), 24, 28, 6);
+  },
+  foes: function () {
+    var mk = function (kind, o) { var f = { kind: kind, x: 0, y: 0, vx: 0.4, vy: 0, hp: 10, hurtT: 0, t: 0, anim: 20 }; for (var k in o) f[k] = o[k]; return f; };
+    var list = [
+      ['green slime', mk('slime', { green: 1 })], ['blue slime', mk('slime', {})], ['pinky', mk('slime', { pinky: 1 })],
+      ['zombie', mk('zombie', {})], ['skeleton', mk('skeleton', {})], ['bat', mk('bat', {})],
+      ['hornet', mk('hornet', {})], ['demon eye', mk('eye', {})]
+    ];
+    return sheet('ENEMIES', list.map(function (p) {
+      return { label: p[0], bg: '#38506e', draw: function (g) { RT.anim = 24; A.foe(g, p[1], -4, -4); } };
+    }), 20, 20, 8);
+  },
+  npcs: function () {
+    return sheet('NPCs', ['guide', 'merchant', 'nurse'].map(function (k) {
+      return { label: k, bg: '#38506e', draw: function (g) { RT.anim = 24; A.npc(g, { kind: k, x: 0, y: 0, vx: 0, face: 1, t: 0 }, -4, -6); } };
+    }), 24, 28, 6);
+  },
+  bosses: function () {
+    var list = [['eye p1', { kind: 'eye', x: 0, y: 0, vx: 0, vy: 0, hp: 300, max: 300, phase: 1, t: 30, hurtT: 0 }],
+                ['eye p2', { kind: 'eye', x: 0, y: 0, vx: 0, vy: 0, hp: 100, max: 300, phase: 2, t: 30, hurtT: 0 }],
+                ['king slime', { kind: 'king', x: 0, y: 0, vx: 0, vy: 0, hp: 600, max: 600, t: 30, hurtT: 0 }],
+                ['eater', { kind: 'eater', x: 0, y: 0, vx: 1, vy: 0, hp: 400, max: 400, t: 30, hurtT: 0, seg: [] }]];
+    return sheet('BOSSES', list.map(function (p) {
+      return { label: p[0], bg: '#38506e', draw: function (g) { RT.anim = 24; g.save(); g.translate(40, 40); A.boss(g, p[1], 0, 0); g.restore(); } };
+    }), 80, 80, 4);
+  }
+};
+
+var want = (Q.get('sheets') || Object.keys(SHEETS).join(',')).split(',').filter(function (s) { return SHEETS[s]; });
+var log = [], out = document.getElementById('out'), i = 0;
+(function next() {
+  if (i >= want.length) { bar.textContent = log.join('\n'); document.title = 'SHEETS DONE ' + want.length; return; }
+  var name = want[i++], cv;
+  try { cv = SHEETS[name](); } catch (e) { log.push('ERR ' + name + ' ' + e.message); return next(); }
+  out.appendChild(cv);
+  if (!POST) { log.push(name + ' ' + cv.width + 'x' + cv.height); return next(); }
+  fetch('http://localhost:' + POST + '/sheet-' + name, { method: 'POST', body: cv.toDataURL('image/png') })
+    .then(function () { log.push('posted ' + name + ' ' + cv.width + 'x' + cv.height); next(); })
+    .catch(function (e) { log.push('FAIL ' + name + ' ' + e.message); next(); });
+})();
+</script>
