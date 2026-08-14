@@ -777,10 +777,25 @@
         });
         hide('ender_skin', '#101018', ['#181822', '#0a0a10', '#1e1e2a']);
         tile('ender_face', function () { trect(0, 0, 16, 16, '#101018'); sprinkle(['#181822', '#0a0a10'], 30); trect(3, 7, 4, 2, '#c8a8ff'); trect(9, 7, 4, 2, '#c8a8ff'); tpx(4, 7, '#e8d8ff'); tpx(10, 7, '#e8d8ff'); });
+        // the face it wears once you've looked at it: eyes wide, jaw open
+        tile('ender_rage', function () {
+            trect(0, 0, 16, 16, '#101018'); sprinkle(['#181822', '#0a0a10'], 30);
+            trect(2, 6, 5, 3, '#e0c8ff'); trect(9, 6, 5, 3, '#e0c8ff');
+            trect(3, 6, 3, 1, '#ffffff'); trect(10, 6, 3, 1, '#ffffff');
+            trect(6, 11, 4, 3, '#050508'); trect(5, 12, 6, 1, '#050508');
+        });
         hide('slime_skin', '#5bc44a', ['#4faa3e', '#6bd858', '#54b846']);
         tile('slime_face', function () { trect(0, 0, 16, 16, '#5bc44a'); sprinkle(['#4faa3e', '#6bd858'], 26); trect(4, 5, 2, 2, '#28401e'); trect(10, 5, 2, 2, '#28401e'); trect(6, 10, 4, 1, '#28401e'); });
         hide('squid_skin', '#5a3f8c', ['#4e357a', '#6a4fa0', '#472f6e']);
         tile('squid_face', function () { trect(0, 0, 16, 16, '#5a3f8c'); sprinkle(['#4e357a', '#6a4fa0'], 26); trect(4, 6, 2, 3, '#1a1024'); trect(10, 6, 2, 3, '#1a1024'); tpx(4, 6, '#c8b8e0'); tpx(10, 6, '#c8b8e0'); });
+        /* the bits that hang off a head: a snout, a pair of horns, a beak and its
+           wattle. They exist so that a head TURNING is legible — a plain cube can
+           swivel all it likes and read as standing still. */
+        hide('pig_snout', '#dd7a76', ['#c96b67', '#e88a86', '#b85f5b']);
+        hide('cow_horn', '#d8cfc0', ['#c4bbac', '#e8e0d0', '#b0a798']);
+        hide('sheep_wool', '#f4f2ee', ['#e6e4df', '#fbfaf7', '#dcd9d2']);
+        hide('chick_beak', '#e8a020', ['#d08c15', '#f5b433', '#c07e10']);
+        hide('chick_wattle', '#d43022', ['#b8261a', '#e6432f', '#a01f15']);
         // the player's own skin — a FULL tile, so the empty first-person hand reads as a limb.
         // (it used to borrow the flat leather ITEM sprite, which stretched over the box into a
         //  glitchy brown blob with the icon's stitched border floating around it)
@@ -2842,64 +2857,116 @@
 
     /* ── mobs ───────────────────────────────────────────────── */
     var PX = 1.8 / 32;   // one skin-pixel in world units
-    // parts: [sx,sy,sz, cx,cy,cz, flags]  flags: 1 face-tile front, 2 swing, 4 counter-swing, 8 alt tile
+    /* A part is [sx,sy,sz, cx,cy,cz, flags, role, idx, pivot].
+       Sizes and the box centre are skin-pixels, measured from the mob's feet and
+       its centre line; +z is the way it faces.
+         flags — 1 face tile on the front · 8 alt tile
+         role  — what the animator does with it. 'head' turns to watch you,
+                 'leg'/'arm'/'wing' swing, 'snout'/'horn'/'beak'/'wattle'/'headfur'
+                 ride the head, and anything it doesn't recognise rides the body.
+         idx   — which one. Legs are numbered front-left, front-right, back-left,
+                 back-right, so the diagonal pairs (0,3) and (1,2) share a phase:
+                 that is the whole difference between a walk and a hop. A biped's
+                 two legs fall out of the same rule.
+         pivot — where it hinges, when the default is wrong. A limb hinges at its
+                 top (hip, shoulder); everything else turns about its own centre,
+                 which is right for a head sitting on a neck but not for one slung
+                 out in front of a body, so quadrupeds name theirs. */
     var HUMANOID = [
-        [8, 8, 8, 0, 28, 0, 1],
-        [8, 12, 4, 0, 18, 0, 8],
-        [4, 4, 12, -6, 26, 4, 0], [4, 4, 12, 6, 26, 4, 0],   // arms, outstretched
-        [4, 12, 4, -2, 6, 0, 2], [4, 12, 4, 2, 6, 0, 4]
+        [8, 8, 8, 0, 28, 0, 1, 'head', 0, [0, 24, 0]],
+        [8, 12, 4, 0, 18, 0, 8, 'body'],
+        [4, 12, 4, -6, 18, 0, 0, 'arm', 0], [4, 12, 4, 6, 18, 0, 0, 'arm', 1],
+        [4, 12, 4, -2, 6, 0, 0, 'leg', 0], [4, 12, 4, 2, 6, 0, 0, 'leg', 1]
     ];
-    var QUAD = function (bw, bh, bl, by, hs, hy, hz, lw, lh) {
-        return [
-            [bw, bh, bl, 0, by, 0, 8],
-            [hs, hs, hs, 0, hy, hz, 1],
-            [lw, lh, lw, -(bw / 2 - lw / 2), lh / 2, bl / 2 - lw / 2, 2], [lw, lh, lw, bw / 2 - lw / 2, lh / 2, bl / 2 - lw / 2, 4],
-            [lw, lh, lw, -(bw / 2 - lw / 2), lh / 2, -(bl / 2 - lw / 2), 4], [lw, lh, lw, bw / 2 - lw / 2, lh / 2, -(bl / 2 - lw / 2), 2]
+    var QUAD = function (bw, bh, bl, by, hs, hy, hz, lw, lh, extra) {
+        var p = [
+            [bw, bh, bl, 0, by, 0, 8, 'body'],
+            [hs, hs, hs, 0, hy, hz, 1, 'head', 0, [0, hy, hz - hs / 2]],
+            [lw, lh, lw, -(bw / 2 - lw / 2), lh / 2, bl / 2 - lw / 2, 0, 'leg', 0],
+            [lw, lh, lw, bw / 2 - lw / 2, lh / 2, bl / 2 - lw / 2, 0, 'leg', 1],
+            [lw, lh, lw, -(bw / 2 - lw / 2), lh / 2, -(bl / 2 - lw / 2), 0, 'leg', 2],
+            [lw, lh, lw, bw / 2 - lw / 2, lh / 2, -(bl / 2 - lw / 2), 0, 'leg', 3]
         ];
+        return extra ? p.concat(extra) : p;
     };
     var MOBS = {
         pig: { hp: 10, hw: 0.45, h: 0.9, sp: 1.1, pass: 1, skin: 'pig_skin', face: 'pig_face', snd: 'pig',
-               drops: [['pork_raw', 1, 2]], parts: QUAD(10, 8, 16, 9, 8, 12, 10, 4, 6) },
+               tex: { snout: 'pig_snout' }, graze: 1,
+               drops: [['pork_raw', 1, 2]], parts: QUAD(10, 8, 16, 9, 8, 12, 10, 4, 6, [
+                   [4, 3, 2, 0, 10, 14, 0, 'snout']]) },
         cow: { hp: 10, hw: 0.55, h: 1.4, sp: 1.0, pass: 1, skin: 'cow_skin', face: 'cow_face', snd: 'cow',
-               drops: [['beef_raw', 1, 2], ['leather', 0, 2]], parts: QUAD(12, 10, 18, 13, 8, 16, 11, 4, 10) },
-        sheep: { hp: 8, hw: 0.5, h: 1.3, sp: 1.0, pass: 1, skin: 'sheep_skin', face: 'sheep_face', snd: 'sheep',
-                 drops: [['mutton_raw', 1, 2], ['wool', 1, 2]], parts: QUAD(10, 10, 16, 12, 6, 14, 9, 4, 8) },
+               tex: { horn: 'cow_horn' }, graze: 1,
+               drops: [['beef_raw', 1, 2], ['leather', 0, 2]], parts: QUAD(12, 10, 18, 13, 8, 16, 11, 4, 10, [
+                   [2, 2, 2, -5, 19, 10, 0, 'horn', 0], [2, 2, 2, 5, 19, 10, 0, 'horn', 1]]) },
+        sheep: { hp: 8, hw: 0.5, h: 1.3, sp: 1.0, pass: 1, skin: 'sheep_skin', alt: 'sheep_wool', face: 'sheep_face', snd: 'sheep',
+                 graze: 1,
+                 drops: [['mutton_raw', 1, 2], ['wool', 1, 2]], parts: QUAD(12, 12, 18, 12, 6, 14, 9, 4, 8, [
+                     [7, 7, 6, 0, 14, 8, 8, 'headfur']]) },
+        // a chicken has two legs, not four, and wings that only work on the way down
         chicken: { hp: 4, hw: 0.25, h: 0.8, sp: 0.9, pass: 1, slow: 1, skin: 'chicken_skin', face: 'chicken_face', snd: 'chicken',
-                   drops: [['chicken_raw', 1, 1], ['feather', 0, 2]], parts: QUAD(6, 6, 8, 7, 4, 11, 4, 2, 5) },
+                   tex: { beak: 'chick_beak', wattle: 'chick_wattle' },
+                   drops: [['chicken_raw', 1, 1], ['feather', 0, 2]], parts: [
+                       [6, 6, 8, 0, 7, 0, 8, 'body'],
+                       [4, 5, 4, 0, 12, 4, 1, 'head', 0, [0, 9.5, 2]],
+                       [4, 2, 2, 0, 12, 7, 0, 'beak'], [2, 2, 2, 0, 10, 6.5, 0, 'wattle'],
+                       [1, 4, 6, -3.5, 9, 0, 0, 'wing', 0, [-3, 11, 0]], [1, 4, 6, 3.5, 9, 0, 0, 'wing', 1, [3, 11, 0]],
+                       [3, 5, 3, -2, 2.5, 1, 0, 'leg', 0], [3, 5, 3, 2, 2.5, 1, 0, 'leg', 1]] },
         zombie: { hp: 20, hw: 0.35, h: 1.9, sp: 1.5, dmg: 3, burns: 1, skin: 'zom_skin', alt: 'zom_body', face: 'zom_face', snd: 'zombie',
                   drops: [['flesh', 0, 2]], parts: HUMANOID },
         skeleton: { hp: 20, hw: 0.35, h: 1.9, sp: 1.6, ranged: 1, burns: 1, skin: 'skel_skin', alt: 'skel_skin', face: 'skel_face', snd: 'skel',
                     drops: [['bone', 0, 2], ['arrow', 0, 2]], parts: HUMANOID },
         creeper: { hp: 20, hw: 0.35, h: 1.5, sp: 1.4, fuse: 1, skin: 'creep_skin', alt: 'creep_skin', face: 'creep_face', snd: null,
                    drops: [['gunpowder', 1, 2]], parts: [
-                       [8, 8, 8, 0, 22, 0, 1], [8, 12, 4, 0, 12, 0, 8],
-                       [4, 6, 4, -2, 3, 3, 2], [4, 6, 4, 2, 3, 3, 4], [4, 6, 4, -2, 3, -3, 4], [4, 6, 4, 2, 3, -3, 2]] },
+                       [8, 8, 8, 0, 22, 0, 1, 'head', 0, [0, 18, 0]], [8, 12, 4, 0, 12, 0, 8, 'body'],
+                       [4, 6, 4, -2, 3, 3, 0, 'leg', 0], [4, 6, 4, 2, 3, 3, 0, 'leg', 1],
+                       [4, 6, 4, -2, 3, -3, 0, 'leg', 2], [4, 6, 4, 2, 3, -3, 0, 'leg', 3]] },
+        /* Eight legs that fan out from the thorax and paddle in four pairs, each a
+           quarter-cycle behind the last — the real game's spider, whose gait is the
+           only reason a box with legs reads as something that scuttles. */
         spider: { hp: 16, hw: 0.65, h: 0.9, sp: 1.9, dmg: 2, climbs: 1, skin: 'spider_skin', alt: 'spider_skin', face: 'spider_face', snd: 'spider',
                   drops: [['string', 0, 2]], parts: (function () {
-                      var p = [[10, 8, 14, 0, 7, 0, 8], [8, 6, 6, 0, 6, 9, 1]];
-                      for (var l = 0; l < 4; l++) { p.push([12, 2, 2, -9, 5, (l - 1.5) * 4, l % 2 ? 2 : 4]); p.push([12, 2, 2, 9, 5, (l - 1.5) * 4, l % 2 ? 4 : 2]); }
+                      var p = [[10, 8, 12, 0, 9, -3, 8, 'body'], [8, 7, 7, 0, 9, 7, 1, 'head', 0, [0, 9, 3.5]]];
+                      for (var l = 0; l < 4; l++) {
+                          var lz = 4 - l * 3;
+                          p.push([12, 2, 2, 11, 10, lz, 0, 'sleg', l * 2, [5, 10, lz]]);
+                          p.push([12, 2, 2, -11, 10, lz, 0, 'sleg', l * 2 + 1, [-5, 10, lz]]);
+                      }
                       return p;
                   })() },
-        enderman: { hp: 40, hw: 0.3, h: 2.9, sp: 1.7, dmg: 4, xp: 5, skin: 'ender_skin', alt: 'ender_skin', face: 'ender_face', snd: null,
+        enderman: { hp: 40, hw: 0.3, h: 2.9, sp: 1.7, dmg: 4, xp: 5, skin: 'ender_skin', alt: 'ender_skin', face: 'ender_face', rage: 'ender_rage', snd: null,
                     drops: [['ender_pearl', 0, 1]], parts: [
-                        [6, 8, 6, 0, 47, 0, 1], [8, 22, 4, 0, 34, 0, 8],
-                        [2, 30, 2, -5, 28, 0, 2], [2, 30, 2, 5, 28, 0, 4],
-                        [2, 26, 2, -2, 13, 0, 4], [2, 26, 2, 2, 13, 0, 2]] },
-        slime: { hp: 4, hw: 0.5, h: 1.0, sp: 1.0, dmg: 2, split: 1, xp: 0, cube: 1, skin: 'slime_skin', alt: 'slime_skin', face: 'slime_face', snd: null,
-                 drops: [['slimeball', 0, 2]], parts: [[8, 8, 8, 0, 0, 0, 1]] },
+                        [6, 8, 6, 0, 47, 0, 1, 'head', 0, [0, 43, 0]],
+                        [8, 22, 4, 0, 34, 0, 8, 'body'],
+                        [2, 30, 2, -5, 28, 0, 0, 'arm', 0], [2, 30, 2, 5, 28, 0, 0, 'arm', 1],
+                        [2, 26, 2, -2, 13, 0, 0, 'leg', 0], [2, 26, 2, 2, 13, 0, 0, 'leg', 1]] },
+        // one cube, scaled to whatever size the slime happens to be, that squashes
+        // when it lands and stretches when it leaves the ground
+        slime: { hp: 4, hw: 0.5, h: 1.0, sp: 1.0, dmg: 2, split: 1, xp: 0, cube: 1, hop: 1, skin: 'slime_skin', alt: 'slime_skin', face: 'slime_face', snd: null,
+                 drops: [['slimeball', 0, 2]], parts: [[8, 8, 8, 0, 4, 0, 1, 'body']] },
         squid: { hp: 10, hw: 0.45, h: 0.85, sp: 1.5, pass: 1, aquatic: 1, xp: 1, skin: 'squid_skin', alt: 'squid_skin', face: 'squid_face', snd: null,
                  drops: [['ink_sac', 1, 3]], parts: (function () {
-                     var p = [[12, 12, 12, 0, 4, 0, 1]];
-                     for (var l = 0; l < 4; l++) { var a = l / 4 * 6.283; p.push([2, 6, 2, Math.round(Math.cos(a) * 4), -3, Math.round(Math.sin(a) * 4), 8]); }
+                     var p = [[10, 10, 10, 0, 9, 0, 1, 'body']];
+                     for (var l = 0; l < 8; l++) {
+                         var a = l / 8 * 6.283, tx = Math.cos(a) * 3.5, tz = Math.sin(a) * 3.5;
+                         p.push([2, 6, 2, tx, 1, tz, 8, 'tent', l, [tx, 4, tz]]);
+                     }
                      return p;
                  })() }
     };
+    var HEAD_KID = { snout: 1, horn: 1, beak: 1, wattle: 1, headfur: 1 };
     function mkFoe(kind, x, y, z, hp) {
         var d = MOBS[kind];
         var f = { k: kind, x: x, y: y, z: z, vx: 0, vy: 0, vz: 0, hp: hp != null ? hp : d.hp,
             hw: d.hw, h: d.h, yaw: Math.random() * 6.28, wt: 0, wd: null, anim: 0, ifr: 0,
             hostile: !d.pass, fuse: 0, burnT: 0, shootT: 0, flee: 0, hurtF: 0, voice: 2 + Math.random() * 6,
-            fire: 0, love: 0, baby: 0, mateCd: 0, sz: 0, dmg: d.dmg, aggro: 0 };
+            fire: 0, love: 0, baby: 0, mateCd: 0, sz: 0, dmg: d.dmg, aggro: 0,
+            /* animation. Two mobs spawned in the same tick must not breathe in
+               lockstep, so the idle clock starts somewhere random. */
+            age: Math.random() * 600, swAmt: 0, spd: 0, ground: false,
+            hYaw: 0, hPitch: 0, lookT: 0, lookY: 0, lookP: 0,
+            atk: 0, aim: 0, aiming: 0, chase: 0,
+            squish: 0, wasGround: false, flap: 0, flapV: 0, wingT: Math.random() * 6.28,
+            graze: 0, grazeT: 5 + Math.random() * 25, tentA: 0, pitchA: 0, dieT: null, dieSide: 1 };
         if (kind === 'slime') { f.sz = f.sz || 2; applySlimeSize(f); if (hp != null) f.hp = hp; }
         return f;
     }
@@ -2934,6 +3001,107 @@
         return hit;
     }
     function entInWater(f) { return getB(Math.floor(f.x), Math.floor(f.y + 0.3), Math.floor(f.z)) === WATER; }
+
+    /* ── mob animation: the tick side ────────────────────────
+       Everything below is a number the poser reads back when it builds geometry.
+
+       The one that matters most is the walk cycle. The real game does not run it
+       off a clock — it runs it off ground actually covered, through a pair of
+       values called limbSwing (how far through the stride) and limbSwingAmount
+       (how big a stride). Amount chases the mob's real speed and the phase
+       advances by amount, so the two are the same knob: a fleeing pig's legs
+       whirl, a wandering one ambles, and one walking into a wall stops dead
+       instead of moon-walking on the spot. This file used to add a flat six
+       radians a second no matter what, which is why every mob moved like every
+       other mob. */
+    var DIE_T = 0.62, ATK_T = 0.35;
+    function foeTick(f, dt) {
+        var ox = f.x, oy = f.y, oz = f.z;
+        var gone = foeUpdate(f, dt);
+        if (!gone) animTick(f, MOBS[f.k], dt, ox, oy, oz);
+        return gone;
+    }
+    function animTick(f, md, dt, ox, oy, oz) {
+        f.age += dt * 20;                       // ticks, the unit the real game's idle curves are in
+        if (f.age > 1e6) f.age -= 1e6;
+
+        // the stride, from ground actually covered
+        var dx = f.x - ox, dz = f.z - oz;
+        f.spd = dt > 0 ? Math.sqrt(dx * dx + dz * dz) / dt : 0;
+        var want = Math.min(f.spd * 0.2, 1);    // blocks/second → the game's per-tick figure, capped
+        f.swAmt += (want - f.swAmt) * Math.min(1, dt * 8);
+        f.anim += f.swAmt * 0.6662 * 20 * dt;
+        if (f.anim > 6.2832) f.anim -= 6.2832;
+
+        f.atk = Math.max(0, f.atk - dt);
+        f.aim += ((f.aiming && f.shootT > 0.9 ? 1 : 0) - f.aim) * Math.min(1, dt * 9);
+
+        headTick(f, dt);
+
+        /* a chicken's wings only work on the way down — they beat hard the moment
+           it leaves the ground and wind down over a second once it lands, which is
+           the whole reason a falling chicken reads as a chicken */
+        if (f.k === 'chicken') {
+            f.flap += ((f.ground ? -1 : 4) * 0.3) * dt * 20;
+            f.flap = Math.max(0, Math.min(1, f.flap));
+            if (!f.ground && f.flapV < 1) f.flapV = 1;
+            f.flapV *= Math.pow(0.9, dt * 20);
+            f.wingT += f.flapV * 2 * 20 * dt;
+            if (f.wingT > 6.2832) f.wingT -= 6.2832;
+        }
+        // slimes squash flat when they land and stretch as they leave the ground
+        if (md.hop) {
+            if (f.ground && !f.wasGround) f.squish = -0.5;
+            else if (!f.ground && f.wasGround) f.squish = 1;
+            f.squish *= Math.pow(0.6, dt * 20);
+            f.wasGround = f.ground;
+        }
+        // and a grazer puts its head in the grass when there is grass and nothing to run from
+        if (md.graze) grazeTick(f, dt);
+    }
+    /* Mobs watch you. The head turns within the range a neck allows and eases
+       back to straight ahead when you leave; with nobody about they glance at
+       whatever a mob glances at. Nothing else in this file makes a standing
+       animal look as alive as this does. */
+    function headTick(f, dt) {
+        var tYaw = 0, tPitch = 0, hx = S.px - f.x, hz = S.pz - f.z;
+        var hd = Math.sqrt(hx * hx + hz * hz);
+        var watch = !RT.dead && !unseen() && hd < (f.hostile ? 24 : 9) && (f.hostile || f.flee > 0 || hd < 8);
+        if (watch) {
+            tYaw = Math.atan2(-hx, hz) - f.yaw;
+            tPitch = -Math.atan2((S.py + EYE) - (f.y + f.h * 0.85), Math.max(0.5, hd));
+        } else {
+            f.lookT -= dt;
+            if (f.lookT <= 0) {
+                f.lookT = 1.5 + Math.random() * 5;
+                var glance = Math.random() < 0.55;
+                f.lookY = glance ? (Math.random() - 0.5) * 2.2 : 0;
+                f.lookP = glance ? (Math.random() - 0.5) * 0.5 : 0;
+            }
+            tYaw = f.lookY; tPitch = f.lookP;
+        }
+        while (tYaw > Math.PI) tYaw -= 6.2832;
+        while (tYaw < -Math.PI) tYaw += 6.2832;
+        // a head that can swivel further than a neck reads as a broken toy
+        tYaw = Math.max(-1.3, Math.min(1.3, tYaw));
+        tPitch = Math.max(-0.7, Math.min(0.7, tPitch));
+        var e = Math.min(1, dt * (watch ? 9 : 4));
+        f.hYaw += (tYaw - f.hYaw) * e;
+        f.hPitch += (tPitch - f.hPitch) * e;
+    }
+    function grazeTick(f, dt) {
+        if (f.graze > 0) {
+            f.graze -= dt;
+            if (f.graze <= 0) { f.graze = 0; f.grazeT = 10 + Math.random() * 24; }
+            else if (f.spd > 0.6) { f.graze = 0; f.grazeT = 6 + Math.random() * 12; }   // spooked mid-mouthful
+            return;
+        }
+        f.grazeT -= dt;
+        if (f.grazeT > 0) return;
+        var b = getB(Math.floor(f.x), Math.floor(f.y) - 1, Math.floor(f.z));
+        if (f.spd < 0.25 && f.ground && !f.baby && !f.flee && (b === GRASS || b === SNOWGRASS)) f.graze = 2;
+        else f.grazeT = 3 + Math.random() * 6;
+    }
     function foeUpdate(f, dt) {
         // an unloaded chunk has no floor to stand on: freeze in place until the world comes back
         if (!chunkAt(Math.floor(f.x), Math.floor(f.z))) return false;
@@ -2986,12 +3154,15 @@
         }
         // intent
         var want = null, sp = d.sp;
+        f.chase = 0; f.aiming = 0;
         if (f.flee > 0) { f.flee -= dt; want = Math.atan2(-px, pz) + Math.PI; sp *= 1.4; }
         // hostiles look straight through a creative or spectator player: no chase,
         // no arrows, no creeper hiss. Exactly what the real game does.
         else if (f.hostile && dist < 18 && !RT.dead && !unseen()) {
             want = Math.atan2(-px, pz);   // face the player: movement dir is (-sin yaw, cos yaw)
+            f.chase = 1;
             if (d.ranged) {
+                f.aiming = dist < 15 ? 1 : 0;
                 if (dist < 7) want += Math.PI;                       // skeletons keep their distance
                 else if (dist < 13) { want = null; }
                 f.shootT += dt;
@@ -3019,8 +3190,17 @@
             f.yaw += Math.max(-3 * dt, Math.min(3 * dt, turn));
         }
         var mvx = 0, mvz = 0;
-        if (want != null && sp > 0) { mvx = -Math.sin(f.yaw) * sp * dt; mvz = Math.cos(f.yaw) * sp * dt; f.anim += dt * 6; }
-        else { var neutral = Math.round(f.anim / Math.PI) * Math.PI; f.anim += (neutral - f.anim) * Math.min(1, dt * 10); }   // ease legs to a standing pose, don't freeze mid-stride
+        if (want != null && sp > 0) { mvx = -Math.sin(f.yaw) * sp * dt; mvz = Math.cos(f.yaw) * sp * dt; }
+        /* A slime does not walk, it hops — it is only under its own power while
+           it is off the ground, and it leaves the ground on a beat. Without that
+           the squash-and-stretch has nothing to squash against. */
+        if (d.hop) {
+            f.hopT = (f.hopT || 0.4 + Math.random() * 0.8) - dt;
+            if (f.ground) {
+                mvx = mvz = 0;
+                if (f.hopT <= 0) { f.hopT = 0.5 + Math.random() * 1.1 - f.sz * 0.08; f.vy = 6.6 + f.sz * 0.6; f.ground = false; }
+            } else { mvx *= 1.6; mvz *= 1.6; }
+        }
         var water = entInWater(f);
         if (water) { f.vy += -GRAV * 0.15 * dt; f.vy *= Math.pow(0.4, dt * 3); if (f.hostile || Math.random() < 0.6) f.vy = Math.min(f.vy + GRAV * 0.4 * dt, 2.4); }
         else { f.vy -= GRAV * dt; if (f.vy < -TERMV) f.vy = -TERMV; }
@@ -3044,7 +3224,7 @@
         if (f.hostile && cdmg && f.ifr <= 0 && !RT.dead && !unseen() &&
             Math.abs(f.x - S.px) < f.hw + HW + 0.1 && Math.abs(f.z - S.pz) < f.hw + HW + 0.1 &&
             S.py < f.y + f.h && S.py + PH > f.y) {
-            f.ifr = 1;
+            f.ifr = 1; f.atk = ATK_T;   // and it visibly takes a swing at you
             var kl = Math.sqrt(px * px + pz * pz) || 1;
             hurt(cdmg, [px / kl, pz / kl]);
         }
@@ -3071,12 +3251,27 @@
                 if (RT.foes.length < 60) RT.foes.push(nf);
             }
         }
-        poofParticles(f);
+        /* The body does not blink out — it keels over. Every caller of foeDie
+           removes the mob from RT.foes on the very next line, so the corpse gets
+           its own list: it renders and topples, but it has no AI, no hitbox, no
+           place in the spawn cap and nothing to say to the save file. The puff of
+           smoke that used to fire here now fires when the body finishes falling,
+           which is where the real game puts it. */
+        if (RT.dying.length < 24) { f.dieT = 0; f.dieSide = Math.random() < 0.5 ? -1 : 1; RT.dying.push(f); }
+        else poofParticles(f);
         if (f.pk) spawnXp(f.x, f.y + 0.5, f.z, d.xp != null ? d.xp : (f.hostile ? 5 : 1 + ((Math.random() * 3) | 0)));
         if (f.hostile) unlock('hunter');
         if (f.k === 'skeleton' && f.lastArrow) unlock('sniper');
         if (f.k === 'enderman') unlock('ender');
         snd('poof');
+    }
+    function dyingUpdate(f, dt) {
+        f.dieT += dt;
+        f.hurtF = Math.max(0, f.hurtF - dt);
+        f.age += dt * 20;
+        if (f.dieT < DIE_T) return false;
+        poofParticles(f);
+        return true;
     }
     function killFoe(f) { var i = RT.foes.indexOf(f); if (i >= 0) RT.foes.splice(i, 1); }
     function heartParticles(f) {
@@ -3115,7 +3310,7 @@
         } else { f.wt -= dt; if (f.wt <= 0) { f.wt = 2 + Math.random() * 4; f.wd = Math.random() < 0.5 ? Math.random() * 6.28 : null; } want = f.wd; sp *= 0.5; }
         if (want != null) { var turn = want - f.yaw; while (turn > Math.PI) turn -= 6.283; while (turn < -Math.PI) turn += 6.283; f.yaw += Math.max(-4 * dt, Math.min(4 * dt, turn)); }
         var mvx = 0, mvz = 0;
-        if (want != null && sp > 0) { mvx = -Math.sin(f.yaw) * sp * dt; mvz = Math.cos(f.yaw) * sp * dt; f.anim += dt * 6; }
+        if (want != null && sp > 0) { mvx = -Math.sin(f.yaw) * sp * dt; mvz = Math.cos(f.yaw) * sp * dt; }
         f.vy -= GRAV * dt; if (f.vy < -TERMV) f.vy = -TERMV;
         var hit = entMove(f, mvx, 0, mvz);
         if ((hit.x || hit.z) && f.ground) f.vy = JUMP;
@@ -3123,22 +3318,43 @@
         if (hy.y) { if (f.vy < 0) f.ground = true; f.vy = 0; } else if (Math.abs(f.vy) > 1) f.ground = false;
         if (f.hp <= 0) { foeDie(f); return true; }
         if (f.aggro > 0 && f.ifr <= 0 && !RT.dead && Math.abs(f.x - S.px) < f.hw + HW + 0.15 && Math.abs(f.z - S.pz) < f.hw + HW + 0.15 && S.py < f.y + f.h && S.py + PH > f.y) {
-            f.ifr = 1; var kl = Math.sqrt(px * px + pz * pz) || 1; hurt(4, [px / kl, pz / kl]);
+            f.ifr = 1; f.atk = ATK_T; var kl = Math.sqrt(px * px + pz * pz) || 1; hurt(4, [px / kl, pz / kl]);
         }
         f.voice -= dt; if (f.voice <= 0) { f.voice = 8 + Math.random() * 16; if (dist < 20) snd('endervoice'); }
         if (Math.abs(px) > 72 || Math.abs(pz) > 72) return true;
         return false;
     }
+    /* A squid does not swim, it pulses: the tentacles spread over the first half
+       of a cycle and the kick that actually shoves it along lands three quarters
+       of the way through the spread, so it lurches and coasts. It also noses into
+       whichever way it is going, which is why the tentacles always trail. */
     function squidUpdate(f, dt) {
         var inWater = getB(Math.floor(f.x), Math.floor(f.y + 0.4), Math.floor(f.z)) === WATER;
-        if (!inWater) { f.landT = (f.landT || 0) + dt; if (f.landT > 8) return true; f.vy -= GRAV * dt; }   // beached squid flops then despawns
-        else {
+        if (!inWater) {   // beached squid flops then despawns
+            f.landT = (f.landT || 0) + dt; if (f.landT > 8) return true;
+            f.vy -= GRAV * dt;
+            f.tentA += (0.3 + Math.sin(f.age * 0.3) * 0.25 - f.tentA) * Math.min(1, dt * 5);   // limp, twitching
+            f.pitchA += (1.45 - f.pitchA) * Math.min(1, dt * 2);
+        } else {
             f.landT = 0;
+            f.pulseV = f.pulseV || 0.16;
+            f.pulse = (f.pulse || 0) + f.pulseV * 20 * dt;
+            if (f.pulse > 6.2832) { f.pulse -= 6.2832; if (Math.random() < 0.35) f.pulseV = 0.1 + Math.random() * 0.13; }
+            f.thrust = f.thrust || 0;
+            if (f.pulse < Math.PI) {
+                var q = f.pulse / Math.PI;
+                f.tentA = Math.sin(q * Math.PI) * Math.PI * 0.25;
+                if (q > 0.75) f.thrust = 1; else f.thrust *= Math.pow(0.8, dt * 20);
+            } else {
+                f.tentA += (0 - f.tentA) * Math.min(1, dt * 9);
+                f.thrust *= Math.pow(0.9, dt * 20);
+            }
             f.swimT = (f.swimT || 0) - dt;
-            if (f.swimT <= 0) { f.swimT = 0.8 + Math.random() * 1.6; f.yaw = Math.random() * 6.28; f.pitchV = (Math.random() - 0.5) * 2; }
+            if (f.swimT <= 0) { f.swimT = 1.6 + Math.random() * 2.4; f.yaw = Math.random() * 6.28; f.pitchV = (Math.random() - 0.5) * 2; }
             var sp = MOBS.squid.sp;
-            f.vy = f.pitchV; f.anim += dt * 4;
-            entMove(f, -Math.sin(f.yaw) * sp * dt, 0, Math.cos(f.yaw) * sp * dt);
+            f.vy = f.pitchV * f.thrust;
+            f.pitchA += (Math.atan2(sp, f.pitchV) - f.pitchA) * Math.min(1, dt * 3);
+            entMove(f, -Math.sin(f.yaw) * sp * f.thrust * dt, 0, Math.cos(f.yaw) * sp * f.thrust * dt);
         }
         var hy = entMove(f, 0, f.vy * dt, 0);
         if (hy.y && !inWater) f.vy = 0;
@@ -3534,6 +3750,252 @@
             }
         }
     }
+    /* ── mob animation: the pose side ────────────────────────
+       A part is rotated about its own hinge, the whole body is then tipped (a
+       death topple, a squid nosing into its swim), scaled (a creeper swelling, a
+       slime landing), turned to face the mob's yaw and dropped into the world.
+       Four transforms, folded into one 3×3 and an offset per part, so the inner
+       loop stays a multiply-add over 24 corners.
+
+       Rotations compose Rz·Ry·Rx, the order the real game's model parts use, and
+       the yaw matrix is the engine's own (+z is forward, so a mob's face tile is
+       the +z face). */
+    function rotMat(m, rx, ry, rz) {
+        var cx = Math.cos(rx), sx = Math.sin(rx);
+        var cy = Math.cos(ry), sy = Math.sin(ry);
+        var cz = Math.cos(rz), sz = Math.sin(rz);
+        m[0] = cz * cy; m[1] = -cz * sy * sx - sz * cx; m[2] = -cz * sy * cx + sz * sx;
+        m[3] = sz * cy; m[4] = -sz * sy * sx + cz * cx; m[5] = -sz * sy * cx - cz * sx;
+        m[6] = sy;      m[7] = cy * sx;                 m[8] = cy * cx;
+    }
+    function mul3(o, a, b) {
+        var a0 = a[0], a1 = a[1], a2 = a[2], a3 = a[3], a4 = a[4], a5 = a[5], a6 = a[6], a7 = a[7], a8 = a[8];
+        var b0 = b[0], b1 = b[1], b2 = b[2], b3 = b[3], b4 = b[4], b5 = b[5], b6 = b[6], b7 = b[7], b8 = b[8];
+        o[0] = a0 * b0 + a1 * b3 + a2 * b6; o[1] = a0 * b1 + a1 * b4 + a2 * b7; o[2] = a0 * b2 + a1 * b5 + a2 * b8;
+        o[3] = a3 * b0 + a4 * b3 + a5 * b6; o[4] = a3 * b1 + a4 * b4 + a5 * b7; o[5] = a3 * b2 + a4 * b5 + a5 * b8;
+        o[6] = a6 * b0 + a7 * b3 + a8 * b6; o[7] = a6 * b1 + a7 * b4 + a8 * b7; o[8] = a6 * b2 + a7 * b5 + a8 * b8;
+    }
+    var M_TIP = new Float64Array(9), M_YS = new Float64Array(9), M_ROOT = new Float64Array(9);
+    var M_PART = new Float64Array(9), M_ALL = new Float64Array(9);
+    var BABY_HEAD = 1.62;
+    // scratch, reused: at sixty mobs and ten parts each, a fresh object per part
+    // per frame is a hundred thousand a minute for the collector to sweep up
+    var R = { rx: 0, rz: 0, sx: 1, sy: 1, sz: 1, py: 0, ox: 0, oz: 0 };
+    var P = { rx: 0, ry: 0, rz: 0, ox: 0, oy: 0, oz: 0, s: 1, px: 0, py: 0, pz: 0 };
+    var HEADP = { rx: 0, ry: 0, rz: 0, px: 0, py: 0, pz: 0, dy: 0, s: 1 };
+    var SLEG_FAN = [0.7854, 0.3927, -0.3927, -0.7854];
+    var SLEG_PH = [0, 3.1416, 1.5708, 4.7124];
+
+    function mobRoot(f, md) {
+        R.rx = 0; R.rz = 0; R.py = 0; R.ox = 0; R.oz = 0;
+        var s = f.baby > 0 ? 0.55 : 1;
+        if (md.cube) s *= f.h / (8 * PX) * 0.92;   // a slime is only ever as big as its own hitbox
+        R.sx = R.sy = R.sz = s;
+        if (f.dieT != null) {
+            // twenty ticks to keel over, then it shrinks out of the world and puffs
+            var t = Math.min(1, f.dieT / DIE_T);
+            R.rz = t * 1.5708 * f.dieSide;
+            if (t > 0.72) { var k = 1 - (t - 0.72) / 0.28; R.sx *= k; R.sy *= k; R.sz *= k; }
+            return;
+        }
+        if (f.hurtF > 0) R.rx -= Math.sin(Math.min(1, f.hurtF / 0.3) * Math.PI) * 0.17;   // rocked back by the blow
+        if (f.fuse > 0) {
+            /* the swell: a creeper goes WIDE, barely taller, and shivers at a
+               frequency that has nothing to do with either */
+            var q = Math.min(1, f.fuse / 1.5); q = q * q; q = q * q;
+            var jit = 1 + Math.sin(f.fuse * 100) * Math.min(1, f.fuse / 1.5) * 0.01;
+            R.sx *= (1 + q * 0.4) * jit; R.sz *= (1 + q * 0.4) * jit; R.sy *= (1 + q * 0.1) / jit;
+        }
+        if (md.hop) {   // flat on landing, drawn out on the way up
+            var f1 = f.squish / (f.sz * 0.5 + 1), f2 = 1 / (f1 + 1);
+            R.sx *= f2; R.sz *= f2; R.sy /= f2;
+        }
+        if (f.k === 'squid') { R.rx = f.pitchA; R.py = 9; }
+        /* An angry enderman shakes. It is two hundredths of a block of jitter and
+           it is the entire tell that the thing you looked at has noticed. */
+        if (f.aggro > 0) { R.ox = (Math.random() - 0.5) * 0.05; R.oz = (Math.random() - 0.5) * 0.05; }
+    }
+    // grow a part about its hinge rather than its middle, so a baby's head keeps
+    // its neck where the neck was
+    function scaleAbout(pt, o, s) {
+        o.s = s;
+        o.ox += (o.px - pt[3]) * (1 - s);
+        o.oy += (o.py - pt[4]) * (1 - s);
+        o.oz += (o.pz - pt[5]) * (1 - s);
+    }
+    /* Poses one part. Heads must be posed before anything bolted to them, which
+       every model above satisfies by listing the head second. */
+    function posePart(f, md, pt, o) {
+        var role = pt[7] || '', i = pt[8] || 0;
+        var amt = f.swAmt, ph = f.anim, age = f.age;
+        o.rx = o.ry = o.rz = 0; o.ox = o.oy = o.oz = 0; o.s = 1;
+        if (pt[9]) { o.px = pt[9][0]; o.py = pt[9][1]; o.pz = pt[9][2]; }
+        else if (role === 'leg' || role === 'arm') { o.px = pt[3]; o.py = pt[4] + pt[1] / 2; o.pz = pt[5]; }
+        else { o.px = pt[3]; o.py = pt[4]; o.pz = pt[5]; }
+
+        if (HEAD_KID[role]) {
+            o.rx = HEADP.rx; o.ry = HEADP.ry; o.rz = HEADP.rz;
+            o.px = HEADP.px; o.py = HEADP.py; o.pz = HEADP.pz; o.oy = HEADP.dy;
+            if (HEADP.s !== 1) scaleAbout(pt, o, HEADP.s);
+            return;
+        }
+        switch (role) {
+        case 'head':
+            o.ry = f.hYaw; o.rx = f.hPitch;
+            if (f.graze > 0) {
+                /* down into the grass over a fifth of a second, held there while
+                   it crops, and the head shakes as it tears — the real game's
+                   sheepTimer curve, which is 40 ticks with a wobble on top */
+                var g = f.graze > 1.8 ? (2 - f.graze) / 0.2 : f.graze < 0.2 ? f.graze / 0.2 : 1;
+                o.rx = o.rx * (1 - g) + g * (0.628 + 0.22 * Math.sin(f.graze * 28.7));
+                o.ry *= 1 - g;
+                o.oy -= g * 1.5; o.py -= g * 1.5;
+            }
+            if (f.k === 'enderman' && f.aggro > 0) o.rx += 0.2;
+            HEADP.rx = o.rx; HEADP.ry = o.ry; HEADP.rz = o.rz;
+            HEADP.px = o.px; HEADP.py = o.py; HEADP.pz = o.pz; HEADP.dy = o.oy; HEADP.s = 1;
+            if (f.baby > 0) { scaleAbout(pt, o, BABY_HEAD); HEADP.s = BABY_HEAD; }
+            break;
+        case 'body':
+            if (f.k === 'enderman' && f.aggro > 0) o.rx = -0.12;   // leans in when it has decided about you
+            break;
+        case 'leg':
+            // the diagonal pairs share a phase; a biped's two legs fall out of the same rule
+            o.rx = Math.cos(ph + ((i === 0 || i === 3) ? 0 : Math.PI)) * 1.4 * amt;
+            if (f.k === 'enderman') o.rx *= 0.5;                   // the long, gliding stride
+            break;
+        case 'arm':
+            o.rx = Math.cos(ph + (i ? 0 : Math.PI)) * amt;         // opposite the leg on the same side
+            if (f.k === 'zombie' && f.chase) {
+                /* arms out, locked, swaying — the pose. It only holds them up
+                   while it is actually coming for you; a wandering zombie walks
+                   with its arms down, same as the real game. */
+                o.rx = -1.5708 + Math.sin(age * 0.067) * 0.05 * (i ? -1 : 1);
+                o.rz = (i ? 1 : -1) * (Math.cos(age * 0.09) * 0.05 + 0.05);
+            }
+            // long arms, half the swing of anything else, hanging and drifting
+            if (f.k === 'enderman') {
+                o.rx *= 0.5;
+                o.rz = (i ? 1 : -1) * (0.05 + Math.cos(age * 0.09) * 0.05);
+            }
+            if (f.k === 'skeleton' && f.aim > 0) {   // both arms up on the bow, one swung wide
+                o.rx = o.rx * (1 - f.aim) + (-1.5708 + f.hPitch) * f.aim;
+                o.ry += f.aim * (i ? -0.1 : 0.5) + f.hYaw * f.aim;
+            }
+            if (f.atk > 0 && i === 1) {
+                // the real game's two out-of-phase envelopes: the arm leaps out
+                // and eases back, and the roll lags behind the reach
+                var p = 1 - f.atk / ATK_T, q2 = 1 - (1 - p) * (1 - p) * (1 - p) * (1 - p);
+                o.rx -= Math.sin(q2 * Math.PI) * 1.35;
+                o.rz -= Math.sin(p * Math.PI) * 0.4;
+            }
+            break;
+        case 'wing':
+            // folded flat when it is standing, wide open the moment it is not
+            o.rz = (Math.sin(f.wingT) + 1) * f.flap * (i ? 1 : -1);
+            break;
+        case 'sleg': {
+            /* Eight legs in four pairs, each pair a quarter-cycle behind the
+               last: they fan fore-and-aft while they lift and plant, which is
+               what the real game does and the only reason this reads as a
+               scuttle rather than eight sticks waving. */
+            var side = (i & 1) ? -1 : 1, pair = i >> 1;
+            var wob = -(Math.cos(ph * 2 + SLEG_PH[pair]) * 0.4) * amt;
+            var lift = Math.abs(Math.sin(ph + SLEG_PH[pair]) * 0.4) * amt;
+            o.ry = (SLEG_FAN[pair] + wob) * side;
+            o.rz = (-((pair === 0 || pair === 3) ? 0.7854 : 0.5812) + lift) * side;
+            break;
+        }
+        case 'tent': {
+            var a = i / 8 * 6.2832;   // fan out radially, all eight together
+            o.rz = Math.cos(a) * f.tentA;
+            o.rx = -Math.sin(a) * f.tentA;
+            break;
+        }
+        }
+    }
+    /* the tile a face wears: a named part tile if the mob has one, else the face
+       on the front, the alt hide on the body, and the plain hide everywhere else */
+    var TQ = { face: 0, alt: 0, skin: 0, tex: null, fl: 0, role: '' };
+    function mobTile(d) {
+        if (TQ.tex) { var t = TQ.tex[TQ.role]; if (t !== undefined) return t; }
+        return (TQ.fl & 1) && d === 4 ? TQ.face : (TQ.fl & 8) ? TQ.alt : TQ.skin;
+    }
+    function pushMob(v, f) {
+        var md = MOBS[f.k];
+        if (!md) return;
+        var L = cellLight(f.x, f.y + f.h * 0.5, f.z);
+        var wh = f.hurtF > 0 ? 0.5 : 0;
+        if (f.fuse > 0) wh = Math.max(wh, (RT.worldMs / 90) & 1 ? 0.7 : 0.15);
+        if (f.fire > 0) wh = Math.max(wh, (RT.worldMs / 120) & 1 ? 0.5 : 0.1);
+        TQ.skin = TILE[md.skin]; TQ.alt = TILE[md.alt || md.skin];
+        TQ.face = TILE[md.rage && f.aggro > 0 ? md.rage : md.face];
+        TQ.tex = null;
+        if (md.tex) { TQ.tex = md._tex || (md._tex = mobTex(md.tex)); }
+        mobRoot(f, md);
+        // yaw · scale, and again with the whole-body tip folded in
+        var yc = Math.cos(f.yaw), ys = Math.sin(f.yaw);
+        M_YS[0] = yc * R.sx; M_YS[1] = 0; M_YS[2] = -ys * R.sz;
+        M_YS[3] = 0; M_YS[4] = R.sy; M_YS[5] = 0;
+        M_YS[6] = ys * R.sx; M_YS[7] = 0; M_YS[8] = yc * R.sz;
+        rotMat(M_TIP, R.rx, 0, R.rz);
+        mul3(M_ROOT, M_YS, M_TIP);
+        var rpy = R.py * PX;
+        for (var p = 0; p < md.parts.length; p++) {
+            var pt = md.parts[p];
+            posePart(f, md, pt, P);
+            rotMat(M_PART, P.rx, P.ry, P.rz);
+            mul3(M_ALL, M_ROOT, M_PART);
+            var cx = (pt[3] + P.ox) * PX, cy = (pt[4] + P.oy) * PX, cz = (pt[5] + P.oz) * PX;
+            var vx = P.px * PX, vy = P.py * PX, vz = P.pz * PX;
+            // u = pivot − (part rotation · pivot) − root pivot; the offset that keeps
+            // a hinge exactly where the hinge is while everything turns around it
+            var ux = vx - (M_PART[0] * vx + M_PART[1] * vy + M_PART[2] * vz);
+            var uy = vy - (M_PART[3] * vx + M_PART[4] * vy + M_PART[5] * vz) - rpy;
+            var uz = vz - (M_PART[6] * vx + M_PART[7] * vy + M_PART[8] * vz);
+            var tx = M_TIP[0] * ux + M_TIP[1] * uy + M_TIP[2] * uz;
+            var ty = M_TIP[3] * ux + M_TIP[4] * uy + M_TIP[5] * uz + rpy;
+            var tz = M_TIP[6] * ux + M_TIP[7] * uy + M_TIP[8] * uz;
+            var ox = f.x + R.ox + M_ALL[0] * cx + M_ALL[1] * cy + M_ALL[2] * cz + M_YS[0] * tx + M_YS[1] * ty + M_YS[2] * tz;
+            var oy = f.y + M_ALL[3] * cx + M_ALL[4] * cy + M_ALL[5] * cz + M_YS[3] * tx + M_YS[4] * ty + M_YS[5] * tz;
+            var oz = f.z + R.oz + M_ALL[6] * cx + M_ALL[7] * cy + M_ALL[8] * cz + M_YS[6] * tx + M_YS[7] * ty + M_YS[8] * tz;
+            var hx = pt[0] / 2 * PX * P.s, hy = pt[1] / 2 * PX * P.s, hz = pt[2] / 2 * PX * P.s;
+            TQ.fl = pt[6]; TQ.role = pt[7] || '';
+            pushPosed(v, M_ALL, ox, oy, oz, hx, hy, hz, L[0], L[1], wh);
+        }
+    }
+    function mobTex(names) {   // role → tile id, resolved once per mob kind
+        var o = {};
+        for (var k in names) o[k] = TILE[names[k]];
+        return o;
+    }
+    /* One box through an arbitrary rotation. The face shade comes off the TURNED
+       normal rather than the model face, because a leg swung through ninety
+       degrees, or a body lying on its side, has to catch the light of the
+       direction it now points; for an unrotated part the blend lands exactly on
+       the old per-face constants, so nothing that used to face +y got darker. */
+    function pushPosed(v, m, wx, wy, wz, hx, hy, hz, sk, bl, wh) {
+        for (var d = 0; d < 6; d++) {
+            var tid = mobTile(d), uv0 = tileUV(tid);
+            var n = FACE_N[d];
+            var nx = m[0] * n[0] + m[1] * n[1] + m[2] * n[2];
+            var ny = m[3] * n[0] + m[4] * n[1] + m[5] * n[2];
+            var nz = m[6] * n[0] + m[7] * n[1] + m[8] * n[2];
+            var nl = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
+            nx /= nl; ny /= nl; nz /= nl;
+            var shade = nx * nx * FACE_SHADE[nx > 0 ? 0 : 1] + ny * ny * FACE_SHADE[ny > 0 ? 2 : 3] + nz * nz * FACE_SHADE[nz > 0 ? 4 : 5];
+            for (var k = 0; k < 4; k++) {
+                var cr = FACE_C[d][k];
+                var lx = (cr[0] - 0.5) * 2 * hx, ly = (cr[1] - 0.5) * 2 * hy, lz = (cr[2] - 0.5) * 2 * hz;
+                var fu = faceUV(d, cr);
+                v.push(wx + m[0] * lx + m[1] * ly + m[2] * lz,
+                    wy + m[3] * lx + m[4] * ly + m[5] * lz,
+                    wz + m[6] * lx + m[7] * ly + m[8] * lz,
+                    uv0[0] + INSET + fu[0] * (TS16 - 2 * INSET), uv0[1] + INSET + fu[1] * (TS16 - 2 * INSET),
+                    sk, bl, shade, wh);
+            }
+        }
+    }
     function pushBillboard(v, x, y, z, size, u0, v0, u1, v1, sk, bl, wh, ao) {
         var r = RT.camR, u = RT.camU;
         var cs = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
@@ -3554,37 +4016,8 @@
         var cy = Math.cos(S.yaw), sy = Math.sin(S.yaw), cp = Math.cos(S.pitch), sp = Math.sin(S.pitch);
         RT.camR = [cy, 0, sy];
         RT.camU = [sy * sp, cp, -cy * sp];
-        for (i = 0; i < RT.foes.length; i++) {
-            var f = RT.foes[i], md = MOBS[f.k];
-            var L = cellLight(f.x, f.y + f.h * 0.5, f.z);
-            var wh = f.hurtF > 0 ? 0.5 : 0;
-            if (f.fuse > 0) wh = Math.max(wh, (RT.worldMs / 90) & 1 ? 0.7 : 0.15);
-            if (f.fire > 0) wh = Math.max(wh, (RT.worldMs / 120) & 1 ? 0.5 : 0.1);
-            var scale = (f.fuse > 0 ? 1 + f.fuse * 0.2 : 1) * (f.baby > 0 ? 0.55 : 1);
-            var yc = Math.cos(f.yaw), ys = Math.sin(f.yaw);
-            var skin = TILE[md.skin], alt = TILE[md.alt || md.skin], face = TILE[md.face];
-            if (md.cube) {   // slime: one box sized to its actual hitbox
-                pushBox(v, f.x, f.y + f.h / 2, f.z, f.hw * 0.9, f.h * 0.45, f.hw * 0.9, yc, ys, 0, 0,
-                    (function (fc, sk) { return function (dd) { return dd === 4 ? fc : sk; }; })(face, skin), L[0], L[1], wh);
-                continue;
-            }
-            for (var p = 0; p < md.parts.length; p++) {
-                var pt = md.parts[p], flags = pt[6];
-                var sw = flags & 2 ? Math.sin(f.anim) * 0.8 : flags & 4 ? -Math.sin(f.anim) * 0.8 : 0;
-                pushBox(v, f.x, f.y + pt[4] * PX * scale - (flags & 6 ? 0 : 0), f.z,
-                    pt[0] / 2 * PX * scale, pt[1] / 2 * PX * scale, pt[2] / 2 * PX * scale,
-                    yc, ys, sw, pt[1] / 2 * PX,
-                    (function (fl, cxo, czo) {
-                        return function (dd) { return (fl & 1) && dd === 4 ? face : (fl & 8) ? alt : skin; };
-                    })(flags),
-                    L[0], L[1], wh);
-                // recentre: parts store center offsets in px — apply x/z offsets through yaw
-                var last = v.length - 24 * 9;
-                var oxp = pt[3] * PX * scale, ozp = pt[5] * PX * scale;
-                var rx = yc * oxp - ys * ozp, rz = ys * oxp + yc * ozp;
-                for (var vi = last; vi < v.length; vi += 9) { v[vi] += rx; v[vi + 2] += rz; }
-            }
-        }
+        for (i = 0; i < RT.foes.length; i++) pushMob(v, RT.foes[i]);
+        for (i = 0; i < RT.dying.length; i++) pushMob(v, RT.dying[i]);   // bodies still falling over
         for (i = 0; i < RT.tnts.length; i++) {
             var t = RT.tnts[i];
             var TL = cellLight(t.x, t.y + 0.5, t.z);
@@ -5045,7 +5478,8 @@
             effectTick(dt);
             sleepTick(dt);
             var i;
-            for (i = RT.foes.length - 1; i >= 0; i--) if (foeUpdate(RT.foes[i], dt)) RT.foes.splice(i, 1);
+            for (i = RT.foes.length - 1; i >= 0; i--) if (foeTick(RT.foes[i], dt)) RT.foes.splice(i, 1);
+            for (i = RT.dying.length - 1; i >= 0; i--) if (dyingUpdate(RT.dying[i], dt)) RT.dying.splice(i, 1);
             for (i = RT.drops.length - 1; i >= 0; i--) if (dropUpdate(RT.drops[i], dt)) RT.drops.splice(i, 1);
             for (i = RT.arrows.length - 1; i >= 0; i--) if (arrowUpdate(RT.arrows[i], dt)) RT.arrows.splice(i, 1);
             for (i = RT.tnts.length - 1; i >= 0; i--) if (tntUpdate(RT.tnts[i], dt)) RT.tnts.splice(i, 1);
@@ -5172,7 +5606,7 @@
             if (c.mesh && gl) { gl.deleteBuffer(c.mesh.op.b); gl.deleteBuffer(c.mesh.cut.b); gl.deleteBuffer(c.mesh.wat.b); }
         }
         RT.chunks = {}; RT.ckeys = []; RT.genQ = []; RT.meshQ = []; RT.decayQ = [];
-        RT.foes = []; RT.drops = []; RT.arrows = []; RT.tnts = []; RT.parts = []; RT.entV = []; RT.orbs = [];
+        RT.foes = []; RT.dying = []; RT.drops = []; RT.arrows = []; RT.tnts = []; RT.parts = []; RT.entV = []; RT.orbs = [];
         RT.target = null; RT.digAt = null; RT.lit = false; RT.built = false; RT.ready = false;
         /* The panorama renders at 85°; leaving that set would hand the world
            the title screen's field of view. fovM is the sprint stretch and
@@ -8301,7 +8735,7 @@
         RT = {
             el: root, cv: cv, G: G,
             chunks: {}, ckeys: [], genQ: [], meshQ: [], decayQ: [],
-            foes: [], drops: [], arrows: [], tnts: [], parts: [], entV: [], orbs: [],
+            foes: [], dying: [], drops: [], arrows: [], tnts: [], parts: [], entV: [], orbs: [],
             keys: {}, mouse: { l: false, r: false },
             chat: null, chatLog: [], chatHist: [], now: 0, fly: !!S.fly && (S.gm === 1 || S.gm === 3),
             vy: 0, ground: false, fallY: S.py, sprint: false, fovM: 1,
@@ -8683,6 +9117,46 @@
             armorPts: function () { return armorPoints(); },
             spawnMob: function (k, dx, dz, sz) { var nf = mkFoe(k, S.px + (dx || 3), S.py + 2, S.pz + (dz || 0)); if (k === 'slime' && sz) { nf.sz = sz; applySlimeSize(nf); } RT.foes.push(nf); return nf; },
             foeCount: function (k) { var n = 0; for (var i = 0; i < RT.foes.length; i++) if (!k || RT.foes[i].k === k) n++; return n; },
+            tiles: function () { return tileN; },   // atlas is 16×16: anything over 256 wraps and corrupts
+            /* The only honest answer to "is that mob animating?" is its actual
+               geometry, so this hands back the built vertices per part: their
+               centroids move iff the animation moves them. Same trick as hand(). */
+            mobGeo: function (k) {
+                var f = null, i;
+                for (i = 0; i < RT.foes.length; i++) if (RT.foes[i].k === k) { f = RT.foes[i]; break; }
+                if (!f) return null;
+                var v = [];
+                pushMob(v, f);
+                var md = MOBS[f.k], out = [];
+                for (i = 0; i < md.parts.length; i++) {
+                    var b = i * 24 * 9, sx = 0, sy = 0, sz = 0;
+                    var lo = [1e9, 1e9, 1e9], hi = [-1e9, -1e9, -1e9], bad = 0;
+                    for (var j = 0; j < 24; j++) {
+                        sx += v[b + j * 9]; sy += v[b + j * 9 + 1]; sz += v[b + j * 9 + 2];
+                        for (var a = 0; a < 3; a++) { var q = v[b + j * 9 + a]; if (q < lo[a]) lo[a] = q; if (q > hi[a]) hi[a] = q; }
+                        if (!isFinite(v[b + j * 9 + 3]) || !isFinite(v[b + j * 9 + 4])) bad++;   // NaN uv = a tile that isn't there
+                    }
+                    out.push({ role: (md.parts[i][7] || '') + (md.parts[i][8] != null ? md.parts[i][8] : ''),
+                        c: [Math.round((sx / 24 - f.x) * 1e4) / 1e4, Math.round((sy / 24 - f.y) * 1e4) / 1e4, Math.round((sz / 24 - f.z) * 1e4) / 1e4],
+                        size: [Math.round((hi[0] - lo[0]) * 1e3) / 1e3, Math.round((hi[1] - lo[1]) * 1e3) / 1e3, Math.round((hi[2] - lo[2]) * 1e3) / 1e3],
+                        badUV: bad });
+                }
+                return { n: v.length / 9, parts: out };
+            },
+            tile: function (n) { return TILE[n]; },
+            foeAnim: function (k) {
+                for (var i = 0; i < RT.foes.length; i++) {
+                    var f = RT.foes[i];
+                    if (f.k !== k) continue;
+                    return { spd: Math.round(f.spd * 100) / 100, swAmt: Math.round(f.swAmt * 1e3) / 1e3, anim: Math.round(f.anim * 1e3) / 1e3,
+                        hYaw: Math.round(f.hYaw * 1e3) / 1e3, hPitch: Math.round(f.hPitch * 1e3) / 1e3, ground: !!f.ground,
+                        chase: !!f.chase, aim: Math.round(f.aim * 100) / 100, atk: Math.round(f.atk * 100) / 100,
+                        graze: Math.round(f.graze * 100) / 100, flap: Math.round(f.flap * 100) / 100,
+                        squish: Math.round(f.squish * 1e3) / 1e3, tentA: Math.round(f.tentA * 1e3) / 1e3, fuse: Math.round(f.fuse * 100) / 100 };
+                }
+                return null;
+            },
+            dying: function () { return RT.dying.map(function (f) { return { k: f.k, t: Math.round(f.dieT * 1e3) / 1e3 }; }); },
             key: function (k, down) { RT.keys[k] = !!down; },
             mouse: function (btn, down) { if (btn === 0) { RT.mouse.l = !!down; if (down) { attack(); creativeInstaBreak(); } } else if (btn === 1) { if (down) pickBlock(); } else { RT.mouse.r = !!down; if (down) tryUse(); else finishUse(); } },
             openInv: function () { openPanel('inv'); },
