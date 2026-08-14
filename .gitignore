@@ -5,3 +5,4 @@ comp/__*
 
 # QC scratch: hundreds of captures and probe pages, never committed
 .claude/nnqc/
+.claude/comp-tools/shots/
