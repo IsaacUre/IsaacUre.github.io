@@ -1,0 +1,142 @@
+<!doctype html>
+<!-- The acceptance floor in TESTING.md, driven the way a player drives it.
+
+     Prologue to the square, talk to Bern, out to the lane, rehearse at
+     the mill, up the ladder, kill the Chorus, Fragment I, east to
+     Grelling and the mark, Fragments II and III, north past the fence to
+     the hollow, then close the window and open it again and check the
+     save came back. Zero console errors throughout.
+
+     Movement is held keys and stepped frames, and every E is a real
+     KeyboardEvent at the real root, because the one bug this whole
+     harness exists to catch was E being bound to something else.
+
+     Two things it knows that cost an hour each. The keys are on the
+     SCREEN axes: s+a is due south in iso, so s is (+x,+y), w is (-x,-y),
+     d is (+x,-y) and a is (-x,+y), and a probe that maps dx to d/a and
+     dy to s/w simply cannot reach half the map. And a straight line into
+     a prop is a probe pressing at it forever, so walkTo sidesteps when
+     it stops making progress; the well sits exactly between the square's
+     entrance and Bern.
+
+       chrome --headless=new --disable-gpu --no-sandbox          --virtual-time-budget=250000 --dump-dom          "http://localhost:8571/.claude/ninth-night/tools/critical-path.html?dev=ninth"
+-->
+<!doctype html><meta charset=utf-8><link rel=stylesheet href="/comp/comp.css">
+<div id=host style="position:absolute;left:-4000px;width:1120px;height:580px"></div>
+<pre id=out>running</pre>
+<script src="/comp/ninth.js"></script>
+<script>
+var L=[],P=0,F=0,ERR=[];
+window.onerror=function(m){ERR.push(m);};
+var _ce=console.error; console.error=function(){ERR.push([].join.call(arguments,' '));_ce.apply(console,arguments);};
+function ok(w,c,d){ (c?P++:F++); L.push((c?'PASS  ':'FAIL  ')+w+(d?'   ['+d+']':'')); }
+try{ localStorage.removeItem('comp_ninth'); }catch(e){}
+var h=document.getElementById('host');
+h.innerHTML=window.NINTH.render(); window.NINTH.init(h);
+var N=window.__ninth,RT=N.RT(),S=N.S(),root=document.querySelector('.nn');
+function key(k){root.dispatchEvent(new KeyboardEvent('keydown',{key:k,bubbles:true}));
+                root.dispatchEvent(new KeyboardEvent('keyup',{key:k,bubbles:true}));}
+function run(n){for(var i=0;i<n;i++)N.tick(1);}
+// walk toward a world point with real held keys, the way TESTING.md insists
+function walkTo(tx,ty,max){
+ var lastx=RT.px,lasty=RT.py,stuck=0,side=0;
+ for(var i=0;i<(max||1400);i++){
+  var dx=tx-RT.px,dy=ty-RT.py;
+  if(Math.hypot(dx,dy)<0.35){ RT.keys={}; return true; }
+  RT.keys={};
+  /* The keys are on the SCREEN axes, not the world ones: s+a is due
+     south in iso and w+d is due north, so s is (+x,+y), w is (-x,-y),
+     d is (+x,-y) and a is (-x,+y). Decompose the wanted world delta
+     onto those two diagonals. */
+  var u=dx+dy, v=dx-dy;
+  /* And when a prop is in the way, slide along it. A player walks round
+     the well without thinking about it; a probe holding two keys
+     presses into it forever. */
+  if(stuck>26){ side=(side+1)%4; stuck=0; }
+  if(side===1){ u=-u; } else if(side===2){ v=-v; } else if(side===3){ u=-u; v=-v; }
+  if(u>0.12)RT.keys.s=1; else if(u<-0.12)RT.keys.w=1;
+  if(v>0.12)RT.keys.d=1; else if(v<-0.12)RT.keys.a=1;
+  N.tick(1);
+  if(Math.hypot(RT.px-lastx,RT.py-lasty)<0.01) stuck++; else { stuck=0; if(side&&Math.random()<0.08)side=0; }
+  lastx=RT.px; lasty=RT.py;
+  if(RT.place!==walkTo.want){ RT.keys={}; return 'left to '+RT.place; }
+ }
+ RT.keys={}; return false;
+}
+function goto_(from,tx,ty,to){ walkTo.want=from; var r=walkTo(tx,ty); run(30); return RT.place; }
+
+ok('a fresh save starts in the prologue', RT.place==='stage', RT.place);
+run(60*15);                                     // the prologue's own timer walks you out
+ok('the prologue hands you to the square', RT.place==='square', RT.place);
+
+// talk to Bern with the real key
+// round the well, which sits between the square's entrance and Bern
+walkTo.want='square'; walkTo(11.2,10.6); walkTo(9.6,8.4); run(10);
+RT.prompt=null; run(2); key('e'); run(4);
+ok('E opens Bern', !!RT.dialog, RT.dialog&&RT.dialog.who);
+for(var i=0;i<12&&RT.dialog;i++){ key('e'); run(3); }
+ok('and E gets you back out of him', !RT.dialog);
+
+// out to the lane, north
+walkTo.want='square'; var r1=walkTo(8.5,14.4); run(40);
+ok('walking south out of the square reaches the lane', RT.place==='lane', RT.place);
+// up to the mill
+walkTo.want='lane'; walkTo(6.2,0.8); run(40);
+ok('and the lane runs to the mill', RT.place==='mill', RT.place);
+
+// rehearse: two lines said out loud at the mill opens the ladder
+// a "draw" is one line said out loud and then a quiet stretch, and the
+// mill wants speakDraws worth of them
+for(var d=0;d<14&&!S.seen.rehearsed;d++){ N.aim(RT.px+2,RT.py-2); N.call(); run(30); N.call(); run(160); }
+ok('rehearsing at the mill opens the ladder', !!S.seen.rehearsed);
+walkTo.want='mill'; walkTo(7.9,5.6); run(40);
+ok('the ladder takes you into the loft', RT.place==='loft', RT.place);
+
+// the Chorus
+run(60*6);
+var chorus=RT.foes.filter(function(f){return f.def&&f.def.boss;})[0];
+ok('the Chorus is up there', !!chorus);
+if(chorus){ chorus.hp=1; N.aimFoe(0); N.call(); run(30);
+  for(var q=0;q<40&&!S.seen.chorusDown;q++){ if(RT.foes[0])RT.foes[0].hp=1; N.aimFoe(0); N.call(); run(20); } }
+ok('and it goes down', !!S.seen.chorusDown);
+run(60*4);
+// the refrain alone is half of it: you also have to have heard somebody
+// carrying the true line, which is what the child and the busker do
+N.place('square'); N.talk('child'); for(var c1=0;c1<14&&RT.dialog;c1++){ key('e'); run(3); }
+run(60*14);
+ok('Fragment I lands', !!S.frags[1], 'frags '+Object.keys(S.frags).join(','));
+
+// east to Grelling and the mark
+N.place('lane'); walkTo.want='lane'; walkTo(12.3,8); run(40);
+ok('east out of the lane is Grelling', RT.place==='village', RT.place);
+walkTo.want='village'; walkTo(14.3,6); run(40);
+ok('and east again is the mark', RT.place==='mark', RT.place);
+N.talk('hal'); for(var j=0;j<14&&RT.dialog;j++){ key('e'); run(3); }
+RT.px=6.7; RT.py=6.9; RT.prompt=null; run(3); key('e'); run(4);
+for(var j2=0;j2<8&&RT.dialog;j2++){ key('e'); run(3); }
+run(60*14);
+ok('Fragment II lands', !!S.frags[2], 'frags '+Object.keys(S.frags).join(','));
+N.place('square'); N.talk('widow'); for(var j3=0;j3<14&&RT.dialog;j3++){ key('e'); run(3); }
+run(60*14);
+ok('Fragment III lands', !!S.frags[3], 'frags '+Object.keys(S.frags).join(','));
+
+// north past the fence
+N.place('mark'); walkTo.want='mark'; walkTo(6.6,0.8); run(40);
+ok('north of the mark is the road', RT.place==='road', RT.place);
+walkTo.want='road'; walkTo(5.4,0.8); run(40);
+ok('and the road ends at the hollow', RT.place==='hollow', RT.place);
+
+// close and reopen
+var frags=Object.keys(S.frags).length;
+window.NINTH.close();
+h.innerHTML=window.NINTH.render(); window.NINTH.init(h);
+N=window.__ninth; RT=N.RT(); S=N.S(); root=document.querySelector('.nn');
+run(30);
+ok('the window closes and reopens', !!RT);
+ok('and the save is intact', Object.keys(S.frags).length===frags, frags+' fragments');
+
+ok('no console errors on the whole path', ERR.length===0, ERR.slice(0,2).join(' | '));
+L.push(''); L.push(P+' passed, '+F+' failed');
+document.getElementById('out').textContent=L.join('\n');
+document.title=F?('PATH FAIL '+F):('PATH OK '+P);
+</script>

@@ -1,0 +1,138 @@
+<!doctype html><meta charset="utf-8"><title>terraria shot</title>
+<link rel="stylesheet" href="/comp/comp.css">
+<style>
+  html, body { margin: 0; background: #0a0810; font-family: system-ui, sans-serif; color: #ccc; }
+  #stage { position: relative; display: grid; }
+  #stage .tr { width: 100%; height: 100%; }
+  #bar { font: 11px monospace; padding: 4px 8px; color: #9aa; white-space: pre-wrap; }
+</style>
+<div id="bar">loading…</div>
+<div id="stage"></div>
+<script src="/comp/terraria.js"></script>
+<script>
+/* Deterministic scene harness for the Terraria window.
+   Query params:
+     seed=N          world seed (default 12345)
+     scenes=a,b,c    which scenes to capture (default: all)
+     post=PORT       POST each canvas to http://localhost:PORT/<name> as a PNG dataURL
+     w=,h=           stage size (default 1280x720)
+   The canvas holds the world render; the HUD is DOM, so `full=1` additionally
+   tries an SVG-foreignObject composite of the whole window. */
+var Q = new URLSearchParams(location.search);
+var SEED = +(Q.get('seed') || 12345);
+var POST = Q.get('post');
+var CW = +(Q.get('w') || 1280), CH = +(Q.get('h') || 720);
+var stage = document.getElementById('stage'), bar = document.getElementById('bar');
+stage.style.width = CW + 'px'; stage.style.height = CH + 'px';
+
+try { localStorage.setItem('comp_terraria', JSON.stringify({ v: 2, seed: SEED })); } catch (e) {}
+stage.innerHTML = TERRA.render();
+TERRA.init(stage);
+
+var T = window.__terra, S = T.S(), RT = T.RT();
+var W = 420, H = 232, TS = 8;
+cancelAnimationFrame(RT.raf); RT.raf = 0;          // freeze: we drive draw() by hand
+
+function tileAt(x, y) { return RT.w[y * W + x]; }
+function surfaceY(x) { for (var y = 20; y < 200; y++) if (tileAt(x, y)) return y; return 60; }
+function findTile(pred, y0, y1) {
+  for (var y = (y0 || 0); y < (y1 || H); y++) for (var x = 4; x < W - 4; x++) if (pred(tileAt(x, y), x, y)) return { x: x, y: y };
+  return null;
+}
+function biomeX(name) { for (var x = 8; x < W - 8; x++) if (T.biomeAtX(x) === name) return x; return 60; }
+function stand(x) { T.tp(x, surfaceY(x) - 3); }
+function clearFoes() { RT.foes.length = 0; RT.drops.length = 0; RT.parts.length = 0; RT.shots.length = 0; RT.boss = null; }
+function kit() { ['ibar','gbar','wood','stone','torch','gel','warrow'].forEach(function (i) { T.give(i, 99); }); ['woodbow','csword','hook','bench','furnace','anvil'].forEach(function (i) { T.give(i, 1); }); T.give('lheal', 20); }
+
+var SCENES = {
+  surface: function () { stand(biomeX('forest')); S.time = 60; },
+  dusk:    function () { stand(biomeX('forest')); S.time = 255; },
+  night:   function () { stand(biomeX('forest')); S.time = 340; },
+  snow:    function () { stand(biomeX('snow')); S.time = 60; },
+  desert:  function () { stand(biomeX('desert')); S.time = 60; },
+  jungle:  function () { stand(biomeX('jungle')); S.time = 60; },
+  corrupt: function () { stand(biomeX('corrupt')); S.time = 60; },
+  ocean:   function () { stand(12); S.time = 60; },
+  cave:    function () { var p = findTile(function (t, x, y) { return !t && tileAt(x, y + 1) === 3 && tileAt(x, y - 1) === 0; }, 110, 150); T.tp(p.x, p.y - 2); },
+  hell:    function () { var p = findTile(function (t, x, y) { return !t && tileAt(x, y + 1) === 14; }, 206, 226); T.tp(p ? p.x : 200, p ? p.y - 2 : 210); },
+  sky:     function () { var p = findTile(function (t) { return t === 18; }, 26, 46); T.tp(p ? p.x : 200, p ? p.y - 5 : 30); },
+  ores:    function () { var p = findTile(function (t) { return t === 21 || t === 22 || t === 24; }, 95, 170); T.tp(p.x, p.y - 3); },
+  tree:    function () { var p = findTile(function (t) { return t === 5; }, 30, 70); T.tp(p.x + 6, p.y + 1); S.time = 60; },
+  water:   function () {                              // carve a pool so the liquid art is always in frame
+    var bx = biomeX('forest'), by = surfaceY(bx);
+    for (var y = by; y < by + 7; y++) for (var x = bx - 8; x < bx + 9; x++) {
+      var i = y * W + x, edge = y >= by + 6 || x <= bx - 8 || x >= bx + 8;
+      RT.w[i] = edge ? 3 : 0; RT.lq[i] = edge ? 0 : 100; RT.lk[i] = 1;
+    }
+    for (var x2 = bx - 7; x2 < bx + 8; x2++) { RT.lq[by * W + x2] = 55; }
+    T.tp(bx - 11, by - 3); S.time = 60; RT.terrDirty = (RT.terrDirty || 0) + 1;
+  }
+};
+
+var want = (Q.get('scenes') || Object.keys(SCENES).join(',')).split(',').filter(function (s) { return SCENES[s]; });
+var log = [];
+
+/* The world is a canvas but the HUD is DOM, so a full-frame capture composites the two: the .tr
+   subtree is serialised into an SVG foreignObject with only the .tr* rules (plus the dynamically
+   injected item-icon sheet) inlined, rasterised, and drawn over the canvas. */
+var CSSTEXT = null;
+function trCSS() {
+  if (CSSTEXT !== null) return Promise.resolve(CSSTEXT);
+  return fetch('/comp/comp.css').then(function (r) { return r.text(); }).then(function (css) {
+    var rules = css.match(/(^|\n)[^\n{}]*\.tr[-\w]*[^\n{}]*\{[^}]*\}/g) || [];
+    var inj = '';
+    Array.prototype.forEach.call(document.querySelectorAll('style'), function (s) { if (/\.tr \.tri/.test(s.textContent)) inj += s.textContent; });
+    return (CSSTEXT = '[hidden]{display:none !important}*{box-sizing:border-box;margin:0;padding:0}' + rules.join('\n') + inj);
+  });
+}
+function composite(cb) {
+  var cv = stage.querySelector('.tr-cv');
+  var c = document.createElement('canvas'); c.width = cv.width; c.height = cv.height;
+  var g = c.getContext('2d');
+  g.drawImage(cv, 0, 0);
+  trCSS().then(function (css) {
+    var el = stage.querySelector('.tr').cloneNode(true);
+    el.setAttribute('style', 'width:' + cv.width + 'px;height:' + cv.height + 'px;position:relative;background:transparent;' +
+      '--tr-heart:' + stage.querySelector('.tr').style.getPropertyValue('--tr-heart') + ';' +
+      '--tr-star:' + stage.querySelector('.tr').style.getPropertyValue('--tr-star'));
+    var k = el.querySelector('.tr-cv'); if (k) k.parentNode.removeChild(k);
+    var mini = el.querySelector('.tr-mini');
+    if (mini) {                                        // the minimap is its own canvas — bake it in
+      var img0 = document.createElement('img'); img0.setAttribute('src', stage.querySelector('.tr-mini').toDataURL('image/png'));
+      img0.setAttribute('style', 'width:132px;height:132px;image-rendering:pixelated');
+      mini.parentNode.replaceChild(img0, mini); img0.className = 'tr-mini';
+    }
+    var body = new XMLSerializer().serializeToString(el);
+    var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + cv.width + '" height="' + cv.height + '">' +
+      '<foreignObject width="100%" height="100%"><div xmlns="http://www.w3.org/1999/xhtml" style="width:' + cv.width + 'px;height:' + cv.height + 'px">' +
+      '<style>' + css.replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</style>' + body + '</div></foreignObject></svg>';
+    var im = new Image();
+    im.onload = function () { g.drawImage(im, 0, 0); cb(c); };
+    im.onerror = function () { cb(c); };
+    im.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  });
+}
+function capture(name, cb) {
+  composite(function (c) {
+    var url = c.toDataURL('image/png');
+    if (!POST) { log.push(name + ' ' + c.width + 'x' + c.height); return cb(); }
+    fetch('http://localhost:' + POST + '/' + name, { method: 'POST', body: url })
+      .then(function () { log.push('posted ' + name); cb(); })
+      .catch(function (e) { log.push('FAIL ' + name + ' ' + e.message); cb(); });
+  });
+}
+
+var i = 0;
+(function next() {
+  if (i >= want.length) { bar.textContent = log.join('\n'); document.title = 'SHOT DONE ' + want.length; return; }
+  var name = want[i++];
+  clearFoes();
+  SCENES[name]();
+  RT.camReady = false;
+  for (var k = 0; k < 40; k++) T.step();
+  clearFoes();
+  var toast = stage.querySelector('.tr-toast'); if (toast) { toast.hidden = true; toast.classList.remove('on'); }
+  T.draw();
+  setTimeout(function () { T.draw(); capture(name, next); }, 0);
+})();
+</script>

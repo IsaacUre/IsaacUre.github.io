@@ -59,6 +59,31 @@ function isoXB(x, y) { return ORX + (x - y) * (TILE_W / 2); }
 function isoYB(x, y) { return ORY + (x + y) * (TILE_H / 2); }
 function isoX(x, y) { return ORX + (x - y) * (TILE_W / 2) - cam().x; }
 function isoY(x, y) { return ORY + (x + y) * (TILE_H / 2) - cam().y; }
+/* Which way a figure faces, given a direction in WORLD space. Every
+   figure in the game is mirrored with cx.scale(-1, 1), which is a flip in
+   SCREEN x, and screen x is (x - y). Three separate call sites tested
+   sign(dx) alone, which is right for three quadrants and backwards for
+   the fourth: the two disagree on exactly 25% of directions, and every
+   one of them is somebody walking mostly along y, which on screen is
+   left or right. The child was drawn walking backwards 44% of the time
+   because one of her legs has dx = 0 authored and the sign fell out of
+   float noise. One helper now, so the next drawer cannot get it wrong. */
+function faceX(dx, dy) { return (dx - dy) >= 0 ? 1 : -1; }
+/* Where a FIGURE standing at world (x, y) has its feet on screen.
+   buildFloor draws the diamond it calls tile (x,y) with its corners at
+   the projections of world (x,y), (x+1,y), (x+1,y+1) and (x,y+1), and
+   drawProp takes every footprint corner off isoX/isoY raw. So isoY(x,y)
+   with nothing added IS the ground at (x, y), and it is what props and
+   the floor already use.
+   Every actor, ring, light, particle, prompt and the camera target used
+   to add TILE_H/2 on top of that, which is the projection of
+   (x+0.5, y+0.5): half a tile south-east of where they collide. It was
+   consistent across all seventy call sites, so nothing looked broken,
+   but it meant contact and occlusion were half a tile out against the
+   only two things that were not doing it. One name for the convention
+   now, and one number. */
+var ACTOR_DY = 0;
+function isoYA(x, y) { return isoY(x, y) + ACTOR_DY; }
 function screenToWorld(sx, sy) {
     var c = cam(), pz = (RT && RT.fx) ? fxOf('punch') : null;
     /* The zoom punch scales the whole world about a screen point, so
@@ -84,19 +109,39 @@ function placeBox(gw, gh) {
    Smaller than the viewport on an axis means centre it and hold still. */
 function camBounds(gw, gh) {
     var b = placeBox(gw, gh);
-    return {
+    var r = {
         x0: b.w <= VW ? b.x + (b.w - VW) / 2 : b.x,
         x1: b.w <= VW ? b.x + (b.w - VW) / 2 : b.x + b.w - VW,
         y0: b.h <= VH ? b.y + (b.h - VH) / 2 : b.y,
         y1: b.h <= VH ? b.y + (b.h - VH) / 2 : b.y + b.h - VH
     };
+    /* On an axis that scrolls, the eye also has to be able to REACH every
+       walkable tile. Clamping to the bitmap alone is not the same thing:
+       for a long thin place the bitmap's box is mostly empty triangle, so
+       on the road the eye ran out of travel after about a third of the
+       walk and the player crossed the rest of a static frame, ending up
+       99 pixels from the left edge in one corner and 1021 in another.
+       Widen by exactly enough to bring the extreme walkable tiles inside
+       the dead zone, never more. It shows a little more of the dark
+       beyond the ground at the two far corners, and it is the difference
+       between walking down a road and watching one slide past. */
+    if (b.w > VW) {
+        var xa = isoXB(0.5, gh - 0.5), xb = isoXB(gw - 0.5, 0.5);
+        r.x0 = Math.min(r.x0, Math.min(xa, xb) - (VW + DEAD_W) / 2);
+        r.x1 = Math.max(r.x1, Math.max(xa, xb) - (VW - DEAD_W) / 2);
+    }
+    if (b.h > VH) {
+        r.y0 = Math.min(r.y0, isoYB(0.5, 0.5) + ACTOR_DY - (VH + DEAD_H) / 2);
+        r.y1 = Math.max(r.y1, isoYB(gw - 0.5, gh - 0.5) + ACTOR_DY - (VH - DEAD_H) / 2);
+    }
+    return r;
 }
 /* Dead zone follow. The camera does not move until you push out of a
    box in the middle of the screen, so walking around a room does not
    swim, and walking down a road does. */
 var DEAD_W = 300, DEAD_H = 150;
 function camTarget(px, py) {
-    var c = cam(), sx = isoXB(px, py) - c.x, sy = isoYB(px, py) + TILE_H / 2 - c.y;
+    var c = cam(), sx = isoXB(px, py) - c.x, sy = isoYB(px, py) + ACTOR_DY - c.y;   // frame the figure where the figure is drawn
     var nx = c.x, ny = c.y;
     var l = (VW - DEAD_W) / 2, r = VW - l, t = (VH - DEAD_H) / 2, bm = VH - t;
     if (sx < l) nx -= (l - sx); else if (sx > r) nx += (sx - r);
@@ -703,7 +748,14 @@ function setLamp() {
     // setting one down has to actually cost you the lamp or you have as
     // many as you have sills
     if (!takeItem('lamp', 1)) return false;
-    S.items.lamps[here] = 1; sSave();
+    /* Where you put it, not just that you did. This used to be a bare 1,
+       and nothing outside the bag panel ever read it: no prop, no sprite,
+       no light. In a game named after a lamp on a sill you could set one
+       down on the marker stone, be told it burns exactly as well out here
+       as it does on a sill, and watch the stone not change at all. An
+       array is still truthy, so lampsElsewhere, takeLamp and fillBag are
+       untouched; lampAt() below handles a 1 from an older save. */
+    S.items.lamps[here] = [+RT.px.toFixed(2), +RT.py.toFixed(2)]; sSave();
     if (here === 'mark') {
         // past the fence. Nobody has ever set out a second lamp, and
         // nobody has ever set one out here.
@@ -711,6 +763,37 @@ function setLamp() {
     }
     if (here === 'square') return 'You set it on a sill with all the others. It looks like all the others.';
     return 'You set the lamp down. It throws about a yard of light and the rest of it stays dark.';
+}
+/* The lamp itself, standing on the ground where you put it. Same rows the
+   widow carries, so it is recognisably the same object in her hand and on
+   your sill, and it gets the shadow every other solid thing has. */
+var LAMP_PAL = null;
+function drawSetLamp(cx, at) {
+    var sx = isoX(at.x, at.y), sy = isoYA(at.x, at.y);
+    if (sx < -40 || sx > VW + 40 || sy < -40 || sy > VH + 40) return;
+    if (!LAMP_PAL) LAMP_PAL = pxPal('#2e2a26', '#c9a94a', '#d8b48c', '#241c26');
+    cx.save();
+    cx.fillStyle = 'rgba(0,0,0,.4)';
+    cx.beginPath(); cx.ellipse(sx, sy, 7, 3, 0, 0, TAU); cx.fill();
+    blit(cx, bake('prop.lamp.set', PROP_LAMP, LAMP_PAL), sx, sy);
+    // the flame itself, which is the one part that must not be a still frame
+    var f = 0.72 + Math.sin(RT.t * 7.3 + at.x) * 0.14;
+    cx.globalCompositeOperation = 'lighter';
+    var g = cx.createRadialGradient(sx, sy - 9, 1, sx, sy - 9, 22);
+    g.addColorStop(0, 'rgba(255,206,120,' + (0.34 * f).toFixed(3) + ')');
+    g.addColorStop(1, 'rgba(255,190,90,0)');
+    cx.fillStyle = g; cx.beginPath(); cx.arc(sx, sy - 9, 22, 0, TAU); cx.fill();
+    cx.restore();
+}
+/* Where the lamp you left in this place is standing, or null. A save
+   written before lamps had positions stored a bare 1: put that one in the
+   middle of the floor rather than dropping it, so an old save still sees
+   the thing it left behind. */
+function lampAt(id) {
+    var v = S.items.lamps[id];
+    if (!v) return null;
+    if (v === 1 || !v.length) return { x: (PLACES[id].w || GRID) / 2, y: (PLACES[id].h || GRID) / 2 };
+    return { x: v[0], y: v[1] };
 }
 /* lamps left in OTHER places. Counting the one on the sill in this room made
    the bag say "1 set down elsewhere" directly above the row offering to take
@@ -875,7 +958,6 @@ function render() {
           '<button class="nn-b nn-b-wings" data-nn="wings" type="button" title="The wings (Escape)">ESC</button>' +
         '</div>' +
         '<div class="nn-tip" hidden></div>' +
-        '<div class="nn-vig"></div>' +
 
         // THE WINGS. Last in the DOM, so it is over everything without
         // having to out-bid anybody for a z-index.
@@ -1201,7 +1283,16 @@ var DEV = [
    frame while it builds, and five meant the ordinary loop through Wick
    — square, house, shop, lane, mill, loft — evicted the square before
    you walked back into it and paid for it again every time. */
-var FLOORS = {}, FLOOR_LRU = [], FLOOR_MAX = 7;
+/* Floors are capped in BYTES, not in entries, because they are not the
+   same size as each other: room11x9 is 1.21 MB and road11x34 is 4.43,
+   a 3.7x spread, and seven entries was anywhere from 11.4 MB to 17.9
+   depending on which seven. The sprite cache next door has been byte
+   capped from the start for exactly this reason.
+   FLOOR_MIN keeps the reason the 7 was picked: the ordinary loop through
+   Wick is town17x15, room11x9, room12x9, mill13x17, mill15x13, loft13x13,
+   which is 11.08 MB and six entries, and it must never evict the square
+   before you walk back into it. */
+var FLOORS = {}, FLOOR_LRU = [], FLOOR_MIN = 7, FLOOR_BUDGET = 13 << 20, FLOOR_BYTES = 0;
 var FLOOR_PAL = {
     stage:  ['#3a2a1c', '#2c1f14', '#4a3524'],
     town:   ['#2a2630', '#211d28', '#37323f'],
@@ -1378,11 +1469,17 @@ GROUND.hollow = function (g, f) {
        every edge out in white, so the ground looks ruled, like somebody
        set it out. And there is not one living thing scattered on it. */
     var fr = f.fr;
-    for (var v = 0; v <= f.gh; v++) {
+    /* On the EDGES, at k - 0.5, not through the middles at integer k. The
+       tile pass draws tile (x,y) as the diamond with corners at world
+       (x,y),(x+1,y),(x+1,y+1),(x,y+1), so the edges are the half-integer
+       lines. Ruling the integers put the white lattice exactly TILE_H/2
+       below the black one and gave the one ground that is meant to look
+       ruled two interleaved grids at half-tile pitch. */
+    for (var v = -0.5; v <= f.gh - 0.5; v++) {
         g.strokeStyle = 'rgba(178,190,214,.16)'; g.lineWidth = 1;
         g.beginPath(); g.moveTo(f.px(0, v), f.py(0, v)); g.lineTo(f.px(f.gw, v), f.py(f.gw, v)); g.stroke();
     }
-    for (var u = 0; u <= f.gw; u++) {
+    for (var u = -0.5; u <= f.gw - 0.5; u++) {
         g.strokeStyle = 'rgba(178,190,214,.16)'; g.lineWidth = 1;
         g.beginPath(); g.moveTo(f.px(u, 0), f.py(u, 0)); g.lineTo(f.px(u, f.gh), f.py(u, f.gh)); g.stroke();
     }
@@ -1465,7 +1562,13 @@ function buildFloor(kind, gw, gh) {
     var box = placeBox(gw, gh);
     var cv = document.createElement('canvas'); cv.width = box.w; cv.height = box.h;
     var g = cv.getContext('2d');
-    var seed = 9; function fr() { seed = (seed * 1103515245 + 12345) >>> 0; return (seed >>> 8) / 16777216; }
+    /* Math.imul, not `*`. A uint32 times 1103515245 reaches 2^62, a double
+       carries 53 bits of mantissa, and the low nine bits were being rounded
+       away before `>>> 0` ever saw them. That is not an LCG with a 2^32
+       period: from seed 9 it visited 5078 states and then cycled on 419
+       forever. GROUND.town draws 16188 numbers for the square, so 71% of
+       the cobbles under the hub were coming out of those 419. */
+    var seed = 9; function fr() { seed = (Math.imul(seed, 1103515245) + 12345) >>> 0; return (seed >>> 8) / 16777216; }
     var pal = FLOOR_PAL[kind];
     g.fillStyle = '#07060a'; g.fillRect(0, 0, box.w, box.h);
     /* Pass one: the tiles, which is what keeps the iso grid legible.
@@ -1513,7 +1616,8 @@ function buildFloor(kind, gw, gh) {
     g.fillStyle = rg; g.beginPath(); g.arc(0, 0, 330, 0, TAU); g.fill(); g.restore();
     // the vignette used to be baked here. With a camera it has to follow
     // the eye, not the ground, so it moved to drawVignette in screen space.
-    FLOORS[key] = { cv: cv, box: box };
+    FLOORS[key] = { cv: cv, box: box, bytes: box.w * box.h * 4 };
+    FLOOR_BYTES += FLOORS[key].bytes;
     touchFloor(key); trimFloors();
     return FLOORS[key];
 }
@@ -1522,13 +1626,16 @@ function touchFloor(key) {
     FLOOR_LRU.push(key);
 }
 function trimFloors() {
-    while (FLOOR_LRU.length > FLOOR_MAX) {
+    while (FLOOR_LRU.length > FLOOR_MIN && FLOOR_BYTES > FLOOR_BUDGET) {
         var k = FLOOR_LRU.shift(), f = FLOORS[k];
-        if (f) { f.cv.width = f.cv.height = 0; delete FLOORS[k]; }   // drop the backing store, not just the reference
+        if (!f) continue;
+        FLOOR_BYTES -= f.bytes;
+        f.cv.width = f.cv.height = 0; delete FLOORS[k];              // drop the backing store, not just the reference
     }
 }
 function freeFloors() {
     Object.keys(FLOORS).forEach(function (k) { FLOORS[k].cv.width = FLOORS[k].cv.height = 0; delete FLOORS[k]; });
+    FLOOR_BYTES = 0;
     FLOOR_LRU.length = 0;
 }
 
@@ -1601,7 +1708,7 @@ function drawPartPass(cx, add) {
         var p = RT.parts[i];
         if ((p.add ? 1 : 0) !== add) continue;
         var k = clamp(p.life / p.max, 0, 1);
-        var sx = isoX(p.x, p.y), sy = isoY(p.x, p.y) + TILE_H / 2 - p.z;
+        var sx = isoX(p.x, p.y), sy = isoYA(p.x, p.y) - p.z;
         var s = p.size * (0.4 + 0.6 * k);
         cx.fillStyle = partCol(p.col, k);
         /* Three shapes. The default arm is the line this function has
@@ -1634,7 +1741,7 @@ function drawTypo(cx, dt) {
         var w = RT.typo[i]; w.life -= dt;
         if (w.life <= 0) { RT.typo.splice(i, 1); continue; }
         var k = 1 - w.life / w.max, a = clamp(w.life / w.max * 1.6, 0, 1);
-        var sx = isoX(w.x, w.y), sy = isoY(w.x, w.y) + TILE_H / 2 - w.z;
+        var sx = isoX(w.x, w.y), sy = isoYA(w.x, w.y) - w.z;
         if (w.style === 'drift') sy -= k * 34;
         else if (w.style === 'pop') sy -= 10 + k * 16;
         var size = w.size * (w.style === 'pop' ? (0.7 + k * 0.5) : 1);
@@ -2032,10 +2139,10 @@ function punch(o) {
        is NaN, translate(NaN, NaN) makes the transform non invertible
        and NOTHING DRAWS AT ALL for as long as the shake runs. */
     if (o.x != null && isFinite(o.x) && isFinite(o.y)) {
-        ex = isoX(o.x, o.y); ey = isoY(o.x, o.y) + TILE_H / 2;
+        ex = isoX(o.x, o.y); ey = isoYA(o.x, o.y);
         ax = Math.round(clamp(ex, VW / 2 - 150, VW / 2 + 150));
         ay = Math.round(clamp(ey, VH / 2 - 80, VH / 2 + 80));
-        dx = ex - isoX(RT.px, RT.py); dy = ey - isoY(RT.px, RT.py) - TILE_H / 2;
+        dx = ex - isoX(RT.px, RT.py); dy = ey - isoYA(RT.px, RT.py);
     }
 
     // the held frame
@@ -2562,7 +2669,22 @@ function downPlayer() {
 }
 function revive() {
     RT.dead = false; RT.hp = RT.hpm; RT.breath = stats().breathMax; RT.iframe = 1.6;
+    /* gotoPlace does breath and winded on one line. This only did the
+       first half, and the lockout does not even run down while you are
+       dead: `RT.winded -= dt` lives in stepPlayer, which step() skips on
+       the dead branch. So a 1.5s silence expired twice over during the
+       2.2s death animation and was handed back to you intact, and you
+       got up with a full bar reading WINDED and no verbs for 1.5 of
+       your 1.6 invulnerable seconds. */
+    RT.winded = 0;
     RT.px = pw() / 2; RT.py = ph() - 2;
+    /* A teleport invalidates a click-to-move destination, which is why
+       gotoPlace nulls it. Left standing, the first live frame walked you
+       back toward the tile you clicked before you died, which is by
+       definition the tile you were fighting on, with i-frames burning. */
+    RT.moveTo = null; RT.armed = false; RT.nagged = null;
+    unstick();                // the one teleport in the game that had no guard behind it. All 13 spawn points are clear today; the next place authored is not this function's problem any more
+    stepCamera(0, true);      // the eye arrives with you: dying at one end of the road and getting up at the other used to pan the whole map
     RT.foes.forEach(function (f) { f.stacks.length = 0; });
     /* A lapse is the commonest way to die, so the wreckage of the lapse
        that killed you is on screen when you go down; stepFx keeps
@@ -2892,9 +3014,9 @@ var PLAYER_TOP = [
 ];
 var P_PLAYER = null;                 // built on first draw, so hex2rgb exists
 function drawActor(cx) {
-    var sx = isoX(RT.px, RT.py), sy = isoY(RT.px, RT.py) + TILE_H / 2;
+    var sx = isoX(RT.px, RT.py), sy = isoYA(RT.px, RT.py);
     var bob = RT.walking ? Math.sin(RT.t * 12) * 1.8 : Math.sin(RT.t * 2.2) * 0.7;
-    var west = Math.cos(RT.face) < 0 ? -1 : 1;
+    var west = faceX(Math.cos(RT.face), Math.sin(RT.face));   // screen x is (x - y), see faceX
     var cast = RT.casting ? clamp(RT.casting.t / RT.casting.max, 0, 1) : 0;
     /* The three families that reach the actor, read here and written
        nowhere else in this function. -eat: `fed` is the consumer
@@ -2960,13 +3082,19 @@ function drawActor(cx) {
        move: crit-eng-ark #22, the gradient's radius and the arc that
        rasterises it are separate literals, so shrinking one paid a
        120px fill for a 44px gradient every frame. */
+    /* Squashed to 0.62, the same as every light in drawLights. It was a
+       true circle, so the one pool in the game that is always on screen
+       was the one that did not lie on the ground; against the flattened
+       pool the same lantern also throws through drawLights it read as
+       two lights with two different ideas about where the floor is. */
     var pr = lerp(120, 44, hood);
     cx.save(); cx.globalCompositeOperation = 'lighter';
-    var lg = cx.createRadialGradient(sx, sy - 10, 6, sx, sy - 10, pr);
+    cx.translate(sx, sy - 10); cx.scale(1, 0.62);
+    var lg = cx.createRadialGradient(0, 0, 6, 0, 0, pr);
     lg.addColorStop(0, hood > 0 ? partCol(mixRgb('255,190,90', ARK_RIM || '201,161,255', hood), 0.14)
                                 : 'rgba(255,190,90,.14)');
     lg.addColorStop(1, 'rgba(255,180,70,0)');
-    cx.fillStyle = lg; cx.beginPath(); cx.arc(sx, sy - 10, pr, 0, TAU); cx.fill(); cx.restore();
+    cx.fillStyle = lg; cx.beginPath(); cx.arc(0, 0, pr, 0, TAU); cx.fill(); cx.restore();
 }
 
 /* ═══════════════ EFFECT SPINE ═══════════════
@@ -3102,7 +3230,7 @@ function foeH(f) { return f.def.boss ? 130 : (FOE_H[f.def.draw] || 30); }
    (3012). This helper existed in design-deton-3 and its own author
    open-coded the expression at both of his call sites, which is
    exactly how the 104 pixels happened the first time. */
-function foeStackY(f) { return isoY(f.x, f.y) + TILE_H / 2 - foeH(f) - 18 - (f.so || 0); }
+function foeStackY(f) { return isoYA(f.x, f.y) - foeH(f) - 18 - (f.so || 0); }
 
 /* A world heading is not a screen heading. isoX is (x-y)*29 and isoY
    is (x+y)*14.5, so a world angle of 0 leaves at 26.6 degrees on
@@ -3747,8 +3875,8 @@ function detWordPath(d, w, h, i) {
        in detJolt (4.4.5). */
     var over = (d.K.miss || (FAM_LINE[d.fam] && FAM_LINE[d.fam].still))
                ? 0 : Math.round(2 + 5 * d.p);
-    var x0 = isoX(w.wx, w.wy), y0 = isoY(w.wx, w.wy) + TILE_H / 2 - w.wh;
-    var my = w.low ? (isoY(d.x, d.y) + TILE_H / 2 + 10) : (y0 + d.lineY) / 2 + w.arc;
+    var x0 = isoX(w.wx, w.wy), y0 = isoYA(w.wx, w.wy) - w.wh;
+    var my = w.low ? (isoYA(d.x, d.y) + 10) : (y0 + d.lineY) / 2 + w.arc;
     var mx = (x0 + w.sx) / 2;
     var vx = w.sx - mx, vy = d.lineY - my, m = Math.sqrt(vx * vx + vy * vy) || 1;
     w.tx = w.sx + Math.round(vx / m * over);
@@ -3883,9 +4011,9 @@ function detEase(t) { var u = 1 - t; return 1 - u * u * u * u * u; }
 function detAt(d, r, tx, ty, dur, t) {
     var k = clamp((t - r.t0) / Math.max(0.001, dur), 0, 1), e = detEase(k), u = 1 - e;
     var x0 = punchWX(isoX(r.wx, r.wy) + (r.ox || 0));
-    var y0 = punchWY(isoY(r.wx, r.wy) + TILE_H / 2 - r.wh);
+    var y0 = punchWY(isoYA(r.wx, r.wy) - r.wh);
     var mx = (x0 + tx) / 2;
-    var my = r.low ? (isoY(d.x, d.y) + TILE_H / 2 + 10) : (y0 + ty) / 2 + (r.arc || 0);
+    var my = r.low ? (isoYA(d.x, d.y) + 10) : (y0 + ty) / 2 + (r.arc || 0);
     return { k: k,
              x: Math.round(u * u * x0 + 2 * u * e * mx + e * e * tx),
              y: Math.round(u * u * y0 + 2 * u * e * my + e * e * ty) };
@@ -3998,7 +4126,7 @@ function drawDetWorld(cx) {
         if (k < 0 || k >= 1) continue;
         n = tr.cells.length; if (!n) continue;
         sx = isoX(tr.wx, tr.wy);
-        y0 = isoY(tr.wx, tr.wy) + TILE_H / 2 - tr.wh;      // where the row WAS
+        y0 = isoYA(tr.wx, tr.wy) - tr.wh;      // where the row WAS
         sy = y0 - Math.round(k * 16);                      // where it is now
         lit = (d.t - tr.t0) < 0.014;
         plate = n * PIP_W + 8;
@@ -4424,7 +4552,7 @@ function drawSnaps(cx, dt) {
         var k = 1 - s.t / s.max;
         // the row's real height, stored at push time, because foeH needs
         // the foe and no record may outlive the frame holding one
-        var sx = Math.round(isoX(s.x, s.y)), sy = Math.round(isoY(s.x, s.y) + TILE_H / 2 - s.h);
+        var sx = Math.round(isoX(s.x, s.y)), sy = Math.round(isoYA(s.x, s.y) - s.h);
         cx.save();
         fn(cx, s, k, sx, sy);
         cx.globalAlpha = 1;
@@ -4471,7 +4599,7 @@ function dressSlant(d, hits) {
 function drawHaulWorld(cx) {
     var d = RT.det; if (!d || !d.haul || !d.haul.length) return;
     var P = fampx()[d.fam];
-    var ax = Math.round(isoX(RT.px, RT.py)), ay = Math.round(isoY(RT.px, RT.py) + TILE_H / 2 - 34);
+    var ax = Math.round(isoX(RT.px, RT.py)), ay = Math.round(isoYA(RT.px, RT.py) - 34);
     var i, j, H, c, t, sx, sy, x, dist, steps, m, u, k, tf, a, bw, fam, tg;
     cx.save(); cx.textAlign = 'center';
     cx.font = 'bold 8px "Press Start 2P", monospace';
@@ -4479,7 +4607,7 @@ function drawHaulWorld(cx) {
         H = d.haul[i]; t = d.t - H.t0;
         if (t < 0 || t > 0.42) continue;
         sx = Math.round(isoX(H.wx, H.wy));
-        sy = Math.round(isoY(H.wx, H.wy) + TILE_H / 2 - H.wh);
+        sy = Math.round(isoYA(H.wx, H.wy) - H.wh);
         /* THE ROPE, a run of 2px marks rather than a stroke. A diagonal
            stroke is the one soft edge a canvas gives you for free and
            this game has no soft edges; a rope of hard marks also makes
@@ -4693,7 +4821,7 @@ function drawRepWorld(cx) {
         k = clamp((d.t - tr.t0) / 0.05, 0, 1);
         if (k <= 0) continue;
         sx = Math.round(isoX(tr.wx, tr.wy));
-        sy = Math.round(isoY(tr.wx, tr.wy) + TILE_H / 2 - tr.wh);
+        sy = Math.round(isoYA(tr.wx, tr.wy) - tr.wh);
         w = Math.round((tr.cells.length * PIP_W + 8) / 2 * k);   // struck from the centre out
         cx.globalAlpha = 0.9 * (1 - clamp((d.t - 0.18) / 0.16, 0, 1));
         for (j = 0; j < d.rep; j++) cx.fillRect(sx - w, sy + 7 + j * 3, w * 2, 1);
@@ -5217,7 +5345,7 @@ function drawProjWorld(cx, dt, s) {
     for (i = 0; i < s.lands.length; i++) {
         o = s.lands[i]; P = fampx()[o.fam];
         sx = Math.round(isoX(o.wx, o.wy));
-        sy = Math.round(isoY(o.wx, o.wy) + TILE_H / 2);
+        sy = Math.round(isoYA(o.wx, o.wy));
         if (o.kind === 'fizz') {
             /* IT HANGS FIRST. Dead still at full colour for 0.22s, and
                then it falls 22px over 0.5s. It greys through rimeText's
@@ -5318,13 +5446,13 @@ function drawProjWorld(cx, dt, s) {
     for (i = 0; i < s.sours.length; i++) {
         o = s.sours[i];
         sx = Math.round(isoX(o.wx, o.wy));
-        sy = Math.round(isoY(o.wx, o.wy) + TILE_H / 2 - o.wh);
+        sy = Math.round(isoYA(o.wx, o.wy) - o.wh);
         if (o.kind === 'thread') {
             /* it eats itself from the foe end, so the line arrives
                rather than merely fading. Quadratic, 14px of sag, one
                pixel wide, and the number lands when it does. */
             tx = Math.round(isoX(RT.px, RT.py));
-            ty = Math.round(isoY(RT.px, RT.py) + TILE_H / 2 - 20);
+            ty = Math.round(isoYA(RT.px, RT.py) - 20);
             px2 = lerp(sx, tx, o.k0); py2 = lerp(sy, ty, o.k0);
             mx = (px2 + tx) / 2; my = (py2 + ty) / 2 + 14;
             cx.globalAlpha = clamp(1 - o.k0, 0, 1) * 0.55;
@@ -5414,10 +5542,10 @@ function drawMuzzle(cx) {
     if (!C || !C.fam) return;
     var k = clamp(C.t / C.max, 0, 1), P = fampx()[C.fam];
     var big = C.max > 0.18 ? 1.9 : 1;      // a rhyme is not aimed at anything
-    var west = Math.cos(RT.face) < 0 ? -1 : 1;
+    var west = faceX(Math.cos(RT.face), Math.sin(RT.face));   // screen x is (x - y), see faceX
     var bob = RT.walking ? Math.sin(RT.t * 12) * 1.8 : Math.sin(RT.t * 2.2) * 0.7;
     var hx = Math.round(isoX(RT.px, RT.py) + west * 4);
-    var hy = Math.round(isoY(RT.px, RT.py) + TILE_H / 2 - 38 - bob);
+    var hy = Math.round(isoYA(RT.px, RT.py) - 38 - bob);
     var wpx = 12 * 0.55 * big, r = Math.round((4 + (1 - k) * 11) * big);
     cx.save();
     cx.globalCompositeOperation = 'lighter';
@@ -6723,7 +6851,7 @@ function drawRings(cx, dt) {
         var g = RT.rings[i]; g.t -= dt;
         if (g.t <= 0) { RT.rings.splice(i, 1); continue; }
         var k = 1 - g.t / g.life, rr = g.max * (0.15 + 0.85 * k);
-        var sx = isoX(g.x, g.y), sy = isoY(g.x, g.y) + TILE_H / 2;
+        var sx = isoX(g.x, g.y), sy = isoYA(g.x, g.y);
         cx.save(); cx.translate(sx, sy); cx.scale(1, 0.5); cx.globalCompositeOperation = 'lighter';
         cx.strokeStyle = 'rgba(' + g.col + ',' + (0.85 * (1 - k)).toFixed(3) + ')';
         cx.lineWidth = 5 * (1 - k) + 1;
@@ -7234,7 +7362,7 @@ function drawFolk(cx, f) {
     cx.restore();
 }
 function drawFoe(cx, f) {
-    var sx = isoX(f.x, f.y), sy = isoY(f.x, f.y) + TILE_H / 2;
+    var sx = isoX(f.x, f.y), sy = isoYA(f.x, f.y);
     var pop = f.spawn > 0 ? 0.5 + (0.45 - f.spawn) : 1;
     var wob = Math.sin(RT.t * 22) * f.wob * 3;
     var tell = f.state === 'tell' ? 0.5 + 0.5 * Math.sin(RT.t * 30) : 0;
@@ -8194,7 +8322,7 @@ function drawEatRing(cx, o, k) {
     var r = (1 - k * k) * o.r0 * TILE_W / 2, a = 0.85 * (1 - k), i, ang, tx, ty;
     if (r < 3) return;
     cx.save();
-    cx.translate(Math.round(isoX(o.x, o.y)), Math.round(isoY(o.x, o.y) + TILE_H / 2));
+    cx.translate(Math.round(isoX(o.x, o.y)), Math.round(isoYA(o.x, o.y)));
     cx.scale(1, 0.5);
     for (i = 0; i < o.nt; i++) {
         ang = i * TAU / o.nt + o.r0;             // seeded off its own radius: no two rings phase-lock
@@ -8218,7 +8346,7 @@ function drawEatRing(cx, o, k) {
    (crit-eng-eat #20): it returns a TextMetrics object and this is a
    draw loop. */
 function drawEatWord(cx, o, k) {
-    var sx = Math.round(punchWX(isoX(o.x, o.y))), sy = Math.round(punchWY(isoY(o.x, o.y) + TILE_H / 2 - o.z - k * 26));
+    var sx = Math.round(punchWX(isoX(o.x, o.y))), sy = Math.round(punchWY(isoYA(o.x, o.y) - o.z - k * 26));
     var i, cut, bw, a = clamp((1 - k) * 2.2, 0, 1);
     cx.save(); cx.textAlign = 'center'; cx.font = o.font; cx.globalAlpha = a;
     if (!o.w) o.w = cx.measureText('EAT').width;
@@ -8372,8 +8500,8 @@ function eatDrain(f, n, h, d) {
    at u = 1, so it vanished 6.6% short of your chest. It is flagged,
    drawn once at k = 1, and spliced on the following frame. */
 function drawEatMote(cx, m, k) {
-    var u = k * k, px = isoX(RT.px, RT.py), py = isoY(RT.px, RT.py) + TILE_H / 2 - 26;
-    var x0 = isoX(m.x0, m.y0), y0 = isoY(m.x0, m.y0) + TILE_H / 2 - m.z0, j, uu, mx, my, s;
+    var u = k * k, px = isoX(RT.px, RT.py), py = isoYA(RT.px, RT.py) - 26;
+    var x0 = isoX(m.x0, m.y0), y0 = isoYA(m.x0, m.y0) - m.z0, j, uu, mx, my, s;
     for (j = 0; j < 3; j++) {
         uu = clamp(u - j * 0.06, 0, 1);
         mx = Math.round(lerp(x0, px, uu)); my = Math.round(lerp(y0, py, uu) - Math.sin(uu * Math.PI) * m.arc);
@@ -8476,7 +8604,7 @@ function drawEatWorld(cx, dt, st) {
         cx.globalCompositeOperation = 'lighter';
         cx.globalAlpha = clamp(st.fed * 0.05, 0, 0.4);
         cx.fillStyle = FAMS.eat.glow;
-        sx = isoX(RT.px, RT.py); sy = isoY(RT.px, RT.py) + TILE_H / 2;
+        sx = isoX(RT.px, RT.py); sy = isoYA(RT.px, RT.py);
         cx.beginPath(); cx.ellipse(sx, sy - 22, 11, 20, 0, 0, TAU); cx.fill();
         cx.restore();
     }
@@ -8501,7 +8629,7 @@ function drawEatWorld(cx, dt, st) {
 function drawEatHusk(cx, o, k) {
     var fall = k < 0.06 ? 0 : k * k * 40;
     var sx = Math.round(isoX(o.x, o.y)) + o.ox;
-    var sy = Math.round(isoY(o.x, o.y) + TILE_H / 2) + o.oy + fall;
+    var sy = Math.round(isoYA(o.x, o.y)) + o.oy + fall;
     cx.globalAlpha = 1 - k * k;
     cx.fillStyle = EAT_BITE; cx.fillRect(sx, sy, o.w, o.h);
     cx.fillStyle = partCol(EAT_CHAR, 0.6 * (1 - k));
@@ -8510,7 +8638,7 @@ function drawEatHusk(cx, o, k) {
 }
 function drawEatPlus(cx, o, k) {
     var sx = Math.round(punchWX(isoX(o.x, o.y)));
-    var sy = Math.round(punchWY(isoY(o.x, o.y) + TILE_H / 2 - o.z - k * 22));
+    var sy = Math.round(punchWY(isoYA(o.x, o.y) - o.z - k * 22));
     cx.save(); cx.textAlign = 'center';
     cx.globalAlpha = clamp((1 - k) * 2.2, 0, 1);
     cx.font = 'bold ' + o.px + 'px "Press Start 2P", monospace';
@@ -8622,7 +8750,7 @@ var IGHT_CALL = {
             cx.globalAlpha = al[j];
             cx.font = 'bold ' + sz[j] + 'px "Press Start 2P", monospace';
             cx.fillStyle = P.col;
-            cx.fillText(c.word, isoX(gx, gy), isoY(gx, gy) + TILE_H / 2 - 26);
+            cx.fillText(c.word, isoX(gx, gy), isoYA(gx, gy) - 26);
         }
         cx.globalAlpha = 1;
         cx.font = 'bold ' + (12 + c.near * 1.6).toFixed(1) + 'px "Press Start 2P", monospace';
@@ -8926,7 +9054,7 @@ function ightBody(cx, f, h, sx, sy) {
    expiring, which is a tactical read the game has never offered.
    Suppressed for folk. */
 function drawIghtMarks(cx, f, g) {
-    var sx = Math.round(isoX(f.x, f.y)), sy = Math.round(isoY(f.x, f.y) + TILE_H / 2);
+    var sx = Math.round(isoX(f.x, f.y)), sy = Math.round(isoYA(f.x, f.y));
     var h = foeH(f), w = Math.round((f.def.boss ? 100 : f.r * 26)), i, cxx, cyy, dx, dy;
     var end = clamp(f.revealed / 0.8, 0, 1), inw = (1 - end) * 4, drop = (1 - end) * 3;
     if (f.def.folk) return;
@@ -9030,7 +9158,7 @@ function drawIghtWorld(cx, dt, st) {
         drawIghtMarks(cx, f, g);
     }
     if (st.kick > 0) {                            // the actor's shadow, thrown backwards, hard
-        var ax = isoX(RT.px, RT.py), ay = isoY(RT.px, RT.py) + TILE_H / 2;
+        var ax = isoX(RT.px, RT.py), ay = isoYA(RT.px, RT.py);
         cx.fillStyle = 'rgba(8,6,12,.55)';
         cx.beginPath();
         cx.ellipse(ax - Math.cos(st.ka) * 7, ay - Math.sin(st.ka) * 3.5, 20, 4, 0, 0, TAU);
@@ -9038,8 +9166,8 @@ function drawIghtWorld(cx, dt, st) {
     }
 }
 function drawIghtSpoke(cx, o, k) {
-    var px = isoX(RT.px, RT.py), py = isoY(RT.px, RT.py) + TILE_H / 2 - 22;
-    var tx = isoX(o.x, o.y), ty = isoY(o.x, o.y) + TILE_H / 2 - o.h * 0.55;
+    var px = isoX(RT.px, RT.py), py = isoYA(RT.px, RT.py) - 22;
+    var tx = isoX(o.x, o.y), ty = isoYA(o.x, o.y) - o.h * 0.55;
     var a = clamp((1 - k) * 1.8, 0, 1) * T('ightSpoke'), u = clamp(k * 3.2, 0, 1);
     var ex = lerp(px, tx, u), ey = lerp(py, ty, u);
     cx.save(); cx.globalCompositeOperation = 'lighter';
@@ -9050,7 +9178,7 @@ function drawIghtSpoke(cx, o, k) {
     cx.restore();
 }
 function drawIghtPin(cx, o, k) {
-    var sx = Math.round(isoX(o.x, o.y)), sy = Math.round(isoY(o.x, o.y) + TILE_H / 2 - o.h * 0.6);
+    var sx = Math.round(isoX(o.x, o.y)), sy = Math.round(isoYA(o.x, o.y) - o.h * 0.6);
     var travel = o.from * (1 - k) * (1 - k), bl = 18 + o.n * 2;
     cx.fillStyle = partCol(IGHT_LIT, clamp((1 - k) * 2, 0, 1));
     cx.fillRect(sx - travel - bl, sy - 1, bl, 2);
@@ -9064,7 +9192,7 @@ function drawIghtPin(cx, o, k) {
    nothing. The first 8% draws the whole plate in #fffbe8 rather than
    #ffe66e. That is the rationed near-white and it is 34ms. */
 function drawIghtPeel(cx, o, k) {
-    var sx = Math.round(isoX(o.x, o.y)), sy = Math.round(isoY(o.x, o.y) + TILE_H / 2);
+    var sx = Math.round(isoX(o.x, o.y)), sy = Math.round(isoYA(o.x, o.y));
     var w = o.w, h = o.h, u = k, drop = Math.min(u * u * 210, h), a = clamp((1 - k) * 1.6, 0, 1);
     var col = k < 0.08 ? '#fffbe8' : '#ffe66e';
     cx.save(); cx.translate(sx, sy); cx.globalAlpha = a; cx.fillStyle = col;
@@ -9076,7 +9204,7 @@ function drawIghtPeel(cx, o, k) {
     cx.restore();
 }
 function drawIghtShutter(cx, o, k) {
-    var sx = Math.round(isoX(o.x, o.y)), sy = Math.round(isoY(o.x, o.y) + TILE_H / 2 - 26);
+    var sx = Math.round(isoX(o.x, o.y)), sy = Math.round(isoYA(o.x, o.y) - 26);
     var g = Math.round(k * 5);
     cx.fillStyle = '#ffe66e';
     cx.fillRect(sx - 9, sy - 1 - g, 18, 2);
@@ -9085,7 +9213,7 @@ function drawIghtShutter(cx, o, k) {
     cx.fillRect(sx - 1, sy - g, 2, g * 2);
 }
 function drawIghtMiss(cx, o, k) {
-    var sx = isoX(o.x, o.y), sy = isoY(o.x, o.y) + TILE_H / 2;
+    var sx = isoX(o.x, o.y), sy = isoYA(o.x, o.y);
     cx.save(); cx.globalCompositeOperation = 'lighter';
     cx.globalAlpha = (1 - k) * 0.5; cx.fillStyle = FAMS.ight.col;
     cx.translate(sx, sy); cx.scale(1, 0.5);
@@ -9181,7 +9309,7 @@ var ERD_CALL = {
             if (!(tk[i + 2] > 0)) continue;
             cx.fillStyle = partCol(ERD_COL, 0.55);
             cx.fillRect(Math.round(isoX(tk[i], tk[i + 1])) - 1,
-                        Math.round(isoY(tk[i], tk[i + 1]) + TILE_H / 2 - 30), 2, 6);
+                        Math.round(isoYA(tk[i], tk[i + 1]) - 30), 2, 6);
         }
         cx.textAlign = 'center';
         cx.font = 'bold 12px "Press Start 2P", monospace';
@@ -9456,7 +9584,7 @@ function erdBody(cx, f, h, sx, sy) {
    silhouette, so they are drawn at whole pixels and are visible on a
    frozen body, which is correct, because a body can be both. */
 function drawErdGag(cx, f, g) {
-    var sx = Math.round(isoX(f.x, f.y)), sy = Math.round(isoY(f.x, f.y) + TILE_H / 2);
+    var sx = Math.round(isoX(f.x, f.y)), sy = Math.round(isoYA(f.x, f.y));
     var h = foeH(f), n = g.n || 1;
     var w = Math.round(f.def.boss ? 100 : f.r * 50);
     var bh = Math.round(clamp(T('erdGag') + Math.min(3, n / 3), 3, 14));
@@ -9611,7 +9739,7 @@ function drawErdWorld(cx, dt, st) {
    because there is no frame in which you see where the bars came
    from. Three frames at 144Hz, one at 60, free. */
 function drawErdClap(cx, o) {
-    var sx = Math.round(isoX(o.x, o.y)), sy = Math.round(isoY(o.x, o.y) + TILE_H / 2);
+    var sx = Math.round(isoX(o.x, o.y)), sy = Math.round(isoYA(o.x, o.y));
     var t = o.t, top = Math.round(sy - o.h - 8), bh = o.h + 10;
     var u, dist, bw, i, seg, sh2, y2, hole = o.nn >= T('stackMax');
     var t2 = o.CT + o.RH, t3 = t2 + 0.05, t4 = t3 + o.VT;
@@ -9683,7 +9811,7 @@ function drawErdClap(cx, o) {
 function drawErdGust(cx, o, k) {
     var u = 1 - Math.pow(2, -11 * k), r = o.r * u * TILE_W / 2, i, a;
     cx.save();
-    cx.translate(Math.round(isoX(o.x, o.y)), Math.round(isoY(o.x, o.y) + TILE_H / 2));
+    cx.translate(Math.round(isoX(o.x, o.y)), Math.round(isoYA(o.x, o.y)));
     cx.scale(1, 0.5);
     cx.fillStyle = partCol(ERD_COL, 0.8);
     for (i = 0; i < 12; i++) {
@@ -9698,7 +9826,7 @@ function drawErdGust(cx, o, k) {
    the detonation's screen rule under the line (see 12.13): different
    plane, different colour, different anchor. */
 function drawErdRule(cx, o) {
-    var sx = Math.round(isoX(RT.px, RT.py)), sy = Math.round(isoY(RT.px, RT.py) + TILE_H / 2);
+    var sx = Math.round(isoX(RT.px, RT.py)), sy = Math.round(isoYA(RT.px, RT.py));
     var t = o.t, hw = o.hw * TILE_W / 2, u, i, tx;
     if (t < 0.10) u = 1 - Math.pow(2, -11 * (t / 0.10));
     else if (t < 0.16) u = 1;
@@ -9724,13 +9852,13 @@ function drawErdChips(cx, st) {
     if (!st.chips.length) return;
     for (i = 0; i < st.chips.length; i++) {
         o = st.chips[i];
-        sx = Math.round(isoX(o.x, o.y)); sy = Math.round(isoY(o.x, o.y) + TILE_H / 2 - o.z);
+        sx = Math.round(isoX(o.x, o.y)); sy = Math.round(isoYA(o.x, o.y) - o.z);
         cx.fillStyle = o.lit ? partCol(ERD_LIT, 1) : partCol(ERD_COL, 1);
         cx.fillRect(sx, sy, o.lg, 2);
     }
 }
 function drawErdCounter(cx, o, k) {
-    var sx = Math.round(isoX(o.x, o.y)), sy = Math.round(isoY(o.x, o.y) + TILE_H / 2);
+    var sx = Math.round(isoX(o.x, o.y)), sy = Math.round(isoYA(o.x, o.y));
     var u = clamp(k / 0.44, 0, 1), r, i, a, m;
     if (k < 0.44) {
         r = (o.r + 0.6 + u * 2.2) * TILE_W / 2;
@@ -9766,7 +9894,7 @@ function drawErdCounter(cx, o, k) {
    right as it rises; this one is struck from the left and does not
    rise, because a counter is not a death. */
 function drawErdStrike(cx, o, k) {
-    var sx = Math.round(isoX(o.x, o.y)), sy = Math.round(isoY(o.x, o.y) + TILE_H / 2 - o.z);
+    var sx = Math.round(isoX(o.x, o.y)), sy = Math.round(isoYA(o.x, o.y) - o.z);
     var w, bx;
     cx.save(); cx.textAlign = 'center';
     cx.font = 'bold 9px "Press Start 2P", monospace';
@@ -9782,7 +9910,7 @@ function drawErdStrike(cx, o, k) {
     cx.restore(); cx.textAlign = 'left';
 }
 function drawErdShut(cx, o, k) {
-    var sx = Math.round(isoX(o.x, o.y)) + o.ox, sy = Math.round(isoY(o.x, o.y) + TILE_H / 2 - o.z);
+    var sx = Math.round(isoX(o.x, o.y)) + o.ox, sy = Math.round(isoYA(o.x, o.y) - o.z);
     var hh;
     if (k < 0.55) { cx.fillStyle = partCol(ERD_INK, 0.98); cx.fillRect(sx - 5, sy - 6, 11, 10); return; }
     hh = Math.round(5 * (1 - (k - 0.55) / 0.45));
@@ -9792,7 +9920,7 @@ function drawErdShut(cx, o, k) {
     cx.fillRect(sx - 5, sy - 1 - hh, 11, 1); cx.fillRect(sx - 5, sy - 2 + hh, 11, 1);
 }
 function drawErdOpen(cx, o, k) {
-    var sx = Math.round(isoX(o.x, o.y)), sy = Math.round(isoY(o.x, o.y) + TILE_H / 2 - 26);
+    var sx = Math.round(isoX(o.x, o.y)), sy = Math.round(isoYA(o.x, o.y) - 26);
     var px = Math.round(-Math.sin(o.a) * k * 7), py = Math.round(Math.cos(o.a) * k * 7);
     cx.fillStyle = partCol(ERD_LIT, 1);
     cx.fillRect(sx + px - 1, sy + py - 3, 3, 7);
@@ -10002,7 +10130,7 @@ function arkSour(f, s, i) {
    A screen registration at ord 48 is the only place the word survives
    the family's own dim, and it costs one extra regFx line. */
 function drawArkWord(cx, o, k) {
-    var sx = Math.round(punchWX(isoX(o.x, o.y))), sy = Math.round(punchWY(isoY(o.x, o.y) + TILE_H / 2 - o.z - k * 26));
+    var sx = Math.round(punchWX(isoX(o.x, o.y))), sy = Math.round(punchWY(isoYA(o.x, o.y) - o.z - k * 26));
     cx.save(); cx.textAlign = 'center';
     cx.font = 'bold ' + o.px + 'px "Press Start 2P", monospace';
     cx.globalAlpha = clamp((1 - k) * 2.4, 0, 1);
@@ -10092,7 +10220,7 @@ function arkDet(f, n, d) {
    does it. */
 function arkBody(cx, f, h, sx, sy) {
     var g = famBag(f, 'ark'), d = foeSil(f.def.draw), spr = foeSilSpr(f.def.draw, '#271e3a');
-    var a = Math.atan2(sy - (isoY(RT.px, RT.py) + TILE_H / 2), sx - isoX(RT.px, RT.py));
+    var a = Math.atan2(sy - (isoYA(RT.px, RT.py)), sx - isoX(RT.px, RT.py));
     var lv = g.line, i, cols, cw, top, ang, lift;
     if (!(lv > 0)) return;
     cx.save();
@@ -10192,7 +10320,7 @@ function arkCloakK() {
    whenever you face west. */
 var ARK_LINE = 'she walked out past the mill, the well';
 function drawArkCloak(cx, k) {
-    var sx = isoX(RT.px, RT.py), sy = isoY(RT.px, RT.py) + TILE_H / 2;
+    var sx = isoX(RT.px, RT.py), sy = isoYA(RT.px, RT.py);
     var n = ARK_LINE.length, keep = Math.ceil(n * clamp(RT.conceal / 4, 0, 1)), i, a;
     cx.save();
     cx.translate(sx, sy); cx.scale(1, 0.5);
@@ -10296,7 +10424,7 @@ function drawArkWorld(cx, dt, st) {
     for (i = 0; i < st.keep.length; i++) {
         o = st.keep[i];
         cx.save();
-        cx.translate(Math.round(isoX(o.x, o.y)), Math.round(isoY(o.x, o.y) + TILE_H / 2));
+        cx.translate(Math.round(isoX(o.x, o.y)), Math.round(isoYA(o.x, o.y)));
         cx.scale(1, 0.5);
         cx.fillStyle = partCol(ARK_DEEP, 0.5);
         cx.beginPath(); cx.arc(0, 0, o.r * TILE_W / 2, 0, TAU); cx.fill();
@@ -10329,7 +10457,7 @@ function drawArkStain(cx, o) {
     var age = clamp(o.t / (o.grow || 0.3), 0, 1), fade = o.life ? clamp((o.life - o.t) / 0.8, 0, 1) : 1;
     var r = o.r * (0.35 + 0.65 * (1 - (1 - age) * (1 - age))) * TILE_W / 2;
     cx.save();
-    cx.translate(Math.round(isoX(o.x, o.y)), Math.round(isoY(o.x, o.y) + TILE_H / 2));
+    cx.translate(Math.round(isoX(o.x, o.y)), Math.round(isoYA(o.x, o.y)));
     cx.scale(1, 0.5);
     cx.fillStyle = partCol(ARK_DEEP, o.a * fade);
     cx.beginPath(); cx.arc(0, 0, r, 0, TAU); cx.fill();
@@ -10338,7 +10466,7 @@ function drawArkStain(cx, o) {
     cx.restore();
 }
 function drawArkScratch(cx, o, k) {
-    var sx = Math.round(isoX(o.x, o.y)), sy = Math.round(isoY(o.x, o.y) + TILE_H / 2), i, a, l;
+    var sx = Math.round(isoX(o.x, o.y)), sy = Math.round(isoYA(o.x, o.y)), i, a, l;
     cx.save(); cx.translate(sx, sy); cx.scale(1, 0.5);
     cx.strokeStyle = partCol(ARK_RIM, (1 - k) * 0.55 * T('vfxRimGround')); cx.lineWidth = 1;
     cx.beginPath();
@@ -10365,7 +10493,7 @@ function drawArkScreen(cx, dt) {
    out in front of you. It is the only detonation in the game whose
    verb is deletion. */
 function drawArkUnprint(cx, o, k) {
-    var sx = Math.round(punchWX(isoX(o.x, o.y))), sy = Math.round(punchWY(isoY(o.x, o.y) + TILE_H / 2 - o.z));
+    var sx = Math.round(punchWX(isoX(o.x, o.y))), sy = Math.round(punchWY(isoYA(o.x, o.y) - o.z));
     var w = 13, n = o.n, i, x0, u;
     if (!n) return;
     cx.save();
@@ -10498,7 +10626,7 @@ var ILL_CALL = {
             if (age * (c.max || 0.58) < gate[j]) continue;
             gx = c.x - c.vx * (j + 1) * 0.042; gy = c.y - c.vy * (j + 1) * 0.042;
             cx.globalAlpha = al[j]; cx.fillStyle = P.col;
-            cx.fillText(w.slice(j + 1), isoX(gx, gy), isoY(gx, gy) + TILE_H / 2 - 26);
+            cx.fillText(w.slice(j + 1), isoX(gx, gy), isoYA(gx, gy) - 26);
         }
         cx.globalAlpha = 1;
         cx.fillStyle = '#08060c'; cx.fillText(w, sx + 1.5, sy + 1.5);
@@ -10650,7 +10778,7 @@ function illDet(f, n, d) {
    counting syllables. Counting beats measuring, and it costs n
    fillRects. */
 function drawIllWord(cx, o, k) {
-    var sx = Math.round(punchWX(isoX(o.x, o.y))), sy = Math.round(punchWY(isoY(o.x, o.y) + TILE_H / 2 - o.z));
+    var sx = Math.round(punchWX(isoX(o.x, o.y))), sy = Math.round(punchWY(isoYA(o.x, o.y) - o.z));
     var a = k < 0.79 ? 1 : clamp((1 - k) / 0.21, 0, 1), i, n = Math.min(8, o.n), w, sx0;
     cx.save(); cx.textAlign = 'center'; cx.globalAlpha = a;
     cx.font = 'bold ' + Math.round(o.px) + 'px "Press Start 2P", monospace';
@@ -10669,7 +10797,7 @@ function drawIllWord(cx, o, k) {
 function drawIllRing(cx, o, k, held) {
     var r = (held ? o.r0 : lerp(o.r0, o.r1, 1 - (1 - k) * (1 - k))) * TILE_W / 2, i, a0;
     cx.save();
-    cx.translate(Math.round(isoX(o.x, o.y)), Math.round(isoY(o.x, o.y) + TILE_H / 2));
+    cx.translate(Math.round(isoX(o.x, o.y)), Math.round(isoYA(o.x, o.y)));
     cx.scale(1, 0.5);
     cx.strokeStyle = partCol(ILL_COLR, held ? 0.9 : 1 - k * 0.3); cx.lineWidth = 2;
     for (i = 0; i < 3; i++) {
@@ -10977,7 +11105,7 @@ function drawIllShard(cx, s) {
     if (s.t >= 0.12 || !spr) spr = SPR['ice.' + s.key] || spr;
     if (!spr) return;
     dx = Math.round(isoX(s.x, s.y) + s.ox);
-    dy = Math.round(isoY(s.x, s.y) + TILE_H / 2 - s.z);
+    dy = Math.round(isoYA(s.x, s.y) - s.z);
     fx = (s.flip & 1) ? -1 : 1; fy = (s.flip & 2) ? -1 : 1;
     cx.save();
     cx.translate(dx + dst / 2, dy + dst / 2); cx.scale(fx, fy);
@@ -10991,7 +11119,7 @@ function drawIllShard(cx, s) {
    asked the family to stop being Ice and be HER sound, and this is
    the sentence that does it. */
 function drawIllPool(cx, f) {
-    var sx = Math.round(isoX(f.x, f.y)), sy = Math.round(isoY(f.x, f.y) + TILE_H / 2);
+    var sx = Math.round(isoX(f.x, f.y)), sy = Math.round(isoYA(f.x, f.y));
     var r = f.r * 26;
     cx.save(); cx.translate(sx, sy); cx.scale(1, 0.5);
     cx.globalCompositeOperation = 'lighter';
@@ -11127,14 +11255,14 @@ function drawIllWorld(cx, dt, st) {
 function drawIllHalo(cx, o, k) {
     var spr = SPR['ice.' + o.key + '.2'] || SPR['ice.' + o.key];
     if (!spr) return;
-    var sx = isoX(o.x, o.y), sy = isoY(o.x, o.y) + TILE_H / 2;
+    var sx = isoX(o.x, o.y), sy = isoYA(o.x, o.y);
     cx.save(); cx.globalAlpha = 0.55 * (1 - k);
     cx.translate(sx, sy); cx.scale(1.35, 1.35);
     blit(cx, spr, 0, 0);
     cx.restore();
 }
 function drawIllFizz(cx, o, k) {
-    var sx = isoX(o.x, o.y), sy = isoY(o.x, o.y) + TILE_H / 2 - 24;
+    var sx = isoX(o.x, o.y), sy = isoYA(o.x, o.y) - 24;
     cx.save(); cx.textAlign = 'center';
     cx.globalAlpha = (1 - k) * 0.5;
     cx.font = 'bold 11px "Press Start 2P", monospace';
@@ -11164,7 +11292,7 @@ function drawCuts(cx, dt) {
         var c = c2[i]; c.t -= dt;
         if (c.t <= 0) { c2.splice(i, 1); continue; }
         var k = 1 - c.t / c.max;
-        var sx = isoX(c.x, c.y), sy = isoY(c.x, c.y) + TILE_H / 2 - 34 - k * 16;
+        var sx = isoX(c.x, c.y), sy = isoYA(c.x, c.y) - 34 - k * 16;
         var size = c.big ? 15 : 9;
         cx.save();
         cx.font = 'bold ' + size + 'px "Press Start 2P", monospace';
@@ -11335,7 +11463,7 @@ function draw(rdt) {
     drawLooks(cx);
     drawRings(cx, dt);
     if (RT.moveTo && !S.opts.wasd) {
-        var mx = isoX(RT.moveTo.x, RT.moveTo.y), my = isoY(RT.moveTo.x, RT.moveTo.y) + TILE_H / 2;
+        var mx = isoX(RT.moveTo.x, RT.moveTo.y), my = isoYA(RT.moveTo.x, RT.moveTo.y);
         cx.save(); cx.translate(mx, my); cx.scale(1, 0.5);
         cx.strokeStyle = 'rgba(200,190,220,.4)'; cx.lineWidth = 1.5;
         cx.beginPath(); cx.arc(0, 0, 7 + Math.sin(RT.t * 8) * 2, 0, TAU); cx.stroke(); cx.restore();
@@ -11351,6 +11479,7 @@ function draw(rdt) {
        geometry audit is where that gets caught. */
     RT.rdt = dt;
     RT.hide = [{ x: RT.px, y: RT.py, k: RT.px + RT.py, h: 44 }];
+    RT.marks = [];                                       // talk marks, drawn in screen space after the veil
     RT.foes.forEach(function (f) { if (!f.dead) ents.push({ k: f.x + f.y, fn: function () { drawFoe(cx, f); } }); });
     (place().npcs || []).forEach(function (id) { var n = NPCS[id]; if (n) ents.push({ k: npcX(n) + npcY(n), fn: function () { drawNpc(cx, n); } }); });
     (place().props || []).forEach(function (o, oi) {
@@ -11358,6 +11487,10 @@ function draw(rdt) {
         ents.push({ k: o.b[0] + o.b[2] / 2 + o.b[1] + o.b[3] / 2, fn: function () { drawProp(cx, o); } });
     });
     ents.push({ k: RT.px + RT.py, fn: function () { drawActor(cx); } });
+    // the lamp you set down. In the sort like everything else, so you can
+    // walk behind it and it stays where you left it
+    var myLamp = lampAt(RT.place);
+    if (myLamp) ents.push({ k: myLamp.x + myLamp.y, fn: function () { drawSetLamp(cx, myLamp); } });
     ents.sort(function (a, b) { return a.k - b.k; });
     ents.forEach(function (e) { e.fn(); });
     drawLights(cx);
@@ -11374,6 +11507,7 @@ function draw(rdt) {
     cx.restore();                // /B
     drawBloom(cx);
     if (RT.hurt > 0 || RT.dead) { cx.fillStyle = 'rgba(150,10,25,' + (RT.dead ? 0.34 : RT.hurt * 0.3) + ')'; fullRect(cx); }
+    drawTalkMarks(cx);
     drawPrompt(cx);
     // The world drains away until the letters are the only light. mono has
     // been set by the Verse and read by nothing since it was written; the
@@ -11431,7 +11565,7 @@ function drawCalls(cx) {
            range under 2.4 tiles it landed without ever visibly moving
            (crit-eng-proj 13). */
         sx = Math.round(isoX(R.step ? c.qx : c.x, R.step ? c.qy : c.y));
-        sy = Math.round(isoY(R.step ? c.qx : c.x, R.step ? c.qy : c.y) + TILE_H / 2);
+        sy = Math.round(isoYA(R.step ? c.qx : c.x, R.step ? c.qy : c.y));
         cx.save();
         /* THE GROUND MARK. One flat ellipse per call per frame on the
            ground plane at the standard 1:0.5, which is what makes the
@@ -11487,7 +11621,7 @@ function drawCalls(cx) {
 }
 function drawFproj(cx) {
     for (var i = 0; i < RT.fproj.length; i++) {
-        var p = RT.fproj[i], sx = isoX(p.x, p.y), sy = isoY(p.x, p.y) + TILE_H / 2 - 24;
+        var p = RT.fproj[i], sx = isoX(p.x, p.y), sy = isoYA(p.x, p.y) - 24;
         cx.save(); cx.globalCompositeOperation = 'lighter';
         var g = cx.createRadialGradient(sx, sy, 1, sx, sy, 9);
         g.addColorStop(0, 'rgba(235,225,250,.9)'); g.addColorStop(1, 'rgba(150,140,190,0)');
@@ -12642,14 +12776,19 @@ var PLACES = {
         ],
         npcs: ['bern', 'child', 'widow'],
         looks: [
-            { x: 12.4, y: 8.2, n: 'A lamp on a sill', d: 'Set out on the ninth night for the man who walked out past the fence. Every house on the square has one. Nobody has ever set out a second.' },
+            { x: 4.6, y: 2.6, n: 'A lamp on a sill', d: 'Set out on the ninth night for the man who walked out past the fence. Every house on the square has one. Nobody has ever set out a second.' },
             { x: 7.2, y: 6.6, n: 'The playbill', d: 'THE NINTH NIGHT. A true account. The same four hundredth time.\n\nUnder the cast list somebody has pencilled your name, and then gone over it twice, harder.' }
         ],
         exits: [
-            { x: 8.5, y: 14.3, w: 3, to: 'lane', n: 'the lane, north' },
+            // the one door in the game whose name and whose wall disagree:
+            // Wick's north side is built up, so you leave for the lane off
+            // the south edge. `dir` tells the map what the name says.
+            { x: 8.5, y: 14.3, w: 3, to: 'lane', n: 'the lane, north', dir: [0, -1] },
             { x: 2.1, y: 3.6, w: 1.6, to: 'bernhouse', n: 'Bern\'s door' },
             { x: 15, y: 3.8, w: 1.6, to: 'chandler', n: 'the chandler\'s shop' },
-            { x: 8.7, y: 6.6, w: 2.4, to: 'a3sq', n: 'up the steps, onto the stage', needs: 'a3ready', over: 1,
+            // a full tile clear of the playbill at 7.2. This band is the only
+            // point of no return in the game and you enter it by walking
+            { x: 9.2, y: 6.6, w: 1.6, to: 'a3sq', n: 'up the steps, onto the stage', needs: 'a3ready', over: 1,
               shut: function () {
                   return S.a3.ending ? 'They have the boards up on the cart already. It was last night now.'
                                      : 'They are still building it. It is not tonight yet.';
@@ -12659,10 +12798,21 @@ var PLACES = {
     /* ── interiors. Somewhere with a roof on it, and one lamp that is
           not for anybody, which is the only one in the game that is not. ── */
     bernhouse: {
-        n: 'Bern\'s house', sub: 'he has kept the part for forty years and never played it',
+        // was "he has kept the part for forty years and never played it",
+        // which the man himself contradicts in this room: "I played him
+        // thirty years". The shop item and the cast comment agree with him.
+        n: 'Bern\'s house', sub: 'thirty years in the part, and his father before him',
         floor: 'room', calm: 1, mends: 1, w: 11, h: 9, night: 1, indoor: 1,
         props: [
-            { t: 'wall', b: [0, 0, 11, 0.6] }, { t: 'wall', b: [0, 0, 0.6, 9] }, { t: 'wall', b: [10.4, 0, 0.6, 9] },
+            /* North and west only. In this projection the two faces
+               nearest the eye are the south and the east, and the iso
+               cutaway convention drops both: the room is an L and the
+               floor edge reads as the wall line, which is what the south
+               has always done here. The east wall used to be kept, which
+               put a nine tile wall between the camera and the whole
+               south-east quarter of the room, and Bern's bed lost 81% of
+               its top face to it. */
+            { t: 'wall', b: [0, 0, 11, 0.6] }, { t: 'wall', b: [0, 0, 0.6, 9] },
             { t: 'table', b: [4.2, 3.4, 2.6, 1.6] },
             { t: 'bed', b: [8.2, 1.2, 1.8, 3.2] },
             { t: 'shelf', b: [1, 1.2, 2.4, 0.8] },
@@ -12680,7 +12830,7 @@ var PLACES = {
         n: 'The chandler\'s shop', sub: 'she sells the lamps the whole town sets out',
         floor: 'room', calm: 1, mends: 1, w: 12, h: 9, night: 1, indoor: 1,
         props: [
-            { t: 'wall', b: [0, 0, 12, 0.6] }, { t: 'wall', b: [0, 0, 0.6, 9] }, { t: 'wall', b: [11.4, 0, 0.6, 9] },
+            { t: 'wall', b: [0, 0, 12, 0.6] }, { t: 'wall', b: [0, 0, 0.6, 9] },   // near walls dropped, see bernhouse
             { t: 'counter', b: [3.4, 4.4, 4.8, 1.2] },
             { t: 'shelf', b: [1, 1.2, 3.2, 0.8] }, { t: 'shelf', b: [7.4, 1.2, 3.4, 0.8] },
             { t: 'vat', b: [1.2, 6.2, 1.8, 1.8] },
@@ -12697,7 +12847,7 @@ var PLACES = {
         n: 'The lane out of Wick', sub: 'in the play it is a day\'s walk',
         floor: 'mill', w: 13, h: 17, night: 1,
         props: [
-            { t: 'fence', b: [0.6, 4, 0.5, 9] }, { t: 'fence', b: [11.6, 3, 0.5, 3.2] }, { t: 'fence', b: [11.6, 10.2, 0.5, 2.8] },
+            { t: 'fence', b: [0.6, 4, 0.5, 9] }, { t: 'fence', b: [11.9, 3, 0.5, 3.2] }, { t: 'fence', b: [11.9, 10.2, 0.5, 2.8] },
             { t: 'tree', b: [2.2, 6.4, 1.4, 1.4] }, { t: 'tree', b: [9.4, 10.2, 1.4, 1.4] },
             { t: 'stone', b: [4.6, 12.6, 1, 1] },
             // the last lamp of Wick. The town lights the lane as far as it
@@ -12722,7 +12872,11 @@ var PLACES = {
             { t: 'sack', b: [3, 6.4, 1.2, 1 ] }, { t: 'sack', b: [4.4, 6.8, 1.2, 1] }, { t: 'sack', b: [3.6, 8, 1.2, 1] },
             { t: 'fence', b: [0.6, 2, 0.5, 8] }, { t: 'fence', b: [13.9, 2, 0.5, 8] }
         ],
-        looks: [{ x: 8, y: 5.4, n: 'The mill door', d: 'Bern told you to rehearse out here because the loft carries sound and the town does not need to hear you learn.\n\nHe meant it kindly. He is like that.' }],
+        // west end of the mill's face, a clear tile from the ladder band at
+        // 7.9. It used to sit exactly ON that band, so the text that tells
+        // you to rehearse lost the prompt to the door it explains about
+        // nine times out of ten
+        looks: [{ x: 5.9, y: 5.5, n: 'The mill door', d: 'Bern told you to rehearse out here because the loft carries sound and the town does not need to hear you learn.\n\nHe meant it kindly. He is like that.' }],
         exits: [
             { x: 6.8, y: 12.3, w: 3, to: 'lane', n: 'back down the lane' },
             { x: 7.9, y: 5.6, w: 1.8, to: 'loft', n: 'up the ladder, into the loft', needs: 'rehearsed',
@@ -12780,11 +12934,11 @@ var PLACES = {
         floor: 'road', w: 11, h: 34, night: 1,
         props: [
             { t: 'lamp', b: [8.2, 30.4, 0.5, 0.5] },                       // the last lamp in the world, off the walking line
-            { t: 'fence', b: [0.8, 23.6, 0.5, 8.4] }, { t: 'fence', b: [9.7, 23.6, 0.5, 8.4] },
-            { t: 'post', b: [0.9, 22.4, 0.6, 0.6] }, { t: 'post', b: [9.6, 22.4, 0.6, 0.6] },
+            { t: 'fence', b: [0.5, 23.6, 0.5, 8.4] }, { t: 'fence', b: [10.0, 23.6, 0.5, 8.4] },
+            { t: 'post', b: [0.45, 22.4, 0.6, 0.6] }, { t: 'post', b: [9.95, 22.4, 0.6, 0.6] },
             { t: 'tree', b: [1.5, 18.4, 1.4, 1.4] }, { t: 'tree', b: [8.1, 15.2, 1.4, 1.4] },
             { t: 'tree', b: [1.3, 12.2, 1.4, 1.4] }, { t: 'hedge', b: [8.4, 20.2, 1.6, 1.2] },
-            { t: 'cairn', b: [6.0, 9.4, 1.2, 1.2] },
+            { t: 'cairn', b: [3.4, 9.4, 1.2, 1.2] },              // west of the walking line, which is what its look says
             { t: 'stone', b: [2.4, 6.8, 1, 1] }, { t: 'stone', b: [7.8, 4.4, 1, 1] },
             { t: 'cairn', b: [3.6, 2.6, 1.2, 1.2] }
         ],
@@ -12810,10 +12964,15 @@ var PLACES = {
             { t: 'stone', b: [4.2, 3.6, 1, 1] }, { t: 'stone', b: [10.2, 4.2, 1, 1] },
             { t: 'stone', b: [3.8, 8.2, 1, 1] }, { t: 'stone', b: [10.6, 8.4, 1, 1] },
             { t: 'stone', b: [7.2, 2.2, 1, 1] },
-            { t: 'tree', b: [1.4, 1.6, 1.4, 1.4] }, { t: 'tree', b: [12.2, 10.2, 1.4, 1.4] }
+            /* The second tree used to stand at 12.2,10.2, which is south-east
+               of the ring, and in this projection that is in front of it:
+               its canopy took the south-east stone out entirely and the
+               ring the whole place is about read as four stones and a
+               tree. Due east now, level with the gap, hiding nothing. */
+            { t: 'tree', b: [1.4, 1.6, 1.4, 1.4] }, { t: 'tree', b: [12.2, 4.6, 1.4, 1.4] }
         ],
         looks: [
-            { x: 7.6, y: 7.2, n: 'The ground', d: 'The stones are not scattered. They are set, in a ring, with the gap facing south, facing the road, facing the town.\n\nSomebody sat down in the middle of this and made it tidy, and then it snowed for four hundred years.', key: 'hollowground' },
+            { x: 7.6, y: 7.2, n: 'The ground', d: 'The stones are not scattered. They are set, in a ring, with the gap facing south, facing the road, facing the town.\n\nSomebody sat down in the middle of this and made it tidy, and then it snowed for four hundred years.' },
             { x: 5.4, y: 4.2, n: 'The cold', d: 'It is not colder here. That is the wrong thing about it. You walked north all night and the air stopped getting colder about a mile back and it has been exactly this ever since.\n\nSomething took the difference.' },
             { x: 11.2, y: 6.4, n: 'North of here', d: 'Nothing. Not a view, not a drop, not a wall. The ground goes on being ground and the dark goes on being dark and there is no line where one ends.\n\nShe would have had to decide to stop. Nothing here would have stopped her.' }
         ],
@@ -12825,7 +12984,14 @@ var PLACES = {
         floor: 'town', w: 17, h: 15, night: 1, script: 'a3', a3: 1, oneway: 1,
         props: [
             { t: 'house', b: [0, 0, 3.4, 2.6] }, { t: 'house', b: [13.6, 0, 3.4, 2.8] },
-            { t: 'house', b: [0, 12.4, 3.6, 2.6] }, { t: 'house', b: [13.4, 12.2, 3.6, 2.8] },
+            /* The south-east corner is the near corner: in this projection
+               a building there opens an occlusion cone up and to the left
+               across the whole square, which is exactly where the town is
+               sitting. Seven of the twenty-four were behind this house and
+               one of them was inside it. The square's own shut line says
+               "They have the boards up on the cart already", so the thing
+               that stands in the near corner on the night is the cart. */
+            { t: 'house', b: [0, 12.4, 3.6, 2.6] }, { t: 'cart', b: [14.6, 13.4, 2.2, 1.2] },
             { t: 'stagewip', b: [4.6, 1.0, 8, 3.2] },
             { t: 'foot', b: [4.6, 4.3, 8, 0.35] }
         ],
@@ -12849,7 +13015,11 @@ var NPCS = {
        ledger four hundred years long, so job 5 only hangs the stock on
        her: see chandlerNear and fillShop. */
     bern: {
-        n: 'Bern', x: 7.4, y: 7.2, col: ['#6a4f3a', '#8a6a4a', '#d8b48c'], hat: 1,
+        // he does not move, and he stood 0.63 tiles from the playbill, which
+        // is the one thing in the square with the player's own name on it.
+        // The playbill won the prompt on 4.9% of the floor. This is two
+        // tiles east of it and still the middle of the square.
+        n: 'Bern', x: 9.0, y: 7.4, col: ['#6a4f3a', '#8a6a4a', '#d8b48c'], hat: 1,
         talk: function () {
             if (fragCount() === 3 && !S.a3.ending && !S.seen.a3ready) {
                 if (!S.a3.read && !S.seen.bernA3) {
@@ -12887,9 +13057,18 @@ var NPCS = {
         }
     },
     child: {
-        n: 'A child with a skipping rope', x: 10.6, y: 9.8, col: ['#4a5a7a', '#6a7a9a', '#e8c8a0'], small: 1,
+        n: 'A child with a skipping rope', x: 4.6, y: 10, col: ['#4a5a7a', '#6a7a9a', '#e8c8a0'], small: 1,
+        /* She used to loop through the well. Her last leg ran east at
+           y = 9.9, and the well's blocked band at the npc radius is
+           y 9.12..11.28, so she was refused after ten frames, the
+           give-up branch in stepNpcs skipped her home, and the loop was
+           three legs and a wall: eleven give-ups a minute, seven seconds
+           of it standing still inside the well where nothing could be
+           seen of her. This loop is the open cobbles west of it. It also
+           keeps her off the lane door, whose prompt she used to take
+           about a third of the time she was near it. */
         // she is described as skipping in her own dialogue, so she skips
-        skip: 1, speed: 1.9, path: [[10.6, 9.8], [10.6, 12.6], [7.4, 12.6], [7.4, 10.0]],
+        skip: 1, speed: 1.9, path: [[4.6, 10], [4.6, 12.6], [6.8, 12.6], [6.8, 10]],
         talk: function () {
             S.heard.child = 1;
             if (!S.seen.child1) {
@@ -12923,7 +13102,7 @@ var NPCS = {
             if (!S.seen.shep1) {
                 S.seen.shep1 = 1;
                 return [['', 'He is singing the last verse to nobody, the way you sing when your hands are busy.'],
-                        ['The shepherd', '"...not for the man who came back down — but for the girl who never will."'],
+                        ['The shepherd', '"...not for the man who came back down, but for the girl who never will."'],
                         ['You', 'That is not how it goes.'],
                         ['The shepherd', 'It is how my mother sang it.'],
                         ['You', 'Where did she get it?'],
@@ -12998,7 +13177,7 @@ var NPCS = {
                               go: [['', 'She looks up. This is the first thing you have said that she has to think about.'],
                                    ['The chandler', 'I do. Walk up, light it, walk back.'],
                                    ['You', 'Why that far out?'],
-                                   ['The chandler', 'Because that is where the fence stops. You put the last one where the last one goes.'],
+                                   ['The chandler', 'Because that is as far as anybody goes. You put the last one where the last one goes.'],
                                    ['You', 'It faces the town.'],
                                    ['The chandler', 'They all face the town.'],
                                    ['', 'She says it without hearing it. A lamp set out for a man who walked away, turned so it lights the way back, by somebody who has never once walked past it.']] }
@@ -13025,6 +13204,10 @@ var SCRIPTS = {
     },
     wick: function () {
         if (S.a3.ending) return;                   // it is the morning after. a3Home has its own line.
+        // the square is the hub, so this fired every time you walked back in,
+        // including on the way home from the hollow. Same guard the mill has.
+        if (S.seen.wickIntro) return;
+        S.seen.wickIntro = 1;
         say('<b>Wick.</b> They are building the stage in the square. You have been given the crown and the lantern.', 'big');
         beat(3.4, function () { say('Talk to people. Look at things. Nothing here wants to hurt you.', 'dim'); });
         beat(6.4, function () { say('When you are ready, the lane runs north to the mill.', 'dim'); });
@@ -13495,7 +13678,12 @@ function reLook(id, name, d) {
    not looting. */
 function checkRealisation() {
     if (S.frags[1] || RT.realising || !S.heard.refrain) return;
-    var src = S.heard.child || S.heard.busker || S.heard.shepherd;
+    /* Bern's script counts. Its look is the syllables in the margin, six
+       eight seven six, and the five circled twice with nothing written
+       beside it. That is this fragment's whole observation, in writing,
+       from the man who has held the part longest, and it was being
+       recorded as S.seen.bernscript and read by nothing. */
+    var src = S.heard.child || S.heard.busker || S.heard.shepherd || S.seen.bernscript;
     if (!src) return;
     RT.realising = 1;
     beat(1.0, function () { bigLine('he spoke and we all heard', '', '#e8e2ee', 2.4); });
@@ -13537,7 +13725,12 @@ function checkMark() {
    been pointed at the wrong person for four hundred years. */
 function checkSill() {
     if (S.frags[3] || RT.realising3 || !S.frags[2]) return;
-    if (!S.heard.widow || !S.seen.markstone) return;
+    /* The widow is not the only witness to this. The chandler's ledger is
+       four hundred years of one lamp per house and never one more, and
+       the end of the fence is nine steps past the line the song says only
+       he ever crossed. Both were being recorded and read by nothing. */
+    var lamps = S.heard.widow || S.seen.ledger || S.seen.fenceend;
+    if (!lamps || !S.seen.markstone) return;
     RT.realising3 = 1;
     beat(1.2, function () { bigLine('set one on the sill', '', '#e8e2ee', 2.4); });
     beat(3.6, function () { bigLine('for the man who walked out past the fence', '', '#e8e2ee', 2.6); });
@@ -13600,10 +13793,22 @@ function pw() { return place().w || GRID; }
 function ph() { return place().h || GRID; }
 
 /* solid props: simple AABB rejection so you slide along walls */
+/* `ins` says what fraction of its footprint a prop actually is: a tree's
+   trunk is 0.34 of the 1.4 tile square it is authored in, a post 0.42 of
+   its 0.6. body() has always drawn at that scale and blocked() has always
+   collided at 100%, so a slender prop stopped you a full tile-width short
+   of a thirteen pixel trunk. One reader now, and the number means the
+   same thing to both. */
+function solidBox(o) {
+    var b = o.b, k = propDef(o.t).ins;
+    if (!k || k >= 1) return b;
+    var iw = b[2] * k, ih = b[3] * k;
+    return [b[0] + (b[2] - iw) / 2, b[1] + (b[3] - ih) / 2, iw, ih];
+}
 function blocked(x, y, r) {
     var ps = place().props || [];
     for (var i = 0; i < ps.length; i++) {
-        var b = ps[i].b;
+        var b = solidBox(ps[i]);
         if (x + r > b[0] && x - r < b[0] + b[2] && y + r > b[1] && y - r < b[1] + b[3]) return true;
     }
     return false;
@@ -13635,7 +13840,10 @@ function stepTravel() {
     if (!e) { RT.armed = true; RT.nagged = null; return; }
     if (!RT.armed) return;
     if (exitOpen(e)) { gotoPlace(e.to, false); return; }
-    if (RT.nagged !== e.n) { RT.nagged = e.n; say(shutText(e), 'dim'); hudNudge('breath'); }
+    // no hudNudge: that is the flash for a cost you cannot pay, and every
+        // other caller is a refused spend. A locked door is not about breath,
+        // and the loft one fires mid-fight when the bar is what you are reading
+        if (RT.nagged !== e.n) { RT.nagged = e.n; say(shutText(e), 'dim'); }
 }
 /* never wake up inside a wall */
 function unstick() {
@@ -13702,6 +13910,10 @@ function gotoPlace(id, fresh) {
         RT.py += back.h ? 0 : (back.y < H / 2 ? 1.2 : -1.2); }
     else { RT.px = W / 2; RT.py = H - 2.2; }
     RT.moveTo = null; RT.armed = false; RT.nagged = null;
+    // the prompt belonged to the place you just left: a second E in the same
+    // frame used to re-enter the place you were already in, which finds no
+    // back exit and teleports you to its default arrival point
+    RT.prompt = null; RT.mapOpen = false;
     RT.world.npc = {};                       // everybody back to their own doorstep
     unstick();
     stepCamera(0, true);                     // the eye arrives with you, it does not pan in from the last place
@@ -13758,11 +13970,21 @@ function stepNpcs(dt) {
         }
         var sp = (n.speed || 1.5) * dt;
         var nx = w.x + dx / d * sp, ny = w.y + dy / d * sp;
-        // people do not walk through walls either
-        if (!blocked(nx, w.y, 0.28)) w.x = nx;
-        if (!blocked(w.x, ny, 0.28)) w.y = ny;
-        w.x = clamp(w.x, 0.6, pw() - 0.6); w.y = clamp(w.y, 0.6, ph() - 0.6);
-        w.face = dx >= 0 ? 1 : -1; w.moving = 1;
+        /* People do not walk through walls either, and they collide the
+           way you do. The radius was 0.28 against your 0.3 and the clamp
+           0.6 against your 0.5, which left eight gaps in the game a
+           walker fits through and you do not. The clamp also ran AFTER
+           the two tests, so it was the one thing in the file that could
+           put somebody inside a prop; moveActor has always clamped first
+           for exactly that reason. */
+        nx = clamp(nx, 0.5, pw() - 0.5); ny = clamp(ny, 0.5, ph() - 0.5);
+        if (!blocked(nx, w.y, 0.3)) w.x = nx;
+        if (!blocked(w.x, ny, 0.3)) w.y = ny;
+        // which way they face is a SCREEN question, and screen x is (x - y).
+        // Testing dx alone got a quarter of all directions backwards, and
+        // every one of them was somebody walking mostly along y, which on
+        // screen is left or right. See faceX().
+        w.face = faceX(dx, dy); w.moving = 1;
         if (Math.hypot(tx - w.x, ty - w.y) > d - 0.001) { w.i++; w.tx = null; w.wait = 0.6; }   // stuck against a wall: give up on this leg
     }
 }
@@ -13781,14 +14003,21 @@ function interactables() {
     (p.exits || []).forEach(function (e) {
         var open = exitOpen(e);
         out.push({ k: 'exit', x: e.x, y: e.y, e: e, shut: !open,
-                   label: open ? 'go to ' + e.n : (e.over && S.a3.ending ? 'over' : 'not yet') });
+                   label: open ? e.n : (e.over && S.a3.ending ? 'over' : 'not yet') });
     });
     return out;
 }
 function nearestInteract() {
     if (RT.dialog) return null;
+    /* You arrive standing in the band of the door you came through, and
+       RT.armed is false until you step off it. That door was winning the
+       prompt on every single arrival in the game, so the first thing the
+       world ever offered you in a new place was the way back out of it.
+       It is still there the moment you step off and turn round. */
+    var here = RT.armed ? null : exitAt(RT.px, RT.py);
     var best = null, bd = 1.9;
     interactables().forEach(function (o) {
+        if (here && o.k === 'exit' && o.e === here) return;
         var d = Math.hypot(o.x - RT.px, o.y - RT.py);
         if (d < bd) { bd = d; best = o; }
     });
@@ -13990,7 +14219,13 @@ function propDef(t) { return PROP[t] || PROP._; }
    Painters work in LOCAL space: the centre of the prop's ground
    footprint is the origin, and up is negative y. `c.lx/c.ly` map a
    point inside the footprint, in tiles, into that space. */
-var SPRITES = {}, SPRITE_LRU = [], SPRITE_BUDGET = 10 << 20;   // bytes of backing store, not entries
+/* 14, not 10. Every prop sprite the game can build totals 11.68 MB, so a
+   10 MB cap meant the cache sat at its ceiling from mid-game on and threw
+   something away on every transition that built anything. It got away
+   with it because the two coldest entries are the prologue stage and the
+   act 3 square, but the margin was under a megabyte and a house is a
+   third of one. The audit fails the build if the total ever passes this. */
+var SPRITES = {}, SPRITE_LRU = [], SPRITE_BUDGET = 14 << 20;   // bytes of backing store, not entries
 var SPRITE_BYTES = 0, SPRITE_PAD = 30;                          // pad: eaves, canopies, anything that overhangs
 function hash2(a, b, c) {
     var n = (Math.round(a * 16) + 1013) | 0;
@@ -13999,9 +14234,35 @@ function hash2(a, b, c) {
     n ^= n >>> 13; n = Math.imul(n, 1274126177);
     return (n ^ (n >>> 16)) >>> 0;
 }
-function propVar(t, b) {                       // which of this type's variants this instance is
-    var d = propDef(t);
-    return d.vars ? hash2(b[0], b[1], t.length * 31 + t.charCodeAt(0)) % d.vars : 0;
+/* Which of this type's variants this instance is.
+
+   A hash of the position alone is not enough. With five stones and four
+   variants a repeat is arithmetic, but it was worse than arithmetic: the
+   hollow's five ring stones came out as two shapes, the road's three
+   trees were one tree blitted three times, and the two crates on the
+   prologue stage were the same crate. So the hash picks a starting
+   variant and, if another prop of the same type in the same place has
+   already taken it, steps on until it finds one free. Every instance is
+   different until a place holds more of something than there are
+   variants, and it is still fixed data: it depends on where the props
+   are and the order they are written in, not on anything at run time.
+
+   `_pv` is worked out once per prop, ever: the props arrays are static
+   per place. */
+function assignVars() {
+    var ps = place().props || [], used = {}, i;
+    for (i = 0; i < ps.length; i++) {
+        var o = ps[i], d = propDef(o.t);
+        if (!d.vars) { o._pv = 0; continue; }
+        var v = hash2(o.b[0], o.b[1], o.t.length * 31 + o.t.charCodeAt(0)) % d.vars;
+        var u = used[o.t] || (used[o.t] = {}), n = 0;
+        while (u[v] && n < d.vars) { v = (v + 1) % d.vars; n++; }   // taken: step on, the way the map slides a cell
+        u[v] = 1; o._pv = v;
+    }
+}
+function propVar(o) {
+    if (o._pv == null) assignVars();
+    return o._pv || 0;
 }
 function seedRng(n) {                          // stable per sprite, so a house does not reshuffle itself
     var s = (n >>> 0) || 1;
@@ -14019,7 +14280,6 @@ function spriteCtx(t, bw, bh, v) {
         rrx: rrx, rry: rry, sk: sk, tx: 0, ty: -d.h,
         x0: -sk, y0: -rry, x1: rrx, y1: (bw - bh) * TILE_H / 4,
         x2: sk, y2: rry, x3: -rrx, y3: -(bw - bh) * TILE_H / 4,
-        fw: Math.hypot(sk + rrx, rry + (bw - bh) * TILE_H / 4) || 1,
         lx: function (u, q) { return (u - q) * (TILE_W / 2) - sk; },
         ly: function (u, q) { return (u + q) * (TILE_H / 2) - rry; },
         anchors: {},
@@ -14060,13 +14320,58 @@ function propSprite(t, bw, bh, v, mayBuild) {
    "is this prop covering that person" has to ask about the paint. */
 /* What the sprite covers, in local coordinates. Derived, not measured:
    reading the pixels back to find out cost half a megabyte per prop and
-   put the whole game's build cost back where it started. It does not
-   need measuring — `hgt + over` IS where the paint stops, because that
-   is exactly the room the canvas was sized to give it, and the eaves
-   are the only thing that reaches past the footprint sideways. */
+   put the whole game's build cost back where it started.
+
+   It used to say `hgt + over` IS where the paint stops, "because that is
+   exactly the room the canvas was sized to give it". It is not. Look at
+   propSprite: `ay = SPRITE_PAD + ceil(rry + hgt + over)`. The rry is in
+   there because the footprint's NORTH corner already sits at local
+   y = -rry before anything is extruded upward, so a wall's far end
+   reaches -(rry + hgt). Dropping that term made the declared top short
+   by up to 91px — the chandler's north wall by 91, Bern's by 84, the
+   stage footlights by 81, the curtain by 73 — for 58 of the 96 prop
+   instances in the game. contactShadow's outer ring is 1.18 of the
+   footprint too, wider than the 1.15 that was here. Both corrected. */
 function paintedBox(c) {
     var over = c.d.over || 0;
-    return { x0: -c.rrx * 1.15, x1: c.rrx * 1.15, y0: -(c.hgt + over), y1: c.rry + 4 };
+    return {
+        rrx: c.rrx, rry: c.rry, sk: c.sk,
+        ex: (c.bw - c.bh) * TILE_H / 4,      // the y of the east and west corners
+        hgt: c.hgt,                          // the walls, which are the same height all across
+        up: c.hgt + over,                    // and the roof on top of them, which is not
+        x0: -c.rrx * 1.18, x1: c.rrx * 1.18, // the outer ring of the contact shadow
+        y0: -(c.rry + c.hgt + over), y1: c.rry * 1.18 + 4
+    };
+}
+/* The vertical span the paint occupies at one local x, which is the
+   footprint diamond at that x swept upward by hgt + over.
+
+   The bounding box is not good enough for this. A fence is 0.5 by 8.4
+   tiles, so its box is 300px wide and 180 tall while the fence itself is
+   a ribbon along one diagonal of it; testing the box makes every prop in
+   the place fade for somebody standing nowhere near them. The diamond is
+   two lines up and two lines down and costs about the same. */
+/* The four corners, from spriteCtx: N is (-sk, -rry), E is (rrx, ex),
+   S is (sk, rry), W is (-rrx, -ex). N is always the topmost and S the
+   bottommost, and W and E are always the leftmost and rightmost, so each
+   hull is exactly two segments whichever way the footprint is long. */
+function paintSpan(lo, lx) {
+    if (lx < -lo.rrx || lx > lo.rrx) return null;
+    var top, bot;
+    // upper boundary: west corner -> north corner -> east corner
+    if (lx <= -lo.sk) top = lerp(-lo.ex, -lo.rry, (lx + lo.rrx) / Math.max(1e-6, lo.rrx - lo.sk));
+    else              top = lerp(-lo.rry, lo.ex, (lx + lo.sk) / Math.max(1e-6, lo.rrx + lo.sk));
+    // lower boundary: west corner -> south corner -> east corner
+    if (lx <= lo.sk) bot = lerp(-lo.ex, lo.rry, (lx + lo.rrx) / Math.max(1e-6, lo.rrx + lo.sk));
+    else             bot = lerp(lo.rry, lo.ex, (lx - lo.sk) / Math.max(1e-6, lo.rrx - lo.sk));
+    /* The extrusion is `hgt` everywhere, but the headroom above it is not:
+       `over` is a roof or a canopy, and a roof is at its ridge in the
+       middle of the footprint and down at the eave by the corners. Sweeping
+       the full hgt + over across the whole width makes a house into a tall
+       rectangular curtain and reports people occluded who are nowhere near
+       it, which is how a third of the Act 3 audience looked hidden. */
+    var taper = lo.up - (lo.up - lo.hgt) * Math.abs(lx) / Math.max(1e-6, lo.rrx);
+    return { top: top - taper, bot: bot + 4 };
 }
 /* sprite-local point to screen. Local (0,0) is the footprint centre, and
    the sprite is blitted so that centre lands on (mxc, myc). */
@@ -14134,6 +14439,34 @@ function dither(g, quad, col, amt, rng, size) {
     }
     g.fillStyle = col; g.fill();
 }
+/* A filled ellipse in PIXELS, in 2px scanline steps, one path and one
+   fill. ctx.ellipse anti-aliases its edge, and against a game where
+   everything else lands on integer boundaries a soft rim is the one
+   thing that reads as not-pixel-art: the hollow's ring, which is five
+   stones and the last thing the game asks you to look at, came out as
+   smooth grey eggs. */
+function pxEllipse(g, cx, cy, rx, ry, col, step) {
+    var s = step || 2;
+    g.fillStyle = col;
+    g.beginPath();
+    for (var y = -ry; y <= ry; y += s) {
+        var t = y / ry, w = rx * Math.sqrt(Math.max(0, 1 - t * t));
+        if (w < 0.5) continue;
+        g.rect(Math.round(cx - w), Math.round(cy + y), Math.max(1, Math.round(w * 2)), s);
+    }
+    g.fill();
+}
+/* The same ellipse as a polygon, so dither() can walk it. Dithering the
+   bounding rectangle instead put grain in the empty corners around every
+   round prop in the game. */
+function ellipsePoly(cx, cy, rx, ry, n) {
+    var p = [], k = n || 20;
+    for (var i = 0; i < k; i++) {
+        var a = i / k * TAU;
+        p.push([cx + Math.cos(a) * rx, cy + Math.sin(a) * ry]);
+    }
+    return p;
+}
 /* bilinear point inside a quad: the only sane way to lay courses of
    anything across a face that is a parallelogram on screen */
 function qp(quad, u, v) {
@@ -14149,10 +14482,14 @@ function qp(quad, u, v) {
    number of shades per colour is what makes a palette a palette. */
 var SHADE = {};
 /* A band running across a face, following the face. Every one of these
-   was a level `px()` rect sized off `c.fw`, which is the LENGTH of a
+   was a level `px()` rect sized off `c.fw`, which was the LENGTH of a
    sloped iso edge and not a horizontal span — so the band came out too
    long, level, and sitting on bare wall at one end while the face it
-   belonged to ran away underneath it. Take the points off the quad. */
+   belonged to ran away underneath it. Take the points off the quad.
+
+   `c.fw` is gone now. The cart outlived this comment by using it for its
+   wheels and putting the front one on its own tailgate, so the field has
+   been removed rather than left lying about for the next painter. */
 function bar(g, quad, u0, u1, v, w, col) {
     var a = qp(quad, u0, v), b = qp(quad, u1, v);
     line(g, a[0], a[1], b[0], b[1], col, w);
@@ -14184,7 +14521,7 @@ function drawProp(cx, o) {
     if (Math.max(x0, x1, x2, x3) < -80 || Math.min(x0, x1, x2, x3) > VW + 80) return;   // off camera
     if (Math.min(y0, y1, y2, y3) - 240 > VH + 40 || Math.max(y0, y1, y2, y3) < -260) return;
     var mxc = (x0 + x2) / 2, myc = (y0 + y2) / 2;
-    var v = propVar(t, b);
+    var v = propVar(o);
     var sp = propSprite(t, b[2], b[3], v, mayBuild());
     if (!sp) {                                   // its turn is next frame; stand something there meanwhile
         var c = spriteCtx(t, b[2], b[3], v);
@@ -14223,18 +14560,37 @@ var T_CUT = 0.56;                            // how much of a roof is left when 
 // they cannot outlive the place they were measured in
 onPlaceChange(function () { RT.world.cut = {}; });
 /* Only things that sort BEHIND this prop can be hidden by it, and only
-   the part of them that is actually inside the paint. Feet and head are
-   tested separately so a tall figure half behind a wall still counts. */
+   the part of them that is actually inside the paint.
+
+   This asked whether the prop swallows you WHOLE: `sy - a.h < y0` bailed
+   the moment your head was above the declared top of the paint, which is
+   the opposite of what the comment above it used to promise. Against a
+   top that was also up to 91px too low (see paintedBox) the two errors
+   compounded and the cutaway simply stopped: 67 tiles of walkable ground
+   across eleven places put you entirely behind a wall with nothing
+   thinning, a fifth of the chandler's floor among them. It is an overlap
+   test now, which is what "a tall figure half behind a wall still
+   counts" always meant.
+
+   The `< 24` guard below has never fired: over the 89 authored prop
+   instances the smallest box is 33 by 34. It is kept as a floor for
+   whatever gets authored next, at a size that means something now that
+   the box is measured properly. */
 function coversSomeone(o, sp, mxc, myc) {
     var k = o.b[0] + o.b[2] / 2 + o.b[1] + o.b[3] / 2;
-    var lo = sp.box, x0 = mxc + lo.x0, x1 = mxc + lo.x1, y0 = myc + lo.y0, y1 = myc + lo.y1;
-    if (x1 - x0 < 24 || y1 - y0 < 24) return false;          // low things never hide anybody
+    var lo = sp.box;
+    if (lo.rrx * 2 < 24 || lo.up + lo.rry < 24) return false;   // low things never hide anybody
     for (var i = 0; i < RT.hide.length; i++) {
         var a = RT.hide[i];
         if (a.k >= k) continue;                              // in front of it, or is it
-        var sx = isoX(a.x, a.y), sy = isoY(a.x, a.y) + TILE_H / 2;
-        if (sx < x0 || sx > x1) continue;
-        if (sy > y1 || sy - a.h < y0) continue;
+        var sx = isoX(a.x, a.y), sy = isoYA(a.x, a.y);
+        var sp2 = paintSpan(lo, sx - mxc);
+        if (!sp2) continue;
+        var top = myc + sp2.top, bot = myc + sp2.bot;
+        // how much of the figure is inside the paint. A well or a counter
+        // takes your knees and that is not worth thinning a whole prop for;
+        // a wall that takes your head is
+        if (Math.min(sy, bot) - Math.max(sy - a.h, top) < a.h * 0.55) continue;
         return true;
     }
     return false;
@@ -14284,13 +14640,12 @@ function body(g, c, palOver) {
 }
 function roundBody(g, c) {
     var pal = c.pal, hgt = c.hgt, rrx = c.rrx, rry = c.rry;
-    g.fillStyle = pal[1];
-    g.beginPath(); g.ellipse(0, -hgt / 2, rrx * 0.96, rry + hgt / 2, 0, 0, TAU); g.fill();
-    g.fillStyle = pal[0];
-    g.beginPath(); g.ellipse(-rrx * 0.09, -hgt * 0.6 - rry * 0.2, rrx * 0.8, (rry + hgt / 2) * 0.72, 0, 0, TAU); g.fill();
-    g.fillStyle = pal[2];
-    g.beginPath(); g.ellipse(-rrx * 0.2, -hgt * 0.8 - rry * 0.4, rrx * 0.46, (rry + hgt / 2) * 0.34, 0, 0, TAU); g.fill();
+    pxEllipse(g, 0, -hgt / 2, rrx * 0.96, rry + hgt / 2, pal[1]);
+    pxEllipse(g, -rrx * 0.09, -hgt * 0.6 - rry * 0.2, rrx * 0.8, (rry + hgt / 2) * 0.72, pal[0]);
+    pxEllipse(g, -rrx * 0.2, -hgt * 0.8 - rry * 0.4, rrx * 0.46, (rry + hgt / 2) * 0.34, pal[2]);
 }
+// the silhouette roundBody just drew, for anything that wants to stay inside it
+function roundShape(c) { return ellipsePoly(0, -c.hgt / 2, c.rrx * 0.96, c.rry + c.hgt / 2); }
 function cylBody(g, c) {
     var pal = c.pal, hgt = c.hgt, rrx = c.rrx, rry = c.rry;
     g.fillStyle = pal[0];
@@ -14525,12 +14880,26 @@ PAINT.house = function (g, c) {
     // is the same mark the lamp post outside the door carries
     var tw = [6, 6, 4, 4, 2, 2];
     for (var so = 0; so < 6; so++) px(g, lx2 - tw[so] / 2, ly2 - 12 - so * 2, tw[so], 2, 'rgba(11,9,18,' + (0.4 - so * 0.05).toFixed(2) + ')');
-    poly(g, [[lx2 - 7, ly2], [lx2 + 7, ly2], [lx2 + 11, sw[2][1] > se[2][1] ? se[2][1] : se[3][1]], [lx2 - 11, se[3][1]]], 'rgba(255,190,96,.07)');
+    /* The spill under the sill. Both bottom corners used to be taken from
+       the corners of the WALL, so the wedge of light ran the whole length
+       of the house from a window a few pixels wide, and which corner it
+       reached for depended on a comparison between two unrelated ys. Take
+       it off the face directly under the lamp. */
+    var spillL = qp(se, clamp(lampU - 0.06, 0, 1), 1), spillR = qp(se, clamp(lampU + 0.24, 0, 1), 1);
+    poly(g, [[lx2 - 7, ly2], [lx2 + 7, ly2], spillR, spillL], 'rgba(255,190,96,.07)');
 
-    /* ── the roof ── */
+    /* ── the roof ──
+       Draw far then near, always. Which one is LIT is a different question
+       and it is about the wall underneath, not about the eye: for the
+       west-east ridge the near plane's eave runs south to west, so it sits
+       over the lit sw wall; for the north-south ridge it runs south to
+       east, over the shadowed se wall. Painting the near one lit either
+       way put a bright roof on a dark wall on every flipped house in the
+       game, which is half of them, and a roof lit from the wrong side is
+       the one thing that makes a building read as a sticker. */
     var paint = thatched ? thatchPlane : slatePlane;
-    paint(g, farPlane, rng, false);
-    paint(g, nearPlane, rng, true);
+    paint(g, farPlane, rng, flip);
+    paint(g, nearPlane, rng, !flip);
     // the gable end: a triangle of wall with a vent in it
     poly(g, gable, thatched ? '#3b3644' : '#37323f');
     dither(g, [gable[0], gable[1], gable[2], gable[0]], 'rgba(24,20,30,.4)', 0.2, rng);
@@ -14597,7 +14966,7 @@ PAINT.house = function (g, c) {
 LIVE.house = function (cx, o, mxc, myc, sp) {
     // Smoke has to move, so it cannot live in the sprite. Only the
     // houses with a fire lit get any, and in Wick that is not all of them.
-    var v = propVar('house', o.b);
+    var v = propVar(o);
     if (v % 3 === 2) return;
     var ch = anchorAt(sp, 'chimney', mxc, myc);               // the pot the sprite actually drew
     var sx = ch.x, sy = ch.y - 2;
@@ -14701,21 +15070,27 @@ PAINT.wheel = function (g, c) {                          // the frame; the wheel
 LIVE.wheel = function (cx, o, mxc, myc, sp) {
     var hgt = propDef('wheel').h, cy = anchorAt(sp, 'hub', mxc, myc).y, wr = Math.min(34, hgt * 0.46);
     var an0 = RT.t * 0.25;
-    cx.strokeStyle = '#3a3022'; cx.lineWidth = 6;
-    cx.beginPath(); cx.arc(mxc, cy, wr, 0, TAU); cx.stroke();
-    cx.strokeStyle = '#57492f'; cx.lineWidth = 3;
-    cx.beginPath(); cx.arc(mxc, cy, wr, 0, TAU); cx.stroke();
+    /* The rim as a ring of short straight runs rather than one stroked
+       arc. Every other line in the game goes through line(), which rounds
+       both ends and sits them on the half pixel; a smooth circle in the
+       middle of it was the one moving thing in Wick and the one thing not
+       made of pixels. */
+    for (var rr = 0; rr < 24; rr++) {
+        var a1 = rr / 24 * TAU + an0 * 0.0, a2 = (rr + 1) / 24 * TAU;
+        line(cx, mxc + Math.cos(a1) * wr, cy + Math.sin(a1) * wr,
+                 mxc + Math.cos(a2) * wr, cy + Math.sin(a2) * wr, '#3a3022', 6);
+        line(cx, mxc + Math.cos(a1) * wr, cy + Math.sin(a1) * wr,
+                 mxc + Math.cos(a2) * wr, cy + Math.sin(a2) * wr, '#57492f', 3);
+    }
     for (var sp = 0; sp < 12; sp++) {
         var an = sp / 12 * TAU + an0;
-        cx.strokeStyle = sp % 2 ? '#4a3d2a' : '#5c4c34'; cx.lineWidth = 2;
-        cx.beginPath(); cx.moveTo(mxc, cy); cx.lineTo(mxc + Math.cos(an) * wr, cy + Math.sin(an) * wr); cx.stroke();
+        line(cx, mxc, cy, mxc + Math.cos(an) * wr, cy + Math.sin(an) * wr, sp % 2 ? '#4a3d2a' : '#5c4c34', 2);
         // paddles: the part that actually catches the water
         var px2 = mxc + Math.cos(an) * wr, py2 = cy + Math.sin(an) * wr;
         // One paddle has been mended. It is the only new wood anywhere in
         // Wick, and it is on the one machine the town still needs.
         var mended = sp === 4;
-        cx.strokeStyle = mended ? '#6a5535' : '#2e2618'; cx.lineWidth = 4;
-        cx.beginPath(); cx.moveTo(px2, py2); cx.lineTo(px2 - Math.sin(an) * 6, py2 + Math.cos(an) * 6); cx.stroke();
+        line(cx, px2, py2, px2 - Math.sin(an) * 6, py2 + Math.cos(an) * 6, mended ? '#6a5535' : '#2e2618', 4);
         if (mended) {
             cx.fillStyle = '#8a8079';
             cx.fillRect(Math.round(px2 - Math.sin(an) * 2 - 1), Math.round(py2 + Math.cos(an) * 2 - 1), 2, 2);
@@ -14873,7 +15248,13 @@ PAINT.fence = function (g, c) {
     // row of sticks with its rails stacked up at one end.
     function at(q) {
         var u = long ? c.bw * q : c.bw / 2, v = long ? c.bh / 2 : c.bh * q;
-        return [c.lx(u, v), c.ly(u, v) + TILE_H / 2];
+        /* No + TILE_H/2 here. This is sprite-local space, where lx/ly
+           already put the footprint centre at the origin, and every other
+           painter and contactShadow work in it unshifted. It was a patch
+           for the actor offset that used to live in isoY's callers, and
+           it put nine fences' rails half a tile off their own contact
+           shadow and collision box. */
+        return [c.lx(u, v), c.ly(u, v)];
     }
     var A = at(0), B = at(1);
     var gap0 = 0.52, gap1 = 0.72;                                              // a stretch nobody has mended
@@ -14978,15 +15359,12 @@ PAINT.sack = function (g, c) {
     var rng = c.rng, hgt = c.hgt, rrx = c.rrx, rry = c.rry;
     var empty = c.v === 2;                                                      // a slack sack in a hungry year
     var sq = empty ? 0.55 : 1;
-    g.fillStyle = '#463d29';
-    g.beginPath(); g.ellipse(0, -hgt / 2 * sq, rrx * 0.96, (rry + hgt / 2) * sq, 0, 0, TAU); g.fill();
-    g.fillStyle = '#5a4f36';
-    g.beginPath(); g.ellipse(-rrx * 0.09, (-hgt * 0.6 - rry * 0.2) * sq, rrx * 0.8, (rry + hgt / 2) * 0.72 * sq, 0, 0, TAU); g.fill();
-    g.fillStyle = '#6c5f44';
-    g.beginPath(); g.ellipse(-rrx * 0.2, (-hgt * 0.8 - rry * 0.4) * sq, rrx * 0.46, (rry + hgt / 2) * 0.34 * sq, 0, 0, TAU); g.fill();
-    var bb = [[-rrx, -rry - hgt], [rrx, -rry - hgt], [rrx, rry], [-rrx, rry]];
-    dither(g, bb, 'rgba(120,106,74,.4)', 0.1, rng);                             // hessian weave
-    dither(g, bb, 'rgba(40,32,18,.4)', 0.09, rng);
+    pxEllipse(g, 0, -hgt / 2 * sq, rrx * 0.96, (rry + hgt / 2) * sq, '#463d29');
+    pxEllipse(g, -rrx * 0.09, (-hgt * 0.6 - rry * 0.2) * sq, rrx * 0.8, (rry + hgt / 2) * 0.72 * sq, '#5a4f36');
+    pxEllipse(g, -rrx * 0.2, (-hgt * 0.8 - rry * 0.4) * sq, rrx * 0.46, (rry + hgt / 2) * 0.34 * sq, '#6c5f44');
+    var bb = ellipsePoly(0, -hgt / 2 * sq, rrx * 0.96, (rry + hgt / 2) * sq);   // the sack, not its bounding box
+    dither(g, bb, 'rgba(120,106,74,.4)', 0.14, rng);                            // hessian weave
+    dither(g, bb, 'rgba(40,32,18,.4)', 0.13, rng);
     for (var f = 0; f < 4; f++) {                                               // folds where the cloth gathers
         var fx = -rrx * 0.6 + f * rrx * 0.4;
         line(g, fx, -rry * 0.2 * sq, fx + 3, (-hgt * 0.7 - rry * 0.4) * sq, 'rgba(36,30,18,.45)', 1);
@@ -14998,7 +15376,7 @@ PAINT.sack = function (g, c) {
     if (!empty) { px(g, rrx * 0.3, rry * 0.3, 3, 2, '#c8b98a'); px(g, rrx * 0.3 + 3, rry * 0.4, 2, 2, '#b3a479'); }   // spilled grain
 };
 PAINT.cart = function (g, c) {
-    var rng = c.rng, hgt = c.hgt, fw = c.fw, ty = -hgt;
+    var rng = c.rng, hgt = c.hgt;
     var f = body(g, c, ['#4a3d2a', '#33291c', '#5c4d36']);
     for (var i = 1; i < 6; i++) { var a = qp(f.sw, i / 6, 0), b = qp(f.sw, i / 6, 1); line(g, a[0], a[1], b[0], b[1], 'rgba(0,0,0,.35)', 1); }
     poly(g, f.top, '#5a4b34');
@@ -15012,9 +15390,17 @@ PAINT.cart = function (g, c) {
         var rq = r / 4, rx = c.x3 + (c.x2 - c.x3) * rq, ry2 = c.y3 + (c.y2 - c.y3) * rq;
         line(g, rx, ry2 - hgt, rx, ry2 - hgt - 12, '#4a3c28', 2);
     }
-    // two wheels with real spokes, and a shaft the horse has not been in for a while
-    [[-0.3, 9], [0.32, 8]].forEach(function (w) {
-        var wx = fw * w[0], wy = ty + hgt * 0.9, wr = w[1];
+    /* two wheels with real spokes, and a shaft the horse has not been in
+       for a while. They used to be placed at fw * u, and c.fw is the
+       LENGTH of the sloped south-west edge, not a horizontal span: 12%
+       too long, centred on the origin instead of on that side, so the
+       rear wheel sat on the side of the cart and the front one was
+       entirely on its tailgate, fifteen pixels off the ground. bar()
+       exists because this exact mistake shipped once before. Take the
+       points off the footprint quad like everything else does. */
+    [[0.26, 9], [0.74, 8]].forEach(function (w) {
+        var wp = qp(f.sw, w[0], 1), wr = w[1];
+        var wx = wp[0], wy = wp[1] - wr + 1;
         g.strokeStyle = '#241c12'; g.lineWidth = 3;
         g.beginPath(); g.arc(wx, wy, wr, 0, TAU); g.stroke();
         g.strokeStyle = '#3e3220'; g.lineWidth = 1;
@@ -15027,9 +15413,9 @@ PAINT.cart = function (g, c) {
 PAINT.stone = PAINT.cairn = function (g, c) {
     var rng = c.rng, hgt = c.hgt, rrx = c.rrx, rry = c.rry, ty = -hgt;
     roundBody(g, c);
-    var bb = [[-rrx, -rry - hgt], [rrx, -rry - hgt], [rrx, rry], [-rrx, rry]];
-    dither(g, bb, 'rgba(150,150,172,.28)', 0.1, rng);                           // grain in the rock
-    dither(g, bb, 'rgba(14,12,20,.4)', 0.1, rng);
+    var bb = roundShape(c);                                                     // the stone, not the rectangle it came in
+    dither(g, bb, 'rgba(150,150,172,.28)', 0.14, rng);                          // grain in the rock
+    dither(g, bb, 'rgba(14,12,20,.4)', 0.14, rng);
     g.strokeStyle = 'rgba(18,16,24,.5)'; g.lineWidth = 1;                       // a fault line, and a chip out of it
     g.beginPath();
     g.moveTo(-rrx * 0.34, ty - rry * 0.1); g.lineTo(-rrx * 0.02, ty + rry * 0.26); g.lineTo(rrx * 0.3, ty + rry * 0.16);
@@ -15054,13 +15440,16 @@ PAINT.hedge = function (g, c) {
     var n = Math.max(5, Math.round((long ? c.bw : c.bh) * 3));
     for (var pass = 0; pass < 3; pass++) {
         var col = ['#16220f', '#22331a', '#334a26'][pass];
-        var lift = pass * 3;
+        // the passes stack UP from the ground rather than all sitting at
+        // hgt: the bottom of the lowest one used to be fourteen pixels
+        // clear of the contact shadow it casts, so the hedge floated
+        var lift = pass * 5;
         for (var i = 0; i <= n; i++) {
             var q = i / n;
             var hx = long ? c.lx(c.bw * q, c.bh / 2) : c.lx(c.bw / 2, c.bh * q);
             var hy = long ? c.ly(c.bw * q, c.bh / 2) : c.ly(c.bw / 2, c.bh * q);
             g.fillStyle = col;
-            g.beginPath(); g.ellipse(hx + (rng() - 0.5) * 6, hy - hgt - lift + (rng() - 0.5) * 5, 9 + rng() * 5, 6 + rng() * 4, 0, 0, TAU); g.fill();
+            pxEllipse(g, hx + (rng() - 0.5) * 6, hy - hgt * 0.4 - lift + (rng() - 0.5) * 5, 9 + rng() * 5, 6 + rng() * 4, col);
         }
     }
     for (var t = 0; t < 40; t++) {                                              // twigs poking out of a hedge nobody cuts
@@ -15298,8 +15687,13 @@ PAINT.hearth = function (g, c) {
     px(g, o0[0] - 4, o0[1] - 5, (o1[0] - o0[0]) + 8, 5, '#57524c');              // the lintel stone
     px(g, o0[0] - 4, o0[1] - 6, (o1[0] - o0[0]) + 8, 1, '#6c665e');
     dither(g, [[o0[0] - 6, o0[1] - 14], [o1[0] + 6, o1[1] - 14], [o1[0] + 6, o1[1] - 4], [o0[0] - 6, o0[1] - 4]], 'rgba(6,4,4,.6)', 0.4, rng);   // soot up the breast
-    // logs and ash in the grate
-    var bx = (o0[0] + o1[0]) / 2, by = o2[1] - 5;
+    /* logs and ash in the grate. bx is the middle of the opening, so by
+       has to be the floor of the opening AT THE MIDDLE. It used to take
+       the y off o2, which is the opening's bottom edge at its RIGHT end,
+       and the foot of this face slopes half a pixel per pixel, so the
+       grate landed five pixels below the floor of its own fireplace and
+       the logs marched further out westward from there. */
+    var bx = (o0[0] + o1[0]) / 2, by = qp(f.sw, 0.5, 1)[1] - 5;
     c.at('fire', bx, by);                                                       // the fire burns where the logs are
     g.fillStyle = '#5a5148'; g.beginPath(); g.ellipse(bx, by + 2, (o1[0] - o0[0]) * 0.4, 4, 0, 0, TAU); g.fill();
     for (var l = 0; l < 4; l++) {
@@ -15375,8 +15769,16 @@ function lightsOf(p) {
         if (o.t === 'house') {
             // the `se` face runs from the south corner at u 0 to the east
             // corner at u 1, and the window centre sits just past lampU
-            var u = houseSillU(propVar('house', b)) + 0.07;
-            out.push({ x: b[0] + b[2] + 0.2, y: b[1] + b[3] * (1 - u), r: 3.6, c: '255,196,110', i: 0.95 });
+            var u = houseSillU(propVar(o)) + 0.07;
+            /* Clamped inside the floor. The sill is 0.2 past the east
+               face, and for a house built against the east edge that put
+               the light off the world: five of the twelve in the game,
+               each spilling half its pool onto the black beyond the
+               ground. Pull it back to the brink rather than moving the
+               house, which is where the painter draws the window. */
+            var W = p.w || GRID, H = p.h || GRID;
+            out.push({ x: Math.min(b[0] + b[2] + 0.2, W - 0.35), y: clamp(b[1] + b[3] * (1 - u), 0.35, H - 0.35),
+                       r: 3.6, c: '255,196,110', i: 0.95 });
         }
         else if (o.t === 'lamp') out.push({ x: b[0] + b[2] / 2, y: b[1] + b[3] / 2, r: 3.2, c: '255,206,120', i: 1 });
         else if (o.t === 'foot') out.push({ x: b[0] + b[2] / 2, y: b[1] + b[3] / 2, r: 4.4, c: '255,190,90', i: 0.7 });
@@ -15384,6 +15786,18 @@ function lightsOf(p) {
         else if (o.t === 'hearth') out.push({ x: b[0] + b[2] / 2, y: b[1] + b[3] + 0.4, r: 4.6, c: '255,168,78', i: 1.15 });
     });
     (p.lights || []).forEach(function (l) { out.push(l); });
+    // and the one you set down yourself, which is the only lamp in the
+    // game that is anywhere somebody chose rather than anywhere a house is
+    /* The widow is carrying a lit lamp. It was a gradient inside drawNpc,
+       which is under the veil, so the one lamp in the game somebody is
+       actually holding threw half the light of a lamp on a sill. */
+    (p.npcs || []).forEach(function (id) {
+        var n = NPCS[id], pr = NPC_PROP[id];
+        if (!n || !pr || !pr.glow) return;
+        out.push({ x: npcX(n), y: npcY(n), r: 1.9, c: '255,200,110', i: 0.8 });
+    });
+    var mine = RT && lampAt(RT.place);
+    if (mine) out.push({ x: mine.x, y: mine.y, r: 3.0, c: '255,206,120', i: 1 });
     return out;
 }
 function drawLights(cx) {
@@ -15391,7 +15805,9 @@ function drawLights(cx) {
     // Inside, the dark is warmer and there is less of it. You are in a
     // room with a fire in it, not standing in a field.
     if (p.indoor) cx.fillStyle = 'rgba(14,8,10,.34)';
-    else cx.fillStyle = 'rgba(6,5,14,' + (p.night >= 2 ? 0.66 : 0.5) + ')';
+    // `dark` means the lantern is the only light here, and it now says so
+    // in the one place that decides how much dark there is
+    else cx.fillStyle = 'rgba(6,5,14,' + (p.night >= 2 ? 0.66 : p.dark ? 0.6 : 0.5) + ')';
     /* -ight drops the night by 60% for fifty milliseconds. The corners
        of the room, which are dark in every other frame of this game,
        are visible, and so is anybody standing in them. That is a
@@ -15403,7 +15819,7 @@ function drawLights(cx) {
     if (!RT.dead) ls.push({ x: RT.px, y: RT.py, r: 3.4, c: '255,214,150', i: 0.8, self: 1 });
     cx.globalCompositeOperation = 'lighter';
     for (var i = 0; i < ls.length; i++) {
-        var l = ls[i], sx = isoX(l.x, l.y), sy = isoY(l.x, l.y) + TILE_H / 2;
+        var l = ls[i], sx = isoX(l.x, l.y), sy = isoYA(l.x, l.y);
         var rad = l.r * 30;
         if (sx < -rad || sx > VW + rad || sy < -rad * 2 || sy > VH + rad * 2) continue;
         /* The town's own lamps dip while a rhyme goes off and come
@@ -15440,18 +15856,46 @@ function drawVignette(cx) {
        the extended rect is about 650 away, so fullRect is safe with no
        change to the stops. */
     var sq = RT.flash * 70, cxx = lerp(VW / 2, pz.bx, clamp(RT.flash * 1.4, 0, 0.45));
+    /* Rest is the common case by a very long way, and at rest this is the
+       same 650,000 pixels of three stop gradient every frame forever. On a
+       software canvas that measured 2.3 to 2.8ms, which is 62% of the
+       square's world frame and rather more than all eight of its lamps put
+       together; a blit is 0.08. So the still version is baked once per
+       kind and only a frame that is actually moving the frame pays for the
+       gradient. */
+    if (sq === 0 && cxx === VW / 2) { cx.drawImage(vigBake(ind), -14, -14); return; }
+    cx.fillStyle = vigGrad(cx, cxx, ind, sq); fullRect(cx);   // was fillRect(0,0,VW,VH): a 0.8 alpha wash nine pixels short of one edge
+}
+function vigGrad(cx, cxx, ind, sq) {
     var vg = cx.createRadialGradient(cxx, VH / 2 - 30, (ind ? 300 : 250) - sq, cxx, VH / 2, 680);
     vg.addColorStop(0, 'rgba(4,3,8,0)');
     vg.addColorStop(0.55, ind ? 'rgba(7,4,7,.2)' : 'rgba(4,3,8,.3)');
     vg.addColorStop(1, ind ? 'rgba(8,5,8,.6)' : 'rgba(4,3,8,.8)');
-    cx.fillStyle = vg; fullRect(cx);              // was fillRect(0,0,VW,VH): a 0.8 alpha wash nine pixels short of one edge
+    return vg;
 }
+/* Two of them, indoor and out, painted the first time each is asked for.
+   fullRect covers -14 to VW+14 because the shake translates the whole
+   world and the wash must not come up short of an edge, so the bake is
+   that size and is blitted at -14,-14 inside the same transform. */
+var VIG = [null, null];
+function vigBake(ind) {
+    var i = ind ? 1 : 0;
+    if (VIG[i]) return VIG[i];
+    var cv = document.createElement('canvas');
+    cv.width = VW + 28; cv.height = VH + 28;
+    var g = cv.getContext('2d');
+    g.translate(14, 14);                       // so the gradient is still centred on the canvas, not on the bake
+    g.fillStyle = vigGrad(g, VW / 2, ind, 0);
+    g.fillRect(-14, -14, VW + 28, VH + 28);
+    return (VIG[i] = cv);
+}
+function freeVig() { VIG.forEach(function (c) { if (c) { c.width = c.height = 0; } }); VIG[0] = VIG[1] = null; }
 /* Something you can look at has to be visible before you are told
    you can look at it. A small mark, brighter once you are close,
    duller once you have read it. */
 function drawLooks(cx) {
     (place().looks || []).forEach(function (l, i) {
-        var sx = isoX(l.x, l.y), sy = isoY(l.x, l.y) + TILE_H / 2;
+        var sx = isoX(l.x, l.y), sy = isoYA(l.x, l.y);
         var near = Math.hypot(l.x - RT.px, l.y - RT.py) < 2.4;
         var read = !!(S.looked && S.looked[lookKey(l)]);
         var pu = 0.5 + Math.sin(RT.t * 2.2 + i * 1.7) * 0.5;
@@ -15469,7 +15913,7 @@ function drawLooks(cx) {
 function drawExits(cx) {
     (place().exits || []).forEach(function (e) {
         var open = exitOpen(e);
-        var sx = isoX(e.x, e.y), sy = isoY(e.x, e.y) + TILE_H / 2;
+        var sx = isoX(e.x, e.y), sy = isoYA(e.x, e.y);
         cx.save(); cx.translate(sx, sy); cx.scale(1, 0.5);
         var pul = 0.35 + Math.sin(RT.t * 2.4) * 0.12;
         cx.strokeStyle = open ? 'rgba(201,169,74,' + pul + ')' : 'rgba(120,110,130,.22)';
@@ -15532,7 +15976,7 @@ var GESTURE = {
 };
 function drawNpc(cx, n) {
     var w2 = n.id ? npcRT(n.id) : { x: n.x, y: n.y, bob: RT.t * 2.4, moving: 0, face: 1 };
-    var sx = isoX(w2.x, w2.y), sy = isoY(w2.x, w2.y) + TILE_H / 2;
+    var sx = isoX(w2.x, w2.y), sy = isoYA(w2.x, w2.y);
     if (sx < -70 || sx > VW + 70 || sy < -90 || sy > VH + 90) return;
     // standing still is a slow breath; walking is a step; the child skips
     var stride = w2.moving ? (n.skip ? 5.5 : 2.2) : 0.9;
@@ -15577,14 +16021,26 @@ function drawNpc(cx, n) {
        drawn. Half-width is the sprite's, not the old robe's. */
     if (!w2.moving && GESTURE[n.id]) GESTURE[n.id](cx, n.small ? 7 : 9, h, RT.t);
     cx.restore();
-    // a quiet mark so you know they will talk to you
-    cx.save(); cx.globalAlpha = 0.5 + Math.sin(RT.t * 2.6 + w2.y) * 0.2;
-    cx.fillStyle = '#c9a94a'; cx.font = 'bold 9px "Press Start 2P", monospace'; cx.textAlign = 'center';
-    cx.fillText('·', sx, sy - h - 12 - bob); cx.restore(); cx.textAlign = 'left';
+    /* The quiet mark that says they will talk to you is queued, not
+       drawn. Everything inside drawNpc lands in the ents pass, which
+       runs BEFORE drawLights lays the night down over the whole canvas,
+       so the mark was losing half its contrast (two thirds in the
+       hollow) and measured about three lit pixels. drawPrompt carries
+       the same information and is drawn after the vignette and loses
+       none of it, so the mark goes with it. */
+    RT.marks.push({ x: sx, y: sy - h - 12 - bob, p: w2.y });
+}
+function drawTalkMarks(cx) {
+    for (var i = 0; i < RT.marks.length; i++) {
+        var m = RT.marks[i];
+        cx.save(); cx.globalAlpha = 0.5 + Math.sin(RT.t * 2.6 + m.p) * 0.2;
+        cx.fillStyle = '#c9a94a'; cx.font = 'bold 9px "Press Start 2P", monospace'; cx.textAlign = 'center';
+        cx.fillText('·', m.x, m.y); cx.restore(); cx.textAlign = 'left';
+    }
 }
 function drawPrompt(cx) {
     var o = RT.prompt; if (!o || RT.dialog) return;
-    var sx = isoX(o.x, o.y), sy = isoY(o.x, o.y) + TILE_H / 2;
+    var sx = isoX(o.x, o.y), sy = isoYA(o.x, o.y);
     var txt = (o.shut ? '' : 'E — ') + o.label;
     cx.save(); cx.textAlign = 'center'; cx.font = '11px "Pixelify Sans"';
     var w = cx.measureText(txt).width + 16;
@@ -15607,7 +16063,19 @@ var MAP_HIDE = { arena: 1, stage: 1, a3sq: 1 };
    square lays them all out. MAP_SEED only pins the root and anything
    the graph cannot reach. */
 var MAP_SEED = { square: [2, 3], stage: [1, 4], arena: [0, 0] };
+/* A hidden place you can still be standing in. Act 3's square IS the
+   square, so the map lights the square while you are in it rather than
+   lighting nothing at all for the whole final act. */
+var MAP_STANDIN = { a3sq: 'square' };
 function exitDir(p, e) {
+    // An exit may say which way it goes. One does: the square's door to
+    // the lane is called "the lane, north" and sits on the square's SOUTH
+    // wall, because the north wall is behind two houses. Read off the
+    // wall it is on, that door pointed south, the lane was placed below
+    // Wick, and the mill then wanted the square's own cell and slid two
+    // columns east onto Wick's row. The map drew a shape the world does
+    // not have.
+    if (e.dir) return e.dir;
     var W = p.w || GRID, H = p.h || GRID;
     var dx = e.x < W * 0.25 ? -1 : e.x > W * 0.75 ? 1 : 0;
     var dy = e.y < H * 0.25 ? -1 : e.y > H * 0.75 ? 1 : 0;
@@ -15617,7 +16085,12 @@ function exitDir(p, e) {
 }
 function buildMap() {
     var pos = {}, taken = {}, k;
-    for (k in MAP_SEED) if (PLACES[k]) { pos[k] = MAP_SEED[k].slice(); taken[pos[k].join(',')] = k; }
+    /* A place nobody can see does not hold a cell. Act 3's square is
+       hidden and used to take the one Grelling wanted, which pushed
+       Grelling a row north of the road it is actually on. Hidden places
+       still get a position, they just do not make anybody else slide. */
+    function hold(id, c) { pos[id] = c; if (!MAP_HIDE[id]) taken[c.join(',')] = id; }
+    for (k in MAP_SEED) if (PLACES[k]) hold(k, MAP_SEED[k].slice());
     var q = ['square'], guard = 0;
     while (q.length && guard++ < 400) {
         var id = q.shift(), p = PLACES[id]; if (!p || !pos[id]) continue;
@@ -15630,7 +16103,7 @@ function buildMap() {
                 if (d[0]) c[1] = pos[id][1] + (slip % 2 ? 1 : -1) * Math.ceil(slip / 2);
                 else c[0] = pos[id][0] + (slip % 2 ? 1 : -1) * Math.ceil(slip / 2);
             }
-            pos[e.to] = c; taken[c.join(',')] = e.to; q.push(e.to);
+            hold(e.to, c); q.push(e.to);
         });
     }
     // anything the graph never reached still gets a cell, off to one side
@@ -15638,7 +16111,7 @@ function buildMap() {
     PLACE_IDS.forEach(function (id) {
         if (pos[id] || MAP_HIDE[id]) return;
         while (taken[(-1) + ',' + spare] && spare < 40) spare++;
-        pos[id] = [-1, spare]; taken[pos[id].join(',')] = id; spare++;
+        hold(id, [-1, spare]); spare++;
     });
     return pos;
 }
@@ -15649,16 +16122,38 @@ function drawMap(cx) {
     cx.textAlign = 'center';
     cx.fillStyle = '#d8cfa8'; cx.font = '16px "Press Start 2P", monospace';
     cx.fillText('WHERE YOU HAVE BEEN', VW / 2, 70);
+    /* What the map is allowed to show is what you have been to, plus the
+       far end of any road out of one of those. That is the same rule the
+       link pass already used for the dashed roads; the node pass had no
+       rule at all and plotted the whole world, so a cold save gave away
+       that there are ten places in five columns before you had left the
+       square. */
+    var known = {};
+    PLACE_IDS.forEach(function (id) {
+        if (MAP_HIDE[id] || !S.seen['been_' + id]) return;
+        known[id] = 1;
+        (PLACES[id].exits || []).forEach(function (e) { if (!MAP_HIDE[e.to] && PLACES[e.to]) known[e.to] = 1; });
+    });
     /* derived coordinates are not hand tuned to fit the panel, so the
-       panel fits itself around them */
+       panel fits itself around them. The bounds are taken over what will
+       actually be DRAWN, not over what has been visited: during the
+       prologue you are on a hidden place, nothing was visited, and the
+       old [0,0] fallback centred the panel on a cell nothing occupies
+       and put most of the map off the bottom of the canvas. */
     var lo = [1e9, 1e9], hi = [-1e9, -1e9], any = false;
     PLACE_IDS.forEach(function (id) {
-        var m = MAP_POS[id]; if (!m || MAP_HIDE[id] || !S.seen['been_' + id]) return;
+        var m = MAP_POS[id]; if (!m || MAP_HIDE[id] || !known[id]) return;
         any = true;
         lo[0] = Math.min(lo[0], m[0]); lo[1] = Math.min(lo[1], m[1]);
         hi[0] = Math.max(hi[0], m[0]); hi[1] = Math.max(hi[1], m[1]);
     });
-    if (!any) { lo = [0, 0]; hi = [0, 0]; }
+    if (!any) {                                  // nowhere known yet: say so rather than drawing an empty grid
+        cx.fillStyle = '#6a6278'; cx.font = '10px "Pixelify Sans"';
+        cx.fillText('Nowhere yet.', VW / 2, VH / 2);
+        cx.fillText('M to close', VW / 2, 96);
+        cx.textAlign = 'left';
+        return;
+    }
     var spanX = hi[0] - lo[0], spanY = hi[1] - lo[1];
     var cell = Math.min(100, Math.floor(Math.min(spanX ? 620 / spanX : 100, spanY ? 330 / spanY : 100)));
     cell = Math.max(46, cell);
@@ -15680,19 +16175,31 @@ function drawMap(cx) {
         });
     });
     cx.setLineDash([]);
+    /* You are somewhere even when the place you are in is hidden. Act 3's
+       square is the same square, and without this the whole final act
+       drew with no gold node anywhere, on the one screen whose only job
+       is telling you where you are. */
+    var hereId = MAP_STANDIN[RT.place] || RT.place;
     PLACE_IDS.forEach(function (id) {
-        var m = MAP_POS[id]; if (!m || MAP_HIDE[id]) return;
-        var seen = S.seen['been_' + id], here = RT.place === id;
+        var m = MAP_POS[id]; if (!m || MAP_HIDE[id] || !known[id]) return;
+        var seen = S.seen['been_' + id], here = hereId === id;
+        // a room off a place you can already see is a door, not a settlement.
+        // Drawn small and unlabelled, the main road reads as the road again.
+        var room = !!PLACES[id].indoor;
         var x = ox + m[0] * cell, y = oy + m[1] * cell;
         cx.fillStyle = here ? '#c9a94a' : seen ? '#3d3350' : '#1a1620';
-        cx.beginPath(); cx.arc(x, y, here ? 12 : 9, 0, TAU); cx.fill();
+        cx.beginPath(); cx.arc(x, y, here ? 12 : room ? 5 : 9, 0, TAU); cx.fill();
         cx.strokeStyle = here ? '#ffe66e' : seen ? '#6a5f82' : '#241f2e'; cx.lineWidth = 2; cx.stroke();
+        if (room && !here) return;
         cx.fillStyle = seen ? (here ? '#ffe66e' : '#b9b0c6') : '#3a3446';
         cx.font = '10px "Pixelify Sans"';
         cx.fillText(seen ? PLACES[id].n.split('—')[0].trim() : '?', x, y + 26);
     });
+    // under the title, not at VH-40: the HUD is a DOM sibling above the
+    // canvas, so the dim never reaches it and the hint used to sit lit
+    // between the word chips and the rhyme keys
     cx.fillStyle = '#6a6278'; cx.font = '10px "Pixelify Sans"';
-    cx.fillText('M to close', VW / 2, VH - 40);
+    cx.fillText('M to close', VW / 2, 96);
     cx.textAlign = 'left';
 }
 
@@ -15826,6 +16333,7 @@ function close() {
     }
     freeFloors();       // the cache is megabytes of prerendered ground; it does not outlive the window
     freeSprites();      // and neither do the prop bitmaps
+    freeVig();          // nor the two baked vignettes
     freeGlows();        // eleven 64 KB banded radials, same rule
     if (S) sSave();
     if (window.__ninth) delete window.__ninth;
