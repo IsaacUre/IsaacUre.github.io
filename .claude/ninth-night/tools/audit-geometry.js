@@ -25,13 +25,15 @@ var R = 0.3;          // moveActor's default radius
 var GRID = 17;        // default place size, and the current hard ceiling
 var MARGIN = 0.5;     // moveActor clamps to 0.5 .. size-0.5
 
-function grab(name) {
-    var i = src.indexOf('var ' + name + ' = {');
+function grab(name, kind) {
+    kind = kind || '{';
+    var close = kind === '[' ? ']' : '}';
+    var i = src.indexOf('var ' + name + ' = ' + kind);
     if (i < 0) throw new Error('could not find `var ' + name + '` in ' + FILE);
-    var start = src.indexOf('{', i), depth = 0, j = start;
+    var start = src.indexOf(kind, i), depth = 0, j = start;
     for (; j < src.length; j++) {
-        if (src[j] === '{') depth++;
-        else if (src[j] === '}') { depth--; if (!depth) break; }
+        if (src[j] === kind) depth++;
+        else if (src[j] === close) { depth--; if (!depth) break; }
     }
     /* the literals are plain data plus function-valued talk() fields, so
        evaluating them standalone is safe enough and far more honest than
@@ -47,12 +49,18 @@ var MAP_SEED = grab('MAP_SEED');
 var MAP_HIDE = grab('MAP_HIDE');
 var PROP = grab('PROP');
 var FLOOR_PAL = grab('FLOOR_PAL');
+var A3_ROWS = grab('A3_ROWS', '[');
+var SPRITE_BUDGET = (function () {
+    var m = /SPRITE_BUDGET = (\d+) << 20/.exec(src);
+    return m ? +m[1] * 1048576 : 0;
+})();
 
 /* The map is derived from the exit graph now rather than hand kept, so
    the audit derives it the same way and checks the derivation, instead
    of checking a table that can no longer be forgotten. Keep this in step
    with buildMap()/exitDir() in the game. */
 function exitDir(p, e) {
+    if (e.dir) return e.dir;                      // an exit may say which way it goes
     var W = p.w || GRID, H = p.h || GRID;
     var dx = e.x < W * 0.25 ? -1 : e.x > W * 0.75 ? 1 : 0;
     var dy = e.y < H * 0.25 ? -1 : e.y > H * 0.75 ? 1 : 0;
@@ -60,28 +68,38 @@ function exitDir(p, e) {
     if (!dx && !dy) dy = -1;
     return [dx, dy];
 }
+var SLIPS = [];
 function buildMap() {
     var pos = {}, taken = {}, k;
-    for (k in MAP_SEED) if (PLACES[k]) { pos[k] = MAP_SEED[k].slice(); taken[pos[k].join(',')] = k; }
+    function hold(id, c) { pos[id] = c; if (!MAP_HIDE[id]) taken[c.join(',')] = id; }
+    for (k in MAP_SEED) if (PLACES[k]) hold(k, MAP_SEED[k].slice());
     var q = ['square'], guard = 0;
     while (q.length && guard++ < 400) {
         var id = q.shift(), p = PLACES[id]; if (!p || !pos[id]) continue;
         (p.exits || []).forEach(function (e) {
             if (!PLACES[e.to] || pos[e.to]) return;
-            var d = exitDir(p, e), c = [pos[id][0] + d[0], pos[id][1] + d[1]], slip = 0;
+            var d = exitDir(p, e), c = [pos[id][0] + d[0], pos[id][1] + d[1]], want = c.slice(), slip = 0;
             while (taken[c.join(',')] && slip < 12) {
                 slip++;
                 if (d[0]) c[1] = pos[id][1] + (slip % 2 ? 1 : -1) * Math.ceil(slip / 2);
                 else c[0] = pos[id][0] + (slip % 2 ? 1 : -1) * Math.ceil(slip / 2);
             }
-            pos[e.to] = c; taken[c.join(',')] = e.to; q.push(e.to);
+            /* A slip is the map about to lie about where somewhere is, and
+               it is the only warning available: the "two places on one
+               cell" check cannot fire, because sliding is exactly what
+               stops that happening. The mill sat two columns east of Wick
+               on Wick's own row for a release because of one of these. */
+            if (slip && !MAP_HIDE[e.to]) SLIPS.push(e.to + ': its cell on the map was decided by collision, not by direction. "' +
+                e.n + '" points ' + d + ' out of ' + id + ' so it wanted ' + want + ', which is held by ' +
+                taken[want.join(',')] + '. It ended up at ' + c + '.');
+            hold(e.to, c); q.push(e.to);
         });
     }
     var spare = 0;
     Object.keys(PLACES).forEach(function (id) {
         if (pos[id] || MAP_HIDE[id]) return;
         while (taken[(-1) + ',' + spare] && spare < 40) spare++;
-        pos[id] = [-1, spare]; taken[pos[id].join(',')] = id; spare++;
+        hold(id, [-1, spare]); spare++;
     });
     return pos;
 }
@@ -90,13 +108,54 @@ var MAP_POS = buildMap();
 var problems = [];
 function bad(msg) { problems.push(msg); }
 
+/* In step with the game: `ins` is what fraction of its footprint a prop
+   actually is, and blocked() honours it now. */
+function solidBox(o) {
+    var b = o.b, d = PROP[o.t] || PROP._, k = d.ins;
+    if (!k || k >= 1) return b;
+    var iw = b[2] * k, ih = b[3] * k;
+    return [b[0] + (b[2] - iw) / 2, b[1] + (b[3] - ih) / 2, iw, ih];
+}
 function blocked(p, x, y, r) {
     var ps = p.props || [];
     for (var i = 0; i < ps.length; i++) {
-        var b = ps[i].b;
+        var b = solidBox(ps[i]);
         if (x + r > b[0] && x - r < b[0] + b[2] && y + r > b[1] && y - r < b[1] + b[3]) return true;
     }
     return false;
+}
+/* The game's paintSpan, so "is this prop painted over that person" is
+   asked the same way here as it is on screen. Keep in step with
+   paintedBox()/paintSpan() in comp/ninth.js. */
+function lerp(a, b, t) { return a + (b - a) * t; }
+function paintSpan(b, d, lx) {
+    var bw = b[2], bh = b[3];
+    var rrx = (bw + bh) * 58 / 4, rry = (bw + bh) * 29 / 4;
+    var sk = (bw - bh) * 58 / 4, ex = (bw - bh) * 29 / 4;
+    var up = d.h + (d.over || 0);
+    if (lx < -rrx || lx > rrx) return null;
+    var top, bot;
+    if (lx <= -sk) top = lerp(-ex, -rry, (lx + rrx) / Math.max(1e-6, rrx - sk));
+    else           top = lerp(-rry, ex, (lx + sk) / Math.max(1e-6, rrx + sk));
+    if (lx <= sk) bot = lerp(-ex, rry, (lx + rrx) / Math.max(1e-6, rrx + sk));
+    else          bot = lerp(rry, ex, (lx - sk) / Math.max(1e-6, rrx - sk));
+    var taper = up - (up - d.h) * Math.abs(lx) / Math.max(1e-6, rrx);
+    return { top: top - taper, bot: bot + 4 };
+}
+// how much of a figure `fh` tall standing at (x,y) some prop paints over
+function hiddenBy(p, x, y, fh) {
+    var k0 = x + y, sx = (x - y) * 29, sy = (x + y) * 14.5, worst = 0, who = null;
+    (p.props || []).forEach(function (o) {
+        var d = PROP[o.t]; if (!d) return;
+        var b = o.b, k = b[0] + b[2] / 2 + b[1] + b[3] / 2;
+        if (k <= k0) return;
+        var cx = b[0] + b[2] / 2, cy = b[1] + b[3] / 2;
+        var mxc = (cx - cy) * 29, myc = (cx + cy) * 14.5;
+        var s = paintSpan(b, d, sx - mxc); if (!s) return;
+        var ov = Math.min(sy, myc + s.bot) - Math.max(sy - fh, myc + s.top);
+        if (ov > worst) { worst = ov; who = o.t + ' [' + b + ']'; }
+    });
+    return { pct: Math.max(0, worst) / fh, who: who };
 }
 
 function standable(p, x, y, W, H) {
@@ -163,33 +222,75 @@ Object.keys(PLACES).forEach(function (id) {
        widow stood three tiles behind a house for a whole release, and
        the game happily offered "E — talk to A woman setting out a lamp"
        over an empty roof. The player gets a cutaway; people do not.
-       Mirrors paintedBox() in the game: x within rrx*1.15, y from
-       -(h + over) to +rry, all in screen pixels about the footprint. */
+
+       Three things this used to get wrong. It modelled the paint as a
+       bounding box, which for a nine tile wall is mostly empty triangle.
+       It hard-coded a 40px figure, and a small NPC is 26, which is how it
+       missed the child under the south-east house by 1.1 pixels. And it
+       only looked at the tile they are authored on, so a walker could
+       spend a third of its loop somewhere this never asked about. */
     (p.npcs || []).forEach(function (nid) {
         var n = NPCS[nid]; if (!n) return;
-        var nk = n.x + n.y;
-        (p.props || []).forEach(function (o) {
-            var d = PROP[o.t]; if (!d) return;
-            var b = o.b, pk = b[0] + b[2] / 2 + b[1] + b[3] / 2;
-            if (pk <= nk) return;                         // drawn before them, cannot cover them
-            var rrx = (b[2] + b[3]) * 58 / 4, rry = (b[2] + b[3]) * 29 / 4;
-            var cxw = b[0] + b[2] / 2, cyw = b[1] + b[3] / 2;
-            var dx = ((n.x - n.y) - (cxw - cyw)) * 29;
-            var dy = ((n.x + n.y) - (cxw + cyw)) * 14.5;
-            var top = -(d.h + (d.over || 0));
-            // only flag somebody with nothing showing: a figure stands about
-            // 40px, so a waist-high counter or a well leaves a head visible
-            if (Math.abs(dx) < rrx * 1.15 && dy <= rry + 4 && dy - 40 >= top) {
-                bad(id + ': ' + nid + ' at ' + n.x + ',' + n.y + ' stands where "' + o.t + '" [' + o.b +
-                    '] is painted over them. They are on open ground and still invisible.');
-            }
+        var fh = n.small ? 26 : 40;
+        var spots = [[n.x, n.y, 'stands']];
+        (n.path || []).forEach(function (pt, i) { spots.push([pt[0], pt[1], 'walks to path point ' + i + ' at']); });
+        if (n.wander) for (var a = 0; a < 16; a++) {
+            var wx = n.x + Math.cos(a / 16 * Math.PI * 2) * n.wander;
+            var wy = n.y + Math.sin(a / 16 * Math.PI * 2) * n.wander;
+            if (standable(p, wx, wy, W, H)) spots.push([wx, wy, 'can wander to']);
+        }
+        spots.forEach(function (sp) {
+            var h = hiddenBy(p, sp[0], sp[1], fh);
+            if (h.pct > 0.9) bad(id + ': ' + nid + ' ' + sp[2] + ' ' + sp[0].toFixed(1) + ',' + sp[1].toFixed(1) +
+                ' where "' + h.who + '" is painted over ' + Math.round(h.pct * 100) + '% of them (' + fh + 'px figure). Nothing fades for anybody but the player.');
+        });
+    });
+
+    /* The Act 3 audience are foes spawned from A3_ROWS, so nothing above
+       looks at them, and the cutaway does not fade for them either.
+       Seven of the twenty-four were behind one house and one was inside
+       it. A seated folk is about 26px. */
+    if (id === 'a3sq') A3_ROWS.forEach(function (st, i) {
+        if (blocked(p, st[0], st[1], R)) bad(id + ': A3_ROWS seat ' + i + ' [' + st + '] is inside a prop.');
+        var h = hiddenBy(p, st[0], st[1], 26);
+        if (h.pct > 0.5) bad(id + ': A3_ROWS seat ' + i + ' [' + st + '] is ' + Math.round(h.pct * 100) +
+            '% behind "' + h.who + '". Nobody in this crowd gets a cutaway.');
+    });
+
+    /* revive() is the other teleport, and unlike gotoPlace it is not
+       modelled anywhere below. It drops you at (W/2, H-2) with nothing to
+       catch it if that is inside something. */
+    (function () {
+        var rx = W / 2, ry = H - 2;
+        if (blocked(p, rx, ry, R)) bad(id + ': dying puts you back at ' + rx + ',' + ry + ', which is inside a prop. revive() has no unstick behind it.');
+        (p.exits || []).forEach(function (e) {
+            var w = e.w || 0.9, h = e.h || 0.9;
+            if (rx > e.x - w / 2 && rx < e.x + w / 2 && ry > e.y - h / 2 && ry < e.y + h / 2)
+                bad(id + ': dying puts you back inside the exit band for "' + e.n + '", so you get up and walk out of the place you died in.');
+        });
+    })();
+
+    /* A look you cannot read without risking the door beside it. The one
+       that matters is the playbill next to the steps up to the Act 3
+       stage, which is the only point of no return in the game and which
+       you cross by walking. */
+    (p.exits || []).forEach(function (e) {
+        var w = e.w || 0.9, h = e.h || 0.9;
+        (p.looks || []).forEach(function (l) {
+            var d = Math.hypot(Math.max(0, Math.abs(l.x - e.x) - w / 2), Math.max(0, Math.abs(l.y - e.y) - h / 2));
+            if (d < 0.75) bad(id + ': look "' + l.n + '" is ' + d.toFixed(2) + ' tiles from the edge of the exit band "' +
+                e.n + '". You cannot stand and read it without risking walking through the door.');
         });
     });
 
     // a place lit only by your own lantern is a deliberate choice; a lit
     // place with nothing to light it is a mistake
     if (p.night) {
-        var lit = (p.props || []).some(function (o) { return o.t === 'house' || o.t === 'lamp' || o.t === 'foot' || o.t === 'mill'; }) || (p.lights || []).length;
+        // the list has to match lightsOf(): hearth was missing from it, so a
+        // room lit only by its fire would have failed this gate
+        var lit = (p.props || []).some(function (o) {
+            return o.t === 'house' || o.t === 'lamp' || o.t === 'foot' || o.t === 'mill' || o.t === 'hearth';
+        }) || (p.lights || []).length;
         if (!lit && !p.dark) bad(id + ': is night but has no lamp, house or light in it. Set `dark: 1` if the lantern is meant to be the only light.');
     }
 
@@ -267,6 +368,82 @@ Object.keys(MAP_POS).forEach(function (id) {
     if (cells[k]) bad('map: "' + id + '" and "' + cells[k] + '" both land on cell ' + k + '. They will overlap.');
     cells[k] = id;
 });
+
+/* A cell decided by collision rather than by direction, which is the map
+   about to draw a shape the world does not have. Collected during the
+   derivation above. */
+SLIPS.forEach(bad);
+
+/* Two places joined by a door have to derive to OPPOSITE directions or
+   the graph is not embeddable and something has to slide. Interior doors
+   are exempt: a room off a square is legitimately in the same cell as
+   whatever it is a door in. */
+Object.keys(PLACES).forEach(function (a) {
+    (PLACES[a].exits || []).forEach(function (e) {
+        var b = PLACES[e.to]; if (!b || b.indoor || PLACES[a].indoor) return;
+        var back = (b.exits || []).filter(function (f) { return f.to === a; })[0];
+        if (!back) return;
+        var d1 = exitDir(PLACES[a], e), d2 = exitDir(b, back);
+        if (d1[0] === d2[0] && d1[1] === d2[1])
+            bad('map: ' + a + ' and ' + e.to + ' both put their shared door on the same wall (' + d1 +
+                '), so one of them cannot be the far side of the other. Give one of the two exits a `dir`.');
+    });
+});
+
+/* Every prop sprite the game can build, against the cache that has to
+   hold them. Over budget means the LRU runs at its ceiling and throws
+   something away on every transition that builds anything, and the
+   failure mode is invisible: a place you walk back into replays its
+   plain-solid fallback for a frame or two. */
+(function () {
+    function hash2(a, b, c) {
+        var n = (Math.round(a * 16) + 1013) | 0;
+        n = Math.imul(n ^ (Math.round(b * 16) + 9176), 374761393);
+        n = Math.imul(n ^ ((c || 0) * 2654435761), 668265263);
+        n ^= n >>> 13; n = Math.imul(n, 1274126177);
+        return (n ^ (n >>> 16)) >>> 0;
+    }
+    var keys = {};
+    Object.keys(PLACES).forEach(function (id) {
+        var used = {};
+        (PLACES[id].props || []).forEach(function (o) {
+            var d = PROP[o.t] || PROP._, b = o.b, v = 0;
+            // in step with propVar(): a taken variant steps on until one is free
+            if (d.vars) {
+                v = hash2(b[0], b[1], o.t.length * 31 + o.t.charCodeAt(0)) % d.vars;
+                var u = used[o.t] || (used[o.t] = {}), n = 0;
+                while (u[v] && n < d.vars) { v = (v + 1) % d.vars; n++; }
+                u[v] = 1;
+            }
+            var rrx = (b[2] + b[3]) * 58 / 4, rry = (b[2] + b[3]) * 29 / 4;
+            var w = Math.ceil(rrx * 2) + 60, h = Math.ceil(rry * 2 + d.h + (d.over || 0)) + 60;
+            keys[o.t + '|' + b[2] + '|' + b[3] + '|' + v] = w * h * 4;
+        });
+    });
+    var total = Object.keys(keys).reduce(function (a, k) { return a + keys[k]; }, 0);
+    if (SPRITE_BUDGET && total > SPRITE_BUDGET)
+        bad('sprites: the ' + Object.keys(keys).length + ' distinct prop sprites total ' +
+            (total / 1048576).toFixed(2) + ' MB against a SPRITE_BUDGET of ' + (SPRITE_BUDGET / 1048576).toFixed(0) +
+            ' MB, so the cache can never hold the game and evicts on every place change that builds.');
+})();
+
+/* A flag written and read by nobody is a gate somebody meant to build.
+   Look keys are the usual case: `key` on a look exists only to set
+   S.seen[key], and the dimming of a read look is driven separately. */
+(function () {
+    var writes = {};
+    Object.keys(PLACES).forEach(function (id) {
+        (PLACES[id].looks || []).forEach(function (l) { if (l.key) writes[l.key] = id + ' look "' + l.n + '"'; });
+    });
+    Object.keys(writes).forEach(function (k) {
+        /* The write is the look's `key:` field, which is just the string,
+           so every S.seen.<k> in the file is a READ. Comments count, which
+           is the one false negative here and an acceptable one: a comment
+           naming the flag means somebody knows about it. */
+        var reads = src.split('S.seen.' + k).length - 1 + src.split("S.seen['" + k + "']").length - 1;
+        if (!reads) bad('flag "' + k + '" is set by ' + writes[k] + ' and read nowhere. Either wire it or drop the key.');
+    });
+})();
 
 /* Somewhere you can never walk to is content nobody will ever see. */
 (function () {

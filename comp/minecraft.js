@@ -30,6 +30,7 @@
     var CREATIVE_DIG_CD = 0.3;             // held-button break period: destroyDelay 5 + the tick it is tested on
     var REACH = 5;
     var PW = 0.6, PH = 1.8, EYE = 1.62;   // player box + eye height
+    var FOV = 1.22;                        // base vertical field of view, radians — the game's 70°
 
     var S = null;      // save state (persisted)
     var RT = null;     // runtime (rebuilt every open)
@@ -170,9 +171,21 @@
         return v / tot;
     }
 
+    /* ── world types ─────────────────────────────────────────
+       The Create New World screen offers four, so all four have to mean
+       something. Three of them are this same generator with its inputs bent —
+       Large Biomes stretches the noise, AMPLIFIED exaggerates the deviation —
+       which is what they are in the real game too. Superflat is the one that
+       replaces the terrain function outright. */
+    var FLAT_Y = 4;
+    function wtFlat() { return !!S && S.wtype === 'Superflat'; }
+    function wtScale() { return S && S.wtype === 'Large Biomes' ? 4 : 1; }
+
     /* ── terrain shape: pure functions of (x,z) ─────────────── */
     // biome: 0 plains, 1 forest, 2 desert, 3 mountains
     function biomeAt(x, z) {
+        var s = wtScale();
+        x /= s; z /= s;
         var b = noise2(x / 220 + 91, z / 220 - 37);
         var m = noise2(x / 300 - 53, z / 300 + 17);
         if (m > 0.68) return 3;
@@ -181,14 +194,19 @@
         return 1;
     }
     function heightAt(x, z) {
+        if (wtFlat()) return FLAT_Y;
+        var s = wtScale();
+        x /= s; z /= s;
         var base = 44 + (fbm2(x / 60, z / 60, 4) - 0.5) * 14;
         var m = noise2(x / 300 - 53, z / 300 + 17);
         if (m > 0.6) base += (m - 0.6) * (m - 0.6) * 480 * fbm2(x / 40 + 7, z / 40 - 3, 3);   // mountains rear up
         var lake = noise2(x / 90 + 41, z / 90 + 83);
         if (lake < 0.22) base -= (0.22 - lake) * 42;                                          // depressions become lakes
+        if (S && S.wtype === 'AMPLIFIED') base = 44 + (base - 44) * 2.6;   // "Just for fun! Requires a beefy computer."
         return Math.max(6, Math.min(CH - 8, Math.round(base)));
     }
     function treeAt(x, z) {   // deterministic per column, so chunk borders agree about their neighbors' trees
+        if (wtFlat()) return 0;
         var b = biomeAt(x, z);
         if (b === 2) return 0;
         var d = b === 1 ? 0.014 : b === 0 ? 0.0022 : 0.004;
@@ -1060,6 +1078,7 @@
 
     /* ── terrain generation ─────────────────────────────────── */
     function caveAt(wx, y, wz) {
+        if (wtFlat()) return false;   // a superflat world is four layers; there is nowhere to put a cave
         if (y < 4) return false;
         var n = noise3(wx / 26, y / 18, wz / 26);
         if (n > 0.44 && n < 0.56) return true;                                    // spaghetti
@@ -1081,7 +1100,9 @@
                 else id = STONE;
                 bl[lx | (lz << 4) | (y << 8)] = id;
             }
-            for (y = h + 1; y <= SEA; y++) bl[lx | (lz << 4) | (y << 8)] = WATER;   // lakes fill the low ground
+            // lakes fill the low ground — but a superflat world sits below sea level by
+            // design and flooding it would drown every one of its four layers
+            if (!wtFlat()) for (y = h + 1; y <= SEA; y++) bl[lx | (lz << 4) | (y << 8)] = WATER;
             // cave mouths eat the surface: whatever is now the top solid gets grass back
             if (bl[lx | (lz << 4) | (h << 8)] === AIR) {
                 for (y = h - 1; y > 2; y--) {
@@ -1104,8 +1125,13 @@
                     var chh = 1 + (hash2(wx + 3, wz + 5) * 3 | 0);
                     for (var cc = 0; cc < chh && h + 1 + cc < CH; cc++) bl[lx | (lz << 4) | ((h + 1 + cc) << 8)] = CACTUS;
                 }
-                // sugar cane grows on grass/sand/dirt beside water
-                if (bl[a1] === AIR && (top === GRASS || top === SAND || top === DIRT) && hash2(wx * 5 - 17, wz * 5 + 23) < 0.05) {
+                /* Sugar cane grows on grass/sand/dirt beside water. "Beside
+                   water" is a neighbouring column below sea level — which in a
+                   superflat world is EVERY column, since the ground sits at 4
+                   and the sea that would have filled it is never placed. Ask
+                   whether this world has a sea at all first, or the flat world
+                   comes up carpeted in cane. */
+                if (!wtFlat() && bl[a1] === AIR && (top === GRASS || top === SAND || top === DIRT) && hash2(wx * 5 - 17, wz * 5 + 23) < 0.05) {
                     if (heightAt(wx + 1, wz) < SEA || heightAt(wx - 1, wz) < SEA || heightAt(wx, wz + 1) < SEA || heightAt(wx, wz - 1) < SEA) {
                         var sh = 1 + (hash2(wx + 9, wz - 9) * 3 | 0);
                         for (var su = 0; su < sh && h + 1 + su < CH; su++) bl[lx | (lz << 4) | ((h + 1 + su) << 8)] = SUGARCANE;
@@ -1132,12 +1158,14 @@
                 }
             }
         }
-        blobs(14, ORE_COAL, 5, 70, 7);
-        blobs(8, ORE_IRON, 5, 48, 5);
-        blobs(3, ORE_GOLD, 5, 24, 4);
-        blobs(5, ORE_RED, 5, 16, 6);
-        if (org() < 0.6) blobs(1, ORE_LAPIS, 5, 30, 5);
-        if (org() < 0.7) blobs(1, ORE_DIA, 5, 14, 4);
+        if (!wtFlat()) {   // there is no stone in a superflat world for an ore to replace
+            blobs(14, ORE_COAL, 5, 70, 7);
+            blobs(8, ORE_IRON, 5, 48, 5);
+            blobs(3, ORE_GOLD, 5, 24, 4);
+            blobs(5, ORE_RED, 5, 16, 6);
+            if (org() < 0.6) blobs(1, ORE_LAPIS, 5, 30, 5);
+            if (org() < 0.7) blobs(1, ORE_DIA, 5, 14, 4);
+        }
         if (org() < 0.25) blobs(1, GRAVEL, 8, 50, 9);
         if (biomeAt(cx * CW + 8, cz * CW + 8) === 3 && org() < 0.5) blobs(1, ORE_EMERALD, 20, 70, 2);   // emeralds hide in the mountains
         // trees: anchors up to 2 out-of-chunk still drop leaves in ours
@@ -1824,7 +1852,10 @@
         gl.viewport(0, 0, RT.cv.width, RT.cv.height);
         gl.clearColor(fogC[0], fogC[1], fogC[2], 1);
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-        var proj = mPersp(1.22, RT.cv.width / RT.cv.height, 0.08, 260);
+        /* RT.fov overrides the base entirely — the title screen's panorama is
+           rendered at the cube renderer's 85°, not the game's 70°. RT.fovM is
+           the sprint stretch, and is 1 whenever nobody is running. */
+        var proj = mPersp((RT.fov || FOV) * (RT.fovM || 1), RT.cv.width / RT.cv.height, 0.08, 260);
         var rot = mMul(mRotX(S.pitch), mRotY(S.yaw));
         var view = mMul(rot, mTrans(-S.px, -eyeY, -S.pz));
         var pv = mMul(proj, view);
@@ -1946,7 +1977,9 @@
         if (hv.length) {
             gl.clear(gl.DEPTH_BUFFER_BIT);
             gl.useProgram(G.prog);
-            gl.uniformMatrix4fv(G.u.mvp, false, mPersp(1.22, RT.cv.width / RT.cv.height, 0.05, 10));
+            // the hand keeps the base FOV while the world widens, exactly like the
+            // real game — it is the world stretching past you that sells the speed
+            gl.uniformMatrix4fv(G.u.mvp, false, mPersp(FOV, RT.cv.width / RT.cv.height, 0.05, 10));
             gl.uniform2f(G.u.fogR, 50, 100);
             gl.bindBuffer(gl.ARRAY_BUFFER, G.dyn);
             gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(hv), gl.DYNAMIC_DRAW);
@@ -2260,6 +2293,45 @@
             RT.stepD = (RT.stepD || 0) + Math.sqrt(dx * dx + dz * dz);
             if (RT.stepD > 2.2) { RT.stepD = 0; var gb = getB(Math.floor(S.px), Math.floor(S.py - 0.5), Math.floor(S.pz)); snd('step', gb); }
         }
+        /* Sprinting kicks dust off whatever you are running over — the tell you
+           catch at your feet, the way the real game does it. Flight is excluded
+           outright rather than trusted to RT.ground, which goes stale the moment
+           you take off: a hovering flight never clears it. */
+        if (RT.sprint && RT.ground && !RT.fly && !fluid && (dx || dz)) {
+            RT.dustT = (RT.dustT || 0) + dt;
+            if (RT.dustT >= 0.05 && RT.parts.length < 260) {
+                RT.dustT = 0;
+                var ub = getB(Math.floor(S.px), Math.floor(S.py - 0.2), Math.floor(S.pz));
+                if (ub > 0 && TEX[ub]) {
+                    var duv = tileUV(texSide(TEX[ub]));
+                    RT.parts.push({ x: S.px + (Math.random() - 0.5) * PW, y: S.py + 0.1, z: S.pz + (Math.random() - 0.5) * PW,
+                        vx: -dx / dt * 0.25, vy: 1.2 + Math.random() * 0.6, vz: -dz / dt * 0.25,
+                        life: 0.45 + Math.random() * 0.3, u: duv[0] + Math.random() * TS16 * 0.8, v: duv[1] + Math.random() * TS16 * 0.8, s: 0.06, dim: 0.6 });
+                }
+            }
+        } else RT.dustT = 0;
+    }
+
+    /* ── dynamic FOV ────────────────────────────────────────
+       The real game never writes "sprinting" on the HUD — it widens the lens
+       and eases it back when you stop, and that is the whole indicator. The
+       multiplier is the movement-speed attribute over the walking speed,
+       averaged with 1 (so sprint's +30% reads as +15% of view), times 1.1 in
+       creative flight. Sneaking and swimming slow the *input* rather than the
+       attribute, so they leave the lens alone — same as Minecraft. */
+    function fovTarget() {
+        if (RT.dead || RT.sleep) return 1;
+        var ratio = (RT.sprint ? SPRINT / WALK : 1) * (1 + 0.2 * effLvl('speed') - 0.15 * effLvl('slowness'));
+        if (ratio < 0) ratio = 0;   // Slowness VII and up would otherwise invert the lens
+        var m = (RT.fly ? 1.1 : 1) * (ratio + 1) / 2;
+        return m < 0.1 ? 0.1 : m > 1.5 ? 1.5 : m;
+    }
+    function fovTick(dt) {
+        // MC closes half the remaining gap every tick; expressed per-second so
+        // the ease lands the same at 30fps as at 144
+        var t = fovTarget();
+        RT.fovM += (t - RT.fovM) * (1 - Math.pow(0.5, Math.min(dt, 0.25) * 20));
+        if (Math.abs(t - RT.fovM) < 0.0005) RT.fovM = t;
     }
 
     /* ── hunger, health ─────────────────────────────────────── */
@@ -3924,14 +3996,14 @@
             }
         }
     }
-    function pushBillboard(v, x, y, z, size, u0, v0, u1, v1, sk, bl, wh) {
+    function pushBillboard(v, x, y, z, size, u0, v0, u1, v1, sk, bl, wh, ao) {
         var r = RT.camR, u = RT.camU;
         var cs = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
         for (var k = 0; k < 4; k++) {
             var a = cs[k][0] * size, b = cs[k][1] * size;
             v.push(x + r[0] * a + u[0] * b, y + r[1] * a + u[1] * b, z + r[2] * a + u[2] * b,
                 cs[k][0] > 0 ? u1 : u0, cs[k][1] > 0 ? v0 : v1,
-                sk, bl, 1, wh);
+                sk, bl, ao === undefined ? 1 : ao, wh);
         }
     }
     function cellLight(x, y, z) {
@@ -3984,7 +4056,9 @@
         for (i = 0; i < RT.parts.length; i++) {
             var pp = RT.parts[i];
             var PL = cellLight(pp.x, pp.y, pp.z);
-            pushBillboard(v, pp.x, pp.y, pp.z, pp.s, pp.u, pp.v, pp.u + TS16 / 10, pp.v + TS16 / 10, Math.max(0.25, PL[0]), PL[1], 0);
+            // dim: a flat tint on the mote, the way the real game darkens block
+            // dust to 0.6 — without it, sand kicked off sand is invisible
+            pushBillboard(v, pp.x, pp.y, pp.z, pp.s, pp.u, pp.v, pp.u + TS16 / 10, pp.v + TS16 / 10, Math.max(0.25, PL[0]), PL[1], 0, pp.dim || 1);
         }
         if (RT.sleep) {   // fade handled by overlay; nothing extra here
         }
@@ -3992,6 +4066,7 @@
 
     /* ── first-person hand (view space) ─────────────────────── */
     function handGeo() {
+        if (RT.menu) return [];         // nobody is holding anything on the title screen
         if (isSpectator()) return [];   // a CSS class cannot reach WebGL: the hand was still there
         if (RT.dead || RT.sleep) return [];
         var v = [], h = held(), def = h && I[h.id];
@@ -5284,7 +5359,18 @@
             S.orbs = [];
             for (i = 0; i < RT.orbs.length && S.orbs.length < 60; i++) { var o = RT.orbs[i]; S.orbs.push({ x: Math.round(o.x * 10) / 10, y: Math.round(o.y * 10) / 10, z: Math.round(o.z * 10) / 10, v: o.v }); }
         }
-        try { localStorage.setItem('comp_mc', JSON.stringify(S)); } catch (e) {}
+        /* The panorama world behind the title screen is not anybody's save.
+           It briefly occupies S, and writing it out would quietly replace the
+           world the player last played with a scenic hillside. */
+        if (RT.menu) return;
+        var json;
+        try { json = JSON.stringify(S); } catch (e) { return; }
+        try { localStorage.setItem('comp_mc', json); } catch (e) {}
+        // comp_mc stays the active world; the per-world blob is what the list reads
+        if (S.wid) {
+            try { localStorage.setItem(WS_PRE + S.wid, json); } catch (e) {}
+            wsTouch(S.wid, { played: Date.now(), hrs: S.hrs || 0, gm: S.gm, diff: S.diff });
+        }
     }
     function restoreEnts() {
         var i;
@@ -5349,38 +5435,16 @@
         RT.now = (RT.now || 0) + dt;          // seconds since open; the chat fade reads this
         RT.fpsN++; RT.fpsT += dt;
         if (RT.fpsT >= 1) { RT.fps = RT.fpsN; RT.fpsN = 0; RT.fpsT = 0; }
-        if (!RT.ready) {   // world boot: gen → light → mesh → go
-            var total = (VIEW * 2 + 1) * (VIEW * 2 + 1);
-            if (RT.genQ.length) {
-                for (var g = 0; g < 3 && RT.genQ.length; g++) {
-                    var k = RT.genQ.shift(), p = k.split(',');
-                    if (!RT.chunks[k]) genChunk(p[0] | 0, p[1] | 0);
-                }
-                bootBar((total - RT.genQ.length) / total * 0.6);
-            } else if (!RT.lit) {
-                lightInitAll();
-                RT.lit = true;
-                RT.ckeys = Object.keys(RT.chunks);
-                for (var mk in RT.chunks) RT.meshQ.push(mk);
-                bootBar(0.65);
-            } else if (RT.meshQ.length) {
-                meshStep(4);
-                var total2 = (VIEW * 2 + 1) * (VIEW * 2 + 1);
-                bootBar(0.65 + 0.35 * (1 - RT.meshQ.length / total2));
-            } else {
-                RT.ready = true;
-                // if the spawn column grew something since it was chosen, surface politely
-                var guard = 0;
-                while (boxHits(S.px, S.py, S.pz) && S.py < CH - 2 && guard++ < CH) S.py += 1;
-                RT.fallY = S.py; RT.vy = 0;
-                RT.el.querySelector('.mc-load').style.display = 'none';
-                restoreEnts();
-                paintHotbar(); paintVitals(); paintHudMode();
-                if (RT.onReady) { try { RT.onReady(); } catch (e) {} RT.onReady = null; }
-                if (!RT.devFree) showPause();
-            }
+        /* Two things can be in front of the world: the menu, and the world's
+           own boot. The menu runs on top of a boot (that is the loading
+           screen), so it gets a step of the ladder and then the frame. */
+        if (RT.menu) {
+            if (!RT.built) bootStep();
+            mnFrame(RT.menu, dt);
             return;
         }
+        if (!RT.built) { bootStep(); return; }
+        if (!RT.ready) return;
         // a hidden window (minimize, Show desktop) or hidden tab with a GUI open must not keep the world killing you off-screen
         if (!RT.paused && RT.ready && !RT.dead && !RT.devFree && (RT.el.offsetParent === null || (document.hidden && RT.panel))) {
             if (RT.panel) closePanel(true);
@@ -5407,6 +5471,7 @@
             RT.lightning = Math.max(0, (RT.lightning || 0) - dt);
             RT.target = raycast();
             stepPlayer(dt);
+            fovTick(dt);
             digTick(dt);
             useTick(dt);
             foodTick(dt);
@@ -5476,6 +5541,2174 @@
         var b = RT.el.querySelector('.mc-bar i');
         if (b) b.style.width = Math.round(f * 100) + '%';
     }
+    /* The boot ladder — generate, light, mesh — pulled out of frame() so that
+       both things that wait on it can drive their own progress bar: the menu's,
+       while the panorama world stands up behind the title screen, and the
+       game's own "Building terrain…" once a world has been chosen. */
+    function bootStep() {
+        var total = (VIEW * 2 + 1) * (VIEW * 2 + 1), k, p;
+        if (RT.genQ.length) {
+            for (var g = 0; g < 3 && RT.genQ.length; g++) {
+                k = RT.genQ.shift(); p = k.split(',');
+                if (!RT.chunks[k]) genChunk(p[0] | 0, p[1] | 0);
+            }
+            return bootProg((total - RT.genQ.length) / total * 0.6, 'Building terrain…');
+        }
+        if (!RT.lit) {
+            lightInitAll();
+            RT.lit = true;
+            RT.ckeys = Object.keys(RT.chunks);
+            for (var mk in RT.chunks) RT.meshQ.push(mk);
+            return bootProg(0.65, 'Lighting the world…');
+        }
+        if (RT.meshQ.length) {
+            meshStep(4);
+            return bootProg(0.65 + 0.35 * (1 - RT.meshQ.length / total), 'Building terrain…');
+        }
+        bootProg(1, 'Loading…');
+        RT.built = true;
+        bootDone();
+    }
+    function bootProg(f, stage) {
+        bootBar(f);
+        if (RT.menu) { RT.menu.prog = f; RT.menu.stage = stage; RT.menu.dirty = true; }
+    }
+    function bootDone() {
+        if (RT.menu) {   // the panorama is standing; let the title screen come up out of black
+            if (RT.menu.scr === 'loading') {
+                RT.menu.fading = RT.menu.wantFade;
+                RT.menu.fadeT = 0;
+                RT.menu.scr = 'title'; RT.menu.prev = []; RT.menu.sig = ''; RT.menu.dirty = true;
+            }
+            return;
+        }
+        RT.ready = true;
+        // if the spawn column grew something since it was chosen, surface politely
+        var guard = 0;
+        while (boxHits(S.px, S.py, S.pz) && S.py < CH - 2 && guard++ < CH) S.py += 1;
+        RT.fallY = S.py; RT.vy = 0;
+        RT.el.querySelector('.mc-load').style.display = 'none';
+        restoreEnts();
+        if (S.bonusPending) bonusChest();
+        paintHotbar(); paintVitals(); paintHudMode();
+        if (RT.onReady) { try { RT.onReady(); } catch (e) {} RT.onReady = null; }
+        if (!RT.devFree) showPause();
+    }
+
+    /* ── moving between the menu and a world ─────────────────
+       Both directions tear the world down properly first. The chunk meshes
+       are GL buffers, so dropping the references is not enough — the panorama
+       would sit in video memory for the whole session. */
+    function mnTeardownWorld() {
+        var gl = RT.G && RT.G.gl;
+        for (var k in RT.chunks) {
+            var c = RT.chunks[k];
+            if (c.mesh && gl) { gl.deleteBuffer(c.mesh.op.b); gl.deleteBuffer(c.mesh.cut.b); gl.deleteBuffer(c.mesh.wat.b); }
+        }
+        RT.chunks = {}; RT.ckeys = []; RT.genQ = []; RT.meshQ = []; RT.decayQ = [];
+        RT.foes = []; RT.dying = []; RT.drops = []; RT.arrows = []; RT.tnts = []; RT.parts = []; RT.entV = []; RT.orbs = [];
+        RT.target = null; RT.digAt = null; RT.lit = false; RT.built = false; RT.ready = false;
+        /* The panorama renders at 85°; leaving that set would hand the world
+           the title screen's field of view. fovM is the sprint stretch and
+           belongs to the world that was just thrown away. */
+        RT.fov = 0; RT.fovM = 1; RT.fly = false;
+        chunkCacheDrop();
+    }
+    function mnFreshWorld(w) {
+        var s = sNew();
+        s.seed = w.seed;
+        s.gm = w.gm || 0;
+        s.diff = w.hardcore ? 3 : (w.diff == null ? 2 : w.diff);
+        s.hardcore = !!w.hardcore;
+        s.cheats = !!w.cheats;
+        s.wtype = w.type || 'Default';
+        s.structures = w.structures !== false;
+        s.wspawn = null;                  // must stay null so findSpawn runs for this seed
+        s.fly = false;
+        return s;
+    }
+    function mnPlay(m, id) {
+        var w = wsGet(id);
+        if (!w) return;
+        audioInit();
+        mnCloseUI();
+        mnTeardownWorld();
+        var blob = wsBlob(id);
+        S = blob || mnFreshWorld(w);
+        S.wid = id;
+        var o = optLoad();
+        S.snd = o.snd; S.mus = o.mus;     // the options the menu just edited win over whatever the world remembered
+        if (!S.inv || !S.inv.length) S.inv = new Array(36).fill(null);
+        if (!S.armor) S.armor = [null, null, null, null];
+        if (S.xpl == null) { S.xpl = 0; S.xp = 0; }
+        if (S.weather == null) { S.weather = 0; S.wt = 120; }
+        normalizeCmdState();
+        /* The same revival init() does, because this is now the other way into
+           a world. A save written while the death screen was up has hp 0, and
+           arriving with RT.dead set and no death screen is a world where
+           nothing responds: showPause returns early on RT.dead, and movement,
+           mining, placing and the inventory are all gated on !RT.dead. There
+           is no way out of it and it re-saves itself on close. */
+        if (S.hp <= 0) {
+            S.hp = 20; S.food = 20; S.sat = 5; S.air = 10;
+            var dsp = S.spawn || S.wspawn;
+            if (dsp) { S.px = dsp[0]; S.py = dsp[1]; S.pz = dsp[2]; }
+        }
+        if (!S.wspawn) {
+            S.wspawn = findSpawn();
+            S.px = S.wspawn[0]; S.py = S.wspawn[1]; S.pz = S.wspawn[2];
+        }
+        if (!blob && w.bonus) S.bonusPending = true;
+        /* Bank the world we are leaving before resetting the clock, or the
+           desktop only ever gets the playtime of the last world of a session. */
+        RT.bankT = (RT.bankT || 0) + RT.playT;
+        RT.baseHrs = S.hrs || 0; RT.playT = 0; RT.dead = false; RT.fallY = S.py;
+        // flight belongs to the world that granted it, not to the session
+        RT.fly = !!S.fly && (S.gm === 1 || S.gm === 3);
+        RT.vy = 0; RT.sprint = false; RT.swing = 0; RT.sleep = 0;
+        var ld = RT.el.querySelector('.mc-load');
+        ld.querySelector('h3').textContent = 'Building terrain…';
+        ld.style.display = '';
+        bootBar(0);
+        ensureChunks();
+        wsTouch(id, { played: Date.now(), ver: (RT && RT.ver) || '26.2' });
+    }
+    /* Vanilla's "Save and Quit to Title": the world is written out, the world
+       is thrown away, and the panorama is generated fresh behind the menu. */
+    function mnToTitle() {
+        sSave();
+        if (S && S.wid) wsTouch(S.wid, { played: Date.now(), hrs: S.hrs || 0 });
+        unlockCursor();
+        if (RT.paused) hidePause();
+        if (RT.panel) closePanel(true);
+        RT.el.querySelector('.mc-load').style.display = 'none';
+        // the debug overlay belongs to the world; it would sit frozen over the menu
+        RT.f3 = false;
+        RT.el.querySelector('.mc-debug').style.display = 'none';
+        mnTeardownWorld();
+        S = mnPanoSave();
+        var m = mnOpen('loading', false);   // vanilla only fades in on first launch
+        m.stage = 'Saving world…';
+        ensureChunks();
+    }
+    function mnQuit() {
+        var h = window.MCHOST;
+        if (h && h.quit) h.quit();          // the desktop closes the window, which is what quitting is here
+        else if (RT) mnToTitle();
+    }
+    /* The bonus chest is one of the few Create New World switches that has to
+       become a thing in the world rather than a flag, so it is placed once the
+       chunks exist and the ground under spawn is known. */
+    function bonusChest() {
+        S.bonusPending = false;
+        var cx0 = Math.floor(S.px), cz0 = Math.floor(S.pz), x, y, z, d;
+        for (d = 1; d <= 3; d++) {
+            x = cx0 + d; z = cz0;
+            y = Math.floor(S.py);
+            while (y > 4 && getB(x, y - 1, z) === AIR) y--;
+            if (getB(x, y, z) === AIR && solidAt(x, y - 1, z)) break;
+            x = null;
+        }
+        if (x == null) { x = cx0; y = Math.floor(S.py); z = cz0 + 1; }
+        setB(x, y, z, CHEST, true);
+        var t = tentAt(x, y, z, 'chest');
+        var give = [['log', 6], ['planks', 12], ['stick', 8], ['wood_axe', 1], ['wood_pick', 1], ['apple', 4], ['torch', 8]];
+        for (var i = 0; i < give.length; i++) if (I[give[i][0]]) t.inv[i] = { id: give[i][0], c: give[i][1] };
+    }
+
+    /* ═══════════════ the main menu ═══════════════
+       Everything from the moment the launcher hands over to the moment a
+       world starts generating: the loading screen, the title screen over a
+       live panorama, and the screens behind its buttons.
+
+       The GUI is drawn on a 2D canvas rather than built from DOM, because
+       the thing being copied is a pixel grid. Vanilla lays every widget out
+       in "GUI pixels" and then blits at an integer scale; a stack of divs
+       can approximate that but it cannot promise it, and half-pixel button
+       borders are exactly what makes a recreation look off. A transparent
+       layer of real <button>s rides on top for hit-testing, focus, hover and
+       screen readers, positioned from the same layout the painter uses.
+
+       Nothing here is copied out of the game's assets. The font glyphs, the
+       logo and the widget bevels are all authored in this file; the splash
+       list is a short, well-known selection with a pile of local additions. */
+
+    /* ── the font ────────────────────────────────────────────
+       A bitmap face in the proportions of the game's: an 8-row cell, caps on
+       rows 0-6, x-height on rows 2-6, one descender row, and a glyph's
+       advance is its drawn width plus one. Trailing blank rows are dropped
+       from the source below and padded back at parse time, so a capital is
+       seven rows and only the letters that actually dip below the baseline
+       carry eight. */
+    var MF_ROWS = 9, MF_LINE = 9;   // cell height, and baseline-to-baseline
+    /* A row string is 'rows joined by /', optionally prefixed 'N:' to say which
+       row the first one lands on. Caps and digits run rows 0-6, so the baseline
+       sits under row 6; x-height letters start at row 2, and the five that
+       descend carry on to rows 7-8. Stating the offset beats counting leading
+       dots — miscounting them is how every descender came out clipped and
+       "Singleplayer" rendered as "Sinaleplauer". */
+    var MF_SRC = {
+        ' ': '...',
+        '!': '#/#/#/#/#/./#',
+        '"': '#.#/#.#',
+        '#': '1:.#.#./#####/.#.#./#####/.#.#.',
+        '$': '..#../.####/#.#../.###./..#.#/####./..#..',
+        '%': '##..#/##..#/...#./..#../.#.../#..##/#..##',
+        '&': '.##../#..#./.##../##.#./#..##/#..#./.##.#',
+        "'": '#/#',
+        '(': '..#/.#./#../#../#../.#./..#',
+        ')': '#../.#./..#/..#/..#/.#./#..',
+        '*': '1:#.#/.#./#.#',
+        '+': '2:..#../#####/..#..',
+        ',': '6:#/#',
+        '-': '3:#####',
+        '.': '6:#',
+        '/': '....#/....#/...#./..#../.#.../#..../#....',
+        '0': '.###./#...#/#..##/#.#.#/##..#/#...#/.###.',
+        '1': '..#../.##../..#../..#../..#../..#../.###.',
+        '2': '.###./#...#/....#/...#./..#../.#.../#####',
+        '3': '#####/...#./..##./....#/....#/#...#/.###.',
+        '4': '...#./..##./.#.#./#..#./#####/...#./...#.',
+        '5': '#####/#..../####./....#/....#/#...#/.###.',
+        '6': '..##./.#.../#..../####./#...#/#...#/.###.',
+        '7': '#####/....#/...#./..#../.#.../.#.../.#...',
+        '8': '.###./#...#/#...#/.###./#...#/#...#/.###.',
+        '9': '.###./#...#/#...#/.####/....#/...#./.##..',
+        ':': '2:#/./././#',
+        ';': '2:#/./././#/#',
+        '<': '...#/..#./.#../#.../.#../..#./...#',
+        '=': '2:#####/...../#####',
+        '>': '#.../.#../..#./...#/..#./.#../#...',
+        '?': '.###./#...#/....#/...#./..#../...../..#..',
+        '@': '.####./#....#/#.##.#/#.##.#/#.###./#...../.####.',
+        'A': '.###./#...#/#...#/#####/#...#/#...#/#...#',
+        'B': '####./#...#/#...#/####./#...#/#...#/####.',
+        'C': '.###./#...#/#..../#..../#..../#...#/.###.',
+        'D': '####./#...#/#...#/#...#/#...#/#...#/####.',
+        'E': '#####/#..../#..../####./#..../#..../#####',
+        'F': '#####/#..../#..../####./#..../#..../#....',
+        'G': '.###./#...#/#..../#.###/#...#/#...#/.####',
+        'H': '#...#/#...#/#...#/#####/#...#/#...#/#...#',
+        'I': '###/.#./.#./.#./.#./.#./###',
+        'J': '..###/...#./...#./...#./...#./#..#./.##..',
+        'K': '#...#/#..#./#.#../##.../#.#../#..#./#...#',
+        'L': '#..../#..../#..../#..../#..../#..../#####',
+        'M': '#...#/##.##/#.#.#/#.#.#/#...#/#...#/#...#',
+        'N': '#...#/##..#/#.#.#/#..##/#...#/#...#/#...#',
+        'O': '.###./#...#/#...#/#...#/#...#/#...#/.###.',
+        'P': '####./#...#/#...#/####./#..../#..../#....',
+        'Q': '.###./#...#/#...#/#...#/#.#.#/#..#./.##.#',
+        'R': '####./#...#/#...#/####./#.#../#..#./#...#',
+        'S': '.####/#..../#..../.###./....#/....#/####.',
+        'T': '#####/..#../..#../..#../..#../..#../..#..',
+        'U': '#...#/#...#/#...#/#...#/#...#/#...#/.###.',
+        'V': '#...#/#...#/#...#/#...#/#...#/.#.#./..#..',
+        'W': '#...#/#...#/#...#/#.#.#/#.#.#/##.##/#...#',
+        'X': '#...#/#...#/.#.#./..#../.#.#./#...#/#...#',
+        'Y': '#...#/#...#/.#.#./..#../..#../..#../..#..',
+        'Z': '#####/....#/...#./..#../.#.../#..../#####',
+        '[': '###/#../#../#../#../#../###',
+        '\\': '#..../#..../.#.../..#../...#./....#/....#',
+        ']': '###/..#/..#/..#/..#/..#/###',
+        '^': '..#../.#.#./#...#',
+        '_': '7:#####',
+        '`': '#./.#',
+        'a': '2:.###./....#/.####/#...#/.####',
+        'b': '#..../#..../####./#...#/#...#/#...#/####.',
+        'c': '2:.###./#..../#..../#..../.###.',
+        'd': '....#/....#/.####/#...#/#...#/#...#/.####',
+        'e': '2:.###./#...#/#####/#..../.###.',
+        'f': '..##/.#../.#../####/.#../.#../.#..',
+        'g': '2:.####/#...#/#...#/#...#/.####/....#/####.',
+        'h': '#..../#..../####./#...#/#...#/#...#/#...#',
+        'i': '#/./#/#/#/#/#',
+        'j': '...#./...../...#./...#./...#./...#./...#./#..#./.##..',
+        'k': '#.../#.../#..#/#.#./##../#.#./#..#',
+        'l': '##/.#/.#/.#/.#/.#/.#',
+        'm': '2:##.#./#.#.#/#.#.#/#.#.#/#.#.#',
+        'n': '2:####./#...#/#...#/#...#/#...#',
+        'o': '2:.###./#...#/#...#/#...#/.###.',
+        'p': '2:####./#...#/#...#/#...#/####./#..../#....',
+        'q': '2:.####/#...#/#...#/#...#/.####/....#/....#',
+        'r': '2:#.###/##.../#..../#..../#....',
+        's': '2:.####/#..../.###./....#/####.',
+        't': '.#./.#./###/.#./.#./.#./..#',
+        'u': '2:#...#/#...#/#...#/#...#/.####',
+        'v': '2:#...#/#...#/#...#/.#.#./..#..',
+        'w': '2:#...#/#...#/#.#.#/#.#.#/.#.#.',
+        'x': '2:#...#/.#.#./..#../.#.#./#...#',
+        'y': '2:#...#/#...#/#...#/.####/....#/####.',
+        'z': '2:#####/...#./..#../.#.../#####',
+        '{': '.##/.#./.#./##./.#./.#./.##',
+        '|': '#/#/#/#/#/#/#',
+        '}': '##./.#./.#./.##/.#./.#./##.',
+        '~': '2:.##..#/#..##.',
+        '…': '6:#.#.#',
+        '·': '4:#',
+        '←': '2:..#../.#.../#####/.#.../..#..',
+        '→': '2:..#../...#./#####/...#./..#..'
+    };
+    /* Accents are drawn over the base letter rather than stored as their own
+       glyphs: rows 0-1 are empty on every x-height letter, which is exactly
+       where a diacritic goes, and the cedilla hangs in the descender row. One
+       table then covers every language name on the Language screen that the
+       Latin alphabet can spell. */
+    var MF_MARK = {
+        acute: { rows: ['...#.', '..#..'], y: 0 },
+        grave: { rows: ['.#...', '..#..'], y: 0 },
+        circ:  { rows: ['..#..', '.#.#.'], y: 0 },
+        tilde: { rows: ['.##.#', '#..#.'], y: 0 },
+        uml:   { rows: ['.#.#.'], y: 1 },
+        ring:  { rows: ['..#..', '.#.#.', '..#..'], y: -1 },
+        cedil: { rows: ['..#..', '..##.'], y: 7 },
+        stroke: { rows: null, y: 0 }
+    };
+    var MF_ACC = {
+        'á': ['a', 'acute'], 'à': ['a', 'grave'], 'â': ['a', 'circ'], 'ã': ['a', 'tilde'], 'ä': ['a', 'uml'], 'å': ['a', 'ring'],
+        'é': ['e', 'acute'], 'è': ['e', 'grave'], 'ê': ['e', 'circ'], 'ë': ['e', 'uml'],
+        'í': ['i', 'acute'], 'ì': ['i', 'grave'], 'î': ['i', 'circ'], 'ï': ['i', 'uml'],
+        'ó': ['o', 'acute'], 'ò': ['o', 'grave'], 'ô': ['o', 'circ'], 'õ': ['o', 'tilde'], 'ö': ['o', 'uml'],
+        'ú': ['u', 'acute'], 'ù': ['u', 'grave'], 'û': ['u', 'circ'], 'ü': ['u', 'uml'],
+        'ñ': ['n', 'tilde'], 'ç': ['c', 'cedil'], 'ý': ['y', 'acute'],
+        /* Only the cedilla can be composed onto a capital: caps already occupy
+           rows 0-6, so every mark that sits above the letter would be drawn on
+           top of it. The rest are deliberately absent and fall back to the
+           unknown-glyph box, which is honest about what this face can spell. */
+        'Ç': ['C', 'cedil']
+    };
+
+    var MF = null;   // { g: {ch: {w,h,px}}, atlas: {color: canvas}, map: {ch:[x,y,w]} }
+    function mfBuild() {
+        if (MF) return MF;
+        var g = {}, ch, i, rows;
+        function parse(src) {
+            var off = 0, m = /^(\d+):/.exec(src);
+            if (m) { off = +m[1]; src = src.slice(m[0].length); }
+            var r = src.split('/'), w = 0, out = [], j;
+            for (j = 0; j < r.length; j++) { if (r[j].length > w) w = r[j].length; }
+            for (j = 0; j < MF_ROWS; j++) out.push(r[j - off] === undefined ? '' : r[j - off]);
+            return { w: w, rows: out };
+        }
+        for (ch in MF_SRC) g[ch] = parse(MF_SRC[ch]);
+        g[' '].w = 3;   // the space carries no pixels, so its width has to be stated
+        for (ch in MF_ACC) {
+            var base = g[MF_ACC[ch][0]], mark = MF_MARK[MF_ACC[ch][1]];
+            if (!base || !mark || !mark.rows) continue;
+            rows = base.rows.slice();
+            for (i = 0; i < mark.rows.length; i++) {
+                var y = mark.y + i;
+                if (y < 0 || y >= MF_ROWS) continue;
+                // centre the mark over the letter, then OR it into that row.
+                // The mark is not always 5 wide and the base is not always 5
+                // wide either, so measure both rather than assuming.
+                var src = mark.rows[i];
+                var off = Math.max(0, Math.round((base.w - src.replace(/\.+$/, '').length) / 2));
+                var cur = rows[y] || '', line = '';
+                for (var x = 0; x < Math.max(cur.length, off + src.length); x++) {
+                    var a = cur.charAt(x) === '#', b = src.charAt(x - off) === '#';
+                    line += (a || b) ? '#' : '.';
+                }
+                // a diacritic never widens the letter it sits on: letting the
+                // mark's trailing blanks extend the row made ç a pixel wider
+                // than c, and "Français" came out with a gap after the ç
+                rows[y] = line.slice(0, base.w);
+            }
+            g[ch] = { w: base.w, rows: rows };
+        }
+        MF = { g: g, atlas: {}, map: null, w: 0, h: 0 };
+        return MF;
+    }
+    function mfAdvance(ch) {
+        var f = mfBuild(), gl = f.g[ch];
+        return gl ? gl.w + 1 : 6;   // an unknown codepoint still takes room, like the game's box glyph
+    }
+    function mfWidth(text) {
+        var w = 0;
+        text = String(text == null ? '' : text);
+        for (var i = 0; i < text.length; i++) w += mfAdvance(text.charAt(i));
+        return w ? w - 1 : 0;   // no trailing gap after the last glyph
+    }
+    /* One atlas per colour, built on first use. Colouring by compositing a
+       white atlas would work too, but a per-colour bake keeps every draw a
+       plain drawImage with no state to leave behind. */
+    function mfAtlas(color) {
+        var f = mfBuild();
+        if (f.atlas[color]) return f.atlas[color];
+        if (!f.map) {
+            var map = {}, x = 0, ch;
+            for (ch in f.g) { map[ch] = x; x += f.g[ch].w + 1; }
+            f.map = map; f.w = Math.max(1, x); f.h = MF_ROWS;
+        }
+        var cv = document.createElement('canvas');
+        cv.width = f.w; cv.height = f.h;
+        var cx = cv.getContext('2d');
+        cx.fillStyle = color;
+        for (var c in f.g) {
+            var gl = f.g[c], ox = f.map[c];
+            for (var y = 0; y < MF_ROWS; y++) {
+                var row = gl.rows[y] || '';
+                for (var i = 0; i < row.length; i++) if (row.charAt(i) === '#') cx.fillRect(ox + i, y, 1, 1);
+            }
+        }
+        f.atlas[color] = cv;
+        return cv;
+    }
+    function mfShadow(color) {
+        /* The game's shadow is the colour at a quarter brightness, which is
+           what makes white text sit on a grey ghost rather than a black one. */
+        var n = parseInt(color.charAt(0) === '#' ? color.slice(1) : color, 16);
+        if (!isFinite(n)) return '#3f3f3f';
+        var r = (n >> 16 & 255) >> 2, g = (n >> 8 & 255) >> 2, b = (n & 255) >> 2;
+        return 'rgb(' + r + ',' + g + ',' + b + ')';
+    }
+    /* Draws at one GUI pixel per canvas unit: the caller has already scaled
+       the context, so everything below counts in the same units vanilla does. */
+    function mfText(cx, text, x, y, color, shadow) {
+        text = String(text == null ? '' : text);
+        var f = mfBuild(), i, ch;
+        if (shadow !== false) {
+            var sa = mfAtlas(mfShadow(color || '#ffffff'));
+            var px = x + 1;
+            for (i = 0; i < text.length; i++) {
+                ch = text.charAt(i);
+                if (f.g[ch] && ch !== ' ') cx.drawImage(sa, f.map[ch], 0, f.g[ch].w, MF_ROWS, px, y + 1, f.g[ch].w, MF_ROWS);
+                px += mfAdvance(ch);
+            }
+        }
+        var a = mfAtlas(color || '#ffffff');
+        for (i = 0; i < text.length; i++) {
+            ch = text.charAt(i);
+            if (f.g[ch] && ch !== ' ') cx.drawImage(a, f.map[ch], 0, f.g[ch].w, MF_ROWS, x, y, f.g[ch].w, MF_ROWS);
+            x += mfAdvance(ch);
+        }
+    }
+    function mfCenter(cx, text, cxp, y, color, shadow) { mfText(cx, text, Math.round(cxp - mfWidth(text) / 2), y, color, shadow); }
+    function mfRight(cx, text, rx, y, color, shadow) { mfText(cx, text, Math.round(rx - mfWidth(text)), y, color, shadow); }
+    /* Break a string to a pixel width on spaces, hard-splitting a word that
+       cannot fit on its own. Used by the disconnect screens and the tooltips. */
+    function mfWrap(text, max) {
+        var words = String(text).split(' '), lines = [], cur = '';
+        for (var i = 0; i < words.length; i++) {
+            var next = cur ? cur + ' ' + words[i] : words[i];
+            if (mfWidth(next) <= max) { cur = next; continue; }
+            if (cur) { lines.push(cur); cur = ''; }
+            var w = words[i];
+            while (mfWidth(w) > max) {
+                var cut = w.length;
+                while (cut > 1 && mfWidth(w.slice(0, cut)) > max) cut--;
+                lines.push(w.slice(0, cut)); w = w.slice(cut);
+            }
+            cur = w;
+        }
+        if (cur) lines.push(cur);
+        return lines.length ? lines : [''];
+    }
+
+    /* ── GUI scale and the drawing surface ───────────────────
+       Vanilla lays the whole interface out on a small virtual screen and
+       blits it at an integer multiple, picking the largest multiple that
+       still leaves at least 320x240 virtual pixels. Copy that exactly: it is
+       the reason a Minecraft button is the same apparent size on a laptop
+       and a 4K monitor, and the reason nothing is ever half a pixel. */
+    var GUI_MINW = 320, GUI_MINH = 240, GUI_MAXS = 4;
+    function guiScale(w, h, want) {
+        var s = 1;
+        while (s < GUI_MAXS && (!want || s < want) && w / (s + 1) >= GUI_MINW && h / (s + 1) >= GUI_MINH) s++;
+        return s;
+    }
+
+    /* ── the menu ────────────────────────────────────────────
+       One object on RT while any pre-world screen is up. Its presence is the
+       signal to the rest of the file: frame() hands over to it, the input
+       handlers stand down, and close() knows not to save. */
+    var MN_BW = 200, MN_BH = 20;        // vanilla's standard widget, in GUI pixels
+    var MN_PANO_SEED = 1642;            // the panorama world. Chosen by looking at a lot of them.
+
+    /* Colours. Vanilla's GUI is a small fixed palette and getting these wrong
+       is most of what makes a recreation look like a recreation. */
+    var MC_WHITE = '#ffffff', MC_GREY = '#a0a0a0', MC_DGREY = '#707070',
+        MC_YELLOW = '#ffff00', MC_GREEN = '#00aa00', MC_RED = '#ff5555',
+        MC_LABEL = '#e0e0e0', MC_HL = '#ffffa0';
+
+    function mnActive() { return RT && RT.menu; }
+
+    /* — the panorama —
+       Vanilla's title background is six photographs of a world on the inside
+       of a cube. This one is the world itself: the same generator, the same
+       mesher and the same drawFrame() the game plays through, with the camera
+       flown slowly on rails. It costs one small world boot, which is what the
+       loading screen in front of it is for. */
+    function mnPanoSave() {
+        var s = sNew();
+        s.seed = MN_PANO_SEED;
+        s.wtype = 'Default';   // never inherit the world type of whatever was last played
+        s.t = DAY_MS * 0.30;   // mid-morning. Noon is flat and dusk is a different screen's job.
+        s.weather = 0;
+        s.hp = 20; s.food = 20;
+        // snd() reads S, and S is this while the menu is up: without these the
+        // button clicks ignore a Sound: OFF set on the last world played
+        s.snd = optLoad().snd; s.mus = optLoad().mus;
+        /* Scoring the view calls heightAt, which reads the world type and seed
+           off S — so S has to already BE this world. Doing it the other way
+           round sited the panorama camera using the previous world's terrain,
+           and after a Superflat world the title screen was a flat plain. */
+        var prev = S;
+        S = s;
+        try { s.wspawn = mnPanoSpot(); } finally { S = prev; }
+        s.px = s.wspawn[0]; s.py = s.wspawn[1]; s.pz = s.wspawn[2];
+        s.yaw = 0; s.pitch = MN_PITCH;
+        return s;
+    }
+    /* Terrain is a pure function of (x, z), so the camera can be sited before
+       a single chunk exists. Score columns for the things that make a view:
+       standing above the water, relief in the middle distance, a shoreline
+       somewhere in it, and trees to break the skyline. */
+    function mnPanoSpot() {
+        var best = null, bestScore = -1e9;
+        for (var i = 0; i < 220; i++) {
+            var x = ((i * 137) % 60 - 30) * 11, z = (((i * 61) % 60) - 30) * 11;
+            var h = heightAt(x, z);
+            if (h <= SEA + 2 || caveAt(x, h, z)) continue;
+            var relief = 0, water = 0, wood = 0, d;
+            for (d = 0; d < 12; d++) {
+                var a = d * 0.5236, rx = x + Math.round(Math.cos(a) * 26), rz = z + Math.round(Math.sin(a) * 26);
+                var rh = heightAt(rx, rz);
+                relief += Math.abs(rh - h);
+                if (rh <= SEA) water++;
+                if (treeAt(rx, rz)) wood++;
+            }
+            var score = relief * 0.9 + Math.min(water, 5) * 7 + Math.min(wood, 4) * 5 + Math.min(14, h - SEA) * 1.6;
+            if (score > bestScore) { bestScore = score; best = [x + 0.5, h + 5.5, z + 0.5]; }
+        }
+        return best || [8.5, heightAt(8, 8) + 6, 8.5];
+    }
+    /* The camera's motion, which is vanilla's exactly. The panorama cube spins
+       on Y at 0.1° a tick — 2° a second, three minutes for a full turn — and
+       its pitch is a flat 10° down. There was a sine bob on the pitch until
+       1.20 (25°±5°, and 20°±25° before 1.13); the field is still updated in
+       the modern source and no longer read. Rendered at the cube's own 85°
+       field of view rather than the game's 70°, which is why the horizon on a
+       title screen sits so much lower than it does in play. */
+    var MN_FOV = 1.4835298;                       // 85°, CubeMap.render
+    var MN_SPIN = 2 * Math.PI / 180;              // 2°/s
+    var MN_PITCH = 10 * Math.PI / 180;            // 10° down, fixed
+    function mnPanoCam(m, dt) {
+        if (!optLoad().panoStill) m.spin += dt;
+        S.yaw = m.spin * MN_SPIN;
+        S.pitch = MN_PITCH;
+    }
+
+    /* — widgets —
+       Every screen returns a flat list of these from its layout(). The painter
+       and the DOM hit layer both read the same list, so a button can never be
+       drawn in one place and clicked in another. */
+    function mnBtn(id, x, y, w, h, label, on, opt) {
+        var b = { k: 'btn', id: id, x: x, y: y, w: w, h: h, label: label, on: on, enabled: true };
+        if (opt) for (var o in opt) b[o] = opt[o];
+        return b;
+    }
+    function mnRow(m, i) { return m.rowTop + i * 24; }   // vanilla's 24px button pitch
+    /* Every list clamps at BOTH ends. Clamping only at zero let one wheel
+       gesture push the entries off the bottom of the window with no way back,
+       because nothing else ever reduced the offset. */
+    function mnScroll(v, total, span) { return Math.max(0, Math.min(v, Math.max(0, total - span))); }
+
+    /* — painting —
+       All of these draw in GUI pixels; mnPaint has already scaled the context. */
+    function mnRect(cx, x, y, w, h, col) { cx.fillStyle = col; cx.fillRect(x, y, w, h); }
+    /* The classic widget bevel: a light top and left, a dark bottom and right,
+       over a flat face. Vanilla's is a texture, but the texture is this. */
+    function mnBevel(cx, x, y, w, h, face, lite, dark) {
+        mnRect(cx, x, y, w, h, face);
+        mnRect(cx, x, y, w, 1, lite); mnRect(cx, x, y, 1, h, lite);
+        mnRect(cx, x, y + h - 1, w, 1, dark); mnRect(cx, x + w - 1, y, 1, h, dark);
+    }
+    /* The widget in its three states. Vanilla nine-slices these out of
+       widgets.png at v=46 disabled, v=66 idle, v=86 hovered, and the label is
+       0xFFFFFF whenever the button is active and 0xA0A0A0 when it is not —
+       hovering does NOT recolour the text, however strongly everyone
+       remembers that it does. */
+    function mnButton(cx, b, state) {
+        var top = state === 2 ? '#4a4a4a' : state === 1 ? '#8f8fae' : '#7a7a7a';
+        var bot = state === 2 ? '#2e2e2e' : state === 1 ? '#5f5f80' : '#565656';
+        var lite = state === 2 ? '#5e5e5e' : state === 1 ? '#c2c2d8' : '#9e9e9e';
+        // a hard black frame first: it is what separates a widget from the dirt
+        mnRect(cx, b.x, b.y, b.w, b.h, '#000000');
+        var g = cx.createLinearGradient(0, b.y + 1, 0, b.y + b.h - 1);
+        g.addColorStop(0, top); g.addColorStop(1, bot);
+        cx.fillStyle = g;
+        cx.fillRect(b.x + 1, b.y + 1, b.w - 2, b.h - 2);
+        mnRect(cx, b.x + 1, b.y + 1, b.w - 2, 1, lite);
+        mnRect(cx, b.x + 1, b.y + 1, 1, b.h - 2, lite);
+        mnRect(cx, b.x + 1, b.y + b.h - 2, b.w - 2, 1, '#242424');
+        mnRect(cx, b.x + b.w - 2, b.y + 1, 1, b.h - 2, '#242424');
+        var ty = b.y + ((b.h - 7) >> 1);
+        var lbl = b.label == null ? '' : b.label;
+        if (lbl === '') return;
+        var col = state === 2 ? '#a0a0a0' : MC_WHITE;
+        /* A label wider than its widget is clipped to it — vanilla scrolls it,
+           but either way it must not spill onto the dirt, which is what made
+           "Direct Connection" read as a different kind of button. */
+        if (mfWidth(lbl) > b.w - 4) {
+            cx.save();
+            cx.beginPath(); cx.rect(b.x + 2, b.y, b.w - 4, b.h); cx.clip();
+            mfCenter(cx, lbl, b.x + b.w / 2, ty, col);
+            cx.restore();
+        } else mfCenter(cx, lbl, b.x + b.w / 2, ty, col);
+    }
+    /* The dirt background behind every screen that has no panorama: the game
+       tiles its dirt texture at 32 GUI pixels and darkens it hard. We already
+       have a dirt tile in the atlas, so use the real one. */
+    var MN_DIRT = null;
+    function mnDirtTile() {
+        if (MN_DIRT) return MN_DIRT;
+        var t = TILE.dirt, sx = (t % 16) * 16, sy = ((t / 16) | 0) * 16;
+        var cv = document.createElement('canvas');
+        cv.width = 32; cv.height = 32;
+        var cx = cv.getContext('2d');
+        cx.imageSmoothingEnabled = false;
+        cx.drawImage(ATLAS, sx, sy, 16, 16, 0, 0, 32, 32);
+        cx.fillStyle = 'rgba(0, 0, 0, 0.75)';   // vanilla multiplies the tile by 0x404040
+        cx.fillRect(0, 0, 32, 32);
+        MN_DIRT = cv;
+        return cv;
+    }
+    function mnDirt(cx, x, y, w, h) {
+        var p = cx.createPattern(mnDirtTile(), 'repeat');
+        cx.fillStyle = p;
+        cx.fillRect(x, y, w, h);
+    }
+    /* A scrolling list's frame: dirt inside, and the two shadow gradients the
+       game bleeds over the top and bottom edges so entries fade out rather
+       than getting guillotined. */
+    function mnListFrame(cx, x, y, w, h) {
+        cx.save();
+        cx.beginPath(); cx.rect(x, y, w, h); cx.clip();
+        mnDirt(cx, x, y, w, h);
+        cx.restore();
+    }
+    function mnListEdges(cx, x, y, w, h) {
+        var g = cx.createLinearGradient(0, y, 0, y + 4);
+        g.addColorStop(0, 'rgba(0, 0, 0, 1)'); g.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        cx.fillStyle = g; cx.fillRect(x, y, w, 4);
+        g = cx.createLinearGradient(0, y + h - 4, 0, y + h);
+        g.addColorStop(0, 'rgba(0, 0, 0, 0)'); g.addColorStop(1, 'rgba(0, 0, 0, 1)');
+        cx.fillStyle = g; cx.fillRect(x, y + h - 4, w, 4);
+    }
+
+    /* — the wordmark —
+       The real logo is a texture; this one is built at boot from a bold
+       nine-row alphabet blown up ×4, then given the three things that make it
+       read as carved rock rather than big letters: a hard outline, a downward
+       extrusion, and a speckled stone face at one-pixel granularity. Vanilla
+       blits its logo 256×44 at y=30, so this is built to land in the same box. */
+    var MN_LOGO_A = {
+        M: ['##...##', '##...##', '###.###', '###.###', '#######', '##.#.##', '##...##', '##...##', '##...##'],
+        I: ['###', '.#.', '.#.', '.#.', '.#.', '.#.', '.#.', '.#.', '###'],
+        N: ['##...#', '##...#', '###..#', '###..#', '#.##.#', '#.##.#', '#..###', '#..###', '#...##'],
+        E: ['#####', '#####', '##...', '####.', '####.', '##...', '##...', '#####', '#####'],
+        C: ['.####', '#####', '##...', '##...', '##...', '##...', '##...', '#####', '.####'],
+        R: ['####.', '#####', '##..#', '##..#', '#####', '####.', '##.#.', '##..#', '##..#'],
+        A: ['..##..', '.####.', '.####.', '##..##', '##..##', '######', '######', '##..##', '##..##'],
+        F: ['#####', '#####', '##...', '####.', '####.', '##...', '##...', '##...', '##...'],
+        T: ['#####', '#####', '.###.', '.###.', '.###.', '.###.', '.###.', '.###.', '.###.']
+    };
+    var MN_LOGO_W = 256, MN_LOGO_H = 44, MN_LOGO = null;
+    function mnLogo() {
+        if (MN_LOGO) return MN_LOGO;
+        var word = 'MINECRAFT', S4 = 4, gap = 4, i, x, y;
+        var cells = [], total = 0;
+        for (i = 0; i < word.length; i++) {
+            var rows = MN_LOGO_A[word.charAt(i)];
+            cells.push(rows);
+            total += rows[0].length * S4 + (i ? gap : 0);
+        }
+        var ext = 4, out = 1;                       // extrusion depth, outline thickness
+        var cv = document.createElement('canvas');
+        cv.width = MN_LOGO_W; cv.height = MN_LOGO_H;
+        var cx = cv.getContext('2d');
+        var ox = Math.round((MN_LOGO_W - total) / 2), oy = 2;
+        // one mask of the whole word, so the outline never runs between letters
+        var mw = MN_LOGO_W, mh = MN_LOGO_H, mask = new Uint8Array(mw * mh);
+        var px = ox;
+        for (i = 0; i < cells.length; i++) {
+            var g = cells[i];
+            for (y = 0; y < g.length; y++) for (x = 0; x < g[y].length; x++) {
+                if (g[y].charAt(x) !== '#') continue;
+                for (var sy = 0; sy < S4; sy++) for (var sx = 0; sx < S4; sx++) {
+                    var mx = px + x * S4 + sx, my = oy + y * S4 + sy;
+                    if (mx >= 0 && mx < mw && my >= 0 && my < mh) mask[my * mw + mx] = 1;
+                }
+            }
+            px += g[0].length * S4 + gap;
+        }
+        function at(x2, y2) { return x2 >= 0 && x2 < mw && y2 >= 0 && y2 < mh && mask[y2 * mw + x2]; }
+        var img = cx.createImageData(mw, mh), d = img.data, rnd = mulb(0x5EED1);
+        function put(x2, y2, r, g2, b) {
+            if (x2 < 0 || x2 >= mw || y2 < 0 || y2 >= mh) return;
+            var o = (y2 * mw + x2) * 4;
+            d[o] = r; d[o + 1] = g2; d[o + 2] = b; d[o + 3] = 255;
+        }
+        // 1. the extrusion, darkening as it goes down
+        for (var e = ext; e >= 1; e--) {
+            var f = 0.30 + 0.10 * (ext - e) / ext;
+            for (y = 0; y < mh; y++) for (x = 0; x < mw; x++)
+                if (at(x, y - e) && !at(x, y)) put(x, y, (150 * f) | 0, (150 * f) | 0, (150 * f) | 0);
+        }
+        // 2. the outline, one pixel all the way round including under the extrusion
+        for (y = 0; y < mh; y++) for (x = 0; x < mw; x++) {
+            if (at(x, y)) continue;
+            var near = at(x - out, y) || at(x + out, y) || at(x, y - out) || at(x, y + out);
+            if (near) put(x, y, 24, 24, 24);
+        }
+        // 3. the face: grey stone with speckle, one pixel at a time
+        for (y = 0; y < mh; y++) for (x = 0; x < mw; x++) {
+            if (!at(x, y)) continue;
+            var v = 148 + ((rnd() * 34) | 0) - 14;
+            if (!at(x, y - 1)) v += 42;                       // top edge catches the light
+            else if (!at(x, y + 1)) v -= 46;                  // bottom edge falls away
+            if (!at(x - 1, y)) v += 14;
+            v = Math.max(28, Math.min(236, v | 0));
+            put(x, y, v, v, v);
+        }
+        cx.putImageData(img, 0, 0);
+        MN_LOGO = cv;
+        return cv;
+    }
+    /* The edition strip sits under the wordmark, overlapping it by 7px, in a
+       128×14 box — vanilla's edition.png geometry. */
+    function mnEdition(cx, cxp, y) {
+        var t = 'JAVA EDITION';
+        mfCenter(cx, t, cxp, y + 3, '#d8d8d8');
+    }
+
+    /* — the splash —
+       Short, and mostly ours. Reproducing the game's splashes.txt wholesale
+       would be copying somebody's writing; a handful of the famous ones plus a
+       pile about the machine this is running on is both more honest and
+       funnier on a site that has a simulated Windows on it. */
+    var MN_SPLASH = [
+        'Also try NINTH NIGHT!', 'Now with 100% more terrain!', 'As seen on a website!',
+        'Voxels all the way down!', 'Runs on a computer inside a computer!',
+        'Seed 4-1-1-4!', 'Do not lose that seed again!', 'world (1) is the good one!',
+        'SMP with malachi!', 'Ask malachi about the roof!', 'creative flat test!',
+        'pixelsAlreadyPerfect=true!', 'Written in a text editor!', 'No blocks were harmed!',
+        'Chunk borders agree about their trees!', 'The lighting is a BFS!',
+        'Ambient occlusion, baked!', 'Greedy about quads!', 'Sixteen by ninety-six!',
+        'It has a real command parser!', 'Try /gamemode creative!', 'Try /seed!',
+        'Double-tap space!', 'F3 shows the truth!', 'Q drops it!',
+        'Sneak on the edge!', 'Mind the cactus!', 'The creepers are patient!',
+        'Endermen do not like eye contact!', 'Squid are load-bearing!',
+        'Zombies burn at dawn!', 'Sleep through it!', 'Beds are checkpoints!',
+        'Bring a bucket!', 'Bring two buckets!', 'Torch the cave first!',
+        'Diamonds are down there somewhere!', 'Never dig straight down!',
+        'Straight down is a choice!', 'Lava is a learning experience!',
+        'Gravel lies!', 'Sand also lies!', 'Water beats lava!',
+        'Obsidian, eventually!', 'Enchant the pickaxe!', 'Anvils remember!',
+        'That is a lot of cobblestone!', 'Build something square!', 'Build something not square!',
+        'Wool is flammable, probably!', 'Cake is not a lie!', 'Bread solves most of it!',
+        'Golden apples for the brave!', 'Eat before you mine!',
+        'The sun also rises!', 'Rain stops eventually!', 'Thunder means business!',
+        'Clouds at y=88!', 'The stars are seeded!', 'The moon is a quad!',
+        'Fog hides the edge of the world!', 'There is an edge of the world!',
+        'Ninety-six blocks is plenty!', 'Every block is a choice!',
+        'Made of arrays!', 'Powered by requestAnimationFrame!', 'WebGL, one context!',
+        'No frameworks were installed!', 'It is all one file!', 'It is a big file!',
+        'Ship it on a Tuesday!', 'Merge to main!', 'Squash and merge!',
+        'The commit message is honest!', 'git blame says you!',
+        'Isaac made this!', 'A fan of the original!', 'Not affiliated with anyone!',
+        'Mojang did it first!', 'Notch started it!', 'Better than the real thing? No!',
+        'Close enough!', 'Good enough to ship!', 'Ninety percent there!',
+        'The last ten percent!', 'Now in your browser!', 'No install required!',
+        'Alt-tab friendly!', 'Runs in a window!', 'Runs in a window in a window!',
+        'The desktop is also fake!', 'The file system is also fake!',
+        'The launcher is also fake!', 'This splash is real though!',
+        'Press Singleplayer!', 'You have to click something!'
+    ];
+    /* The game hides one line from splashes.txt forever by filtering on its
+       Java string hash, as a joke about a splash that says it will never
+       appear. Same joke, same mechanism, our own line. */
+    function mnHash(s) {   // java.lang.String.hashCode
+        var h = 0;
+        for (var i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+        return h;
+    }
+    var MN_NEVER = 'This splash cannot be shown, which is the joke.';
+    function mnPickSplash() {
+        var d = new Date(), mo = d.getMonth() + 1, day = d.getDate();
+        // the game's three date splashes, on the game's three dates
+        if (mo === 12 && day === 24) return 'Merry X-mas!';
+        if (mo === 1 && day === 1) return 'Happy new year!';
+        if (mo === 10 && day === 31) return 'OOoooOOOoooo! Spooky!';
+        var pool = [], never = mnHash(MN_NEVER);
+        for (var i = 0; i < MN_SPLASH.length; i++) if (mnHash(MN_SPLASH[i]) !== never) pool.push(MN_SPLASH[i]);
+        return pool[(Math.random() * pool.length) | 0];
+    }
+    /* Vanilla, verbatim: anchor at (width/2 + 123, 69), rotate -20°, scale by
+       (1.8 - |sin(ms/1000 · 2π)| · 0.1) · 100/(width + 32) — with no clamp,
+       which is exactly why a two-word splash comes out enormous — then draw
+       centred at (0, -8) so the anchor sits on the text's baseline box. */
+    function mnSplash(cx, m, w) {
+        if (!m.splash) return;
+        var t = mfWidth(m.splash);
+        var pulse = 1.8 - Math.abs(Math.sin((Date.now() % 1000) / 1000 * Math.PI * 2) * 0.1);
+        var f = pulse * 100 / (t + 32);
+        cx.save();
+        cx.translate(w / 2 + 123, 69);
+        cx.rotate(-Math.PI / 9);
+        cx.scale(f, f);
+        mfText(cx, m.splash, -Math.floor(t / 2), -8, MC_YELLOW);
+        cx.restore();
+    }
+
+    /* ── global options ──────────────────────────────────────
+       Settings that belong to the installation rather than to a world, which
+       is what the Options screen edits when it is reached from the title
+       screen and there is no world to edit. Applied onto S when a world
+       opens. Mirrored into the launcher's options.txt by comp.js. */
+    /* Every key an option screen writes has to be listed here: optLoad rebuilds
+       OPT from this table, so a setting saved under a key it does not know is
+       written to storage and then thrown away on the next load. */
+    var OPT_DEF = {
+        guiScale: 0, fov: 70, rd: 8, lang: 'en_us', splash: true, diff: 2,
+        snd: true, mus: true,                       // Music & Sounds
+        fancy: true, vsync: true, bob: true, clouds: true,   // Video Settings
+        autoJump: false, sens: 100, invert: false,  // Controls and Mouse Settings
+        panoStill: false, noShake: false,           // Accessibility
+        chat: 0, sug: true,                         // Chat Settings
+        mpwarn: true                                // the third-party-play warning is shown until it is dismissed
+    };
+    var OPT = null;
+    function optLoad() {
+        if (OPT) return OPT;
+        OPT = {};
+        var raw = null;
+        try { raw = JSON.parse(localStorage.getItem('comp_mc_opts') || 'null'); } catch (e) {}
+        for (var k in OPT_DEF) OPT[k] = raw && raw[k] !== undefined ? raw[k] : OPT_DEF[k];
+        return OPT;
+    }
+    function optSave() { try { localStorage.setItem('comp_mc_opts', JSON.stringify(optLoad())); } catch (e) {} }
+
+    /* ── the menu runtime ────────────────────────────────────
+       One screen is current at a time. A screen is a layout() returning
+       widgets in GUI pixels and a paint() for everything that is not a
+       widget; the runtime owns hit-testing, focus, the DOM shadow layer and
+       the frame. Screens never touch the canvas transform or the DOM. */
+    var MN_SCR = {};   // filled in below, one entry per screen
+
+    function mnOpen(scr, fade) {
+        var m = {
+            scr: scr || 'title', prev: [], t: 0, spin: 0, fadeT: 0, fading: false, wantFade: fade !== false,
+            splash: optLoad().splash ? mnPickSplash() : null,
+            hover: -1, focus: -1, widgets: [], sig: '', dirty: true,
+            scale: 2, W: 320, H: 240, d: {}, msg: null
+        };
+        m.cv = RT.el.querySelector('.mc-mcv');
+        m.cx = m.cv.getContext('2d');
+        m.ui = RT.el.querySelector('.mc-mui');
+        RT.menu = m;
+        RT.el.classList.add('mc-menuon');
+        m.cv.style.display = ''; m.ui.style.display = '';
+        mnWire(m);
+        mnSize(m);
+        return m;
+    }
+    function mnCloseUI() {
+        if (!RT) return;
+        var m = RT.menu;
+        RT.menu = null;
+        RT.el.classList.remove('mc-menuon');
+        if (m) {
+            m.cv.style.display = 'none';
+            m.ui.style.display = 'none';
+            m.ui.innerHTML = '';
+        }
+        /* Keys land on the game root, not on a button that no longer exists.
+           Without this, Escape did nothing after starting a world from the
+           menu, because focus was still on the removed shadow layer. */
+        RT.el.focus();
+    }
+    /* Arriving at a screen resets its own scratch state. Vanilla builds a new
+       Screen object every time, so a second visit to Select World has an empty
+       search box and nothing selected; without this both persist and the
+       server list never re-pings. */
+    function mnEnter(m) {
+        var scr = MN_SCR[m.scr];
+        if (scr && scr.enter) scr.enter(m);
+    }
+    function mnGo(m, scr, keep) {
+        if (!keep) m.prev.push(m.scr);
+        m.scr = scr;
+        m.hover = -1; m.focus = -1; m.msg = null;
+        m.sig = '';                       // force a full rebuild: the widgets are different things now
+        m.dirty = true;
+        mnEnter(m);
+    }
+    /* Going back does NOT re-enter: vanilla keeps the parent Screen object
+       alive underneath, so cancelling a delete confirm lands on the same
+       Select World with the same world still highlighted. Only a descent
+       through mnGo builds a fresh screen. */
+    function mnBack(m) {
+        var to = m.prev.pop() || 'title';
+        m.scr = to; m.hover = -1; m.focus = -1; m.msg = null; m.sig = ''; m.dirty = true;
+    }
+    function mnSize(m) {
+        var el = RT.el, cw = Math.max(160, el.clientWidth || 960), ch = Math.max(120, el.clientHeight || 560);
+        if (m.cv.width !== cw || m.cv.height !== ch) { m.cv.width = cw; m.cv.height = ch; }
+        m.scale = guiScale(cw, ch, optLoad().guiScale);
+        m.W = Math.floor(cw / m.scale);
+        m.H = Math.floor(ch / m.scale);
+        m.dirty = true;
+    }
+
+    /* — the DOM shadow layer —
+       Real <button>s and <input>s, invisible, sitting exactly over what the
+       canvas drew. They carry the things a canvas cannot: tab order, Enter to
+       press, a caret, an accessible name. Reconciled rather than rebuilt so
+       that focus and a half-typed seed survive a resize. */
+    function mnSync(m) {
+        var w = m.widgets, sig = '', i;
+        for (i = 0; i < w.length; i++) sig += w[i].k + w[i].id + '|';
+        if (sig !== m.sig) {
+            /* Typing in the search box changes which rows exist, which changes
+               the signature, which rebuilds this layer — and the box the player
+               is typing into is one of the nodes destroyed. Remember who had
+               focus by widget id (not index: the indices are what moved) and
+               where the caret was, then put it back. */
+            var act = document.activeElement, keepId = null, selA = 0, selB = 0;
+            if (act && act.parentNode === m.ui) {
+                keepId = act.getAttribute('data-id');
+                if (act.tagName === 'INPUT') { selA = act.selectionStart; selB = act.selectionEnd; }
+            }
+            m.sig = sig;
+            m.ui.innerHTML = '';
+            for (i = 0; i < w.length; i++) {
+                var b = w[i], el;
+                if (b.k === 'input') {
+                    el = document.createElement('input');
+                    el.type = 'text'; el.spellcheck = false; el.autocomplete = 'off';
+                    el.maxLength = b.max || 64;
+                    el.value = b.value || '';
+                    el.addEventListener('input', (function (bb) {
+                        return function (ev) { bb.set(m, ev.target.value); m.dirty = true; };
+                    })(b));
+                } else {
+                    el = document.createElement('button');
+                    el.type = 'button';
+                }
+                el.className = 'mc-mw';
+                el.setAttribute('data-i', String(i));
+                el.setAttribute('data-id', b.id);
+                el.setAttribute('aria-label', b.aria || b.label || b.id);
+                if (b.k !== 'input') el.textContent = b.aria || b.label || '';
+                m.ui.appendChild(el);
+            }
+            if (keepId) {
+                var back = m.ui.querySelector('[data-id="' + keepId + '"]');
+                if (back && !back.disabled) {
+                    back.focus();
+                    if (back.tagName === 'INPUT' && back.setSelectionRange) {
+                        try { back.setSelectionRange(selA, selB); } catch (e) {}
+                    }
+                }
+            }
+        }
+        var kids = m.ui.children;
+        for (i = 0; i < w.length && i < kids.length; i++) {
+            var b2 = w[i], k = kids[i], s = m.scale;
+            k.style.left = (b2.x * s) + 'px';
+            k.style.top = (b2.y * s) + 'px';
+            k.style.width = (b2.w * s) + 'px';
+            k.style.height = (b2.h * s) + 'px';
+            k.disabled = !b2.enabled;
+            k.tabIndex = m.inert ? -1 : 0;
+            /* A cycle button IS its value — "Game Mode: Survival" becomes
+               "Game Mode: Hardcore" without the widget list changing shape. If
+               the name is only written on a rebuild, a screen reader keeps
+               reading the setting the player just changed away from. */
+            var nm = b2.aria || b2.label || b2.id;
+            if (k.getAttribute('aria-label') !== nm) {
+                k.setAttribute('aria-label', nm);
+                if (b2.k !== 'input') k.textContent = nm;
+            }
+            if (b2.k === 'input' && document.activeElement !== k && k.value !== b2.value) k.value = b2.value || '';
+        }
+    }
+    function mnWire(m) {
+        var ui = m.ui;
+        if (ui._mnWired) return;
+        ui._mnWired = true;
+        function idx(ev) {
+            var t = ev.target;
+            while (t && t !== ui && !t.hasAttribute('data-i')) t = t.parentNode;
+            return t && t !== ui ? +t.getAttribute('data-i') : -1;
+        }
+        /* Vanilla plays the click on press, not release, and never for a
+           greyed-out widget. Keyboard activation arrives as a click with
+           detail 0 and has had no mousedown to make the noise. */
+        ui.addEventListener('mousedown', function (ev) {
+            var mm = RT && RT.menu; if (!mm || ev.button !== 0) return;
+            var b = mm.widgets[idx(ev)];
+            if (b && b.enabled && b.k !== 'input') { audioInit(); snd('click'); }
+        });
+        ui.addEventListener('click', function (ev) {
+            var mm = RT && RT.menu; if (!mm) return;
+            var i = idx(ev), b = mm.widgets[i];
+            if (!b || !b.enabled) return;
+            if (!ev.detail) { audioInit(); snd('click'); }
+            if (b.on) b.on(mm, b);
+            mm.dirty = true;
+        });
+        ui.addEventListener('mousemove', function (ev) {
+            var mm = RT && RT.menu; if (!mm) return;
+            var r = ui.getBoundingClientRect();
+            var gx = (ev.clientX - r.left) / mm.scale, gy = (ev.clientY - r.top) / mm.scale;
+            var h = -1;
+            for (var i = 0; i < mm.widgets.length; i++) {
+                var b = mm.widgets[i];
+                if (b.enabled !== false && gx >= b.x && gx < b.x + b.w && gy >= b.y && gy < b.y + b.h) { h = i; break; }
+            }
+            if (h !== mm.hover) { mm.hover = h; mm.dirty = true; }
+            mm.mx = gx; mm.my = gy;
+        });
+        ui.addEventListener('mouseleave', function () {
+            var mm = RT && RT.menu; if (mm && mm.hover !== -1) { mm.hover = -1; mm.dirty = true; }
+        });
+        ui.addEventListener('focusin', function (ev) {
+            var mm = RT && RT.menu; if (!mm) return;
+            mm.focus = idx(ev); mm.dirty = true;
+        });
+        ui.addEventListener('focusout', function () {
+            var mm = RT && RT.menu; if (!mm) return;
+            mm.focus = -1; mm.dirty = true;
+        });
+        ui.addEventListener('wheel', function (ev) {
+            var mm = RT && RT.menu; if (!mm) return;
+            var scr = MN_SCR[mm.scr];
+            if (scr && scr.wheel) { scr.wheel(mm, ev.deltaY); mm.dirty = true; ev.preventDefault(); }
+        }, { passive: false });
+        /* Keys must not reach the world's handler on root: it sets RT.keys and
+           reads q/F3/space without ever asking whether a world exists. */
+        ui.addEventListener('keydown', function (ev) {
+            var mm = RT && RT.menu; if (!mm) return;
+            var scr = MN_SCR[mm.scr];
+            var onBtn = ev.target && ev.target.tagName === 'BUTTON';
+            /* A focused button owns Enter and Space — they activate it. The
+               screen-level Enter shortcut (which plays the selected world) is
+               for when focus is on the list or the search box; letting it run
+               here, and then preventDefault()ing, meant Enter on Cancel
+               launched the selection instead of cancelling. */
+            if (onBtn && (ev.key === 'Enter' || ev.key === ' ')) { ev.stopPropagation(); return; }
+            /* Arrow keys nudge a focused slider, which is the only way to work
+               one without a mouse — its click handler reads the pointer. */
+            if (onBtn === false || onBtn) {
+                var wi = +ev.target.getAttribute('data-i'), wb = mm.widgets[wi];
+                if (wb && wb.k === 'draw' && wb.slide && (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight')) {
+                    wb.slide(mm, ev.key === 'ArrowRight' ? 0.05 : -0.05);
+                    ev.preventDefault(); ev.stopPropagation(); mm.dirty = true;
+                    return;
+                }
+            }
+            if (scr && scr.key && scr.key(mm, ev)) { ev.preventDefault(); ev.stopPropagation(); mm.dirty = true; return; }
+            if (ev.key === 'Escape') {
+                if (mm.scr !== 'title') { mnBack(mm); ev.preventDefault(); }
+                ev.stopPropagation();
+                return;
+            }
+            ev.stopPropagation();
+        });
+        ui.addEventListener('keyup', function (ev) { ev.stopPropagation(); });
+    }
+
+    /* — the frame —
+       Draw the world behind (the panorama is a real render), then the GUI on
+       top at integer scale. */
+    /* Vanilla's fade is two stages over two seconds: the panorama comes up out
+       of black across the first second, then the logo, the widgets and the
+       text across the second — and while their alpha is zero they are not
+       drawn OR hit-tested. It only runs on first launch; coming back from a
+       world builds a title screen that is already there. */
+    function mnPanoAlpha(m) { return m.fading ? Math.max(0, Math.min(1, m.fadeT)) : 1; }
+    function mnGuiAlpha(m) { return m.fading ? Math.max(0, Math.min(1, m.fadeT - 1)) : 1; }
+    function mnFrame(m, dt) {
+        m.t += dt;
+        if (m.fading) {
+            m.fadeT += dt;
+            if (m.fadeT > 2) m.fading = false;
+            m.dirty = true;
+        }
+        var scr = MN_SCR[m.scr] || MN_SCR.title;
+        /* Anything that moves on its own moves on dt, not on a frame count.
+           Counting paints made the connect sequence take as long as the frame
+           rate said it should, which on a slow machine is a hang.
+
+           Re-resolve afterwards: a tick is exactly the thing that changes
+           screen on its own (the connect sequence ending in a refusal), and
+           painting the screen we looked up before it ran left the new screen
+           current with the old screen's widgets drawn over it. */
+        if (scr.tick) {
+            scr.tick(m, dt);
+            scr = MN_SCR[m.scr] || MN_SCR.title;
+        }
+        if (scr.bg !== 'dirt' && scr.bg !== 'flat') { RT.fov = MN_FOV; mnPanoCam(m, dt); drawFrame(); }
+        /* While the widgets are still invisible they are not interactive at
+           all. pointer-events alone is not enough: a button with no pointer
+           events is still in the tab order, so Tab-then-Enter could start a
+           world off a screen that had not been drawn yet. */
+        var a = scr.bg === 'pano' ? mnGuiAlpha(m) : 1;
+        m.inert = a < 0.02;
+        m.ui.style.pointerEvents = m.inert ? 'none' : '';
+        // repaint when something changed, or when the screen animates on its own
+        if (m.dirty || scr.live) mnPaint(m, scr);
+    }
+    function mnPaint(m, scr) {
+        var cx = m.cx, s = m.scale;
+        cx.setTransform(1, 0, 0, 1, 0, 0);
+        cx.clearRect(0, 0, m.cv.width, m.cv.height);
+        cx.imageSmoothingEnabled = false;
+        cx.setTransform(s, 0, 0, s, 0, 0);
+        var W = m.W, H = m.H;
+        if (scr.bg === 'dirt') mnDirt(cx, 0, 0, W, H);
+        else if (scr.bg === 'scrim') { cx.fillStyle = 'rgba(0, 0, 0, 0.62)'; cx.fillRect(0, 0, W, H); }
+        var ga = 1;
+        if (scr.bg === 'pano') {
+            var pa = mnPanoAlpha(m);
+            if (pa < 1) { cx.fillStyle = 'rgba(0, 0, 0, ' + (1 - pa).toFixed(3) + ')'; cx.fillRect(0, 0, W, H); }
+            ga = mnGuiAlpha(m);
+        }
+        m.widgets = scr.layout(m, W, H) || [];
+        /* Below the panorama's own fade, nothing is drawn at all for the first
+           second — logo included, since the game's LogoRenderer fades with the
+           widgets on the title screen. */
+        if (ga < 0.02) { m.dirty = false; mnSync(m); cx.setTransform(1, 0, 0, 1, 0, 0); return; }
+        cx.globalAlpha = ga;
+        if (scr.paint) scr.paint(cx, m, W, H);
+        for (var i = 0; i < m.widgets.length; i++) {
+            var b = m.widgets[i];
+            if (b.k === 'btn' || b.k === 'icon') {
+                var st = b.enabled === false ? 2 : (i === m.hover || i === m.focus) ? 1 : 0;
+                b.st = st;
+                mnButton(cx, b, st);
+                if (b.k === 'icon' && b.draw) b.draw(cx, b, st);
+                if (i === m.focus) {   // vanilla outlines the keyboard-focused widget
+                    cx.fillStyle = MC_WHITE;
+                    cx.fillRect(b.x - 1, b.y - 1, b.w + 2, 1); cx.fillRect(b.x - 1, b.y + b.h, b.w + 2, 1);
+                    cx.fillRect(b.x - 1, b.y, 1, b.h); cx.fillRect(b.x + b.w, b.y, 1, b.h);
+                }
+            } else if (b.k === 'input') mnInput(cx, m, b, i);
+            else if (b.k === 'draw' && b.draw) {
+                /* A row scrolled half out of its list must be cut off at the
+                   list's edge. These are drawn after the screen's own paint, so
+                   without a clip a partly-scrolled entry lands on top of the
+                   title, the search box and the edge shadows. */
+                if (b.clip) {
+                    cx.save();
+                    cx.beginPath(); cx.rect(b.clip[0], b.clip[1], b.clip[2], b.clip[3]); cx.clip();
+                    b.draw(cx, b, i === m.hover, i === m.focus);
+                    cx.restore();
+                } else b.draw(cx, b, i === m.hover, i === m.focus);
+            }
+        }
+        if (m.msg) {   // a transient line under the buttons: "Deleting…", an error
+            mfCenter(cx, m.msg, W / 2, H - 42, MC_RED);
+        }
+        cx.globalAlpha = 1;
+        m.dirty = false;
+        mnSync(m);
+    }
+    /* A text field: sunken bevel, the value painted in the bitmap font, a
+       caret that blinks on the game's half-second, and the DOM selection
+       mirrored as a highlight so dragging a seed looks like it works. */
+    function mnInput(cx, m, b, i) {
+        var el = m.ui.children[i], focus = el && document.activeElement === el;
+        mnRect(cx, b.x - 1, b.y - 1, b.w + 2, b.h + 2, focus ? '#ffffff' : '#a0a0a0');
+        mnRect(cx, b.x, b.y, b.w, b.h, '#000000');
+        var v = b.value || '', tx = b.x + 4, ty = b.y + ((b.h - 7) >> 1);
+        if (!v && b.hint) { mfText(cx, b.hint, tx, ty, '#707070'); }
+        else {
+            if (focus && el.selectionStart !== el.selectionEnd) {
+                var a = mfWidth(v.slice(0, el.selectionStart)), z = mfWidth(v.slice(0, el.selectionEnd));
+                mnRect(cx, tx + a, ty - 1, Math.max(1, z - a), 10, '#3030c0');
+            }
+            mfText(cx, v, tx, ty, b.enabled === false ? '#707070' : '#e0e0e0');
+        }
+        if (focus && (Date.now() % 1000) < 500) {
+            var cpos = el ? el.selectionStart : v.length;
+            mnRect(cx, tx + mfWidth(v.slice(0, cpos)), ty - 1, 1, 10, '#d0d0d0');
+        }
+        if (b.title) mfText(cx, b.title, b.x, b.y - 12, MC_GREY);
+    }
+
+    /* ── the world store ─────────────────────────────────────
+       The game shipped with exactly one save under one key. A Select World
+       screen needs many, so: an index at comp_mc_worlds, one blob per world
+       at comp_mc_w_<id>, and comp_mc kept as the ACTIVE world so that every
+       existing sLoad/sSave/MC.hours() in this file still reads and writes
+       precisely where it always did. A world in the index with no blob has
+       simply never been opened; entering it generates it from its seed.
+
+       The four worlds it starts with are the ones the desktop's file system
+       has claimed were in .minecraft/saves since long before the game could
+       open them. They are real now. */
+    var WS_IDX = 'comp_mc_worlds', WS_PRE = 'comp_mc_w_';
+    var WS_SEED_LORE = [
+        { id: 'w1', name: 'world', seed: 4114, gm: 0, diff: 2, cheats: false, played: '2019-06-14T20:41:00', ver: '1.14.3' },
+        { id: 'w2', name: 'world (1)', seed: 88301, gm: 0, diff: 1, cheats: false, played: '2019-07-02T23:58:00', ver: '1.14.4' },
+        { id: 'w3', name: 'SMP with malachi', seed: 20160411, gm: 0, diff: 2, cheats: true, played: '2020-03-19T01:12:00', ver: '1.15.2' },
+        { id: 'w4', name: 'creative flat test', seed: 7, gm: 1, diff: 0, cheats: true, played: '2021-11-08T18:22:00', ver: '1.17.1', type: 'Superflat' }
+    ];
+    /* An empty index is an answer, not a missing one. Treating [] as "never
+       seeded" meant deleting your last world resurrected all four lore worlds
+       and re-ran the legacy comp_mc adoption on top of them. */
+    function wsRead() {
+        try { var v = JSON.parse(localStorage.getItem(WS_IDX) || 'null'); if (Array.isArray(v)) return v; } catch (e) {}
+        return null;
+    }
+    function wsWrite(list) {
+        try { localStorage.setItem(WS_IDX, JSON.stringify(list)); return true; } catch (e) { return false; }
+    }
+    function wsIndex() {
+        var list = wsRead();
+        if (list) return list;
+        list = WS_SEED_LORE.map(function (w) {
+            return { id: w.id, name: w.name, folder: w.name, seed: w.seed, gm: w.gm, diff: w.diff,
+                cheats: w.cheats, type: w.type || 'Default',
+                created: Date.parse(w.played) - 864e5 * 30, played: Date.parse(w.played),
+                hrs: 0, ver: w.ver };
+        });
+        /* Anyone who played before there was a world list has a save under the
+           old key. It is 'world' — the first folder the machine ever had — and
+           adopting it is the only way that save survives this change. */
+        var old = null;
+        try { old = JSON.parse(localStorage.getItem('comp_mc') || 'null'); } catch (e) {}
+        if (old && old.seed != null) {
+            list[0].seed = old.seed;
+            list[0].gm = old.gm || 0;
+            list[0].diff = old.diff == null ? 2 : old.diff;
+            list[0].hrs = old.hrs || 0;
+            list[0].cheats = true;   // it predates the switch and had every command; do not take them away
+            list[0].played = Date.now();
+            list[0].ver = RT && RT.ver ? RT.ver : '26.2';
+            old.wid = list[0].id;
+            try { localStorage.setItem(WS_PRE + list[0].id, JSON.stringify(old)); } catch (e) {}
+        }
+        wsWrite(list);
+        return list;
+    }
+    function wsGet(id) { var l = wsIndex(); for (var i = 0; i < l.length; i++) if (l[i].id === id) return l[i]; return null; }
+    function wsBlob(id) {
+        try { var s = JSON.parse(localStorage.getItem(WS_PRE + id) || 'null'); return s && s.seed != null ? s : null; } catch (e) {}
+        return null;
+    }
+    function wsTouch(id, patch) {
+        var l = wsIndex();
+        for (var i = 0; i < l.length; i++) if (l[i].id === id) { for (var k in patch) l[i][k] = patch[k]; }
+        wsWrite(l);
+        wsSyncFS();
+    }
+    function wsNewId() {
+        var l = wsIndex(), n = 1, used = {};
+        for (var i = 0; i < l.length; i++) used[l[i].id] = 1;
+        while (used['w' + n]) n++;
+        return 'w' + n;
+    }
+    /* Folder names are unique the way the game's are: "New World", then
+       "New World (1)", and so on. */
+    function wsFolder(name) {
+        var l = wsIndex(), base = String(name).replace(/[\\/:*?"<>|.]/g, '_').trim() || 'New World';
+        var taken = {}, i;
+        for (i = 0; i < l.length; i++) taken[l[i].folder] = 1;
+        if (!taken[base]) return base;
+        for (i = 1; i < 999; i++) if (!taken[base + ' (' + i + ')']) return base + ' (' + i + ')';
+        return base + ' (999)';
+    }
+    function wsCreate(o) {
+        var l = wsIndex();
+        var w = { id: wsNewId(), name: o.name, folder: wsFolder(o.name), seed: o.seed, gm: o.gm, diff: o.diff,
+            cheats: !!o.cheats, hardcore: !!o.hardcore, structures: o.structures !== false, bonus: !!o.bonus,
+            type: o.type || 'Default', created: Date.now(), played: Date.now(), hrs: 0,
+            ver: RT && RT.ver ? RT.ver : '26.2' };
+        l.unshift(w);
+        if (!wsWrite(l)) return null;   // storage full or blocked: say so rather than opening a world that was never saved
+        wsSyncFS();
+        return w;
+    }
+    function wsDelete(id) {
+        var l = wsIndex(), out = [];
+        for (var i = 0; i < l.length; i++) if (l[i].id !== id) out.push(l[i]);
+        wsWrite(out);
+        try { localStorage.removeItem(WS_PRE + id); } catch (e) {}
+        wsSyncFS();
+    }
+    /* Explorer has been showing these folders since before they meant
+       anything. Now that the game owns them, keep the two in step. */
+    function wsSyncFS() {
+        var h = window.MCHOST;
+        if (h && h.saves) { try { h.saves(wsIndex()); } catch (e) {} }
+    }
+    /* The default locale's short date and time, which is what the game's
+       bare `new SimpleDateFormat()` resolves to: 8/13/26, 3:04 PM. */
+    function wsDate(ts) {
+        var d = new Date(ts || Date.now());
+        var h = d.getHours(), ap = h >= 12 ? 'PM' : 'AM';
+        h = h % 12; if (!h) h = 12;
+        return (d.getMonth() + 1) + '/' + d.getDate() + '/' + String(d.getFullYear()).slice(2) +
+            ', ' + h + ':' + ('0' + d.getMinutes()).slice(-2) + ' ' + ap;
+    }
+    /* Named apart from the command console's GM_NAME/DIFF_NAME further down the
+       file: those are in this same function scope, so a matching name here is
+       silently overwritten by theirs at load and the world list loses the word
+       "Mode" off every line. */
+    var MN_GM = ['Survival Mode', 'Creative Mode', 'Adventure Mode', 'Spectator Mode'];
+    var MN_DIFF = ['Peaceful', 'Easy', 'Normal', 'Hard'];
+    function wsInfoLine(w) {
+        var s = w.hardcore ? 'Hardcore Mode!' : (MN_GM[w.gm] || MN_GM[0]);
+        if (w.cheats) s += ', Cheats';
+        return s + ', Version: ' + (w.ver || '26.2');
+    }
+
+    /* ── screen: loading ─────────────────────────────────────
+       What sits in front of the panorama world being generated. Vanilla's
+       equivalent is the publisher's splash, which is theirs; this is the
+       wordmark we drew ourselves over the same geometry of progress bar. */
+    MN_SCR.loading = {
+        bg: 'flat', live: true,
+        layout: function () { return []; },
+        paint: function (cx, m, W, H) {
+            cx.fillStyle = '#0f0f13';
+            cx.fillRect(0, 0, W, H);
+            /* At 1:1. Halving pixel art with smoothing off just throws away
+               every other column and the wordmark comes out gap-toothed. */
+            var lg = mnLogo(), half = W < MN_LOGO_W + 24;
+            var lw = half ? MN_LOGO_W >> 1 : MN_LOGO_W, lh = half ? MN_LOGO_H >> 1 : MN_LOGO_H;
+            cx.save();
+            cx.globalAlpha = 0.28 + 0.72 * Math.min(1, m.t / 0.5);
+            cx.drawImage(lg, Math.round(W / 2 - lw / 2), Math.round(H / 2 - 46), lw, lh);
+            cx.restore();
+            var bw = 200, bx = Math.round((W - bw) / 2), by = Math.round(H / 2 + 12);
+            mnRect(cx, bx - 1, by - 1, bw + 2, 7, '#ffffff');
+            mnRect(cx, bx, by, bw, 5, '#0f0f13');
+            mnRect(cx, bx, by, Math.round(bw * Math.max(0, Math.min(1, m.prog || 0))), 5, '#4be04b');
+            mfCenter(cx, m.stage || 'Loading…', W / 2, by + 16, '#8a8a94');
+        }
+    };
+
+    /* ── screen: title ───────────────────────────────────────
+       Vanilla's geometry exactly: three 200x20 buttons from height/4 + 48 at
+       a 24px pitch, then a row 84px below the first holding two 98px buttons
+       between two 20x20 icon buttons. */
+    MN_SCR.title = {
+        bg: 'pano', live: true,   // the splash pulses twice a second whether or not anything was clicked
+        layout: function (m, W, H) {
+            var j = ((H / 4) | 0) + 48, x = (W / 2 | 0) - 100, r = j + 84, w = [];
+            w.push(mnBtn('sp', x, j, MN_BW, MN_BH, 'Singleplayer', function (mm) { mnGo(mm, 'world'); }));
+            w.push(mnBtn('mp', x, j + 24, MN_BW, MN_BH, 'Multiplayer', function (mm) {
+                mnGo(mm, optLoad().mpwarn === false ? 'mp' : 'mpwarn');
+            }));
+            w.push(mnBtn('realms', x, j + 48, MN_BW, MN_BH, 'Minecraft Realms', function (mm) { mnGo(mm, 'realms'); }));
+            w.push(mnBtn('lang', (W / 2 | 0) - 124, r, 20, 20, '', function (mm) { mnGo(mm, 'lang'); },
+                { k: 'icon', aria: 'Language', draw: mnIconGlobe }));
+            w.push(mnBtn('opt', x, r, 98, 20, 'Options...', function (mm) { mnGo(mm, 'options'); }));
+            w.push(mnBtn('quit', (W / 2 | 0) + 2, r, 98, 20, 'Quit Game', function () { mnQuit(); }));
+            w.push(mnBtn('acc', (W / 2 | 0) + 104, r, 20, 20, '', function (mm) { mnGo(mm, 'access'); },
+                { k: 'icon', aria: 'Accessibility Settings', draw: mnIconAcc }));
+            /* The copyright line is a real button in the game — it opens the
+               credits, and underlines itself on hover. So is this one. */
+            var note = MN_COPY, nw = mfWidth(note);
+            w.push({ k: 'draw', id: 'copy', x: W - nw - 2, y: H - 10, w: nw, h: 10, enabled: true,
+                aria: note, on: function (mm) { mnGo(mm, 'credits'); },
+                draw: function (cx2, b, hover, focus) {
+                    mfText(cx2, note, b.x, b.y, MC_WHITE);
+                    if (hover || focus) mnRect(cx2, b.x, b.y + 9, nw, 1, MC_WHITE);
+                } });
+            return w;
+        },
+        paint: function (cx, m, W, H) {
+            cx.drawImage(mnLogo(), Math.round(W / 2 - 128), 30);
+            mnEdition(cx, W / 2, 67);
+            mnSplash(cx, m, W);
+            mfText(cx, 'Minecraft ' + ((RT && RT.ver) || '26.2'), 2, H - 10, MC_WHITE);
+        }
+    };
+    var MN_COPY = 'A fan recreation. Not Mojang, not affiliated.';
+    /* The two icon buttons carry small glyphs rather than labels. Drawn, not
+       blitted, because the originals are a texture we do not have. */
+    function mnIconGlobe(cx, b) {
+        var x = b.x + 4, y = b.y + 4;
+        cx.fillStyle = '#e0e0e0';
+        cx.fillRect(x + 3, y, 6, 1); cx.fillRect(x + 3, y + 11, 6, 1);
+        cx.fillRect(x, y + 3, 1, 6); cx.fillRect(x + 11, y + 3, 1, 6);
+        cx.fillRect(x + 1, y + 1, 2, 2); cx.fillRect(x + 9, y + 1, 2, 2);
+        cx.fillRect(x + 1, y + 9, 2, 2); cx.fillRect(x + 9, y + 9, 2, 2);
+        cx.fillRect(x + 5, y + 1, 2, 10); cx.fillRect(x + 1, y + 5, 10, 2);
+    }
+    function mnIconAcc(cx, b) {
+        var x = b.x + 5, y = b.y + 3;
+        cx.fillStyle = '#e0e0e0';
+        cx.fillRect(x + 4, y, 2, 2);                       // head
+        cx.fillRect(x, y + 3, 10, 2);                      // arms
+        cx.fillRect(x + 4, y + 3, 2, 5);                   // body
+        cx.fillRect(x + 1, y + 8, 2, 5); cx.fillRect(x + 7, y + 8, 2, 5);   // legs
+    }
+
+    /* ── screen: Select World ────────────────────────────────
+       Vanilla: title at y=8, search at y=22, the list from 48 to height-64 at
+       36px an entry, two rows of buttons pinned to the bottom. Play / Edit /
+       Re-Create follow the selection; Delete has its own flag, which is why
+       an unopenable world can still be thrown away. */
+    var MN_ROWH = 36;
+    MN_SCR.world = {
+        bg: 'dirt',
+        enter: function (m) { m.d.sel = null; m.d.scroll = 0; m.d.q = ''; },
+        wheel: function (m, dy) { m.d.scroll = mnScroll((m.d.scroll || 0) + (dy > 0 ? 18 : -18), MN_SCR.world.rows(m).length * MN_ROWH + 8, m.H - 112); },
+        rows: function (m) {
+            var q = (m.d.q || '').toLowerCase(), l = wsIndex(), out = [];
+            for (var i = 0; i < l.length; i++) if (!q || l[i].name.toLowerCase().indexOf(q) >= 0) out.push(l[i]);
+            return out;
+        },
+        layout: function (m, W, H) {
+            var w = [], cxp = W / 2 | 0;
+            w.push({ k: 'input', id: 'q', x: cxp - 100, y: 22, w: 200, h: 20, value: m.d.q || '',
+                hint: 'Search…', enabled: true, aria: 'search for worlds',
+                set: function (mm, v) { mm.d.q = v; mm.d.scroll = 0; } });
+            var top = 48, bot = H - 64, rows = MN_SCR.world.rows(m);
+            var maxScroll = Math.max(0, rows.length * MN_ROWH - (bot - top) + 8);
+            if (m.d.scroll > maxScroll) m.d.scroll = maxScroll;
+            var rl = cxp - 133;
+            for (var i = 0; i < rows.length; i++) {
+                var ry = top + 4 - (m.d.scroll || 0) + i * MN_ROWH;
+                if (ry + MN_ROWH < top || ry > bot) continue;
+                w.push({ k: 'draw', id: 'r' + rows[i].id, x: rl, y: ry, w: 270, h: MN_ROWH - 4, enabled: true,
+                    clip: [0, top, W, bot - top],
+                    aria: rows[i].name + '. ' + wsInfoLine(rows[i]), world: rows[i],
+                    on: (function (ww, at) {
+                        return function (mm) {
+                            if (mm.d.sel === ww.id && Date.now() - (mm.d.clickT || 0) < 250) return mnPlay(mm, ww.id);
+                            if (mm.mx != null && mm.mx - at < 32) return mnPlay(mm, ww.id);   // the icon joins straight away
+                            mm.d.sel = ww.id; mm.d.clickT = Date.now();
+                        };
+                    })(rows[i], rl),
+                    draw: mnWorldRow });
+            }
+            var sel = m.d.sel, can = !!sel;
+            w.push(mnBtn('play', cxp - 154, H - 52, 150, 20, 'Play Selected World', function (mm) { mnPlay(mm, mm.d.sel); }, { enabled: can }));
+            w.push(mnBtn('new', cxp + 4, H - 52, 150, 20, 'Create New World', function (mm) { mnGo(mm, 'create'); }));
+            w.push(mnBtn('edit', cxp - 154, H - 28, 72, 20, 'Edit', function (mm) { mnGo(mm, 'edit'); }, { enabled: can }));
+            w.push(mnBtn('del', cxp - 76, H - 28, 72, 20, 'Delete', function (mm) {
+                var ww = wsGet(mm.d.sel); if (!ww) return;
+                mnConfirm(mm, 'Are you sure you want to delete this world?',
+                    "'" + ww.name + "' will be lost forever! (A long time!)", 'Delete', function (m2) {
+                        wsDelete(ww.id); m2.d.sel = null; mnBack(m2);
+                    });
+            }, { enabled: can }));
+            w.push(mnBtn('recreate', cxp + 4, H - 28, 72, 20, 'Re-Create', function (mm) {
+                var ww = wsGet(mm.d.sel); if (!ww) return;
+                mnGo(mm, 'create');
+                // re-create means the same world again: carry every setting, not just the name and seed
+                var c = mm.d.cw = mnCreateDefaults();
+                c.name = ww.name; c.seed = String(ww.seed); c.gm = ww.gm; c.diff = ww.diff;
+                c.cheats = !!ww.cheats; c.hardcore = !!ww.hardcore; c.bonus = !!ww.bonus;
+                c.type = Math.max(0, MN_WTYPE.indexOf(ww.type || 'Default'));
+            }, { enabled: can }));
+            w.push(mnBtn('cancel', cxp + 82, H - 28, 72, 20, 'Cancel', function (mm) { mnBack(mm); }));
+            return w;
+        },
+        paint: function (cx, m, W, H) {
+            var top = 48, bot = H - 64;
+            mnListFrame(cx, 0, top, W, bot - top);
+            mfCenter(cx, 'Select World', W / 2, 8, MC_WHITE);
+            var rows = MN_SCR.world.rows(m);
+            if (!rows.length) mfCenter(cx, m.d.q ? 'No worlds match that.' : 'No worlds yet.', W / 2, top + 24, MC_GREY);
+            mnListEdges(cx, 0, top, W, bot - top);
+            // the scrollbar, when there is more list than window
+            var span = bot - top, total = rows.length * MN_ROWH + 8;
+            if (total > span) {
+                var sx = (W / 2 | 0) + 144, th = Math.max(32, span * span / total);
+                var tp = top + ((m.d.scroll || 0) / (total - span)) * (span - th);
+                mnRect(cx, sx, top, 6, span, '#000000');
+                mnRect(cx, sx, tp, 6, th, '#808080');
+                mnRect(cx, sx, tp, 5, th - 1, '#c0c0c0');
+            }
+        },
+        key: function (m, e) {
+            if (e.key === 'Enter' && m.d.sel) { mnPlay(m, m.d.sel); return true; }
+            return false;
+        }
+    };
+    /* One world in the list: the 32px icon, the name, then the folder and
+       date, then the mode/version line — all three text lines unshadowed and
+       the lower two in 0x808080, exactly as the game draws them. */
+    function mnWorldRow(cx, b, hover) {
+        var m = RT.menu, w = b.world, sel = m.d.sel === w.id;
+        if (sel) {
+            mnRect(cx, b.x - 2, b.y - 2, b.w + 4, b.h + 4, '#ffffff');
+            mnRect(cx, b.x - 1, b.y - 1, b.w + 2, b.h + 2, '#000000');
+        }
+        mnWorldIcon(cx, w, b.x, b.y);
+        if (hover) { cx.fillStyle = 'rgba(144, 144, 144, 0.63)'; cx.fillRect(b.x, b.y, 32, 32); mnJoinArrow(cx, b.x, b.y); }
+        var tx = b.x + 35;
+        mfText(cx, w.name, tx, b.y + 1, MC_WHITE, false);
+        mfText(cx, w.folder + ' (' + wsDate(w.played) + ')', tx, b.y + 12, '#808080', false);
+        mfText(cx, wsInfoLine(w), tx, b.y + 21, '#808080', false);
+    }
+    /* A world's icon is a screenshot in the real game. Ours is generated from
+       the seed: the terrain profile the world actually has, which means two
+       worlds never look alike and the picture is not a lie. */
+    var MN_ICON = {};
+    function mnWorldIcon(cx, w, x, y) {
+        var key = w.id + ':' + w.seed + ':' + (w.icon || 0);
+        if (!MN_ICON[key]) {
+            var cv = document.createElement('canvas');
+            cv.width = 32; cv.height = 32;
+            var c = cv.getContext('2d'), rnd = mulb((w.seed | 0) + (w.icon || 0) * 7919);
+            var sky = c.createLinearGradient(0, 0, 0, 20);
+            sky.addColorStop(0, '#4a7ec8'); sky.addColorStop(1, '#a8c8e8');
+            c.fillStyle = sky; c.fillRect(0, 0, 32, 32);
+            for (var i = 0; i < 32; i++) {
+                var h = 14 + Math.round(Math.sin(i * 0.4 + (w.seed % 17)) * 3 + (rnd() * 4 - 2));
+                c.fillStyle = '#6a9c3a'; c.fillRect(i, h, 1, 2);
+                c.fillStyle = '#79553a'; c.fillRect(i, h + 2, 1, 32 - h - 2);
+                if (rnd() < 0.10) { c.fillStyle = '#2f6a28'; c.fillRect(i, h - 3, 1, 3); }
+            }
+            MN_ICON[key] = cv;
+        }
+        cx.drawImage(MN_ICON[key], x, y);
+        mnRect(cx, x, y, 32, 1, '#000000'); mnRect(cx, x, y + 31, 32, 1, '#000000');
+        mnRect(cx, x, y, 1, 32, '#000000'); mnRect(cx, x + 31, y, 1, 32, '#000000');
+    }
+    function mnJoinArrow(cx, x, y) {
+        cx.fillStyle = '#ffffff';
+        for (var i = 0; i < 7; i++) cx.fillRect(x + 11 + i, y + 15 - i, 2, 1 + i * 2);
+    }
+
+    /* — shared widget shapes —
+       A cycle button reads "Name: Value" and a slider "Name: Value" over a
+       filled track, which is how every option in the game is expressed. */
+    function mnCycle(id, x, y, w, h, name, vals, i, set, opt) {
+        return mnBtn(id, x, y, w, h, name + ': ' + vals[i], function (mm) {
+            set(mm, (i + 1) % vals.length);
+        }, opt);
+    }
+    function mnSlider(id, x, y, w, h, label, frac, set) {
+        return { k: 'draw', id: id, x: x, y: y, w: w, h: h, enabled: true, aria: label, label: label,
+            /* Arrow keys, for a slider reached by Tab. Without this the click
+               handler runs with no pointer position and stores NaN, which
+               erases the handle and persists as null. */
+            slide: function (mm, d) { set(mm, Math.max(0, Math.min(1, frac + d))); },
+            on: function (mm, b) {
+                if (mm.mx == null || !isFinite(mm.mx)) return;   // keyboard activation: the arrows do this instead
+                var f = Math.max(0, Math.min(1, (mm.mx - b.x - 4) / (b.w - 8)));
+                if (!isFinite(f)) return;
+                set(mm, f);
+            },
+            draw: function (cx, b, hover, focus) {
+                /* Vanilla draws the track from the widget sheet's DISABLED row
+                   and the handle from the normal one, which is the only reason
+                   the handle is visible at all — matched grey on grey is just a
+                   pair of bevel lines. */
+                mnButton(cx, { x: b.x, y: b.y, w: b.w, h: b.h, label: '' }, 2);
+                var kx = b.x + 1 + Math.round((b.w - 2 - 8) * Math.max(0, Math.min(1, frac)));
+                mnButton(cx, { x: kx, y: b.y, w: 8, h: b.h, label: '' }, hover || focus ? 1 : 0);
+                mfCenter(cx, b.label, b.x + b.w / 2, b.y + ((b.h - 7) >> 1), MC_WHITE);
+                if (focus) {
+                    cx.fillStyle = MC_WHITE;
+                    cx.fillRect(b.x - 1, b.y - 1, b.w + 2, 1); cx.fillRect(b.x - 1, b.y + b.h, b.w + 2, 1);
+                    cx.fillRect(b.x - 1, b.y, 1, b.h); cx.fillRect(b.x + b.w, b.y, 1, b.h);
+                }
+            } };
+    }
+    function mnOnOff(v) { return v ? 'ON' : 'OFF'; }
+    /* Screens that are a titled column of buttons over dirt — most of the
+       options tree is exactly this, so build them from one description. */
+    function mnGrid(title, rows, done) {
+        return {
+            bg: 'dirt',
+            layout: function (m, W, H) {
+                var w = [], cxp = W / 2 | 0, y0 = ((H / 6) | 0) - 12, list = rows(m, W, H), i;
+                for (i = 0; i < list.length; i++) {
+                    var r = list[i];
+                    if (!r) continue;
+                    r.x = cxp + (i % 2 ? 5 : -155);
+                    r.y = y0 + ((i / 2) | 0) * 24;
+                    if (!r.w) { r.w = 150; r.h = 20; }
+                    w.push(r);
+                }
+                var last = y0 + Math.ceil(list.length / 2) * 24 + 6;
+                w.push(mnBtn('done', cxp - 100, Math.min(H - 27, last), 200, 20, done || 'Done', function (mm) { mnBack(mm); }));
+                return w;
+            },
+            paint: function (cx, m, W) { mfCenter(cx, title, W / 2, 15, MC_WHITE); }
+        };
+    }
+    /* A screen that is a title, some wrapped prose and one button back. Used
+       by everything the game shows as an informational panel. */
+    function mnText(title, lines, btn) {
+        return {
+            bg: 'dirt',
+            layout: function (m, W, H) {
+                return [mnBtn('back', (W / 2 | 0) - 100, H - 38, 200, 20, btn || 'Done', function (mm) { mnBack(mm); })];
+            },
+            paint: function (cx, m, W, H) {
+                mfCenter(cx, title, W / 2, 15, MC_WHITE);
+                var body = typeof lines === 'function' ? lines(m) : lines, y = 50;
+                for (var i = 0; i < body.length; i++) {
+                    var wrapped = mfWrap(body[i], Math.min(360, W - 50));
+                    for (var j = 0; j < wrapped.length; j++) { mfCenter(cx, wrapped[j], W / 2, y, i ? MC_GREY : MC_WHITE); y += 10; }
+                    y += 4;
+                }
+            }
+        };
+    }
+
+    /* ── screen: Create New World ────────────────────────────
+       The modern tabbed screen: Game, World, More across the top, the two
+       actions pinned to the bottom. Every control here changes the world that
+       comes out the other end, which is the only reason to draw it. */
+    var MN_WTYPE = ['Default', 'Superflat', 'Large Biomes', 'AMPLIFIED'];
+    function mnCreateDefaults() {
+        return { name: 'New World', seed: '', gm: 0, hardcore: false, diff: 2, cheats: false,
+            type: 0, structures: true, bonus: false, tab: 0 };
+    }
+    MN_SCR.create = {
+        bg: 'dirt',
+        enter: function (m) { if (!m.d.cw) m.d.cw = mnCreateDefaults(); },
+        layout: function (m, W, H) {
+            var c = m.d.cw || (m.d.cw = mnCreateDefaults());
+            var w = [], cxp = W / 2 | 0, i;
+            var tabs = ['Game', 'World', 'More'], tw = Math.min(120, (W - 8) / 3 | 0);
+            for (i = 0; i < 3; i++) {
+                w.push({ k: 'draw', id: 'tab' + i, x: Math.round(cxp - tw * 1.5 + i * tw), y: 4, w: tw, h: 20,
+                    enabled: true, aria: tabs[i], label: tabs[i], ti: i,
+                    on: (function (n) { return function (mm) { mm.d.cw.tab = n; mm.sig = ''; }; })(i),
+                    draw: mnTab });
+            }
+            var y = 42;
+            if (c.tab === 0) {
+                w.push({ k: 'input', id: 'nm', x: cxp - 104, y: y + 12, w: 208, h: 20, value: c.name, max: 64,
+                    enabled: true, aria: 'World Name', title: 'World Name',
+                    set: function (mm, v) { mm.d.cw.name = v; } });
+                y += 44;
+                w.push(mnCycle('gm', cxp - 105, y, 210, 20, 'Game Mode',
+                    ['Survival', 'Hardcore', 'Creative'], c.hardcore ? 1 : c.gm === 1 ? 2 : 0,
+                    function (mm, n) {
+                        mm.d.cw.hardcore = n === 1;
+                        mm.d.cw.gm = n === 2 ? 1 : 0;
+                        // hardcore greys out difficulty, cheats and the bonus chest — and clears them,
+                        // or a disabled switch still puts a chest in the world
+                        if (n === 1) { mm.d.cw.diff = 3; mm.d.cw.cheats = false; mm.d.cw.bonus = false; }
+                    }));
+                y += 28;
+                w.push(mnCycle('df', cxp - 105, y, 210, 20, 'Difficulty', MN_DIFF, c.diff,
+                    function (mm, n) { mm.d.cw.diff = n; }, { enabled: !c.hardcore }));
+                y += 28;
+                w.push(mnCycle('ch', cxp - 105, y, 210, 20, 'Allow Cheats', ['OFF', 'ON'], c.cheats ? 1 : 0,
+                    function (mm, n) { mm.d.cw.cheats = !!n; }, { enabled: !c.hardcore }));
+            } else if (c.tab === 1) {
+                w.push(mnCycle('wt', cxp - 155, y, 150, 20, 'World Type', MN_WTYPE, c.type,
+                    function (mm, n) { mm.d.cw.type = n; }));
+                w.push(mnBtn('cust', cxp + 5, y, 150, 20, 'Customize', function () {}, { enabled: false }));
+                y += 40;
+                w.push({ k: 'input', id: 'sd', x: cxp - 154, y: y, w: 308, h: 20, value: c.seed, max: 32,
+                    enabled: true, aria: 'Seed for the world generator', title: 'Seed for the world generator',
+                    hint: 'Leave blank for a random seed',
+                    set: function (mm, v) { mm.d.cw.seed = v; } });
+                y += 30;
+                /* Vanilla's other switch here is Generate Structures, which is
+                   not offered because this generator has no structures to
+                   generate — trees and ore blobs are terrain. A switch that
+                   changes nothing is worse than a switch that is not there. */
+                w.push(mnCycle('bc', cxp - 155, y, 310, 20, 'Bonus Chest', ['OFF', 'ON'], c.bonus ? 1 : 0,
+                    function (mm, n) { mm.d.cw.bonus = !!n; }, { enabled: !c.hardcore }));
+            } else {
+                w.push(mnBtn('gr', cxp - 105, y, 210, 20, 'Game Rules', function (mm) { mnGo(mm, 'rules'); }));
+                w.push(mnBtn('ex', cxp - 105, y + 28, 210, 20, 'Experiments', function () {}, { enabled: false }));
+                w.push(mnBtn('dp', cxp - 105, y + 56, 210, 20, 'Data Packs', function (mm) { mnGo(mm, 'packs'); }));
+            }
+            w.push(mnBtn('go', cxp - 155, H - 28, 150, 20, 'Create New World', function (mm) { mnCreate(mm); }));
+            w.push(mnBtn('cancel', cxp + 5, H - 28, 150, 20, 'Cancel', function (mm) { mnBack(mm); }));
+            return w;
+        },
+        /* The tabbed screen carries no drawn title — the tab bar is the header,
+           the way it has been since the flat "More World Options..." screen was
+           replaced. The name still reaches a screen reader through the widgets. */
+        paint: function (cx, m, W, H) {
+            mnRect(cx, 0, 0, W, 28, 'rgba(0, 0, 0, 0.45)');
+            mnRect(cx, 0, 28, W, 1, '#000000');
+            mnRect(cx, 0, H - 36, W, 1, '#000000');
+            var c = m.d.cw;
+            if (c && c.tab === 0 && c.hardcore) mfCenter(cx, 'Hardcore: one life, and the difficulty is locked.', W / 2, H - 48, MC_RED);
+        }
+    };
+    function mnTab(cx, b, hover, focus) {
+        var on = RT.menu.d.cw && RT.menu.d.cw.tab === b.ti;
+        mnButton(cx, { x: b.x, y: b.y, w: b.w, h: b.h, label: b.label }, on || hover || focus ? 1 : 0);
+        if (on) mnRect(cx, b.x + 1, b.y + b.h - 2, b.w - 2, 1, MC_WHITE);   // the selected tab is underlined
+    }
+    function mnCreate(m) {
+        var c = m.d.cw, seed;
+        if (/^-?\d+$/.test(c.seed.trim())) seed = parseInt(c.seed.trim(), 10) | 0;
+        else if (c.seed.trim()) seed = mnHash(c.seed.trim());          // the game hashes a non-numeric seed too
+        else seed = (Math.random() * 2147483647) | 0;
+        var w = wsCreate({ name: (c.name || 'New World').trim() || 'New World', seed: seed, gm: c.gm,
+            hardcore: c.hardcore, diff: c.hardcore ? 3 : c.diff, cheats: c.cheats,
+            structures: c.structures, bonus: c.bonus, type: MN_WTYPE[c.type] });
+        if (!w) { m.msg = 'Could not save the world list. Is storage full?'; return; }
+        m.d.cw = null;
+        mnPlay(m, w.id);
+    }
+
+    /* ── screen: Edit World ─────────────────────────────────── */
+    MN_SCR.edit = {
+        bg: 'dirt',
+        enter: function (m) { var w = wsGet(m.d.sel); m.d.ed = w ? w.name : ''; },
+        layout: function (m, W, H) {
+            var cxp = W / 2 | 0, wd = wsGet(m.d.sel);
+            if (m.d.ed == null) m.d.ed = wd ? wd.name : '';
+            return [
+                { k: 'input', id: 'nm', x: cxp - 100, y: 66, w: 200, h: 20, value: m.d.ed, enabled: true,
+                    aria: 'World Name', title: 'World Name', set: function (mm, v) { mm.d.ed = v; } },
+                mnBtn('save', cxp - 100, 110, 200, 20, 'Save', function (mm) {
+                    wsTouch(mm.d.sel, { name: (mm.d.ed || '').trim() || 'World' });
+                    mnBack(mm);
+                }),
+                /* The icon is generated, so "reset" has to change the thing it
+                   is generated from — clearing a cache keyed on id and seed
+                   only ever redrew the identical picture. */
+                mnBtn('icon', cxp - 100, 134, 200, 20, 'Reset Icon', function (mm) {
+                    var ww = wsGet(mm.d.sel);
+                    if (ww) wsTouch(ww.id, { icon: ((ww.icon || 0) + 1) % 1000 });
+                    mm.msg = 'Icon reset.';
+                }),
+                mnBtn('folder', cxp - 100, 158, 200, 20, 'Open World Folder', function (mm) {
+                    var ww = wsGet(mm.d.sel), h = window.MCHOST;
+                    if (h && h.openFolder && ww) h.openFolder('.minecraft/saves/' + ww.folder);
+                    else mm.msg = 'Explorer is not available.';
+                }),
+                mnBtn('cancel', cxp - 100, H - 38, 200, 20, 'Cancel', function (mm) { mnBack(mm); })
+            ];
+        },
+        paint: function (cx, m, W) { mfCenter(cx, 'Edit World', W / 2, 15, MC_WHITE); }
+    };
+
+    /* ── screen: the confirm dialog ─────────────────────────── */
+    function mnConfirm(m, title, body, okLabel, ok) {
+        m.d.cf = { title: title, body: body, ok: okLabel, fn: ok };
+        mnGo(m, 'confirm');
+    }
+    MN_SCR.confirm = {
+        bg: 'dirt',
+        layout: function (m, W, H) {
+            var cxp = W / 2 | 0, c = m.d.cf || {};
+            return [
+                mnBtn('ok', cxp - 155, H / 2 + 20, 150, 20, c.ok || 'Yes', function (mm) {
+                    var f = mm.d.cf && mm.d.cf.fn; mm.d.cf = null; if (f) f(mm); else mnBack(mm);
+                }),
+                mnBtn('no', cxp + 5, H / 2 + 20, 150, 20, 'Cancel', function (mm) { mm.d.cf = null; mnBack(mm); })
+            ];
+        },
+        paint: function (cx, m, W, H) {
+            var c = m.d.cf || {};
+            mfCenter(cx, c.title || '', W / 2, H / 2 - 30, MC_WHITE);
+            var lines = mfWrap(c.body || '', Math.min(340, W - 50));
+            for (var i = 0; i < lines.length; i++) mfCenter(cx, lines[i], W / 2, H / 2 - 12 + i * 10, MC_GREY);
+        }
+    };
+
+    /* ── screen: the multiplayer warning ─────────────────────
+       Vanilla shows this once before the server list. Its text is Mojang's
+       legal notice about third-party servers; this one says the true thing
+       about this machine instead. */
+    MN_SCR.mpwarn = {
+        bg: 'dirt',
+        layout: function (m, W, H) {
+            var cxp = W / 2 | 0;
+            return [
+                mnCycle('chk', cxp - 155, H - 62, 310, 20, 'Do not show this screen again',
+                    ['OFF', 'ON'], m.d.mpw ? 1 : 0, function (mm, n) { mm.d.mpw = !!n; }),
+                mnBtn('go', cxp - 155, H - 34, 150, 20, 'Proceed', function (mm) {
+                    if (mm.d.mpw) { optLoad().mpwarn = false; optSave(); }
+                    mnGo(mm, 'mp', true);
+                }),
+                mnBtn('back', cxp + 5, H - 34, 150, 20, 'Back', function (mm) { mnBack(mm); })
+            ];
+        },
+        paint: function (cx, m, W, H) {
+            mfCenter(cx, 'Caution: Third-Party Online Play', W / 2, 30, MC_WHITE);
+            var body = 'Online play is offered by servers that are not owned, operated or supervised by anyone ' +
+                'here. This computer is a drawing of a computer, so none of these servers exist and none of ' +
+                'them will let you in. The refusals are, at least, the real ones.';
+            var lines = mfWrap(body, Math.min(340, W - 50));
+            for (var i = 0; i < lines.length; i++) mfCenter(cx, lines[i], W / 2, 56 + i * 10, MC_GREY);
+        }
+    };
+
+    /* ── screen: Play Multiplayer ────────────────────────────
+       The server list, its ping bars and the join that never lands. Each
+       server answers the ping the way it would and then refuses the
+       connection the way it would; the disconnect reasons are the game's. */
+    var MN_SERVERS = [
+        { n: "malachi's server", ip: '192.168.1.14', motd: 'we rebuilt the roof\nagain', ping: 4, max: 8, on: 0, fail: 'refuse' },
+        { n: 'ureboy.smp', ip: 'smp.isaacure.com', motd: 'Whitelist only. Ask Isaac.', ping: 38, max: 20, on: 3, fail: 'white' },
+        { n: 'old server from school', ip: 'mc.notarealhost.invalid', motd: '', ping: -1, max: 0, on: 0, fail: 'dns' },
+        { n: 'localhost', ip: '127.0.0.1', motd: "It's you. You're the server.", ping: 0, max: 1, on: 1, fail: 'refuse' }
+    ];
+    MN_SCR.mp = {
+        bg: 'dirt',
+        enter: function (m) { m.d.msel = -1; m.d.mscroll = 0; m.d.pingT = 0; },
+        wheel: function (m, dy) { m.d.mscroll = mnScroll((m.d.mscroll || 0) + (dy > 0 ? 18 : -18), (MN_SERVERS.length + 1) * MN_ROWH + 8, m.H - 96); },
+        live: true,
+        layout: function (m, W, H) {
+            var w = [], cxp = W / 2 | 0, top = 32, bot = H - 64, rl = cxp - 150, i;
+            for (i = 0; i < MN_SERVERS.length; i++) {
+                var ry = top + 4 - (m.d.mscroll || 0) + i * MN_ROWH;
+                if (ry + MN_ROWH < top || ry > bot) continue;
+                w.push({ k: 'draw', id: 's' + i, x: rl, y: ry, w: 305, h: MN_ROWH - 4, enabled: true,
+                    clip: [0, top, W, bot - top],
+                    aria: MN_SERVERS[i].n, si: i, draw: mnServerRow,
+                    on: (function (n) {
+                        return function (mm) {
+                            if (mm.d.msel === n && Date.now() - (mm.d.mclick || 0) < 250) return mnJoin(mm, n);
+                            mm.d.msel = n; mm.d.mclick = Date.now();
+                        };
+                    })(i) });
+            }
+            var lanY = top + 4 - (m.d.mscroll || 0) + MN_SERVERS.length * MN_ROWH;
+            m.d.lanY = lanY;
+            var sel = m.d.msel >= 0;
+            w.push(mnBtn('join', cxp - 154, H - 60, 100, 20, 'Join Server', function (mm) { mnJoin(mm, mm.d.msel); }, { enabled: sel }));
+            w.push(mnBtn('direct', cxp - 50, H - 60, 100, 20, 'Direct Connection', function (mm) { mnGo(mm, 'direct'); }));
+            w.push(mnBtn('add', cxp + 54, H - 60, 100, 20, 'Add Server', function (mm) { mnGo(mm, 'addserver'); }));
+            w.push(mnBtn('sedit', cxp - 154, H - 36, 74, 20, 'Edit', function () {}, { enabled: sel }));
+            w.push(mnBtn('sdel', cxp - 76, H - 36, 74, 20, 'Delete', function (mm) {
+                var s = MN_SERVERS[mm.d.msel]; if (!s) return;
+                mnConfirm(mm, 'Are you sure you want to remove this server?',
+                    "'" + s.n + "' will be lost forever! (A long time!)", 'Delete', function (m2) {
+                        MN_SERVERS.splice(m2.d.msel, 1); m2.d.msel = -1; mnBack(m2);
+                    });
+            }, { enabled: sel }));
+            w.push(mnBtn('refresh', cxp + 2, H - 36, 74, 20, 'Refresh', function (mm) { mm.d.pingT = 0; }));
+            w.push(mnBtn('mcancel', cxp + 80, H - 36, 74, 20, 'Cancel', function (mm) { mnBack(mm); }));
+            return w;
+        },
+        tick: function (m, dt) { m.d.pingT = (m.d.pingT || 0) + dt; m.dirty = true; },
+        paint: function (cx, m, W, H) {
+            var top = 32, bot = H - 64;
+            mnListFrame(cx, 0, top, W, bot - top);
+            mfCenter(cx, 'Play Multiplayer', W / 2, 20, MC_WHITE);
+            var ly = m.d.lanY;
+            if (ly != null && ly > top && ly < bot) {
+                var dots = '.'.repeat(1 + ((m.d.pingT * 2) | 0) % 3);
+                mfCenter(cx, 'Scanning for games on your local network' + dots, W / 2, ly + 8, MC_GREY);
+            }
+            mnListEdges(cx, 0, top, W, bot - top);
+        },
+        key: function (m, e) {
+            if (e.key === 'Enter' && m.d.msel >= 0) { mnJoin(m, m.d.msel); return true; }
+            if (e.key === 'F5') { m.d.pingT = 0; return true; }
+            return false;
+        }
+    };
+    function mnPingTier(ms) { return ms < 0 ? 5 : ms < 150 ? 0 : ms < 300 ? 1 : ms < 600 ? 2 : ms < 1000 ? 3 : 4; }
+    function mnServerRow(cx, b, hover) {
+        var m = RT.menu, s = MN_SERVERS[b.si], sel = m.d.msel === b.si;
+        if (sel) {
+            mnRect(cx, b.x - 2, b.y - 2, b.w + 4, b.h + 4, '#ffffff');
+            mnRect(cx, b.x - 1, b.y - 1, b.w + 2, b.h + 2, '#000000');
+        }
+        mnRect(cx, b.x, b.y, 32, 32, '#2a2a30');
+        mfCenter(cx, '?', b.x + 16, b.y + 12, '#6a6a76', false);
+        if (hover) { cx.fillStyle = 'rgba(144, 144, 144, 0.63)'; cx.fillRect(b.x, b.y, 32, 32); mnJoinArrow(cx, b.x, b.y); }
+        var tx = b.x + 35;
+        mfText(cx, s.n, tx, b.y + 1, MC_WHITE, false);
+        var pinging = (m.d.pingT || 0) < 1.2;
+        if (pinging) mfText(cx, 'Pinging…', tx, b.y + 12, '#808080', false);
+        else if (s.ping < 0) mfText(cx, "Can't resolve hostname", tx, b.y + 12, MC_RED, false);
+        else {
+            var mo = String(s.motd).split('\n');
+            for (var i = 0; i < mo.length && i < 2; i++) mfText(cx, mo[i], tx, b.y + 12 + i * 9, '#808080', false);
+        }
+        // player count, right-aligned in front of the bars
+        if (!pinging && s.ping >= 0) mfRight(cx, s.on + '/' + s.max, b.x + 305 - 17, b.y + 1, '#808080', false);
+        /* Five bars in a 10x8 cell, as the icons sheet has them: heights 2..6,
+           two pixels apart, sitting on the same baseline. While the ping is
+           still out the lit count bounces, which is vanilla's pinging state. */
+        var tier = pinging ? (((m.d.pingT * 10) | 0) + b.si * 2) & 7 : mnPingTier(s.ping);
+        if (pinging && tier > 4) tier = 8 - tier;
+        var bx = b.x + 305 - 15, by = b.y;
+        var lit = pinging ? tier + 1 : (s.ping < 0 ? 0 : 5 - mnPingTier(s.ping));
+        for (var k = 0; k < 5; k++) {
+            var hgt = k + 2;
+            mnRect(cx, bx + k * 2, by + 8 - hgt, 1, hgt, k < lit ? '#c0c0c0' : '#3a3a3a');
+        }
+        if (!pinging && s.ping < 0) {   // no connection: the red cross the game shows instead
+            for (var d = 0; d < 5; d++) { mnRect(cx, bx + d, by + 1 + d, 1, 1, MC_RED); mnRect(cx, bx + 4 - d, by + 1 + d, 1, 1, MC_RED); }
+        }
+    }
+    /* Joining: the game's status sequence, then the refusal this server would
+       actually give. The strings are the game's own disconnect reasons. */
+    var MN_CONNECT = ['Connecting to the server...', 'Logging in...', 'Encrypting...', 'Negotiating...', 'Joining world...'];
+    var MN_FAIL = {
+        dns: ['Failed to connect to the server', "Can't resolve hostname"],
+        refuse: ['Failed to connect to the server', 'Connection refused: no further information'],
+        white: ['Failed to connect to the server', 'You are not white-listed on this server!']
+    };
+    function mnJoin(m, i) { mnJoinServer(m, MN_SERVERS[i]); }
+    function mnJoinServer(m, s) {
+        if (!s) return;
+        m.d.conn = { t: 0, step: 0, s: s, stop: s.ping < 0 ? 1 : 5 };
+        m.d.dcBack = m.scr;         // the disconnect screen goes back where the join started
+        mnGo(m, 'connect');
+    }
+    MN_SCR.connect = {
+        bg: 'dirt', live: true,
+        layout: function (m, W, H) {
+            return [mnBtn('abort', (W / 2 | 0) - 100, ((H / 4) | 0) + 132, 200, 20, 'Cancel', function (mm) {
+                mm.d.conn = null; mnBack(mm);
+            })];
+        },
+        tick: function (m, dt) {
+            var c = m.d.conn;
+            if (!c) return;
+            c.t += dt;
+            m.dirty = true;
+            if (c.t > c.stop * 0.55 + 0.5) {
+                var f = MN_FAIL[c.s.fail] || MN_FAIL.refuse;
+                m.d.dc = { title: f[0], body: f[1] };
+                m.d.conn = null;
+                mnGo(m, 'disconnect', true);
+            }
+        },
+        paint: function (cx, m, W, H) {
+            var c = m.d.conn;
+            if (!c) return;
+            var step = Math.min(c.stop - 1, (c.t / 0.55) | 0);
+            mfCenter(cx, MN_CONNECT[step], W / 2, H / 2 - 50, MC_WHITE);
+        },
+        key: function () { return true; }   // vanilla ignores Esc here
+    };
+    MN_SCR.disconnect = {
+        bg: 'dirt',
+        layout: function (m, W, H) {
+            /* Pop back to whatever started the join — the server list, or the
+               Direct Connection screen. The connect screen already put that on
+               the stack, so this pops rather than pushing another copy. */
+            var lbl = m.d.dcBack === 'direct' ? 'Back' : 'Back to Server List';
+            return [mnBtn('back', (W / 2 | 0) - 100, H / 2 + 30, 200, 20, lbl, function (mm) {
+                mm.d.dc = null; mnBack(mm);
+            })];
+        },
+        paint: function (cx, m, W, H) {
+            var d = m.d.dc || {};
+            mfCenter(cx, d.title || 'Disconnected', W / 2, H / 2 - 30, MC_WHITE);
+            var lines = mfWrap(d.body || '', Math.min(W - 50, 360));
+            for (var i = 0; i < lines.length; i++) mfCenter(cx, lines[i], W / 2, H / 2 - 10 + i * 10, MC_GREY);
+        }
+    };
+    MN_SCR.direct = {
+        bg: 'dirt',
+        layout: function (m, W, H) {
+            var cxp = W / 2 | 0;
+            if (m.d.ip == null) m.d.ip = '';
+            var valid = /^[\w.\-]+(:\d{1,5})?$/.test(m.d.ip.trim());
+            return [
+                { k: 'input', id: 'ip', x: cxp - 100, y: 116, w: 200, h: 20, value: m.d.ip, max: 128, enabled: true,
+                    aria: 'Server Address', title: 'Server Address', set: function (mm, v) { mm.d.ip = v; } },
+                /* Connect to it without adding it to the saved list — vanilla's
+                   Direct Connection does not save the address, and appending
+                   one dead entry per attempt was filling the list up. */
+                mnBtn('join', cxp - 100, ((H / 4) | 0) + 108, 200, 20, 'Join Server', function (mm) {
+                    mnJoinServer(mm, { n: mm.d.ip.trim(), ip: mm.d.ip.trim(), motd: '', ping: -1, max: 0, on: 0, fail: 'dns' });
+                }, { enabled: valid }),
+                mnBtn('cancel', cxp - 100, ((H / 4) | 0) + 132, 200, 20, 'Cancel', function (mm) { mnBack(mm); })
+            ];
+        },
+        paint: function (cx, m, W) { mfCenter(cx, 'Direct Connection', W / 2, 20, MC_WHITE); }
+    };
+    MN_SCR.addserver = {
+        bg: 'dirt',
+        layout: function (m, W, H) {
+            var cxp = W / 2 | 0;
+            if (m.d.sn == null) { m.d.sn = 'Minecraft Server'; m.d.sip = ''; }
+            return [
+                { k: 'input', id: 'sn', x: cxp - 100, y: 66, w: 200, h: 20, value: m.d.sn, enabled: true,
+                    aria: 'Server Name', title: 'Server Name', set: function (mm, v) { mm.d.sn = v; } },
+                { k: 'input', id: 'sip', x: cxp - 100, y: 106, w: 200, h: 20, value: m.d.sip, enabled: true,
+                    aria: 'Server Address', title: 'Server Address', set: function (mm, v) { mm.d.sip = v; } },
+                mnBtn('done', cxp - 100, ((H / 4) | 0) + 114, 200, 20, 'Done', function (mm) {
+                    MN_SERVERS.push({ n: mm.d.sn.trim() || 'Minecraft Server', ip: mm.d.sip.trim(),
+                        motd: '', ping: -1, max: 0, on: 0, fail: 'dns' });
+                    mm.d.sn = null;
+                    mnBack(mm);
+                }, { enabled: !!(m.d.sip || '').trim() }),
+                mnBtn('cancel', cxp - 100, ((H / 4) | 0) + 138, 200, 20, 'Cancel', function (mm) { mm.d.sn = null; mnBack(mm); })
+            ];
+        },
+        paint: function (cx, m, W) { mfCenter(cx, 'Edit Server Info', W / 2, 17, MC_WHITE); }
+    };
+
+    /* ── screen: Options and its tree ────────────────────────
+       The grid is vanilla's, in vanilla's order. Every entry that this game
+       can honour is wired to the thing it names; the ones it cannot are
+       screens that say so rather than switches that lie. */
+    MN_SCR.options = mnGrid('Options', function (m, W, H) {
+        var o = optLoad();
+        return [
+            mnSlider('fov', 0, 0, 150, 20, 'FOV: ' + (o.fov === 70 ? 'Normal' : o.fov >= 110 ? 'Quake Pro' : o.fov),
+                (o.fov - 30) / 80, function (mm, f) { o.fov = Math.round(30 + f * 80); optSave(); }),
+            mnBtn('online', 0, 0, 150, 20, 'Online...', function (mm) { mnGo(mm, 'online'); }),
+            mnBtn('skin', 0, 0, 150, 20, 'Skin Customization...', function (mm) { mnGo(mm, 'skin'); }),
+            mnBtn('snd', 0, 0, 150, 20, 'Music & Sounds...', function (mm) { mnGo(mm, 'sound'); }),
+            mnBtn('vid', 0, 0, 150, 20, 'Video Settings...', function (mm) { mnGo(mm, 'video'); }),
+            mnBtn('ctrl', 0, 0, 150, 20, 'Controls...', function (mm) { mnGo(mm, 'controls'); }),
+            mnBtn('lang', 0, 0, 150, 20, 'Language...', function (mm) { mnGo(mm, 'lang'); }),
+            mnBtn('chat', 0, 0, 150, 20, 'Chat Settings...', function (mm) { mnGo(mm, 'chat'); }),
+            mnBtn('rp', 0, 0, 150, 20, 'Resource Packs...', function (mm) { mnGo(mm, 'packs'); }),
+            mnBtn('acc', 0, 0, 150, 20, 'Accessibility Settings...', function (mm) { mnGo(mm, 'access'); }),
+            mnBtn('tel', 0, 0, 150, 20, 'Telemetry Data...', function (mm) { mnGo(mm, 'telemetry'); }),
+            mnBtn('cred', 0, 0, 150, 20, 'Credits & Attribution...', function (mm) { mnGo(mm, 'credits'); })
+        ];
+    });
+    MN_SCR.video = mnGrid('Video Settings', function (m) {
+        var o = optLoad();
+        return [
+            mnCycle('gfx', 0, 0, 150, 20, 'Graphics', ['Fast', 'Fancy'], o.fancy ? 1 : 0,
+                function (mm, n) { o.fancy = !!n; optSave(); }),
+            mnSlider('rd', 0, 0, 150, 20, 'Render Distance: ' + o.rd + ' chunks', (o.rd - 2) / 14,
+                function (mm, f) { o.rd = Math.round(2 + f * 14); optSave(); }),
+            mnCycle('vs', 0, 0, 150, 20, 'VSync', ['OFF', 'ON'], o.vsync ? 1 : 0,
+                function (mm, n) { o.vsync = !!n; optSave(); }),
+            mnCycle('bob', 0, 0, 150, 20, 'View Bobbing', ['OFF', 'ON'], o.bob === false ? 0 : 1,
+                function (mm, n) { o.bob = !!n; optSave(); }),
+            mnCycle('gs', 0, 0, 150, 20, 'GUI Scale', ['Auto', '1', '2', '3', '4'], o.guiScale,
+                function (mm, n) { o.guiScale = n; optSave(); mnSize(mm); }),
+            mnCycle('cl', 0, 0, 150, 20, 'Clouds', ['OFF', 'ON'], o.clouds === false ? 0 : 1,
+                function (mm, n) { o.clouds = !!n; optSave(); })
+        ];
+    });
+    MN_SCR.controls = mnGrid('Controls', function (m) {
+        var o = optLoad();
+        return [
+            mnBtn('mouse', 0, 0, 150, 20, 'Mouse Settings...', function (mm) { mnGo(mm, 'mouse'); }),
+            mnBtn('keys', 0, 0, 150, 20, 'Key Binds...', function (mm) { mnGo(mm, 'keys'); }),
+            mnCycle('aj', 0, 0, 150, 20, 'Auto-Jump', ['OFF', 'ON'], o.autoJump ? 1 : 0,
+                function (mm, n) { o.autoJump = !!n; optSave(); })
+        ];
+    });
+    MN_SCR.mouse = mnGrid('Mouse Settings', function (m) {
+        var o = optLoad();
+        return [
+            mnSlider('sens', 0, 0, 150, 20, 'Sensitivity: ' + (o.sens === 0 ? '*yawn*' : o.sens >= 200 ? 'HYPERSPEED!!!' : o.sens + '%'),
+                o.sens / 200, function (mm, f) { o.sens = Math.round(f * 200); optSave(); }),
+            mnCycle('inv', 0, 0, 150, 20, 'Invert Mouse', ['OFF', 'ON'], o.invert ? 1 : 0,
+                function (mm, n) { o.invert = !!n; optSave(); })
+        ];
+    });
+    MN_SCR.sound = mnGrid('Music & Sounds', function (m) {
+        var o = optLoad();
+        return [
+            mnCycle('master', 0, 0, 150, 20, 'Sound', ['OFF', 'ON'], o.snd ? 1 : 0,
+                function (mm, n) { o.snd = !!n; if (S) S.snd = o.snd; optSave(); }),
+            mnCycle('music', 0, 0, 150, 20, 'Music', ['OFF', 'ON'], o.mus ? 1 : 0,
+                function (mm, n) { o.mus = !!n; if (S) S.mus = o.mus; optSave(); })
+        ];
+    });
+    MN_SCR.access = mnGrid('Accessibility Settings', function (m) {
+        var o = optLoad();
+        return [
+            mnCycle('splash', 0, 0, 150, 20, 'Hide Splash Texts', ['OFF', 'ON'], o.splash ? 0 : 1,
+                function (mm, n) { o.splash = !n; optSave(); mm.splash = o.splash ? (mm.splash || mnPickSplash()) : null; }),
+            mnCycle('pano', 0, 0, 150, 20, 'Panorama Motion', ['OFF', 'ON'], o.panoStill ? 0 : 1,
+                function (mm, n) { o.panoStill = !n; optSave(); }),
+            mnCycle('shake', 0, 0, 150, 20, 'Screen Shake', ['OFF', 'ON'], o.noShake ? 0 : 1,
+                function (mm, n) { o.noShake = !n; optSave(); }),
+            mnCycle('big', 0, 0, 150, 20, 'Larger GUI', ['OFF', 'ON'], o.guiScale >= 3 ? 1 : 0,
+                function (mm, n) { o.guiScale = n ? 3 : 0; optSave(); mnSize(mm); })
+        ];
+    });
+    /* Language. Vanilla lists every locale it ships; this one lists the ones
+       whose strings actually exist here, because a language button that
+       changes nothing is worse than a short list. */
+    var MN_LANGS = [
+        { id: 'en_us', n: 'English (US)' }, { id: 'en_gb', n: 'English (UK)' },
+        { id: 'es_es', n: 'Español (España)' }, { id: 'fr_fr', n: 'Français (France)' },
+        { id: 'de_de', n: 'Deutsch (Deutschland)' }, { id: 'pt_br', n: 'Português (Brasil)' }
+    ];
+    MN_SCR.lang = {
+        bg: 'dirt',
+        wheel: function (m, dy) { m.d.lscroll = mnScroll((m.d.lscroll || 0) + (dy > 0 ? 16 : -16), MN_LANGS.length * 18 + 8, m.H - 72); },
+        layout: function (m, W, H) {
+            var w = [], cxp = W / 2 | 0, top = 32, bot = H - 40, o = optLoad();
+            for (var i = 0; i < MN_LANGS.length; i++) {
+                var y = top + 4 - (m.d.lscroll || 0) + i * 18;
+                if (y < top || y + 16 > bot) continue;
+                w.push({ k: 'draw', id: 'l' + i, x: cxp - 100, y: y, w: 200, h: 16, enabled: true,
+                    clip: [0, top, W, bot - top],
+                    aria: MN_LANGS[i].n, li: i,
+                    on: (function (id) { return function () { optLoad().lang = id; optSave(); }; })(MN_LANGS[i].id),
+                    draw: function (cx, b, hover) {
+                        var cur = optLoad().lang === MN_LANGS[b.li].id;
+                        if (cur || hover) { mnRect(cx, b.x, b.y, b.w, b.h, cur ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.10)'); }
+                        mfCenter(cx, MN_LANGS[b.li].n, b.x + b.w / 2, b.y + 4, cur ? MC_YELLOW : MC_WHITE);
+                    } });
+            }
+            w.push(mnBtn('done', cxp - 100, H - 32, 200, 20, 'Done', function (mm) { mnBack(mm); }));
+            return w;
+        },
+        paint: function (cx, m, W, H) {
+            mnListFrame(cx, 0, 32, W, H - 72);
+            mfCenter(cx, 'Language', W / 2, 15, MC_WHITE);
+            mnListEdges(cx, 0, 32, W, H - 72);
+            mfCenter(cx, 'The menu is written in English. The rest is a promise.', W / 2, H - 44, MC_GREY);
+        }
+    };
+    MN_SCR.realms = mnText('Minecraft Realms', [
+        'Realms is a safe, simple way to enjoy an online world with friends.',
+        'There is no Realm here, and there is nobody to bill.',
+        'This machine is a picture of a machine and its network cable goes nowhere.'
+    ], 'Back');
+    MN_SCR.online = mnText('Online Options', [
+        'Nothing is online.',
+        'No account is signed in, no session is open, and no chat is reported anywhere.'
+    ]);
+    MN_SCR.telemetry = mnText('Telemetry Data', [
+        'Nothing is collected.',
+        'There is no server to send it to and no one is curious enough to build one.'
+    ]);
+    MN_SCR.chat = mnGrid('Chat Settings', function (m) {
+        var o = optLoad();
+        return [
+            mnCycle('cv', 0, 0, 150, 20, 'Chat', ['Shown', 'Commands only', 'Hidden'], o.chat || 0,
+                function (mm, n) { o.chat = n; optSave(); }),
+            mnCycle('cc', 0, 0, 150, 20, 'Command Suggestions', ['OFF', 'ON'], o.sug === false ? 0 : 1,
+                function (mm, n) { o.sug = !!n; optSave(); })
+        ];
+    });
+    MN_SCR.packs = mnText('Select Resource Packs', [
+        'Available: none.',
+        'The textures in this game are drawn at boot by code in this file, so there is ' +
+        'nothing on disk for a pack to replace.'
+    ]);
+    MN_SCR.skin = mnText('Skin Customization', function () {
+        var sk = window.MCHOST && window.MCHOST.skin && window.MCHOST.skin();
+        return ['Active skin: ' + (sk && sk.n ? sk.n : 'Steve'),
+            'Skins are chosen in the launcher. This world renders you from the outside only when you drop something.'];
+    });
+    MN_SCR.credits = mnText('Credits & Attribution', [
+        'Minecraft is made by Mojang Studios. This is not that.',
+        'This is a recreation of its title screen, written from scratch for a personal site: ' +
+        'the font, the wordmark, the widgets and the world behind them are all drawn by code in this file.',
+        'No Mojang assets are used, and nothing here is sold.'
+    ], 'Back');
+    MN_SCR.keys = mnText('Key Binds', [
+        'Movement  WASD · Jump  Space · Sneak  Shift · Sprint  double-tap W',
+        'Attack  Left · Use  Right · Pick Block  Middle · Drop  Q',
+        'Inventory  E · Chat  T · Command  / · Debug  F3 · Fly  double-tap Space',
+        'These are fixed. Rebinding is not built yet.'
+    ]);
+    MN_SCR.rules = mnText('Game Rules', [
+        'Rules are set per world once it is running.',
+        'Open the world and use /gamerule — the parser is real and it lists what it accepts.'
+    ]);
 
     /* ── skeleton + wiring ──────────────────────────────────── */
     function render() {
@@ -5508,13 +7741,18 @@
             '<h3>Game Menu</h3>' +
             '<button class="mc-btn mc-resume">Back to Game</button>' +
             '<button class="mc-btn mc-achbtn">Achievements</button>' +
+            '<button class="mc-btn mc-totitle">Save and Quit to Title</button>' +
             '<div class="mc-optrow"><button class="mc-btn half mc-snd">Sound: ON</button><button class="mc-btn half mc-mus">Music: ON</button></div>' +
             '<p class="mc-hint">WASD move · Space jump · double-tap W sprints · Shift sneak<br>LMB mine · RMB place/use · MMB pick block · E inventory · Q drop · F3 debug<br>T chat · /gamemode creative · double-tap Space to fly</p>' +
             '<div class="mc-achs" style="display:none"><div class="mc-achn"></div><div class="mc-achrows"></div></div>' +
             '</div></div>' +
             '<div class="mc-death" style="display:none"><div class="mc-menu"><h3>You died!</h3><div class="mc-dscore"></div>' +
             '<button class="mc-btn mc-respawn">Respawn</button></div></div>' +
-            '<div class="mc-load"><div class="mc-menu"><h3>Building terrain…</h3><div class="mc-bar"><i></i></div></div></div>' +
+            '<div class="mc-load" style="display:none"><div class="mc-menu"><h3>Building terrain…</h3><div class="mc-bar"><i></i></div></div></div>' +
+            /* the menu draws itself on its own canvas, with a transparent layer
+               of real controls over it for focus, typing and screen readers */
+            '<canvas class="mc-mcv" style="display:none"></canvas>' +
+            '<div class="mc-mui" style="display:none"></div>' +
             '</div>';
     }
 
@@ -6281,6 +8519,13 @@
         var nameAt = rd.i, name = stripNs(rd.word()).toLowerCase();
         if (!name) return;
         var c = CMDS[name];
+        /* Allow Cheats, off the Create New World screen. Every command this
+           world understands is a cheat command, so a world created with the
+           switch off simply does not have them — which is what vanilla looks
+           like from the chat box, since the commands are never registered.
+           Only an explicit false counts: worlds that predate the switch have
+           no opinion and keep everything they had. */
+        if (c && S && S.cheats === false) c = null;
         if (!c) {
             chatErr('Unknown or incomplete command, see below for error');
             chatErr(raw.slice(0, 1 + nameAt + name.length) + '<--[HERE]');
@@ -6455,8 +8700,14 @@
         return m + ':' + ('0' + (s % 60)).slice(-2);
     }
 
-    function init(el) {
+    function init(el, opts) {
         var root = el.querySelector('.mc');
+        /* The launcher has been passing { version, installation, skin } since
+           it was written; nothing ever read it. The title screen puts the
+           version it was launched with in the bottom-left corner, which is
+           where the game puts it. */
+        var launched = (opts && opts.version) || null;
+        optLoad();
         S = sLoad() || sNew();
         if (!S.inv.length) {
             S.inv = new Array(36).fill(null);
@@ -6487,14 +8738,15 @@
             foes: [], dying: [], drops: [], arrows: [], tnts: [], parts: [], entV: [], orbs: [],
             keys: {}, mouse: { l: false, r: false },
             chat: null, chatLog: [], chatHist: [], now: 0, fly: !!S.fly && (S.gm === 1 || S.gm === 3),
-            vy: 0, ground: false, fallY: S.py, sprint: false,
+            vy: 0, ground: false, fallY: S.py, sprint: false, fovM: 1,
             exh: 0, regenT: 0, starveT: 0, iframe: 0, digT: 0, digCd: 0, digNeed: 1, digAt: null, atkCd: 0,
             eatT: 0, bowT: 0, swing: 0, swingT: SWING_T, equip: 0, equipId: null, bob: 0, flash: 0, shake: 0, sleep: 0, placeCd: 0,
             target: null, panel: null, cur: null, craft: [null, null, null, null, null, null, null, null, null], craftW: 2,
             cTab: 0, cScroll: 0, cSearch: '', cList: [], cDrag: 0, panelDirty: 0,
             paused: false, dead: S.hp <= 0, ready: false, lit: false, expectUnlock: false,
             worldMs: 0, playT: 0, baseHrs: S.hrs || 0, lastT: 0, secT: 0, hudT: 0, saveT: 0,
-            fps: 0, fpsN: 0, fpsT: 0, f3: false, musT: 25, tipT: 0, tipId: null, devFree: !!devModes, raf: 0, timers: []
+            fps: 0, fpsN: 0, fpsT: 0, f3: false, musT: 25, tipT: 0, tipId: null, devFree: !!devModes, raf: 0, timers: [],
+            built: false, ver: launched || '26.2', inst: (opts && opts.installation) || null
         };
         buildSkyGeo(G);
         if (S.hp <= 0) {   // died mid-save: respawn silently at the last bed/world spawn (and clear the dead flag, or input stays frozen all session)
@@ -6504,6 +8756,17 @@
             if (dsp) { S.px = dsp[0]; S.py = dsp[1]; S.pz = dsp[2]; RT.fallY = dsp[1]; }
         }
         if (devModes) devPost(devModes);
+        /* Normally the launcher hands over to the title screen and the world
+           waits behind it. A ?mcdev= run is a scenario: it has already chosen
+           the world it wants and every headless capture in .claude/comp-tools
+           expects to arrive in it, so those skip the menu entirely. */
+        if (!devModes) {
+            wsIndex();                       // adopts a pre-world-list save before anything else reads one
+            wsSyncFS();
+            S = mnPanoSave();
+        } else {
+            RT.el.querySelector('.mc-load').style.display = '';
+        }
         // fresh world: starting position + a bootstrapping run of chunks
         if (!S.wspawn) {
             S.wspawn = findSpawn();
@@ -6511,8 +8774,9 @@
         }
         ensureChunks();
         sizeCanvas();
-        RT.ro = new ResizeObserver(sizeCanvas);
+        RT.ro = new ResizeObserver(function () { sizeCanvas(); if (RT && RT.menu) mnSize(RT.menu); });
         RT.ro.observe(root);
+        if (!devModes) mnOpen('loading');
         wireInput(root, cv);
         RT.raf = requestAnimationFrame(frame);
         // rAF starves in hidden/background tabs; a slow heartbeat keeps furnaces (and boots) alive
@@ -6602,6 +8866,10 @@
             });
         }
         root.addEventListener('keydown', function (e) {
+            /* While a menu is up there is no world to drive. Several branches
+               below (movement, q, F3, the double-tap flags) never check for
+               one, so the whole handler stands down rather than each of them. */
+            if (RT.menu) { e.stopPropagation(); return; }
             var k = e.key.toLowerCase();
             if (e.key === 'Escape') {
                 if (RT.chat) { closeChat(true); e.stopPropagation(); e.preventDefault(); }
@@ -6636,9 +8904,11 @@
                 return;
             }
             RT.keys[k] = true;
-            // sprint is double-tap W only — holding real Ctrl arms Ctrl+W (closes the tab!)
-            if (k === 'w' && RT.lastW && performance.now() - RT.lastW < 280) RT.sprint = true;
-            if (k === 'w') RT.lastW = performance.now();
+            // sprint is double-tap W only — holding real Ctrl arms Ctrl+W (closes the tab!).
+            // The window is the game's own 7 ticks; at 280ms an honest double tap
+            // fell through it and you just walked, with nothing to say why
+            if (k === 'w' && RT.lastW && performance.now() - RT.lastW < FLY_TAP) { RT.sprint = true; RT.lastW = 0; }
+            else if (k === 'w') RT.lastW = performance.now();
             // every other action key is gated; this one wasn't, so idly double-tapping
             // Space with a screen up toggled flight behind it
             if (k === ' ' && mayFly() && !RT.panel && !RT.paused && !RT.dead) {
@@ -6728,6 +8998,7 @@
         }, { passive: false });
         // menu buttons
         root.querySelector('.mc-resume').addEventListener('click', function () { audioInit(); hidePause(); lockCursor(); });
+        root.querySelector('.mc-totitle').addEventListener('click', function () { audioInit(); mnToTitle(); });
         root.querySelector('.mc-achbtn').addEventListener('click', function () {
             var a = root.querySelector('.mc-achs');
             a.style.display = a.style.display === 'none' ? '' : 'none';
@@ -6823,7 +9094,7 @@
         if (onReady.length) RT.onReady = function () { for (var i = 0; i < onReady.length; i++) onReady[i](); };
         window.__mc = {
             step: function (ms) { frame((RT.lastT || performance.now()) + (ms || 16.7)); },
-            dbg: function () { return { target: RT.target, digT: RT.digT, digNeed: RT.digNeed, mouseL: RT.mouse.l, paused: RT.paused, panel: !!RT.panel, dead: RT.dead, yaw: S.yaw, pitch: S.pitch }; },
+            dbg: function () { return { target: RT.target, digT: RT.digT, digNeed: RT.digNeed, mouseL: RT.mouse.l, paused: RT.paused, panel: !!RT.panel, dead: RT.dead, yaw: S.yaw, pitch: S.pitch, sprint: RT.sprint, fly: RT.fly, fovM: RT.fovM, parts: RT.parts.length }; },
             state: function () {
                 return { ready: RT.ready, px: S.px, py: S.py, pz: S.pz, chunks: RT.ckeys.length,
                     foes: RT.foes.length, drops: RT.drops.length, orbs: RT.orbs.length, hp: S.hp, food: S.food,
@@ -6973,7 +9244,8 @@
     /* ── lifecycle + export ─────────────────────────────────── */
     function close() {
         if (!RT) return 0;
-        var hrs = RT.playT / 3600;
+        // every world played this session, not just the one open when it closed
+        var hrs = ((RT.bankT || 0) + RT.playT) / 3600;
         if (RT.panel) closePanel(true);   // fold cursor + crafting-grid items back before the save (else they vanish)
         sSave();
         cancelAnimationFrame(RT.raf);
@@ -7013,6 +9285,19 @@
         },
         ach: achOut,
         steamAch: achOut,
+        // the font specimen in .claude/comp-tools/mc-menu.html measures these
+        // read-only introspection for .claude/comp-tools: the harnesses DRIVE the
+        // real controls and only ever use this to see what happened afterwards
+        __proof: { text: mfText, adv: mfAdvance, width: mfWidth, logo: mnLogo,
+            probe: function (x, y, z) { return getB(x, y, z); },
+            save: function () { return S ? { seed: S.seed, wtype: S.wtype, py: S.py, gm: S.gm, diff: S.diff, wid: S.wid, cheats: S.cheats } : null; },
+            menu: function () {
+                var m = RT && RT.menu;
+                if (!m) return null;
+                return { scr: m.scr, sel: m.d.sel, msel: m.d.msel, mx: m.mx, scale: m.scale, sig: m.sig,
+                    hover: m.hover, focus: m.focus, prev: m.prev.slice(),
+                    w: m.widgets.map(function (b) { return b.id + ':' + (b.enabled ? '' : 'off') + (b.st || 0); }) };
+            } },
         hours: function () { var s = S || sLoad(); return s ? (s.hrs || 0) : 0; }
     };
 })();
