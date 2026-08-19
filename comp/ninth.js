@@ -920,6 +920,12 @@ function render() {
         // bottom: breath, the two slotted words, the stanza bar
         '<div class="nn-hud">' +
           '<div class="nn-left">' +
+            /* The player's health had no readout at all: the only thing that
+               ever said you were being hurt was a red wash over the whole
+               canvas, and the only thing that said how close you were to the
+               floor was nothing. Same three elements as the breath gauge so
+               the pair reads as one instrument. */
+            '<div class="nn-life"><i></i><em></em><span class="nn-life-t"></span></div>' +
             '<div class="nn-breath"><i></i><em></em><span class="nn-breath-t"></span></div>' +
             '<div class="nn-echo"><i></i><span>ECHO</span></div>' +
           '</div>' +
@@ -11631,24 +11637,57 @@ function drawFproj(cx) {
 function drawBossBar(cx) {
     var b = null; RT.foes.forEach(function (f) { if (f.def.boss && !f.dead) b = f; });
     if (!b) return;
-    var w = 520, x = (VW - w) / 2, y = 26;
-    cx.fillStyle = 'rgba(8,6,14,.8)'; cx.fillRect(x - 3, y - 3, w + 6, 20);
-    cx.fillStyle = '#1a1520'; cx.fillRect(x, y, w, 14);
-    cx.fillStyle = '#8f86a8'; cx.fillRect(x, y, w * clamp(b.hp / b.hpm, 0, 1), 14);
-    cx.textAlign = 'center'; cx.font = '11px "Press Start 2P", monospace';
-    cx.fillStyle = '#e8e2ee'; cx.fillText(b.def.n, VW / 2, y - 8);
-    if (b.warn) { cx.fillStyle = '#ffd06a'; cx.font = '9px "Press Start 2P", monospace'; cx.fillText('PULSE INCOMING — SPEND YOUR STACKS', VW / 2, y + 30); }
-    cx.textAlign = 'left';
+    /* The Chorus is the only boss in the game and it used to get a grey
+       progress bar. It gets the same gauge the player's own two do now:
+       a name plate cut into the left of it, a notched fill, and a warning
+       that is a lit plate rather than a line of loose orange text. */
+    var w = 560, h = 24, x = Math.round((VW - w) / 2), y = 30, cap = 116;
+    uiSheet(cx, x, y, w, h, { rule: '#5a2f34', face: '#0b0711', orn: '#c86a6a', drop: 4 });
+    var ix = x + 3, iy = y + 3, iw = w - 6, ih = h - 6;
+    cx.fillStyle = '#1d1424'; cx.fillRect(ix + cap, iy, iw - cap, ih);
+    var k = clamp(b.hp / b.hpm, 0, 1), fw = Math.round((iw - cap) * k);
+    var g = cx.createLinearGradient(0, iy, 0, iy + ih);
+    g.addColorStop(0, '#e6d8ff'); g.addColorStop(0.16, '#9a86d8');
+    g.addColorStop(0.6, '#5a4a8c'); g.addColorStop(1, '#2c2350');
+    cx.fillStyle = g; cx.fillRect(ix + cap, iy, fw, ih);
+    // the notches, so it reads as a gauge rather than as a slab
+    cx.fillStyle = 'rgba(0,0,0,.55)';
+    for (var n = ix + cap + 14; n < ix + iw; n += 16) cx.fillRect(n, iy, 2, ih);
+    // the name plate
+    cx.fillStyle = '#241a2e'; cx.fillRect(ix, iy, cap, ih);
+    cx.fillStyle = UI_KEY; cx.fillRect(ix + cap - 2, iy, 2, ih);
+    cx.fillStyle = 'rgba(255,255,255,.07)'; cx.fillRect(ix, iy, cap, 2);
+    cx.save(); cx.textBaseline = 'alphabetic';
+    cx.font = '8px "Press Start 2P", monospace'; cx.fillStyle = '#e6d8ff';
+    cx.fillText(String(b.def.n).toUpperCase().slice(0, 13), ix + 9, iy + 12);
+    cx.textAlign = 'right'; cx.fillStyle = '#f2ecff';
+    cx.fillText(Math.max(0, Math.ceil(b.hp)) + '', ix + iw - 9, iy + 12);
+    if (b.warn) {
+        var ww = 396, wx = Math.round((VW - ww) / 2), wy = y + h + 12;
+        uiSheet(cx, wx, wy, ww, 26, { rule: '#7a5a1c', face: '#2a1c06', orn: '#ffd06a', drop: 4 });
+        cx.textAlign = 'center'; cx.font = '8px "Press Start 2P", monospace';
+        cx.fillStyle = '#ffd06a';
+        cx.fillText('PULSE INCOMING. SPEND YOUR STACKS.', VW / 2, wy + 17);
+    }
+    cx.restore(); cx.textAlign = 'left';
 }
 function drawToasts(cx) {
     for (var i = 0; i < RT.toasts.length; i++) {
-        var a = RT.toasts[i], y = 70 + i * 42;
+        var a = RT.toasts[i], y = 72 + i * 52;
         var k = clamp(Math.min(a.t, 3.4 - a.t) / 0.35, 0, 1);
         cx.save(); cx.globalAlpha = k;
-        cx.fillStyle = 'rgba(10,8,16,.92)'; cx.fillRect(VW - 288, y, 268, 36);
-        cx.fillStyle = '#c9a94a'; cx.fillRect(VW - 288, y, 3, 36);
-        cx.font = '12px "Pixelify Sans"'; cx.fillStyle = '#ffe66e'; cx.fillText('★ ' + a.n, VW - 276, y + 15);
-        cx.font = '10px "Pixelify Sans"'; cx.fillStyle = '#9a93a8'; cx.fillText(a.d.slice(0, 42), VW - 276, y + 28);
+        /* It slides in from the trim rather than fading in place, and it
+           is a sheet like everything else. The slide is 8 whole pixels in
+           4 steps so it never lands between two of them. */
+        cx.translate(Math.round((1 - k) * 3) * 4, 0);
+        var x = VW - 306, w = 286, h = 44, tx = x + 32, tw = w - 44;
+        uiSheet(cx, x, y, w, h, { rule: '#6d5a2c', face: '#120d19', drop: 5 });
+        uiDiamond(cx, x + 17, y + 22, 5, '#ffe66e');
+        cx.textBaseline = 'alphabetic';
+        cx.font = '8px "Press Start 2P", monospace'; cx.fillStyle = '#ffe66e';
+        cx.fillText(uiFit(cx, String(a.n).toUpperCase(), tw), tx, y + 19);
+        cx.font = '13px "Pixelify Sans"'; cx.fillStyle = '#a99c8a';
+        cx.fillText(uiFit(cx, a.d, tw), tx, y + 34);
         cx.restore();
     }
 }
@@ -12356,6 +12395,14 @@ function updateLine() {
 function updateHud(dt) {
     if (!RT) return;
     var st = stats(), r = RT.root;
+    var lf = r.querySelector('.nn-life');
+    if (lf) {
+        var lk = clamp(RT.hp / (RT.hpm || 1), 0, 1);
+        lf.querySelector('i').style.width = (lk * 100) + '%';
+        lf.classList.toggle('low', lk <= 0.34);
+        lf.querySelector('.nn-life-t').textContent =
+            Math.max(0, Math.ceil(RT.hp)) + ' / ' + Math.round(RT.hpm);
+    }
     var bf = clamp(RT.breath / st.breathMax, 0, 1);
     var br = r.querySelector('.nn-breath');
     br.querySelector('i').style.width = (bf * 100) + '%';
@@ -12376,6 +12423,11 @@ function updateHud(dt) {
     vs.classList.toggle('lit', !!S.verse);
     vs.disabled = !S.verse;
     var cn = r.querySelector('.nn-coin-n'); if (cn.textContent !== String(S.coin)) cn.textContent = S.coin;
+    /* The map is painted on the canvas and the narration is a DOM sibling
+       above it, so the chart used to open with two lines of story printed
+       across the middle of it. One class, set where every other per-frame
+       HUD state is set. */
+    if (r._map !== !!RT.mapOpen) { r._map = !!RT.mapOpen; r.classList.toggle('nn-map', !!RT.mapOpen); }
     var sn = r.querySelector('.nn-scene-n');
     if (sn._s !== RT.place) { sn._s = RT.place; sn.textContent = place().n; r.querySelector('.nn-scene-s').textContent = place().sub || ''; }
 }
@@ -16041,13 +16093,90 @@ function drawTalkMarks(cx) {
 function drawPrompt(cx) {
     var o = RT.prompt; if (!o || RT.dialog) return;
     var sx = isoX(o.x, o.y), sy = isoYA(o.x, o.y);
-    var txt = (o.shut ? '' : 'E — ') + o.label;
-    cx.save(); cx.textAlign = 'center'; cx.font = '11px "Pixelify Sans"';
-    var w = cx.measureText(txt).width + 16;
-    cx.fillStyle = 'rgba(8,6,14,.86)'; cx.fillRect(sx - w / 2, sy - 74, w, 19);
-    cx.fillStyle = o.shut ? '#6a6278' : '#c9a94a'; cx.fillRect(sx - w / 2, sy - 74, 2, 19);
-    cx.fillStyle = o.shut ? '#8a8296' : '#f0e9df';
-    cx.fillText(txt, sx, sy - 61); cx.restore(); cx.textAlign = 'left';
+    /* The key is a key now: a cap you can see is a cap, rather than the
+       letter E and an em dash inside the sentence. A shut exit gets no
+       cap at all, which is the whole of what shut means. */
+    var open = !o.shut, txt = o.label;
+    cx.save(); cx.font = '12px "Pixelify Sans"';
+    var tw = Math.round(cx.measureText(txt).width);
+    var kw = open ? 26 : 0;
+    var w = tw + kw + 26, h = 28, x = Math.round(sx - w / 2), y = Math.round(sy - 84);
+    uiSheet(cx, x, y, w, h, { rule: open ? '#6d5a2c' : '#2b2436', face: '#0e0a15',
+                              orn: open ? '#c9a94a' : '#3d3750', drop: 4 });
+    if (open) uiKey(cx, 'E', x + 10, y + 5, { w: 18, h: 18 });
+    cx.fillStyle = open ? '#ece2cc' : '#8a8296';
+    cx.textBaseline = 'alphabetic';
+    cx.fillText(txt, x + 13 + kw, y + 19);
+    cx.restore(); cx.textAlign = 'left';
+}
+
+/* ═══════════════ CANVAS CHROME ═══════════════
+   Four pieces of interface are painted on the canvas rather than built in
+   the DOM: the interact prompt, the achievement toasts, the Chorus's bar
+   and the map. They were flat rgba rectangles with a 2px bar down one
+   side, which is the same idiom the narration used in CSS, and it is the
+   idiom the restyle exists to replace. These three helpers draw the same
+   pressed frame the sheets do, in flat rects, so the canvas half of the
+   UI and the DOM half are made of the same thing.
+
+   Everything here is integer rects and no blur. cx is in screen space:
+   call these AFTER the world transforms have closed. */
+var UI_KEY = '#05040a';
+
+/* the pressed frame. Same construction as the CSS: a hard drop, a black
+   keyline, a rule in the sheet's own ink, the face, and 2px of light
+   along the top edge because the lamp in this game is always above. */
+function uiSheet(cx, x, y, w, h, o) {
+    o = o || {};
+    x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
+    var rule = o.rule || '#6d5a2c', face = o.face || '#100b16', drop = o.drop == null ? 5 : o.drop;
+    if (drop) { cx.fillStyle = 'rgba(0,0,0,.55)'; cx.fillRect(x + drop, y + drop, w, h); }
+    cx.fillStyle = UI_KEY; cx.fillRect(x - 2, y - 2, w + 4, h + 4);
+    cx.fillStyle = rule;  cx.fillRect(x, y, w, h);
+    cx.fillStyle = face;  cx.fillRect(x + 3, y + 3, w - 6, h - 6);
+    cx.fillStyle = 'rgba(255,255,255,.055)'; cx.fillRect(x + 3, y + 3, w - 6, 2);
+    cx.fillStyle = 'rgba(0,0,0,.45)';        cx.fillRect(x + 3, y + h - 5, w - 6, 2);
+    if (o.nails !== false) uiNails(cx, x, y, w, h, o.orn || '#c9a94a');
+}
+/* the corner hardware. Eleven pixels each way, three thick, on the rule
+   itself rather than inside it, which is where a nail goes. */
+function uiNails(cx, x, y, w, h, col) {
+    cx.fillStyle = col;
+    var L = 11, T = 3;
+    cx.fillRect(x, y, L, T);                 cx.fillRect(x, y, T, L);
+    cx.fillRect(x + w - L, y, L, T);         cx.fillRect(x + w - T, y, T, L);
+    cx.fillRect(x, y + h - T, L, T);         cx.fillRect(x, y + h - L, T, L);
+    cx.fillRect(x + w - L, y + h - T, L, T); cx.fillRect(x + w - T, y + h - L, T, L);
+}
+/* the diamond. The game's ornament: the mark on the ballad's broken rule,
+   and now the mark for anything that is the one you want. */
+function uiDiamond(cx, x, y, r, col) {
+    cx.save(); cx.translate(Math.round(x), Math.round(y)); cx.rotate(Math.PI / 4);
+    cx.fillStyle = col; cx.fillRect(-r, -r, r * 2, r * 2); cx.restore();
+}
+/* cut a string to a real measured width rather than to a character count.
+   slice(0, 40) is a guess that is wrong twice: it clips a short line that
+   would have fitted and it overruns a long one, and the toasts overran. */
+function uiFit(cx, txt, w) {
+    if (cx.measureText(txt).width <= w) return txt;
+    var t = txt;
+    while (t.length > 1 && cx.measureText(t + '\u2026').width > w) t = t.slice(0, -1);
+    return t.replace(/[ ,.]+$/, '') + '\u2026';
+}
+/* a keycap, for the letter you actually press */
+function uiKey(cx, ch, x, y, o) {
+    o = o || {};
+    var w = o.w || 18, h = o.h || 18;
+    x = Math.round(x); y = Math.round(y);
+    cx.fillStyle = UI_KEY; cx.fillRect(x, y + 3, w, h);
+    cx.fillStyle = o.face || '#c9a94a'; cx.fillRect(x, y, w, h);
+    cx.fillStyle = 'rgba(255,255,255,.35)'; cx.fillRect(x + 2, y + 2, w - 4, 2);
+    cx.fillStyle = 'rgba(0,0,0,.35)'; cx.fillRect(x + 2, y + h - 4, w - 4, 2);
+    cx.save(); cx.textAlign = 'center'; cx.textBaseline = 'alphabetic';
+    cx.font = '8px "Press Start 2P", monospace';
+    cx.fillStyle = o.ink || '#17100a';
+    cx.fillText(ch, x + w / 2, y + h / 2 + 4);
+    cx.restore(); cx.textAlign = 'left';
 }
 
 /* ─────────────── the map ───────────────
@@ -16116,12 +16245,48 @@ function buildMap() {
     return pos;
 }
 var MAP_POS = buildMap();
+/* the sheet the map is printed on. Fixed, so the composition does not
+   move about as you discover places; the graph is centred inside it. */
+var MAP_SH = { x: 0, y: 46, w: 0, h: 468, band: 46 };
+function mapSheet() {
+    MAP_SH.w = Math.min(VW - 96, 780);
+    MAP_SH.x = Math.round((VW - MAP_SH.w) / 2);
+    return MAP_SH;
+}
+/* the sheet, drawn once the graph's own size is known so an early save
+   gets a small chart with one town on it rather than a big empty frame */
+function mapDrawSheet(cx, gw, gh) {
+    var SH = MAP_SH;
+    SH.w = clamp(Math.round(gw) + 200, 470, Math.min(VW - 100, 780));
+    SH.h = clamp(Math.round(gh) + SH.band + 150, 260, 428);
+    SH.x = Math.round((VW - SH.w) / 2);
+    SH.y = Math.round(38 + (392 - SH.h) / 2);
+    uiSheet(cx, SH.x, SH.y, SH.w, SH.h, { rule: '#6d5a2c', face: '#0f0a16', drop: 7 });
+    // the head band, and the triple rule a bill puts under a heading
+    cx.fillStyle = '#241a30'; cx.fillRect(SH.x + 3, SH.y + 3, SH.w - 6, SH.band - 3);
+    cx.fillStyle = 'rgba(255,255,255,.07)'; cx.fillRect(SH.x + 3, SH.y + 3, SH.w - 6, 2);
+    cx.fillStyle = '#6d5a2c'; cx.fillRect(SH.x + 3, SH.y + SH.band, SH.w - 6, 3);
+    cx.fillStyle = UI_KEY;   cx.fillRect(SH.x + 3, SH.y + SH.band + 3, SH.w - 6, 3);
+    cx.fillStyle = 'rgba(201,169,74,.22)'; cx.fillRect(SH.x + 3, SH.y + SH.band + 6, SH.w - 6, 3);
+    cx.save();
+    cx.textAlign = 'center'; cx.textBaseline = 'alphabetic';
+    cx.fillStyle = '#ffe66e'; cx.font = '16px "Press Start 2P", monospace';
+    var TT = 'WHERE YOU HAVE BEEN', tty = SH.y + 32;
+    cx.fillText(TT, VW / 2, tty);
+    var thw = cx.measureText(TT).width / 2;
+    uiDiamond(cx, VW / 2 - thw - 18, tty - 6, 4, '#c9a94a');
+    uiDiamond(cx, VW / 2 + thw + 18, tty - 6, 4, '#c9a94a');
+    cx.restore();
+    return SH;
+}
 function drawMap(cx) {
     if (!RT.mapOpen) return;
-    cx.fillStyle = 'rgba(6,4,10,.9)'; cx.fillRect(0, 0, VW, VH);
-    cx.textAlign = 'center';
-    cx.fillStyle = '#d8cfa8'; cx.font = '16px "Press Start 2P", monospace';
-    cx.fillText('WHERE YOU HAVE BEEN', VW / 2, 70);
+    /* A flat wash, not a dither: the world under this is already near
+       black and .screen::after multiplies a scanline over the whole game,
+       so a checker on top of it reads as a broken render. */
+    cx.fillStyle = 'rgba(5,4,9,.93)'; cx.fillRect(0, 0, VW, VH);
+    cx.textAlign = 'center'; cx.textBaseline = 'alphabetic';
+    var SH = MAP_SH;
     /* What the map is allowed to show is what you have been to, plus the
        far end of any road out of one of those. That is the same rule the
        link pass already used for the dashed roads; the node pass had no
@@ -16148,33 +16313,49 @@ function drawMap(cx) {
         hi[0] = Math.max(hi[0], m[0]); hi[1] = Math.max(hi[1], m[1]);
     });
     if (!any) {                                  // nowhere known yet: say so rather than drawing an empty grid
-        cx.fillStyle = '#6a6278'; cx.font = '10px "Pixelify Sans"';
-        cx.fillText('Nowhere yet.', VW / 2, VH / 2);
-        cx.fillText('M to close', VW / 2, 96);
+        SH = mapDrawSheet(cx, 0, 0);
+        cx.fillStyle = '#a99c8a'; cx.font = '20px "VT323", monospace';
+        cx.fillText('Nowhere yet.', VW / 2, SH.y + SH.band + (SH.h - SH.band) / 2);
+        mapFoot(cx, SH);
         cx.textAlign = 'left';
         return;
     }
     var spanX = hi[0] - lo[0], spanY = hi[1] - lo[1];
-    var cell = Math.min(100, Math.floor(Math.min(spanX ? 620 / spanX : 100, spanY ? 330 / spanY : 100)));
+    var cell = Math.min(100, Math.floor(Math.min(spanX ? 560 / spanX : 100, spanY ? 230 / spanY : 100)));
     cell = Math.max(46, cell);
-    var ox = VW / 2 - (lo[0] + spanX / 2) * cell, oy = 150 + 130 - (lo[1] + spanY / 2) * cell;
-    // links first
-    cx.lineWidth = 2;
+    /* The sheet is cut to the chart, and the chart is centred in what is
+       left under the head band. An early save gets a small sheet with one
+       town on it rather than a big empty frame; the sheet grows with the
+       world, which is the only thing on this screen that is a reward. */
+    SH = mapDrawSheet(cx, spanX * cell, spanY * cell);
+    var bodyTop = SH.y + SH.band + 12, bodyH = SH.h - SH.band - 12 - 40;
+    var ox = VW / 2 - (lo[0] + spanX / 2) * cell;
+    var oy = bodyTop + bodyH / 2 - (lo[1] + spanY / 2) * cell;
+    // links first. A road you have walked is a ruled line; one you have
+    // only heard of is a row of dots, which is how a chart marks a route
+    // somebody told you about rather than one anybody surveyed.
+    cx.lineWidth = 3;
     PLACE_IDS.forEach(function (id) {
         if (!MAP_POS[id] || !S.seen['been_' + id] || MAP_HIDE[id]) return;
         (PLACES[id].exits || []).forEach(function (e) {
             if (!MAP_POS[e.to] || MAP_HIDE[e.to]) return;
-            // a road you have walked is solid; one you have only heard of is dashed
             var known = S.seen['been_' + e.to];
-            cx.strokeStyle = known ? 'rgba(140,130,160,.4)' : 'rgba(120,110,145,.18)';
-            cx.setLineDash(known ? [] : [4, 6]);
-            cx.beginPath();
-            cx.moveTo(ox + MAP_POS[id][0] * cell, oy + MAP_POS[id][1] * cell);
-            cx.lineTo(ox + MAP_POS[e.to][0] * cell, oy + MAP_POS[e.to][1] * cell);
-            cx.stroke();
+            var x0 = ox + MAP_POS[id][0] * cell, y0 = oy + MAP_POS[id][1] * cell;
+            var x1 = ox + MAP_POS[e.to][0] * cell, y1 = oy + MAP_POS[e.to][1] * cell;
+            if (known) {
+                cx.strokeStyle = 'rgba(169,156,138,.44)';
+                cx.beginPath(); cx.moveTo(Math.round(x0) + .5, Math.round(y0) + .5);
+                cx.lineTo(Math.round(x1) + .5, Math.round(y1) + .5); cx.stroke();
+            } else {
+                var d = Math.hypot(x1 - x0, y1 - y0), steps = Math.max(1, Math.round(d / 9));
+                cx.fillStyle = 'rgba(140,128,160,.34)';
+                for (var t = 1; t < steps; t++) {
+                    cx.fillRect(Math.round(x0 + (x1 - x0) * t / steps) - 1,
+                                Math.round(y0 + (y1 - y0) * t / steps) - 1, 3, 3);
+                }
+            }
         });
     });
-    cx.setLineDash([]);
     /* You are somewhere even when the place you are in is hidden. Act 3's
        square is the same square, and without this the whole final act
        drew with no gold node anywhere, on the one screen whose only job
@@ -16186,21 +16367,89 @@ function drawMap(cx) {
         // a room off a place you can already see is a door, not a settlement.
         // Drawn small and unlabelled, the main road reads as the road again.
         var room = !!PLACES[id].indoor;
-        var x = ox + m[0] * cell, y = oy + m[1] * cell;
-        cx.fillStyle = here ? '#c9a94a' : seen ? '#3d3350' : '#1a1620';
-        cx.beginPath(); cx.arc(x, y, here ? 12 : room ? 5 : 9, 0, TAU); cx.fill();
-        cx.strokeStyle = here ? '#ffe66e' : seen ? '#6a5f82' : '#241f2e'; cx.lineWidth = 2; cx.stroke();
+        var x = Math.round(ox + m[0] * cell), y = Math.round(oy + m[1] * cell);
+        /* Three marks, and they are shapes rather than three greys: where
+           you are is the game's diamond, lit; a place you have walked is a
+           filled square; one you have only heard of is an empty one. Under
+           the desktop's multiply layer a difference of tone is not a
+           difference, and a shape is. */
+        if (here) {
+            uiDiamond(cx, x, y, 11, '#5a4212');
+            uiDiamond(cx, x, y, 8, '#ffe66e');
+            uiDiamond(cx, x, y, 3, '#2a1e04');
+        } else if (room) {
+            var rr = seen ? 4 : 3;
+            cx.fillStyle = UI_KEY; cx.fillRect(x - rr - 2, y - rr - 2, rr * 2 + 4, rr * 2 + 4);
+            cx.fillStyle = seen ? '#8a8296' : '#2b2436';
+            cx.fillRect(x - rr, y - rr, rr * 2, rr * 2);
+        } else {
+            var q = 8;
+            cx.fillStyle = UI_KEY; cx.fillRect(x - q - 2, y - q - 2, q * 2 + 4, q * 2 + 4);
+            if (seen) {
+                cx.fillStyle = '#6d5a2c'; cx.fillRect(x - q, y - q, q * 2, q * 2);
+                cx.fillStyle = '#c9a94a'; cx.fillRect(x - q + 2, y - q + 2, q * 2 - 4, q * 2 - 4);
+                cx.fillStyle = '#3a2c0e'; cx.fillRect(x - 2, y - 2, 4, 4);
+            } else {
+                cx.fillStyle = '#2b2436'; cx.fillRect(x - q, y - q, q * 2, q * 2);
+                cx.fillStyle = '#0f0a16'; cx.fillRect(x - q + 3, y - q + 3, q * 2 - 6, q * 2 - 6);
+            }
+        }
         if (room && !here) return;
-        cx.fillStyle = seen ? (here ? '#ffe66e' : '#b9b0c6') : '#3a3446';
-        cx.font = '10px "Pixelify Sans"';
-        cx.fillText(seen ? PLACES[id].n.split('—')[0].trim() : '?', x, y + 26);
+        var nm = seen ? PLACES[id].n.split('\u2014')[0].trim() : '?';
+        mapLabel(cx, nm, x, y + 30, cell - 6,
+                 here ? '#ffe66e' : seen ? '#ece2cc' : '#56506a');
     });
-    // under the title, not at VH-40: the HUD is a DOM sibling above the
-    // canvas, so the dim never reaches it and the hint used to sit lit
-    // between the word chips and the rhyme keys
-    cx.fillStyle = '#6a6278'; cx.font = '10px "Pixelify Sans"';
-    cx.fillText('M to close', VW / 2, 96);
+    mapFoot(cx, SH);
     cx.textAlign = 'left';
+}
+/* A place name is a whole phrase and the cells are 46 to 100 wide, so
+   "The lane out of Wick" used to print straight through "Grelling". It
+   wraps to at most two lines inside its own cell now, and anything that
+   still will not fit loses its article rather than its meaning. */
+function mapLabel(cx, txt, x, y, maxw, col) {
+    cx.font = '13px "Pixelify Sans"';
+    var lines;
+    if (cx.measureText(txt).width <= maxw) lines = [txt];
+    else {
+        // a chart drops the article before it drops a word
+        var t2 = txt.replace(/^(The|A) /, '');
+        if (cx.measureText(t2).width <= maxw) lines = [t2];
+        else {
+            var words = t2.split(' '), cur = words.shift();
+            lines = [];
+            while (words.length) {
+                var t = cur + ' ' + words[0];
+                if (cx.measureText(t).width > maxw && lines.length === 0) { lines.push(cur); cur = words.shift(); }
+                else { cur = t; words.shift(); }
+            }
+            lines.push(cur);            // the tail runs long rather than going missing
+        }
+    }
+    for (var j = 0; j < lines.length && j < 2; j++) {
+        cx.fillStyle = '#05040a'; cx.fillText(lines[j], x + 1, y + j * 15 + 1);
+        cx.fillStyle = col;       cx.fillText(lines[j], x, y + j * 15);
+    }
+}
+/* the key, at the foot of the sheet: what the three marks mean, and the
+   key you press to put it away. Inside the frame, because the HUD is a
+   DOM sibling above the canvas and anything at VH-40 sits under it. */
+function mapFoot(cx, SH) {
+    var y = SH.y + SH.h - 26, x0 = SH.x + 22;
+    cx.fillStyle = '#6d5a2c'; cx.fillRect(SH.x + 3, y - 15, SH.w - 6, 1);
+    cx.save(); cx.textAlign = 'left'; cx.font = '13px "Pixelify Sans"';
+    uiDiamond(cx, x0, y - 4, 5, '#ffe66e');
+    cx.fillStyle = '#a99c8a'; cx.fillText('here', x0 + 12, y);
+    var x1 = x0 + 70;
+    cx.fillStyle = '#c9a94a'; cx.fillRect(x1 - 5, y - 9, 10, 10);
+    cx.fillStyle = '#a99c8a'; cx.fillText('walked', x1 + 12, y);
+    var x2 = x1 + 92;
+    cx.fillStyle = '#2b2436'; cx.fillRect(x2 - 5, y - 9, 10, 10);
+    cx.fillStyle = '#0f0a16'; cx.fillRect(x2 - 3, y - 7, 6, 6);
+    cx.fillStyle = '#a99c8a'; cx.fillText('heard of', x2 + 12, y);
+    cx.textAlign = 'right';
+    cx.font = '8px "Press Start 2P", monospace'; cx.fillStyle = '#6c6478';
+    cx.fillText('M TO CLOSE', SH.x + SH.w - 22, y - 2);
+    cx.restore();
 }
 
 /* ─────────────── capture harness ───────────────
