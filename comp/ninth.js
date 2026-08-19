@@ -16509,7 +16509,14 @@ function devDemo() {
         var A3FR = { cue: 400, hal: 780, verse: 120, crowd: 90 };
         for (var b3 = 0; b3 < (+q.na3fr || A3FR[q.na3] || 90); b3++) { step(1 / 60); draw(1 / 60); }
     }
-    if (q.nmap) RT.mapOpen = true;
+    if (q.nmap) {
+        RT.mapOpen = true;
+        /* .nn-map is set in updateHud, and nothing calls updateHud after
+           this line: in a live browser rAF picks it up on the next frame,
+           but the headless harness has no rAF and captured the chart with
+           two lines of narration printed across the middle of it. */
+        updateHud(0);
+    }
     /* npoem: say a stanza's worth of words and close it, so the book page and
        the readback can be captured. The poem is the one built thing that a
        screenshot could not reach: it only exists after a fight, and devDemo
@@ -16613,6 +16620,68 @@ onPlaceChange(function () {
    once a real gesture has started the context, so the gotoPlace
    inside init() cannot fire this on first load. */
 onPlaceChange(function () { if (RT && RT.audio && RT.audio.ready) sfx('travel'); });
+
+/* ═══════════════ THE PRINTED NOTE ═══════════════
+   Four controls carried a `title` attribute, which meant the game's only
+   hover help was an operating system tooltip: a white box in the host
+   OS's own font, on a delay the game does not control, over a pixel
+   canvas. It was the last piece of literal browser chrome left in here.
+
+   render() has emitted an empty `.nn-tip` since the file was written and
+   nothing ever put anything in it. This is that.
+
+   Delegated on the root rather than bound per element, because .nn-rh is
+   built from innerHTML by updateLine on the first frame and .nn-lw is
+   rebuilt from innerHTML every time the line changes: anything bound
+   directly to them is thrown away. The title is moved to data-tip the
+   first time the pointer touches the element, which is also what stops
+   the OS tooltip from firing. */
+function tipEl() { return RT && RT.root ? RT.root.querySelector('.nn-tip') : null; }
+function hideTip() { var t = tipEl(); if (t) t.hidden = true; }
+function showTip(el) {
+    var t = tipEl(); if (!t || !el) return;
+    var txt = el.getAttribute('data-tip');
+    if (txt == null) {
+        txt = el.getAttribute('title') || '';
+        if (!txt) return;
+        el.setAttribute('data-tip', txt);
+        el.removeAttribute('title');            // and the OS one never opens again
+    }
+    if (!txt) return;
+    /* the game writes these as "head · body", which is the same middle dot
+       it sets every other pair of facts in */
+    var cut = txt.indexOf(' \u00b7 ');
+    t.innerHTML = cut > 0
+        ? '<b>' + esc(txt.slice(0, cut)) + '</b>' + esc(txt.slice(cut + 3))
+        : esc(txt);
+    t.hidden = false;
+    // measured after it is on, and clamped inside the stage
+    var r = el.getBoundingClientRect(), h = RT.root.getBoundingClientRect();
+    var w = t.offsetWidth, hh = t.offsetHeight;
+    var x = r.left - h.left + r.width / 2 - w / 2;
+    var y = r.top - h.top - hh - 9;
+    if (y < 6) y = r.bottom - h.top + 9;        // no room above: go under it
+    t.style.left = Math.round(clamp(x, 6, Math.max(6, h.width - w - 6))) + 'px';
+    t.style.top = Math.round(clamp(y, 6, Math.max(6, h.height - hh - 6))) + 'px';
+}
+function wireTips(root) {
+    if (!RT || RT.tipsWired) return;
+    RT.tipsWired = 1;
+    root.addEventListener('mouseover', function (e) {
+        if (!RT) return;
+        var el = e.target.closest ? e.target.closest('[title], [data-tip]') : null;
+        if (!el || !root.contains(el)) return hideTip();
+        showTip(el);
+    });
+    root.addEventListener('mouseout', function (e) {
+        if (!RT) return;
+        var el = e.target.closest ? e.target.closest('[title], [data-tip]') : null;
+        if (el) hideTip();
+    });
+    // anything that takes the interface away takes the note with it
+    root.addEventListener('mousedown', hideTip);
+    root.addEventListener('mouseleave', hideTip);
+}
 
 /* ═══════════════ THE WINGS ═══════════════
    Escape steps you off the stage.
@@ -17058,6 +17127,7 @@ function wireWings() {
 onPlaceChange(function () {
     if (!RT) return;
     wireWings();
+    wireTips(RT.root);
     applyBigText();
     // gotoPlace has just cleared RT.timers, which is how walking through a
     // doorway cancels the Verse. Anything of it parked here goes with them.

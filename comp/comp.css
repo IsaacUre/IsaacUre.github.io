@@ -4720,43 +4720,6 @@ button.nn-drow b + i { display: inline-block; margin-left: 10px; }
         repeating-linear-gradient(0deg,  rgba(0,0,0,.16)        0 1px, transparent 1px 6px);
 }
 
-/* ── 4. THERE IS MORE BELOW ──
-   Headless Chromium and several real setups paint an overlay scrollbar
-   with zero width, so the styled 12px one above is a bonus and cannot be
-   the affordance. A rule appears at whichever edge of the scroll box has
-   more page past it, and goes when there is not: two background layers
-   attached `local` (they move with the content, so they cover the mark at
-   the end of the travel) over two attached `scroll` (they do not). */
-.nn-pb, .nn-dev-body, .nn-wings-pg {
-    background-image:
-        linear-gradient(180deg, #0d0a14 0 7px, transparent 7px),
-        linear-gradient(0deg,   #0d0a14 0 7px, transparent 7px),
-        linear-gradient(180deg, rgba(201,169,74,.42) 0 3px, transparent 3px),
-        linear-gradient(0deg,   rgba(201,169,74,.42) 0 3px, transparent 3px);
-    background-repeat: no-repeat;
-    background-size: 100% 7px, 100% 7px, 100% 3px, 100% 3px;
-    background-position: top, bottom, top, bottom;
-    background-attachment: local, local, scroll, scroll;
-}
-/* the wings page has its ruled gutter in background-image already, so it
-   gets the same four layers stacked over the top of its own five */
-.nn-wings-pg {
-    background-image:
-        linear-gradient(180deg, #100b17 0 7px, transparent 7px),
-        linear-gradient(0deg,   #100b17 0 7px, transparent 7px),
-        linear-gradient(180deg, rgba(201,169,74,.42) 0 3px, transparent 3px),
-        linear-gradient(0deg,   rgba(201,169,74,.42) 0 3px, transparent 3px),
-        linear-gradient(90deg, transparent 84px, rgba(201,169,74,.10) 84px, rgba(201,169,74,.10) 85px, transparent 85px),
-        linear-gradient(90deg, transparent 95px, rgba(201,169,74,.34) 95px, rgba(201,169,74,.34) 98px, transparent 98px),
-        repeating-linear-gradient(90deg, rgba(255,255,255,.018) 0 2px, transparent 2px 4px),
-        repeating-linear-gradient(0deg,  rgba(0,0,0,.14)        0 1px, transparent 1px 6px),
-        linear-gradient(180deg, #161020, #0e0a14);
-    background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, repeat, repeat, repeat, repeat, repeat;
-    background-size: 100% 7px, 100% 7px, 100% 3px, 100% 3px, auto, auto, auto, auto, auto;
-    background-position: top, bottom, top, bottom, 0 0, 0 0, 0 0, 0 0, 0 0;
-    background-attachment: local, local, scroll, scroll, local, local, local, local, local;
-}
-
 /* ── 5. FOUR SHEETS OFF ONE PRESS, NOT FOUR COPIES OF ONE SHEET ──
    The frame stays identical on purpose: they are leaves of one book. What
    separates them is what a printer would have used, which is the rule
@@ -4811,4 +4774,186 @@ button.nn-drow b + i { display: inline-block; margin-left: 10px; }
 .nn-panel .nn-x:active, .nn-dev .nn-x:active {
     transform: translateY(3px);
     box-shadow: inset 0 2px 0 rgba(255,255,255,.16), inset 0 -2px 0 rgba(0,0,0,.5);
+}
+
+/* ── 9. THE PAGE IN THE FRAME ──
+   The "there is more below" mark only works if the layer that covers it
+   at the end of the travel is EXACTLY the colour behind it, and the
+   sheets paint a gradient, so it was covering a gradient with a flat.
+   Every scroll box gets its own flat ground and carries the paper tooth
+   itself, attached `scroll` so the tooth stays put while the page moves
+   under it. The sheet's gradient still shows in the head band and around
+   the trim, which is where it was doing the work anyway. */
+.nn-pb {
+    background-color: #0e0a15;
+    background-image:
+        linear-gradient(180deg, #0e0a15 0 8px, transparent 8px),
+        linear-gradient(0deg,   #0e0a15 0 8px, transparent 8px),
+        linear-gradient(180deg, rgba(201,169,74,.55) 0 3px, transparent 3px),
+        linear-gradient(0deg,   rgba(201,169,74,.55) 0 3px, transparent 3px),
+        repeating-linear-gradient(90deg, rgba(255,255,255,.020) 0 2px, transparent 2px 4px),
+        repeating-linear-gradient(0deg,  rgba(0,0,0,.16)        0 1px, transparent 1px 6px);
+    background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, repeat, repeat;
+    background-size: 100% 8px, 100% 8px, 100% 3px, 100% 3px, auto, auto;
+    background-position: top, bottom, top, bottom, 0 0, 0 0;
+    background-attachment: local, local, scroll, scroll, scroll, scroll;
+    margin: 0 6px 7px; padding: 6px 14px 14px;
+    box-shadow: inset 0 0 0 2px rgba(0,0,0,.6);
+}
+.nn-dev-body {
+    background-color: #0a1310;
+    background-image:
+        linear-gradient(180deg, #0a1310 0 8px, transparent 8px),
+        linear-gradient(0deg,   #0a1310 0 8px, transparent 8px),
+        linear-gradient(180deg, rgba(127,216,174,.4) 0 3px, transparent 3px),
+        linear-gradient(0deg,   rgba(127,216,174,.4) 0 3px, transparent 3px),
+        repeating-linear-gradient(90deg, rgba(255,255,255,.018) 0 2px, transparent 2px 4px),
+        repeating-linear-gradient(0deg,  rgba(0,0,0,.16)        0 1px, transparent 1px 6px);
+    background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, repeat, repeat;
+    background-size: 100% 8px, 100% 8px, 100% 3px, 100% 3px, auto, auto;
+    background-position: top, bottom, top, bottom, 0 0, 0 0;
+    background-attachment: local, local, scroll, scroll, scroll, scroll;
+    margin: 0 6px 6px; padding: 10px 12px 12px;
+    box-shadow: inset 0 0 0 2px rgba(0,0,0,.6);
+}
+/* the prompt copy's page keeps its two margin rules and drops the
+   gradient under them, for the same reason */
+.nn-wings-pg {
+    background-color: #100b17;
+    background-image:
+        linear-gradient(180deg, #100b17 0 8px, transparent 8px),
+        linear-gradient(0deg,   #100b17 0 8px, transparent 8px),
+        linear-gradient(180deg, rgba(201,169,74,.55) 0 3px, transparent 3px),
+        linear-gradient(0deg,   rgba(201,169,74,.55) 0 3px, transparent 3px),
+        linear-gradient(90deg, transparent 84px, rgba(201,169,74,.10) 84px, rgba(201,169,74,.10) 85px, transparent 85px),
+        linear-gradient(90deg, transparent 95px, rgba(201,169,74,.34) 95px, rgba(201,169,74,.34) 98px, transparent 98px),
+        repeating-linear-gradient(90deg, rgba(255,255,255,.018) 0 2px, transparent 2px 4px),
+        repeating-linear-gradient(0deg,  rgba(0,0,0,.14)        0 1px, transparent 1px 6px);
+    background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, repeat, repeat, repeat, repeat;
+    background-size: 100% 8px, 100% 8px, 100% 3px, 100% 3px, auto, auto, auto, auto;
+    background-position: top, bottom, top, bottom, 0 0, 0 0, 0 0, 0 0;
+    background-attachment: local, local, scroll, scroll, scroll, scroll, scroll, scroll;
+}
+@container (max-width: 760px) {
+    .nn-wings-pg {
+        background-image:
+            linear-gradient(180deg, #100b17 0 8px, transparent 8px),
+            linear-gradient(0deg,   #100b17 0 8px, transparent 8px),
+            linear-gradient(180deg, rgba(201,169,74,.55) 0 3px, transparent 3px),
+            linear-gradient(0deg,   rgba(201,169,74,.55) 0 3px, transparent 3px),
+            linear-gradient(90deg, transparent 62px, rgba(201,169,74,.10) 62px, rgba(201,169,74,.10) 63px, transparent 63px),
+            linear-gradient(90deg, transparent 72px, rgba(201,169,74,.34) 72px, rgba(201,169,74,.34) 75px, transparent 75px),
+            repeating-linear-gradient(90deg, rgba(255,255,255,.018) 0 2px, transparent 2px 4px),
+            repeating-linear-gradient(0deg,  rgba(0,0,0,.14)        0 1px, transparent 1px 6px);
+    }
+}
+/* the flyleaf's leader dots and its label/value masks read off the page
+   ground, so they move with it */
+.nn-wstatic .nn-wlab, .nn-wstatic .nn-wval { background: #100b17; }
+
+/* the proof sheet keeps its own cross: the dev menu is the one surface
+   that must never read as part of the fiction */
+.nn-dev .nn-x {
+    color: #9fe8c4; background: linear-gradient(180deg, #1f4231, #112a20 55%, #0c1d16);
+}
+.nn-dev .nn-x:hover { color: #fff; background: linear-gradient(180deg, #7a3434, #43191c 55%, #2c1013); }
+
+/* ── 10. THE PRINTED NOTE ──
+   The hover help was an operating system tooltip: a white box in the
+   host OS's font, over a pixel canvas, on a delay the game does not
+   own. .nn-tip has been in render() since the file was written with
+   nothing ever put in it. It is a small sheet like everything else. */
+.nn-tip {
+    position: absolute; z-index: 9; pointer-events: none; max-width: 268px;
+    padding: 8px 11px 7px;
+    font-family: "VT323", monospace; font-size: 16px; line-height: 1.24;
+    color: var(--i-mid);
+    background: var(--tooth), linear-gradient(180deg, #1c1428, #100b18);
+    border: 2px solid var(--gold-dim);
+    box-shadow: 0 0 0 2px var(--p-key), 0 4px 0 rgba(0,0,0,.55),
+                inset 0 2px 0 rgba(255,255,255,.07);
+}
+.nn-tip[hidden] { display: none; }
+.nn-tip b {
+    display: block; margin-bottom: 3px;
+    font-family: "Press Start 2P", monospace; font-size: 8px; letter-spacing: 1px;
+    font-weight: 400; color: var(--gold-lit); text-shadow: 0 2px 0 #000;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   THE THIRD PASS. Seven defects found by reading the whole block back
+   against the rules it overrides. Every one of them is the same mistake:
+   a rule earlier in this file that is more specific than the one meant to
+   replace it, and so quietly kept winning.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* .nn-opt.on::before at (0,2,0) beats .nn-opt::before at (0,1,0), so the
+   answer you had selected printed a literal "> " from the old rule on top
+   of the diamond. The kill above named ::after, which was never the one. */
+.nn-opt.on::before { content: ''; background: #17100a; }
+
+/* .nn-buy i at (0,2,0) beats .nn-writ and .nn-bag-x at (0,1,0), and both
+   of those are <i> nested inside .nn-buy b: the sound stamped on a writ
+   and the "x2" on a stack were being set as full width VT323 blocks. */
+.nn-buy .nn-writ, .nn-buy .nn-bag-x, .nn-buy .nn-have {
+    display: inline-block; max-width: none; line-height: 1;
+    font-family: "Press Start 2P", monospace; font-size: 8px; letter-spacing: 1px;
+    vertical-align: 1px;
+}
+.nn-buy .nn-writ { padding: 4px 6px 3px; margin-left: 6px;
+    border: 2px solid currentColor; background: rgba(0,0,0,.4); }
+.nn-buy .nn-bag-x { color: var(--gold-lit); margin-left: 5px; }
+.nn-buy .nn-have { color: var(--gold); padding: 6px 8px 5px;
+    border: 2px solid rgba(201,169,74,.32); background: rgba(201,169,74,.07); }
+
+/* The bag's coin still carried margin-left: auto from the old left-ranged
+   title bar, which in a centred flex header shoves the headline and both
+   diamonds to the left: one panel of four was not centred. */
+.nn-bag-coin { margin-left: 0; margin-right: 0; }
+/* and both coins were still at .62rem, which is 9.92px of an eight
+   design pixel face: the one soft thing left in a head band */
+.nn-bag-coin, .nn-shop-coin {
+    font-family: "Press Start 2P", monospace; font-size: 16px; letter-spacing: 2px;
+    color: var(--gold-dim); text-shadow: 0 2px 0 #000;
+}
+.nn-bag-coin b, .nn-shop-coin b { color: var(--gold-lit); }
+
+/* --frame carries var(--acc-ash) in its token stream, and a custom
+   property resolves where it is DECLARED, not where it is used: the whole
+   stack was computed once on .nn with the gold default and inherited
+   already resolved, so the proof sheet's green never reached its ring. */
+.nn-dev {
+    box-shadow:
+        0 0 0 2px var(--p-key),
+        0 0 0 3px rgba(127,216,174,.14),
+        0 10px 0 -2px rgba(0,0,0,.62),
+        inset 0 0 0 1px rgba(0,0,0,.75),
+        inset 0 2px 0 rgba(255,255,255,.05),
+        inset 0 -2px 0 rgba(0,0,0,.45),
+        inset 0 0 46px rgba(0,0,0,.55);
+}
+
+/* Under 760 the gauges go on their own row, and `flex: 1 1 auto` takes
+   its basis from the content: the two bars have no intrinsic width of
+   their own, so the column collapsed to the 64px of its name plates and
+   the player's health and breath were two labels and nothing else. A
+   real basis, and a min-width of 0 so it can still give way. */
+@container (max-width: 760px) {
+    .nn-left { flex: 1 1 230px; min-width: 0; }
+}
+
+/* `.nn-hud .nn-left { flex: none }` sits at (0,2,0) two thirds of the way
+   up this file, and a container query adds no specificity, so every
+   `flex` this rewrite set on `.nn-left` at a breakpoint lost to it and
+   the gauge column stayed at the width of its own name plates. Both
+   columns are addressed through .nn-hud from here on. */
+@container (max-width: 760px) {
+    .nn-hud .nn-left { flex: 1 1 230px; min-width: 0; width: auto; }
+    .nn-hud .nn-stanzas { flex: 0 0 auto; }
+    /* and the apron cannot be a third of a 620px window */
+    .nn-life, .nn-breath { height: 20px; }
+    .nn-echo { height: 11px; }
+    .nn-left { gap: 4px; }
+    .nn-hand { min-height: 46px; }
+    .nn-lw.head { padding: 6px 10px 5px; }
 }
