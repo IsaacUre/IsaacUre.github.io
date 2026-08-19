@@ -11673,21 +11673,26 @@ function drawBossBar(cx) {
 }
 function drawToasts(cx) {
     for (var i = 0; i < RT.toasts.length; i++) {
-        var a = RT.toasts[i], y = 72 + i * 52;
+        var a = RT.toasts[i], y = 72 + i * 62;
         var k = clamp(Math.min(a.t, 3.4 - a.t) / 0.35, 0, 1);
         cx.save(); cx.globalAlpha = k;
         /* It slides in from the trim rather than fading in place, and it
            is a sheet like everything else. The slide is 8 whole pixels in
            4 steps so it never lands between two of them. */
         cx.translate(Math.round((1 - k) * 3) * 4, 0);
-        var x = VW - 306, w = 286, h = 44, tx = x + 32, tw = w - 44;
+        var x = VW - 322, w = 302, h = 52, tx = x + 32, tw = w - 44;
         uiSheet(cx, x, y, w, h, { rule: '#6d5a2c', face: '#120d19', drop: 5 });
-        uiDiamond(cx, x + 17, y + 22, 5, '#ffe66e');
+        uiDiamond(cx, x + 17, y + 26, 5, '#ffe66e');
         cx.textBaseline = 'alphabetic';
         cx.font = '8px "Press Start 2P", monospace'; cx.fillStyle = '#ffe66e';
         cx.fillText(uiFit(cx, String(a.n).toUpperCase(), tw), tx, y + 19);
+        /* Seven of the twenty one achievements are longer than one line of
+           this sheet, and they were being cut mid-word with an ellipsis:
+           "Detonate six or more stacks on a sing…" is not a thing anybody
+           earned. Two lines, and the sheet is tall enough to hold them. */
         cx.font = '13px "Pixelify Sans"'; cx.fillStyle = '#a99c8a';
-        cx.fillText(uiFit(cx, a.d, tw), tx, y + 34);
+        var dl = uiLines(cx, a.d, tw, 2);
+        for (var q = 0; q < dl.length; q++) cx.fillText(dl[q], tx, y + 33 + q * 14);
         cx.restore();
     }
 }
@@ -16162,6 +16167,21 @@ function uiFit(cx, txt, w) {
     var t = txt;
     while (t.length > 1 && cx.measureText(t + '\u2026').width > w) t = t.slice(0, -1);
     return t.replace(/[ ,.]+$/, '') + '\u2026';
+}
+/* the same, but wrapping rather than cutting. Two lines is the cap and
+   the tail runs long rather than going missing, which is the rule the map
+   labels already use. */
+function uiLines(cx, txt, w, max) {
+    max = max || 2;
+    if (cx.measureText(txt).width <= w) return [txt];
+    var words = String(txt).split(' '), cur = words.shift() || '', lines = [];
+    while (words.length) {
+        var t = cur + ' ' + words[0];
+        if (cx.measureText(t).width > w && lines.length < max - 1) { lines.push(cur); cur = words.shift(); }
+        else { cur = t; words.shift(); }
+    }
+    lines.push(cur);
+    return lines.slice(0, max);
 }
 /* a keycap, for the letter you actually press */
 function uiKey(cx, ch, x, y, o) {

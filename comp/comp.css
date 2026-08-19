@@ -4987,3 +4987,35 @@ button.nn-drow b + i { display: inline-block; margin-left: 10px; }
    text sits left of the bar's own centre */
 .nn-breath.winded .nn-breath-t { left: 64px; }
 @container (max-width: 900px) { .nn-breath.winded .nn-breath-t { left: 52px; } }
+
+/* NINTH NIGHT: three things the review found after the fact ═════════════
+
+   Two regressions the overhaul introduced and one it inherited, all
+   found by an adversarial pass over the merged diff and all reproduced
+   with real clicks in a real browser before being touched. */
+
+/* ── THE PANEL KEYS WENT UNDER THE PANEL ──
+   Under 760 the button row moves to the top right to make room for the
+   two-row apron, and that put it at y 12..37 with z-index auto. A sheet
+   opens at top 22 with z-index 5, so from 760 down every one of B K I V
+   was painted over and hit-tested to the panel's own head band: with a
+   panel open, on a phone, the other four panels were unreachable by
+   pointer and the only way out was the cross or the keyboard. Measured
+   at 742, 682, 602 and 442: all four buried, all four inert.
+
+   The row goes above the sheet (7 sits between the dialogue box at 6 and
+   the wings at 8, which is right: the wings SHOULD cover it), and the
+   sheet starts below the row rather than under it. */
+@container (max-width: 760px) {
+    .nn-btns { z-index: 7; }
+    .nn-panel, .nn-dev { top: 48px; max-height: calc(100% - 144px); }
+}
+
+/* ── THE DEV MENU'S LAST TAB ──
+   Eight tabs at flex: 1 1 auto with the default min-width: auto cannot
+   shrink below their own text, so under about 460px of sheet the row
+   overflows the frame and DEBUG is off the edge and unclickable. Wrapping
+   costs the folder-tab join on one row and keeps every tab reachable,
+   which on a debug menu is the better trade. It never wraps at any width
+   the game is actually played at. */
+.nn-dev-tabs { flex-wrap: wrap; row-gap: 3px; }
