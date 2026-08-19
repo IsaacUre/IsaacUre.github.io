@@ -4957,3 +4957,33 @@ button.nn-drow b + i { display: inline-block; margin-left: 10px; }
     .nn-hand { min-height: 46px; }
     .nn-lw.head { padding: 6px 10px 5px; }
 }
+
+/* ── THE COOLDOWN, AND WINDED ──
+   Two states that were technically present and practically invisible.
+
+   The cooldown veil was rgba(6,4,10,.82) over a key that is already
+   nearly that colour, anchored at the bottom, covering the stanza's name
+   and nothing else. It is anchored at the top now, so the key fills with
+   light from the bottom as it comes back, and it carries a gold sweep
+   line along its lower edge, which is the part you actually watch. The
+   letter goes out while it is cooling and comes back when it is ready. */
+.nn-st::after {
+    top: 0; bottom: auto;
+    background: linear-gradient(180deg,
+        rgba(3,2,6,.88) 0 calc(100% - 3px), var(--gold) calc(100% - 3px));
+    box-shadow: none;
+}
+.nn-st.cool b { color: #6d6577; text-shadow: 0 2px 0 #000; }
+.nn-st.cool i { color: #453f52; }
+
+/* WINDED said WINDED twice: once on the name plate and once in the value.
+   The plate is the gauge's name and keeps it, in red, on a red ground;
+   the value says the word, centred, because at nought breath the bar
+   behind it is empty and there is nothing else to read there. */
+.nn-breath.winded::before { content: 'BREATH'; font-size: 8px; }
+.nn-breath.winded .nn-breath-t { justify-content: center; padding: 0; letter-spacing: 2px; }
+
+/* the value box spans the whole bar including the name plate, so centred
+   text sits left of the bar's own centre */
+.nn-breath.winded .nn-breath-t { left: 64px; }
+@container (max-width: 900px) { .nn-breath.winded .nn-breath-t { left: 52px; } }
