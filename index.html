@@ -2,85 +2,265 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="robots" content="noindex">
-    <title>Isaac Ure</title>
+    <meta name="theme-color" content="#16161c">
+    <title>Isaac Ure · be right back</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
     <style>
-        *, *::before, *::after {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        /* ────────────────────────────────────────────────────────────
+           BE RIGHT BACK — the holding page
+           The URE BOY's LCD, lifted out of the shell and set on the
+           same dark stage as /ureboy/ and /room/. It powers on, the
+           eye opens, the line prints, and then it waits. No JS: the
+           whole thing is CSS, so there is nothing to break.
+           ──────────────────────────────────────────────────────────── */
+
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
         :root {
-            --bg: #FAFAF8;
-            --text: #1A1A18;
+            --ink: #1A1A18;
+            --paper: #FAFAF8;
+            --red: #D81E05;          /* Tornado Red */
+
+            /* the LCD, same palette as the console */
+            --screen-bg: #e6e4d2;
+            --screen-ink: #1c1d17;
+            --screen-dim: #5a5b50;
+            --screen-accent: #b5180a;
+            --screen-hi: #ffffff;
+            --screen-frame: #0e0e0b;
+
+            --shell-edge: #444440;
+
+            --font-pixel: 'Press Start 2P', monospace;
+            --font-term: 'VT323', monospace;
         }
 
-        html, body {
-            height: 100%;
-        }
+        html, body { height: 100%; }
 
         body {
-            background: var(--bg);
-            color: var(--text);
-            -webkit-font-smoothing: antialiased;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            font-family: var(--font-pixel);
+            color: var(--paper);
+            background:
+                radial-gradient(120% 90% at 50% -10%, #2a2a33 0%, #16161c 55%, #0c0c10 100%);
             min-height: 100vh;
-            padding: 2rem;
-        }
-
-        .holding {
+            min-height: 100dvh;
+            padding: 1.5rem 1rem calc(1.5rem + env(safe-area-inset-bottom, 0px));
             display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 1.6rem;
-            opacity: 0;
-            animation: fadeIn 1.1s ease 0.15s forwards;
+            -webkit-font-smoothing: antialiased;
+            overflow-x: hidden;
         }
 
-        .holding-logo svg {
-            width: 3.5rem;
-            height: 3.5rem;
-            display: block;
-            opacity: 0.85;
+        /* ── the screen module ──
+           auto margins centre it and, unlike align-items, still let a short
+           landscape phone scroll to the top of it instead of clipping it. */
+        .screen-frame {
+            margin: auto;
+            width: 100%;
+            max-width: 400px;          /* fallback; the min() below is the real rule */
+            /* on a short viewport (a phone on its side), size the frame to the height there is */
+            width: min(100%, 400px, calc((100vh - 7rem) / .9));
+            width: min(100%, 400px, calc((100dvh - 7rem) / .9));
+            background: linear-gradient(160deg, #25251f, #161611);
+            border: 1px solid var(--shell-edge);
+            border-radius: 12px 12px 26px 12px;
+            padding: 1.1rem 1.1rem 1rem;
+            box-shadow:
+                inset 0 2px 8px rgba(0,0,0,.7),
+                inset 0 1px 0 rgba(255,255,255,.05),
+                0 28px 60px rgba(0,0,0,.55);
         }
 
-        .holding-text {
-            font-family: 'Cormorant Garamond', serif;
-            font-weight: 500;
-            font-size: clamp(1.6rem, 5vw, 2.4rem);
-            letter-spacing: 0.01em;
-            line-height: 1.2;
+        .screen {
+            position: relative;
+            aspect-ratio: 10 / 9;
+            background: var(--screen-bg);
+            border: 3px solid var(--screen-frame);
+            border-radius: 6px;
+            overflow: hidden;
+            box-shadow: inset 0 0 0 2px rgba(0,0,0,.25), inset 0 0 26px rgba(0,0,0,.22);
+            color: var(--screen-ink);
+        }
+        .screen-glow {
+            position: absolute; inset: 0; pointer-events: none; z-index: 5;
+            background: radial-gradient(120% 80% at 50% 0%, rgba(255,255,255,.16), transparent 60%);
+        }
+        .scanlines {
+            position: absolute; inset: 0; pointer-events: none; z-index: 6; opacity: .35;
+            background: repeating-linear-gradient(to bottom, rgba(0,0,0,.18) 0 1px, transparent 1px 3px);
+            mix-blend-mode: multiply;
+        }
+        /* power-on surge: a white pop, a dark dip, then the LCD is just on */
+        .screen-flash {
+            position: absolute; inset: 0; z-index: 7; pointer-events: none;
+            opacity: 0; background: #fff;
+            animation: screenSurge .34s ease .1s both;
+        }
+        @keyframes screenSurge {
+            0%   { opacity: 0;   background: #fff; }
+            14%  { opacity: .85; background: #fff; }
+            40%  { opacity: .9;  background: #06060a; }
+            72%  { opacity: .45; background: #06060a; }
+            100% { opacity: 0;   background: #06060a; }
+        }
+
+        .screen-label {
+            margin-top: .65rem;
+            text-align: center;
+            font-family: var(--font-pixel);
+            font-size: .5rem;
+            letter-spacing: 1px;
+            color: #8a8a82;
+            white-space: nowrap;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        /* ── what is on the screen ── */
+        .holding {
+            position: absolute; inset: 0;
+            padding: .85rem .9rem;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            gap: .95rem;
             text-align: center;
         }
 
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to   { opacity: 1; transform: translateY(0); }
+        /* the eye: the console's pixel mark. 48 units, 2 units to a cell, so a multiple of
+           24px keeps every cell a whole number of pixels (96 = 4px cells, 72 = 3px) */
+        .eye { width: 96px; height: 96px; color: var(--screen-ink); }
+        .eye svg { width: 100%; height: 100%; display: block; shape-rendering: crispEdges; }
+        /* CRT-style open: a bright line that stretches into the picture, blinks once, holds */
+        .eye svg { animation: bootBlink 1s ease .35s both; }
+        @keyframes bootBlink {
+            0%   { transform: scaleY(.05); opacity: 0; }
+            30%  { opacity: 1; }
+            60%  { transform: scaleY(.05); }
+            100% { transform: scaleY(1); opacity: 1; }
+        }
+        .eye-glint { fill: var(--screen-hi); }
+        /* once it is open, a quick look left, right, and back to you */
+        .eye-pupil { animation: glance .7s steps(1, end) 1.45s; }
+        @keyframes glance {
+            0%        { transform: translateX(-4px); }
+            45%       { transform: translateX(4px); }
+            80%, 100% { transform: translateX(0); }
+        }
+        /* blink: each lid is LCD-coloured so a shut eye blends into the screen, leaving
+           the lash-line. the upper lid does the work; the lower barely lifts. two blinks
+           a cycle, unevenly spaced, so it does not tick like a clock. */
+        .lid-skin { fill: var(--screen-bg); }
+        .lid-edge { fill: currentColor; }
+        .eye-lid-top    { transform: translateY(-22px); animation: lidTop 8s ease 3.4s infinite; }
+        .eye-lid-bottom { transform: translateY(8px);   animation: lidBottom 8s ease 3.4s infinite; }
+        @keyframes lidTop {
+            0%, 38.9%     { transform: translateY(-22px); }
+            41.1%, 41.7%  { transform: translateY(0); }
+            43.9%, 85.9%  { transform: translateY(-22px); }
+            88.1%, 88.7%  { transform: translateY(0); }
+            90.9%, 100%   { transform: translateY(-22px); }
+        }
+        @keyframes lidBottom {
+            0%, 38.9%     { transform: translateY(8px); }
+            41.1%, 41.7%  { transform: translateY(0); }
+            43.9%, 85.9%  { transform: translateY(8px); }
+            88.1%, 88.7%  { transform: translateY(0); }
+            90.9%, 100%   { transform: translateY(8px); }
         }
 
+        /* the line. it types, one glyph a step: the font is strictly monospace, and at
+           16px (the bitmap is 8px) each glyph is exactly 16 whole pixels wide, so the
+           reveal edge never cuts through a pixel */
+        .holding-word {
+            font-family: var(--font-pixel);
+            font-weight: normal;
+            font-size: 1rem;
+            line-height: 1.5;
+            letter-spacing: 0;
+            text-transform: uppercase;
+            color: var(--screen-ink);
+            white-space: nowrap;
+        }
+        .holding-word b { font-weight: normal; color: var(--screen-accent); }
+        .holding-word span {
+            display: inline-block;
+            -webkit-clip-path: inset(0 100% 0 0);
+            clip-path: inset(0 100% 0 0);
+            animation: typeOut .78s steps(13, end) 1.3s forwards;
+        }
+        @keyframes typeOut {
+            to { -webkit-clip-path: inset(0 0 0 0); clip-path: inset(0 0 0 0); }
+        }
+
+        /* the shell prompt, waiting. same cursor the console boots with */
+        .term-row {
+            display: flex; align-items: baseline; gap: .3rem;
+            font-family: var(--font-term);
+            font-size: 1.2rem; line-height: 1.1;
+            margin-top: -.25rem;
+            opacity: 0;
+            animation: appear .1s steps(1, end) 2.15s forwards;
+        }
+        @keyframes appear { to { opacity: 1; } }
+        .term-ps { color: var(--screen-accent); }
+        .term-block {
+            display: inline-block; width: .55em; height: .95em; margin-top: .1em;
+            background: var(--screen-ink); vertical-align: text-bottom;
+            animation: termBlink 1.06s steps(1) infinite;
+        }
+        @keyframes termBlink { 50% { opacity: 0; } }
+
+        /* ── small screens ── */
+        @media (max-width: 380px) {
+            .screen-frame { padding: .9rem .85rem .85rem; }
+            .holding { gap: .8rem; padding: .6rem .68rem; }
+            .eye { width: 72px; height: 72px; }
+            .term-row { font-size: 1.1rem; }
+            .screen-label { letter-spacing: .5px; }
+        }
+        @media (max-width: 330px) {
+            .screen-label { letter-spacing: 0; }
+        }
+
+        /* ── reduced motion: everything lands in its final state, nothing moves ── */
         @media (prefers-reduced-motion: reduce) {
-            .holding { animation: none; opacity: 1; }
+            .screen-flash, .eye svg, .eye-pupil, .eye-lid-top, .eye-lid-bottom,
+            .holding-word span, .term-row, .term-block { animation: none !important; }
+            .holding-word span { -webkit-clip-path: none; clip-path: none; }
+            .term-row { opacity: 1; }
+            .scanlines { display: none; }
         }
     </style>
 </head>
 <body>
-    <main class="holding">
-        <span class="holding-logo" aria-hidden="true">
-            <svg viewBox="0 0 48 48">
-                <path d="M9 10 C13 13 31 17 39 24 C31 31 13 35 9 38" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-                <path d="M16 14 Q11 24 16 34 Q21 24 16 14Z" fill="none" stroke="currentColor" stroke-width="1.8"/>
-                <path d="M16 17 Q13 24 16 31 Q19 24 16 17Z" fill="currentColor" opacity="0.3"/>
-            </svg>
-        </span>
-        <p class="holding-text">Be right back.</p>
+    <main class="screen-frame">
+        <div class="screen">
+            <div class="screen-glow"></div>
+            <div class="scanlines" aria-hidden="true"></div>
+            <div class="screen-flash" aria-hidden="true"></div>
+
+            <div class="holding">
+                <div class="eye" aria-hidden="true">
+                    <svg viewBox="0 0 48 48" shape-rendering="crispEdges">
+                        <defs>
+                            <clipPath id="ureEyeClip"><polygon points="22,11 36,11 42,15 47,19 48,23 48,29 42,31 30,37 15,37 5,33 0,29 0,27 3,21 8,16 14,13"/></clipPath>
+                        </defs>
+                        <g class="eye-ink" fill="currentColor"><rect x="22" y="12" width="14" height="2"/><rect x="16" y="14" width="24" height="2"/><rect x="14" y="16" width="28" height="2"/><rect x="8" y="18" width="24" height="2"/><rect x="38" y="18" width="6" height="2"/><rect x="42" y="20" width="4" height="2"/><rect x="44" y="22" width="2" height="2"/><rect x="4" y="24" width="4" height="2"/><rect x="46" y="24" width="2" height="2"/><rect x="2" y="26" width="2" height="2"/><rect x="0" y="28" width="2" height="2"/><rect x="38" y="28" width="10" height="2"/><rect x="6" y="30" width="12" height="2"/><rect x="32" y="30" width="8" height="2"/><rect x="14" y="32" width="22" height="2"/><rect x="20" y="34" width="10" height="2"/></g>
+                        <g class="eye-pupil" fill="currentColor"><rect x="8" y="20" width="8" height="2"/><rect x="18" y="20" width="14" height="2"/><rect x="6" y="22" width="8" height="2"/><rect x="18" y="22" width="8" height="2"/><rect x="30" y="22" width="6" height="2"/><rect x="18" y="24" width="14" height="2"/><rect x="20" y="26" width="12" height="2"/><rect x="20" y="28" width="10" height="2"/><g class="eye-glint"><rect x="16" y="20" width="2" height="2"/><rect x="14" y="22" width="4" height="2"/></g></g>
+                        <g class="eye-lids" clip-path="url(#ureEyeClip)"><g class="eye-lid eye-lid-top"><g class="lid-skin"><rect x="-4" y="-20" width="8" height="46"/><rect x="4" y="-18" width="8" height="46"/><rect x="12" y="-16" width="24" height="46"/><rect x="36" y="-18" width="8" height="46"/><rect x="44" y="-20" width="8" height="46"/></g><g class="lid-edge"><rect x="-4" y="24" width="8" height="2"/><rect x="4" y="26" width="8" height="2"/><rect x="12" y="28" width="24" height="2"/><rect x="36" y="26" width="8" height="2"/><rect x="44" y="24" width="8" height="2"/></g></g><g class="eye-lid eye-lid-bottom"><g class="lid-skin"><rect x="-4" y="26" width="8" height="46"/><rect x="4" y="28" width="8" height="46"/><rect x="12" y="30" width="24" height="46"/><rect x="36" y="28" width="8" height="46"/><rect x="44" y="26" width="8" height="46"/></g><g class="lid-edge"><rect x="-4" y="26" width="8" height="2"/><rect x="4" y="28" width="8" height="2"/><rect x="12" y="30" width="24" height="2"/><rect x="36" y="28" width="8" height="2"/><rect x="44" y="26" width="8" height="2"/></g></g></g>
+                    </svg>
+                </div>
+
+                <h1 class="holding-word"><span>Be right <b>back</b></span></h1>
+
+                <div class="term-row" aria-hidden="true"><span class="term-ps">&gt;</span><span class="term-block"></span></div>
+            </div>
+        </div>
+        <div class="screen-label" aria-hidden="true">DOT-MATRIX · A GOOD EYE · COLOR</div>
     </main>
 </body>
 </html>
