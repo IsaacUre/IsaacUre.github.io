@@ -4,15 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="robots" content="noindex">
+    <meta name="description" content="Isaac Ure. Coming soon; the eye's already on.">
     <meta name="theme-color" content="#16161c">
-    <title>Isaac Ure · be right back</title>
+    <title>Isaac Ure · coming soon</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
     <style>
         /* ────────────────────────────────────────────────────────────
-           BE RIGHT BACK — the holding page
+           COMING SOON — the holding page
            The URE BOY's LCD, lifted out of the shell and set on the
            same dark stage as /ureboy/ and /room/. It powers on, the
            eye opens, the line prints, and then it waits. No JS: the
@@ -63,10 +64,13 @@
         .screen-frame {
             margin: auto;
             width: 100%;
-            max-width: 400px;          /* fallback; the min() below is the real rule */
-            /* on a short viewport (a phone on its side), size the frame to the height there is */
-            width: min(100%, 400px, calc((100vh - 7rem) / .9));
-            width: min(100%, 400px, calc((100dvh - 7rem) / .9));
+            max-width: 400px;          /* fallback; the max()/min() below is the real rule */
+            /* on a short viewport (a phone on its side, a laptop at 200% zoom) size the frame
+               to the height there is: 3.5rem covers the body padding and the frame's own
+               chrome. never narrower than 252px, which is the 176px line plus the padding
+               and borders around it, so the line is never cut; past that the page scrolls. */
+            width: max(252px, min(100%, 400px, calc((100vh - 3.5rem) / .9)));
+            width: max(252px, min(100%, 400px, calc((100dvh - 3.5rem) / .9)));
             background: linear-gradient(160deg, #25251f, #161611);
             border: 1px solid var(--shell-edge);
             border-radius: 12px 12px 26px 12px;
@@ -189,9 +193,12 @@
         .holding-word b { font-weight: normal; color: var(--screen-accent); }
         .holding-word span {
             display: inline-block;
+            width: 11ch;               /* exactly 11 cells: the inner text box rounds up by 1/64px
+                                          because of the <b>, and 11 steps of that would drift
+                                          a hair into the next glyph */
             -webkit-clip-path: inset(0 100% 0 0);
             clip-path: inset(0 100% 0 0);
-            animation: typeOut .78s steps(13, end) 1.3s forwards;
+            animation: typeOut .66s steps(11, end) 1.3s forwards;
         }
         @keyframes typeOut {
             to { -webkit-clip-path: inset(0 0 0 0); clip-path: inset(0 0 0 0); }
@@ -221,6 +228,14 @@
             .holding { gap: .8rem; padding: .6rem .68rem; }
             .eye { width: 72px; height: 72px; }
             .term-row { font-size: 1.1rem; }
+        }
+
+        /* ── forced colours (Windows High Contrast): the screen goes Canvas, so the lid skin
+             has to follow it or a blink paints a beige almond; and the cursor block is a
+             background, which forced colours would erase ── */
+        @media (forced-colors: active) {
+            .lid-skin { fill: Canvas; }
+            .term-block { forced-color-adjust: none; background: CanvasText; }
         }
 
         /* ── reduced motion: everything lands in its final state, nothing moves ── */
@@ -258,7 +273,7 @@
                     </svg>
                 </div>
 
-                <h1 class="holding-word"><span>Be right <b>back</b></span></h1>
+                <h1 class="holding-word"><span>Coming <b>soon</b></span></h1>
 
                 <div class="term-row" aria-hidden="true"><span class="term-ps">&gt;</span><span class="term-block"></span></div>
             </div>
