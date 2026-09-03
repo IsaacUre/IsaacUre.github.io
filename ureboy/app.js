@@ -1497,6 +1497,10 @@
         var pupil = eye.querySelector('.eye-pupil');
         var idleT = null;
         function wake() {
+            if (eye.classList.contains('asleep')) {          // it opens in frames, not all at once
+                eye.classList.add('waking');
+                setTimeout(function () { eye.classList.remove('waking'); }, 240);
+            }
             eye.classList.remove('asleep');
             clearTimeout(idleT);
             idleT = setTimeout(function () {
