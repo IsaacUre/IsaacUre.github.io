@@ -17,9 +17,9 @@
            COMING SOON — the holding page
            Black. A terminal boots in the top-left corner, small, the
            way a machine does: the checks print and their results land
-           as they finish, the banner, then the ASCII eye wakes up as a
-           flipbook of frames stamped one under the last, scrolling up
-           and out like output does. Then it hands off to the URE BOY's
+           as they finish, the banner, then the LCD's pixel eye, drawn in
+           characters, wakes up as a flipbook of frames stamped one under
+           the last, scrolling up and out like output does. Then it hands off to the URE BOY's
            LCD, lifted out of the shell, which powers on, prints the
            line, and waits. The terminal is a JS layer over a page that
            works without it: no JS, or reduced motion, and you get the
@@ -42,8 +42,6 @@
             --screen-accent: #b5180a;
             --screen-hi: #ffffff;
             --screen-frame: #0e0e0b;
-
-            --shell-edge: #444440;
 
             /* the terminal: the LCD's cream as phosphor, the shell's grey for dim,
                and the lighter red the site uses on dark (AA) */
@@ -88,13 +86,14 @@
         }
         .term[hidden] { display: none; }
         .tl { white-space: pre-wrap; word-break: break-word; min-height: 1.15em; }
-        /* the banner and the eye are 52 columns and must not wrap: past a phone they
+        /* the banner (52 columns) and the eye (48) must not wrap: past a phone they
            take the terminal's size, and under it they take what the width allows.
            VT323 advances .4em a column, so 52 columns is 20.8 ems */
         .tl-art {
             white-space: pre; word-break: normal; line-height: 1; letter-spacing: 0;
             font-size: min(1rem, calc((100vw - 1.2rem) / 20.8));
         }
+        .tl-px { line-height: .8; }          /* the pixel eye: two columns to a cell, .8 of a row to a cell */
         .tl-dim { color: var(--term-dim); }
         .tl-warn { color: var(--term-warn); }
         .tc {
@@ -106,7 +105,7 @@
             position: fixed; right: 1rem; bottom: calc(1rem + env(safe-area-inset-bottom, 0px)); z-index: 11;
             font-family: var(--font-term); font-size: 1.1rem; line-height: 1;
             color: var(--term-dim); background: #000;
-            border: 1px solid var(--shell-edge); border-radius: 4px;
+            border: 1px solid #45453f; border-radius: 4px;
             padding: .3rem .65rem .35rem;
             cursor: pointer;
             opacity: 0;
@@ -122,34 +121,25 @@
         .js .screen-frame:not(.lit) { opacity: 0; pointer-events: none; }
         .js .screen-frame:not(.lit) * { animation-play-state: paused !important; }
 
-        /* ── the screen module ──
+        /* ── the screen: the LCD alone, square, set straight into the black ──
            auto margins centre it and, unlike align-items, still let a short
            landscape phone scroll to the top of it instead of clipping it. */
         .screen-frame {
             margin: auto;
             width: 100%;
-            max-width: 400px;          /* fallback; the max()/min() below is the real rule */
-            /* on a short viewport (a phone on its side, a laptop at 200% zoom) size the frame
-               to the height there is: 3.5rem covers the body padding and the frame's own
-               chrome. never narrower than 252px, which is the 176px line plus the padding
-               and borders around it, so the line is never cut; past that the page scrolls. */
-            width: max(252px, min(100%, 400px, calc((100vh - 3.5rem) / .9)));
-            width: max(252px, min(100%, 400px, calc((100dvh - 3.5rem) / .9)));
-            background: linear-gradient(160deg, #25251f, #161611);
-            border: 1px solid var(--shell-edge);
-            border-radius: 12px 12px 26px 12px;
-            padding: 1.1rem;
-            box-shadow:
-                inset 0 2px 8px rgba(0,0,0,.7),
-                inset 0 1px 0 rgba(255,255,255,.05);
+            max-width: 364px;          /* fallback; the max()/min() below is the real rule */
+            /* on a short viewport (a phone on its side, a laptop at 200% zoom) size the screen
+               to the height there is: 3rem covers the body padding. never narrower than 208px,
+               which is the 176px line plus the padding around it, so the line is never cut;
+               past that the page scrolls. */
+            width: max(208px, min(100%, 364px, calc((100vh - 3rem) / .9)));
+            width: max(208px, min(100%, 364px, calc((100dvh - 3rem) / .9)));
         }
 
         .screen {
             position: relative;
             aspect-ratio: 10 / 9;
             background: var(--screen-bg);
-            border: 3px solid var(--screen-frame);
-            border-radius: 6px;
             overflow: hidden;
             box-shadow: inset 0 0 0 2px rgba(0,0,0,.25), inset 0 0 26px rgba(0,0,0,.22);
             color: var(--screen-ink);
@@ -287,7 +277,6 @@
 
         /* ── small screens ── */
         @media (max-width: 380px) {
-            .screen-frame { padding: .9rem .85rem; }
             .holding { gap: .8rem; padding: .6rem .68rem; }
             .eye { width: 72px; height: 72px; }
             .term-row { font-size: 1.1rem; }
@@ -397,7 +386,7 @@
         /* a frame of output: goes in above the waiting cursor line, so the cursor stays
            at the bottom and the frames stack up over it, oldest at the top */
         function stamp(text) {
-            var d = make(text, 'tl-art'), last = log.lastChild;
+            var d = make(text, 'tl-art tl-px'), last = log.lastChild;
             if (isIdle(last)) log.insertBefore(d, last); else { log.appendChild(d); line(''); }
             return d;
         }
@@ -432,63 +421,103 @@
         }
         function pad2(n) { return (n < 10 ? '0' : '') + n; }
 
-        /* ---- the ASCII eye: a parametric almond on a 52x8 canvas. `a` is the aperture in
-           rows (0 shut .. 3 open), `px` shifts the iris. lines are drawn with the glyphs
-           that sit at the right height in their cell ( ' - . _ ) where the curve is gentle
-           and with / and \ where it is steep; the iris is clipped to the opening, so the
-           lids cover it as they close ---- */
-        var EYE_W = 52, EYE_H = 8, EYE_CX = 25, EYE_CY = 4, EYE_B = 25, EYE_A = 3, EYE_ASPECT = 2.5, IRIS_R = 2, PUPIL_R = 1;
-        function sub(f) { return f < 0.25 ? "'" : f < 0.6 ? '-' : f < 0.85 ? '.' : '_'; }
-        function asciiEye(a, px) {
-            px = px || 0;
-            var W = EYE_W, H = EYE_H, CX = EYE_CX, CY = EYE_CY, B = EYE_B, g = [], r, c, x, y;
-            for (r = 0; r < H; r++) { var row = []; for (c = 0; c < W; c++) row.push(' '); g.push(row); }
-            function put(x, y, ch) { if (x >= 0 && x < W && y >= 0 && y < H) g[y][x] = ch; }
-            function curve(x, k) { var t = (x - CX) / B; return CY + k * Math.sqrt(Math.max(0, 1 - t * t)); }
-            function join() { return g.map(function (rr) { return rr.join(''); }).join('\n'); }
-            function top(x) { return curve(x, -a); }
-            function bot(x) { return curve(x, a * 0.85); }
-            if (a <= 0) {
-                for (x = CX - B + 1; x < CX + B; x++) { y = curve(x, 0.92); put(x, Math.floor(y), sub(y - Math.floor(y))); }
-                put(CX - B, CY, '<'); put(CX + B, CY, '>');
-                put(CX - 9, CY + 1, '\\'); put(CX, CY + 1, '|'); put(CX + 9, CY + 1, '/');
-                return join();
-            }
-            function inside(x, y) { return top(x) < y + 0.5 && y + 0.5 < bot(x); }
-            var icx = CX + px, rx = IRIS_R * EYE_ASPECT, ry = IRIS_R;
-            for (y = Math.floor(CY - ry); y <= Math.ceil(CY + ry); y++)
-                for (x = Math.floor(icx - rx); x <= Math.ceil(icx + rx); x++) {
-                    var ex = (x - icx) / (rx + 0.5), ey = (y - CY) / (ry + 0.5);
-                    if (ex * ex + ey * ey <= 1 && inside(x, y)) put(x, y, ':');
-                }
-            var prx = PUPIL_R * EYE_ASPECT, pry = PUPIL_R;
-            for (y = Math.floor(CY - pry); y <= Math.ceil(CY + pry); y++)
-                for (x = Math.floor(icx - prx); x <= Math.ceil(icx + prx); x++) {
-                    var qx = (x - icx) / (prx + 0.5), qy = (y - CY) / (pry + 0.5);
-                    if (qx * qx + qy * qy <= 1 && inside(x, y)) put(x, y, '@');
-                }
-            if (inside(icx - 1, CY - 1)) put(icx - 1, CY - 1, "'");
-            function lid(fn, upper) {
-                var py = null;
-                for (x = CX - B; x <= CX + B; x++) {
-                    y = fn(x);
-                    if (x === CX - B || x === CX + B) { put(x, CY, x === CX - B ? '<' : '>'); py = y; continue; }
-                    var slope = y - py;
-                    if (Math.abs(slope) >= 0.6) {
-                        var lo = Math.min(py, y), hi = Math.max(py, y);
-                        for (r = Math.floor(lo); r <= Math.floor(hi); r++) put(x, r, upper ? (x <= CX ? '/' : '\\') : (x <= CX ? '\\' : '/'));
-                    } else put(x, Math.floor(y), sub(y - Math.floor(y)));
-                    py = y;
-                }
-            }
-            lid(bot, false);
-            lid(top, true);
-            if (a >= 3) for (x = CX - 16; x <= CX + 16; x++) {
-                var t = curve(x, -a), yy = t - 0.1;
-                if (Math.floor(yy) !== Math.floor(t)) put(x, Math.floor(yy), sub(yy - Math.floor(yy)));
-            }
-            return join();
-        }
+        /* ---- the eye: the LCD's own pixel eye, cell for cell. every cell is two
+           characters wide and, at line-height .8, one row tall, so the cells come out
+           square (VT323 is .4em to the column). the three blink frames and the glance
+           are the LCD's too, so the terminal and the screen draw the same eye. generated
+           from the SVG's rects; each frame ends in a blank row so they stack apart ---- */
+        var EYE = {
+            open: [
+                '                      ##############',
+                '                ########################',
+                '              ############################',
+                '        ########################      ######',
+                '        ########  ##############          ####',
+                '      ########    ########    ######        ##',
+                '    ####          ##############              ##',
+                '  ##                ############',
+                '##                  ##########        ##########',
+                '      ############              ########',
+                '              ######################',
+                '                    ##########',
+                ''
+            ].join('\n'),
+            left: [
+                '                      ##############',
+                '                ########################',
+                '              ############################',
+                '        ########################      ######',
+                '    ########  ##############              ####',
+                '  ########    ########    ######            ##',
+                '    ####      ##############                  ##',
+                '  ##            ############',
+                '##              ##########            ##########',
+                '      ############              ########',
+                '              ######################',
+                '                    ##########',
+                ''
+            ].join('\n'),
+            right: [
+                '                      ##############',
+                '                ########################',
+                '              ############################',
+                '        ########################      ######',
+                '            ########  ##############      ####',
+                '          ########    ########    ######    ##',
+                '    ####              ##############          ##',
+                '  ##                    ############',
+                '##                      ##########    ##########',
+                '      ############              ########',
+                '              ######################',
+                '                    ##########',
+                ''
+            ].join('\n'),
+            half: [
+                '',
+                '',
+                '',
+                '',
+                '            ##########################',
+                '        ####################################',
+                '        ####      ##############      ##########',
+                '  ######            ############',
+                '##                  ##########        ##########',
+                '      ############              ########',
+                '              ######################',
+                '                    ##########',
+                ''
+            ].join('\n'),
+            slit: [
+                '',
+                '',
+                '',
+                '',
+                '',
+                '',
+                '        ##########              ################',
+                '  ######          ##############',
+                '##################  ##########  ################',
+                '                  ##############',
+                '',
+                '',
+                ''
+            ].join('\n'),
+            shut: [
+                '',
+                '',
+                '',
+                '',
+                '',
+                '',
+                '                                              ##',
+                '  ################              ##############',
+                '################################################',
+                '                  ##############',
+                '',
+                '',
+                ''
+            ].join('\n')
+        };
 
         var BANNER = [
         ' ___ ____    _        _    ____   _   _ ____  _____',
@@ -502,8 +531,8 @@
         function run() {
             var g = gen, now = new Date();
             var today = now.getFullYear() + '-' + pad2(now.getMonth() + 1) + '-' + pad2(now.getDate());
-            function eyeFrame(a, px, slideMs, hold) {
-                return function () { if (g !== gen) return; stamp(asciiEye(a, px)); return slide(slideMs).then(function () { return pause(hold); }); };
+            function eyeFrame(name, slideMs, hold) {
+                return function () { if (g !== gen) return; stamp(EYE[name]); return slide(slideMs).then(function () { return pause(hold); }); };
             }
             term.hidden = false; skipBtn.hidden = false;
             line('');                               // the lone blinking cursor; the first line writes over it
@@ -527,13 +556,14 @@
                     return pause(420);
                 })
                 .then(function () { block(''); line(''); return pause(60); })
-                // the eye powers on, has a look around, and blinks twice: each frame is
-                // stamped under the last and the log slides up to it
-                .then(eyeFrame(EYE_A, 0, 200, 380))
-                .then(eyeFrame(EYE_A, -6, 60, 90)).then(eyeFrame(EYE_A, 6, 60, 90)).then(eyeFrame(EYE_A, 0, 60, 100));
+                // the eye powers on, has a look around, and blinks twice, the LCD's blink
+                // (half 45 · slit 40 · shut 90 · slit 55 · half 70): each frame is stamped
+                // under the last and the log slides up to it
+                .then(eyeFrame('open', 200, 380))
+                .then(eyeFrame('left', 60, 90)).then(eyeFrame('right', 60, 90)).then(eyeFrame('open', 60, 100));
             for (var k = 0; k < 2; k++) {
-                [2, 1, 0, 0, 1, 2].forEach(function (a) { seq = seq.then(eyeFrame(a, 0, 42, a === 0 ? 55 : 14)); });
-                seq = seq.then(eyeFrame(EYE_A, 0, 60, k === 0 ? 260 : 300));
+                [['half', 45], ['slit', 40], ['shut', 90], ['slit', 55], ['half', 70]].forEach(function (f) { seq = seq.then(eyeFrame(f[0], 30, f[1])); });
+                seq = seq.then(eyeFrame('open', 60, k === 0 ? 260 : 300));
             }
             seq.then(function () { return pause(250); })
                .then(function () { return check('> handing off to /dev/eye0', 'ok', 150); })
