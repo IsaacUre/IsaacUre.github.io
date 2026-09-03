@@ -231,27 +231,34 @@ body.cart-busy .dpad, body.cart-busy .ab, body.cart-busy .startbar { pointer-eve
 /* catch-light: a notch of sclera-bright light in the iris (themed) */
 .eye-glint { fill: var(--eye-hi, #fff); }
 .cl-eye, .boot-eye, .home-eye { --eye-hi: var(--screen-hi); --eye-skin: var(--screen-bg); }
-/* blink: each lid is skin-coloured (so the covered eye blends into the face) and carries a
-   dark lash-line; the two slide together and meet on a gentle upward arc at the midline, so a
-   shut eye reads as a curved line — not a filled almond. translateY is in user units. */
+/* blink: three frames drawn on the eye's own 24-cell grid (half, slit, shut). each paints
+   skin-coloured cells over whatever the lids have moved past (the open lid's own ink, the
+   pupil, the lower lid when it lifts) and inks the lid edges where they are now. columns
+   0 and 23 are the corners and no frame touches them, so the eye shuts along its own
+   corner-to-corner line instead of a lid sliding over it. the skin is themed per eye
+   (--eye-skin) so a shut eye blends into its face. .blink (from app.js) plays one blink:
+   half 45ms · slit 40 · shut 90 · slit 55 · half 70, opening a touch slower than it shut. */
 .lid-skin { fill: var(--eye-skin, #e6e4d2); }
 .lid-edge { fill: currentColor; }
-.eye-lid { transition: transform .28s ease; }
-/* the upper lid does the work: it sweeps the full eye, while the lower lid barely
-   lifts — they meet low, so a shut eye is a gentle lower-lid-like curve a touch raised */
-.eye-lid-top { transform: translateY(-22px); }      /* open: swept clear above the eye */
-.eye-lid-bottom { transform: translateY(8px); }     /* open: dropped just below the lower lid */
-.blink .eye-lid-top { animation: lidTop .4s ease; }
-.blink .eye-lid-bottom { animation: lidBottom .4s ease; }
-@keyframes lidTop    { 0%,100% { transform: translateY(-22px); } 45%,55% { transform: translateY(0); } }
-@keyframes lidBottom { 0%,100% { transform: translateY(8px); }   45%,55% { transform: translateY(0); } }
-/* dozed off: hold the lids shut */
-.power-led.asleep .eye-lid-top,
-.power-led.asleep .eye-lid-bottom { transform: translateY(0); }
+.bf { opacity: 0; }
+.blink .bf-half { animation: bfHalf .3s steps(1, end); }
+.blink .bf-slit { animation: bfSlit .3s steps(1, end); }
+.blink .bf-shut { animation: bfShut .3s steps(1, end); }
+@keyframes bfHalf { 0% { opacity: 1; } 15% { opacity: 0; } 76.667% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes bfSlit { 0% { opacity: 0; } 15% { opacity: 1; } 28.333% { opacity: 0; } 58.333% { opacity: 1; } 76.667% { opacity: 0; } 100% { opacity: 0; } }
+@keyframes bfShut { 0% { opacity: 0; } 28.333% { opacity: 1; } 58.333% { opacity: 0; } 100% { opacity: 0; } }
+/* dozed off: hold the eye shut. waking (app.js, on the first move) opens it in three
+   frames over 200ms: shut · slit · half · open */
+.power-led.asleep .bf-shut { opacity: 1; }
 .power-led.asleep .eye-pupil { opacity: 0; }
+.power-led.waking .bf-shut { animation: wakeShut .2s steps(1, end); }
+.power-led.waking .bf-slit { animation: wakeSlit .2s steps(1, end); }
+.power-led.waking .bf-half { animation: wakeHalf .2s steps(1, end); }
+@keyframes wakeShut { 0% { opacity: 1; } 30% { opacity: 0; } 100% { opacity: 0; } }
+@keyframes wakeSlit { 0% { opacity: 0; } 30% { opacity: 1; } 60% { opacity: 0; } 100% { opacity: 0; } }
+@keyframes wakeHalf { 0% { opacity: 0; } 60% { opacity: 1; } 100% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) {
-    .eye-lid { transition: none; }
-    .blink .eye-lid-top, .blink .eye-lid-bottom { animation: none; }
+    .blink .bf, .power-led.waking .bf { animation: none; }
 }
 
 /* ───────────── screen ───────────── */
@@ -342,7 +349,7 @@ body.screen-max .ureboy {
 .cart-load[hidden] { display: none; }
 .cl-eye { width: 38px; height: 38px; color: var(--screen-ink); }
 .cl-eye svg { width: 100%; height: 100%; }
-.js .cl-eye svg { animation: bootBlink 1s ease both; }
+.js .cl-eye svg { animation: bootOpen .4s ease both; }
 .cl-word { font-family: var(--font-pixel); font-size: .8rem; color: var(--screen-ink); }
 .cl-word b { color: var(--screen-accent); }
 .cl-load { font-family: var(--font-ui); font-size: .86rem; color: var(--screen-dim); letter-spacing: .03em; }
@@ -350,7 +357,10 @@ body.screen-max .ureboy {
 @keyframes blinkCur { 50% { opacity: 0; } }
 
 /* ── BOOT (cracked terminal + login) ── */
-@keyframes bootBlink { 0% { transform: scaleY(.05); opacity: 0;} 30% { opacity: 1;} 60% { transform: scaleY(.05);} 100% { transform: scaleY(1); opacity: 1;} }
+/* the splash eye powers on: a line that stretches into the picture (it used to squash shut
+   again on the way, a scaleY that read as a blink but hinged nowhere; the real blink is the
+   framed one above) */
+@keyframes bootOpen { 0% { transform: scaleY(.05); opacity: 0;} 40% { opacity: 1;} 100% { transform: scaleY(1); opacity: 1;} }
 .state-boot { align-items: stretch; justify-content: flex-start; text-align: left; padding: .7rem .75rem; }
 .term { display: flex; flex-direction: column; height: 100%; overflow: hidden; font-family: var(--font-term); }
 .term-scroll { flex: 0 1 auto; overflow: hidden; }
