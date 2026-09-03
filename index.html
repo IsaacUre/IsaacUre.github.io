@@ -15,12 +15,15 @@
     <style>
         /* ────────────────────────────────────────────────────────────
            COMING SOON — the holding page
-           Black. A terminal boots: the checks, the banner, the ASCII
-           eye waking up (the console's own boot, ported), then it hands
-           off to the URE BOY's LCD, lifted out of the shell, which
-           powers on, prints the line, and waits. The terminal is a
-           JS layer over a page that works without it: no JS, or
-           reduced motion, and you get the screen straight away.
+           Black. A terminal boots in the top-left corner, small, the
+           way a machine does: the checks print and their results land
+           as they finish, the banner, then the ASCII eye wakes up as a
+           flipbook of frames stamped one under the last, scrolling up
+           and out like output does. Then it hands off to the URE BOY's
+           LCD, lifted out of the shell, which powers on, prints the
+           line, and waits. The terminal is a JS layer over a page that
+           works without it: no JS, or reduced motion, and you get the
+           screen straight away.
            The blink is three hand-drawn frames on the eye's own grid
            (see the SVG), not the console's sliding lids.
            ──────────────────────────────────────────────────────────── */
@@ -67,13 +70,15 @@
         }
 
         /* ── the boot terminal (JS only; the frame sits under it, unlit, until it hands off) ── */
+        /* top-left, small, and it scrolls: once the log outgrows the viewport the
+           oldest lines leave through the top, as they do */
         .term {
             position: fixed; inset: 0; z-index: 10;
             overflow: hidden;
             background: #000;
-            padding: calc(1.25rem + env(safe-area-inset-top, 0px)) 1.25rem calc(3.5rem + env(safe-area-inset-bottom, 0px));
+            padding: calc(.5rem + env(safe-area-inset-top, 0px)) .6rem calc(3rem + env(safe-area-inset-bottom, 0px)) calc(.6rem + env(safe-area-inset-left, 0px));
             font-family: var(--font-term);
-            font-size: clamp(1.05rem, 2.4vw, 1.3rem);
+            font-size: 1rem;
             line-height: 1.15;
             color: var(--term-fg);
             text-shadow: 0 0 6px rgba(230, 228, 210, .22);
@@ -82,14 +87,13 @@
             -webkit-user-select: none;
         }
         .term[hidden] { display: none; }
-        .term-col { max-width: 44rem; margin: 0 auto; }
         .tl { white-space: pre-wrap; word-break: break-word; min-height: 1.15em; }
-        /* the banner (52 columns) and the eye (34) must not wrap, so past a phone they
-           take the terminal's size, and under it they take what the width allows:
+        /* the banner and the eye are 52 columns and must not wrap: past a phone they
+           take the terminal's size, and under it they take what the width allows.
            VT323 advances .4em a column, so 52 columns is 20.8 ems */
         .tl-art {
             white-space: pre; word-break: normal; line-height: 1; letter-spacing: 0;
-            font-size: min(1.3rem, calc((100vw - 2.5rem) / 20.8));
+            font-size: min(1rem, calc((100vw - 1.2rem) / 20.8));
         }
         .tl-dim { color: var(--term-dim); }
         .tl-warn { color: var(--term-warn); }
@@ -312,7 +316,7 @@
 <body>
     <!-- the boot terminal. decoration for the ear: the page's content is the screen below -->
     <div class="term" id="term" hidden aria-hidden="true">
-        <div class="term-col" id="termLog"></div>
+        <div id="termLog"></div>
     </div>
     <button class="term-skip" id="termSkip" type="button" hidden aria-label="skip the boot">skip ▸</button>
 
@@ -348,8 +352,9 @@
     </main>
 
     <script>
-    /* the boot. the console's terminal, cut down: type lines, hold, draw the eye, hand off.
-       anything that goes wrong lights the screen; so does any key, a tap, or 12 seconds. */
+    /* the boot. the console's terminal, cut down: print lines, land results, stamp the eye
+       frame after frame, hand off. nothing types: a machine prints. anything that goes
+       wrong lights the screen; so does any key, a tap, or 12 seconds. */
     (function () {
         var frame = document.getElementById('frame'), term = document.getElementById('term'),
             log = document.getElementById('termLog'), skipBtn = document.getElementById('termSkip');
@@ -369,39 +374,46 @@
 
         /* ---- the terminal ---- */
         var cursor = document.createElement('span'); cursor.className = 'tc';
-        function scroll() { term.scrollTop = 1e9; }
-        function block(text, cls) {          // a line the cursor does not sit on
+        function jump() { term.scrollTop = 1e9; }
+        function isIdle(d) { return !!(d && d.lastChild === cursor && d.firstChild.data === ''); }
+        function make(text, cls) {
             var d = document.createElement('div');
             d.className = 'tl' + (cls ? ' ' + cls : '');
             d.appendChild(document.createTextNode(text));
-            log.appendChild(d);
-            scroll();
             return d;
+        }
+        function block(text, cls) {          // a line the cursor does not sit on
+            var d = make(text, cls); log.appendChild(d); jump(); return d;
         }
         function line(text, cls) {           // the cursor's line: writes on a waiting empty one, else a new one
             var d = log.lastChild;
-            if (!(d && d.lastChild === cursor && d.firstChild.data === '')) d = block('');
+            if (!isIdle(d)) { d = make('', ''); log.appendChild(d); }
             d.className = 'tl' + (cls ? ' ' + cls : '');
             d.firstChild.data = text;
             d.appendChild(cursor);
-            scroll();
+            jump();
             return d;
         }
-        function art(text) {                 // a block with the cursor waiting on a fresh line under it
-            var d = block(text, 'tl-art');
-            line('');
+        /* a frame of output: goes in above the waiting cursor line, so the cursor stays
+           at the bottom and the frames stack up over it, oldest at the top */
+        function stamp(text) {
+            var d = make(text, 'tl-art'), last = log.lastChild;
+            if (isIdle(last)) log.insertBefore(d, last); else { log.appendChild(d); line(''); }
             return d;
         }
-        function type(text, cls, cps) {
-            var g = gen;
+        /* ease the scroll to the new bottom, so a stamped frame slides up into view and
+           the last one slides out: the flipbook the console's boot does */
+        function slide(ms) {
+            var g = gen, el = term, start = el.scrollTop, end = el.scrollHeight - el.clientHeight;
+            if (ms <= 0 || end <= start) { jump(); return Promise.resolve(); }
             return new Promise(function (res) {
-                var d = line('', cls), node = d.firstChild, i = 0;
-                var step = Math.max(8, 1000 / (cps || 60));
-                var iv = setInterval(function () {
-                    if (g !== gen) { clearInterval(iv); return; }
-                    node.data = text.slice(0, ++i);
-                    if (i >= text.length) { scroll(); clearInterval(iv); res(); }
-                }, step);
+                var t0 = Date.now();
+                (function step() {
+                    if (g !== gen) return res();
+                    var t = Math.min(1, (Date.now() - t0) / ms);
+                    el.scrollTop = start + (end - start) * (1 - Math.pow(1 - t, 2));   // ease-out
+                    if (t < 1) requestAnimationFrame(step); else res();
+                })();
             });
         }
         function pause(ms) {
@@ -413,44 +425,69 @@
             var w = 34, dots = w - left.length - right.length - 2;
             return left + ' ' + new Array(Math.max(3, dots) + 1).join('.') + ' ' + right;
         }
+        /* a check: the leader prints now, the result lands when the check is done */
+        function check(left, right, ms, cls) {
+            var full = lead(left, right), d = line(full.slice(0, full.length - right.length));
+            return pause(ms).then(function () { d.firstChild.data = full; if (cls) d.className += ' ' + cls; });
+        }
         function pad2(n) { return (n < 10 ? '0' : '') + n; }
 
-        /* ---- the big ASCII eye: the console's, verbatim. a parametric almond on a 34x13
-           canvas; `a` is the aperture (0 shut .. 3 open), `px` shifts the pupil ---- */
-        var EYE_W = 34, EYE_H = 13, EYE_CX = 17, EYE_CY = 6, EYE_B = 16, EYE_A = 3;
-        function bigEye(a, px) {
+        /* ---- the ASCII eye: a parametric almond on a 52x8 canvas. `a` is the aperture in
+           rows (0 shut .. 3 open), `px` shifts the iris. lines are drawn with the glyphs
+           that sit at the right height in their cell ( ' - . _ ) where the curve is gentle
+           and with / and \ where it is steep; the iris is clipped to the opening, so the
+           lids cover it as they close ---- */
+        var EYE_W = 52, EYE_H = 8, EYE_CX = 25, EYE_CY = 4, EYE_B = 25, EYE_A = 3, EYE_ASPECT = 2.5, IRIS_R = 2, PUPIL_R = 1;
+        function sub(f) { return f < 0.25 ? "'" : f < 0.6 ? '-' : f < 0.85 ? '.' : '_'; }
+        function asciiEye(a, px) {
             px = px || 0;
-            var g = [], r, c;
-            for (r = 0; r < EYE_H; r++) { var row = []; for (c = 0; c < EYE_W; c++) row.push(' '); g.push(row); }
-            function put(x, y, ch) { if (y >= 0 && y < EYE_H && x >= 0 && x < EYE_W) g[y][x] = ch; }
-            var cx = EYE_CX, cy = EYE_CY, b = EYE_B;
-            if (a < 1) {
-                for (var x0 = cx - b + 1; x0 <= cx + b - 1; x0++) put(x0, cy, '_');
-                put(cx - b, cy, '<'); put(cx + b, cy, '>');
-                put(cx - 7, cy + 1, '\\'); put(cx, cy + 1, '|'); put(cx + 7, cy + 1, '/');
-            } else {
-                var pTop = cy, pBot = cy, yy2;
-                for (var x = cx - b; x <= cx + b; x++) {
-                    var dx = (x - cx) / b;
-                    var vh = a * Math.sqrt(Math.max(0, 1 - dx * dx));
-                    var top = Math.round(cy - vh), bot = Math.round(cy + vh);
-                    if (x === cx - b) { put(x, cy, '<'); pTop = top; pBot = bot; continue; }
-                    if (x === cx + b) { put(x, cy, '>'); continue; }
-                    if (top === pTop) put(x, top, '_');
-                    else for (yy2 = Math.min(top, pTop); yy2 <= Math.max(top, pTop); yy2++) put(x, yy2, top < pTop ? '/' : '\\');
-                    if (bot === pBot) put(x, bot, '_');
-                    else for (yy2 = Math.min(bot, pBot); yy2 <= Math.max(bot, pBot); yy2++) put(x, yy2, bot < pBot ? '/' : '\\');
-                    pTop = top; pBot = bot;
+            var W = EYE_W, H = EYE_H, CX = EYE_CX, CY = EYE_CY, B = EYE_B, g = [], r, c, x, y;
+            for (r = 0; r < H; r++) { var row = []; for (c = 0; c < W; c++) row.push(' '); g.push(row); }
+            function put(x, y, ch) { if (x >= 0 && x < W && y >= 0 && y < H) g[y][x] = ch; }
+            function curve(x, k) { var t = (x - CX) / B; return CY + k * Math.sqrt(Math.max(0, 1 - t * t)); }
+            function join() { return g.map(function (rr) { return rr.join(''); }).join('\n'); }
+            function top(x) { return curve(x, -a); }
+            function bot(x) { return curve(x, a * 0.85); }
+            if (a <= 0) {
+                for (x = CX - B + 1; x < CX + B; x++) { y = curve(x, 0.92); put(x, Math.floor(y), sub(y - Math.floor(y))); }
+                put(CX - B, CY, '<'); put(CX + B, CY, '>');
+                put(CX - 9, CY + 1, '\\'); put(CX, CY + 1, '|'); put(CX + 9, CY + 1, '/');
+                return join();
+            }
+            function inside(x, y) { return top(x) < y + 0.5 && y + 0.5 < bot(x); }
+            var icx = CX + px, rx = IRIS_R * EYE_ASPECT, ry = IRIS_R;
+            for (y = Math.floor(CY - ry); y <= Math.ceil(CY + ry); y++)
+                for (x = Math.floor(icx - rx); x <= Math.ceil(icx + rx); x++) {
+                    var ex = (x - icx) / (rx + 0.5), ey = (y - CY) / (ry + 0.5);
+                    if (ex * ex + ey * ey <= 1 && inside(x, y)) put(x, y, ':');
                 }
-                if (a >= 2) {
-                    var pr = Math.min(a - 2, 2), pcx = cx + px;
-                    for (var yy = -pr; yy <= pr; yy++)
-                        for (var xx = -(pr + 1); xx <= pr + 1; xx++)
-                            if ((xx * xx) / ((pr + 1.5) * (pr + 1.5)) + (yy * yy) / (pr * pr + 0.01) <= 1) put(pcx + xx, cy + yy, '#');
-                    put(pcx - 1, cy - 1, ' ');   // catch-light
+            var prx = PUPIL_R * EYE_ASPECT, pry = PUPIL_R;
+            for (y = Math.floor(CY - pry); y <= Math.ceil(CY + pry); y++)
+                for (x = Math.floor(icx - prx); x <= Math.ceil(icx + prx); x++) {
+                    var qx = (x - icx) / (prx + 0.5), qy = (y - CY) / (pry + 0.5);
+                    if (qx * qx + qy * qy <= 1 && inside(x, y)) put(x, y, '@');
+                }
+            if (inside(icx - 1, CY - 1)) put(icx - 1, CY - 1, "'");
+            function lid(fn, upper) {
+                var py = null;
+                for (x = CX - B; x <= CX + B; x++) {
+                    y = fn(x);
+                    if (x === CX - B || x === CX + B) { put(x, CY, x === CX - B ? '<' : '>'); py = y; continue; }
+                    var slope = y - py;
+                    if (Math.abs(slope) >= 0.6) {
+                        var lo = Math.min(py, y), hi = Math.max(py, y);
+                        for (r = Math.floor(lo); r <= Math.floor(hi); r++) put(x, r, upper ? (x <= CX ? '/' : '\\') : (x <= CX ? '\\' : '/'));
+                    } else put(x, Math.floor(y), sub(y - Math.floor(y)));
+                    py = y;
                 }
             }
-            return g.map(function (rr) { return rr.join(''); }).join('\n');
+            lid(bot, false);
+            lid(top, true);
+            if (a >= 3) for (x = CX - 16; x <= CX + 16; x++) {
+                var t = curve(x, -a), yy = t - 0.1;
+                if (Math.floor(yy) !== Math.floor(t)) put(x, Math.floor(yy), sub(yy - Math.floor(yy)));
+            }
+            return join();
         }
 
         var BANNER = [
@@ -465,40 +502,41 @@
         function run() {
             var g = gen, now = new Date();
             var today = now.getFullYear() + '-' + pad2(now.getMonth() + 1) + '-' + pad2(now.getDate());
-            var eye = null;
-            function frameEye(a, px, hold) {        // redraw the eye in place, hold a beat
-                return function () { if (g !== gen) return; eye.firstChild.data = bigEye(a, px); return pause(hold); };
+            function eyeFrame(a, px, slideMs, hold) {
+                return function () { if (g !== gen) return; stamp(asciiEye(a, px)); return slide(slideMs).then(function () { return pause(hold); }); };
             }
             term.hidden = false; skipBtn.hidden = false;
             line('');                               // the lone blinking cursor; the first line writes over it
-            var seq = pause(650);
-            [
-                [lead('> power', 'ok'), ''],
-                [lead('> memcheck 8K', 'ok'), ''],
-                [lead('> clock', today), ''],
-                [lead('> mounting /site', 'not found'), 'tl-warn'],
-                [lead('> looking for isaacure.com', ''), ''],
-                ['  nothing here yet', 'tl-dim'],
-                [lead('> eye subsystem', 'waking'), '']
-            ].forEach(function (ln) {
-                seq = seq.then(function () { return type(ln[0], ln[1], 140); })
-                         .then(function () { return pause(ln[1] === 'tl-dim' ? 220 : 70); });
-            });
-            seq = seq.then(function () { return pause(160); })
+            var seq = pause(600)
+                .then(function () { return check('> power', 'ok', 120); })
+                .then(function () { return pause(40); })
+                .then(function () { return check('> memcheck 8K', 'ok', 260); })
+                .then(function () { return pause(40); })
+                .then(function () { return check('> clock', today, 60); })
+                .then(function () { return pause(40); })
+                .then(function () { return check('> mounting /site', 'not found', 380, 'tl-warn'); })
+                .then(function () { return pause(60); })
+                .then(function () { line(lead('> looking for isaacure.com', '')); return pause(500); })
+                .then(function () { line('  nothing here yet', 'tl-dim'); return pause(200); })
+                .then(function () { return check('> eye subsystem', 'waking', 200); })
+                .then(function () { return pause(160); })
                 .then(function () {
                     block('');
                     block(BANNER, 'tl-art');
                     line('        A GOOD EYE OS  v1.0', 'tl-dim');
                     return pause(420);
                 })
-                .then(function () { eye = art(bigEye(EYE_A)); return pause(360); })
-                // a quick look-around, then two blinks: apertures drawn as frames in place
-                .then(frameEye(EYE_A, -4, 90)).then(frameEye(EYE_A, 4, 90)).then(frameEye(EYE_A, 0, 260));
+                .then(function () { block(''); line(''); return pause(60); })
+                // the eye powers on, has a look around, and blinks twice: each frame is
+                // stamped under the last and the log slides up to it
+                .then(eyeFrame(EYE_A, 0, 200, 380))
+                .then(eyeFrame(EYE_A, -6, 60, 90)).then(eyeFrame(EYE_A, 6, 60, 90)).then(eyeFrame(EYE_A, 0, 60, 100));
             for (var k = 0; k < 2; k++) {
-                [2, 1, 0, 0, 1, 2].forEach(function (a) { seq = seq.then(frameEye(a, 0, a === 0 ? 45 : 40)); });
-                seq = seq.then(frameEye(EYE_A, 0, k === 0 ? 260 : 300));
+                [2, 1, 0, 0, 1, 2].forEach(function (a) { seq = seq.then(eyeFrame(a, 0, 42, a === 0 ? 55 : 14)); });
+                seq = seq.then(eyeFrame(EYE_A, 0, 60, k === 0 ? 260 : 300));
             }
-            seq.then(function () { return type(lead('> handing off to /dev/eye0', 'ok'), '', 140); })
+            seq.then(function () { return pause(250); })
+               .then(function () { return check('> handing off to /dev/eye0', 'ok', 150); })
                .then(function () { return pause(380); })
                .then(function () { if (g === gen) light(); })
                .catch(light);
