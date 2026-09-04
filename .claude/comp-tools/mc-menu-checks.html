@@ -297,11 +297,12 @@ var STEPS = [
       var live = JSON.parse(localStorage.getItem('comp_mc') || 'null');
       line(live && live.seed === 4114, 'comp_mc now holds the played world');
       line(savesPushed && savesPushed.length === 5, 'the desktop saves folder gained the new world');
-      // Allow Cheats was left OFF on the create screen, so this world has no commands
-      line(window.MC.__proof.save().cheats === false, 'the world records Allow Cheats: OFF');
-      chatRun('/seed', function (log) {
-        line(/Unknown or incomplete command/.test(log), 'with cheats off, /seed is refused as an unknown command');
-        line(!/Seed: \[/.test(log), 'and it does not print the seed');
+      // Allow Cheats was left alone on the create screen, but Creative implies it,
+      // the way the real screen flips the switch on for you
+      line(window.MC.__proof.save().cheats === true, 'Creative implies Allow Cheats: ON');
+      chatRun('/gamemode survival', function (log) {
+        line(/Set own game mode to Survival Mode/.test(log), 'so /gamemode runs in it');
+        line(window.MC.__proof.save().gm === 0, 'and the mode changed');
         next();
       });
     });
@@ -323,6 +324,38 @@ var STEPS = [
       line(!!startsWith('harness world'), 'the created world is in the list after quitting to title');
       key('Escape');
       setTimeout(next, 300);
+    });
+  },
+  /* A world made with the defaults has Allow Cheats OFF: the cheat commands are
+     not there, and the console does not offer them either; /seed still answers,
+     as it needs no permission on a singleplayer server. Starts and ends on the
+     title screen. */
+  function defaultWorldHasNoCheats(next) {
+    waitFor('the title screen', function () { return byName('Singleplayer'); }, function () {
+      click(byName('Singleplayer'));
+      waitFor('Select World', function () { return byName('Create New World'); }, function () {
+        click(byName('Create New World'));
+        waitFor('Create New World', function () { return byName('World Name'); }, function () {
+          type(byName('World Name'), 'plain world');
+          line(!!byName('Allow Cheats: OFF'), 'a fresh create screen shows Allow Cheats: OFF');
+          click(byName('Create New World'));
+          waitFor('the world', function () {
+            var ld = host().querySelector('.mc-load');
+            return ld && ld.style.display === 'none' && host().querySelector('.mc-pause').style.display !== 'none';
+          }, function () {
+            line(window.MC.__proof.save().cheats === false, 'the default world records Allow Cheats: OFF');
+            chatRun('/gamemode creative', function (log) {
+              line(/Unknown or incomplete command/.test(log), 'with cheats off, /gamemode creative is refused as an unknown command');
+              line(window.MC.__proof.save().gm === 0, 'and the mode did not change');
+              chatRun('/seed', function (log2) {
+                line(/Seed: \[/.test(log2), 'but /seed still prints the seed');
+                host().querySelector('.mc-totitle').click();
+                waitFor('the title screen again', function () { return byName('Singleplayer'); }, function () { next(); });
+              });
+            });
+          });
+        });
+      });
     });
   },
   function multiplayer(next) {
@@ -403,7 +436,7 @@ var STEPS = [
       waitFor('Select World', function () { return byName('Create New World'); }, function () {
         click(byName('Create New World'));
         waitFor('Create New World', function () { return byName('Allow Cheats: OFF'); }, function () {
-          click(byName('Allow Cheats: OFF'));   // this one gets commands, to prove the gate swings both ways
+          click(byName('Allow Cheats: OFF'));   // this one gets commands, to prove the gate swings both ways (the default world below has none)
           waitFor('cheats on', function () { return byName('Allow Cheats: ON'); }, function (on) {
             line(!!on, 'Allow Cheats toggles to ON');
             click(byName('World'));
@@ -428,8 +461,8 @@ var STEPS = [
                 });
                 line(flat, 'every column is ground at y=4 and open sky at y=12' + note);
                 line(p.probe(8, 20, 8) === 0, 'there is nothing at y=20 — the sea did not flood it');
-                chatRun('/seed', function (log) {
-                  line(/Seed: \[/.test(log), 'with cheats on, /seed still works');
+                chatRun('/gamemode creative', function (log) {
+                  line(/Set own game mode to Creative Mode/.test(log), 'with cheats on, /gamemode runs');
                   var btn = host().querySelector('.mc-totitle');
                   btn.click();
                   waitFor('the title screen', function () { return byName('Singleplayer'); }, function () {

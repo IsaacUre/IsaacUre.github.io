@@ -2199,6 +2199,20 @@ span.st-newsart .ic { width: 40px; height: 40px; }
 .mc-cur .mc-ct { right: -3px; bottom: -4px; }
 .mc-armcol { display: flex; flex-direction: column; gap: 2px; margin-left: 14px; }
 .mc-armcol .armslot { background-color: #7d7d7d; }
+/* the survival screen's top half in the real order: armour, you in your black
+   box, the 2×2 grid. The box is the real 49×70 at the panel's scale. */
+.mc-craftrow.inv { gap: 12px; align-items: flex-start; }
+.mc-craftrow.inv .mc-armcol { margin-left: 0; }
+.mc-avbox { width: 122px; height: 174px; box-sizing: border-box; flex: none; overflow: hidden; background: #000; border: 2px solid; border-color: #373737 #ffffff #ffffff #373737; }
+.mc-av { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
+.mc-craftcol { display: flex; flex-direction: column; align-self: stretch; }
+.mc-craftcol .mc-phead { margin: 2px 0 8px; }
+.mc-craft2 { display: flex; align-items: center; gap: 14px; }
+.mc-craft2 .mc-pgrid { margin-bottom: 0; }
+/* the creative survival tab keeps its bin beside the hotbar, bottom right */
+.mc-hbrow { display: flex; align-items: center; gap: 14px; margin-top: 4px; }
+.mc-hbrow .mc-pgrid { margin: 0; }
+.mc-hbrow .mc-slot.ctrash { margin-left: 0; }
 .mc-enchrow { display: flex; align-items: stretch; gap: 12px; margin-bottom: 10px; }
 .mc-slot.small { width: 30px; height: 30px; background-size: 22px 22px; }
 .mc-enchopts { display: flex; flex-direction: column; gap: 3px; flex: 1 1 auto; min-width: 210px; }
@@ -2214,6 +2228,8 @@ span.st-newsart .ic { width: 40px; height: 40px; }
 .mc-slot.anvOut.has, .mc-slot.big.anvOut { background-color: #9a9a8b; }
 .mc-slot.glint { box-shadow: inset 0 0 8px rgba(170, 90, 255, 0.7); }
 .mc-slot.glint::after { content: ''; position: absolute; inset: 2px; background: linear-gradient(120deg, transparent 30%, rgba(200, 130, 255, 0.5) 50%, transparent 70%); background-size: 220% 220%; animation: mcGlint 2.4s linear infinite; pointer-events: none; }
+/* a slot inside a drag-split sweep: the stack it would get, under the real screen's white wash */
+.mc-panel .mc-slot.qc::before { content: ''; position: absolute; inset: 0; background: rgba(255, 255, 255, 0.45); pointer-events: none; }
 @keyframes mcGlint { from { background-position: 130% 0; } to { background-position: -130% 0; } }
 .mc-pause, .mc-death, .mc-load { position: absolute; inset: 0; z-index: 7; display: flex; align-items: center; justify-content: center; }
 .mc-pause { background: rgba(8, 8, 12, 0.55); }
@@ -2226,6 +2242,13 @@ span.st-newsart .ic { width: 40px; height: 40px; }
 .mc-btn:hover { background: #7f8bbd; color: #ffffa0; }
 .mc-btn.half { width: 136px; }
 .mc-optrow { display: flex; gap: 8px; }
+/* Open to LAN: the game's screen, in the pause menu's clothes */
+.mc-lansub { color: #a0a0a0; font-size: 12px; text-shadow: 1px 1px 0 #26262c; margin: -4px 0 6px; }
+.mc-lanportrow { display: flex; align-items: center; gap: 10px; width: 280px; color: #e8e8e8; font-size: 13px; text-shadow: 1px 1px 0 #3f3f3f; }
+.mc-lanport { flex: 1 1 auto; height: 28px; background: #000; border: 2px solid #a0a0a0; color: #e8e8e8; font: inherit; font-size: 13px; padding: 0 8px; outline: none; }
+.mc-lanport:focus { border-color: #ffffff; }
+.mc-lanmsg { min-height: 16px; color: #ff5555; font-size: 12px; text-shadow: 1px 1px 0 #3f3f3f; }
+.mc-btn:disabled, .mc-btn:disabled:hover { background: #4a4a4a; color: #a0a0a0; border-color: #6a6a6a #242424 #242424 #6a6a6a; cursor: default; }
 /* the options screen's slider: a sunken track with a button-shaped knob on it */
 .mc-slider { position: relative; width: 136px; height: 33px; background: #000; border: 2px solid; border-color: #2f2f2f #a8a8a8 #a8a8a8 #2f2f2f; cursor: pointer; user-select: none; overflow: hidden; }
 .mc-slider i { position: absolute; top: -2px; bottom: -2px; width: 10px; margin-left: -5px; background: #8b8b8b; border: 2px solid; border-color: #c6c6c6 #2f2f2f #2f2f2f #c6c6c6; pointer-events: none; }
@@ -2283,6 +2306,7 @@ span.st-newsart .ic { width: 40px; height: 40px; }
     .mc-ctab { width: 34px; height: 26px; background-size: 20px 20px; }
     .mc-ctabs { top: -26px; }
     .mc-cpanel { padding-top: 30px; }
+    .mc-avbox { width: 100px; height: 142px; }
 }
 
 /* ── Minecraft: the title screen ──
@@ -3103,6 +3127,10 @@ button.nn-drow:hover { background: rgba(30,60,48,.5); }
 .mc-chat.open .mc-cline { background: rgba(0,0,0,.5); }
 .mc-cline.err { color: #ff5555; }
 .mc-cline.dim { color: #aaa; }
+/* a syntax error's context line: grey up to where parsing stopped, the rest red and underlined, then <--[HERE] */
+.mc-cline.mc-ctx { color: #aaa; }
+.mc-cline .mc-cu { color: #ff5555; text-decoration: underline; }
+.mc-cline .mc-chere { color: #ff5555; font-style: italic; }
 .mc-chatin { display: none; }
 .mc-chat.open { pointer-events: auto; bottom: 0; }
 .mc-chat.open .mc-chatlog { max-height: 190px; }

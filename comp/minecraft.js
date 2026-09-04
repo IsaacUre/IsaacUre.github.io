@@ -2069,7 +2069,7 @@
         }
     }
     function eatCake(x, y, z) {
-        if (S.food >= 20) { toast('You are not hungry'); return; }
+        if (S.food >= 20 && !invulnerable()) { toast('You are not hungry'); return; }   // creative bites regardless
         var t = tentAt(x, y, z, 'cake');
         S.food = Math.min(20, S.food + 2); S.sat = Math.min(S.food, S.sat + 0.4);
         t.bites = (t.bites || 0) + 1; snd('eat'); paintVitals();
@@ -2834,7 +2834,8 @@
         var h = held(), def = h && I[h.id];
         if (!RT.mouse.r || RT.dead || RT.panel || RT.paused || RT.chat || !def) { finishUse(); return; }
         if (def.food) {
-            if (S.food >= 20 && h.id !== 'flesh') { RT.eatT = 0; return; }
+            // a full stomach stops a survival meal; creative can always eat (Player.canEat is true for invulnerable)
+            if (S.food >= 20 && h.id !== 'flesh' && !invulnerable()) { RT.eatT = 0; return; }
             RT.eatT += dt;
             if (RT.eatT > 0.25 && Math.floor(RT.eatT / 0.3) !== Math.floor((RT.eatT - dt) / 0.3)) snd(def.bowl || h.id === 'milk_bucket' ? 'drink' : 'eat');
             if (RT.eatT >= 1.6) {
@@ -4356,8 +4357,56 @@
         p.style.display = '';
         paintAchList();
     }
+    /* ── Open to LAN ────────────────────────────────────────
+       The screen behind the pause menu's button: a game mode for players who
+       would join, an Allow Cheats switch, a port, Start LAN World. There is
+       nobody on this LAN, but the switch is the real game's only way to turn
+       commands on in a world created without them, so it does exactly that —
+       for the rest of the session, the way the real one does, and the button
+       greys once the world is out. */
+    function lanOpen() {
+        if (!RT || !RT.paused || RT.lan) return;
+        RT.lanUI = { gm: S.gm, cheats: cheatsOn(), port: '', pick: String(1024 + ((Math.random() * (65535 - 1024)) | 0)) };   // an empty box takes the picked port
+        RT.el.querySelector('.mc-pmain').style.display = 'none';
+        RT.el.querySelector('.mc-achs').style.display = 'none';
+        var lan = RT.el.querySelector('.mc-lan');
+        lan.style.display = '';
+        lanPaint(true);
+        snd('click');
+    }
+    function lanPaint(setPort) {
+        var u = RT.lanUI;
+        if (!u) return;
+        RT.el.querySelector('.mc-langm').textContent = 'Game Mode: ' + GM_NAME[u.gm];
+        RT.el.querySelector('.mc-lanch').textContent = 'Allow Cheats: ' + (u.cheats ? 'ON' : 'OFF');
+        var pin = RT.el.querySelector('.mc-lanport');
+        if (setPort) { pin.value = u.port; pin.placeholder = u.pick; }
+        var ok = lanPortOk(u.port);
+        RT.el.querySelector('.mc-lanmsg').textContent = ok ? '' : 'Not a valid port. Leave the edit box empty or enter a number between 1024 and 65535.';
+        RT.el.querySelector('.mc-lanstart').disabled = !ok;
+    }
+    function lanPortOk(p) { p = String(p).trim(); return p === '' || (/^\d{4,5}$/.test(p) && +p >= 1024 && +p <= 65535); }
+    function lanClose() {
+        if (!RT || !RT.el) return;
+        RT.lanUI = null;
+        RT.el.querySelector('.mc-lan').style.display = 'none';
+        RT.el.querySelector('.mc-pmain').style.display = '';
+        RT.el.focus();
+    }
+    function lanStart() {
+        var u = RT && RT.lanUI;
+        if (!u || !lanPortOk(u.port)) { if (u) lanPaint(false); return; }
+        RT.lan = { gm: u.gm, cheats: !!u.cheats, port: +(String(u.port).trim() || u.pick) };
+        lanClose();
+        RT.el.querySelector('.mc-lanbtn').disabled = true;   // the world is out; the real button greys the same way
+        chatSay('Local game hosted on port ' + RT.lan.port);
+        snd('click');
+        hidePause();
+        lockCursor();
+    }
     function hidePause() {
         RT.paused = false;
+        if (RT.lanUI) lanClose();
         RT.el.querySelector('.mc-pause').style.display = 'none';
         RT.el.querySelector('.mc-achs').style.display = 'none';
         RT.lastT = 0;   // don't count paused time as a frame
@@ -4758,8 +4807,11 @@
     function creativeRender() {   // a tab switch replaces the markup; the carried stack survives it
         var wrap = RT.el.querySelector('.mc-panelwrap');
         if (!wrap) return;
+        RT.qc = null;   // the slots a sweep was over are about to be replaced
+        RT.hover = null;
         wrap.innerHTML = '<div class="mc-panel mc-cpanel">' + panelHTML('creative') + '</div><div class="mc-cur"></div><div class="mc-ptip" style="display:none"></div>';
         wirePanelFields(wrap);
+        avatarAttach();
         paintPanel();   // re-places the carried ghost from RT.curXY
         /* The innerHTML swap above destroys whatever had focus. Switching AWAY from
            the search tab therefore dropped focus onto <body>, and since the key
@@ -4769,19 +4821,400 @@
         if (sb) { sb.focus(); sb.setSelectionRange(sb.value.length, sb.value.length); }
         else RT.el.focus();
     }
+    /* The catalogue's clicks are Java's (CreativeModeInventoryScreen.slotClicked):
+       an empty cursor takes ONE of the entry, shift takes a full stack; the same
+       item already on the cursor gains one on the left button (shift: fills it)
+       and loses one on the right; anything else on the cursor is cleared by the
+       left button and shrinks by one on the right — even over a gap in the last
+       row. Middle-click is the clone: a full stack, only onto an empty cursor. */
     function creativeClick(idx, right, shift) {
-        var id = (RT.cList || [])[RT.cScroll * CCOLS + idx];
-        // carrying something onto the catalogue throws it away — even over a gap
-        // in the last row, which is what the real screen does too
-        if (RT.cur) { RT.cur = null; snd('click'); paintPanel(); paintHotbar(); return; }
-        if (!id) return;
-        var st = creativeStack(id);
-        if (right) st.c = 1;                        // right-click takes exactly one
-        if (shift) {                                 // shift-click posts a full stack straight into the bar
-            if (invGive(st.id, st.c, st.dur) === st.c) return;
-            snd('pop');
-        } else { RT.cur = st; snd('click'); }
+        var id = (RT.cList || [])[RT.cScroll * CCOLS + idx], cur = RT.cur;
+        var fresh = id ? creativeStack(id) : null;
+        var same = !!(cur && fresh && cur.id === id && !cur.ench && !cur.name && (cur.dur == null || cur.dur === fresh.dur));   // a damaged tool is a different item
+        if (same) {
+            if (!right) { if (shift) cur.c = stkMax(cur.id); else if (cur.c < stkMax(cur.id)) cur.c++; }
+            else { cur.c--; if (!cur.c) RT.cur = null; }
+        } else if (!cur && id) {
+            var st = creativeStack(id);
+            if (!shift) st.c = 1;
+            RT.cur = st;
+        } else if (cur) {
+            if (!right) RT.cur = null;
+            else { cur.c--; if (!cur.c) RT.cur = null; }
+        } else return;
+        snd('click');
         paintPanel(); paintHotbar();
+    }
+
+    /* ═══════════════ the inventory avatar ═══════════════
+       The real inventory screen has you standing in a black box beside the
+       armour slots, turning to watch the pointer. This is that: the six boxes
+       of the player model, the armour you are wearing over them, the item in
+       your hand — drawn by hand on a 2D canvas. Under an orthographic camera
+       every face of a box is a parallelogram, and a parallelogram is an affine
+       image of its texture, so each face is one setTransform and one
+       drawImage: the same trick the item icons already use for their little
+       cubes. Faces are sorted far-to-near and the ones turned away skipped.
+
+       The numbers are the game's, as InventoryScreen drew it from 1.16 to
+       1.20.1 (1.20.2 moved to centring the figure in the box and turning it
+       about its middle; this is the older, feet-planted one). The boxes and
+       pivots are HumanoidModel's, in skin pixels. The box is the real 49×70 at
+       scale 30 (1.875 GUI px per skin pixel), the pointer tracking is
+       renderEntityInInventory's atan(d/40) with the body turning 20° and the
+       head 40° per radian and the whole figure tilting from the feet, the arms
+       carry the idle sway (cos(t·0.09)·0.05 + 0.05 outward, sin(t·0.067)·0.05
+       fore and aft) and the one holding something bends forward by π/10 as
+       the ITEM arm pose does, the armour layers are the 1.0 / 0.5 pixel
+       inflations of HumanoidArmorModel, and the hand holds what the hotbar
+       has selected — a block as a small cube, anything flat as the real
+       game's one-pixel extrusion, so a sword seen edge-on is still a sword.
+
+       The skin is the launcher's: a 16×32 FRONT view, which is all it draws.
+       The other faces are made from it — the sides carry the edge column
+       round the corner, backs take each row's dominant colour, the top and
+       back of the head take the hair. */
+    var AV_CHARS = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    var AV_STEVE = { id: 'steve', n: 'Steve', model: 'classic',
+        pal: { h: '#2b1c10', s: '#bd8b72', S: '#a5735c', e: '#ffffff', i: '#4a3fb0', m: '#8a5a45',
+               t: '#00a8a8', T: '#008a8a', p: '#4234a0', P: '#362a86', o: '#5f5f5f', O: '#4a4a4a' },
+        rows: ['....hhhhhhhh....', '....hhhhhhhh....', '....hssssssh....', '....ssssssss....',
+               '....seissies....', '....sssSSsss....', '....ssmmmmss....', '....ssssssss....',
+               'ssssttttttttssss', 'ssssttttttttssss', 'sssstttttttTssss', 'ssssttttttttssss',
+               'ssssttttttttssss', 'sSsstttttttTssSs', 'ssssttttttttssss', 'ssssttttttttssss',
+               'ssssttTtttttssss', 'sSsstttttttTssss', 'ssssttttttttsSss', 'ssssttttttttssss',
+               '....pppppppp....', '....pppPPppp....', '....pppppppp....', '....pPpppppp....',
+               '....pppppPpp....', '....pppppppp....', '....pPpppppp....', '....pppppppp....',
+               '....pppppppp....', '....oooooooo....', '....oooOOooo....', '....oooooooo....'] };
+    // undyed leather, then the three metals, each as [face, edge, glint]
+    var AV_ARMOR_COL = { leather: ['#a06540', '#6b4128', '#b8805a'], iron: ['#dcdcdc', '#8c8c8c', '#f6f6f6'],
+                         gold: ['#f3c53a', '#a8801a', '#fbe38a'], diamond: ['#57dfe6', '#2a9ba5', '#b9f4f7'] };
+    // how each face catches the inventory's light, in the engine's face order +x −x +y −y +z −z
+    var AV_SHADE = [0.68, 0.82, 1.0, 0.5, 0.95, 0.78];
+    /* each face as seen from outside: the corner its texture starts at, which
+       way the texture's u and v run, and its normal — all in unit-cube terms */
+    var AV_FACES = [
+        { o: [1, 1, 1], u: [0, 0, -1], v: [0, -1, 0], n: [1, 0, 0], k: 'right' },
+        { o: [0, 1, 0], u: [0, 0, 1], v: [0, -1, 0], n: [-1, 0, 0], k: 'left' },
+        { o: [0, 1, 0], u: [1, 0, 0], v: [0, 0, 1], n: [0, 1, 0], k: 'top' },
+        { o: [0, 0, 1], u: [1, 0, 0], v: [0, 0, -1], n: [0, -1, 0], k: 'bottom' },
+        { o: [0, 1, 1], u: [1, 0, 0], v: [0, -1, 0], n: [0, 0, 1], k: 'front' },
+        { o: [1, 1, 0], u: [-1, 0, 0], v: [0, -1, 0], n: [0, 0, -1], k: 'back' }
+    ];
+    var D2R = Math.PI / 180;
+    function avValidSkin(sk) { return !!(sk && sk.rows && sk.rows.length === 32 && sk.pal); }
+    function avatarSkin() {   // the launcher's live choice, else what it handed over at launch, else Steve
+        var sk = null;
+        try { var h = window.MCHOST; if (h && h.skin) sk = h.skin(); } catch (e) { sk = null; }
+        if (!avValidSkin(sk)) sk = RT && RT.skin;
+        if (!avValidSkin(sk)) sk = AV_STEVE;
+        return sk;
+    }
+    function avPalMap(sk) {
+        if (!(sk.pal instanceof Array)) return sk.pal;
+        var m = {};
+        for (var i = 0; i < sk.pal.length; i++) m[AV_CHARS.charAt(i)] = sk.pal[i];
+        return m;
+    }
+    function avPixels(sk) {   // (x, y) → '#rrggbb' or null, with a slim skin's arm columns blanked as the launcher shows them
+        var pal = avPalMap(sk), rows = sk.rows, slim = sk.model === 'slim';
+        return function (x, y) {
+            if (x < 0 || x > 15 || y < 0 || y > 31) return null;
+            if (slim && y >= 8 && y < 20 && (x === 0 || x === 15)) return null;
+            var ch = rows[y].charAt(x);
+            return ch === '.' || ch === ' ' || !pal[ch] ? null : pal[ch];
+        };
+    }
+    function avMode(list) {   // the dominant colour of a list (nulls ignored), and how many there were
+        var n = {}, best = null, bn = 0;
+        for (var i = 0; i < list.length; i++) {
+            var c = list[i];
+            if (!c) continue;
+            n[c] = (n[c] || 0) + 1;
+            if (n[c] > bn) { bn = n[c]; best = c; }
+        }
+        return { col: best, n: bn };
+    }
+    function avShade(col, f) {
+        var v = parseInt(col.slice(1), 16);
+        return 'rgb(' + Math.round(((v >> 16) & 255) * f) + ',' + Math.round(((v >> 8) & 255) * f) + ',' + Math.round((v & 255) * f) + ')';
+    }
+    function avPaintFace(w, h, fn, shade) {
+        var cv = document.createElement('canvas');
+        cv.width = Math.max(1, w); cv.height = Math.max(1, h);
+        var c = cv.getContext('2d');
+        for (var y = 0; y < h; y++) for (var x = 0; x < w; x++) {
+            var col = fn(x, y);
+            if (col) { c.fillStyle = avShade(col, shade); c.fillRect(x, y, 1, 1); }
+        }
+        return cv;
+    }
+    /* a box of the skin: w×h×d skin pixels, its front cut from the region at
+       (x0, y0) of the 16×32 front view and the other five faces made from it */
+    function avSkinBox(px, x0, y0, w, h, d, kind) {
+        var y, x, rowMode = [], all = [], top2 = [];
+        for (y = 0; y < h; y++) {
+            var row = [];
+            for (x = 0; x < w; x++) { var c = px(x0 + x, y0 + y); row.push(c); all.push(c); if (y < 2) top2.push(c); }
+            rowMode.push(avMode(row).col);
+        }
+        var hair = null;
+        if (kind === 'head') { var m2 = avMode(top2); hair = m2.n >= 8 ? m2.col : avMode(all).col; }
+        var SH = AV_SHADE;
+        // a side carries the row's outermost painted pixel round the corner, and a
+        // transparent pixel on the front (a horn's gap) stays open on the top
+        function firstOpaque(y, fromRight) {
+            for (var i = 0; i < w; i++) { var c = px(x0 + (fromRight ? w - 1 - i : i), y0 + y); if (c) return c; }
+            return null;
+        }
+        return {
+            front: avPaintFace(w, h, function (x, y) { return px(x0 + x, y0 + y); }, SH[4]),
+            back: avPaintFace(w, h, function (x, y) { return px(x0 + x, y0 + y) ? (hair || rowMode[y]) : null; }, SH[5]),
+            left: avPaintFace(d, h, function (x, y) { return firstOpaque(y, false); }, SH[1]),
+            right: avPaintFace(d, h, function (x, y) { return firstOpaque(y, true); }, SH[0]),
+            top: avPaintFace(w, d, function (x) { return px(x0 + x, y0) ? (hair || rowMode[0]) : null; }, SH[2]),
+            bottom: avPaintFace(w, d, function (x) { return px(x0 + x, y0 + h - 1) ? rowMode[h - 1] : null; }, SH[3])
+        };
+    }
+    /* an armour box: the tier's colour wherever the piece covers, a darker
+       edge along every boundary so the plates read as plates */
+    function avArmorBox(tier, w, h, d, cover) {
+        var col = AV_ARMOR_COL[tier] || AV_ARMOR_COL.iron;
+        function mk(W, H, face, shade) {
+            return avPaintFace(W, H, function (u, v) {
+                if (!cover(face, u, v, W, H)) return null;
+                var edge = !cover(face, u - 1, v, W, H) || !cover(face, u + 1, v, W, H) || !cover(face, u, v - 1, W, H) || !cover(face, u, v + 1, W, H);
+                return edge ? col[1] : ((u * 5 + v * 3) % 17 === 0 ? col[2] : col[0]);   // a plate is mostly plate
+            }, shade);
+        }
+        var SH = AV_SHADE;
+        return { right: mk(d, h, 'right', SH[0]), left: mk(d, h, 'left', SH[1]), top: mk(w, d, 'top', SH[2]),
+                 bottom: mk(w, d, 'bottom', SH[3]), front: mk(w, h, 'front', SH[4]), back: mk(w, h, 'back', SH[5]) };
+    }
+    function avIn(u, v, W, H) { return u >= 0 && v >= 0 && u < W && v < H; }
+    var AV_COVER = {
+        // a helmet leaves the face open — the real ones do, from the brow down
+        helm: function (f, u, v, W, H) { if (!avIn(u, v, W, H) || f === 'bottom') return false; return f !== 'front' || !(u >= 2 && u <= W - 3 && v >= 4); },
+        chest: function (f, u, v, W, H) { return avIn(u, v, W, H); },
+        beltBody: function (f, u, v, W, H) { if (!avIn(u, v, W, H) || f === 'top') return false; return f === 'bottom' || v >= H - 4; },
+        legs: function (f, u, v, W, H) { return avIn(u, v, W, H) && f !== 'top'; },
+        boots: function (f, u, v, W, H) { if (!avIn(u, v, W, H) || f === 'top') return false; return f === 'bottom' || v >= H - 5; }
+    };
+    function avPart(faces, w, h, d, cx, cy, cz, pivot, role) {
+        return { faces: faces, hx: w / 2, hy: h / 2, hz: d / 2, c: [cx, cy, cz], v: pivot, role: role };
+    }
+    function avModel(sk, armor) {
+        var slim = sk.model === 'slim', aw = slim ? 3 : 4, ax = 4 + aw / 2, ay = slim ? 17.5 : 18, apy = slim ? 21.5 : 22;
+        var px = avPixels(sk), parts = [], tier;
+        parts.push(avPart(avSkinBox(px, 4, 0, 8, 8, 8, 'head'), 8, 8, 8, 0, 28, 0, [0, 24, 0], 'head'));
+        parts.push(avPart(avSkinBox(px, 4, 8, 8, 12, 4, 'body'), 8, 12, 4, 0, 18, 0, [0, 24, 0], 'body'));
+        // a slim skin's arms are 3 wide and hang half a pixel lower (PlayerModel's 2.5 pivot)
+        parts.push(avPart(avSkinBox(px, slim ? 1 : 0, 8, aw, 12, 4, 'arm'), aw, 12, 4, -ax, ay, 0, [-5, apy, 0], 'armR'));
+        parts.push(avPart(avSkinBox(px, 12, 8, aw, 12, 4, 'arm'), aw, 12, 4, ax, ay, 0, [5, apy, 0], 'armL'));
+        parts.push(avPart(avSkinBox(px, 4, 20, 4, 12, 4, 'leg'), 4, 12, 4, -1.9, 6, 0, [-1.9, 12, 0], 'legR'));
+        parts.push(avPart(avSkinBox(px, 8, 20, 4, 12, 4, 'leg'), 4, 12, 4, 1.9, 6, 0, [1.9, 12, 0], 'legL'));
+        // the armour, worn over the top: helmet, chestplate and boots inflate the
+        // box by a pixel all round, leggings by half of one
+        if (armor[0]) { tier = I[armor[0].id].armor.tier; parts.push(avPart(avArmorBox(tier, 10, 10, 10, AV_COVER.helm), 10, 10, 10, 0, 28, 0, [0, 24, 0], 'head')); }
+        if (armor[1]) {
+            tier = I[armor[1].id].armor.tier;
+            parts.push(avPart(avArmorBox(tier, 10, 14, 6, AV_COVER.chest), 10, 14, 6, 0, 18, 0, [0, 24, 0], 'body'));
+            // the armour model has the classic arm on every skin, slim or not
+            parts.push(avPart(avArmorBox(tier, 6, 14, 6, AV_COVER.chest), 6, 14, 6, -6, 18, 0, [-5, 22, 0], 'armR'));
+            parts.push(avPart(avArmorBox(tier, 6, 14, 6, AV_COVER.chest), 6, 14, 6, 6, 18, 0, [5, 22, 0], 'armL'));
+        }
+        if (armor[2]) {
+            tier = I[armor[2].id].armor.tier;
+            parts.push(avPart(avArmorBox(tier, 9, 13, 5, AV_COVER.beltBody), 9, 13, 5, 0, 18, 0, [0, 24, 0], 'body'));
+            parts.push(avPart(avArmorBox(tier, 5, 13, 5, AV_COVER.legs), 5, 13, 5, -1.9, 6, 0, [-1.9, 12, 0], 'legR'));
+            parts.push(avPart(avArmorBox(tier, 5, 13, 5, AV_COVER.legs), 5, 13, 5, 1.9, 6, 0, [1.9, 12, 0], 'legL'));
+        }
+        if (armor[3]) {
+            tier = I[armor[3].id].armor.tier;
+            parts.push(avPart(avArmorBox(tier, 6, 14, 6, AV_COVER.boots), 6, 14, 6, -1.9, 6, 0, [-1.9, 12, 0], 'legR'));
+            parts.push(avPart(avArmorBox(tier, 6, 14, 6, AV_COVER.boots), 6, 14, 6, 1.9, 6, 0, [1.9, 12, 0], 'legL'));
+        }
+        return parts;
+    }
+    /* the item in the right hand: a block is a small cube turned to show its
+       top, a tool stands out forward and up with its flat to the side, and
+       anything else lies flat in the palm pointing forward — the three
+       third-person poses of the real game, at its sizes (0.375, 0.85, 0.55) */
+    function avTileFace(tid, shade) {
+        var cv = document.createElement('canvas');
+        cv.width = cv.height = 16;
+        var c = cv.getContext('2d');
+        c.drawImage(ATLAS, (tid % 16) * 16, ((tid / 16) | 0) * 16, 16, 16, 0, 0, 16, 16);
+        if (shade < 1) { c.globalCompositeOperation = 'source-atop'; c.fillStyle = 'rgba(0,0,0,' + (1 - shade) + ')'; c.fillRect(0, 0, 16, 16); }
+        return cv;
+    }
+    /* a flat item as the real game extrudes it: the sprite on both faces and,
+       one pixel deep, the colour of the outermost painted pixel of each row
+       and column along the edges */
+    function avSpriteSlab(sp) {
+        var c = sp.getContext('2d'), w = sp.width, h = sp.height, d;
+        try { d = c.getImageData(0, 0, w, h).data; } catch (e) { return { front: sp, back: sp }; }
+        function at(x, y) {   // the pixel as '#rrggbb', which avShade takes
+            var i = (y * w + x) * 4;
+            return d[i + 3] > 40 ? '#' + ((1 << 24) + (d[i] << 16) + (d[i + 1] << 8) + d[i + 2]).toString(16).slice(1) : null;
+        }
+        function rowEdge(y, fromRight) { for (var i = 0; i < w; i++) { var col = at(fromRight ? w - 1 - i : i, y); if (col) return col; } return null; }
+        function colEdge(x, fromBottom) { for (var i = 0; i < h; i++) { var col = at(x, fromBottom ? h - 1 - i : i); if (col) return col; } return null; }
+        function strip(n, vertical, fromEnd, shade) {
+            var cv = document.createElement('canvas'); cv.width = vertical ? 1 : n; cv.height = vertical ? n : 1;
+            var g = cv.getContext('2d');
+            for (var i = 0; i < n; i++) {
+                var col = vertical ? rowEdge(i, fromEnd) : colEdge(i, fromEnd);
+                if (col) { g.fillStyle = avShade(col, shade); g.fillRect(vertical ? 0 : i, vertical ? i : 0, 1, 1); }
+            }
+            return cv;
+        }
+        return { front: sp, back: sp, left: strip(h, true, false, AV_SHADE[1]), right: strip(h, true, true, AV_SHADE[0]),
+                 top: strip(w, false, false, AV_SHADE[2]), bottom: strip(w, false, true, AV_SHADE[3]) };
+    }
+    function avHeldPart(st) {
+        var def = st && I[st.id];
+        if (!def) return null;
+        var mi = new Float64Array(9), a = new Float64Array(9), b = new Float64Array(9), faces, part;
+        if (def.place != null && B[def.place] && !B[def.place].cross && !B[def.place].half) {
+            var tx = TEX[def.place];
+            faces = { right: avTileFace(texFace(tx, 0), AV_SHADE[0]), left: avTileFace(texFace(tx, 1), AV_SHADE[1]),
+                      top: avTileFace(texFace(tx, 2), AV_SHADE[2]), bottom: avTileFace(texFace(tx, 3), AV_SHADE[3]),
+                      front: avTileFace(texFace(tx, 4), AV_SHADE[4]), back: avTileFace(texFace(tx, 5), AV_SHADE[5]) };
+            rotMat(a, 0, 45 * D2R, 0); rotMat(b, 30 * D2R, 0, 0); mul3(mi, b, a);
+            part = { faces: faces, hx: 3, hy: 3, hz: 3, off: [-1, -10, 4.5], mi: mi };
+        } else {
+            var tid = def.tile != null ? def.tile : (def.place != null ? texTop(TEX[def.place]) : TILE.i_stick);
+            faces = avSpriteSlab(avTileFace(tid, 1));
+            var handheld = !!def.tool || st.id === 'bow';
+            // columns of the matrix are where the sprite's right, up and normal go
+            if (handheld) {
+                /* the tool pose: flat to the side, pointing forward and up. Turned 20°
+                   toward the viewer on top of that, or at rest the whole thing is one
+                   pixel wide from the front; a block, food or a torch has no such problem */
+                b.set([0, 0, -1, -0.259, 0.966, 0, 0.966, 0.259, 0]); rotMat(a, 0, 20 * D2R, 0); mul3(mi, a, b);
+                part = { faces: faces, hx: 6.8, hy: 6.8, hz: 0.4, off: [-1.5, -9.5, 6], mi: mi };
+            } else if (def.place != null) {   // a torch or a flower is a block model: it stands in the fist, turned like the cube would be
+                rotMat(a, 0, 45 * D2R, 0); rotMat(b, 30 * D2R, 0, 0); mul3(mi, b, a);
+                part = { faces: faces, hx: 3.5, hy: 3.5, hz: 0.4, off: [-1, -7.5, 4.5], mi: mi };
+            } else { mi.set([-1, 0, 0, 0, 0, 1, 0, 1, 0]); part = { faces: faces, hx: 4.4, hy: 4.4, hz: 0.4, off: [-1.5, -10.5, 4], mi: mi }; }
+        }
+        part.follow = 'armR';
+        return part;
+    }
+    var AV_CACHE = {}, AV_CACHE_KEYS = [];   // built models by signature, a handful deep: reopening the screen must not repaint 36 faces
+    var AV_M_ROOT = new Float64Array(9), AV_M_A = new Float64Array(9), AV_M_B = new Float64Array(9), AV_M_P = new Float64Array(9), AV_M_Q = new Float64Array(9), AV_M_ARM = new Float64Array(9);
+    var AV_CORNER = [0, 0, 0];   // scratch corner, so the inner loop allocates nothing
+    var AV_POSE = { headPitch: 0, headYaw: 0, swX: 0, swZ: 0, item: false };
+    function avatarAttach() {   // a panel with the box in it was just rendered
+        var cv = RT.el.querySelector('.mc-av');
+        if (!cv) { RT.av = null; return; }
+        var dpr = Math.min(2, window.devicePixelRatio || 1);
+        var r = cv.getBoundingClientRect();
+        cv.width = Math.max(1, Math.round((r.width || 118) * dpr));
+        cv.height = Math.max(1, Math.round((r.height || 170) * dpr));
+        var mxy = RT.curXY;
+        RT.av = { cv: cv, rect: r, rectT: 0, mx: mxy ? mxy[0] : null, my: mxy ? mxy[1] : null, sig: '', parts: null, itemId: null, item: null };
+        avatarSync();
+    }
+    function avatarSync() {   // rebuild the model when the skin, the armour or the held item changed
+        var av = RT.av;
+        if (!av) return;
+        var sk = avatarSkin();
+        var sig = sk.id + '|' + sk.model + '|' + sk.rows.join('') + '|' + JSON.stringify(sk.pal) + '|' + S.armor.map(function (a) { return a ? a.id : '-'; }).join(',');
+        if (sig !== av.sig) {
+            av.sig = sig;
+            if (!AV_CACHE[sig]) {
+                AV_CACHE[sig] = avModel(sk, S.armor);
+                AV_CACHE_KEYS.push(sig);
+                if (AV_CACHE_KEYS.length > 6) delete AV_CACHE[AV_CACHE_KEYS.shift()];
+            }
+            av.parts = AV_CACHE[sig];
+        }
+        var h = held(), hid = h ? h.id : null;
+        if (hid !== av.itemId) { av.itemId = hid; av.item = h ? avHeldPart(h) : null; }
+    }
+    function avPartMat(role, out) {
+        var pose = AV_POSE;
+        if (role === 'head') rotMat(out, pose.headPitch, pose.headYaw, 0);
+        // the arm with something in it bends forward: HumanoidModel's ITEM pose, xRot·0.5 − π/10
+        else if (role === 'armR') rotMat(out, pose.item ? pose.swX * 0.5 - Math.PI / 10 : pose.swX, 0, -pose.swZ);
+        else if (role === 'armL') rotMat(out, -pose.swX, 0, pose.swZ);
+        else rotMat(out, 0, 0, 0);
+        return out;
+    }
+    /* one box: its six faces turned by the part, then the body, dropped on the
+       screen; the ones facing away are skipped, the rest queued with their depth */
+    function avPushFaces(quads, p, mp, root, cx, cy, cz, vx, vy, vz, s, feetX, feetY) {
+        var cn = AV_CORNER;
+        for (var k = 0; k < 6; k++) {
+            var fd = AV_FACES[k], img = p.faces[fd.k];
+            if (!img) continue;
+            var nx = mp[0] * fd.n[0] + mp[1] * fd.n[1] + mp[2] * fd.n[2], ny = mp[3] * fd.n[0] + mp[4] * fd.n[1] + mp[5] * fd.n[2], nz = mp[6] * fd.n[0] + mp[7] * fd.n[1] + mp[8] * fd.n[2];
+            if (root[6] * nx + root[7] * ny + root[8] * nz <= 0.001) continue;   // turned away
+            var depth = 0, wz0 = 0, ox = 0, oy = 0, ux = 0, uy = 0, wx2 = 0, wy2 = 0;
+            for (var j = 0; j < 3; j++) {
+                cn[0] = fd.o[0] + (j === 1 ? fd.u[0] : j === 2 ? fd.v[0] : 0);
+                cn[1] = fd.o[1] + (j === 1 ? fd.u[1] : j === 2 ? fd.v[1] : 0);
+                cn[2] = fd.o[2] + (j === 1 ? fd.u[2] : j === 2 ? fd.v[2] : 0);
+                var lx = (cn[0] - 0.5) * 2 * p.hx + cx - vx, ly = (cn[1] - 0.5) * 2 * p.hy + cy - vy, lz = (cn[2] - 0.5) * 2 * p.hz + cz - vz;
+                var mx0 = mp[0] * lx + mp[1] * ly + mp[2] * lz + vx, my0 = mp[3] * lx + mp[4] * ly + mp[5] * lz + vy, mz0 = mp[6] * lx + mp[7] * ly + mp[8] * lz + vz;
+                var wx = root[0] * mx0 + root[1] * my0 + root[2] * mz0, wy = root[3] * mx0 + root[4] * my0 + root[5] * mz0, wz = root[6] * mx0 + root[7] * my0 + root[8] * mz0;
+                var sx = feetX + s * wx, sy = feetY - s * wy;
+                if (j === 0) { ox = sx; oy = sy; wz0 = wz; depth = wz; }
+                else if (j === 1) { ux = sx - ox; uy = sy - oy; depth += (wz - wz0) / 2; }
+                else { wx2 = sx - ox; wy2 = sy - oy; depth += (wz - wz0) / 2; }
+            }
+            // the face's depth is its centre's: the origin corner plus half of each edge
+            quads.push({ d: depth, ox: ox, oy: oy, ux: ux, uy: uy, vx: wx2, vy: wy2, img: img });
+        }
+    }
+    function avatarDraw() {
+        var av = RT.av;
+        if (!av || !av.cv || !av.parts) return;
+        var cv = av.cv, W = cv.width, H = cv.height, c = cv.getContext('2d');
+        // the box's place on the page, re-measured now and then rather than every frame
+        var now = RT.now || 0;
+        if (!av.rect || now - av.rectT > 0.5) { av.rect = cv.getBoundingClientRect(); av.rectT = now; }
+        var r = av.rect;
+        if (!r.width || !r.height) return;
+        c.setTransform(1, 0, 0, 1, 0, 0);
+        c.clearRect(0, 0, W, H);
+        c.imageSmoothingEnabled = false;
+        // the real box is 49×70 GUI px with the feet at (25, 67) and the pointer
+        // measured from (25, 17) — the height of the head
+        var kg = r.height / 70;                                   // CSS px per GUI px
+        var refX = r.left + kg * 25, refY = r.top + kg * 17;
+        var mx = av.mx != null ? av.mx : refX, my = av.my != null ? av.my : refY;
+        var f = Math.atan((refX - mx) / (kg * 40)), g = Math.atan((my - refY) / (kg * 40));
+        var bodyYaw = f * 20 * D2R, tilt = g * 20 * D2R;
+        var pose = AV_POSE, age = performance.now() / 50;
+        pose.headYaw = f * 20 * D2R; pose.headPitch = g * 20 * D2R;
+        pose.swZ = Math.cos(age * 0.09) * 0.05 + 0.05; pose.swX = Math.sin(age * 0.067) * 0.05; pose.item = !!av.item;
+        var s = kg * 1.875 * (W / r.width);                        // canvas px per skin px
+        var feetX = W * (25 / 49), feetY = H * (67 / 70);
+        rotMat(AV_M_A, 0, bodyYaw, 0); rotMat(AV_M_B, tilt, 0, 0); mul3(AV_M_ROOT, AV_M_B, AV_M_A);
+        var root = AV_M_ROOT, quads = [], i, armV = null;
+        for (i = 0; i < av.parts.length; i++) {
+            var p = av.parts[i];
+            if (p.role === 'armR' && !armV) armV = p.v;
+            avPushFaces(quads, p, avPartMat(p.role, AV_M_P), root, p.c[0], p.c[1], p.c[2], p.v[0], p.v[1], p.v[2], s, feetX, feetY);
+        }
+        if (av.item && armV) {   // in the right hand: its own turn on top of the arm's, riding the arm's bend and sway
+            var it = av.item, armM = avPartMat('armR', AV_M_ARM);
+            mul3(AV_M_Q, armM, it.mi);
+            var ox = armV[0] + armM[0] * it.off[0] + armM[1] * it.off[1] + armM[2] * it.off[2];
+            var oy = armV[1] + armM[3] * it.off[0] + armM[4] * it.off[1] + armM[5] * it.off[2];
+            var oz = armV[2] + armM[6] * it.off[0] + armM[7] * it.off[1] + armM[8] * it.off[2];
+            avPushFaces(quads, it, AV_M_Q, root, ox, oy, oz, ox, oy, oz, s, feetX, feetY);
+        }
+        quads.sort(function (a, b) { return a.d - b.d; });
+        for (i = 0; i < quads.length; i++) {
+            var q = quads[i], iw = q.img.width, ih = q.img.height;
+            c.setTransform(q.ux / iw, q.uy / iw, q.vx / ih, q.vy / ih, q.ox, q.oy);
+            c.drawImage(q.img, -0.02, -0.02, iw + 0.04, ih + 0.04);   // a hair over, so seams between faces don't show through
+        }
+        c.setTransform(1, 0, 0, 1, 0, 0);
     }
 
     /* ── panels ─────────────────────────────────────────────── */
@@ -4817,7 +5250,13 @@
             '<div class="mc-plabel">Inventory</div><div class="mc-pgrid g9">' + slotsHTML('inv', 9, 27) + '</div>' +
             '<div class="mc-pgrid g9 hb">' + slotsHTML('inv', 0, 9) + '</div>';
         var armorCol = '<div class="mc-armcol">' + slotsHTML('armor', 0, 4, 'armslot') + '</div>';
-        if (kind === 'inv') return head + 'Crafting</div><div class="mc-craftrow"><div class="mc-pgrid g2">' + slotsHTML('craft', 0, 4) + '</div><span class="mc-arrow">➜</span><div class="mc-slot big" data-g="cout" data-i="0"></div>' + armorCol + '</div>' + inv;
+        /* the survival screen's top half in the real order: the armour slots,
+           you in your box, then the 2×2 grid under its own "Crafting" label */
+        var invTop = '<div class="mc-craftrow inv">' + armorCol + '<div class="mc-avbox"><canvas class="mc-av"></canvas></div>' +
+            '<div class="mc-craftcol">' + head + 'Crafting</div><div class="mc-craft2"><div class="mc-pgrid g2">' + slotsHTML('craft', 0, 4) + '</div>' +
+            '<span class="mc-arrow">➜</span><div class="mc-slot big" data-g="cout" data-i="0"></div></div></div></div>';
+        var invTopNoCraft = '<div class="mc-craftrow inv">' + armorCol + '<div class="mc-avbox"><canvas class="mc-av"></canvas></div></div>';
+        if (kind === 'inv') return invTop + inv;
         if (kind === 'table') return head + 'Crafting</div><div class="mc-craftrow"><div class="mc-pgrid g3">' + slotsHTML('craft', 0, 9) + '</div><span class="mc-arrow">➜</span><div class="mc-slot big" data-g="cout" data-i="0"></div></div>' + inv;
         if (kind === 'furnace') return head + 'Furnace</div><div class="mc-craftrow furn"><div class="mc-fcol"><div class="mc-slot" data-g="fin" data-i="0"></div><div class="mc-flame"><i></i></div><div class="mc-slot" data-g="ffuel" data-i="0"></div></div><div class="mc-farrow"><i></i></div><div class="mc-slot big" data-g="fout" data-i="0"></div></div>' + inv;
         if (kind === 'ench') return head + 'Enchant</div><div class="mc-enchrow"><div class="mc-fcol"><div class="mc-slot" data-g="ein" data-i="0"></div><div class="mc-slot small" data-g="elapis" data-i="0"></div></div><div class="mc-enchopts">' +
@@ -4830,11 +5269,12 @@
                 tabs += '<button class="mc-ctab' + (ti === RT.cTab ? ' on' : '') + '" data-ct="' + ti + '"' +
                         ' title="' + escHtml(CTABS[ti].t) + '" style="background-image:url(' + iconURL(CTABS[ti].ic) + ')"></button>';
             tabs = '<div class="mc-ctabs">' + tabs + '</div>';
-            // the survival tab is the ordinary inventory plus a bin
-            if (tab.id === 'inv') return tabs + head + 'Survival Inventory</div>' +
-                '<div class="mc-craftrow"><div class="mc-pgrid g2">' + slotsHTML('craft', 0, 4) + '</div><span class="mc-arrow">➜</span>' +
-                '<div class="mc-slot big" data-g="cout" data-i="0"></div>' + armorCol +
-                '<div class="mc-slot big ctrash" data-g="ctrash" data-i="0" title="Destroy item"></div></div>' + inv;
+            // the survival tab is the ordinary inventory plus a bin, which the real
+            // screen keeps at the bottom right beside the hotbar
+            if (tab.id === 'inv') return tabs + invTopNoCraft +
+                '<div class="mc-plabel">Inventory</div><div class="mc-pgrid g9">' + slotsHTML('inv', 9, 27) + '</div>' +
+                '<div class="mc-hbrow"><div class="mc-pgrid g9 hb">' + slotsHTML('inv', 0, 9) + '</div>' +
+                '<div class="mc-slot big ctrash" data-g="ctrash" data-i="0" title="Destroy item"></div></div>';
             return tabs + head + escHtml(tab.t) + '</div>' +
                 (tab.id === 'search' ? '<input class="mc-csearchin" maxlength="32" spellcheck="false" autocomplete="off" placeholder="Search" value="' + escHtml(RT.cSearch || '') + '">' : '') +
                 '<div class="mc-crow"><div class="mc-pgrid g9">' + slotsHTML('creat', 0, CGRID) + '</div>' +
@@ -4850,6 +5290,7 @@
         if (kind === 'chest') tentAt(t.x, t.y, t.z, 'chest');
         RT.craftW = kind === 'table' ? 3 : 2;
         RT.craft = [null, null, null, null, null, null, null, null, null];
+        RT.hover = null;   // nothing is under the pointer in a screen that has not been drawn yet
         if (kind === 'ench') { RT.enchItem = null; RT.enchLapis = null; RT.enchOpts = null; RT.enchSeed = (Math.random() * 1e9) | 0; }
         if (kind === 'anvil') { RT.anvilA = null; RT.anvilB = null; RT.anvilName = ''; }
         // the catalogue has to exist before panelHTML asks it how many rows it has
@@ -4864,6 +5305,7 @@
         // appeared to do nothing at all on an even count).
         if (!wrap._wired) { wirePanel(wrap); wrap._wired = 1; }
         wirePanelFields(wrap);   // the anvil name box is inside the fresh markup, so it re-wires
+        avatarAttach();          // the survival screen has you standing in it
         paintPanel();
         // reopening on the Search tab used to hand you an unfocused box with your old
         // query still in it, so the first letter you typed went to the world instead:
@@ -4876,6 +5318,9 @@
     }
     function closePanel(silent) {
         if (!RT.panel) return;
+        RT.qc = null;   // a sweep in progress ends with the screen
+        RT.av = null;   // and so does the figure in the box
+        RT.hover = null; RT.lastClk = null;
         var i, give = [RT.cur, RT.enchItem, RT.enchLapis, RT.anvilA, RT.anvilB];
         for (i = 0; i < 9; i++) { give.push(RT.craft[i]); RT.craft[i] = null; }
         RT.cur = null; RT.enchItem = null; RT.enchLapis = null; RT.anvilA = null; RT.anvilB = null; RT.enchOpts = null;
@@ -4897,11 +5342,14 @@
         if (!RT.panel) return;
         var wrap = RT.el.querySelector('.mc-panelwrap');
         var cells = wrap.querySelectorAll('.mc-slot');
+        var washed = wrap.querySelectorAll('.mc-slot.qc');   // the sweep wash belongs to a live sweep only
+        for (var wq = 0; wq < washed.length; wq++) washed[wq].classList.remove('qc');
         var anv = RT.panel.kind === 'anvil' ? anvilResult() : null;
         for (var i = 0; i < cells.length; i++) {
             var g = cells[i].getAttribute('data-g'), idx = cells[i].getAttribute('data-i') | 0;
             if (g === 'cout') { var r = matchRecipe(RT.craft, RT.craftW); paintSlot(cells[i], r ? { id: r.out, c: r.n } : null); }
             else if (g === 'anvOut') paintSlot(cells[i], anv ? anv.out : null);
+            else if (g === 'creat') { var cst = slotGroup('creat').get(idx); paintSlot(cells[i], cst ? { id: cst.id, c: 1, dur: cst.dur } : null); }   // the catalogue shows items, not stacks
             else paintSlot(cells[i], slotGroup(g).get(idx));
         }
         var cur = wrap.querySelector('.mc-cur');
@@ -4949,6 +5397,8 @@
                 bar.classList.toggle('off', mx === 0);   // greyed out when there is nothing to scroll
             }
         }
+        if (RT.qc) qcPaint();   // a repaint mid-sweep (a furnace ticking behind the screen) keeps the preview
+        if (RT.av) avatarSync();   // armour on or off, a different item in hand: the figure follows the slots
     }
     function esc(s) { return String(s).replace(/[<>&]/g, function (c) { return { '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]; }); }
     function paintFurnaceBits(t) {
@@ -5123,6 +5573,7 @@
     function panelCurTo(clientX, clientY) {
         if (!RT || !RT.el) return;
         if (clientX != null) RT.curXY = [clientX, clientY];
+        if (RT.av && clientX != null) { RT.av.mx = clientX; RT.av.my = clientY; }   // the figure watches the pointer
         var xy = RT.curXY;
         if (!xy) return;
         var wrap = RT.el.querySelector('.mc-panelwrap');
@@ -5138,33 +5589,284 @@
             tip.style.top = (y - 8) + 'px';
         }
     }
+    /* ── drag-splitting — the real game's "quick craft" ──────────
+       With a stack on the cursor, pressing a mouse button over a slot is NOT
+       the placement; it is the start of a sweep. Drag across slots and letting
+       go divides the stack among them: the left button splits it evenly, the
+       right drops one into each, the middle (creative only) fills each with a
+       full stack. Sweep a single slot and it is the ordinary click it always
+       was. Four planks dragged across the 2×2 grid is how a crafting table is
+       actually made.
+
+       This follows AbstractContainerScreen.mouseClicked / mouseDragged /
+       mouseReleased and the QUICK_CRAFT stage of AbstractContainerMenu.doClick
+       rule for rule, including the ones a player feels: you cannot sweep more
+       slots than you have items, a slot already holding the same item joins
+       the sweep and fills to its limit, the count each slot would get and what
+       would be left on the cursor are shown while the button is still down,
+       and a press with an EMPTY cursor still acts on the press, so picking up
+       and letting go on the same slot never puts the stack straight back.
+
+       Two neighbours of the same code came with it, because they live in the
+       same three mouse handlers in the real game: double-clicking with a stack
+       on the cursor gathers every matching stack on screen into it, and a
+       click on the dark outside the panel throws the cursor stack into the
+       world — the whole stack on the left button, one on the right. */
+    var QC_TARGETS = { inv: 1, chest: 1, craft: 1, armor: 1, fin: 1, ffuel: 1, ein: 1, elapis: 1, anvA: 1, anvB: 1 };
+    var QC_BTN_MASK = [1, 4, 2];   // e.buttons bit for e.button 0 / 1 / 2
+    function sameStack(a, b) {
+        return !!a && !!b && a.id === b.id && a.dur == null && b.dur == null && !a.ench && !b.ench && (a.name || '') === (b.name || '');
+    }
+    function slotMaxFor(g, id) { return g === 'ein' ? 1 : stkMax(id); }   // the enchanting slot takes one item, like the real one
+    // vanilla's canItemQuickReplace + Slot.mayPlace + canDragTo, in one question
+    function qcAccepts(g, idx, item) {
+        if (!QC_TARGETS[g] || !item || !slotAccepts(g, idx, item)) return false;
+        var grp = slotGroup(g), st = grp ? grp.get(idx) : null;
+        return !st || sameStack(st, item);
+    }
+    function slotAt(el, wrap) {   // the slot under an event target, or null
+        while (el && el !== wrap && el.getAttribute && !el.getAttribute('data-g')) el = el.parentNode;
+        if (!el || el === wrap || !el.getAttribute) return null;
+        return { el: el, g: el.getAttribute('data-g'), i: el.getAttribute('data-i') | 0 };
+    }
+    function qcPlaceCount(q, carried) {   // getQuickCraftPlaceCount
+        return q.type === 0 ? Math.floor(carried.c / q.slots.length) : q.type === 1 ? 1 : stkMax(carried.id);
+    }
+    /* what the sweep would do if the button came up now: the count each slot
+       would hold (null = this slot cannot take it), whether that count had to be
+       clamped to the slot's limit, and what the cursor would keep. The remainder
+       for a creative middle-sweep is a full stack, as the real screen shows it. */
+    function qcPlan(q) {
+        var carried = RT.cur, n = q.slots.length, left = carried.c, counts = [], over = [];
+        for (var k = 0; k < n; k++) {
+            var s = q.slots[k], st = slotGroup(s.g).get(s.i);
+            if (!qcAccepts(s.g, s.i, carried) || (q.type !== 2 && carried.c < n)) { counts.push(null); over.push(false); continue; }
+            var have = st ? st.c : 0, want = qcPlaceCount(q, carried) + have;
+            var cap = Math.min(stkMax(carried.id), slotMaxFor(s.g, carried.id));
+            var cnt = Math.min(want, cap);
+            left -= cnt - have;
+            counts.push(cnt); over.push(want > cap);
+        }
+        return { counts: counts, over: over, left: q.type === 2 ? stkMax(carried.id) : left };
+    }
+    function qcStart(type, btn, g, i, dbl) {
+        RT.qc = { type: type, btn: btn, slots: [], dbl: !!dbl };
+        if (g) qcAdd(g, i);
+    }
+    function qcAdd(g, i) {
+        var q = RT.qc;
+        if (!q || !RT.cur) return;
+        for (var k = 0; k < q.slots.length; k++) if (q.slots[k].g === g && q.slots[k].i === i) return;
+        if (!qcAccepts(g, i, RT.cur)) return;
+        if (q.type !== 2 && RT.cur.c <= q.slots.length) return;   // never more slots than items
+        q.slots.push({ g: g, i: i });
+        qcPaint();
+    }
+    function qcCancel() {
+        if (!RT.qc) return;
+        RT.qc = null;
+        if (RT.panel) paintPanel();
+    }
+    /* the live preview: each swept slot shows the stack it would get, tinted so
+       it reads as "not yet", the count in yellow where the slot's limit clipped
+       it; the cursor shows what it would keep, a yellow 0 when nothing */
+    function qcPaint() {
+        var q = RT.qc, wrap = RT.el && RT.el.querySelector('.mc-panelwrap');
+        if (!q || !RT.cur || !wrap) return;
+        var cells = wrap.querySelectorAll('.mc-slot.qc');
+        for (var c = 0; c < cells.length; c++) cells[c].classList.remove('qc');
+        var cur = wrap.querySelector('.mc-cur');
+        if (q.slots.length < 2) { if (cur && RT.cur) cur.innerHTML = RT.cur.c > 1 ? '<span class="mc-ct">' + RT.cur.c + '</span>' : ''; return; }
+        var plan = qcPlan(q);
+        for (var k = 0; k < q.slots.length; k++) {
+            var s = q.slots[k], cnt = plan.counts[k];
+            if (cnt == null) continue;
+            var el = wrap.querySelector('.mc-slot[data-g="' + s.g + '"][data-i="' + s.i + '"]');
+            if (!el) continue;
+            paintSlot(el, { id: RT.cur.id, c: cnt, dur: RT.cur.dur, ench: RT.cur.ench });
+            if (plan.over[k]) {   // clipped by the slot's limit: the count goes yellow, even a 1
+                var ct = el.querySelector('.mc-ct');
+                if (!ct) { ct = document.createElement('span'); ct.className = 'mc-ct'; ct.textContent = cnt; el.appendChild(ct); }
+                ct.style.color = '#ffff55';
+            }
+            el.classList.add('qc');
+        }
+        if (cur) cur.innerHTML = plan.left > 1 ? '<span class="mc-ct">' + plan.left + '</span>' : plan.left < 1 ? '<span class="mc-ct" style="color:#ffff55">0</span>' : '';
+    }
+    /* the button came up: two or more slots swept is a split, one is the click
+       it would have been, none is the click on wherever the pointer is now */
+    function qcEnd(e) {
+        var q = RT.qc;
+        if (!q) return;
+        if (e.button !== q.btn) { qcCancel(); return; }   // the other button letting go abandons the sweep
+        RT.qc = null;
+        var wrap = RT.el.querySelector('.mc-panelwrap');
+        // a release reported without an element under it (the pointer left the
+        // page, or a synthetic event) is placed by its coordinates instead
+        var tgt = e.target && e.target.nodeType === 1 ? e.target : (e.clientX != null ? document.elementFromPoint(e.clientX, e.clientY) : null);
+        var over = slotAt(tgt, wrap), right = q.btn === 2, shift = !!e.shiftKey;
+        /* a double-click gathers — except over the catalogue (one more click there) and
+           over an output slot, which the real menu exempts from PICKUP_ALL so that fast
+           clicks on the result craft every time */
+        if (q.dbl && q.btn === 0 && RT.cur && over && qcGatherable(over.g)) { pickupAll(over); return; }
+        if (q.slots.length >= 2) { qcApply(q); return; }
+        // a middle sweep of exactly one slot re-dispatches as the secondary click: one item placed
+        if (q.btn === 1) { if (q.slots.length === 1) slotClick(q.slots[0].g, q.slots[0].i, true, false); else paintPanel(); return; }
+        if (q.slots.length === 1) { slotClick(q.slots[0].g, q.slots[0].i, right, shift); return; }
+        if (over) { slotClick(over.g, over.i, right, shift); return; }
+        if (RT.cur && wrap && tgt && wrap.contains(tgt) && !(tgt.closest && tgt.closest('.mc-panel'))) throwCarried(right);
+        else paintPanel();
+    }
+    function qcGatherable(g) { return g !== 'creat' && g !== 'cout' && g !== 'fout' && g !== 'anvOut' && g !== 'ctrash'; }
+    function qcApply(q) {
+        var carried = RT.cur;
+        if (!carried) return;
+        var plan = qcPlan(q), total = carried.c, armorTouched = false;
+        for (var k = 0; k < q.slots.length; k++) {
+            var cnt = plan.counts[k];
+            if (cnt == null) continue;
+            var s = q.slots[k], grp = slotGroup(s.g), st = grp.get(s.i), have = st ? st.c : 0;
+            total -= cnt - have;
+            grp.set(s.i, { id: carried.id, c: cnt, dur: carried.dur, ench: carried.ench, name: carried.name });
+            if (s.g === 'armor') armorTouched = true;
+        }
+        // the real game does this arithmetic too: a creative middle-sweep runs the
+        // cursor count below zero, which is an empty cursor
+        RT.cur = total > 0 ? { id: carried.id, c: total, dur: carried.dur, ench: carried.ench, name: carried.name } : null;
+        if (armorTouched) paintVitals();
+        snd('click');
+        paintPanel(); paintHotbar();
+    }
+    /* PICKUP_ALL: double-click with a stack on the cursor and every matching
+       stack the screen can see is pulled into it — partial stacks first, full
+       ones second, never from an output slot, and only until the cursor is full */
+    function pickupAll(over) {
+        var cur = RT.cur;
+        if (!cur) return;
+        var overSt = slotGroup(over.g) && slotGroup(over.g).get(over.i);
+        if (overSt || over.g === 'cout' || over.g === 'fout' || over.g === 'anvOut') { paintPanel(); return; }
+        var max = stkMax(cur.id), groups = [], k = RT.panel.kind, i;
+        // the slots this screen actually shows, in the real menu's order: its own, then the backpack, then the hotbar
+        var catalogueTab = k === 'creative' && (CTABS[RT.cTab] || CTABS[0]).id !== 'inv';
+        if (k === 'chest') for (i = 0; i < 27; i++) groups.push(['chest', i]);
+        if (k === 'furnace') groups.push(['fin', 0], ['ffuel', 0]);
+        if (k === 'ench') groups.push(['ein', 0], ['elapis', 0]);
+        if (k === 'anvil') groups.push(['anvA', 0], ['anvB', 0]);
+        if (k === 'inv' || k === 'table') for (i = 0; i < RT.craftW * RT.craftW; i++) groups.push(['craft', i]);
+        if (!catalogueTab) for (i = 9; i < 36; i++) groups.push(['inv', i]);   // a catalogue tab shows only the hotbar
+        for (i = 0; i < 9; i++) groups.push(['inv', i]);
+        for (var pass = 0; pass < 2 && cur.c < max; pass++) {
+            for (var g = 0; g < groups.length && cur.c < max; g++) {
+                var grp = slotGroup(groups[g][0]), st = grp.get(groups[g][1]);
+                if (!st || !sameStack(st, cur)) continue;
+                if (pass === 0 && st.c === stkMax(st.id)) continue;   // full stacks wait for the second pass
+                var take = Math.min(st.c, max - cur.c);
+                cur.c += take; st.c -= take;
+                if (!st.c) grp.set(groups[g][1], null);
+            }
+        }
+        if (RT.lastClk) RT.lastClk.t = 0;   // the gather spends the double-click, as the real one does
+        snd('click');
+        paintPanel(); paintHotbar();
+    }
+    /* SWAP: a number key over a slot trades what is there with that hotbar slot,
+       both ways round, honouring what the slot will take; over a catalogue entry
+       it is a full stack straight into the hotbar, over an output slot it takes
+       the result if the hotbar slot is free. (AbstractContainerMenu.doClick SWAP,
+       and the creative screen's own SWAP branch.) */
+    function hoverSwap(n) {
+        var h = RT.hover, hb = S.inv[n];
+        if (!h || h.g === 'ctrash') return;   // the bin only ever clears the cursor
+        if (h.g === 'creat') {
+            var id = (RT.cList || [])[RT.cScroll * CCOLS + h.i];
+            if (!id) return;
+            S.inv[n] = creativeStack(id);
+        } else if (h.g === 'cout' || h.g === 'fout' || h.g === 'anvOut') {
+            if (hb) return;   // an output slot cannot take the hotbar's stack
+            if (h.g === 'cout') { takeCraft(false); S.inv[n] = RT.cur; RT.cur = null; }   // the cursor is empty here, so the result lands on it
+            else if (h.g === 'fout') { var t = S.tents[RT.panel.key]; if (!t || !t.out) return; S.inv[n] = t.out; t.out = null; if (S.inv[n].id === 'iron') unlock('iron'); }
+            else return;
+        } else {
+            if (h.g === 'inv' && h.i === n) return;
+            var grp = slotGroup(h.g);
+            if (!grp) return;
+            var st = grp.get(h.i);
+            if (!st && !hb) return;
+            if (hb && !slotAccepts(h.g, h.i, hb)) return;   // an armour slot only takes its own piece
+            if (hb && !st && slotMaxFor(h.g, hb.id) < hb.c) {   // an empty one-item slot takes one off the stack
+                grp.set(h.i, { id: hb.id, c: 1, dur: hb.dur, ench: hb.ench, name: hb.name });
+                hb.c -= 1;
+            } else {
+                if (hb && slotMaxFor(h.g, hb.id) < hb.c) return;
+                grp.set(h.i, hb || null);
+                S.inv[n] = st || null;
+            }
+            if (h.g === 'armor') paintVitals();
+        }
+        snd('click');
+        paintPanel(); paintHotbar();
+    }
+    /* THROW from a hovered slot: Q drops one, Ctrl-Q the stack — never out of the
+       catalogue's own entries or an output slot */
+    function hoverThrow(all) {
+        var h = RT.hover;
+        if (!h || h.g === 'fout' || h.g === 'anvOut' || h.g === 'ctrash') return;
+        if (h.g === 'creat') {   // the catalogue hands one out to throw, a stack with Ctrl
+            var cid = (RT.cList || [])[RT.cScroll * CCOLS + h.i];
+            if (!cid) return;
+            var cst = creativeStack(cid);
+            tossItem(cst, all ? cst.c : 1);
+            paintPanel(); return;
+        }
+        if (h.g === 'cout') {    // the result slot crafts once and throws what it made — Ctrl too, as the real THROW takes the slot's count
+            takeCraft(false);     // the cursor is empty here (the key is gated on it), so the result lands on it
+            var made = RT.cur; RT.cur = null;
+            if (!made) return;
+            tossItem(made, made.c);
+            paintPanel(); paintHotbar(); return;
+        }
+        var grp = slotGroup(h.g), st = grp && grp.get(h.i);
+        if (!st) return;
+        var n = all ? st.c : 1;
+        tossItem(st, n);
+        st.c -= n;
+        if (!st.c) grp.set(h.i, null);
+        if (h.g === 'armor') paintVitals();
+        paintPanel(); paintHotbar();
+    }
+    /* the Q key and a click on the dark outside a panel both throw an item the way
+       you are looking, on the real game's arc */
+    function tossItem(st, n) {
+        var d = look();
+        RT.drops.push({ x: S.px + d[0], y: S.py + EYE - 0.3, z: S.pz + d[2], vx: d[0] * 6, vy: d[1] * 6 + 2, vz: d[2] * 6,
+            it: st.id, c: n, dur: st.dur, ench: st.ench || null, iname: st.name || null, age: -0.8, hw: 0.12, h: 0.24 });
+    }
+    function throwCarried(one) {
+        var c = RT.cur;
+        if (!c) return;
+        var n = one ? 1 : c.c;
+        tossItem(c, n);
+        c.c -= n;
+        if (!c.c) RT.cur = null;
+        paintPanel();
+    }
     function wirePanel(wrap) {
-        function handler(e) {
-            var el = e.target;
+        function ctlAt(t) {   // a slot, a creative tab or an enchant option under the pointer
+            var el = t;
             while (el && el !== wrap && el.getAttribute && !el.getAttribute('data-g') &&
                    el.getAttribute('data-o') == null && el.getAttribute('data-ct') == null) el = el.parentNode;
-            if (!el || el === wrap) return;
-            var ct = el.getAttribute && el.getAttribute('data-ct');
-            if (ct != null) { creativeTab(ct | 0); e.preventDefault(); e.stopPropagation(); return; }
-            var eo = el.getAttribute && el.getAttribute('data-o');
-            if (eo != null) { applyEnchOption(eo | 0); e.preventDefault(); e.stopPropagation(); return; }
-            slotClick(el.getAttribute('data-g'), el.getAttribute('data-i') | 0, e.type === 'contextmenu', e.shiftKey);
-            e.preventDefault(); e.stopPropagation();
+            return el && el !== wrap && el.getAttribute ? el : null;
         }
         function barAt(t) { return t && t.closest ? t.closest('.mc-cbar') : null; }
         /* Middle-click any slot in creative and you get a full stack of whatever
            is in it, leaving the slot alone. Gated on instaBuild(): this listener
            is attached once and serves every panel kind, so ungated it would be an
            item duplicator inside a survival chest. */
-        function cloneSlot(e) {
-            if (!instaBuild()) return;
-            var el = e.target;
-            while (el && el !== wrap && el.getAttribute && !el.getAttribute('data-g')) el = el.parentNode;
-            if (!el || el === wrap || !el.getAttribute) return;
-            var g = el.getAttribute('data-g');
+        function cloneSlot(g, i) {
+            if (!instaBuild() || RT.cur) return;   // the real clone leaves a carried stack alone
             if (g === 'ctrash' || g === 'anvOut') return;
-            var grp = g === 'creat' ? slotGroup('creat') : slotGroup(g);
-            var st = grp ? grp.get(el.getAttribute('data-i') | 0) : null;
+            var grp = slotGroup(g);
+            var st = grp ? grp.get(i) : null;
             if (!st) return;
             RT.cur = creativeStack(st.id);
             snd('click'); paintPanel();
@@ -5173,19 +5875,50 @@
         // a click without a preceding mousemove must still put the ghost under it
         wrap.addEventListener('mousedown', function (e) {
             panelCurTo(e.clientX, e.clientY);
-            if (e.button === 1) { cloneSlot(e); e.preventDefault(); e.stopPropagation(); return; }
-            if (e.button !== 0) return;
-            var bar = barAt(e.target);
-            if (bar) { RT.cDrag = 1; creativeBarTo(bar, e.clientY); e.preventDefault(); e.stopPropagation(); return; }
-            handler(e);
+            if (e.button > 2 || RT.qc) return;
+            if (e.button === 0) {
+                var bar = barAt(e.target);
+                if (bar) { RT.cDrag = 1; creativeBarTo(bar, e.clientY); e.preventDefault(); e.stopPropagation(); return; }
+            }
+            var el = ctlAt(e.target);
+            if (!el) {
+                /* the dark outside the panel: with a stack carried this is the start of a
+                   sweep like any other press — it only becomes a throw if the button comes
+                   up out there with nothing swept (qcEnd), as the real screen has it */
+                if (RT.cur && e.button !== 1) qcStart(e.button === 2 ? 1 : 0, e.button, null, 0, false);
+                e.preventDefault();
+                return;
+            }
+            var ct = el.getAttribute('data-ct');
+            if (ct != null) { if (e.button === 0) creativeTab(ct | 0); e.preventDefault(); e.stopPropagation(); return; }
+            var eo = el.getAttribute('data-o');
+            if (eo != null) { applyEnchOption(eo | 0); e.preventDefault(); e.stopPropagation(); return; }   // any button, like the real rectangle test
+            var g = el.getAttribute('data-g'), i = el.getAttribute('data-i') | 0, now = performance.now();
+            var dbl = !!(RT.lastClk && RT.lastClk.g === g && RT.lastClk.i === i && RT.lastClk.btn === e.button && now - RT.lastClk.t < 250);
+            RT.lastClk = { g: g, i: i, btn: e.button, t: now, dbl: dbl };
+            if (e.button === 1) {
+                if (RT.cur) { if (instaBuild()) qcStart(2, 1, g, i, dbl); }
+                else cloneSlot(g, i);
+            } else if (RT.cur) qcStart(e.button === 2 ? 1 : 0, e.button, g, i, dbl);   // the placement waits for the release
+            else slotClick(g, i, e.button === 2, e.shiftKey);                            // an empty cursor acts on the press
+            e.preventDefault(); e.stopPropagation();
         });
         wrap.addEventListener('auxclick', function (e) { if (e.button === 1) e.preventDefault(); });
-        wrap.addEventListener('contextmenu', function (e) { panelCurTo(e.clientX, e.clientY); handler(e); });
+        // the right button is handled on the press, like the left; the browser's
+        // own menu must still not open (text boxes keep theirs)
+        wrap.addEventListener('contextmenu', function (e) {
+            if (e.target && e.target.closest && e.target.closest('input, textarea')) return;
+            e.preventDefault(); e.stopPropagation();
+        });
         wrap.addEventListener('mousemove', function (e) {
             // a drag whose mouseup was swallowed (alt-tab, screen lock, the shell
             // minimising us) must not leave the scrollbar stuck to the pointer
             if (RT.cDrag && !(e.buttons & 1)) RT.cDrag = 0;
             if (RT.cDrag) { var bar = wrap.querySelector('.mc-cbar'); if (bar) creativeBarTo(bar, e.clientY); }
+            if (RT.qc) {
+                if (!(e.buttons & QC_BTN_MASK[RT.qc.btn]) || !RT.cur) qcCancel();
+                else { var sw = slotAt(e.target, wrap); if (sw) qcAdd(sw.g, sw.i); }
+            }
             panelCurTo(e.clientX, e.clientY);
             var cur = wrap.querySelector('.mc-cur');
             if (!cur) return;
@@ -5194,15 +5927,21 @@
                and stone bricks are three grey squares. */
             var tip = wrap.querySelector('.mc-ptip');
             if (!tip) return;
-            var st = null, el = e.target;
-            while (el && el !== wrap && el.getAttribute && !el.getAttribute('data-g')) el = el.parentNode;
-            if (el && el !== wrap && el.getAttribute) {
-                var g = el.getAttribute('data-g'), i = el.getAttribute('data-i') | 0, rr;
+            var st = null, under = slotAt(e.target, wrap), tabEl = e.target && e.target.closest ? e.target.closest('.mc-ctab') : null;
+            RT.hover = null;   // the slot under the pointer, for the number keys and Q
+            if (under) {
+                var g = under.g, i = under.i, rr;
+                RT.hover = { g: g, i: i };
                 if (g === 'cout') { rr = matchRecipe(RT.craft, RT.craftW); st = rr ? { id: rr.out, c: rr.n } : null; }
                 else if (g === 'anvOut') { rr = anvilResult(); st = rr ? rr.out : null; }
                 else { var gp = slotGroup(g); st = gp ? gp.get(i) : null; }
             }
-            if (st && !RT.cur) {
+            if (tabEl && !RT.cur) {   // a tab names itself on hover, as the real strip does
+                var td = CTABS[tabEl.getAttribute('data-ct') | 0];
+                tip.textContent = td ? td.t : '';
+                tip.style.display = 'block';
+                panelCurTo(e.clientX, e.clientY);
+            } else if (st && !RT.cur) {
                 tip.textContent = st.name || (I[st.id] ? I[st.id].t : st.id);
                 tip.style.display = 'block';
                 panelCurTo(e.clientX, e.clientY);   // re-place now that it has width
@@ -5211,6 +5950,7 @@
         wrap.addEventListener('mouseleave', function () {
             var tip = wrap.querySelector('.mc-ptip');
             if (tip) tip.style.display = 'none';
+            RT.hover = null;
         });
     }
     function wirePanelFields(wrap) {   // per-render nodes: re-wired on every open (fresh innerHTML)
@@ -5225,8 +5965,10 @@
             // the box owns the keyboard while it has focus, or typing "e" would
             // slam the inventory shut mid-search. Esc still gets you out.
             srch.addEventListener('keydown', function (e) {
-                if (e.key === 'Escape') { srch.blur(); closePanel(); return; }
-                e.stopPropagation();
+                e.stopPropagation();   // every key, Esc included: the desktop's own Escape drops full screen
+                if (e.key === 'Escape') { e.preventDefault(); srch.blur(); closePanel(); return; }
+                // a digit over an entry is a hotbar key first, as the real search tab has it; otherwise it is typing
+                if (/^[1-9]$/.test(e.key) && RT.hover && !RT.cur) { e.preventDefault(); hoverSwap((e.key | 0) - 1); }
             });
             srch.addEventListener('keyup', function (e) { e.stopPropagation(); });
             srch.addEventListener('mousedown', function (e) { e.stopPropagation(); });
@@ -5237,8 +5979,8 @@
             // typing must not drive the game — but Esc still has to close the panel, or the
             // name box swallows the only key that gets you out
             nameIn.addEventListener('keydown', function (e) {
-                if (e.key === 'Escape') { nameIn.blur(); closePanel(); return; }
                 e.stopPropagation();
+                if (e.key === 'Escape') { e.preventDefault(); nameIn.blur(); closePanel(); return; }
             });
             nameIn.addEventListener('mousedown', function (e) { e.stopPropagation(); });
         }
@@ -6326,13 +7068,22 @@
            It briefly occupies S, and writing it out would quietly replace the
            world the player last played with a scenic hillside. */
         if (RT.menu) return;
-        var json;
+        var json, failed = false;
         try { json = JSON.stringify(S); } catch (e) { return; }
-        try { localStorage.setItem('comp_mc', json); } catch (e) {}
+        try { localStorage.setItem('comp_mc', json); } catch (e) { failed = true; }
         // comp_mc stays the active world; the per-world blob is what the list reads
         if (S.wid) {
-            try { localStorage.setItem(WS_PRE + S.wid, json); } catch (e) {}
+            try { localStorage.setItem(WS_PRE + S.wid, json); } catch (e) { failed = true; }
             wsTouch(S.wid, { played: Date.now(), hrs: S.hrs || 0, gm: S.gm, diff: S.diff });
+        }
+        /* The browser's storage has a ceiling and a big creative build reaches
+           it. The write used to fail in silence and the world quietly went back
+           to its last good save on the next load — so say so, once a minute
+           while it keeps failing, and again on the title screen. */
+        RT.saveFail = failed;
+        if (failed && (!RT.saveWarnT || RT.now - RT.saveWarnT > 60)) {
+            RT.saveWarnT = RT.now || 0.001;
+            toast('<b>World not saved</b>Browser storage is full. Recent changes will be lost.');
         }
     }
     function restoreEnts() {
@@ -6497,6 +7248,7 @@
             RT.cv.style.transform = 'translate(' + ((Math.random() - 0.5) * sh) + 'px,' + ((Math.random() - 0.5) * sh) + 'px)';
         } else RT.cv.style.transform = '';
         drawFrame();
+        if (RT.av) avatarDraw();   // the figure in the inventory box, turning with the pointer and swaying
     }
     function tipFade() {
         if (RT.tipT > 0) { RT.tipT -= 0.2; if (RT.tipT <= 0) RT.el.querySelector('.mc-tip').className = 'mc-tip'; }
@@ -6627,6 +7379,9 @@
            desktop only ever gets the playtime of the last world of a session. */
         RT.bankT = (RT.bankT || 0) + RT.playT;
         RT.baseHrs = S.hrs || 0; RT.playT = 0; RT.dead = false; RT.fallY = S.py;
+        // a LAN session belongs to the world that opened it
+        RT.lan = null; RT.lanUI = null;
+        var lanBtn = RT.el.querySelector('.mc-lanbtn'); if (lanBtn) lanBtn.disabled = false;
         // flight belongs to the world that granted it, not to the session
         RT.fly = !!S.fly && (S.gm === 1 || S.gm === 3);
         RT.vy = 0; RT.sprint = false; RT.swing = 0; RT.sleep = 0;
@@ -6644,6 +7399,7 @@
         if (S && S.wid) wsTouch(S.wid, { played: Date.now(), hrs: S.hrs || 0 });
         unlockCursor();
         if (RT.paused) hidePause();
+        RT.lan = null; RT.lanUI = null;   // cheats from Open to LAN end with the session, as the real ones do
         if (RT.panel) closePanel(true);
         RT.el.querySelector('.mc-load').style.display = 'none';
         // the debug overlay belongs to the world; it would sit frozen over the menu
@@ -6653,6 +7409,7 @@
         S = mnPanoSave();
         var m = mnOpen('loading', false);   // vanilla only fades in on first launch
         m.stage = 'Saving world…';
+        if (RT.saveFail) m.msg = 'The world could not be saved: browser storage is full.';
         ensureChunks();
     }
     function mnQuit() {
@@ -7928,6 +8685,8 @@
         rows: function (m) {
             var q = (m.d.q || '').toLowerCase(), l = wsIndex(), out = [];
             for (var i = 0; i < l.length; i++) if (!q || l[i].name.toLowerCase().indexOf(q) >= 0) out.push(l[i]);
+            // most recently played first, which is how the real list is ordered
+            out.sort(function (a, b) { return (b.played || 0) - (a.played || 0); });
             return out;
         },
         layout: function (m, W, H) {
@@ -8130,8 +8889,23 @@
        comes out the other end, which is the only reason to draw it. */
     var MN_WTYPE = ['Default', 'Superflat', 'Large Biomes', 'AMPLIFIED'];
     function mnCreateDefaults() {
-        return { name: 'New World', seed: '', gm: 0, hardcore: false, diff: 2, cheats: false,
+        return { name: 'New World', seed: '', gm: 0, hardcore: false, diff: 2, cheats: null,   // null: never touched, so it follows the mode
             type: 0, structures: true, bonus: false, tab: 0 };
+    }
+    /* What the world will actually get, as opposed to what the player has
+       chosen. Vanilla keeps the two apart: Hardcore SHOWS Hard and OFF and greys
+       the switches, but the Easy and ON you picked are still there when you
+       cycle on to Creative — and an Allow Cheats switch you never touched
+       follows the mode, ON for Creative, the way its create screen has always
+       flipped it for you (a switch you did set stays as you set it). The old
+       code wrote the Hardcore values into the choices, so the standard route to
+       a creative world (Survival → Hardcore → Creative) arrived on Hard with no
+       commands, and nothing on the screen said why. */
+    var MN_GM_INFO = ['Search for resources, craft, gain levels, health and hunger',
+        'Same as Survival Mode, locked at hardest difficulty, and one life only',
+        'Unlimited resources, free flying and destroy blocks instantly'];
+    function mnCreateEff(c) {
+        return { diff: c.hardcore ? 3 : c.diff, cheats: c.hardcore ? false : (c.cheats == null ? c.gm === 1 : !!c.cheats), bonus: c.hardcore ? false : !!c.bonus };
     }
     MN_SCR.create = {
         bg: 'dirt',
@@ -8146,26 +8920,26 @@
                     on: (function (n) { return function (mm) { mm.d.cw.tab = n; mm.sig = ''; }; })(i),
                     draw: mnTab });
             }
-            var y = 42;
+            var y = 42, eff = mnCreateEff(c);
             if (c.tab === 0) {
                 w.push({ k: 'input', id: 'nm', x: cxp - 104, y: y + 12, w: 208, h: 20, value: c.name, max: 64,
                     enabled: true, aria: 'World Name', title: 'World Name',
                     set: function (mm, v) { mm.d.cw.name = v; } });
                 y += 44;
+                // the mode's one-line description sits under the button, so the
+                // buttons below it drop by the height of a line
                 w.push(mnCycle('gm', cxp - 105, y, 210, 20, 'Game Mode',
                     ['Survival', 'Hardcore', 'Creative'], c.hardcore ? 1 : c.gm === 1 ? 2 : 0,
                     function (mm, n) {
                         mm.d.cw.hardcore = n === 1;
-                        mm.d.cw.gm = n === 2 ? 1 : 0;
-                        // hardcore greys out difficulty, cheats and the bonus chest — and clears them,
-                        // or a disabled switch still puts a chest in the world
-                        if (n === 1) { mm.d.cw.diff = 3; mm.d.cw.cheats = false; mm.d.cw.bonus = false; }
+                        mm.d.cw.gm = n === 2 ? 1 : 0;   // the difficulty, cheats and bonus-chest CHOICES are left alone
                     }));
-                y += 28;
-                w.push(mnCycle('df', cxp - 105, y, 210, 20, 'Difficulty', MN_DIFF, c.diff,
+                y += 40;
+                w.push(mnCycle('df', cxp - 105, y, 210, 20, 'Difficulty', MN_DIFF, eff.diff,
                     function (mm, n) { mm.d.cw.diff = n; }, { enabled: !c.hardcore }));
                 y += 28;
-                w.push(mnCycle('ch', cxp - 105, y, 210, 20, 'Allow Cheats', ['OFF', 'ON'], c.cheats ? 1 : 0,
+                // untouched, the switch follows the mode (ON for Creative); once you set it, it stays set
+                w.push(mnCycle('ch', cxp - 105, y, 210, 20, 'Allow Cheats', ['OFF', 'ON'], eff.cheats ? 1 : 0,
                     function (mm, n) { mm.d.cw.cheats = !!n; }, { enabled: !c.hardcore }));
             } else if (c.tab === 1) {
                 w.push(mnCycle('wt', cxp - 155, y, 150, 20, 'World Type', MN_WTYPE, c.type,
@@ -8181,7 +8955,7 @@
                    not offered because this generator has no structures to
                    generate — trees and ore blobs are terrain. A switch that
                    changes nothing is worse than a switch that is not there. */
-                w.push(mnCycle('bc', cxp - 155, y, 310, 20, 'Bonus Chest', ['OFF', 'ON'], c.bonus ? 1 : 0,
+                w.push(mnCycle('bc', cxp - 155, y, 310, 20, 'Bonus Chest', ['OFF', 'ON'], eff.bonus ? 1 : 0,
                     function (mm, n) { mm.d.cw.bonus = !!n; }, { enabled: !c.hardcore }));
             } else {
                 w.push(mnBtn('gr', cxp - 105, y, 210, 20, 'Game Rules', function (mm) { mnGo(mm, 'rules'); }));
@@ -8200,7 +8974,8 @@
             mnRect(cx, 0, 28, W, 1, '#000000');
             mnRect(cx, 0, H - 36, W, 1, '#000000');
             var c = m.d.cw;
-            if (c && c.tab === 0 && c.hardcore) mfCenter(cx, 'Hardcore: one life, and the difficulty is locked.', W / 2, H - 48, MC_RED);
+            // the grey line under Game Mode that says what the mode is, as the real screen has it
+            if (c && c.tab === 0) mfText(cx, MN_GM_INFO[c.hardcore ? 1 : c.gm === 1 ? 2 : 0], (W / 2 | 0) - 105, 42 + 44 + 24, MC_GREY);
         }
     };
     function mnTab(cx, b, hover, focus) {
@@ -8213,9 +8988,10 @@
         if (/^-?\d+$/.test(c.seed.trim())) seed = parseInt(c.seed.trim(), 10) | 0;
         else if (c.seed.trim()) seed = mnHash(c.seed.trim());          // the game hashes a non-numeric seed too
         else seed = (Math.random() * 2147483647) | 0;
+        var eff = mnCreateEff(c);
         var w = wsCreate({ name: (c.name || 'New World').trim() || 'New World', seed: seed, gm: c.gm,
-            hardcore: c.hardcore, diff: c.hardcore ? 3 : c.diff, cheats: c.cheats,
-            structures: c.structures, bonus: c.bonus, type: MN_WTYPE[c.type] });
+            hardcore: c.hardcore, diff: eff.diff, cheats: eff.cheats,
+            structures: c.structures, bonus: eff.bonus, type: MN_WTYPE[c.type] });
         if (!w) { m.msg = 'Could not save the world list. Is storage full?'; return; }
         m.d.cw = null;
         mnPlay(m, w.id);
@@ -8701,17 +9477,29 @@
             '<div class="mc-panelwrap" style="display:none"></div>' +
             '<div class="mc-debug" style="display:none"></div>' +
             '<div class="mc-sleepov" style="display:none">Sleeping…</div>' +
-            '<div class="mc-pause" style="display:none"><div class="mc-menu">' +
+            '<div class="mc-pause" style="display:none"><div class="mc-menu mc-pmain">' +
             '<h3>Game Menu</h3>' +
             '<button class="mc-btn mc-resume">Back to Game</button>' +
             '<button class="mc-btn mc-achbtn">Achievements</button>' +
+            '<button class="mc-btn mc-lanbtn">Open to LAN</button>' +
             '<button class="mc-btn mc-totitle">Save and Quit to Title</button>' +
             '<div class="mc-optrow">' +
             '<div class="mc-slider mc-snd" data-vk="snd"><i></i><span>Sound: 100%</span></div>' +
             '<div class="mc-slider mc-mus" data-vk="mus"><i></i><span>Music: 100%</span></div>' +
             '</div>' +
-            '<p class="mc-hint">WASD move · Space jump · double-tap W sprints · Shift sneak<br>LMB mine · RMB place/use · MMB pick block · E inventory · Q drop · F3 debug<br>T chat · /gamemode creative · double-tap Space to fly</p>' +
+            '<p class="mc-hint">WASD move · Space jump · double-tap W sprints · Shift sneak<br>LMB mine · RMB place/use · MMB pick block · E inventory · Q drop · F3 debug<br>T chat · /gamemode creative (needs cheats: Allow Cheats, or Open to LAN) · double-tap Space to fly</p>' +
             '<div class="mc-achs" style="display:none"><div class="mc-achn"></div><div class="mc-achrows"></div></div>' +
+            '</div>' +
+            /* the real pause menu's way into a world that was made without cheats:
+               Open to LAN, Allow Cheats: ON, Start LAN World — commands for the
+               rest of the session, and a chat line naming the port */
+            '<div class="mc-menu mc-lan" style="display:none">' +
+            '<h3>LAN World</h3>' +
+            '<div class="mc-lansub">Settings for Other Players</div>' +
+            '<div class="mc-optrow"><button class="mc-btn half mc-langm">Game Mode: Survival</button><button class="mc-btn half mc-lanch">Allow Cheats: OFF</button></div>' +
+            '<label class="mc-lanportrow"><span>Port Number</span><input class="mc-lanport" maxlength="5" inputmode="numeric" spellcheck="false" autocomplete="off"></label>' +
+            '<div class="mc-lanmsg"></div>' +
+            '<div class="mc-optrow"><button class="mc-btn half mc-lanstart">Start LAN World</button><button class="mc-btn half mc-lancancel">Cancel</button></div>' +
             '</div></div>' +
             '<div class="mc-death" style="display:none"><div class="mc-menu"><h3>You died!</h3><div class="mc-dscore"></div>' +
             '<button class="mc-btn mc-respawn">Respawn</button></div></div>' +
@@ -8746,13 +9534,19 @@
     }
     function chatErr(text) { chatSay(text, 'err'); }
 
-    /* Minecraft's syntax error: the message, then the command up to the bad
-       token with <--[HERE] pinned after it. */
+    /* Minecraft's syntax error: the message, then the command as the server
+       saw it (no slash), in grey up to the point it stopped understanding —
+       the last ten characters, with ... if there were more — then the rest
+       in red underline, and <--[HERE] after it. */
     function chatSyntax(msg, full, pos) {
         chatErr(msg);
-        var head = String(full).slice(0, pos);
-        if (head.length > 32) head = '...' + head.slice(-29);
-        chatErr(head + '<--[HERE]');
+        if (!RT) return;
+        full = String(full);
+        pos = Math.max(0, Math.min(full.length, pos | 0));
+        RT.chatLog = RT.chatLog || [];
+        RT.chatLog.push({ t: (pos > 10 ? '...' : '') + full.slice(Math.max(0, pos - 10), pos), u: full.slice(pos), c: 'mc-ctx', at: RT.now || 0 });   // 'ctx' alone is the desktop's menu class
+        while (RT.chatLog.length > CHAT_MAX) RT.chatLog.shift();
+        paintChat();
     }
 
     /* ── argument reader ─────────────────────────────────── */
@@ -8964,21 +9758,22 @@
         var q = rd.word();
         if (q) {
             var c = CMDS[stripNs(q).toLowerCase()];
-            if (!c) return chatErr('Unknown command: ' + q);
+            if (!cmdAllowed(c)) return chatErr('Unknown command: ' + q);
             chatSay(c.usage);
             chatSay(c.help);
             return;
         }
-        var names = Object.keys(CMDS).sort();
+        var names = cmdNames();   // only what this world will actually run
         chatSay('--- Showing ' + names.length + ' commands ---', 'dim');
         for (var i = 0; i < names.length; i++) chatSay(CMDS[names[i]].usage, 'dim');
-    }, function (a) { return a === 0 ? Object.keys(CMDS).sort() : []; });
+    }, function (a) { return a === 0 ? cmdNames() : []; });
+    CMDS.help.free = true;
 
     cmd('gamemode', '/gamemode <survival|creative|adventure|spectator>', 'Sets a player\'s game mode', function (rd, raw) {
         var m = rd.word();
         if (!m) return usageErr('gamemode', raw, rd.i);
         var g = GAMEMODES[stripNs(m).toLowerCase()];
-        if (g === undefined) return chatSyntax('Unknown game mode: ' + m, raw, rd.i);
+        if (g === undefined) return chatSyntax('Unknown game mode: ' + m, raw, rd.i);   // GameModeArgument leaves the cursor after the word
         setGamemode(g);
         chatSay('Set own game mode to ' + GM_NAME[g] + ' Mode');
     }, function (a) { return a === 0 ? ['survival', 'creative', 'adventure', 'spectator'] : []; });
@@ -8987,7 +9782,7 @@
         var d = rd.word();
         if (!d) return chatSay('The difficulty is ' + DIFF_NAME[S.diff]);
         var v = DIFFS[stripNs(d).toLowerCase()];
-        if (v === undefined) return chatSyntax('Unknown difficulty: ' + d, raw, rd.i);
+        if (v === undefined) return chatSyntax('Unknown difficulty: ' + d, raw, rd.i - d.length);
         S.diff = v;
         // peaceful clears the hostiles, and spawnTick keeps them cleared
         if (v === 0) for (var i = RT.foes.length - 1; i >= 0; i--) if (RT.foes[i].hostile) RT.foes.splice(i, 1);
@@ -9264,6 +10059,7 @@
     cmd('seed', '/seed', 'Displays the world seed', function () {
         chatSay('Seed: [' + S.seed + ']');
     });
+    CMDS.seed.free = true;   // no permission needed on the integrated server
 
     cmd('spawnpoint', '/spawnpoint [x y z]', 'Sets your spawn point', function (rd, raw) {
         var p = { x: S.px, y: S.py, z: S.pz };
@@ -9318,9 +10114,11 @@
         if (!m) return chatErr('Expected message');
         chatSay('* Steve ' + m);
     });
+    CMDS.me.free = true;
     cmd('list', '/list', 'Lists players on the server', function () {
         chatSay('There are 1 of a max of 1 players online: Steve');
     });
+    CMDS.list.free = true;   // /list and /me are level-0 commands: cheats or not, everyone has them
     cmd('locate', '/locate <biome>', 'Reports the nearest biome of a kind', function (rd, raw) {
         var BIOMES = ['plains', 'forest', 'desert', 'snowy'];
         var b = stripNs(rd.word()).toLowerCase();
@@ -9358,7 +10156,9 @@
     /* ── helpers the commands lean on ────────────────────── */
     function fmtC(v) { return (Math.round(v * 100) / 100).toString(); }
     function roman(n) { return ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'][n] || String(n); }
-    function usageErr(name, raw, pos) { chatSyntax('Incomplete command', raw, pos); chatErr('Usage: ' + CMDS[name].usage); }
+    // a command cut short gets the same two lines an unknown one does — the usage
+    // line went with 1.12; the box above the input shows it while you type
+    function usageErr(name, raw, pos) { chatSyntax('Unknown or incomplete command, see below for error', raw, pos); }
     function tpPlayer(x, y, z) {
         S.px = x; S.py = y; S.pz = z;
         RT.vy = 0; RT.fallY = y;
@@ -9419,7 +10219,8 @@
             var age = now - m.at;
             var op = (!open && age > CHAT_FADE - 1.5) ? (CHAT_FADE - age) / 1.5 : 1;
             return '<div class="mc-cline' + (m.c ? ' ' + m.c : '') + '"' +
-                   (op < 1 ? ' style="opacity:' + op.toFixed(2) + '"' : '') + '>' + escHtml(m.t) + '</div>';
+                   (op < 1 ? ' style="opacity:' + op.toFixed(2) + '"' : '') + '>' + escHtml(m.t) +
+                   (m.u != null ? '<span class="mc-cu">' + escHtml(m.u) + '</span><span class="mc-chere">&lt;--[HERE]</span>' : '') + '</div>';
         }).join('');
         wrap.classList.toggle('open', open);
         var lg = wrap.querySelector('.mc-chatlog');
@@ -9481,23 +10282,25 @@
         if (line[0] !== '/') { chatSay('<Steve> ' + line); return; }
         runCommand(line.slice(1), line);
     }
+    /* Allow Cheats, off the Create New World screen. A world created with the
+       switch off does not have the cheat commands — which is what vanilla looks
+       like from the chat box, since the server never sends the client those
+       nodes: no suggestions, no Tab, and "Unknown or incomplete command" if
+       you type one anyway. Only an explicit false counts: worlds that predate
+       the switch have no opinion and keep everything they had. Open to LAN
+       with Allow Cheats: ON turns them on for the rest of the session, exactly
+       as the real pause menu does. /help and /seed need no permission in a
+       singleplayer world (SeedCommand is registered without one on the
+       integrated server), so they stay. */
+    function cheatsOn() { return !(S && S.cheats === false) || !!(RT && RT.lan && RT.lan.cheats); }
+    function cmdAllowed(c) { return !!c && (c.free || cheatsOn()); }
+    function cmdNames() { return Object.keys(CMDS).filter(function (n) { return cmdAllowed(CMDS[n]); }).sort(); }
     function runCommand(body, raw) {
         var rd = new Reader(body);
-        var nameAt = rd.i, name = stripNs(rd.word()).toLowerCase();
+        var name = stripNs(rd.word()).toLowerCase();
         if (!name) return;
         var c = CMDS[name];
-        /* Allow Cheats, off the Create New World screen. Every command this
-           world understands is a cheat command, so a world created with the
-           switch off simply does not have them — which is what vanilla looks
-           like from the chat box, since the commands are never registered.
-           Only an explicit false counts: worlds that predate the switch have
-           no opinion and keep everything they had. */
-        if (c && S && S.cheats === false) c = null;
-        if (!c) {
-            chatErr('Unknown or incomplete command, see below for error');
-            chatErr(raw.slice(0, 1 + nameAt + name.length) + '<--[HERE]');
-            return;
-        }
+        if (!cmdAllowed(c)) { chatSyntax('Unknown or incomplete command, see below for error', body, 0); return; }
         try { c.run(rd, raw.slice(1)); }
         catch (e) { chatErr('An unexpected error occurred running that command'); }
     }
@@ -9521,12 +10324,12 @@
         var body = text.slice(1), q, hits;
         if (body.indexOf(' ') < 0) {                    // still naming the command
             q = body.toLowerCase();
-            hits = Object.keys(CMDS).filter(function (n) { return n.indexOf(q) === 0; }).sort();
+            hits = cmdNames().filter(function (n) { return n.indexOf(q) === 0; });
             return { hits: hits, start: 1, usage: hits.length === 1 ? CMDS[hits[0]].usage : null };
         }
         var parts = body.split(' ');
         var c = CMDS[stripNs(parts[0]).toLowerCase()];
-        if (!c) return null;
+        if (!cmdAllowed(c)) return null;   // a world without cheats is not offered arguments for them
         var cur = parts[parts.length - 1];
         q = cur.toLowerCase();
         var opts = (c.complete && c.complete(parts.length - 2)) || [];
@@ -9548,7 +10351,7 @@
         var box = RT.el.querySelector('.mc-sug');
         if (!box) return;
         var c = RT.chat;
-        if (!c || (!c.hits.length && !c.usage)) { box.style.display = 'none'; return; }
+        if (!c || (!c.hits.length && !c.usage)) { box.style.display = 'none'; box.querySelector('.mc-sugl').innerHTML = ''; return; }
         var inp = RT.el.querySelector('.mc-chatin');
         box.style.display = '';
         box.querySelector('.mc-sugu').textContent = c.usage || '';
@@ -9619,7 +10422,7 @@
         if (text[0] !== '/') return null;
         var body = text.slice(1);
         if (body.indexOf(' ') < 0) {
-            var hits = Object.keys(CMDS).filter(function (n) { return n.indexOf(body.toLowerCase()) === 0; }).sort();
+            var hits = cmdNames().filter(function (n) { return n.indexOf(body.toLowerCase()) === 0; });
             if (!hits.length) return null;
             return { text: '/' + commonPrefix(hits, body.length) + (hits.length === 1 ? ' ' : ''), hits: hits };
         }
@@ -9627,7 +10430,7 @@
         var parts = body.split(' ');
         var cname = stripNs(parts[0]).toLowerCase();
         var c = CMDS[cname];
-        if (!c || !c.complete) return null;
+        if (!cmdAllowed(c) || !c.complete) return null;
         var argIdx = parts.length - 2;
         var cur = parts[parts.length - 1];
         var opts = c.complete(argIdx) || [];
@@ -9710,6 +10513,9 @@
             eatT: 0, bowT: 0, swing: 0, swingT: SWING_T, equip: 0, equipId: null, bob: 0, flash: 0, shake: 0, sleep: 0, placeCd: 0,
             target: null, panel: null, cur: null, craft: [null, null, null, null, null, null, null, null, null], craftW: 2,
             cTab: 0, cScroll: 0, cSearch: '', cList: [], cDrag: 0, panelDirty: 0,
+            qc: null, lastClk: null, av: null, skin: (opts && opts.skin) || null,   // drag-split state, the inventory figure, the launcher's skin
+            lan: null, lanUI: null,                                                  // Open to LAN: the published session, and the screen while it is up
+            hover: null,                                                             // the panel slot under the pointer
             paused: false, dead: S.hp <= 0, ready: false, lit: false, expectUnlock: false,
             worldMs: 0, playT: 0, baseHrs: S.hrs || 0, lastT: 0, secT: 0, hudT: 0, saveT: 0,
             fps: 0, fpsN: 0, fpsT: 0, f3: false, musT: 25, tipT: 0, tipId: null, devFree: !!devModes, raf: 0, timers: [],
@@ -9841,6 +10647,7 @@
             if (e.key === 'Escape') {
                 if (RT.chat) { closeChat(true); e.stopPropagation(); e.preventDefault(); }
                 else if (RT.panel) { closePanel(); e.stopPropagation(); }
+                else if (RT.lanUI) { lanClose(); e.stopPropagation(); e.preventDefault(); }   // the LAN screen backs out to the menu, not the world
                 else if (RT.paused && RT.ready) {
                     // don't hide the menu on hope: Chrome refuses relocks for ~1.3s after an Esc exit.
                     // onLockChange dismisses the menu when the lock actually lands; a rejection keeps it up.
@@ -9865,6 +10672,10 @@
                 e.stopPropagation();
                 return;
             }
+            // over the catalogue the chat key does what the real screen's does: it goes to Search
+            if ((k === 't' || k === '/') && RT.panel && RT.panel.kind === 'creative' && (CTABS[RT.cTab] || CTABS[0]).id !== 'search') {
+                creativeTab(7); e.preventDefault(); e.stopPropagation(); return;
+            }
             if ((k === 't' || k === '/') && RT.ready && !RT.dead && !RT.panel && !RT.paused) {
                 openChat(k === '/' ? '/' : '');
                 e.preventDefault(); e.stopPropagation();
@@ -9886,13 +10697,18 @@
                 else RT.lastSp = performance.now();
             }
             if (k === ' ') e.preventDefault();
-            if (k === 'e' && RT.ready && !RT.dead && !RT.paused) { if (RT.panel) closePanel(); else openPanel(isCreative() ? 'creative' : 'inv'); }
+            if (k === 'e' && RT.ready && !RT.dead && !RT.paused) {
+                /* preventDefault, because openPanel focuses the Search box synchronously
+                   and the browser then typed this very keystroke into it: reopening on
+                   the Search tab left an "e" in the box and a catalogue filtered on it */
+                e.preventDefault();
+                if (RT.panel) closePanel(); else openPanel(isCreative() ? 'creative' : 'inv');
+            }
+            if (k === 'q' && RT.panel && RT.hover && !RT.cur && !RT.paused && !RT.dead) { hoverThrow(!!e.ctrlKey); e.preventDefault(); }   // Q over a slot throws from it; Ctrl-Q the whole stack — never while carrying
             if (k === 'q' && !RT.panel && !RT.paused && !RT.dead) {
                 var h = held();
                 if (h) {
-                    var d = look();
-                    var dr = { x: S.px + d[0], y: S.py + EYE - 0.3, z: S.pz + d[2], vx: d[0] * 6, vy: d[1] * 6 + 2, vz: d[2] * 6, it: h.id, c: 1, dur: h.dur, age: -0.8, hw: 0.12, h: 0.24 };
-                    RT.drops.push(dr);
+                    tossItem(h, 1);   // the enchantments and the name go with it, as they should
                     h.c--; if (!h.c) S.inv[S.sel] = null;
                     paintHotbar();
                 }
@@ -9902,13 +10718,15 @@
             // ungated, these silently changed what you were holding from behind a
             // chest, the pause menu, the death screen and the loading screen
             if (n >= 1 && n <= 9 && RT.ready && !RT.panel && !RT.paused && !RT.dead) { S.sel = n - 1; paintHotbar(); }
+            if (n >= 1 && n <= 9 && RT.panel && RT.hover && !RT.cur && !RT.paused && !RT.dead) { hoverSwap(n - 1); e.preventDefault(); }   // a number over a slot swaps it into that hotbar slot, cursor empty
             e.stopPropagation();
         });
         root.addEventListener('keyup', function (e) {
             RT.keys[e.key.toLowerCase()] = false;
             e.stopPropagation();
         });
-        root.addEventListener('blur', function () { RT.keys = {}; RT.mouse.l = RT.mouse.r = false; });
+        // the window closing blurs the root AFTER close() has dropped RT
+        root.addEventListener('blur', function () { if (!RT) return; RT.keys = {}; RT.mouse.l = RT.mouse.r = false; });
         cv.addEventListener('mousedown', function (e) {
             audioInit();
             // with chat open the world is inert: no swinging, no relock, and the
@@ -9939,6 +10757,9 @@
         window.addEventListener('mouseup', RT.mup = function (e) {
             if (!RT) return;
             RT.cDrag = 0;
+            if (RT.qc) qcEnd(e);   // a drag-split lands on the release, wherever the pointer is by then
+            // a release that leaves the cursor empty ends the double-click window, as the real one does
+            if (RT.panel && !RT.cur && RT.lastClk) RT.lastClk.t = 0;
             if (e.button === 0) { RT.mouse.l = false; RT.digT = 0; }
             if (e.button === 2) { RT.mouse.r = false; finishUse(); }
         });
@@ -9970,6 +10791,22 @@
             var a = root.querySelector('.mc-achs');
             a.style.display = a.style.display === 'none' ? '' : 'none';
         });
+        root.querySelector('.mc-lanbtn').addEventListener('click', function () { audioInit(); lanOpen(); });
+        root.querySelector('.mc-langm').addEventListener('click', function () { if (RT.lanUI) { RT.lanUI.gm = (RT.lanUI.gm + 1) % 4; snd('click'); lanPaint(); } });
+        root.querySelector('.mc-lanch').addEventListener('click', function () { if (RT.lanUI) { RT.lanUI.cheats = !RT.lanUI.cheats; snd('click'); lanPaint(); } });
+        root.querySelector('.mc-lanstart').addEventListener('click', function () { lanStart(); });
+        root.querySelector('.mc-lancancel').addEventListener('click', function () { snd('click'); lanClose(); });
+        var portIn = root.querySelector('.mc-lanport');
+        portIn.addEventListener('mousedown', function (e) { e.stopPropagation(); });
+        portIn.addEventListener('keydown', function (e) {
+            // the box owns its keys, or a digit would pick a hotbar slot; Enter
+            // starts, Esc backs out to the menu
+            e.stopPropagation();
+            if (e.key === 'Enter') { e.preventDefault(); lanStart(); }
+            else if (e.key === 'Escape') { e.preventDefault(); lanClose(); }
+        });
+        portIn.addEventListener('keyup', function (e) { e.stopPropagation(); });
+        portIn.addEventListener('input', function () { if (RT.lanUI) { RT.lanUI.port = portIn.value; lanPaint(false); } });
         wireSliders(root);
         root.querySelector('.mc-respawn').addEventListener('click', function () { respawn(); lockCursor(); });
         setTimeout(function () { root.focus(); }, 30);
@@ -10236,6 +11073,7 @@
             if (lose) try { lose.loseContext(); } catch (e) {}
         }
         audioStop();
+        AV_CACHE = {}; AV_CACHE_KEYS = [];   // the built figures go with the game
         RT = null;
         return hrs;
     }
@@ -10269,7 +11107,7 @@
             menu: function () {
                 var m = RT && RT.menu;
                 if (!m) return null;
-                return { scr: m.scr, sel: m.d.sel, msel: m.d.msel, mx: m.mx, scale: m.scale, sig: m.sig,
+                return { scr: m.scr, sel: m.d.sel, msel: m.d.msel, mx: m.mx, scale: m.scale, sig: m.sig, msg: m.msg || null,
                     hover: m.hover, focus: m.focus, prev: m.prev.slice(),
                     w: m.widgets.map(function (b) { return b.id + ':' + (b.enabled ? '' : 'off') + (b.st || 0); }) };
             } },
