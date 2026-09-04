@@ -24,8 +24,9 @@
            line, and waits. The terminal is a JS layer over a page that
            works without it: no JS, or reduced motion, and you get the
            screen straight away.
-           The blink is three hand-drawn frames on the eye's own grid
-           (see the SVG), not the console's sliding lids.
+           The blink is the console's: three hand-drawn frames on the
+           eye's own grid (see the SVG), the same frames and timings the
+           URE BOY's eye uses.
            ──────────────────────────────────────────────────────────── */
 
         *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -88,12 +89,15 @@
         .tl { white-space: pre-wrap; word-break: break-word; min-height: 1.15em; }
         /* the banner (52 columns) and the eye (48) must not wrap: past a phone they
            take the terminal's size, and under it they take what the width allows.
-           VT323 advances .4em a column, so 52 columns is 20.8 ems */
+           --col is the width of a column in ems, measured off whatever face is really
+           rendering (VT323's is .4; the fallback monospace is wider), and the last
+           clause keeps a 13-row eye frame inside a very short viewport */
         .tl-art {
             white-space: pre; word-break: normal; line-height: 1; letter-spacing: 0;
-            font-size: min(1rem, calc((100vw - 1.2rem) / 20.8));
+            font-size: min(1rem, calc((100vw - 1.2rem) / (52 * var(--col, .4))), calc((100vh - 5rem) / 10.4));
         }
-        .tl-px { line-height: .8; }          /* the pixel eye: two columns to a cell, .8 of a row to a cell */
+        .tl-px { line-height: .8; padding-bottom: .8em; }   /* the pixel eye: two columns to a cell, .8 of a row
+                                                               to a cell, and a cell row under each frame */
         .tl-dim { color: var(--term-dim); }
         .tl-warn { color: var(--term-warn); }
         .tc {
@@ -108,7 +112,7 @@
             border: 1px solid #45453f; border-radius: 4px;
             padding: .3rem .65rem .35rem;
             cursor: pointer;
-            opacity: 0;
+            opacity: 0; visibility: hidden;       /* not in the tab order until it can be seen */
             animation: appear .1s steps(1, end) 1.2s forwards;
             -webkit-tap-highlight-color: transparent;
         }
@@ -120,6 +124,7 @@
            for eyes, and its choreography is held at frame zero */
         .js .screen-frame:not(.lit) { opacity: 0; pointer-events: none; }
         .js .screen-frame:not(.lit) * { animation-play-state: paused !important; }
+        .screen-frame:focus { outline: none; }    /* it takes focus from the skip button, quietly */
 
         /* ── the screen: the LCD alone, square, set straight into the black ──
            auto margins centre it and, unlike align-items, still let a short
@@ -266,7 +271,7 @@
             opacity: 0;
             animation: appear .1s steps(1, end) 2.25s forwards;
         }
-        @keyframes appear { to { opacity: 1; } }
+        @keyframes appear { to { opacity: 1; visibility: visible; } }
         .term-ps { color: var(--screen-accent); }
         .term-block {
             display: inline-block; width: .55em; height: .95em; margin-top: .1em;
@@ -287,6 +292,7 @@
              backgrounds, which forced colours would erase ── */
         @media (forced-colors: active) {
             .lid-skin { fill: Canvas; }
+            .eye-glint { fill: Canvas; }          /* SVG fills are not forced: keep the glint off the pupil */
             .term-block, .tc { forced-color-adjust: none; background: CanvasText; }
         }
 
@@ -353,13 +359,16 @@
         function light() {                 // hand off: drop the terminal, wake the screen
             if (lit) return;
             lit = true; gen++;
+            if (skipBtn && document.activeElement === skipBtn) {   // keep the keyboard on the page
+                frame.setAttribute('tabindex', '-1');
+                try { frame.focus({ preventScroll: true }); } catch (e) { frame.focus(); }
+            }
             if (term && term.parentNode) term.parentNode.removeChild(term);
             if (skipBtn && skipBtn.parentNode) skipBtn.parentNode.removeChild(skipBtn);
             frame.className += ' lit';
         }
         if (!frame) return;
         if (reduce || !term || !log || !window.Promise) { light(); return; }
-        setTimeout(light, 12000);
 
         /* ---- the terminal ---- */
         var cursor = document.createElement('span'); cursor.className = 'tc';
@@ -398,7 +407,7 @@
             return new Promise(function (res) {
                 var t0 = Date.now();
                 (function step() {
-                    if (g !== gen) return res();
+                    if (g !== gen) return;
                     var t = Math.min(1, (Date.now() - t0) / ms);
                     el.scrollTop = start + (end - start) * (1 - Math.pow(1 - t, 2));   // ease-out
                     if (t < 1) requestAnimationFrame(step); else res();
@@ -425,7 +434,7 @@
            characters wide and, at line-height .8, one row tall, so the cells come out
            square (VT323 is .4em to the column). the three blink frames and the glance
            are the LCD's too, so the terminal and the screen draw the same eye. generated
-           from the SVG's rects; each frame ends in a blank row so they stack apart ---- */
+           from the SVG's rects; a cell row of padding under each keeps them apart ---- */
         var EYE = {
             open: [
                 '                      ##############',
@@ -439,8 +448,7 @@
                 '##                  ##########        ##########',
                 '      ############              ########',
                 '              ######################',
-                '                    ##########',
-                ''
+                '                    ##########'
             ].join('\n'),
             left: [
                 '                      ##############',
@@ -454,8 +462,7 @@
                 '##              ##########            ##########',
                 '      ############              ########',
                 '              ######################',
-                '                    ##########',
-                ''
+                '                    ##########'
             ].join('\n'),
             right: [
                 '                      ##############',
@@ -469,8 +476,7 @@
                 '##                      ##########    ##########',
                 '      ############              ########',
                 '              ######################',
-                '                    ##########',
-                ''
+                '                    ##########'
             ].join('\n'),
             half: [
                 '',
@@ -484,8 +490,7 @@
                 '##                  ##########        ##########',
                 '      ############              ########',
                 '              ######################',
-                '                    ##########',
-                ''
+                '                    ##########'
             ].join('\n'),
             slit: [
                 '',
@@ -498,7 +503,6 @@
                 '  ######          ##############',
                 '##################  ##########  ################',
                 '                  ##############',
-                '',
                 '',
                 ''
             ].join('\n'),
@@ -513,7 +517,6 @@
                 '  ################              ##############',
                 '################################################',
                 '                  ##############',
-                '',
                 '',
                 ''
             ].join('\n')
@@ -534,8 +537,6 @@
             function eyeFrame(name, slideMs, hold) {
                 return function () { if (g !== gen) return; stamp(EYE[name]); return slide(slideMs).then(function () { return pause(hold); }); };
             }
-            term.hidden = false; skipBtn.hidden = false;
-            line('');                               // the lone blinking cursor; the first line writes over it
             var seq = pause(600)
                 .then(function () { return check('> power', 'ok', 120); })
                 .then(function () { return pause(40); })
@@ -552,7 +553,7 @@
                 .then(function () {
                     block('');
                     block(BANNER, 'tl-art');
-                    line('        A GOOD EYE OS  v1.0', 'tl-dim');
+                    line('                A GOOD EYE OS  v1.0', 'tl-art tl-dim');
                     return pause(420);
                 })
                 .then(function () { block(''); line(''); return pause(60); })
@@ -572,21 +573,49 @@
                .catch(light);
         }
 
-        /* any key, a tap on the terminal, or the button skips to the screen */
+        /* any key, a tap or click anywhere, or the button skips to the screen. a browser
+           chord (zoom, find, reload) is not a skip, nor are lock and function keys; a click
+           rather than pointerdown, so a pinch to read the small type or a swipe is not either */
         window.addEventListener('keydown', function (e) {
-            if (lit || e.key === 'Tab' || e.key === 'Shift' || e.key === 'Control' || e.key === 'Alt' || e.key === 'Meta') return;
+            if (lit || e.ctrlKey || e.metaKey || e.altKey) return;
+            if (/^(Tab|Shift|Control|Alt|Meta|AltGraph|CapsLock|NumLock|ScrollLock|Dead|Unidentified|Process|ContextMenu|PrintScreen|F\d{1,2})$/.test(e.key)) return;
             light();
         });
-        term.addEventListener('pointerdown', function () { light(); });
-        skipBtn.addEventListener('click', function () { light(); });
+        window.addEventListener('click', function () { light(); });   // the skip button's click bubbles here too
 
-        /* wait for the terminal face (briefly), so the art does not reflow mid-boot */
+        /* the terminal shows its lone cursor at once, then waits (briefly) for its face, so
+           the art does not reflow mid-boot, and waits to be looked at: in a hidden tab timers
+           crawl and frames cannot slide. the 12s budget is armed when the boot really starts;
+           the 20s one from now covers a document that never says it is visible. */
         var started = false;
-        function start() { if (started) return; started = true; try { run(); } catch (e) { light(); } }
+        term.hidden = false; skipBtn.hidden = false; line('');
+        function fit() {                 // the column the face really advances, for the art's size
+            var probe = make('0000000000', 'tl-art');
+            probe.style.cssText = 'position:absolute;visibility:hidden';
+            log.appendChild(probe);
+            var em = parseFloat(getComputedStyle(probe).fontSize), w = probe.getBoundingClientRect().width;
+            log.removeChild(probe);
+            if (w > 0 && em > 0) term.style.setProperty('--col', (w / 10 / em).toFixed(4));
+        }
+        function start() {
+            if (started || lit) return;
+            started = true;
+            setTimeout(light, 12000);
+            fit();
+            try { run(); } catch (e) { light(); }
+        }
+        function whenVisible(fn) {
+            if (!document.hidden) return fn();
+            document.addEventListener('visibilitychange', function f() {
+                if (!document.hidden) { document.removeEventListener('visibilitychange', f); fn(); }
+            });
+        }
+        function go() { whenVisible(start); }
+        setTimeout(function () { if (!started) light(); }, 20000);
         if (document.fonts && document.fonts.load) {
-            document.fonts.load('1em VT323').then(start, start);
-            setTimeout(start, 1500);
-        } else start();
+            document.fonts.load('1em VT323').then(function () { if (started && !lit) fit(); go(); }, go);
+            setTimeout(go, 1500);
+        } else go();
     })();
     </script>
 </body>
