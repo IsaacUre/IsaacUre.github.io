@@ -238,6 +238,15 @@ function wireWindow(id, el) {
         e.preventDefault(); e.stopPropagation();
         winSysMenu(id, e);
     });
+    /* The title bar must not take the keyboard. A mousedown on it — the bar,
+       a caption button, a tab — moved focus to <body> or to the button, and
+       from then on a game's E and Escape went nowhere until the player clicked
+       back inside it. Cancelling the default keeps focus where it was; clicks
+       and the pointer-capture drag below are unaffected. Text fields keep it. */
+    bar.addEventListener('mousedown', function (e) {
+        if (e.target.closest('input, textarea, select, [contenteditable="true"]')) return;
+        e.preventDefault();
+    });
     bar.addEventListener('pointerdown', function (e) {
         // Chrome's tabs and new-tab button live in its title bar; they must click, not drag the window
         // (Edge's .br-tab strip is set-dressing, so it stays draggable like the rest of the bar)
@@ -276,6 +285,9 @@ function refocusTop() {
     if (!ids.length) { activeApp = null; return; }
     ids.sort(function (a, b) { return (+openWins[b].el.style.zIndex || 0) - (+openWins[a].el.style.zIndex || 0); });
     activeApp = ids[0];
+    // and the keyboard goes with it: closing a window over a game left the
+    // taskbar saying the game was active while its keys landed on <body>
+    if (APPS[activeApp] && APPS[activeApp].onFocus) APPS[activeApp].onFocus(openWins[activeApp].el);
 }
 // A minimized full-screen window keeps w.fs — minimize a game and you want
 // the taskbar back, click it again and you want the game back the way it was
