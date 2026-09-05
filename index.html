@@ -542,8 +542,8 @@
             function eyeFrame(name, slideMs, hold) {
                 return function () { if (g !== gen) return; stamp(EYE[name]); return slide(slideMs).then(function () { return pause(hold); }); };
             }
-            /* about 4.3s end to end: the checks land in order, quick ones quicker, the
-               ones that look for something a beat longer; the eye's own blink keeps the
+            /* about 4s end to end: the checks land in order, quick ones quicker, the
+               ones that look for something a beat longer; the eye's one blink keeps the
                LCD's timing */
             var seq = pause(350)
                 .then(function () { return check('> power', 'ok', 80); })
@@ -565,15 +565,13 @@
                     return pause(300);
                 })
                 .then(function () { block(''); line(''); return pause(40); })
-                // the eye powers on, has a look around, and blinks twice, the LCD's blink
+                // the eye powers on, has a look around, and blinks once, the LCD's blink
                 // (half 45 · slit 40 · shut 90 · slit 55 · half 70): each frame is stamped
                 // under the last and the log slides up to it
                 .then(eyeFrame('open', 150, 260))
                 .then(eyeFrame('left', 50, 70)).then(eyeFrame('right', 50, 70)).then(eyeFrame('open', 50, 80));
-            for (var k = 0; k < 2; k++) {
-                [['half', 45], ['slit', 40], ['shut', 90], ['slit', 55], ['half', 70]].forEach(function (f) { seq = seq.then(eyeFrame(f[0], 25, f[1])); });
-                seq = seq.then(eyeFrame('open', 50, k === 0 ? 160 : 200));
-            }
+            [['half', 45], ['slit', 40], ['shut', 90], ['slit', 55], ['half', 70]].forEach(function (f) { seq = seq.then(eyeFrame(f[0], 25, f[1])); });
+            seq = seq.then(eyeFrame('open', 50, 200));
             seq.then(function () { return pause(150); })
                .then(function () { return check('> handing off to /dev/eye0', 'ok', 100); })
                .then(function () { return pause(250); })
