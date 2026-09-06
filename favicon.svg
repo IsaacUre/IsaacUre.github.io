@@ -1,12 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <!-- the site's mark: the LCD's pixel eye off the holding page and the URE BOY, on its screen,
-       with the console's frame around it. The eye is the page's own 48-unit drawing, 2 units to
-       a cell, set 8 units in; 64 across so that at 32px every cell is one whole pixel. -->
-  <rect width="64" height="64" fill="#0e0e0b"/>
-  <rect x="2" y="2" width="60" height="60" fill="#e6e4d2"/>
-  <g transform="translate(8 8)" fill="#1c1d17">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+  <!-- the site's mark: the LCD's pixel eye off the holding page, cut out. The eye is drawn in
+       the screen's off-white with nothing behind it, so it sits on the tab strip like a stamp;
+       the glint is a hole. The rects are the page's own, 2 units to a cell. On a light tab
+       strip the off-white would vanish, so a light colour scheme gets the screen's ink. -->
+  <style>
+    .eye { fill: #e6e4d2; }
+    @media (prefers-color-scheme: light) { .eye { fill: #1c1d17; } }
+  </style>
+  <g class="eye">
     <rect x="22" y="12" width="14" height="2"/><rect x="16" y="14" width="24" height="2"/><rect x="14" y="16" width="28" height="2"/><rect x="8" y="18" width="24" height="2"/><rect x="38" y="18" width="6" height="2"/><rect x="42" y="20" width="4" height="2"/><rect x="44" y="22" width="2" height="2"/><rect x="4" y="24" width="4" height="2"/><rect x="46" y="24" width="2" height="2"/><rect x="2" y="26" width="2" height="2"/><rect x="0" y="28" width="2" height="2"/><rect x="38" y="28" width="10" height="2"/><rect x="6" y="30" width="12" height="2"/><rect x="32" y="30" width="8" height="2"/><rect x="14" y="32" width="22" height="2"/><rect x="20" y="34" width="10" height="2"/>
     <rect x="8" y="20" width="8" height="2"/><rect x="18" y="20" width="14" height="2"/><rect x="6" y="22" width="8" height="2"/><rect x="18" y="22" width="8" height="2"/><rect x="30" y="22" width="6" height="2"/><rect x="18" y="24" width="14" height="2"/><rect x="20" y="26" width="12" height="2"/><rect x="20" y="28" width="10" height="2"/>
-    <g fill="#ffffff"><rect x="16" y="20" width="2" height="2"/><rect x="14" y="22" width="4" height="2"/></g>
   </g>
 </svg>
