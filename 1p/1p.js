@@ -8,12 +8,15 @@
    fog, a real-clock sky in the windows. Zero dependencies.
    Two glowing screens on the desk now: the URE BOY boots the
    console, the PC sits you down at /comp/.
+   The view is the whole window: the buffer takes the window's
+   shape (resize) and the lens keeps its vertical fov (setLens).
    ============================================================ */
 (function () {
 'use strict';
 
 /* ─────────────────────────── core ─────────────────────────── */
-var W = 320, H = 180;                              // native buffer, 16:9 and chunky
+var BASE_W = 320, BASE_H = 180;                    // the buffer the room was tuned at: 16:9 and chunky
+var W = BASE_W, H = BASE_H;                        // the live buffer: the window's shape, about that many pixels (see resize)
 var buf = document.createElement('canvas');
 buf.width = W; buf.height = H;
 var ctx = buf.getContext('2d');
@@ -757,7 +760,8 @@ function buildFurniture() {
 /* ============================================================
    PLAYER + CAMERA
    ============================================================ */
-var PLANE = 1.02;                                  // ~91° horizontal fov: room-scale needs wide
+var PLANE = 1.02;                                  // ~91° across at 16:9: room-scale needs wide. setLens refits it per window
+var VTAN = 90 / (160 / 1.02);                      // tan(half the vertical fov) at 320x180, ~60° tall: what every window shape keeps
 var PL = {
     x: 17.0, z: 47.5,
     dirX: 0, dirZ: -1,                             // facing north, up the hall past the slant
@@ -774,6 +778,24 @@ function rotate(a) {
 /* a standing-eye camera + wide fov, so you look down over the pushed-in chair
    onto the desk, the way Isaac's photos are shot */
 var EYE = 5.9, WALLH = 13, FOCAL = (W / 2) / PLANE;
+var FOCAL0 = (BASE_H / 2) / VTAN;                  // FOCAL at 320x180: the look rates below were tuned against it
+var PITCHMAX = 80, PITCHK = 0.3;                   // how far up you can look, and how fast a drag gets there, in buffer px
+function setLens() {
+    /* the vertical fov is pinned, so a wider window simply sees more room
+       (hor+, the way games do it now) and the horizon never moves. two
+       guards on the horizontal: a portrait phone would go tunnel-narrow, so
+       it never closes under 72°; a 32:9 monitor would go fisheye, so it
+       never opens past 120°. FOCAL and PLANE are one number seen two ways,
+       and the column walk and the quad projection both assume they agree */
+    var f = (H / 2) / VTAN;
+    var fWide = (W / 2) / Math.tan(Math.PI / 3), fNarrow = (W / 2) / Math.tan(Math.PI / 5);
+    FOCAL = clamp(f, fWide, fNarrow);
+    PLANE = (W / 2) / FOCAL;
+    PITCHMAX = FOCAL * 0.51;
+    PITCHK = 0.3 * FOCAL / FOCAL0;
+    PL.planeX = -PL.dirZ * PLANE; PL.planeZ = PL.dirX * PLANE;
+    PL.pitch = clamp(PL.pitch, -PITCHMAX, PITCHMAX);
+}
 var PR = 1.25;                                     // player collision radius; doors are 3 cells wide
 
 function solidCell(c, r) {
@@ -1015,6 +1037,19 @@ function collectDoorFaces(d, faces, horizon) {
 var ZBUF = new Float32Array(W);                    // per-column wall depth
 var IZROW = new Float32Array(W);                   // one row of wall inverse-depth
 var DEPTH = new Float32Array(W * H);               // per-pixel inverse depth (bigger = nearer)
+/* the buffer takes a new shape: every W×H thing is rebuilt here, and nothing
+   else may cache a size. the map's snapshot is redrawn too, or a paused
+   world at the old size would sit stretched under the dollhouse */
+function setNative(w, h) {
+    W = w; H = h;
+    buf.width = W; buf.height = H;
+    MAPSNAP.width = W; MAPSNAP.height = H;
+    ZBUF = new Float32Array(W); IZROW = new Float32Array(W); DEPTH = new Float32Array(W * H);
+    MMX = W - MW - 8;
+    setLens();
+    if (MAPV.on) snapWorld();
+    needsDraw = true;
+}
 function render() {
     var horizon = H / 2 + PL.pitch + (reduce ? 0 : Math.sin(PL.bobT) * 1.6);
 
@@ -1439,10 +1474,18 @@ function renderMap() {
     }
 }
 
-var mapBtn = null, tipP = null, TIP_HOME = '', mapOpenT = 0;
-var TIP_MAP = '<span class="fine-only"><b>drag</b> spins · <b>scroll</b> zooms · <b>m</b> closes · </span><span class="coarse-only"><b>drag</b> spins · <b>pinch</b> zooms · <b>✕</b> or <b>map</b> closes · </span>the <b>red one</b> is you';
-function swapTip(mapMode) {
-    if (tipP) tipP.innerHTML = mapMode ? TIP_MAP : TIP_HOME;
+var mapBtns = [], mapOpenT = 0;
+function setMapPressed(on) {
+    for (var i = 0; i < mapBtns.length; i++) mapBtns[i].setAttribute('aria-pressed', on ? 'true' : 'false');
+}
+function snapWorld() {
+    hideMini = true; render(); hideMini = false;
+    msctx.clearRect(0, 0, W, H);
+    msctx.drawImage(buf, 0, 0);
+    msctx.globalAlpha = 0.8;
+    msctx.fillStyle = '#0b0b10';
+    msctx.fillRect(0, 0, W, H);
+    msctx.globalAlpha = 1;
 }
 function openMap() {
     /* navDone, not just TRANS.on: the reduced-motion exit skips the dither and
@@ -1457,27 +1500,22 @@ function openMap() {
     look.id = -1; stick.id = -1; stick.dx = 0; stick.dy = 0;
     /* snapshot the scene once, dim baked in: the world is paused behind the
        overlay, so the backdrop is one blit per frame and nothing more */
-    hideMini = true; render(); hideMini = false;
-    msctx.clearRect(0, 0, W, H);
-    msctx.drawImage(buf, 0, 0);
-    msctx.globalAlpha = 0.8;
-    msctx.fillStyle = '#0b0b10';
-    msctx.fillRect(0, 0, W, H);
-    msctx.globalAlpha = 1;
+    snapWorld();
     /* the walk view's prompt has no meaning up here, and promptOn is what gates
        E: drop the target too so a stale one can't be booted from the map */
     promptOn = false; promptTgt = null;
     if (promptEl) promptEl.hidden = true;
-    if (mapBtn) mapBtn.setAttribute('aria-pressed', 'true');
-    swapTip(true);
+    setMapPressed(true);
+    setHudMode(true);
+    learn('map');
     needsDraw = true;
 }
 function closeMap() {
     if (!MAPV.on) return;
     MAPV.on = false;
     MPTRS = {}; mpinch.on = false; mdrag.on = false;
-    if (mapBtn) mapBtn.setAttribute('aria-pressed', 'false');
-    swapTip(false);
+    setMapPressed(false);
+    setHudMode(false);
     needsDraw = true;
 }
 function toggleMap() { if (MAPV.on) closeMap(); else openMap(); }
@@ -1518,23 +1556,34 @@ function drawTrans() {
 function present() {
     if (!dctx) return;
     dctx.imageSmoothingEnabled = false;
-    dctx.clearRect(0, 0, disp.width, disp.height);
-    var s = Math.min(disp.width / W, disp.height / H);
-    var dw = Math.round(W * s), dh = Math.round(H * s);
-    dctx.drawImage(buf, 0, 0, W, H, (disp.width - dw) >> 1, (disp.height - dh) >> 1, dw, dh);
+    /* the buffer is the window's shape to within a pixel, so it fills the
+       canvas outright: no letterbox, no centering, no sliver of stage */
+    dctx.drawImage(buf, 0, 0, W, H, 0, 0, disp.width, disp.height);
 }
+var SCALE = 1;                                     // css px per buffer px, from the last resize
 function resize() {
     if (!disp || !holder) return;
-    var dpr = Math.min(2, window.devicePixelRatio || 1);
-    var hw = Math.max(32, holder.clientWidth), hh = Math.max(32, holder.clientHeight);
-    var s = Math.min(hw / W, hh / H);
-    var cssW = Math.max(32, Math.floor(W * s)), cssH = Math.floor(cssW * H / W);
-    var pw = Math.round(cssW * dpr), ph = Math.round(cssH * dpr);
-    if (disp.width === pw && disp.height === ph) return;
-    disp.style.width = cssW + 'px';
-    disp.style.height = cssH + 'px';
-    disp.width = pw; disp.height = ph;
+    var cssW = Math.max(32, holder.clientWidth), cssH = Math.max(32, holder.clientHeight);
+    /* the buffer follows the window's shape, at whatever whole-pixel chunk
+       lands it nearest the 320x180 the room was tuned at: 1080p is exactly
+       that, a 16:10 laptop gets 288x180, a phone standing up gets ~195x422.
+       the render cost stays about the same, and so does the pixel size */
+    var s = Math.max(1, Math.round(Math.sqrt(cssW * cssH / (BASE_W * BASE_H))));
+    var nw = clamp(Math.round(cssW / s), 48, 720), nh = clamp(Math.round(cssH / s), 48, 720);
+    if (nw !== W || nh !== H) setNative(nw, nh);
+    SCALE = s;
     LOOKW = cssW;
+    /* the backing store is the window at device pixels, capped where old
+       GPUs stop taking textures. past the cap the element scale is still
+       nearest-neighbour (see the css), so the pixels stay square */
+    var dpr = Math.min(2, window.devicePixelRatio || 1);
+    if (Math.max(cssW, cssH) * dpr > 8192) dpr = 1;
+    var pw = Math.round(cssW * dpr), ph = Math.round(cssH * dpr);
+    if (disp.width !== pw || disp.height !== ph) { disp.width = pw; disp.height = ph; }
+    /* the phone's "tap the map" hint sits under the minimap: tell css where that is */
+    var rs = document.documentElement.style;
+    rs.setProperty('--mm-b', Math.round((MMY + MH + 4) * cssH / H) + 'px');
+    rs.setProperty('--mm-r', Math.round(4 * cssW / W) + 'px');
     needsDraw = true;
     present();
 }
@@ -1547,6 +1596,8 @@ function onKey(e, down) {
     /* modifiers only block keyDOWN: a swallowed keyup leaves keys stuck */
     if (down && (e.ctrlKey || e.metaKey || e.altKey)) return;
     var k = (e.key || '').toLowerCase();
+    hudKey(k, down);
+    if (down) noteInput();
     var used = true;
     if (k === 'w' || k === 'arrowup') KEYS.f = down;
     else if (k === 's' || k === 'arrowdown') KEYS.b = down;
@@ -1602,10 +1653,12 @@ function onDown(e) {
     }
     var r = holder.getBoundingClientRect();
     var half = r.left + r.width / 2;
+    noteInput();
     if (e.pointerType !== 'mouse' && e.clientX < half && stick.id === -1) {
         stick.id = e.pointerId;
         stick.x0 = e.clientX; stick.y0 = e.clientY;
         stick.dx = 0; stick.dy = 0;
+        stickShow(e.clientX - r.left, e.clientY - r.top);
     } else if (look.id === -1) {
         look.id = e.pointerId;
         look.lx = e.clientX; look.ly = e.clientY;
@@ -1638,13 +1691,22 @@ function onMove(e) {
         /* dead zone: a planted thumb is zero, not a slow creep */
         stick.dx = deadZone(e.clientX - stick.x0, 9, 42);
         stick.dy = deadZone(e.clientY - stick.y0, 9, 42);
+        stickMove(e.clientX - stick.x0, e.clientY - stick.y0);
+        noteInput();
     } else if (e.pointerId === look.id) {
         var dx = e.clientX - look.lx, dy = e.clientY - look.ly;
         look.lx = e.clientX; look.ly = e.clientY;
         look.moved = Math.max(look.moved, Math.max(Math.abs(e.clientX - look.x0), Math.abs(e.clientY - look.y0)));
         rotate(dx / LOOKW * 2.6);                  // full-canvas swipe ≈ 150° on any device
-        PL.pitch = clamp(PL.pitch - dy * 0.3, -80, 80);
+        PL.pitch = clamp(PL.pitch - dy * PITCHK, -PITCHMAX, PITCHMAX);
+        if (look.moved > 12) learn('look');        // a real look, not the wobble of a click
+        noteInput();
         needsDraw = true;
+    } else if (!e.pointerType || e.pointerType === 'mouse') {
+        /* nothing held: the cursor says when it's over the minimap, and the
+           ghosted legend wakes when the mouse comes down to it */
+        disp.classList.toggle('over-map', overMini(bufCoords(e)));
+        hudNear(e);
     }
 }
 function onUp(e) {
@@ -1686,14 +1748,13 @@ function onUp(e) {
         }
         return;
     }
-    if (e.pointerId === stick.id) { stick.id = -1; stick.dx = 0; stick.dy = 0; }
+    if (e.pointerId === stick.id) { stick.id = -1; stick.dx = 0; stick.dy = 0; stickHide(); }
     if (e.pointerId === look.id) {
         look.id = -1;
         /* a clean tap on the minimap opens the big one */
         var slop = look.type === 'mouse' ? 6 : 11;
         if (!isCancel && look.moved < slop && T - look.t0 < 0.5) {
-            var c = bufCoords(e);
-            if (c.x >= MMX - 2 && c.x <= MMX + MW + 6 && c.y >= MMY - 2 && c.y <= MMY + MH + 6) openMap();
+            if (overMini(bufCoords(e))) openMap();
         }
     }
 }
@@ -1728,6 +1789,86 @@ function checkPrompt() {
     }
 }
 
+/* ─────────────────────────── the HUD ────────────────────────────
+   the control legend along the bottom of the page. the keys on it are
+   the keys on the keyboard: each one drops while its key is down. a
+   group dims once you've used what it teaches, and when all three are
+   learned the whole legend ghosts while you're moving, coming back if
+   you stop for a while (or bring the mouse down to it). */
+var hud = null, hudCaps = {}, learned = {}, allLearnedT = -1, hudGhost = false, hudNearOn = false;
+var lastInT = 0;
+var stickEl = null, stickKnob = null;
+function hudInit() {
+    hud = byId('hud');
+    stickEl = byId('stick');
+    stickKnob = stickEl ? stickEl.firstElementChild : null;
+    if (!hud) return;
+    var caps = hud.querySelectorAll('[data-key]');
+    for (var i = 0; i < caps.length; i++) {
+        var k = caps[i].getAttribute('data-key');
+        (hudCaps[k] || (hudCaps[k] = [])).push(caps[i]);
+    }
+}
+function hudKey(k, down) {
+    var list = hudCaps[k], i;
+    if (list) for (i = 0; i < list.length; i++) list[i].classList.toggle('down', !!down);
+    /* the E on the boot prompt presses too. Enter is E's alias, so it shows
+       there as well; the prompt is rebuilt per target, so it's found fresh */
+    if ((k === 'e' || k === 'enter') && promptEl) promptEl.classList.toggle('down', !!down);
+}
+function hudClear() {
+    for (var k in hudCaps) if (hudCaps.hasOwnProperty(k)) hudKey(k, false);
+    if (promptEl) promptEl.classList.remove('down');
+}
+function setHudMode(mapMode) {
+    if (hud) hud.setAttribute('data-mode', mapMode ? 'map' : 'walk');
+}
+function noteInput() { lastInT = T; }
+function learn(g) {
+    if (learned[g]) return;
+    learned[g] = true;
+    if (hud) hud.setAttribute('data-' + g, 'done');
+    if (learned.walk && learned.look && learned.map) allLearnedT = T;
+}
+function hudTick() {
+    if (!hud) return;
+    /* ghost once everything's learned and you're still at it; never over the
+       map (its legend is new), and not before the last group has had its
+       moment to dim */
+    var want = allLearnedT >= 0 && T - allLearnedT > 1.2 && T - lastInT < 15 && !MAPV.on;
+    if (want !== hudGhost) { hudGhost = want; hud.classList.toggle('ghost', want); }
+}
+function hudNear(e) {
+    if (!hud) return;
+    var r = hud.getBoundingClientRect();
+    var near = e.clientY >= r.top - 12 && e.clientY <= r.bottom + 12;
+    if (near !== hudNearOn) { hudNearOn = near; hud.classList.toggle('near', near); }
+}
+function hudLeave() {
+    if (hudNearOn) { hudNearOn = false; hud.classList.remove('near'); }
+    disp.classList.remove('over-map');
+}
+function overMini(c) {
+    return c.x >= MMX - 2 && c.x <= MMX + MW + 6 && c.y >= MMY - 2 && c.y <= MMY + MH + 6;
+}
+/* the walk stick, drawn under the left thumb: the ring is the full throw,
+   the knob is the thumb, red once it's past the dead zone and walking */
+function stickShow(x, y) {
+    if (!stickEl) return;
+    stickEl.style.left = x + 'px'; stickEl.style.top = y + 'px';
+    stickEl.classList.remove('live');
+    if (stickKnob) stickKnob.style.transform = '';
+    stickEl.hidden = false;
+}
+function stickMove(dx, dy) {
+    if (!stickEl || stickEl.hidden) return;
+    var d = Math.sqrt(dx * dx + dy * dy), lim = 51;   // dead zone + throw: the numbers deadZone uses
+    if (d > lim) { dx *= lim / d; dy *= lim / d; }
+    if (stickKnob) stickKnob.style.transform = 'translate(' + Math.round(dx) + 'px,' + Math.round(dy) + 'px)';
+    stickEl.classList.toggle('live', d > 9);
+}
+function stickHide() { if (stickEl) stickEl.hidden = true; }
+
 /* ─────────────────────── frame loop ───────────────────────── */
 var lastFR = -1;
 function frame(ts) {
@@ -1742,6 +1883,7 @@ function frame(ts) {
 
     /* map view: the world pauses, the dollhouse spins */
     if (MAPV.on) {
+        hudTick();
         if (!reduce && !mdrag.on && Math.abs(MAPV.vyaw) > 0.001) {
             MAPV.yaw += MAPV.vyaw * dt;
             MAPV.vyaw *= Math.pow(0.06, dt);       // the /room3d/ flywheel
@@ -1764,17 +1906,19 @@ function frame(ts) {
     var mvS = (KEYS.sr ? 1 : 0) - (KEYS.sl ? 1 : 0) + stick.dx;
     var turn = (KEYS.tr ? 1 : 0) - (KEYS.tl ? 1 : 0);
     mvF = clamp(mvF, -1, 1); mvS = clamp(mvS, -1, 1);
-    if (turn) { rotate(turn * 2.3 * dt); needsDraw = true; }
+    if (turn) { rotate(turn * 2.3 * dt); learn('look'); noteInput(); needsDraw = true; }
     if (mvF || mvS) {
         var sp = 9.5 * dt;
         tryMove(PL.x + (PL.dirX * mvF - PL.dirZ * mvS) * sp,
                 PL.z + (PL.dirZ * mvF + PL.dirX * mvS) * sp);
         if (!reduce) PL.bobT += dt * 9;
+        learn('walk'); noteInput();
         needsDraw = true;
     }
 
     stepDoors(dt);
     checkPrompt();
+    hudTick();
     if (TRANS.on) { TRANS.t += dt; needsDraw = true; }
     if (!reduce) needsDraw = true;                 // the glow pulses + led blinks
     if (!needsDraw && FR === lastFR) return;
@@ -1792,6 +1936,7 @@ function boot() {
     promptEl = byId('bootPrompt');
     if (!holder || !disp) return;
     dctx = disp.getContext('2d');
+    hudInit();
 
     buildMap();
     buildDoors();
@@ -1824,7 +1969,7 @@ function boot() {
                     if (isFinite(x)) PL.x = x;
                     if (isFinite(z)) PL.z = z;
                     if (isFinite(ang)) { PL.dirX = Math.cos(ang); PL.dirZ = Math.sin(ang); PL.planeX = -PL.dirZ * PLANE; PL.planeZ = PL.dirX * PLANE; }
-                    if (isFinite(pit)) PL.pitch = clamp(pit, -80, 80);
+                    if (isFinite(pit)) PL.pitch = clamp(pit, -PITCHMAX, PITCHMAX);
                 },
                 shot: function () { if (MAPV.on) renderMap(); else render(); return buf.toDataURL('image/png'); },
                 keys: function () { return KEYS; },              // held-key state, for regression checks
@@ -1843,6 +1988,11 @@ function boot() {
                 step: function (dt) { stepDoors(dt || 0.05); },
                 boxes: function () { return FURN; },            // every built box, loops included
                 cell: function (c, r) { return solidCell(c, r) ? MAP[r][c] : 0; },
+                size: function () {                              // the live buffer + lens, for the harness
+                    return { w: W, h: H, s: SCALE, focal: FOCAL, plane: PLANE,
+                             hfov: 2 * Math.atan(PLANE) * 180 / Math.PI, vfov: 2 * Math.atan((H / 2) / FOCAL) * 180 / Math.PI };
+                },
+                hud: function () { return { learned: learned, ghost: hudGhost, mode: hud ? hud.getAttribute('data-mode') : null, idle: T - lastInT }; },
                 map: {
                     open: openMap, close: closeMap,
                     set: function (y, p, z) {
@@ -1862,6 +2012,7 @@ function boot() {
         holder.addEventListener('pointermove', onMove);
         holder.addEventListener('pointerup', onUp);
         holder.addEventListener('pointercancel', onUp);
+        holder.addEventListener('pointerleave', hudLeave);
     } else {
         holder.addEventListener('mousedown', function (e) { e.pointerId = 1; e.pointerType = 'mouse'; onDown(e); });
         holder.addEventListener('mousemove', function (e) { e.pointerId = 1; onMove(e); });
@@ -1874,12 +2025,21 @@ function boot() {
     window.addEventListener('blur', function () {
         KEYS = {}; stick.dx = 0; stick.dy = 0;
         MPTRS = {}; mpinch.on = false; mdrag.on = false; MAPV.vyaw = 0;
+        hudClear();
     });
     if (promptEl) promptEl.addEventListener('click', function () { enterConsole(promptTgt && promptTgt.href); });
-    mapBtn = byId('mapTool');
-    if (mapBtn) mapBtn.addEventListener('click', function () { toggleMap(); });
-    tipP = document.querySelector('.cabinet-tip');
-    if (tipP) TIP_HOME = tipP.innerHTML;
+    /* every M keycap that's a button toggles the map: the walk legend's, and
+       the map legend's, which is the one still on screen once it's open. a
+       keyboard user's focus follows across, since the one they pressed hides */
+    mapBtns = hud ? hud.querySelectorAll('button[data-key="m"]') : [];
+    for (var bi = 0; bi < mapBtns.length; bi++) {
+        mapBtns[bi].addEventListener('click', function (e) {
+            var had = document.activeElement === e.currentTarget;
+            toggleMap();
+            if (!had) return;
+            for (var i = 0; i < mapBtns.length; i++) if (mapBtns[i].offsetParent !== null) { mapBtns[i].focus(); break; }
+        });
+    }
     holder.addEventListener('wheel', function (e) {
         if (!MAPV.on) return;
         e.preventDefault();
@@ -1896,6 +2056,7 @@ function boot() {
                left in MPTRS it makes the next single finger read as a pinch */
             MPTRS = {}; mpinch.on = false; mdrag.on = false; MAPV.vyaw = 0;
             KEYS = {}; stick.id = -1; stick.dx = 0; stick.dy = 0; look.id = -1;
+            hudClear(); stickHide();
             needsDraw = true;
         }
     });

@@ -5,8 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="robots" content="noindex, nofollow">
     <meta name="description" content="Isaac Ure's apartment in first person. Walk around. The little glowing console boots the URE BOY; the PC next to it runs UreOS.">
+    <meta name="theme-color" content="#0c0c10">
     <title>Isaac Ure · the room, first person</title>
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=2">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=3">
     <script>document.documentElement.className = 'js';</script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -18,33 +19,86 @@
 
     <h1 class="sr-only">Isaac Ure · the room in first person. Walk around a pixel version of my apartment; the URE BOY console on the desk opens the main site, and the PC beside it opens a pixel desktop.</h1>
 
-    <main class="room-stage" aria-label="the room · first person pixel apartment">
+    <!-- one pixel arrowhead, reused for the four look keys -->
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+        <defs>
+            <symbol id="arr" viewBox="0 0 7 4" shape-rendering="crispEdges">
+                <path d="M3 0h1v1h1v1h1v1h1v1H0V3h1V2h1V1h1z" fill="currentColor"/>
+            </symbol>
+            <!-- a thumbstick from above, and a there-and-back swipe -->
+            <symbol id="ico-stick" viewBox="0 0 7 7" shape-rendering="crispEdges">
+                <path d="M1 0h5v1H1zM1 6h5v1H1zM0 1h1v5H0zM6 1h1v5H6zM2 2h3v3H2z" fill="currentColor"/>
+            </symbol>
+            <symbol id="ico-look" viewBox="0 0 7 7" shape-rendering="crispEdges">
+                <path d="M1 1h1v1H1zM0 2h2v1H0zM0 3h7v1H0zM0 4h2v1H0zM1 5h1v1H1zM5 1h1v1H5zM5 2h2v1H5zM5 4h2v1H5zM5 5h1v1H5z" fill="currentColor"/>
+            </symbol>
+        </defs>
+    </svg>
 
-        <header class="room-bar">
-            <div class="room-wordmark">URE<span class="room-wordmark-room">ROOM</span><span class="room-wordmark-1p">1P</span></div>
-            <nav class="room-tools" aria-label="views">
-                <button class="tool" id="mapTool" type="button" aria-pressed="false" title="M · the dollhouse map">map</button>
-                <a class="tool" href="/room/">flat</a>
-                <a class="tool" href="/room3d/">3d</a>
-            </nav>
-        </header>
+    <main class="room-stage" aria-label="the room · first person pixel apartment">
 
         <div class="room-holder" id="roomHolder">
             <canvas id="roomView" role="img" aria-label="First person view inside a pixel apartment: wood floors, cream walls, the furniture from the floor plan. On the desk against the west wall, the URE BOY console glows red and a PC monitor glows blue. Press M for a spinning dollhouse map."></canvas>
             <button class="boot-prompt" id="bootPrompt" type="button" hidden>
                 <span class="boot-key" aria-hidden="true">E</span> boot the <b>URE BOY</b>
             </button>
+            <!-- the walk stick, drawn under the left thumb while it's down -->
+            <div class="stick" id="stick" hidden aria-hidden="true"><span class="stick-knob"></span></div>
         </div>
 
-        <footer class="room-foot">
-            <p class="cabinet-tip">
-                <span class="fine-only"><b>wasd</b> walks · <b>arrows</b> or drag looks · <b>m</b> maps · </span><span class="coarse-only"><b>left thumb</b> walks · <b>right thumb</b> looks · <b>tap the map</b> · </span>find the <b>glowing things</b>
-            </p>
-            <div class="room-exits">
-                <a class="room-exit" href="/ureboy/">skip the walk ▸ boot the <b>URE BOY</b></a>
-                <a class="room-exit" href="/comp/">▸ sit at the <b>PC</b></a>
+        <!-- the cabinet's control legend: keys that press when you press them,
+             and quiet down once you've used them -->
+        <div class="hud" id="hud" data-mode="walk">
+            <p class="sr-only" id="hudHelp">W A S D walks. The arrow keys, or a drag, look around. M opens a spinning map of the whole apartment; on a phone, the left thumb walks, the right thumb looks, and tapping the little map opens the big one.</p>
+
+            <div class="legend legend-walk">
+                <div class="group fine-only" data-learn="walk">
+                    <div class="caps" aria-hidden="true">
+                        <span class="key" data-key="w">W</span>
+                        <span class="key" data-key="a">A</span><span class="key" data-key="s">S</span><span class="key" data-key="d">D</span>
+                    </div>
+                    <span class="group-label">walk</span>
+                </div>
+                <div class="group fine-only" data-learn="look">
+                    <div class="caps" aria-hidden="true">
+                        <span class="key key-arr" data-key="arrowup"><svg class="arr arr-up"><use href="#arr"/></svg></span>
+                        <span class="key key-arr" data-key="arrowleft"><svg class="arr arr-left"><use href="#arr"/></svg></span><span class="key key-arr" data-key="arrowdown"><svg class="arr arr-down"><use href="#arr"/></svg></span><span class="key key-arr" data-key="arrowright"><svg class="arr arr-right"><use href="#arr"/></svg></span>
+                    </div>
+                    <span class="group-label">look <span class="or">· or drag</span></span>
+                </div>
+                <div class="group fine-only" data-learn="map">
+                    <div class="caps caps-one">
+                        <button class="key" id="mapTool" type="button" data-key="m" aria-pressed="false" aria-label="the map (M)" title="M · the dollhouse map">M</button>
+                    </div>
+                    <span class="group-label">map <span class="or">· or click it <span class="up">↗</span></span></span>
+                </div>
+
+                <div class="group coarse-only" data-learn="walk">
+                    <span class="key key-icon" aria-hidden="true"><svg class="ico"><use href="#ico-stick"/></svg></span>
+                    <span class="group-label">left thumb walks</span>
+                </div>
+                <div class="group coarse-only" data-learn="look">
+                    <span class="key key-icon" aria-hidden="true"><svg class="ico"><use href="#ico-look"/></svg></span>
+                    <span class="group-label">right thumb looks</span>
+                </div>
+
+                <p class="quest">find the <b>glowing things</b></p>
             </div>
-        </footer>
+
+            <div class="legend legend-map">
+                <span class="fine-only"><b>drag</b> spins · <b>scroll</b> zooms · <button class="key key-inline" type="button" data-key="m" aria-pressed="true" aria-label="close the map (M)" title="M · back to the room">M</button> closes · the <b class="you">red one</b> is you</span>
+                <span class="coarse-only"><b>drag</b> spins · <b>pinch</b> zooms · <b>✕</b> closes · the <b class="you">red one</b> is you</span>
+            </div>
+
+            <!-- on a phone this sits under the minimap, pointing at it -->
+            <div class="map-hint coarse-only" data-learn="map" aria-hidden="true"><span class="up">↑</span> tap the map</div>
+
+            <nav class="exits" aria-label="skip the walk">
+                <span class="exits-label">skip the walk ▸</span>
+                <a class="exit exit-red" href="/ureboy/"><i class="led" aria-hidden="true"></i>boot the <b>URE BOY</b></a>
+                <a class="exit exit-blue" href="/comp/"><i class="led" aria-hidden="true"></i>sit at the <b>PC</b></a>
+            </nav>
+        </div>
     </main>
 
     <noscript>

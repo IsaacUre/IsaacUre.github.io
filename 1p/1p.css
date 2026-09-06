@@ -1,6 +1,9 @@
 /* ────────────────────────────────────────────────────────────
    URE ROOM 1P — page shell
-   Same dark stage as /room/ and /room3d/; the view fills it.
+   The view is the page: edge to edge, no bar, no frame. What's
+   left of the chrome is a control legend along the bottom, drawn
+   like the cabinet's own keys — they press when you press them,
+   and go quiet once you've used them.
    ──────────────────────────────────────────────────────────── */
 
 *, *::before, *::after {
@@ -8,29 +11,48 @@
     padding: 0;
     box-sizing: border-box;
 }
+[hidden] { display: none !important; }   /* beats the display rules below */
 
 :root {
     --ink: #1A1A18;
     --paper: #FAFAF8;
     --red: #D81E05;
     --red-dim: #9c1707;
+    --red-lit: #ff5436;                 /* the URE BOY's halo, from the raycaster */
+    --blue-lit: #9678ff;                /* the PC's */
 
     --font-pixel: 'Press Start 2P', monospace;
     --font-ui: 'Pixelify Sans', system-ui, sans-serif;
     --font-term: 'VT323', monospace;
+
+    /* the keycap grid. glyphs stay at whole multiples of 8px: Press Start
+       is an 8x8 font, and anything in between lands on half pixels and blurs */
+    --cap: 32px;
+    --glyph: 16px;
+    --side: 3px;                        /* the key's side, what a press sinks by */
+    --u: 3px;                           /* one icon pixel */
+
+    /* legend lettering sits over whatever the room is showing, cream wall or
+       black desk, so it wears a one-pixel outline like any game's hud text */
+    --outline: 1px 0 0 #0c0c10, -1px 0 0 #0c0c10, 0 1px 0 #0c0c10, 0 -1px 0 #0c0c10,
+               1px 1px 0 #0c0c10, -1px -1px 0 #0c0c10, 1px -1px 0 #0c0c10, -1px 1px 0 #0c0c10;
+
+    /* where the minimap's bottom edge lands, in css px: set by resize() */
+    --mm-b: 120px;
+    --mm-r: 8px;
 }
 
-html, body { height: 100%; }
+html, body {
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+}
 
 body {
     font-family: var(--font-ui);
     color: var(--paper);
-    background:
-        radial-gradient(120% 90% at 50% -10%, #2a2a33 0%, #16161c 55%, #0c0c10 100%);
-    min-height: 100vh;
-    min-height: 100dvh;
+    background: #0c0c10;
     -webkit-font-smoothing: antialiased;
-    overflow-x: hidden;
 }
 
 .sr-only {
@@ -39,167 +61,389 @@ body {
 }
 
 .skip-link {
-    position: fixed; top: -60px; left: 50%; transform: translateX(-50%);
+    position: fixed; top: 0; left: 50%;
+    transform: translate(-50%, -110%);
     z-index: 200; padding: .55rem .9rem;
     background: var(--red); color: #fff; font-family: var(--font-ui);
-    border-radius: 0 0 8px 8px; text-decoration: none; transition: top .2s;
+    border-radius: 0 0 8px 8px; text-decoration: none; transition: transform .2s;
+    white-space: nowrap;
 }
-.skip-link:focus { top: 0; }
+.skip-link:focus { transform: translate(-50%, 0); }
 
 :focus-visible { outline: 3px solid var(--red); outline-offset: 2px; border-radius: 3px; }
 
 a, button { -webkit-tap-highlight-color: transparent; }
 
+/* ─────────────────────────── the stage ─────────────────────────── */
 .room-stage {
-    height: 100vh;
-    height: 100dvh;
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    padding: .6rem .8rem calc(.6rem + env(safe-area-inset-bottom, 0px));
-    gap: .4rem;
-}
-
-.room-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: .6rem;
-    flex: 0 0 auto;
-}
-
-.room-wordmark {
-    font-family: var(--font-pixel);
-    font-size: .92rem;
-    letter-spacing: 1px;
-    color: #d9d8cf;
-    user-select: none;
-    -webkit-user-select: none;
-}
-.room-wordmark-room { color: var(--red); }
-.room-wordmark-1p {
-    font-size: .5rem; color: #0c0c10; background: #d9d8cf;
-    padding: .1rem .25rem; border-radius: 3px; margin-left: .45rem;
-    vertical-align: middle;
-}
-
-.room-tools { display: flex; gap: .4rem; }
-
-.tool {
-    font-family: var(--font-ui); font-size: .74rem; color: #c9c8bf;
-    background: rgba(255,255,255,.05);
-    border: 1px solid #45453f; border-radius: 5px;
-    padding: .32rem .55rem; cursor: pointer;
-    transition: background .12s, color .12s;
-    touch-action: manipulation;
-    text-decoration: none;
-}
-.tool:hover { background: rgba(255,255,255,.12); color: #fff; }
-.tool[aria-pressed="true"] {
-    background: rgba(216, 30, 5, .16);
-    border-color: var(--red-dim);
-    color: #fff;
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
 }
 
 .room-holder {
-    position: relative;
-    flex: 1 1 auto;
-    min-height: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    touch-action: none;                 /* thumbs land in the margins on portrait phones */
+    position: absolute;
+    inset: 0;
+    touch-action: none;                 /* every touch is a walk or a look */
 }
 
 #roomView {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
     display: block;
+    background: #0c0c10;
     image-rendering: pixelated;
     image-rendering: crisp-edges;
-    touch-action: none;                 /* the canvas owns every touch */
+    touch-action: none;
     -webkit-tap-highlight-color: transparent;
     user-select: none;
     -webkit-user-select: none;
     -webkit-touch-callout: none;
-    filter: drop-shadow(0 18px 34px rgba(0, 0, 0, .55));
-    border-radius: 2px;
     cursor: crosshair;
 }
+#roomView.over-map { cursor: pointer; }   /* the minimap opens the big one */
 
-/* proximity prompt: appears when the URE BOY is close and centered */
-.boot-prompt {
-    position: absolute;
-    left: 50%; bottom: 14%;
-    transform: translateX(-50%);
-    z-index: 50;
-    font-family: var(--font-term);
-    font-size: 1.15rem;
-    color: #e8e5d4;
-    background: rgba(20, 20, 24, .92);
-    border: 1px solid var(--red);
-    border-radius: 4px;
-    padding: .3rem .8rem .35rem;
+/* ────────────────────────── keycaps ──────────────────────────
+   one style for every key on the page: the legend, the map's M,
+   the E on the boot prompt. a flat top, a 2px side, and a press
+   that drops the top onto the side. */
+.key, .boot-key {
+    display: inline-grid;
+    place-items: center;
+    width: var(--cap);
+    height: var(--cap);
+    font: var(--glyph)/1 var(--font-pixel);
+    color: #d9d8cf;
+    background: #26262d;
+    border: 1px solid #55554e;
+    border-bottom-color: #3a3a35;
+    box-shadow: 0 var(--side) 0 #0c0c10, 0 var(--side) 0 1px #3a3a35;
+    text-transform: uppercase;
+    user-select: none;
+    -webkit-user-select: none;
+    transition: transform .06s steps(2, end), box-shadow .06s steps(2, end), color .06s, background-color .06s, border-color .06s;
+}
+.key { padding-top: 3px; }              /* Press Start sits high in its em box */
+.key.down,
+.key[aria-pressed="true"],
+.key:active,
+.boot-prompt.down .boot-key {
+    transform: translateY(var(--side));
+    box-shadow: 0 0 0 #0c0c10, 0 0 0 1px #3a3a35;
+    color: #fff;
+    background: #4a1a12;
+    border-color: var(--red);
+}
+button.key {
     cursor: pointer;
-    white-space: nowrap;
+    pointer-events: auto;
+    touch-action: manipulation;
+    font-family: var(--font-pixel);     /* buttons don't inherit */
 }
-.boot-prompt b { color: #ff5436; font-weight: normal; }
-.boot-prompt .boot-key {
-    display: inline-block;
-    font-family: var(--font-pixel);
-    font-size: .6rem;
-    color: #0c0c10;
-    background: #d9d8cf;
-    border-radius: 3px;
-    padding: .12rem .3rem;
-    margin-right: .35rem;
-    vertical-align: middle;
+button.key:hover { color: #fff; border-color: #8a8a82; }
+button.key:focus-visible { outline-offset: 3px; }
+
+.key-arr { padding-top: 1px; }
+.arr {
+    width: calc(7 * var(--u));
+    height: calc(4 * var(--u));
+    display: block;
+    color: inherit;
 }
-.boot-prompt:hover { background: rgba(40, 24, 22, .95); }
-@media (pointer: coarse) {
-    .boot-prompt .boot-key { display: none; }   /* it's a tap target there */
+.arr-down  { transform: rotate(180deg); }
+.arr-left  { transform: rotate(-90deg); }
+.arr-right { transform: rotate(90deg); }
+
+.key-icon { padding-top: 1px; }
+.ico {
+    width: calc(7 * var(--u));
+    height: calc(7 * var(--u));
+    display: block;
 }
 
-.room-foot {
-    flex: 0 0 auto;
+.key-inline {
+    vertical-align: middle;
+    margin: 0 .15em var(--side) .2em;
+    width: calc(var(--cap) * .75);
+    height: calc(var(--cap) * .75);
+    font-size: calc(var(--glyph) * .5);
+    padding-top: 2px;
+}
+
+/* ─────────────────────────── the HUD ────────────────────────── */
+.hud {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    z-index: 40;
+    pointer-events: none;               /* thumbs and drags go through to the room */
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: .6rem 1.4rem;
+    padding: 0
+        max(1rem, env(safe-area-inset-right, 0px))
+        max(.9rem, env(safe-area-inset-bottom, 0px))
+        max(1rem, env(safe-area-inset-left, 0px));
+    transition: opacity 1.4s steps(6, end);
+}
+/* everything learned: the legend ghosts while you're busy in the room, and
+   comes back if you stop. a mouse wandering down here brings it back too */
+.hud.ghost { opacity: .22; }
+.hud.ghost.near { opacity: 1; transition-duration: .18s; }
+.hud.ghost:has(button.key:focus-visible) { opacity: 1; }
+
+.legend {
+    display: flex;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: .55rem 1.35rem;
+}
+.hud[data-mode="map"] .legend-walk,
+.hud[data-mode="walk"] .legend-map { display: none; }
+
+.group {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: .15rem;
+    gap: .42rem;
+    transition: opacity .7s steps(4, end);
 }
+.hud[data-walk="done"] [data-learn="walk"],
+.hud[data-look="done"] [data-learn="look"],
+.hud[data-map="done"]  [data-learn="map"]  { opacity: .42; }
 
-.cabinet-tip {
-    font-family: var(--font-ui);
-    font-size: .8rem;
-    color: #8f8f96;
+.caps {
+    display: grid;
+    grid-template-columns: repeat(3, var(--cap));
+    grid-template-rows: repeat(2, var(--cap));
+    gap: calc(var(--side) + 1px) 4px;
+}
+/* the inverted T: W and ↑ on top, A S D and ◀ ▼ ▶ underneath. placed by
+   hand, since auto-placement would seat A beside W */
+.caps > :nth-child(1) { grid-area: 1 / 2; }
+.caps > :nth-child(2) { grid-area: 2 / 1; }
+.caps > :nth-child(3) { grid-area: 2 / 2; }
+.caps > :nth-child(4) { grid-area: 2 / 3; }
+.caps-one { grid-template-columns: var(--cap); grid-template-rows: var(--cap); }
+.caps-one > :nth-child(1) { grid-area: 1 / 1; }
+
+.group-label {
+    font: 500 .82rem/1.1 var(--font-ui);
+    color: #d9d8cf;
+    letter-spacing: .01em;
     text-align: center;
-    max-width: 400px;
+    white-space: nowrap;
+    text-shadow: var(--outline);
 }
-.cabinet-tip b { color: #b6b6ad; }
+.group-label .or { color: #a5a5ad; }
+.up { display: inline-block; color: #b6b6ad; }
 
+.quest {
+    font: 500 .86rem/1.2 var(--font-ui);
+    color: #b6b6ad;
+    padding-bottom: .1rem;
+    align-self: flex-end;
+    white-space: nowrap;
+    text-shadow: var(--outline);
+}
+.quest b { color: #fff; font-weight: 600; }
+.quest b { text-shadow: var(--outline), 0 0 8px rgba(255, 84, 54, .7), 0 0 14px rgba(150, 120, 255, .45); }
+
+.legend-map {
+    font: 500 .88rem/1.7 var(--font-ui);
+    color: #b6b6ad;
+    text-shadow: var(--outline);
+}
+.legend-map b { color: #f0eee4; font-weight: 600; }
+.legend-map .you { color: var(--red-lit); }
+
+/* ─────────────────────────── the exits ─────────────────────────── */
+.exits {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: .1rem .55rem;
+    pointer-events: auto;
+    font: 500 .8rem/1 var(--font-ui);
+    color: #a5a5ad;
+    text-shadow: var(--outline);
+}
+.exit {
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    padding: .4rem .3rem;
+    color: #c9c8bf;
+    text-decoration: none;
+    white-space: nowrap;
+    touch-action: manipulation;
+    transition: color .12s;
+}
+.exit b { color: #f0eee4; font-weight: 600; transition: color .12s; }
+.exit:hover { color: #fff; }
+.exit-red:hover b  { color: var(--red-lit); }
+.exit-blue:hover b { color: var(--blue-lit); }
+
+/* the two screens' LEDs, blinking on the room's own 0.45s cadence */
+.led {
+    display: inline-block;
+    width: calc(3 * var(--u));
+    height: calc(3 * var(--u));
+    flex: 0 0 auto;
+    background: currentColor;
+    animation: led .9s steps(2, jump-none) infinite;
+}
+.exit-red .led  { color: var(--red-lit);  box-shadow: 0 0 6px 1px rgba(255, 84, 54, .55); }
+.exit-blue .led { color: var(--blue-lit); box-shadow: 0 0 6px 1px rgba(150, 120, 255, .5); }
+@keyframes led {
+    from { opacity: 1; }
+    to   { opacity: .28; }
+}
+
+/* ─────────────────── the boot-in and the reveal ──────────────────
+   nothing eases: every move is a stepped one, like the dither the
+   exit uses, so the legend arrives the way the room does */
+@keyframes popin {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: none; }
+}
+.group, .quest, .exits, .legend-map, .map-hint {
+    animation: popin .36s steps(3, end) both;
+}
+.legend-walk .group:nth-of-type(2) { animation-delay: .1s; }
+.legend-walk .group:nth-of-type(3) { animation-delay: .2s; }
+.legend-walk .group:nth-of-type(4) { animation-delay: .1s; }
+.legend-walk .group:nth-of-type(5) { animation-delay: .2s; }
+.quest, .map-hint { animation-delay: .34s; }
+.exits { animation-delay: .46s; }
+
+/* ────────────────────── the boot prompt (E) ──────────────────────
+   appears when a screen is close and centered; sits above the legend */
+.boot-prompt {
+    position: absolute;
+    left: 50%;
+    bottom: max(17%, 7.6rem);
+    transform: translateX(-50%);
+    z-index: 50;
+    display: inline-flex;
+    align-items: center;
+    gap: .55rem;
+    font-family: var(--font-term);
+    font-size: 1.2rem;
+    line-height: 1;
+    color: #e8e5d4;
+    background: rgba(20, 20, 24, .92);
+    border: 1px solid var(--red);
+    padding: .38rem .8rem .42rem .5rem;
+    cursor: pointer;
+    white-space: nowrap;
+    animation: popin .24s steps(2, end) both;
+}
+.boot-prompt b { color: var(--red-lit); font-weight: normal; margin-left: .3em; }
+.boot-prompt:hover { background: rgba(40, 24, 22, .95); }
+.boot-prompt .boot-key { padding-top: 2px; }
+
+/* ───────────────────────── the walk stick ─────────────────────────
+   drawn under the left thumb while it's down: the ring is the full
+   throw, the knob is where the thumb is (past the dead zone) */
+.stick {
+    position: absolute;
+    z-index: 45;
+    width: 102px; height: 102px;
+    margin: -51px 0 0 -51px;
+    pointer-events: none;
+    border-radius: 50%;
+    background: rgba(12, 12, 16, .16);
+    box-shadow: inset 0 0 0 2px rgba(217, 216, 207, .28), 0 0 0 1px rgba(12, 12, 16, .35);
+}
+.stick-knob {
+    position: absolute;
+    left: 50%; top: 50%;
+    width: 30px; height: 30px;
+    margin: -15px 0 0 -15px;
+    border-radius: 50%;
+    background: rgba(217, 216, 207, .82);
+    box-shadow: 0 0 0 2px #0c0c10, 0 0 10px rgba(0, 0, 0, .5);
+}
+.stick.live .stick-knob { background: var(--red-lit); }
+
+/* ────────────────── phones and tablets (coarse pointers) ────────────────── */
 .coarse-only { display: none; }
 @media (pointer: coarse) {
     .fine-only { display: none; }
-    .coarse-only { display: inline; }
-}
+    .coarse-only { display: flex; }
+    span.coarse-only, .legend-map .coarse-only { display: inline; }
 
-.room-exits {
-    display: flex;
-    gap: .5rem;
-    flex-wrap: wrap;
-    justify-content: center;
-}
+    /* thumbs live down here, so the legend is two glyphs in the corners and
+       the quest between them. the exits leave the thumb zone for the top-left */
+    .hud {
+        padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+        gap: .6rem;
+    }
+    .legend-walk {
+        width: 100%;
+        justify-content: space-between;
+        align-items: flex-end;
+        flex-wrap: nowrap;
+        gap: .5rem;
+    }
+    .legend-walk .quest { order: 2; text-align: center; white-space: normal; padding-bottom: .35rem; }
+    .legend-walk .group.coarse-only:last-of-type { order: 3; }
+    .group-label { max-width: 6.5rem; white-space: normal; }
 
-.room-exit {
-    font-family: var(--font-ui);
-    font-size: .78rem;
-    color: #8a8a82;
-    text-decoration: none;
-    padding: .15rem .4rem;
-    border-radius: 4px;
-    transition: color .12s;
+    .exits {
+        position: fixed;
+        top: max(.55rem, env(safe-area-inset-top, 0px));
+        left: max(.7rem, env(safe-area-inset-left, 0px));
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0;
+        font-size: .76rem;
+    }
+    .exits-label { padding: .1rem .3rem .25rem; }
+    .exit { padding: .3rem .3rem; font-size: .78rem; }
+
+    /* right under the minimap, pointing up at it */
+    .map-hint {
+        position: fixed;
+        top: calc(var(--mm-b) + 4px);
+        right: var(--mm-r);
+        font: 500 .78rem/1.2 var(--font-ui);
+        color: #d9d8cf;
+        text-align: right;
+        text-shadow: var(--outline);
+        transition: opacity .7s steps(4, end);
+    }
+    .map-hint .up { color: var(--red-lit); }
+    .hud[data-map="done"] .map-hint { opacity: .42; }
+
+    .boot-prompt { bottom: max(19%, 8.4rem); }
 }
-.room-exit b { color: #b6b6ad; transition: color .12s; }
-.room-exit:hover { color: #c9c8bf; }
-.room-exit:hover b { color: var(--red); }
+.map-hint { display: none; }
+@media (pointer: coarse) { .map-hint { display: block; } }
+.hud[data-mode="map"] .map-hint { display: none; }   /* the minimap it points at is gone */
+
+/* ────────────────────────── screens by size ────────────────────────── */
+@media (max-width: 720px) and (pointer: fine) {
+    /* a narrow desktop window: the exits stack on their own line */
+    .exits { width: 100%; justify-content: center; }
+}
+@media (max-height: 420px) {
+    /* a landscape phone: the legend must not eat the room */
+    .hud { padding-bottom: max(.45rem, env(safe-area-inset-bottom, 0px)); }
+    .legend-walk .quest { display: none; }
+    .boot-prompt { bottom: max(24%, 6.2rem); }
+}
+@media (min-width: 2200px) {
+    /* a big monitor at 1x: everything steps up a pixel multiple */
+    :root { --cap: 48px; --glyph: 24px; --side: 4px; --u: 4px; }
+    .key { padding-top: 4px; }
+    .group-label, .quest, .exits, .legend-map { font-size: 1.15rem; }
+    .boot-prompt { font-size: 1.75rem; }
+}
 
 .fallback {
     max-width: 480px; margin: 4rem auto; padding: 0 1.2rem;
@@ -208,13 +452,7 @@ a, button { -webkit-tap-highlight-color: transparent; }
 .fallback h2 { font-family: var(--font-pixel); font-size: 1rem; margin-bottom: .8rem; }
 .fallback a { color: var(--red); }
 .no-js .room-stage { display: none; }
-
-@media (max-width: 500px) {
-    .room-stage { padding: .45rem .5rem calc(.45rem + env(safe-area-inset-bottom, 0px)); }
-    .room-wordmark { font-size: .78rem; }
-    .cabinet-tip { font-size: .72rem; max-width: 330px; }
-    .room-exit { font-size: .72rem; }
-}
+.no-js body { overflow: auto; }
 
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {

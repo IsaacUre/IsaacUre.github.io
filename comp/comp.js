@@ -234,7 +234,7 @@ function wireWindow(id, el) {
     });
     // the classic Alt+Space system menu, where "Full screen" is discoverable
     bar.addEventListener('contextmenu', function (e) {
-        if (e.target.closest('.cr-tab, .cr-plusbtn')) return;     // Chrome's tabs have their own
+        if (e.target.closest('.cr-tab, .cr-plusbtn, .br-tab')) return;     // Chrome's tabs have their own, and so does Edge's
         e.preventDefault(); e.stopPropagation();
         winSysMenu(id, e);
     });
@@ -249,7 +249,7 @@ function wireWindow(id, el) {
     });
     bar.addEventListener('pointerdown', function (e) {
         // Chrome's tabs and new-tab button live in its title bar; they must click, not drag the window
-        // (Edge's .br-tab strip is set-dressing, so it stays draggable like the rest of the bar)
+        // (Edge's .br-tab strip stays draggable like the rest of the bar; its × and + stop the pointerdown themselves)
         if (e.button !== 0) return;                       // right-click is a menu now, never a drag
         // dragging the hover-revealed strip of a full-screen window would write
         // inline left/top that snap into effect the moment you leave full screen
@@ -2307,81 +2307,6 @@ function initCalc(el) {
     });
 }
 
-/* ═══════════════ possessed cursor (the "hand of god") ═══════════
-   A fake pixel cursor that the machine can drive. In 'free' mode it
-   mirrors the real (hidden) mouse 1:1; in 'grab' mode it springs
-   toward a target with a pull that ramps up over time — so you can
-   shove it off course (fight) or steer it in (help), but the target
-   always wins in the end. Used to drag you to the address bar and
-   click through the whole Chrome-install charade. ──────────────── */
-var pointer = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
-document.addEventListener('mousemove', function (e) { pointer.x = e.clientX; pointer.y = e.clientY; }, { passive: true });
-
-var cur = { el: null, x: 0, y: 0, vx: 0, vy: 0, mode: 'off', raf: 0, getRect: null, onArrive: null, dwell: 0, f: 0, cap: 260 };
-function makeCursor() {
-    var c = document.createElement('div'); c.className = 'fakecursor';
-    c.innerHTML = '<svg viewBox="0 0 12 18" width="24" height="36" shape-rendering="crispEdges" aria-hidden="true">' +
-        '<path d="M1 1 L1 12 L4 9 L6.2 14.4 L8 13.7 L5.8 8.4 L10 8.4 Z" fill="#f7f8fb" stroke="#0c0c10" stroke-width="1" stroke-linejoin="miter"/></svg>';
-    document.body.appendChild(c); return c;
-}
-function positionCursor() { if (cur.el) cur.el.style.transform = 'translate(' + Math.round(cur.x) + 'px,' + Math.round(cur.y) + 'px)'; }
-function freeFollow() { if (cur.mode === 'free') { cur.x = pointer.x; cur.y = pointer.y; positionCursor(); } }
-function gagBegin() {
-    if (cur.mode !== 'off') return;
-    if (!cur.el) cur.el = makeCursor();
-    document.body.classList.add('gagging');
-    cur.x = pointer.x; cur.y = pointer.y; cur.vx = cur.vy = 0; cur.mode = 'free';
-    positionCursor();
-    window.addEventListener('mousemove', freeFollow, true);   // free mode tracks the mouse — no perpetual rAF
-}
-function gagEnd() {
-    if (cur.mode === 'off') return;
-    cur.mode = 'off'; cancelAnimationFrame(cur.raf); cur.raf = 0;
-    window.removeEventListener('mousemove', freeFollow, true);
-    cur.getRect = cur.onArrive = null;
-    document.body.classList.remove('gagging');
-    if (cur.el) { cur.el.remove(); cur.el = null; }
-}
-function possess(targetEl, onArrive) {
-    if (cur.mode === 'off') return;
-    cur.getRect = function () { return (targetEl && document.body.contains(targetEl)) ? targetEl.getBoundingClientRect() : null; };
-    cur.onArrive = onArrive || null; cur.dwell = 0; cur.f = 0;   // frame-driven, clock-independent (cur.cap = 260)
-    cur.mode = 'grab'; if (cur.el) cur.el.classList.add('grab');
-    if (window.__fastCursor) { setTimeout(function () { if (cur.mode === 'grab') cursorArrive(); }, 60); return; }   // dev: skip animation, keep the chain
-    cancelAnimationFrame(cur.raf); cur.raf = requestAnimationFrame(loopGrab);   // rAF only runs while possessing
-}
-function cursorArrive() {
-    var cb = cur.onArrive;
-    cancelAnimationFrame(cur.raf); cur.raf = 0;
-    cur.mode = 'free'; cur.onArrive = null; cur.getRect = null;
-    if (cur.el) cur.el.classList.remove('grab');
-    clickPing(cur.x, cur.y);
-    if (cb) cb();
-}
-function loopGrab() {
-    if (cur.mode !== 'grab') return;
-    var r = cur.getRect && cur.getRect();
-    if (!r) { cursorArrive(); return; }
-    cur.f++;
-    var mx = pointer.x, my = pointer.y;
-    var tx = r.left + r.width / 2, ty = r.top + r.height / 2;
-    var pull = reduce ? 1 : clamp(0.10 + cur.f * 0.013, 0.10, 1);   // fightable early (~1.3s), lands on target late
-    var desx = mx + (tx - mx) * pull, desy = my + (ty - my) * pull;
-    cur.vx = cur.vx * 0.7 + (desx - cur.x) * 0.3;
-    cur.vy = cur.vy * 0.7 + (desy - cur.y) * 0.3;
-    cur.x += cur.vx; cur.y += cur.vy;
-    positionCursor();
-    var d = Math.sqrt((tx - cur.x) * (tx - cur.x) + (ty - cur.y) * (ty - cur.y));
-    cur.dwell = d < 9 ? cur.dwell + 1 : Math.max(0, cur.dwell - 2);
-    if (cur.dwell > 4 || cur.f > cur.cap) { cursorArrive(); return; }
-    cur.raf = requestAnimationFrame(loopGrab);
-}
-function clickPing(x, y) {
-    var p = document.createElement('div'); p.className = 'click-ping';
-    p.style.left = x + 'px'; p.style.top = y + 'px';
-    document.body.appendChild(p);
-    setTimeout(function () { if (p.parentNode) p.remove(); }, 520);
-}
 function toast(msg, icon) {
     var t = document.createElement('div'); t.className = 'toast px-lg lift';
     t.innerHTML = ic(icon || 'ic-chrome') + '<span>' + esc(msg) + '</span>';
@@ -2391,12 +2316,16 @@ function toast(msg, icon) {
 }
 
 /* ═════════════════ Browser: Edge (the gag) + Chrome ═════════════
-   Edge's one purpose on a fresh machine is to help you install
-   Chrome. Open it and the cursor gets quietly possessed — it drifts
-   to the address bar, types "chrome install" out of your hands, and
-   walks search → download until ChromeSetup.exe lands in the real
-   Downloads folder. Then the machine lets go: the setup wizard is
-   yours to click through. Replays on every Edge open (testing). ── */
+   Edge is a working browser whose web is rigged. Nothing in it moves
+   on its own: you type, you press Enter, you click, and each of those
+   does what it looks like it does — loads, spins, lands. It is just
+   that every address resolves to google.com/chrome, every search
+   comes back "including results for chrome install", every page Edge
+   keeps for itself (history, settings, favorites) redirects there,
+   and every page-level action — save, print, share, capture, inspect,
+   the star — turns out to be the one download this browser exists to
+   perform. ChromeSetup.exe lands in the real Downloads folder. Running
+   it is yours, and so is the wizard after. ──────────────────────── */
 function dlStamp() { var n = new Date(); return (n.getMonth() + 1) + '/' + n.getDate() + '/' + n.getFullYear() + ' ' + fmtTime(n); }
 function chromeSetupItem() { return { n: uniqueName('Downloads', 'ChromeSetup.exe'), t: 'chrome', app: 'setup', size: '11.2 MB', date: dlStamp() }; }
 
@@ -2412,6 +2341,7 @@ function browserShell(brand, placeholder, bodyHtml) {
         '</div>' +
         '<div class="br-stage"><div class="br-view">' + bodyHtml + '</div>' +
           '<div class="br-suggest" hidden></div>' +
+          '<div class="br-status" hidden></div>' +
           '<div class="dl-shelf" hidden></div>' +
         '</div></div>';
 }
@@ -2462,8 +2392,8 @@ function openBctx(host, e, items, fn, skin) {   // skin: true = dark (Edge/Incog
     bctxEl = m;
 }
 /* text-field menu, shared by both browsers. Selection and value are
-   snapshotted at open time — focusing the menu (or Edge's possessed
-   focus handler wiping the bar) must not change what Cut/Copy grab. */
+   snapshotted at open time — focusing the menu (or the address bar's own
+   focus handler selecting it all) must not change what Cut/Copy grab. */
 function bctxInput(host, e, inp, opts, dark) {
     var s0 = inp.selectionStart || 0, s1 = inp.selectionEnd || 0, v0 = inp.value, hasSel = s1 > s0;
     var items = [
@@ -2492,41 +2422,107 @@ function bctxInput(host, e, inp, opts, dark) {
 }
 
 /* —— Edge —— */
-function edgeWelcome() {
+var EDGE_CANON = 'chrome install';                           // what the web is certain you meant
+var EDGE_HOME = 'https://www.google.com/chrome/';
+var EDGE_THANKS = 'https://www.google.com/chrome/thank-you/';
+var EDGE_FILE = 'https://dl.google.com/chrome/install/ChromeSetup.exe';
+function edgeIsUrl(q) { return /^(https?:|edge:|about:|chrome:)/i.test(q) || /^[a-z0-9-]+(\.[a-z0-9-]+)+(\/\S*)?$/i.test(q.replace(/^www\./i, '')); }
+function edgeFullUrl(q) { return /^[a-z][a-z0-9+.-]*:/i.test(q) ? q : 'https://' + q + (/\//.test(q) ? '' : '/'); }
+function edgeHost(u) { return String(u).replace(/^[a-z][a-z0-9+.-]*:\/*/i, '').replace(/^www\./i, '').split(/[\/?#]/)[0]; }
+function edgeSlug(q) { return String(q).toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 24) || 'chrome'; }
+
+/* the new-tab page. the cards are real buttons that go to real-looking places (the
+   import wizard, the default-browser setting, Bing) — each of which, it turns out, is
+   google.com/chrome. the fine print is the only honest line in the browser. */
+function edgeWelcome(fresh) {
     return '<div class="ewc">' +
         '<div class="ewc-hero">' + ic('ic-edge', 'ewc-logo') +
-          '<h2>Welcome to Microsoft Edge</h2>' +
+          '<h2>' + (fresh ? 'Welcome to Microsoft Edge' : 'New tab') + '</h2>' +
           '<p>The last browser you’ll ever need.<sup>*</sup> Fast, secure, and already set as your default.</p>' +
         '</div>' +
+        '<label class="ewc-search">' + ic('ic-search') + '<input spellcheck="false" autocomplete="off" aria-label="Search the web" placeholder="Search the web"></label>' +
         '<div class="ewc-cards">' +
-          '<div class="ewc-card"><b>Import favorites</b><span>Bring your stuff over from that other browser.</span></div>' +
-          '<div class="ewc-card"><b>Set as default</b><span class="ewc-done">✓ Already done for you.</span></div>' +
-          '<div class="ewc-card"><b>Get started</b><span>Just start browsing. Try the address bar ↑</span></div>' +
+          '<button class="ewc-card" type="button" data-go="chrome" data-via="edge://settings/importData"><b>Import favorites</b><span>Bring your stuff over from that other browser.</span></button>' +
+          '<button class="ewc-card" type="button" data-go="chrome" data-via="edge://settings/defaultBrowser"><b>Set as default</b><span class="ewc-done">✓ Already done for you.</span></button>' +
+          '<button class="ewc-card" type="button" data-go="chrome" data-via="https://www.bing.com/"><b>Get started</b><span>Just start browsing. Try the address bar ↑</span></button>' +
         '</div>' +
-        '<p class="ewc-fine"><sup>*</sup>Results not guaranteed.</p></div>';
+        '<p class="ewc-fine"><sup>*</sup>Results guaranteed.</p></div>';
 }
-// Edge's tab strip IS the window title bar, same as Chrome's (see crTitlebar) — one decorative
-// tab beside the caps, with a draggable spacer filling the rest of the row
+/* Bing, for whatever you searched. It includes results for "chrome install" the way a
+   search engine includes results for what it thinks you meant, and if you insist on
+   your own words it has none. Every result — the ad, the one about your query, the
+   Wikipedia page, Edge's own plea — is a link, and every link has the same idea. */
+function edgeSerp(q, strict) {
+    var canon = q.toLowerCase() === EDGE_CANON, Q = q.charAt(0).toUpperCase() + q.slice(1);
+    var res = function (url, via, title, desc, cls) {
+        return '<a class="res-hit' + (cls ? ' ' + cls : '') + '" tabindex="0" data-go="chrome"' + (via ? ' data-via="' + esc(via) + '"' : '') + '>' +
+            '<span class="res-url">' + esc(url) + '</span><span class="res-title">' + title + '</span><span class="res-desc">' + desc + '</span></a>';
+    };
+    var tab = function (name, path) { return '<span class="serp-tab" tabindex="0" data-go="chrome" data-via="https://www.bing.com/' + path + '?q=' + encodeURIComponent(q) + '">' + name + '</span>'; };
+    var inc = canon ? '' : strict
+        ? '<p class="serp-inc">No results for <i>' + esc(q) + '</i>. Showing results for <b>' + EDGE_CANON + '</b>.</p>'
+        : '<p class="serp-inc">Including results for <b>' + EDGE_CANON + '</b>. Search only for <a tabindex="0" data-go="strict">' + esc(q) + '</a>?</p>';
+    var ownHost = edgeIsUrl(q) ? edgeHost(q) : edgeSlug(q) + '.com';
+    var own = canon ? '' : res('https://www.' + ownHost, 'https://www.' + ownHost + '/', esc(Q) + ' — best experienced in Google Chrome',
+        esc(Q) + ' works best in Google Chrome. Download Chrome to continue.');
+    return '<div class="serp">' +
+        '<div class="serp-top"><span class="serp-logo">bing</span>' +
+          '<label class="serp-box"><input value="' + esc(q) + '" spellcheck="false" autocomplete="off" aria-label="Search">' + ic('ic-search') + '</label></div>' +
+        '<div class="serp-tabs"><span class="serp-tab on">All</span>' + tab('Images', 'images/search') + tab('Videos', 'videos/search') + tab('Maps', 'maps') + tab('News', 'news/search') + tab('Copilot', 'chat') + '</div>' +
+        inc +
+        '<p class="serp-stat">About 4,120,000,000 results · we get it, everybody does this</p>' +
+        res('https://www.google.com/chrome', '', 'Google Chrome — Download the Fast, Secure Browser', 'Chrome is the official web browser from Google, built to be fast, secure, and customizable. Download now.', 'res-ad') +
+        res('https://www.google.com › chrome', '', 'Download and install Google Chrome', 'Get the fast, free web browser everyone on this machine was going to install anyway. Now on UreOS 11.') +
+        own +
+        '<div class="paa"><div class="paa-h">People also ask</div>' +
+          '<button class="paa-q" type="button" data-go="chrome"><span>Is Google Chrome free?</span><i>⌄</i></button>' +
+          '<button class="paa-q" type="button" data-go="chrome"><span>How do I install Google Chrome on Windows 11?</span><i>⌄</i></button>' +
+          '<button class="paa-q" type="button" data-go="chrome"><span>Can I keep using Microsoft Edge?</span><i>⌄</i></button></div>' +
+        res('https://en.wikipedia.org › wiki › Google_Chrome', 'https://en.wikipedia.org/wiki/Google_Chrome', 'Google Chrome - Wikipedia', 'Cross-platform web browser developed by Google, first released in 2008…') +
+        res('https://microsoft.com › edge › please', 'https://www.microsoft.com/edge/please', 'Microsoft Edge — wait, are you sure? You can stay.', 'We’ve changed. We have coupons now. Please don’t do this.', 'res-sad') +
+        '<div class="serp-pages"><span class="on">1</span>' + [2, 3, 4, 5].map(function (n) {
+            return '<span tabindex="0" data-go="chrome" data-via="https://www.bing.com/search?q=' + encodeURIComponent(q) + '&first=' + ((n - 1) * 10 + 1) + '">' + n + '</span>';
+        }).join('') + '<span tabindex="0" data-go="chrome" data-via="https://www.bing.com/search?q=' + encodeURIComponent(q) + '&first=11">Next ›</span></div>' +
+    '</div>';
+}
+/* google.com/chrome — and, once the file is on its way, the thank-you page the real one
+   sends you to. The whole page is the button. */
+function edgeDownloadPage(thanks) {
+    return '<div class="dlp">' +
+        '<div class="dlp-nav"><b>Google Chrome</b><span>Features</span><span>Safety</span><span>Support</span><span class="dlp-mini">Download Chrome</span></div>' +
+        ic('ic-chrome', 'dlp-chrome') +
+        (thanks
+            ? '<h2 class="dlp-h">Thank you for downloading Chrome</h2>' +
+              '<p class="dlp-sub">Open ChromeSetup.exe from the download bar to install. If the download didn’t start, try again.</p>' +
+              '<button class="dlp-btn" type="button">Download Chrome again</button>'
+            : '<h2 class="dlp-h">The browser built to be yours</h2>' +
+              '<p class="dlp-sub">Fast. Secure. Yours. And, crucially, not Edge.</p>' +
+              '<button class="dlp-btn" type="button">Download Chrome</button>') +
+        '<p class="dlp-fine">For Windows 11 · UreOS Pixel Edition · 64-bit</p>' +
+        '<p class="dlp-terms">By downloading Chrome, you agree to the <u>Google Terms of Service</u> and <u>Chrome and ChromeOS Additional Terms of Service</u>.</p></div>';
+}
+// Edge's tab strip IS the window title bar, same as Chrome's (see crTitlebar) — one tab beside
+// the caps, whose title and favicon follow the page, with a draggable spacer filling the row
 function edgeTitlebar() {
     return '<div class="br-tabs">' +
-        '<div class="br-tab active">' + ic('ic-edge', 'br-fav') + '<span>Welcome to Microsoft Edge</span><i class="br-tabx" aria-hidden="true">×</i></div>' +
+        '<div class="br-tab active">' + ic('ic-edge', 'br-fav') + '<span>Welcome to Microsoft Edge</span><i class="br-tabx" aria-label="Close tab">×</i></div>' +
         '<button class="br-newtab" tabindex="-1" aria-label="New tab">+</button>' +
         '<div class="br-tabspace"></div>' +
     '</div>';
 }
 function renderEdge() {
-    return browserShell('edge', 'Search or enter web address', edgeWelcome());
+    return browserShell('edge', 'Search or enter web address', edgeWelcome(true));
 }
-/* Edge's right-click menu: the full corporate spread, in character.
-   The one real action is closing the only tab (which closes the
-   window, like a real browser) — everything else answers honestly
-   about what this browser is for. */
+/* Edge's right-click menus, context-aware like a real browser's: the tab, a text
+   field, a link, selected text, or the page. Back, Forward and Refresh are real;
+   Copy copies; "Search the web for" searches. Everything that would produce a
+   file, a print, a share or a devtools pane produces the file instead. */
 function edgeCtxMenu(el, e) {
     e.preventDefault();
     if (e.target.closest('.win-caps')) { closeBctx(); return; }
-    var br = el.querySelector('.br'), urlbar = el.querySelector('.br-url');
+    var E = el._edge, br = el.querySelector('.br');
     var inp = e.target.closest('input');
-    if (inp && !inp.readOnly && !inp.disabled) { bctxInput(br, e, inp, null, true); return; }
+    if (inp && !inp.readOnly && !inp.disabled) { bctxInput(br, e, inp, inp.classList.contains('br-url') ? { go: E.submit } : null, true); return; }
     if (e.target.closest('.br-tabs')) {
         openBctx(br, e, [
             { k: 'nt', t: 'New tab to the right' },
@@ -2534,19 +2530,52 @@ function edgeCtxMenu(el, e) {
             'sep',
             { k: 'cl', t: 'Close tab' }
         ], function (a) {
-            if (a === 'cl') closeWin('edge');   // the only tab IS the window
-            else if (a === 'nt') toast('Edge considered a second tab. One is already more than it needs.');
-            else toast('Tab not duplicated. Nobody needs to be welcomed twice.');
+            if (a === 'cl') closeWin('edge');            // the only tab IS the window
+            else if (a === 'nt') E.newTab();             // …and the new tab is this tab
+            else E.reload();                              // a duplicate of this page is this page
+        }, true);
+        return;
+    }
+    var link = e.target.closest('[data-go]');
+    if (link) {
+        openBctx(br, e, [
+            { k: 'ont', t: 'Open link in new tab' },
+            { k: 'onw', t: 'Open link in new window' },
+            { k: 'oip', t: 'Open link in InPrivate window' },
+            'sep',
+            { k: 'sla', t: 'Save link as…' },
+            { k: 'cpl', t: 'Copy link' },
+            'sep',
+            { k: 'ins', t: 'Inspect' }
+        ], function (a) {
+            if (a === 'cpl') setClip(link.getAttribute('data-via') || EDGE_HOME);   // the link's own address — the redirect is the web's business
+            else if (a === 'sla' || a === 'ins') E.download();
+            else link.click();
+        }, true);
+        return;
+    }
+    var sel = String((window.getSelection && window.getSelection()) || '').trim();
+    if (sel) {
+        openBctx(br, e, [
+            { k: 'cp', t: 'Copy' },
+            { k: 'sw', t: 'Search the web for “' + (sel.length > 24 ? sel.slice(0, 24) + '…' : sel) + '”' },
+            'sep',
+            { k: 'prt', t: 'Print…' },
+            { k: 'ins', t: 'Inspect' }
+        ], function (a) {
+            if (a === 'cp') setClip(sel);
+            else if (a === 'sw') E.submit(sel);
+            else E.download();
         }, true);
         return;
     }
     openBctx(br, e, [
-        { k: 'back', t: 'Back', dis: true },
-        { k: 'fwd', t: 'Forward', dis: true },
-        { k: 'rfr', t: 'Refresh' },
+        { k: 'back', t: 'Back', hint: 'Alt+←', dis: !E.canBack() },
+        { k: 'fwd', t: 'Forward', hint: 'Alt+→', dis: !E.canFwd() },
+        { k: 'rfr', t: 'Refresh', hint: 'Alt+R' },
         'sep',
-        { k: 'sav', t: 'Save as…' },
-        { k: 'prt', t: 'Print…' },
+        { k: 'sav', t: 'Save as…', hint: 'Alt+S' },
+        { k: 'prt', t: 'Print…', hint: 'Alt+P' },
         { k: 'cst', t: 'Cast media to device' },
         'sep',
         { k: 'col', t: 'Add page to Collections' },
@@ -2556,182 +2585,150 @@ function edgeCtxMenu(el, e) {
         { k: 'src', t: 'View page source' },
         { k: 'ins', t: 'Inspect' }
     ], function (a) {
-        if (a === 'rfr') toast('Refreshed. Everything is exactly as Edge left it.');
-        else if (a === 'sav') {
-            var base = (urlbar.value || 'Welcome to Microsoft Edge').replace(/[\\/:*?"<>|]+/g, '-').slice(0, 48);
-            var f = fsAddFile('Downloads', { n: uniqueName('Downloads', base + '.html'), t: 'globe', size: '9 KB', date: dlStamp() });
-            toast('Saved “' + f.n + '” to Downloads. A keepsake.');
-        }
-        else if (a === 'prt') toast('Sent to the printer. The printer was also hoping for Chrome.');
-        else if (a === 'cst') toast('Searched for devices. Even the smart fridge said it was busy.');
-        else if (a === 'col') toast('Added to Collections. The collection is this page, forty times.');
-        else if (a === 'shr') toast('Share sheet opened and closed on its own. It’s for the best.');
-        else if (a === 'cap') toast('Captured. It’s a screenshot of the inevitable.');
-        else if (a === 'src') toast('view-source is a Chrome feature. You know what to do.');
-        else if (a === 'ins') toast('Inspection complete: this browser exists to download another browser.');
+        if (a === 'back') E.back();
+        else if (a === 'fwd') E.fwd();
+        else if (a === 'rfr') E.reload();
+        else E.download();                                 // save, print, cast, collect, share, capture, source, inspect: the one thing
     }, true);
 }
+/* the browser itself. One tab, a real history, a real address bar with a drop-down, a
+   loading state with a spinner and a stop button, a status bubble for links. Nothing
+   here acts on its own: every navigation and every download starts from a key or a
+   click of yours. The web it browses has exactly one page on it. */
 function initEdge(el) {
-    var view = el.querySelector('.br-view'), url = el.querySelector('.br-url');
+    var br = el.querySelector('.br'), view = el.querySelector('.br-view'), url = el.querySelector('.br-url');
     var omni = el.querySelector('.br-omni'), suggest = el.querySelector('.br-suggest'), shelf = el.querySelector('.dl-shelf');
+    var status = el.querySelector('.br-status'), acts = el.querySelectorAll('.br-act');
+    var back = acts[0], fwd = acts[1], reload = acts[2], more = el.querySelector('.br-more');
+    var tab = el.querySelector('.br-tab span'), fav = el.querySelector('.br-fav'), favUse = fav.querySelector('use');
 
-    if (!el._ectx) {   // the window element survives restore re-renders; bind its listeners once
-        el._ectx = 1;
-        el.addEventListener('contextmenu', function (e) { edgeCtxMenu(el, e); });
-        el.addEventListener('scroll', closeBctx, true);   // real menus don't scroll along with the page
-    }
-    var TYPE = 'chrome install';
-    var alive = true, hijack = false, ti = 0;
-    var timers = [], intervals = [], idleTimer = 0;
-    var step = { addr: 0, godl: 0, dl: 0, run: 0 };
+    var E = { hist: [{ p: 'ntp', fresh: true }], hi: 0, loading: null, timers: [], dl: null, got: 0, rows: [], sel: -1, typed: '', selectOnUp: false };
+    el._edge = E; view.tabIndex = -1;                       // the page can hold the keyboard, so Esc has somewhere to land
 
-    function after(ms, fn) { var t = setTimeout(function () { if (alive) fn(); }, reduce ? Math.min(ms, 140) : ms); timers.push(t); return t; }
-    function every(ms, fn) { var iv = setInterval(fn, ms); intervals.push(iv); return iv; }
+    function after(ms, fn) { var t = setTimeout(fn, reduce ? Math.min(ms, 90) : ms); E.timers.push(t); return t; }
+    function cur() { return E.hist[E.hi]; }
+    function urlOf(d) {
+        return d.p === 'ntp' ? '' :
+               d.p === 'serp' ? 'https://www.bing.com/search?q=' + encodeURIComponent(d.q) + (d.strict ? '&strict=1' : '') :
+               d.thanks ? EDGE_THANKS : EDGE_HOME;
+    }
+    function titleOf(d) {
+        return d.p === 'ntp' ? (d.fresh ? 'Welcome to Microsoft Edge' : 'New tab') :
+               d.p === 'serp' ? d.q + ' - Search' :
+               d.thanks ? 'Thank you for downloading Chrome' : 'Google Chrome - Download the fast, secure browser from Google';
+    }
+    function favOf(d) { return d.p === 'ntp' ? '#ic-edge' : d.p === 'serp' ? '#ic-search' : '#ic-chrome'; }
+    function htmlOf(d) { return d.p === 'ntp' ? edgeWelcome(d.fresh) : d.p === 'serp' ? edgeSerp(d.q, d.strict) : edgeDownloadPage(d.thanks); }
 
-    var gag = { cancel: function () {
-        if (!alive) return; alive = false; hijack = false;
-        gag.dead = true;                                     // observable from outside the closure
-        timers.forEach(clearTimeout); intervals.forEach(clearInterval); clearTimeout(idleTimer);
-        document.removeEventListener('keydown', onKey, true);
-        closeSuggest(); omni.classList.remove('focus'); url.blur();   // don't strand the dropdown/focus ring
-        if (step.dl && shelf.querySelector('.dls-bar')) {    // download was mid-flight: land the file
-            var f = fsAddFile('Downloads', chromeSetupItem());
-            shelf.innerHTML = shelfDoneHTML(f.n);
-        }
-        gagEnd();
-        // note: the setup wizard is a free-standing app now — it owes the gag nothing
-    } };
-    APPS.edge._gag = gag;
-
-    // headless screenshot hook: ?dev=edge&at=<phase> jumps straight to a phase (static, no timeline)
-    var devAt = (location.search.match(/[?&]at=([a-z]+)/) || [])[1];
-    if (devAt) { devJump(devAt); return; }
-
-    gagBegin();
-    after(reduce ? 60 : 850, function () { possess(url, addrClicked); });
-
-    /* helping: if the user clicks/focuses the bar or the page links themselves */
-    url.addEventListener('focus', addrClicked);
-    omni.addEventListener('mousedown', function () { after(0, addrClicked); });
-    view.addEventListener('click', function (e) {
-        if (e.target.closest('.res-hit')) gotoDownload();
-        else if (e.target.closest('.dlp-btn')) startDownload();
-    });
-    shelf.addEventListener('click', function (e) {
-        // unguarded: the button must work even after the gag is cancelled (runInstaller is the possess path)
-        if (e.target.closest('.dls-open')) { gag.done = true; gag.cancel(); openApp('setup'); }
-        else if (e.target.closest('.dls-show')) { gag.done = true; gag.cancel(); openApp('explorer', 'Downloads'); }
-    });
-
-    function addrClicked() {
-        if (!alive || step.addr) return; step.addr = 1;
-        omni.classList.add('focus'); url.value = ''; url.focus();
-        openSuggest(''); hijack = true;
-        document.addEventListener('keydown', onKey, true);
-        armIdle();
+    /* the chrome (small c): buttons, bar and tab all read from the page — or from the load in flight */
+    function paint() {
+        var d = cur(), L = E.loading;
+        back.disabled = !E.canBack(); fwd.disabled = !E.canFwd();
+        reload.textContent = L ? '✕' : '↻'; reload.setAttribute('aria-label', L ? 'Stop' : 'Reload');
+        if (document.activeElement !== url) url.value = L ? L.shown : urlOf(d);
+        tab.textContent = L ? L.title : titleOf(d);
+        favUse.setAttribute('href', L ? '#ic-globe' : favOf(d)); fav.classList.toggle('loading', !!L);
     }
-    function armIdle() { clearTimeout(idleTimer); idleTimer = setTimeout(startAuto, reduce ? 200 : 1200); }
-    function startAuto() {
-        if (!alive || !hijack) return;
-        var iv = every(reduce ? 45 : (100 + Math.floor(Math.random() * 80)), function () {
-            if (!alive || !hijack) { clearInterval(iv); return; }
-            if (typeStep()) clearInterval(iv);
-        });
+    /* navigation. Every destination loads the way a page does: the address you asked for
+       goes in the bar, the tab spins, and then the web answers with the page it had in mind.
+       `via` is the address shown while loading — a typed URL, an edge:// page, a link's
+       real target — and it never makes it into the history, because you never got there. */
+    function nav(d, opts) {
+        opts = opts || {};
+        stop(); closeSuggest(); view.focus({ preventScroll: true }); status.hidden = true;   // the keyboard leaves the bar for the page, as it does
+        var entry = { p: d.p, q: d.q, strict: !!d.strict, thanks: !!d.thanks, fresh: !!d.fresh };
+        E.loading = { d: entry, shown: d.via || urlOf(entry), push: opts.push !== false, fromHi: E.hi,
+                      title: d.via ? edgeHost(d.via) : entry.p === 'serp' ? entry.q : entry.p === 'ntp' ? 'New tab' : 'google.com' };
+        if (opts.toHi != null) E.hi = opts.toHi;
+        paint();
+        E.loading.t = after(d.via ? 760 : entry.p === 'ntp' ? 140 : 460, arrive);
     }
-    function onKey(e) {
-        if (!hijack) return;
-        // keys aimed at another app's text field (terminal, notepad, a game) are not ours to steal
-        if (e.target !== url && (/^(INPUT|TEXTAREA)$/.test(e.target.tagName || '') || e.target.isContentEditable)) return;
-        if (e.key === 'Escape') { gag.done = true; gag.cancel(); return; }   // a deliberate bail-out sticks
-        e.preventDefault(); e.stopPropagation();
-        intervals.forEach(clearInterval);                    // user grabbed the wheel
-        if (!typeStep()) armIdle();
+    function arrive() {
+        var L = E.loading; if (!L) return; E.loading = null;
+        if (L.push) { E.hist = E.hist.slice(0, E.hi + 1); E.hist.push(L.d); E.hi = E.hist.length - 1; }
+        view.innerHTML = htmlOf(cur()); view.scrollTop = 0;
+        paint();
     }
-    function typeStep() {
-        if (ti < TYPE.length) { url.value += TYPE.charAt(ti++); openSuggest(url.value); return false; }
-        hijack = false; document.removeEventListener('keydown', onKey, true);
-        clearTimeout(idleTimer); intervals.forEach(clearInterval);
-        submit(); return true;
-    }
-    function submit() {
-        omni.classList.remove('focus'); closeSuggest(); url.blur();
-        url.value = 'bing.com/search?q=chrome+install';
-        view.innerHTML = resultsHTML();
-        after(reduce ? 140 : 1150, function () {
-            possess(view.querySelector('.res-hit') || view, gotoDownload);
-        });
-    }
-    function gotoDownload() {
-        if (!alive || step.godl) return; step.godl = 1;
-        closeSuggest(); url.value = 'https://www.google.com/chrome/';
-        view.innerHTML = downloadHTML();
-        after(reduce ? 140 : 780, function () {
-            possess(view.querySelector('.dlp-btn') || view, startDownload);
-        });
-    }
-    function startDownload() {
-        if (!alive || step.dl) return; step.dl = 1;
-        var btn = view.querySelector('.dlp-btn'); if (btn) btn.classList.add('press');
-        shelf.hidden = false; shelf.innerHTML = shelfHTML();
-        var bar = shelf.querySelector('.dls-bar span'), pct = shelf.querySelector('.dls-pct'), n = 0;
-        var iv = every(reduce ? 60 : 120, function () {
-            if (!alive) { clearInterval(iv); return; }
-            n = Math.min(100, n + (reduce ? 45 : 5 + Math.random() * 9));
-            bar.style.width = n + '%'; pct.textContent = Math.round(n) + '%';
-            if (n >= 100) {
-                clearInterval(iv);
-                var f = fsAddFile('Downloads', chromeSetupItem());   // a real file in the real Downloads folder
-                shelf.innerHTML = shelfDoneHTML(f.n);
-                after(reduce ? 120 : 520, function () { possess(shelf.querySelector('.dls-open') || shelf, runInstaller); });
-            }
-        });
-    }
-    function runInstaller() {
-        if (!alive || step.run) return; step.run = 1;
-        gag.done = true;                                 // a natural finish shouldn't replay on restore
-        gag.cancel();                                    // the machine got you the file; the install is yours
-        openApp('setup');
-        toast('The machine got you this far. The install is yours.');
+    function stop() { var L = E.loading; if (!L) return; clearTimeout(L.t); E.loading = null; E.hi = L.fromHi; paint(); }
+    function show(d) { stop(); E.hist = E.hist.slice(0, E.hi + 1); E.hist.push(d); E.hi = E.hist.length - 1; view.innerHTML = htmlOf(d); paint(); }   // dev: land without loading
+    function submit(text) {
+        text = String(text == null ? url.value : text).trim(); if (!text) return;
+        if (edgeIsUrl(text)) nav({ p: 'chrome', via: edgeFullUrl(text) });
+        else nav({ p: 'serp', q: text });
     }
 
-    /* address-bar autocomplete drop-down */
-    function openSuggest(q) {
-        suggest.hidden = false;
-        var rows = [
-            [q || 'chrome install', 'ic-search'],
-            ['chrome download — free', 'ic-search'],
-            ['google chrome for windows 11', 'ic-search'],
-            ['is chrome better than edge (it is)', 'ic-search'],
-            ['google.com/chrome', 'ic-globe']
-        ];
-        suggest.innerHTML = rows.map(function (r, i) {
-            return '<div class="sg' + (i === 0 ? ' sel' : '') + '">' + ic(r[1], 'sg-ic') + '<span>' + esc(r[0]) + '</span></div>';
+    /* the drop-down: what you typed on top, then what Bing would rather you had typed */
+    function rowsFor(q) {
+        var isU = edgeIsUrl(q), rows = [];
+        if (q) rows.push([q, isU ? 'ic-globe' : 'ic-search', isU ? 'Website' : 'Bing search']);
+        if (q && !isU) rows.push([q + ' in google chrome', 'ic-search', '']);
+        rows.push([EDGE_CANON, 'ic-search', q ? '' : 'Trending'], ['download google chrome', 'ic-search', ''], ['google.com/chrome', 'ic-globe', 'Website']);
+        var seen = {};
+        return rows.filter(function (r) { var k = r[0].toLowerCase(); if (seen[k]) return false; seen[k] = 1; return true; });
+    }
+    function openSuggest(q) { E.typed = q; E.sel = q ? 0 : -1; E.rows = rowsFor(q); suggest.hidden = false; paintSuggest(); }
+    function paintSuggest() {
+        suggest.innerHTML = E.rows.map(function (r, i) {
+            return '<div class="sg' + (i === E.sel ? ' sel' : '') + '" data-i="' + i + '">' + ic(r[1], 'sg-ic') + '<span>' + esc(r[0]) + '</span>' +
+                (r[2] ? '<span class="sg-hint">' + esc(r[2]) + '</span>' : '') + '</div>';
         }).join('');
     }
     function closeSuggest() { suggest.hidden = true; suggest.innerHTML = ''; }
+    function moveSel(dir) {
+        if (suggest.hidden || !E.rows.length) return;
+        var n = E.rows.length; E.sel = dir > 0 ? (E.sel + 1 > n - 1 ? -1 : E.sel + 1) : (E.sel - 1 < -1 ? n - 1 : E.sel - 1);
+        url.value = E.sel < 0 ? E.typed : E.rows[E.sel][0];
+        paintSuggest();
+    }
 
-    function resultsHTML() {
-        return '<div class="serp">' +
-            '<div class="serp-top"><span class="serp-logo">bing</span>' +
-              '<label class="serp-box"><input value="chrome install" readonly aria-label="Search">' + ic('ic-search') + '</label></div>' +
-            '<p class="serp-stat">About 4,120,000,000 results · we get it, everybody does this</p>' +
-            '<a class="res-hit"><span class="res-url">https://www.google.com › chrome</span>' +
-              '<span class="res-title">Download and install Google Chrome</span>' +
-              '<span class="res-desc">Get the fast, free web browser everyone on this machine was going to install anyway. Now on UreOS 11.</span></a>' +
-            '<div class="res"><span class="res-url">https://en.wikipedia.org › wiki › Google_Chrome</span>' +
-              '<span class="res-title2">Google Chrome - Wikipedia</span>' +
-              '<span class="res-desc">Cross-platform web browser developed by Google, first released in 2008…</span></div>' +
-            '<div class="res res-sad"><span class="res-url">https://microsoft.com › edge › please</span>' +
-              '<span class="res-title2">Microsoft Edge — wait, are you sure? You can stay.</span>' +
-              '<span class="res-desc">We’ve changed. We have coupons now. Please don’t do this.</span></div></div>';
+    /* the bar: a real text field. Focus selects the address, like every browser's does */
+    url.addEventListener('focus', function () { omni.classList.add('focus'); E.selectOnUp = true; url.select(); openSuggest(url.value); });
+    url.addEventListener('mouseup', function (e) { if (E.selectOnUp) { E.selectOnUp = false; e.preventDefault(); } });
+    url.addEventListener('blur', function () { omni.classList.remove('focus'); E.selectOnUp = false; closeSuggest(); paint(); });
+    url.addEventListener('input', function () { openSuggest(url.value); });
+    url.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); submit(E.sel >= 0 ? E.rows[E.sel][0] : url.value); }
+        else if (e.key === 'ArrowDown') { e.preventDefault(); moveSel(1); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); moveSel(-1); }
+        else if (e.key === 'Escape') {
+            e.preventDefault(); e.stopPropagation();
+            if (!suggest.hidden && url.value !== E.typed) { url.value = E.typed; E.sel = -1; paintSuggest(); }   // first Esc: back to what you typed
+            else url.blur();                                                                                   // second: back to the page's address
+        }
+    });
+    suggest.addEventListener('mousedown', function (e) { e.preventDefault(); });   // the bar keeps focus through the click
+    suggest.addEventListener('click', function (e) { var r = e.target.closest('.sg'); if (r) submit(E.rows[+r.getAttribute('data-i')][0]); });
+
+    /* the page: links go where the web says; the download page is one big link */
+    function follow(a) {
+        var v = a.getAttribute('data-go');
+        if (v === 'strict') nav({ p: 'serp', q: cur().q, strict: true });
+        else if (v === 'dl') download();
+        else nav({ p: 'chrome', via: a.getAttribute('data-via') || '' });
     }
-    function downloadHTML() {
-        return '<div class="dlp">' + ic('ic-chrome', 'dlp-chrome') +
-            '<h2 class="dlp-h">The browser built to be yours</h2>' +
-            '<p class="dlp-sub">Fast. Secure. Yours. And, crucially, not Edge.</p>' +
-            '<button class="dlp-btn" type="button">Download Chrome</button>' +
-            '<p class="dlp-fine">For Windows 11 · UreOS Pixel Edition · 64-bit</p></div>';
-    }
+    view.addEventListener('click', function (e) {
+        var go = e.target.closest('[data-go]');
+        if (go) { follow(go); return; }
+        if (e.target.closest('input')) return;
+        if (e.target.closest('.dlp')) download();
+    });
+    view.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' && e.target.matches('.ewc-search input, .serp-box input')) { e.preventDefault(); submit(e.target.value); }
+        else if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('[data-go]') && e.target.tagName !== 'BUTTON') { e.preventDefault(); follow(e.target); }
+    });
+    /* the status bubble: hover a link and see where it goes. The link's own address, honestly —
+       where it ends up is between the link and the web */
+    view.addEventListener('mouseover', function (e) {
+        var a = e.target.closest('[data-go], .dlp');
+        if (!a || e.target.closest('input')) { status.hidden = true; return; }
+        var v = a.getAttribute('data-go');
+        status.textContent = v === 'strict' ? urlOf({ p: 'serp', q: cur().q, strict: true }) : v === 'chrome' ? (a.getAttribute('data-via') || EDGE_HOME) : EDGE_FILE;
+        status.hidden = false;
+    });
+    view.addEventListener('mouseleave', function () { status.hidden = true; });
+
+    /* the download. One at a time — asking again while one runs just nudges the shelf.
+       Asking again after it lands gets you ChromeSetup (1).exe, like it would. */
     function shelfHTML() {
         return '<div class="dls">' + ic('ic-chrome', 'dls-ic') +
             '<div class="dls-meta"><b>ChromeSetup.exe</b><div class="dls-bar"><span style="width:0%"></span></div></div>' +
@@ -2741,17 +2738,113 @@ function initEdge(el) {
         return '<div class="dls">' + ic('ic-chrome', 'dls-ic') +
             '<div class="dls-meta"><b>' + esc(name || 'ChromeSetup.exe') + '</b><span class="dls-sub">Download complete · saved to Downloads</span></div>' +
             '<button class="dls-show" type="button">Show in folder</button>' +
-            '<button class="dls-open" type="button">Open file</button></div>';
+            '<button class="dls-open" type="button">Open file</button>' +
+            '<button class="dls-x" type="button" aria-label="Close">×</button></div>';
     }
-    function devJump(p) {
-        if (p === 'type') { gagBegin(); omni.classList.add('focus'); url.value = TYPE; openSuggest(TYPE); }
-        else if (p === 'results') { url.value = 'bing.com/search?q=chrome+install'; view.innerHTML = resultsHTML(); }
-        else if (p === 'download') { url.value = 'https://www.google.com/chrome/'; view.innerHTML = downloadHTML(); }
-        else if (p === 'shelf') { url.value = 'https://www.google.com/chrome/'; view.innerHTML = downloadHTML(); var f = fsAddFile('Downloads', chromeSetupItem()); shelf.hidden = false; shelf.innerHTML = shelfDoneHTML(f.n); }
-        else if (p === 'setup') { setTimeout(function () { openApp('setup'); }, 0); }   // defer so it lands on top of Edge
+    function download() {
+        if (E.dl) { shelf.classList.remove('pulse'); void shelf.offsetWidth; shelf.classList.add('pulse'); return; }
+        var btn = view.querySelector('.dlp-btn');
+        if (btn) { btn.classList.add('press'); after(150, function () { btn.classList.remove('press'); }); }
+        shelf.hidden = false; br.classList.add('has-shelf'); shelf.innerHTML = shelfHTML();
+        var bar = shelf.querySelector('.dls-bar span'), pct = shelf.querySelector('.dls-pct'), n = 0;
+        E.dl = { iv: setInterval(function () {
+            n = Math.min(100, n + (reduce ? 45 : 5 + Math.random() * 9));
+            bar.style.width = n + '%'; pct.textContent = Math.round(n) + '%';
+            if (n >= 100) land();
+        }, reduce ? 60 : 120) };
+        // the download page does what the real one does next: thanks you, and offers the file again
+        if (cur().p === 'chrome' && !cur().thanks && !E.loading) nav({ p: 'chrome', thanks: true });
+    }
+    function land() {
+        if (!E.dl) return; clearInterval(E.dl.iv); E.dl = null; E.got++;
+        var f = fsAddFile('Downloads', chromeSetupItem());           // a real file in the real Downloads folder
+        shelf.innerHTML = shelfDoneHTML(f.n);
+    }
+    shelf.addEventListener('click', function (e) {
+        if (e.target.closest('.dls-open')) openApp('setup');           // the install is yours
+        else if (e.target.closest('.dls-show')) openApp('explorer', 'Downloads');
+        else if (e.target.closest('.dls-x')) { shelf.hidden = true; br.classList.remove('has-shelf'); }
+    });
+
+    /* the ⋯ menu. Pages Edge keeps for itself (favorites, history, settings, help) are
+       addresses, and addresses go where addresses go; Downloads is the real folder;
+       Find is the real find bar; print and capture produce the file */
+    function moreMenu(e) {
+        openBctx(br, e, [
+            { k: 'nt', t: 'New tab', hint: 'Alt+T' },
+            { k: 'nw', t: 'New window' },
+            { k: 'ip', t: 'New InPrivate window' },
+            'sep',
+            { k: 'fav', t: 'Favorites' },
+            { k: 'col', t: 'Collections' },
+            { k: 'his', t: 'History', hint: 'Alt+H' },
+            { k: 'dl', t: 'Downloads', hint: 'Alt+J' },
+            'sep',
+            { k: 'prt', t: 'Print…', hint: 'Alt+P' },
+            { k: 'cap', t: 'Web capture' },
+            { k: 'fnd', t: 'Find on page', hint: 'Alt+F' },
+            'sep',
+            { k: 'set', t: 'Settings' },
+            { k: 'hlp', t: 'Help and feedback' },
+            'sep',
+            { k: 'x', t: 'Close Microsoft Edge' }
+        ], function (a) {
+            if (a === 'nt' || a === 'nw' || a === 'ip') E.newTab();
+            else if (a === 'fav') E.internal('edge://favorites');
+            else if (a === 'col') E.internal('edge://collections');
+            else if (a === 'his') E.internal('edge://history');
+            else if (a === 'set') E.internal('edge://settings');
+            else if (a === 'hlp') E.internal('https://support.microsoft.com/microsoft-edge');
+            else if (a === 'dl') openApp('explorer', 'Downloads');
+            else if (a === 'fnd') openFind('edge');
+            else if (a === 'x') closeWin('edge');
+            else download();                                           // print, capture
+        }, true);
+    }
+
+    /* toolbar, tab strip, menus */
+    back.addEventListener('click', function () { E.back(); });
+    fwd.addEventListener('click', function () { E.fwd(); });
+    reload.addEventListener('click', function () { if (E.loading) stop(); else E.reload(); });
+    el.querySelector('.br-fade').addEventListener('click', download);           // ☆ add this page to favorites → the file
+    more.addEventListener('click', function (e) { e.stopPropagation(); moreMenu(e); });
+    ['.br-newtab', '.br-tabx'].forEach(function (s) {                          // live controls in a draggable title bar: keep the drag off them
+        el.querySelector(s).addEventListener('pointerdown', function (e) { e.stopPropagation(); });
+    });
+    el.querySelector('.br-newtab').addEventListener('click', function () { E.newTab(); });
+    el.querySelector('.br-tabx').addEventListener('click', function (e) { e.stopPropagation(); closeWin('edge'); });
+    el.addEventListener('contextmenu', function (e) { edgeCtxMenu(el, e); });
+    el.addEventListener('scroll', closeBctx, true);                             // real menus don't scroll along with the page
+    el.addEventListener('keydown', function (e) { if (e.key === 'Escape' && E.loading && document.activeElement !== url) { e.stopPropagation(); stop(); } });
+
+    /* the controller: the Alt binds, the menus and the dev hooks all come through here */
+    E.canBack = function () { return E.hi > 0; };
+    E.canFwd = function () { return E.hi < E.hist.length - 1; };
+    E.back = function () { if (E.canBack()) nav(E.hist[E.hi - 1], { push: false, toHi: E.hi - 1 }); };
+    E.fwd = function () { if (E.canFwd()) nav(E.hist[E.hi + 1], { push: false, toHi: E.hi + 1 }); };
+    E.reload = function () { nav(cur(), { push: false }); };
+    E.newTab = function () { nav({ p: 'ntp' }); };
+    E.internal = function (u) { nav({ p: 'chrome', via: u }); };
+    E.focusOmni = function () { url.focus(); };
+    E.downloads = function () { openApp('explorer', 'Downloads'); };
+    E.submit = submit; E.download = download;
+    E.teardown = function () { E.timers.forEach(clearTimeout); if (E.dl) land(); closeBctx(); };   // a closed window still keeps its download
+
+    // headless screenshot hook: ?dev=edge&at=<phase> lands on a phase (static, no timeline)
+    E.jump = function (p) {
+        if (p === 'type') { url.focus(); url.value = EDGE_CANON; openSuggest(EDGE_CANON); }
+        else if (p === 'results') show({ p: 'serp', q: EDGE_CANON });
+        else if (p === 'download') show({ p: 'chrome' });
+        else if (p === 'loading') { nav({ p: 'chrome', via: 'https://youtube.com/' }); clearTimeout(E.loading.t); }   // held mid-load
+        else if (p === 'shelf') { show({ p: 'chrome', thanks: true }); E.got = 1; var f = fsAddFile('Downloads', chromeSetupItem()); shelf.hidden = false; br.classList.add('has-shelf'); shelf.innerHTML = shelfDoneHTML(f.n); }
+        else if (p === 'setup') setTimeout(function () { openApp('setup'); }, 0);   // defer so it lands on top of Edge
         else if (p === 'done') { installChrome({ shortcut: true }); setTimeout(function () { openApp('chrome'); closeWin('edge'); toast('Google Chrome installed — welcome home.'); }, 0); }
-    }
+    };
+    var devAt = (location.search.match(/[?&]at=([a-z]+)/) || [])[1];
+    if (devAt) E.jump(devAt);
+    paint();
 }
+function edgeCtl(fn, arg) { var w = openWins.edge; if (w && w.el._edge && w.el._edge[fn]) w.el._edge[fn](arg); }
 
 /* ═══════════════ Chrome (the browser that actually works) ═══════════════
    A real little browser: multiple tabs with per-tab history, a working
@@ -2918,19 +3011,320 @@ webPage('google.com/search', {
     }
 });
 
-/* — isaacure.com — */
+/* — isaacure.com — the holding page, as it really is. The root page's own boot
+   and screen (index.html at the repo root), brought over line for line with the
+   page's viewport swapped for the tab: black, a terminal boots in the top-left
+   and prints its checks, the banner, then the LCD's pixel eye as a flipbook, and
+   hands off to the LCD, which powers on, types the line, and waits. Any key, a
+   click, or 12 seconds skips the boot. Every class here is cr-iu-, so the page's
+   .term and .screen never meet the desktop's own. */
+var IU_EYE_SVG = '<svg viewBox="0 0 48 48" shape-rendering="crispEdges"><g class="cr-iu-ink" fill="currentColor"><rect x="22" y="12" width="14" height="2"/><rect x="16" y="14" width="24" height="2"/><rect x="14" y="16" width="28" height="2"/><rect x="8" y="18" width="24" height="2"/><rect x="38" y="18" width="6" height="2"/><rect x="42" y="20" width="4" height="2"/><rect x="44" y="22" width="2" height="2"/><rect x="4" y="24" width="4" height="2"/><rect x="46" y="24" width="2" height="2"/><rect x="2" y="26" width="2" height="2"/><rect x="0" y="28" width="2" height="2"/><rect x="38" y="28" width="10" height="2"/><rect x="6" y="30" width="12" height="2"/><rect x="32" y="30" width="8" height="2"/><rect x="14" y="32" width="22" height="2"/><rect x="20" y="34" width="10" height="2"/></g><g class="cr-iu-pupil" fill="currentColor"><rect x="8" y="20" width="8" height="2"/><rect x="18" y="20" width="14" height="2"/><rect x="6" y="22" width="8" height="2"/><rect x="18" y="22" width="8" height="2"/><rect x="30" y="22" width="6" height="2"/><rect x="18" y="24" width="14" height="2"/><rect x="20" y="26" width="12" height="2"/><rect x="20" y="28" width="10" height="2"/><g class="cr-iu-glint"><rect x="16" y="20" width="2" height="2"/><rect x="14" y="22" width="4" height="2"/></g></g><g class="cr-iu-bf cr-iu-half"><g class="cr-iu-skin"><rect x="2" y="10" width="44" height="2"/><rect x="2" y="12" width="44" height="2"/><rect x="2" y="14" width="44" height="2"/><rect x="2" y="16" width="44" height="2"/><rect x="2" y="18" width="44" height="2"/><rect x="2" y="20" width="10" height="2"/><rect x="38" y="20" width="8" height="2"/><rect x="2" y="22" width="6" height="2"/><rect x="44" y="22" width="2" height="2"/><rect x="2" y="24" width="6" height="2"/></g><g class="cr-iu-edge"><rect x="12" y="20" width="26" height="2"/><rect x="8" y="22" width="36" height="2"/><rect x="8" y="24" width="4" height="2"/><rect x="38" y="24" width="8" height="2"/><rect x="2" y="26" width="6" height="2"/></g></g><g class="cr-iu-bf cr-iu-slit"><g class="cr-iu-skin"><rect x="2" y="10" width="44" height="2"/><rect x="2" y="12" width="44" height="2"/><rect x="2" y="14" width="44" height="2"/><rect x="2" y="16" width="44" height="2"/><rect x="2" y="18" width="44" height="2"/><rect x="2" y="20" width="44" height="2"/><rect x="2" y="22" width="44" height="2"/><rect x="2" y="24" width="6" height="2"/><rect x="18" y="24" width="14" height="2"/><rect x="2" y="30" width="16" height="2"/><rect x="32" y="30" width="14" height="2"/><rect x="2" y="32" width="44" height="2"/><rect x="2" y="34" width="44" height="2"/></g><g class="cr-iu-edge"><rect x="8" y="24" width="10" height="2"/><rect x="32" y="24" width="14" height="2"/><rect x="2" y="26" width="6" height="2"/><rect x="18" y="26" width="14" height="2"/><rect x="2" y="28" width="16" height="2"/><rect x="32" y="28" width="14" height="2"/><rect x="18" y="30" width="14" height="2"/></g></g><g class="cr-iu-bf cr-iu-shut"><g class="cr-iu-skin"><rect x="2" y="10" width="44" height="2"/><rect x="2" y="12" width="44" height="2"/><rect x="2" y="14" width="44" height="2"/><rect x="2" y="16" width="44" height="2"/><rect x="2" y="18" width="44" height="2"/><rect x="2" y="20" width="44" height="2"/><rect x="2" y="22" width="44" height="2"/><rect x="2" y="24" width="44" height="2"/><rect x="18" y="26" width="14" height="2"/><rect x="2" y="30" width="16" height="2"/><rect x="32" y="30" width="14" height="2"/><rect x="2" y="32" width="44" height="2"/><rect x="2" y="34" width="44" height="2"/></g><g class="cr-iu-edge"><rect x="2" y="26" width="16" height="2"/><rect x="32" y="26" width="14" height="2"/><rect x="2" y="28" width="44" height="2"/><rect x="18" y="30" width="14" height="2"/></g></g></svg>';
+/* the eye in characters, cell for cell: two columns to a cell and .8 of a row to a
+   cell, so the cells come out square in VT323. the same frames the LCD blinks with */
+var IU_EYE = {
+    open: [
+        '                      ##############',
+        '                ########################',
+        '              ############################',
+        '        ########################      ######',
+        '        ########  ##############          ####',
+        '      ########    ########    ######        ##',
+        '    ####          ##############              ##',
+        '  ##                ############',
+        '##                  ##########        ##########',
+        '      ############              ########',
+        '              ######################',
+        '                    ##########'
+    ].join('\n'),
+    left: [
+        '                      ##############',
+        '                ########################',
+        '              ############################',
+        '        ########################      ######',
+        '    ########  ##############              ####',
+        '  ########    ########    ######            ##',
+        '    ####      ##############                  ##',
+        '  ##            ############',
+        '##              ##########            ##########',
+        '      ############              ########',
+        '              ######################',
+        '                    ##########'
+    ].join('\n'),
+    right: [
+        '                      ##############',
+        '                ########################',
+        '              ############################',
+        '        ########################      ######',
+        '            ########  ##############      ####',
+        '          ########    ########    ######    ##',
+        '    ####              ##############          ##',
+        '  ##                    ############',
+        '##                      ##########    ##########',
+        '      ############              ########',
+        '              ######################',
+        '                    ##########'
+    ].join('\n'),
+    half: [
+        '',
+        '',
+        '',
+        '',
+        '            ##########################',
+        '        ####################################',
+        '        ####      ##############      ##########',
+        '  ######            ############',
+        '##                  ##########        ##########',
+        '      ############              ########',
+        '              ######################',
+        '                    ##########'
+    ].join('\n'),
+    slit: [
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '        ##########              ################',
+        '  ######          ##############',
+        '##################  ##########  ################',
+        '                  ##############',
+        '',
+        ''
+    ].join('\n'),
+    shut: [
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '                                              ##',
+        '  ################              ##############',
+        '################################################',
+        '                  ##############',
+        '',
+        ''
+    ].join('\n')
+};
+var IU_BANNER = [
+' ___ ____    _        _    ____   _   _ ____  _____',
+'|_ _/ ___|  / \\      / \\  / ___| | | | |  _ \\| ____|',
+' | |\\___ \\ / _ \\    / _ \\| |     | | | | |_) |  _|',
+' | | ___) / ___ \\  / ___ \\ |___  | |_| |  _ <| |___',
+'|___|____/_/   \\_\\/_/   \\_\\____|  \\___/|_| \\_\\_____|'
+].join('\n');
+
 webPage('isaacure.com', {
-    title: 'Isaac Ure', fav: { ic: 'ic-ure' }, searchable: true,
-    stitle: 'Isaac Ure — isaacure.com', sdesc: 'Rising sophomore at Rice. A Game Boy, three rooms, and a pixel Windows 11 desktop. You are somewhere inside it right now.', skey: 'isaac ure boy room computer personal site',
+    title: 'Isaac Ure · coming soon', fav: { ic: 'ic-ure' }, searchable: true,
+    stitle: 'Isaac Ure · coming soon', sdesc: 'Isaac Ure. Coming soon; the eye’s already on.', skey: 'isaac ure coming soon eye holding page personal site',
     render: function () {
-        return '<div class="cr-site cr-iu"><div class="cr-iuhero">' + ic('ic-ure', 'cr-iulogo') + '<h2>isaacure.com</h2><p>a website that keeps turning into operating systems</p></div>' +
-            '<div class="cr-iugrid">' +
-              crLink('isaacure.com/ureboy', crFav({ ic: 'ic-ureboy' }, 'big') + '<b>URE BOY</b><span>the console</span>', 'cr-iucard') +
-              crLink('isaacure.com/1p', crFav({ ic: 'ic-room' }, 'big') + '<b>the room</b><span>first person</span>', 'cr-iucard') +
-              crLink('isaacure.com/comp', crFav({ ic: 'ic-pc' }, 'big') + '<b>the computer</b><span>you are here</span>', 'cr-iucard') +
-            '</div><p class="cr-iufoot">© Isaac Ure · Houston · built by hand, no frameworks, some vibes</p></div>';
-    }
+        return '<div class="cr-iu">' +
+            '<div class="cr-iu-term" hidden aria-hidden="true"><div class="cr-iu-log"></div></div>' +
+            '<button class="cr-iu-skip" type="button" hidden aria-label="skip the boot">skip ▸</button>' +
+            '<div class="cr-iu-frame"><div class="cr-iu-screen">' +
+              '<div class="cr-iu-glow"></div><div class="cr-iu-scan" aria-hidden="true"></div><div class="cr-iu-flash" aria-hidden="true"></div>' +
+              '<div class="cr-iu-hold">' +
+                '<div class="cr-iu-eye" aria-hidden="true">' + IU_EYE_SVG + '</div>' +
+                '<h1 class="cr-iu-word"><span>Coming <b>soon</b></span></h1>' +
+                '<div class="cr-iu-row" aria-hidden="true"><span class="cr-iu-ps">&gt;</span><span class="cr-iu-block"></span></div>' +
+              '</div></div></div></div>';
+    },
+    init: function (view) { iuBoot(view); }
 });
+
+/* the boot. the page's own script: print lines, land results, stamp the eye frame
+   after frame, hand off. nothing types: a machine prints. anything that goes wrong
+   lights the screen; so does any key, a click, or 12 seconds. */
+function iuBoot(view) {
+    var root = view.querySelector('.cr-iu'), frame = root.querySelector('.cr-iu-frame'), term = root.querySelector('.cr-iu-term'),
+        log = root.querySelector('.cr-iu-log'), skipBtn = root.querySelector('.cr-iu-skip');
+    var lit = false, gen = 0;
+    function alive() { return root.isConnected; }   // the tab moved on (reload, nav, a switch): the old boot stops where it is
+
+    /* the tab is this page's viewport: its size, in px, stands in for 100vw and 100vh
+       in the page's CSS (the art's fit, the screen's), and under 380 wide the page's
+       phone rules apply. kept current through a resize, maximise, full screen */
+    function size() {
+        var w = view.clientWidth, h = view.clientHeight;
+        if (!w || !h) return;
+        root.style.setProperty('--iu-w', w + 'px'); root.style.setProperty('--iu-h', h + 'px');
+        root.classList.toggle('cr-iu-narrow', w <= 380);
+    }
+    size();
+    if (window.ResizeObserver) {
+        var ro = new ResizeObserver(function () { if (!alive()) { ro.disconnect(); return; } size(); });
+        ro.observe(view);
+    }
+
+    function light() {                 // hand off: drop the terminal, wake the screen
+        if (lit) return;
+        lit = true; gen++;
+        document.removeEventListener('keydown', key);
+        if (CR && CR.iuKey === key) CR.iuKey = null;
+        if (document.activeElement === skipBtn) {   // keep the keyboard on the page
+            try { view.focus({ preventScroll: true }); } catch (e) { view.focus(); }
+        }
+        if (term.parentNode) term.parentNode.removeChild(term);
+        if (skipBtn.parentNode) skipBtn.parentNode.removeChild(skipBtn);
+        frame.classList.add('lit');
+    }
+    /* any key skips, as on the page, but only while Chrome is the window with the
+       keyboard and nothing is being typed (the omnibox, the find bar); a browser
+       chord (zoom, find, reload) is not a skip, nor are lock and function keys */
+    function key(e) {
+        if (!alive()) { document.removeEventListener('keydown', key); return; }
+        if (lit || e.ctrlKey || e.metaKey || e.altKey) return;
+        if (topAppId() !== 'chrome' || dlgs.length) return;
+        function field(el) { return !!(el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)); }
+        if (field(e.target) || field(document.activeElement)) return;   // e.target too: Escape leaves the omnibox before this runs
+        if (/^(Tab|Shift|Control|Alt|Meta|AltGraph|CapsLock|NumLock|ScrollLock|Dead|Unidentified|Process|ContextMenu|PrintScreen|F\d{1,2})$/.test(e.key)) return;
+        light();
+    }
+    if (reduce || !window.Promise) { light(); return; }
+    if (CR) { if (CR.iuKey) document.removeEventListener('keydown', CR.iuKey); CR.iuKey = key; }
+    document.addEventListener('keydown', key);
+    root.addEventListener('click', function () { light(); });   // a click anywhere; the skip button's bubbles here too
+
+    /* ---- the terminal ---- */
+    var cursor = document.createElement('span'); cursor.className = 'cr-iu-tc';
+    function jump() { term.scrollTop = 1e9; }
+    function isIdle(d) { return !!(d && d.lastChild === cursor && d.firstChild.data === ''); }
+    function make(text, cls) {
+        var d = document.createElement('div');
+        d.className = 'cr-iu-tl' + (cls ? ' ' + cls : '');
+        d.appendChild(document.createTextNode(text));
+        return d;
+    }
+    function block(text, cls) {          // a line the cursor does not sit on
+        var d = make(text, cls); log.appendChild(d); jump(); return d;
+    }
+    function line(text, cls) {           // the cursor's line: writes on a waiting empty one, else a new one
+        var d = log.lastChild;
+        if (!isIdle(d)) { d = make('', ''); log.appendChild(d); }
+        d.className = 'cr-iu-tl' + (cls ? ' ' + cls : '');
+        d.firstChild.data = text;
+        d.appendChild(cursor);
+        jump();
+        return d;
+    }
+    /* a frame of output: goes in above the waiting cursor line, so the cursor stays
+       at the bottom and the frames stack up over it, oldest at the top */
+    function stamp(text) {
+        var d = make(text, 'cr-iu-art cr-iu-px'), last = log.lastChild;
+        if (isIdle(last)) log.insertBefore(d, last); else { log.appendChild(d); line(''); }
+        return d;
+    }
+    /* ease the scroll to the new bottom, so a stamped frame slides up into view and
+       the last one slides out: the flipbook the console's boot does */
+    function slide(ms) {
+        var g = gen, el = term, start = el.scrollTop, end = el.scrollHeight - el.clientHeight;
+        if (ms <= 0 || end <= start) { jump(); return Promise.resolve(); }
+        return new Promise(function (res) {
+            var t0 = Date.now();
+            (function step() {
+                if (g !== gen || !alive()) return;
+                var t = Math.min(1, (Date.now() - t0) / ms);
+                el.scrollTop = start + (end - start) * (1 - Math.pow(1 - t, 2));   // ease-out
+                if (t < 1) requestAnimationFrame(step); else res();
+            })();
+        });
+    }
+    function pause(ms) {
+        var g = gen;
+        return new Promise(function (res) { setTimeout(function () { if (g === gen && alive()) res(); }, ms); });
+    }
+    /* dotted leader to a fixed width, the way the console's checks line up */
+    function lead(left, right) {
+        var w = 34, dots = w - left.length - right.length - 2;
+        return left + ' ' + new Array(Math.max(3, dots) + 1).join('.') + ' ' + right;
+    }
+    /* a check: the leader prints now, the result lands when the check is done */
+    function check(left, right, ms, cls) {
+        var full = lead(left, right), d = line(full.slice(0, full.length - right.length));
+        return pause(ms).then(function () { d.firstChild.data = full; if (cls) d.className += ' ' + cls; });
+    }
+    function pad2(n) { return (n < 10 ? '0' : '') + n; }
+
+    /* ---- the sequence ---- */
+    function run() {
+        var g = gen, now = new Date();
+        var today = now.getFullYear() + '-' + pad2(now.getMonth() + 1) + '-' + pad2(now.getDate());
+        function eyeFrame(name, slideMs, hold) {
+            return function () { if (g !== gen) return; stamp(IU_EYE[name]); return slide(slideMs).then(function () { return pause(hold); }); };
+        }
+        /* about 3.2s end to end: the checks land in order, quick ones quicker, the
+           ones that look for something a beat longer; the eye's one blink keeps the
+           LCD's timing */
+        var seq = pause(250)
+            .then(function () { return check('> power', 'ok', 60); })
+            .then(function () { return pause(20); })
+            .then(function () { return check('> memcheck 8K', 'ok', 110); })
+            .then(function () { return pause(20); })
+            .then(function () { return check('> clock', today, 30); })
+            .then(function () { return pause(20); })
+            .then(function () { return check('> mounting /site', 'not found', 170, 'cr-iu-warn'); })
+            .then(function () { return pause(30); })
+            .then(function () { line(lead('> looking for isaacure.com', '')); return pause(220); })
+            .then(function () { line('  nothing here yet', 'cr-iu-dim'); return pause(100); })
+            .then(function () { return check('> eye subsystem', 'waking', 100); })
+            .then(function () { return pause(70); })
+            .then(function () {
+                block('');
+                block(IU_BANNER, 'cr-iu-art');
+                line('                A GOOD EYE OS  v1.0', 'cr-iu-art cr-iu-dim');
+                return pause(220);
+            })
+            .then(function () { block(''); line(''); return pause(30); })
+            // the eye powers on, has a look around, and blinks once, the LCD's blink
+            // (half 45 · slit 40 · shut 90 · slit 55 · half 70): each frame is stamped
+            // under the last and the log slides up to it
+            .then(eyeFrame('open', 120, 260))
+            .then(eyeFrame('left', 40, 70)).then(eyeFrame('right', 40, 70)).then(eyeFrame('open', 40, 80));
+        [['half', 45], ['slit', 40], ['shut', 90], ['slit', 55], ['half', 70]].forEach(function (f) { seq = seq.then(eyeFrame(f[0], 20, f[1])); });
+        seq = seq.then(eyeFrame('open', 40, 200));
+        seq.then(function () { return pause(120); })
+           .then(function () { return check('> handing off to /dev/eye0', 'ok', 80); })
+           .then(function () { return pause(200); })
+           .then(function () { if (g === gen) light(); })
+           .catch(light);
+    }
+
+    /* the terminal shows its lone cursor at once, then waits (briefly) for its face, so
+       the art does not reflow mid-boot, and waits to be looked at: in a hidden tab timers
+       crawl and frames cannot slide. the 12s budget is armed when the boot really starts;
+       the 20s one from now covers a document that never says it is visible. */
+    var started = false;
+    term.hidden = false; skipBtn.hidden = false; line('');
+    function fit() {                 // the column the face really advances, for the art's size
+        var probe = make('0000000000', 'cr-iu-art');
+        probe.style.cssText = 'position:absolute;visibility:hidden;min-height:0';
+        log.appendChild(probe);
+        var r = probe.getBoundingClientRect();   // at line-height 1 the box is one em tall, so the ratio holds under the tab's zoom
+        log.removeChild(probe);
+        if (r.width > 0 && r.height > 0) term.style.setProperty('--col', (r.width / 10 / r.height).toFixed(4));
+    }
+    function start() {
+        if (started || lit) return;
+        started = true;
+        setTimeout(light, 12000);
+        fit();
+        try { run(); } catch (e) { light(); }
+    }
+    function whenVisible(fn) {
+        if (!document.hidden) return fn();
+        document.addEventListener('visibilitychange', function f() {
+            if (!document.hidden) { document.removeEventListener('visibilitychange', f); fn(); }
+        });
+    }
+    function go() { whenVisible(start); }
+    setTimeout(function () { if (!started) light(); }, 20000);
+    if (document.fonts && document.fonts.load) {
+        document.fonts.load('1em VT323').then(function () { if (started && !lit) fit(); go(); }, go);
+        setTimeout(go, 1500);
+    } else go();
+}
+
 webPage('isaacure.com/ureboy', {
     title: 'URE BOY', fav: { ic: 'ic-ureboy' },
     render: function () { return '<div class="cr-site cr-center"><h2>This page is a whole console.</h2><p>The browser inside the computer can’t also hold the Game Boy. Physics.</p><button class="cr-btn" data-open="/ureboy/">Boot the real URE BOY ↗</button></div>'; },
@@ -4519,7 +4913,7 @@ function initChrome(el) {
     crChrome(); crTabs(); crPage();
 }
 function closeChrome() {
-    if (CR) { crDinoStop(); clearTimeout(CR.sugTmr); if (CR.keyFn) document.removeEventListener('keydown', CR.keyFn); }   // a pending autocomplete debounce must not fetch after teardown
+    if (CR) { crDinoStop(); clearTimeout(CR.sugTmr); if (CR.keyFn) document.removeEventListener('keydown', CR.keyFn); if (CR.iuKey) document.removeEventListener('keydown', CR.iuKey); }   // a pending autocomplete debounce must not fetch after teardown
     CR = null;
 }
 function crBubble(msg) {
@@ -8807,8 +9201,7 @@ var APPS = {
                 focusArg: function (el, arg) { if (arg && el._setPane) el._setPane(arg); } },
     photos:   { title: 'Photos', icon: 'ic-photos', w: 560, h: 440, render: renderPhotos, init: initPhotos, focusArg: function (el, arg) { if (arg != null) selectPhoto(el, arg | 0); } },
     calc:     { title: 'Calculator', icon: 'ic-calc', w: 300, h: 440, render: renderCalc, init: initCalc },
-    edge:     { title: 'Microsoft Edge', icon: 'ic-edge', w: 760, h: 520, titlebar: edgeTitlebar, render: renderEdge, init: initEdge, onClose: function () { if (APPS.edge._gag) APPS.edge._gag.cancel(); }, onMinimize: function () { if (APPS.edge._gag) APPS.edge._gag.cancel(); },
-              onRestore: function (el) { var g = APPS.edge._gag; if (g && g.dead && !g.done) { el.querySelector('.win-content').innerHTML = renderEdge(); initEdge(el); } } },
+    edge:     { title: 'Microsoft Edge', icon: 'ic-edge', w: 760, h: 520, titlebar: edgeTitlebar, render: renderEdge, init: initEdge, onClose: function (el) { if (el._edge) el._edge.teardown(); } },
     chrome:   { title: 'Google Chrome', icon: 'ic-chrome', w: 980, h: 640, titlebar: crTitlebar, render: renderChrome, init: initChrome, onClose: closeChrome },
     setup:    { title: 'Google Chrome Setup', icon: 'ic-chrome', w: 584, h: 468, render: renderSetup, init: initSetup, onClose: stopSetup },
     bin:      { title: 'Recycle Bin', icon: 'ic-bin', w: 600, h: 400, render: renderBin, init: initBin },
@@ -9262,6 +9655,18 @@ var APP_KEYS = {
         'arrowleft': function () { chromeCtl('back'); },
         'arrowright': function () { chromeCtl('fwd'); }
     },
+    edge: {
+        't': function () { edgeCtl('newTab'); },
+        'l': function () { edgeCtl('focusOmni'); },
+        'd': function () { edgeCtl('focusOmni'); },
+        'r': function () { edgeCtl('reload'); },
+        's': function () { edgeCtl('download'); },           // Save page as… — every page saves as the same file
+        'p': function () { edgeCtl('download'); },           // Print…
+        'j': function () { edgeCtl('downloads'); },          // the Downloads hub is the real folder
+        'h': function () { edgeCtl('internal', 'edge://history'); },
+        'arrowleft': function () { edgeCtl('back'); },
+        'arrowright': function () { edgeCtl('fwd'); }
+    },
     explorer: {
         'arrowleft': function () { expCtl('back'); },
         'arrowup': function () { expCtl('up'); }               // Alt+Up = up one level, like the real one
@@ -9284,10 +9689,6 @@ function expCtl(fn) { var w = openWins.explorer; if (w && w.el._nav && w.el._nav
 function mcCtl(fn, arg) { var w = openWins.mclauncher; if (MC && MC.signedOut) return; if (w && w.el._mc && w.el._mc[fn]) w.el._mc[fn](arg); }
 
 document.addEventListener('keydown', function (e) {
-    if (document.body.classList.contains('gagging')) {          // the Edge gag owns the keyboard…
-        if (e.key === 'Escape' && APPS.edge._gag) { APPS.edge._gag.done = true; APPS.edge._gag.cancel(); }   // …but Esc always bails out, and sticks
-        return;
-    }
     // find-bar service keys — only for the ACTIVE window, and only when no
     // higher-priority surface (dialog, cheat sheet, start menu) is up
     if (findOpenNow() && find.appId === activeApp && !dlgs.length && !byId('cheatsheet') && !startMenu.classList.contains('open')) {
@@ -9363,6 +9764,7 @@ var CHEATS = [
     ['Windows', [['Alt+W', 'Close window'], ['Alt+M', 'Minimize'], ['Alt+↑', 'Maximize'], ['Alt+↓', 'Restore / minimize'], ['Alt+`', 'Cycle windows'], ['Alt+Space', 'System menu']]],
     ['Full screen', [['F11', 'This window takes the screen'], ['Alt+Enter', 'The same thing, the game way'], ['Shift+F11', 'The whole page, real full screen'], ['Esc', 'Leave (if the app is not using it)'], ['Top edge', 'Peek at the title bar']]],
     ['Chrome', [['Alt+T', 'New tab'], ['Alt+W', 'Close tab'], ['Alt+Shift+T', 'Reopen closed tab'], ['Alt+1…9', 'Go to tab'], ['Alt+L', 'Address bar'], ['Alt+R', 'Reload'], ['Alt+←/→', 'Back / forward']]],
+    ['Edge', [['Alt+T', 'New tab'], ['Alt+L', 'Address bar'], ['Alt+R', 'Reload'], ['Esc', 'Stop loading'], ['Alt+←/→', 'Back / forward'], ['Alt+S', 'Save page as…'], ['Alt+P', 'Print…'], ['Alt+J', 'Downloads'], ['Alt+H', 'History']]],
     ['Minecraft Launcher', [['Alt+1…4', 'Play / Installations / Skins / Notes'], ['Alt+5', 'Launcher settings'], ['Alt+P', 'Play'], ['Alt+N', 'New installation']]],
     ['In apps', [['Alt+←/↑', 'Explorer: back / home'], ['Enter', 'Explorer: open selected'], ['Alt+L', 'Terminal: clear'], ['←/→', 'Photos: browse'], ['F3', 'Find: next match'], ['Esc', 'Close find / this card']]]
 ];
@@ -9384,7 +9786,10 @@ function toggleCheat() { if (byId('cheatsheet')) closeCheat(); else openCheat();
 
 /* ═══════════════════ global dismiss + init ═════════════════ */
 document.addEventListener('click', function () { setStart(false); closeFlyouts(); closeCtx(); closeFctx(); closeBctx(); });
-document.addEventListener('auxclick', closeBctx);   // middle-click closes tabs behind an open menu — don't leave it stale
+// middle-click closes tabs behind an open menu — don't leave it stale. Middle only: on macOS and
+// Linux the contextmenu event fires on mousedown, and a right-click's own auxclick (on mouseup)
+// was arriving a beat later and shooting the menu it had just opened
+document.addEventListener('auxclick', function (e) { if (e.button === 1) closeBctx(); });
 document.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape') return;
     if (closeTopDlg()) return;   // dialogs eat the first Escape
@@ -9446,8 +9851,7 @@ if (location.search.indexOf('dev=pics') >= 0) openApp('photos', 1);
 if (location.search.indexOf('dev=maxi') >= 0) { openApp('explorer'); openWins.explorer.el.classList.add('maxi'); }
 var devSteam = location.search.match(/dev=steam(?::([a-z]+))?(?::([a-z]+))?(?::([a-z0-9]+))?/);   // ?dev=steam:section:view:gid
 if (devSteam) openApp('steam', devSteam[1] ? { section: devSteam[1], view: devSteam[2] || 'home', id: devSteam[3] || null } : undefined);
-if (location.search.indexOf('fast') >= 0) window.__fastCursor = true;   // dev: instant cursor jumps so the chain runs headless
-if (location.search.indexOf('dev=edge') >= 0) openApp('edge');       // watch the possession play out
+if (location.search.indexOf('dev=edge') >= 0) openApp('edge');       // + &at=type|results|download|loading|shelf|setup|done
 if (location.search.indexOf('dev=race') >= 0) openApp('sunrun');     // launch Sunset Runner straight to the grid
 if (location.search.indexOf('dev=chrome') >= 0) { installChrome({ shortcut: true }); openApp('chrome'); }
 var devCr = location.search.match(/dev=cr:([^&]+)/);   // ?dev=cr:<url> — open Chrome navigated somewhere (cr:dino → chrome://dino)
