@@ -208,9 +208,9 @@
         .lid-skin { fill: var(--screen-bg); }
         .lid-edge { fill: currentColor; }
         .bf { opacity: 0; }
-        .bf-half { animation: bootHalf .3s steps(1, end) 1.55s, idleHalf 8s steps(1, end) 3.4s infinite; }
-        .bf-slit { animation: bootSlit .3s steps(1, end) 1.55s, idleSlit 8s steps(1, end) 3.4s infinite; }
-        .bf-shut { animation: bootShut .3s steps(1, end) 1.55s, idleShut 8s steps(1, end) 3.4s infinite; }
+        .bf-half { animation: bootHalf .3s steps(1, end) 1.4s, idleHalf 8s steps(1, end) 3.4s infinite; }
+        .bf-slit { animation: bootSlit .3s steps(1, end) 1.4s, idleSlit 8s steps(1, end) 3.4s infinite; }
+        .bf-shut { animation: bootShut .3s steps(1, end) 1.4s, idleShut 8s steps(1, end) 3.4s infinite; }
         /* one blink, 300ms: half 45 · slit 40 · shut 90 · slit 55 · half 70 */
         @keyframes bootHalf { 0% { opacity: 1; } 15% { opacity: 0; } 76.667% { opacity: 1; } 100% { opacity: 0; } }
         @keyframes bootSlit { 0% { opacity: 0; } 15% { opacity: 1; } 28.333% { opacity: 0; } 58.333% { opacity: 1; } 76.667% { opacity: 0; } 100% { opacity: 0; } }
@@ -235,7 +235,7 @@
             100% { opacity: 0; }
         }
 
-        /* the line. it types, one glyph a step (the first on the beat, the rest 60ms
+        /* the line. it types, one glyph a step (the first on the beat, the rest 45ms
            apart): the font is strictly monospace, and at 16px (the bitmap is 8px) each
            glyph is exactly 16 whole pixels wide, so the reveal edge never cuts through a
            pixel */
@@ -257,7 +257,7 @@
                                           a hair into the next glyph */
             -webkit-clip-path: inset(0 100% 0 0);
             clip-path: inset(0 100% 0 0);
-            animation: typeOut .66s steps(11, start) 1s forwards;
+            animation: typeOut .5s steps(11, start) 1s forwards;
         }
         @keyframes typeOut {
             to { -webkit-clip-path: inset(0 0 0 0); clip-path: inset(0 0 0 0); }
@@ -270,7 +270,7 @@
             font-size: 1.2rem; line-height: 1.1;
             margin-top: -.25rem;
             opacity: 0;
-            animation: appear .1s steps(1, start) 1.95s forwards;
+            animation: appear .1s steps(1, start) 1.8s forwards;
         }
         /* steps(n, start), not end, wherever a stepped animation fills forwards: the
            browser's progress at the end is (end - delay) / duration in floating point,
@@ -542,39 +542,39 @@
             function eyeFrame(name, slideMs, hold) {
                 return function () { if (g !== gen) return; stamp(EYE[name]); return slide(slideMs).then(function () { return pause(hold); }); };
             }
-            /* about 4s end to end: the checks land in order, quick ones quicker, the
+            /* about 3.2s end to end: the checks land in order, quick ones quicker, the
                ones that look for something a beat longer; the eye's one blink keeps the
                LCD's timing */
-            var seq = pause(350)
-                .then(function () { return check('> power', 'ok', 80); })
+            var seq = pause(250)
+                .then(function () { return check('> power', 'ok', 60); })
+                .then(function () { return pause(20); })
+                .then(function () { return check('> memcheck 8K', 'ok', 110); })
+                .then(function () { return pause(20); })
+                .then(function () { return check('> clock', today, 30); })
+                .then(function () { return pause(20); })
+                .then(function () { return check('> mounting /site', 'not found', 170, 'tl-warn'); })
                 .then(function () { return pause(30); })
-                .then(function () { return check('> memcheck 8K', 'ok', 160); })
-                .then(function () { return pause(30); })
-                .then(function () { return check('> clock', today, 40); })
-                .then(function () { return pause(30); })
-                .then(function () { return check('> mounting /site', 'not found', 240, 'tl-warn'); })
-                .then(function () { return pause(40); })
-                .then(function () { line(lead('> looking for isaacure.com', '')); return pause(300); })
-                .then(function () { line('  nothing here yet', 'tl-dim'); return pause(140); })
-                .then(function () { return check('> eye subsystem', 'waking', 140); })
-                .then(function () { return pause(100); })
+                .then(function () { line(lead('> looking for isaacure.com', '')); return pause(220); })
+                .then(function () { line('  nothing here yet', 'tl-dim'); return pause(100); })
+                .then(function () { return check('> eye subsystem', 'waking', 100); })
+                .then(function () { return pause(70); })
                 .then(function () {
                     block('');
                     block(BANNER, 'tl-art');
                     line('                A GOOD EYE OS  v1.0', 'tl-art tl-dim');
-                    return pause(300);
+                    return pause(220);
                 })
-                .then(function () { block(''); line(''); return pause(40); })
+                .then(function () { block(''); line(''); return pause(30); })
                 // the eye powers on, has a look around, and blinks once, the LCD's blink
                 // (half 45 · slit 40 · shut 90 · slit 55 · half 70): each frame is stamped
                 // under the last and the log slides up to it
-                .then(eyeFrame('open', 150, 260))
-                .then(eyeFrame('left', 50, 70)).then(eyeFrame('right', 50, 70)).then(eyeFrame('open', 50, 80));
-            [['half', 45], ['slit', 40], ['shut', 90], ['slit', 55], ['half', 70]].forEach(function (f) { seq = seq.then(eyeFrame(f[0], 25, f[1])); });
-            seq = seq.then(eyeFrame('open', 50, 200));
-            seq.then(function () { return pause(150); })
-               .then(function () { return check('> handing off to /dev/eye0', 'ok', 100); })
-               .then(function () { return pause(250); })
+                .then(eyeFrame('open', 120, 260))
+                .then(eyeFrame('left', 40, 70)).then(eyeFrame('right', 40, 70)).then(eyeFrame('open', 40, 80));
+            [['half', 45], ['slit', 40], ['shut', 90], ['slit', 55], ['half', 70]].forEach(function (f) { seq = seq.then(eyeFrame(f[0], 20, f[1])); });
+            seq = seq.then(eyeFrame('open', 40, 200));
+            seq.then(function () { return pause(120); })
+               .then(function () { return check('> handing off to /dev/eye0', 'ok', 80); })
+               .then(function () { return pause(200); })
                .then(function () { if (g === gen) light(); })
                .catch(light);
         }
