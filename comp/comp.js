@@ -3040,17 +3040,17 @@ webPage('store.steampowered.com', {
 /* — minecraft.net (the website → the launcher) — */
 webPage('minecraft.net', {
     title: 'Minecraft | Official Site', fav: { ic: 'ic-mc' }, searchable: true,
-    stitle: 'Minecraft — official site', sdesc: 'Explore your own unique world, survive the night, and create anything you can imagine. The launcher is already on this machine.', skey: 'minecraft mc java mojang launcher grass creeper blocks',
+    stitle: 'Minecraft — official site', sdesc: 'Explore your own unique world, survive the night, and create anything you can imagine.', skey: 'minecraft mc java mojang launcher grass creeper blocks',
     render: function () {
         return '<div class="cr-site cr-mcnet"><nav class="cr-mcnav"><b>MINECRAFT</b><span>Games</span><span>Community</span><span>Merch</span><span>Support</span></nav>' +
             '<div class="cr-mchero">' + mcHero() + '<div class="cr-mchero-tx"><span class="mcl-logotype sm">MINECRAFT</span>' +
-            '<p>Dig. Build. Survive the night. This machine already has the launcher — the button below knows that.</p>' +
+            '<p>Explore your own unique world, survive the night, and create anything you can imagine!</p>' +
             '<button class="cr-btn cr-mcget" id="crMcGet">GET MINECRAFT</button></div></div>' +
-            '<div class="cr-mcfoot">© Mojang, in spirit. This is a loving pixel parody living on isaacure.com.</div></div>';
+            '<div class="cr-mcfoot">A fan recreation. Not affiliated with Mojang or Microsoft.</div></div>';
     },
     init: function (view) {
         var b = view.querySelector('#crMcGet');
-        if (b) b.addEventListener('click', function () { openApp('mclauncher'); toast('Minecraft Launcher is already installed.'); });
+        if (b) b.addEventListener('click', function () { openApp('mclauncher'); });   // the launcher is on this machine, so the button opens it
     }
 });
 
@@ -7147,20 +7147,27 @@ function stCtxMenu(e) {
    real .minecraft tree in the sim file system (saves/, versions/, logs/,
    crash-reports/, launcher_profiles.json regenerated from live state).
 
-   THE SEAM (for the chat building the game itself): when PLAY finishes, the
-   launcher checks APPS.minecraft. If the game app is registered, it calls
+   THE SEAM: when PLAY finishes, the launcher checks APPS.minecraft and
+   window.MC. If the game (comp/minecraft.js) is loaded, it calls
    openApp('minecraft', { version, installation, skin }) — skin is
    { name, model: 'classic'|'slim', pal: [colors], rows: [16-char strings] }
-   (front view, 16×32, '.' = transparent, chars index into pal). Until then a
-   launch dies honestly: java.lang.ClassNotFoundException, with a crash report
+   (front view, 16×32, '.' = transparent, chars index into pal). If the game
+   script is missing, the launch fails the way a real client does when it
+   cannot get a GL context: the log ends in the exception and a crash report is
    written to .minecraft/crash-reports. The game may also claim
    FS['.minecraft/saves'] — mcSyncFS only assigns that key if it is undefined.
+
+   Nothing the launcher shows or writes talks about this machine or this site:
+   the log, the crash report, options.txt and the version json follow the real
+   client's formats for the era of the version being launched, and the launcher
+   never raises an OS notification — the real one doesn't either.
 
    State lives in comp_mc_* keys: inst (installations), skins, skin (active id),
    sel (selected installation id), set (toggles), dl (downloaded version ids),
    log (last launch log), crash (last 3 crash reports). */
 
 var MC = null;   // live view state while the window is open
+var mclReturn = false;   // the launcher hid itself for a launch and should come back when the game exits
 function mcj(k, d) { try { var v = JSON.parse(recall('mc_' + k, 'null')); return v == null ? d : v; } catch (e) { return d; } }
 function mcjSet(k, v) { store('mc_' + k, JSON.stringify(v)); }
 
@@ -7283,6 +7290,28 @@ function mcJarSize(id) {
     if (v.t === 'snapshot' || v.t === 'fools') return '26.8 MB';   // these branch off the modern client
     return /^(1\.(1[6-9]|2\d)|2\d\.)/.test(id) ? '26.8 MB' : '9.4 MB';   // 26.x is the year.drop scheme
 }
+// Java 21 from 1.20.5 on; 17 across the 1.17–1.20 era (incl. its 22w/23w snapshots); 8 before
+function mcJavaMajor(v) { return /^(1\.2[1-9]|1\.20\.[5-9]|2\d\.|2[4-9]w)/.test(v) ? 21 : /^(1\.(1[7-9]|20)|2[23]w)/.test(v) ? 17 : 8; }
+// the 1.X minor a version belongs to: 99 for the year.drop scheme and its snapshots,
+// snapshots/fools by the year in their id, 0 for alpha/beta/classic
+function mcMinor(v) {
+    var m = /^1\.(\d+)/.exec(v); if (m) return +m[1];
+    if (/^2\d\./.test(v)) return 99;
+    m = /^(\d\d)w/.exec(v);
+    if (m) return +m[1] >= 26 ? 99 : ({ 15: 8, 16: 9, 18: 13, 19: 14, 20: 16, 21: 17, 22: 19, 23: 20, 24: 20, 25: 21 }[+m[1]] || 8);
+    if (/^3D Shareware/.test(v)) return 14;
+    if (/^1\.RV/.test(v)) return 9;
+    return 0;
+}
+// the asset index the manifest names: pre-1.6 for the old clients, legacy through 1.6,
+// the 1.X id through 1.19, small integers since
+function mcAssetIndex(v) {
+    var t = (mcVer(v) || {}).t, mi = mcMinor(v);
+    if (t === 'alpha' || t === 'beta') return 'pre-1.6';
+    if (mi < 7) return 'legacy';
+    if (mi <= 19) return '1.' + mi;
+    return mi === 20 ? '12' : '17';
+}
 // the manifest's own vocabulary, and the class that era actually booted
 function mcVerJson(v) {
     var t = (mcVer(v) || {}).t || 'release';
@@ -7290,10 +7319,9 @@ function mcVerJson(v) {
     var main = /^rd-/.test(v) ? 'com.mojang.rubydung.RubyDung'
         : (t === 'alpha' || t === 'beta') ? 'net.minecraft.client.Minecraft'
         : 'net.minecraft.client.main.Main';
-    // Java 21 from 1.20.5 on; 17 across the 1.17–1.20 era (incl. its 22w/23w snapshots); 8 before
-    var java = /^(1\.2[1-9]|1\.20\.[5-9]|2\d\.|2[4-9]w)/.test(v) ? 21 : /^(1\.(1[7-9]|20)|2[23]w)/.test(v) ? 17 : 8;
     return '{\n  "id": "' + v + '",\n  "type": "' + type + '",\n  "mainClass": "' + main +
-        '",\n  "assets": "pixels",\n  "javaVersion": { "majorVersion": ' + java + ' }\n}';
+        '",\n  "assets": "' + mcAssetIndex(v) + '",\n  "javaVersion": { "component": "' + { 21: 'java-runtime-delta', 17: 'java-runtime-gamma', 8: 'jre-legacy' }[mcJavaMajor(v)] +
+        '", "majorVersion": ' + mcJavaMajor(v) + ' }\n}';
 }
 
 /* —— installation icons: 8×8 block faces, launcher-picker style —— */
@@ -7366,73 +7394,72 @@ var MC_ART = {
 };
 var MC_NOTES = [
     { v: '26.3-snapshot-4', name: 'Snapshot 26.3-snapshot-4', d: 'July 16, 2026', art: 'snap', b: [
-        'Experimental features hide behind a toggle, as is tradition.',
-        'Four bugs fixed. At least two of them were real.',
-        'The launcher is done; the game is being built in another window. You are looking at the seam.'] },
+        'Experimental features are available behind a toggle.',
+        'Fixed four bugs.'] },
     { v: '26.2', name: 'Chaos Cubed', d: 'June 16, 2026', art: 'sulfur', b: [
-        'Sulfur caves: a new biome built out of sulfur and cinnabar, and it smells accordingly.',
-        'The sulfur cube, a mob that picks a physics archetype and commits to it.',
-        'Potent sulfur blocks erupt into geysers. Do not stand there. You will stand there.',
-        'An experimental Vulkan renderer, and a friends list to watch you fail in real time.'] },
+        'Sulfur caves: a new biome built out of sulfur and cinnabar.',
+        'The sulfur cube, a new mob.',
+        'Potent sulfur blocks erupt into geysers.',
+        'An experimental Vulkan renderer and an in-game friends list.'] },
     { v: '26.1', name: 'Tiny Takeover', d: 'March 24, 2026', art: 'tiny', b: [
-        'The golden dandelion pauses a baby mob’s aging. Time stops. Only for the piglets.',
-        'Nearly every baby mob got new models, textures and sounds. The nautiluses and ghastlings were left out and know it.',
-        'Name tags are craftable now: paper plus any nugget. Thirteen years of fishing for them, over.',
-        'Villager trades moved into datapacks, so the emerald economy is finally yours to ruin.'] },
+        'The golden dandelion pauses a baby mob’s aging.',
+        'Nearly every baby mob has new models, textures and sounds.',
+        'Name tags can now be crafted from paper and any nugget.',
+        'Villager trades are now defined in data packs.'] },
     { v: '1.21.9', name: 'The Copper Age', d: 'September 30, 2025', art: 'copper', b: [
-        'Copper golems wake up, wander off, and start organizing your chests.',
+        'Copper golems, which sort items into copper chests.',
         'A full copper tool and armor set, plus copper chests, bars, chains and lanterns.',
-        'Shelves, for displaying the gear you never actually use.',
-        'Everything oxidizes. Even the golems. Wax them, or learn acceptance.'] },
+        'Shelves, for displaying items.',
+        'Copper golems oxidize over time and can be waxed.'] },
     { v: '1.21.6', name: 'Chase the Skies', d: 'June 17, 2025', art: 'ghast', b: [
-        'The happy ghast: strap on a harness and fly it with three friends aboard. No taming, just trust.',
-        'A locator bar points at your friends, so you can pretend you were never lost.',
-        'Dried ghasts rehydrate into ghastlings. That is simply how science works now.',
+        'The happy ghast: equip a harness and fly it with up to three other players aboard.',
+        'A locator bar shows the direction of other players.',
+        'Dried ghasts rehydrate into ghastlings.',
         'New music disc: Tears.'] },
     { v: '1.21.5', name: 'Spring to Life', d: 'March 25, 2025', art: 'spring', b: [
         'Warm and cold variants for pigs, cows and chickens.',
-        'Firefly bushes, wildflowers, leaf litter, and leaves that actually fall.',
-        'Cacti flower now. Eggs come in brown and blue. The chickens know why.'] },
+        'Firefly bushes, wildflowers, leaf litter and falling leaf particles.',
+        'Cactus flowers, and brown and blue chicken eggs.'] },
     { v: '1.21.4', name: 'The Garden Awakens', d: 'December 3, 2024', art: 'pale', b: [
-        'The pale garden: a grey, silent forest that is definitely fine to sleep in.',
-        'The creaking: a mob you cannot hurt, only outrun. Break its heart block instead.',
-        'Pale oak wood and resin, for all your haunted-cabin construction needs.'] },
+        'The pale garden: a grey, silent forest biome.',
+        'The creaking: a mob that cannot be hurt directly; break its heart block instead.',
+        'Pale oak wood and resin.'] },
     { v: '1.21.2', name: 'Bundles of Bravery', d: 'October 22, 2024', art: 'bundle', b: [
-        'Bundles are finally, actually in the game. Thirteen years of inventory pain, addressed by a small bag.',
+        'Bundles are now available.',
         'Hardcore mode arrives on Realms.'] },
     { v: '1.21', name: 'Tricky Trials', d: 'June 13, 2024', art: 'trial', b: [
-        'Trial chambers: copper-and-tuff dungeons whose spawners scale to your party size.',
-        'The mace. Fall from higher, hit harder. Gravity is a weapon now.',
+        'Trial chambers: copper-and-tuff structures with spawners that scale to the number of players.',
+        'The mace, a weapon that deals more damage the further you fall before hitting.',
         'The breeze and the bogged join the mob roster.',
-        'The crafter: redstone that crafts. Factories, basically.',
-        'Ominous trials, for people who read the fine print on bad omens.'] },
+        'The crafter, a redstone-powered block that crafts items.',
+        'Ominous trials, a harder variant of trial chambers.'] },
     { v: '1.20', name: 'Trails & Tales', d: 'June 7, 2023', art: 'cherry', b: [
-        'Archaeology: brush suspicious sand, find pottery sherds, reassemble history.',
-        'The sniffer digs up seeds from before your world existed.',
-        'Cherry groves. Pink. Extremely pink.',
-        'Camels seat two, bamboo builds rafts, hanging signs say more.',
-        'Armor trims and smithing templates, for professional drip management.'] },
+        'Archaeology: brush suspicious sand to find pottery sherds.',
+        'The sniffer digs up ancient seeds.',
+        'The cherry grove biome.',
+        'Camels, bamboo rafts and hanging signs.',
+        'Armor trims and smithing templates.'] },
     { v: '1.19', name: 'The Wild Update', d: 'June 7, 2022', art: 'warden', b: [
-        'The deep dark and its ancient cities. Quietly. QUIETLY.',
-        'The warden: the reason you finally learned to crouch-walk.',
-        'Mangrove swamps, mud, frogs, and the allay, who just wants to help.'] },
+        'The deep dark biome and ancient cities.',
+        'The warden, a blind mob that hunts by vibration.',
+        'Mangrove swamps, mud, frogs and the allay.'] },
     { v: '1.18', name: 'Caves & Cliffs: Part II', d: 'November 30, 2021', art: 'mount', b: [
-        'World height blown open: build from Y -64 up to 319.',
-        'Terrain generation rebuilt from scratch. Mountains that earn the name.',
-        'Caves you can get genuinely, satisfyingly lost in.'] },
+        'World height extended: build from Y -64 up to 319.',
+        'Terrain generation rebuilt, with new mountain biomes.',
+        'New, larger cave systems.'] },
     { v: '1.17', name: 'Caves & Cliffs: Part I', d: 'June 8, 2021', art: 'axolotl', b: [
-        'Axolotls. The bucket is mandatory.',
+        'Axolotls, which can be carried in a bucket.',
         'Copper, amethyst, spyglasses and lightning rods.',
-        'Goats: they will ram you off a cliff. It is not personal.'] },
+        'Goats, which ram players and mobs.'] },
     { v: '1.16', name: 'Nether Update', d: 'June 23, 2020', art: 'nether', b: [
-        'The nether becomes a place to live, not just a place to sprint through.',
-        'Four new biomes, piglins to barter with, striders to ride across lava.',
-        'Netherite: beyond diamond, forged in fire, does not burn.',
-        'Respawn anchors, because dying there was getting too easy.'] },
+        'The Nether reworked with new biomes, mobs and blocks.',
+        'Four new biomes, piglins to barter with, and striders to ride across lava.',
+        'Netherite, a tier above diamond that does not burn in lava.',
+        'Respawn anchors, which set a spawn point in the Nether.'] },
     { v: '1.14', name: 'Village & Pillage', d: 'April 23, 2019', art: 'village', b: [
-        'Villagers get jobs, schedules, and strong opinions about your trades.',
-        'Pillagers get crossbows and a grudge. Raids follow.',
-        'Foxes, pandas and cats arrive. Ocelots finally relax.'] }
+        'Villagers have professions, schedules and a reworked trading system.',
+        'Pillagers, crossbows and raids.',
+        'Foxes, pandas and cats.'] }
 ];
 
 /* —— skins: front view, 16×32; head cols 4-11 rows 0-7, arms 4 wide (3 if slim),
@@ -7602,7 +7629,7 @@ function mcSeedInst() {
     ];
 }
 function mcInst(seed) { var s = mcj('inst', null); if (!s) { s = mcSeedInst(); if (seed) mcjSet('inst', s); } return s; }
-function mcSet() { return mcj('set', { keepOpen: true, openLog: false, snapshots: false, animArt: true }); }
+function mcSet() { return mcj('set', { keepOpen: false, openLog: false, snapshots: false, animArt: true }); }   // keepOpen off is the launcher's own default
 function mcVisibleInst() {
     var snaps = mcSet().snapshots;
     return mcInst().filter(function (i) { return snaps || i.id !== 'latest-snapshot'; });
@@ -7617,46 +7644,77 @@ function mcSelInst() {
 // a launcher-owned text file, wired into the machine's own content store (TXT) so it
 // opens through the real Explorer→Notepad path like any other file. Content is live:
 // mcSyncFS rewrites TXT[cid] each time, so the file always shows current launcher state.
-function mcDoc(name, text, size) {
+function mcDoc(name, text, size, date) {
     var cid = 'mc:' + name;
     TXT[cid] = text;
     var ext = extOf(name), t = EXT_T[ext] || 'file';
-    return { n: name, t: t, cid: cid, size: size || fmtKb(Math.max(1, text.length / 1024)), date: mcj('installed', '7/9/2026 1:04 PM') };
+    return { n: name, t: t, cid: cid, size: size || fmtKb(Math.max(1, text.length / 1024)), date: date || mcj('installed', '7/9/2026 1:04 PM') };
 }
+function mcIso(s) { var d = s ? new Date(s) : null; return d && !isNaN(d) ? d.toISOString() : ''; }   // the tab shows dlStamp(); the file wants ISO
 function mcProfilesText() {
-    var out = { profiles: {}, settings: { crashAssistance: false, enableSnapshots: mcSet().snapshots, keepLauncherOpen: mcSet().keepOpen, showGameLog: mcSet().openLog }, version: 3 };
+    var out = { profiles: {}, settings: { crashAssistance: true, enableSnapshots: mcSet().snapshots, keepLauncherOpen: mcSet().keepOpen, showGameLog: mcSet().openLog }, version: 3 };
     mcInst().forEach(function (i) {
-        out.profiles[i.id] = { name: i.n, type: i.builtin ? i.id : 'custom', icon: i.icon, lastVersionId: i.v, created: i.created || '2026-07-09T13:04:00Z', lastUsed: i.lastUsed || '' };
+        // built-in profiles have no name of their own in the file; a profile never played carries the epoch
+        out.profiles[i.id] = { name: i.builtin ? '' : i.n, type: i.builtin ? i.id : 'custom', icon: i.icon, lastVersionId: i.v,
+            created: mcIso(i.created) || '2026-07-09T13:04:00.000Z', lastUsed: mcIso(i.lastUsed) || '1970-01-02T00:00:00.000Z' };
     });
-    return JSON.stringify(out, null, 2);
+    return JSON.stringify(out, null, 2).replace(/^(\s*"[^"]*")\s*:\s/gm, '$1 : ');   // the launcher's serializer puts a space before the colon
 }
 function mcOptionsText() {
-    return ['version:4189', 'lang:en_us', 'fov:0.0', 'gamma:0.5', 'guiScale:0', 'renderDistance:12',
-        // this line was decoration until the machine grew a full-screen mode;
-        // now options.txt tells the truth about the window it belongs to
-        'soundCategory_master:1.0', 'soundCategory_music:0.6', 'fullscreen:' + (winIsFs('minecraft') ? 'true' : 'false'), 'enableVsync:true',
-        'difficulty:2', 'skin:' + mcSkin().id, 'pixelsAlreadyPerfect:true'].join('\n');
+    // the client's own key order; fullscreen tells the truth about the window it belongs to
+    var keys = ['version:4189', 'autoJump:false', 'operatorItemsTab:false', 'autoSuggestions:true', 'chatColors:true', 'chatLinks:true', 'chatLinksPrompt:true',
+        'enableVsync:true', 'entityShadows:true', 'forceUnicodeFont:false', 'discrete_mouse_scroll:false', 'invertYMouse:false', 'realmsNotifications:true',
+        'reducedDebugInfo:false', 'showSubtitles:false', 'directionalAudio:false', 'touchscreen:false', 'fullscreen:' + (winIsFs('minecraft') ? 'true' : 'false'),
+        'bobView:true', 'toggleCrouch:false', 'toggleSprint:false', 'darkMojangStudiosBackground:false', 'hideLightningFlashes:false', 'hideSplashTexts:false',
+        'mouseSensitivity:0.5', 'fov:0.0', 'screenEffectScale:1.0', 'fovEffectScale:1.0', 'darknessEffectScale:1.0', 'glintSpeed:0.5', 'glintStrength:0.75',
+        'damageTiltStrength:1.0', 'highContrast:false', 'narratorHotkey:true', 'gamma:0.5', 'renderDistance:12', 'simulationDistance:12', 'entityDistanceScaling:1.0',
+        'guiScale:0', 'particles:0', 'maxFps:120', 'graphicsMode:1', 'ao:true', 'prioritizeChunkUpdates:0', 'biomeBlendRadius:2', 'renderClouds:"true"',
+        'resourcePacks:[]', 'incompatibleResourcePacks:[]', 'lastServer:', 'lang:en_us', 'soundDevice:""', 'chatVisibility:0', 'chatOpacity:1.0', 'chatLineSpacing:0.0',
+        'textBackgroundOpacity:0.5', 'backgroundForChatOnly:true', 'hideServerAddress:false', 'advancedItemTooltips:false', 'pauseOnLostFocus:true',
+        'overrideWidth:0', 'overrideHeight:0', 'chatHeightFocused:1.0', 'chatDelay:0.0', 'chatHeightUnfocused:0.4375', 'chatScale:1.0', 'chatWidth:1.0',
+        'notificationDisplayTime:1.0', 'mipmapLevels:4', 'useNativeTransport:true', 'mainHand:"right"', 'attackIndicator:1', 'narrator:0', 'tutorialStep:none',
+        'mouseWheelSensitivity:1.0', 'rawMouseInput:true', 'glDebugVerbosity:1', 'skipMultiplayerWarning:false', 'hideMatchedNames:true', 'joinedFirstServer:true',
+        'hideBundleTutorial:false', 'syncChunkWrites:true', 'showAutosaveIndicator:true', 'allowServerListing:true', 'onlyShowSecureChat:false',
+        'panoramaScrollSpeed:1.0', 'telemetryOptInExtra:false', 'onboardAccessibility:false', 'menuBackgroundBlurriness:5'];
+    var binds = [['attack', 'key.mouse.left'], ['use', 'key.mouse.right'], ['forward', 'key.keyboard.w'], ['left', 'key.keyboard.a'], ['back', 'key.keyboard.s'],
+        ['right', 'key.keyboard.d'], ['jump', 'key.keyboard.space'], ['sneak', 'key.keyboard.left.shift'], ['sprint', 'key.keyboard.left.control'],
+        ['drop', 'key.keyboard.q'], ['inventory', 'key.keyboard.e'], ['chat', 'key.keyboard.t'], ['playerlist', 'key.keyboard.tab'], ['pickItem', 'key.mouse.middle'],
+        ['command', 'key.keyboard.slash'], ['socialInteractions', 'key.keyboard.p'], ['screenshot', 'key.keyboard.f2'], ['togglePerspective', 'key.keyboard.f5'],
+        ['smoothCamera', 'key.keyboard.unknown'], ['fullscreen', 'key.keyboard.f11'], ['spectatorOutlines', 'key.keyboard.unknown'], ['swapOffhand', 'key.keyboard.f'],
+        ['saveToolbarActivator', 'key.keyboard.c'], ['loadToolbarActivator', 'key.keyboard.x'], ['advancements', 'key.keyboard.l']];
+    for (var h = 1; h <= 9; h++) binds.push(['hotbar.' + h, 'key.keyboard.' + h]);
+    var sound = ['master:1.0', 'music:0.6', 'record:1.0', 'weather:1.0', 'block:1.0', 'hostile:1.0', 'neutral:1.0', 'player:1.0', 'ambient:1.0', 'voice:1.0'];
+    var parts = ['cape', 'jacket', 'left_sleeve', 'right_sleeve', 'left_pants_leg', 'right_pants_leg', 'hat'];
+    return keys.concat(binds.map(function (b) { return 'key_key.' + b[0] + ':' + b[1]; }),
+        sound.map(function (s) { return 'soundCategory_' + s; }),
+        parts.map(function (p) { return 'modelPart_' + p + ':true'; })).join('\n');
 }
 var MC_MCDIR = 'C:\\Users\\isaac\\AppData\\Roaming\\.minecraft';
 // worlds + screenshots inherited from the machine's past (the lore #73 authored here).
 // Seeded once into the live saves/screenshots; the game may add to or replace them.
+// one saved world's folder, the way the game leaves it: its subfolders first, then the files,
+// with level.dat the few KB of compressed NBT it really is
+function mcWorldFolder(key, name, regionFiles) {
+    var subs = ['advancements', 'data', 'datapacks', 'entities', 'playerdata', 'poi', 'region', 'stats'];
+    var it = subs.map(function (s) { return { n: s, t: 'folder', go: key + '/' + s }; });
+    it.push({ n: 'icon.png', t: 'img', size: '3 KB' },
+        { n: 'level.dat', t: 'sys', size: fmtKb(3 + fsHash(name) % 9) },
+        { n: 'level.dat_old', t: 'sys', size: fmtKb(3 + fsHash(name + 'old') % 9) },
+        { n: 'session.lock', t: 'sys', size: '1 KB' });
+    FS[key] = { items: it, empty: '' };
+    subs.forEach(function (s) { FS[key + '/' + s] = { items: [], empty: '' }; });
+    FS[key + '/region'].items = regionFiles.map(function (r) { return { n: r, t: 'sys', size: fmtKb(900 + fsHash(name + r) % 3300) }; });
+}
 function mcSeedSaves() {
     var worlds = [
-        { n: 'world', region: ['r.0.0.mca', 'r.-1.0.mca'], icon: 1 },
-        { n: 'world (1)', region: ['r.0.0.mca'], icon: 0 },
-        { n: 'SMP with malachi', region: ['r.0.0.mca', 'r.0.-1.mca'], icon: 1 },
-        { n: 'creative flat test', region: [], icon: 0 }
+        { n: 'world', region: ['r.0.0.mca', 'r.-1.0.mca'] },
+        { n: 'world (1)', region: ['r.0.0.mca'] },
+        { n: 'SMP with malachi', region: ['r.0.0.mca', 'r.0.-1.mca'] },
+        { n: 'creative flat test', region: ['r.0.0.mca'] }
     ];
     FS['.minecraft/saves'] = { items: worlds.map(function (w) { return { n: w.n, t: 'folder', go: '.minecraft/saves/' + w.n }; }),
-        empty: 'No worlds yet.' };
-    worlds.forEach(function (w) {
-        var it = [{ n: 'level.dat', t: 'sys', size: '92 KB' }];
-        if (w.region.length) it.push({ n: 'region', t: 'folder', go: '.minecraft/saves/' + w.n + '/region' });
-        if (w.icon) it.push({ n: 'icon.png', t: 'img', size: '3 KB' });
-        FS['.minecraft/saves/' + w.n] = { items: it, empty: '' };
-        if (w.region.length) FS['.minecraft/saves/' + w.n + '/region'] = {
-            items: w.region.map(function (r) { return { n: r, t: 'sys', size: fmtKb(900 + fsHash(w.n + r) % 3300) }; }), empty: '' };
-    });
+        empty: '' };
+    worlds.forEach(function (w) { mcWorldFolder('.minecraft/saves/' + w.n, w.n, w.region); });
 }
 /* —— the bridge the game talks to the machine through ——
    The title screen needs three things the desktop owns: a way to quit (which
@@ -7673,14 +7731,10 @@ window.MCHOST = {
     saves: function (list) {
         if (!list || !list.length) return;
         FS['.minecraft/saves'] = { items: list.map(function (w) { return { n: w.folder || w.name, t: 'folder', go: '.minecraft/saves/' + (w.folder || w.name) }; }),
-            empty: 'No worlds yet.' };
+            empty: '' };
         list.forEach(function (w) {
-            var f = w.folder || w.name, key = '.minecraft/saves/' + f;
-            var it = [{ n: 'level.dat', t: 'sys', size: fmtKb(60 + fsHash(f) % 60) }, { n: 'icon.png', t: 'img', size: '3 KB' },
-                { n: 'region', t: 'folder', go: key + '/region' }];
-            FS[key] = { items: it, empty: '' };
-            FS[key + '/region'] = { items: ['r.0.0.mca', 'r.-1.0.mca'].map(function (r) {
-                return { n: r, t: 'sys', size: fmtKb(900 + fsHash(f + r) % 3300) }; }), empty: '' };
+            var f = w.folder || w.name;
+            mcWorldFolder('.minecraft/saves/' + f, f, ['r.0.0.mca', 'r.-1.0.mca']);
         });
         syncFsBody();
     }
@@ -7688,31 +7742,42 @@ window.MCHOST = {
 
 function mcSeedShots() {
     FS['.minecraft/screenshots'] = { items: ['2019-06-14_20.41.05.png', '2019-07-02_23.58.11.png', '2020-03-19_01.12.44.png']
-        .map(function (n) { return { n: n, t: 'img', size: fmtKb(600 + fsHash(n) % 3200) }; }), empty: 'F2 in game takes a screenshot. These are from the before times.' };
+        .map(function (n) { return { n: n, t: 'img', size: fmtKb(600 + fsHash(n) % 3200) }; }), empty: '' };
 }
 function mcSyncFS() {
     var dl = mcj('dl', []), crashes = mcj('crash', []), log = mcj('log', null);
-    var items = [
-        { n: 'saves', t: 'folder', go: '.minecraft/saves' },
-        { n: 'resourcepacks', t: 'folder', go: '.minecraft/resourcepacks' },
-        { n: 'screenshots', t: 'folder', go: '.minecraft/screenshots' },
-        { n: 'versions', t: 'folder', go: '.minecraft/versions' },
-        { n: 'logs', t: 'folder', go: '.minecraft/logs' }
-    ];
-    if (crashes.length) items.push({ n: 'crash-reports', t: 'folder', go: '.minecraft/crash-reports' });
-    items.push(mcDoc('launcher_profiles.json', mcProfilesText(), '2 KB'));
-    items.push(mcDoc('options.txt', mcOptionsText(), '1 KB'));
+    // folders in Explorer's order, then the files. assets/ and libraries/ arrive with the first
+    // download, as they do on a real machine — they are most of a real .minecraft by size
+    var folders = ['saves', 'resourcepacks', 'screenshots', 'versions', 'logs'];
+    if (dl.length) folders.push('assets', 'libraries');
+    if (crashes.length) folders.push('crash-reports');
+    var items = folders.sort().map(function (f) { return { n: f, t: 'folder', go: '.minecraft/' + f }; });
+    items.push(mcDoc('launcher_profiles.json', mcProfilesText()));
+    items.push(mcDoc('options.txt', mcOptionsText()));
+    function subdirs(root, names, fill) {
+        FS[root] = { items: names.map(function (s) { return { n: s, t: 'folder', go: root + '/' + s }; }), empty: '' };
+        names.forEach(function (s) { FS[root + '/' + s] = { items: (fill && fill[s]) || [], empty: '' }; });
+    }
+    if (dl.length) {
+        var hex = []; for (var hi = 0; hi < 256; hi++) hex.push(('0' + hi.toString(16)).slice(-2));
+        var indexes = []; dl.forEach(function (v) { var ix = mcAssetIndex(v) + '.json'; if (!indexes.some(function (x) { return x.n === ix; })) indexes.push({ n: ix, t: EXT_T.json || 'file', size: fmtKb(380 + fsHash(ix) % 60), date: mcj('dld_' + v, dlStamp()) }); });
+        subdirs('.minecraft/assets', ['indexes', 'log_configs', 'objects', 'skins'], { indexes: indexes, log_configs: [{ n: 'client-1.12.xml', t: EXT_T.xml || 'file', size: '1 KB' }] });
+        subdirs('.minecraft/assets/objects', hex);
+        subdirs('.minecraft/libraries', ['ca', 'com', 'commons-codec', 'commons-io', 'commons-logging', 'io', 'it', 'net', 'org']);
+    } else {
+        Object.keys(FS).forEach(function (k) { if (/^\.minecraft\/(assets|libraries)(\/|$)/.test(k)) delete FS[k]; });
+    }
     // this IS the canonical .minecraft — junctioned from C:\Users\isaac\AppData\Roaming
     FS['.minecraft'] = { items: items, empty: '', label: MC_MCDIR,
         crumb: [['This PC', 'This PC'], ['Local Disk (C:)', 'C:'], ['Users', 'C:/Users'], ['isaac', 'C:/Users/isaac'],
             ['AppData', 'C:/Users/isaac/AppData'], ['Roaming', 'C:/Users/isaac/AppData/Roaming'], ['.minecraft', '.minecraft']],
         parent: 'C:/Users/isaac/AppData/Roaming' };
     if (!FS['.minecraft/saves']) mcSeedSaves();      // worlds carried over from the machine's history (honoring #73's lore)
-    if (!FS['.minecraft/resourcepacks']) FS['.minecraft/resourcepacks'] = { items: [], empty: 'Drop resource packs here. These pixels are already pretty packed, though.' };
+    if (!FS['.minecraft/resourcepacks']) FS['.minecraft/resourcepacks'] = { items: [], empty: '' };
     if (!FS['.minecraft/screenshots']) mcSeedShots();
     FS['.minecraft/versions'] = {
         items: dl.map(function (v) { return { n: v, t: 'folder', go: '.minecraft/versions/' + v }; }),
-        empty: 'Versions download themselves the first time you press PLAY.'
+        empty: ''
     };
     // drop folder keys for versions no longer downloaded, so a parked Explorer
     // doesn't keep showing a version the launcher just wiped
@@ -7722,16 +7787,16 @@ function mcSyncFS() {
     dl.forEach(function (v) {
         FS['.minecraft/versions/' + v] = { items: [
             { n: v + '.jar', t: 'mcjar', size: mcJarSize(v), date: mcj('dld_' + v, dlStamp()) },
-            mcDoc(v + '.json', mcVerJson(v), '38 KB')
+            mcDoc(v + '.json', mcVerJson(v), null, mcj('dld_' + v, dlStamp()))
         ], empty: '' };
     });
     FS['.minecraft/logs'] = {
-        items: log ? [mcDoc('latest.log', log.text, '4 KB')] : [],
-        empty: 'Logs show up after a launch. So far: silence.'
+        items: log ? [mcDoc('latest.log', log.text, null, log.at)] : [],
+        empty: ''
     };
     FS['.minecraft/crash-reports'] = {
-        items: crashes.map(function (c) { return mcDoc(c.n, c.text, '6 KB'); }),
-        empty: 'No crashes. Suspicious.'
+        items: crashes.map(function (c) { return mcDoc(c.n, c.text, null, c.at); }),
+        empty: ''
     };
     // give every .minecraft subfolder the same Explorer metadata fsCompile authors for real
     // folders — a clickable breadcrumb CHAIN, a display label, a parent, and an address-bar index
@@ -7787,51 +7852,210 @@ function mcStopRun() {
     MC.run = null;   // also disarms the pending launch timeout, which checks MC.run === r
 }
 
-/* —— the launch pipeline: download → launch → hand off to the game (or crash honestly) —— */
-function mcLogText(v, ok) {
-    var n = new Date();
+/* —— the launch pipeline: download → launch → hand off to the game (or crash) ——
+   latest.log and the crash report follow the real client's output for the era
+   of the version launched: log4j lines on the Render thread from 1.15, the
+   Client thread from 1.7, plain stdout for the clients before that. A failed
+   launch is the failure a real client has when it cannot get a GL context —
+   GLFW's "driver does not appear to support OpenGL" on LWJGL 3, "Pixel format
+   not accelerated" on LWJGL 2 — because that is what a missing renderer is. */
+var MC_JVM_DEFAULT = '-Xmx2G -XX:+UnlockExperimentalVMOptions -XX:+UseG1GC -XX:G1NewSizePercent=20 -XX:G1ReservePercent=20 -XX:MaxGCPauseMillis=50 -XX:G1HeapRegionSize=32M';
+function mcLwjgl(mi) { return mi >= 21 ? '3.3.3-snapshot' : mi >= 19 ? '3.3.1 SNAPSHOT' : mi >= 15 ? '3.2.2 build 10' : mi >= 13 ? '3.1.6 build 14' : mi >= 8 ? '2.9.4-nightly-20150209' : '2.9.1'; }
+var MC_GLFW_MSG = 'WGL: The driver does not appear to support OpenGL';
+function mcGlfwCode(mi) { return mi >= 15 ? [65542, '0x10006'] : [65544, '0x10008']; }
+// the boot error callback throwing from inside glfwCreateWindow, the way the real trace reads
+var MC_GLFW_TRACE = ['\tat dsh.a(SourceFile:95)',
+    '\tat org.lwjgl.glfw.GLFWErrorCallbackI.callback(GLFWErrorCallbackI.java:36)',
+    '\tat org.lwjgl.system.JNI.invokePPPP(Native Method)',
+    '\tat org.lwjgl.glfw.GLFW.glfwCreateWindow(GLFW.java:1938)',
+    '\tat dsh.<init>(SourceFile:96)', '\tat dtw.<init>(SourceFile:120)', '\tat djz.<init>(SourceFile:497)',
+    '\tat net.minecraft.client.main.Main.main(SourceFile:213)'];
+var MC_PIXEL_TRACE = ['\tat org.lwjgl.opengl.WindowsPeerInfo.nChoosePixelFormat(Native Method)',
+    '\tat org.lwjgl.opengl.WindowsPeerInfo.choosePixelFormat(WindowsPeerInfo.java:52)',
+    '\tat org.lwjgl.opengl.WindowsDisplay.createWindow(WindowsDisplay.java:247)',
+    '\tat org.lwjgl.opengl.Display.createWindow(Display.java:306)',
+    '\tat org.lwjgl.opengl.Display.create(Display.java:848)',
+    '\tat org.lwjgl.opengl.Display.create(Display.java:757)',
+    '\tat org.lwjgl.opengl.Display.create(Display.java:739)',
+    '\tat bib.an(SourceFile:594)', '\tat bib.a(SourceFile:405)', '\tat net.minecraft.client.main.Main.main(SourceFile:123)'];
+function mcLogText(v, ok, crashPath) {
+    var n = new Date(), mi = mcMinor(v), lines = [];
     // offsets roll through minutes AND hours — a launch at 10:59:58 logged 10:00:02 before
     function t(off) {
         var d = new Date(n.getTime() + off * 1000), p = function (x) { return ('0' + x).slice(-2); };
         return '[' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()) + '] ';
     }
-    var lines = [
-        t(0) + '[main/INFO]: Setting user: isaacure',
-        t(0) + '[main/INFO]: Loading Minecraft ' + v + ' with URE Launcher 2.29.1',
-        t(1) + '[main/INFO]: Environment: UreOS 11 (Pixel Edition), Java 21.0.3',
-        t(1) + '[Render thread/INFO]: Backend library: LWJGL version 3.3.3',
-        t(2) + '[Render thread/INFO]: Reticulating pixel splines',
-        t(2) + '[Render thread/INFO]: Found 512 assets, all of them square'
-    ];
-    if (ok) {
-        lines.push(t(3) + '[Render thread/INFO]: Sound engine started');
-        lines.push(t(3) + '[Render thread/INFO]: Created: 1024x512 textures-atlas');
-        lines.push(t(4) + '[Render thread/INFO]: Setting screen: title. Have fun.');
-    } else {
-        lines.push(t(3) + '[Render thread/ERROR]: Unable to locate net.minecraft.client.main.Main');
-        lines.push(t(3) + '[Render thread/ERROR]: java.lang.ClassNotFoundException: net.minecraft.client.main.Main');
-        lines.push(t(4) + '[Render thread/FATAL]: The game quit before it existed. Crash report saved.');
+    if (mi < 7) {   // the old clients: no logger, just what they printed
+        lines.push('Setting user: isaacure');
+        if (ok) lines.push('Starting up SoundSystem...', 'Initializing LWJGL OpenAL', '    (The LWJGL binding of OpenAL.  For more information, see http://www.lwjgl.org)', 'OpenAL initialized.');
+        else lines.push('Failed to start game', 'org.lwjgl.LWJGLException: Pixel format not accelerated');
+        if (!ok) lines = lines.concat(MC_PIXEL_TRACE, ['#@!@# Game crashed! Crash report saved to: #@!@# ' + crashPath]);
+        return lines.join('\n');
     }
+    var T = mi >= 15 ? 'Render thread' : 'Client thread';
+    var boot = mi >= 19 ? 'Render thread' : mi >= 13 ? 'main' : 'Client thread';   // the thread the launch lines log on
+    function L(off, thread, level, msg) { return t(off) + '[' + thread + '/' + level + ']: ' + msg; }
+    if (mi >= 14) lines.push(L(0, 'Datafixer Bootstrap', 'INFO', (mi >= 21 ? 226 : mi >= 17 ? 188 : 186) + ' Datafixer optimizations took ' + (140 + mi % 7 * 9) + ' milliseconds'));
+    if (mi >= 21) lines.push(L(0, boot, 'INFO', 'Environment: Environment[sessionHost=https://sessionserver.mojang.com, servicesHost=https://api.minecraftservices.com, name=PROD]'));
+    else if (mi >= 16) lines.push(L(0, boot, 'INFO', "Environment: authHost='https://authserver.mojang.com', accountsHost='https://api.mojang.com', sessionHost='https://sessionserver.mojang.com', servicesHost='https://api.minecraftservices.com', name='PROD'"));
+    lines.push(L(0, boot, 'INFO', 'Setting user: isaacure'));
+    lines.push(L(1, T, 'INFO', mi >= 15 ? 'Backend library: LWJGL version ' + mcLwjgl(mi) : 'LWJGL Version: ' + mcLwjgl(mi)));
+    if (!ok) {
+        if (mi >= 13) {
+            lines.push(L(1, T, 'ERROR', 'GLFW error ' + mcGlfwCode(mi)[0] + ': ' + MC_GLFW_MSG));
+        } else {
+            lines.push(L(1, T, 'ERROR', "Couldn't set pixel format"));
+            lines.push('org.lwjgl.LWJGLException: Pixel format not accelerated');
+            lines = lines.concat(MC_PIXEL_TRACE);
+        }
+        lines.push('#@!@# Game crashed! Crash report saved to: #@!@# ' + crashPath);   // the game's own last words, to stdout
+        return lines.join('\n');
+    }
+    lines.push(L(2, T, 'INFO', 'Reloading ResourceManager: ' + (mi >= 19 ? 'vanilla' : 'Default')));
+    if (mi >= 20) lines.push(L(2, 'Worker-Main-3', 'INFO', 'Found unifont_all_no_pua-' + (mi >= 21 ? '15.1.05' : '15.0.06') + '.hex, loading'));
+    if (mi >= 19) {   // every 1.19+ log has these two
+        lines.push(L(2, T, 'WARN', 'Missing sound for event: minecraft:item.goat_horn.play'));
+        lines.push(L(2, T, 'WARN', 'Missing sound for event: minecraft:entity.goat.screaming.horn_break'));
+    }
+    if (mi >= 13) {
+        lines.push(L(3, T, 'INFO', mi >= 20 ? 'OpenAL initialized on device OpenAL Soft on Speakers (Realtek(R) Audio)' : 'OpenAL initialized.'));
+        lines.push(L(3, T, 'INFO', 'Sound engine started'));
+    } else {
+        lines.push(L(2, 'Sound Library Loader', 'INFO', 'Starting up SoundSystem...'));
+        lines.push(L(3, 'Thread-5', 'INFO', 'Initializing LWJGL OpenAL'));
+        lines.push(L(3, 'Thread-5', 'INFO', '(The LWJGL binding of OpenAL.  For more information, see http://www.lwjgl.org)'));
+        lines.push(L(3, 'Thread-5', 'INFO', 'OpenAL initialized.'));
+        lines.push(L(3, 'Sound Library Loader', 'INFO', 'Sound engine started'));
+    }
+    if (mi >= 14) {
+        var mip = mi >= 17 ? 'x4' : '', mip0 = mi >= 17 ? 'x0' : '';
+        [[(mi >= 20 ? '1024x1024' : '1024x512') + mip, 'blocks'], ['256x256' + mip, 'signs'], ['512x512' + mip, 'banner_patterns'], ['512x512' + mip, 'shield_patterns'],
+         ['1024x512' + mip, 'chest'], ['512x256' + mip, 'beds'], ['512x256' + mip, 'shulker_boxes']]
+            .concat(mi >= 20 ? [['1024x512' + mip, 'armor_trims']] : [])
+            .concat([['512x256' + mip0, 'particles'], ['512x256' + mip0, 'paintings'], ['256x128' + mip0, 'mob_effects']]).forEach(function (a) {
+            lines.push(L(3, T, 'INFO', 'Created: ' + a[0] + ' minecraft:textures/atlas/' + a[1] + '.png-atlas'));
+        });
+        if (mi >= 20) lines.push(L(4, T, 'INFO', 'Created: 1024x512x0 minecraft:textures/atlas/gui.png-atlas'));
+    } else {
+        lines.push(L(4, T, 'INFO', 'Created: 1024x512 textures-atlas'));
+    }
+    if (mi >= 12) lines.push(L(4, T, 'INFO', 'Narrator library for x64 successfully loaded'));
     return lines.join('\n');
 }
-function mcCrashText(v, when) {
-    return ['---- Minecraft Crash Report ----',
+// the JVM's -Xmx in MiB, from the installation's arguments
+function mcXmx(jvm) {
+    var m = /-Xmx(\d+)([GgMm])/.exec(jvm || MC_JVM_DEFAULT);
+    return m ? +m[1] * (/g/i.test(m[2]) ? 1024 : 1) : 2048;
+}
+function mcCrashText(v, when, inst) {
+    var mi = mcMinor(v), modern = mi >= 13, java = mcJavaMajor(v), max = mcXmx(inst && inst.jvm);
+    var used = Math.round(max * 0.21), com = Math.round(max * 0.5), unit = mi >= 17 ? 'MiB' : 'MB', hw = mi >= 21 ? 'MiB' : 'MB';
+    var flags = ['-XX:HeapDumpPath=MojangTricksIntelDriversForPerformance_javaw.exe_minecraft.exe.heapdump', '-Xss1M'].concat(((inst && inst.jvm) || MC_JVM_DEFAULT).split(/\s+/).filter(Boolean));
+    var out = ['---- Minecraft Crash Report ----',
         '// I just don\'t know what went wrong :(', '',
         'Time: ' + when,
-        'Description: Initializing game', '',
-        'java.lang.ClassNotFoundException: net.minecraft.client.main.Main',
-        '\tat java.base/jdk.internal.loader.BuiltinClassLoader.loadClass(BuiltinClassLoader.java:641)',
-        '\tat ureos.launcher.GameLoader.boot(GameLoader.java:52)',
-        '\tat ureos.launcher.Main.run(Main.java:29)', '',
-        '// The launcher is finished. The game is being built in another window.',
-        '// Until it ships, this crash is the most honest thing on the machine.', '',
+        'Description: Initializing game', ''];
+    if (modern) {
+        out.push('java.lang.IllegalStateException: GLFW error before init: [' + mcGlfwCode(mi)[1] + ']' + MC_GLFW_MSG);
+        out = out.concat(MC_GLFW_TRACE);
+    } else {
+        out.push('org.lwjgl.LWJGLException: Pixel format not accelerated');
+        out = out.concat(MC_PIXEL_TRACE);
+    }
+    out.push('', '',
+        'A detailed walkthrough of the error, its code path and all known details is as follows:',
+        '---------------------------------------------------------------------------------------', '',
+        '-- Head --',
+        'Thread: ' + (mi >= 15 ? 'Render thread' : 'Client thread'),
+        'Stacktrace:');
+    out = out.concat((modern ? MC_GLFW_TRACE : MC_PIXEL_TRACE).slice(0, -1));
+    out.push('',
+        '-- Initialization --');
+    if (modern && mi >= 17) out.push(   // the module list arrived with 1.16.2; before that the section is just its stack trace
+        'Details:',
+        '\tModules: ',   // the Windows module list the report carries since 1.16.2 (name:description:version:vendor)
+        '\t\tADVAPI32.dll:Advanced Windows 32 Base API:10.0.22621.2506 (WinBuild.160101.0800):Microsoft Corporation',
+        '\t\tCOMCTL32.dll:User Experience Controls Library:6.10 (WinBuild.160101.0800):Microsoft Corporation',
+        '\t\tGDI32.dll:GDI Client DLL:10.0.22621.2506 (WinBuild.160101.0800):Microsoft Corporation',
+        '\t\tKERNEL32.DLL:Windows NT BASE API Client DLL:10.0.22621.2506 (WinBuild.160101.0800):Microsoft Corporation',
+        '\t\tOPENGL32.dll:OpenGL Client DLL:10.0.22621.1 (WinBuild.160101.0800):Microsoft Corporation',
+        '\t\tUSER32.dll:Multi-User Windows USER API Client DLL:10.0.22621.2506 (WinBuild.160101.0800):Microsoft Corporation',
+        '\t\tjava.dll:OpenJDK Platform binary:' + java + '.0.' + (java === 21 ? 3 : 8) + '.0:Microsoft',
+        '\t\tjavaw.exe:OpenJDK Platform binary:' + java + '.0.' + (java === 21 ? 3 : 8) + '.0:Microsoft',
+        '\t\tjvm.dll:OpenJDK 64-Bit server VM:' + java + '.0.' + (java === 21 ? 3 : 8) + '.0:Microsoft',
+        '\t\tntdll.dll:NT Layer DLL:10.0.22621.2506 (WinBuild.160101.0800):Microsoft Corporation');
+    out.push('Stacktrace:',
+        (modern ? MC_GLFW_TRACE : MC_PIXEL_TRACE).slice(-1)[0], '',
         '-- System Details --',
+        'Details:',
         '\tMinecraft Version: ' + v,
-        '\tOperating System: UreOS 11 (Pixel Edition)',
-        '\tJava Version: 21.0.3',
-        '\tMemory: 2048 MB allocated, most of it pixels',
-        '\tLauncher: URE Launcher 2.29.1',
-        '\tGPU: Integrated Bloom Renderer (wallpaper-class)'].join('\n');
+        '\tMinecraft Version ID: ' + v,
+        '\tOperating System: Windows 11 (amd64) version 10.0',
+        '\tJava Version: ' + (java === 8 ? '1.8.0_51, Oracle Corporation' : java + '.0.' + (java === 21 ? 3 : 8) + ', Microsoft'),
+        '\tJava VM Version: ' + (java === 8 ? 'Java HotSpot(TM) 64-Bit Server VM (mixed mode), Oracle Corporation' : 'OpenJDK 64-Bit Server VM (mixed mode), Microsoft'),
+        '\tMemory: ' + used * 1048576 + ' bytes (' + used + ' ' + unit + ') / ' + com * 1048576 + ' bytes (' + com + ' ' + unit + ') up to ' + max * 1048576 + ' bytes (' + max + ' ' + unit + ')',
+        '\tCPUs: 8');
+    if (mi >= 17) out.push(
+        '\tProcessor Vendor: GenuineIntel',
+        '\tProcessor Name: 11th Gen Intel(R) Core(TM) i7-1165G7 @ 2.80GHz',
+        '\tIdentifier: Intel64 Family 6 Model 140 Stepping 1',
+        '\tMicroarchitecture: Tiger Lake',
+        '\tFrequency (GHz): 2.80',
+        '\tNumber of physical packages: 1',
+        '\tNumber of physical CPUs: 4',
+        '\tNumber of logical CPUs: 8',
+        '\tGraphics card #0 name: Intel(R) Iris(R) Xe Graphics',
+        '\tGraphics card #0 vendor: Intel Corporation (0x8086)',
+        '\tGraphics card #0 VRAM (' + hw + '): 128.00',
+        '\tGraphics card #0 deviceId: 0x9a49',
+        '\tGraphics card #0 versionInfo: DriverVersion=31.0.101.4502',
+        '\tVirtual memory max (' + hw + '): 18265.61',
+        '\tVirtual memory used (' + hw + '): 9812.40',
+        '\tSwap memory total (' + hw + '): 2432.00',
+        '\tSwap memory used (' + hw + '): 41.15');
+    if (mi >= 21) out.push(
+        '\tSpace in storage for jna.tmpdir (MiB): <path not set>',
+        '\tSpace in storage for org.lwjgl.system.SharedLibraryExtractPath (MiB): <path not set>',
+        '\tSpace in storage for io.netty.native.workdir (MiB): <path not set>',
+        '\tSpace in storage for java.io.tmpdir (MiB): available: 118293.36, total: 476418.99',
+        '\tSpace in storage for workdir (MiB): available: 118293.36, total: 476418.99');
+    out.push('\tJVM Flags: ' + flags.length + ' total; ' + flags.join(' '));
+    if (modern) {
+        out.push('\tLaunched Version: ' + v);
+        if (mi >= 21) out.push('\tLauncher name: minecraft-launcher');
+        out.push(
+            '\tBackend library: LWJGL version ' + mcLwjgl(mi),
+            '\tBackend API: Unknown',
+            '\tWindow size: <not initialized>',
+            '\tGL Caps: Using framebuffer using OpenGL 3.2',
+            '\tGL debug messages: ');
+        if (mi <= 20) out.push('\tUsing VBOs: Yes');
+        out.push('\tIs Modded: Probably not. Client jar signature and brand is untouched');
+    }
+    else out.push(
+        '\tIntCache: cache: 0, tcache: 0, allocated: 0, tallocated: 0',
+        '\tLaunched Version: ' + v,
+        '\tLWJGL: ' + mcLwjgl(mi),
+        '\tOpenGL: ~~ERROR~~ RuntimeException: No OpenGL context found in the current thread.',
+        '\tGL Caps: ',
+        '\tUsing VBOs: Yes',
+        '\tIs Modded: Probably not. Jar signature remains and client brand is untouched.');
+    if (mi >= 21) out.push('\tUniverse: 400921fb54442d18');
+    out.push('\tType: Client (map_client.txt)');
+    if (modern) out.push('\tGraphics mode: fancy', '\tRender Distance: 12/12 chunks');
+    out.push('\tResource Packs: ',
+        '\tCurrent Language: ' + (mi >= 19 ? 'en_us' : 'English (US)'));
+    if (mi >= 21) out.push('\tLocale: en_US', '\tSystem encoding: Cp1252', '\tFile encoding: UTF-8');
+    else if (!modern) out.push('\tProfiler Position: N/A (disabled)');
+    out.push('\tCPU: ' + (modern ? '8x 11th Gen Intel(R) Core(TM) i7-1165G7 @ 2.80GHz' : '<unknown>'));
+    return out.join('\n');
+}
+// the crash report's own timestamp: ISO-like since 1.19, the old Java default before
+function mcCrashWhen(v, n) {
+    var p = function (x) { return ('0' + x).slice(-2); }, mi = mcMinor(v);
+    if (mi >= 19) return n.getFullYear() + '-' + p(n.getMonth() + 1) + '-' + p(n.getDate()) + ' ' + p(n.getHours()) + ':' + p(n.getMinutes()) + ':' + p(n.getSeconds());
+    // Java's default short date: Java 16+ (1.17–1.18) puts a comma after the date, Java 8 did not
+    return (n.getMonth() + 1) + '/' + n.getDate() + '/' + String(n.getFullYear()).slice(-2) + (mi >= 17 ? ', ' : ' ') + fmtTime(n);
 }
 function mcPlay() {
     if (!MC || MC.run || MC.signedOut) return;   // Alt+P must respect the sign-in gate the UI enforces
@@ -7875,7 +8099,14 @@ function mcLaunchDone(r) {
     // the game must be BOTH registered (APPS.minecraft, from #74) AND actually loaded (window.MC) to run;
     // if minecraft.js failed to load the launcher shows its honest crash instead. __mclForceCrash demos it.
     var ok = !window.__mclForceCrash && !!(APPS.minecraft && window.MC);
-    mcjSet('log', { text: mcLogText(r.v, ok), v: r.v });
+    var n = new Date(), when = mcCrashWhen(r.v, n), fname = null;
+    if (!ok) {
+        var stem = 'crash-' + n.getFullYear() + '-' + ('0' + (n.getMonth() + 1)).slice(-2) + '-' + ('0' + n.getDate()).slice(-2) +
+            '_' + ('0' + n.getHours()).slice(-2) + '.' + ('0' + n.getMinutes()).slice(-2) + '.' + ('0' + n.getSeconds()).slice(-2) + '-client';
+        fname = stem + '.txt';
+        for (var ci = 2; mcj('crash', []).some(function (c) { return c.n === fname; }); ci++) fname = stem + ' (' + ci + ').txt';   // two crashes can share a second
+    }
+    mcjSet('log', { text: mcLogText(r.v, ok, fname && MC_MCDIR + '\\crash-reports\\' + fname), v: r.v, at: dlStamp() });
     mcSyncFS();
     mcUntomb('.minecraft/logs', 'latest.log'); mcUntomb('.minecraft', 'logs');
     mcUntomb('.minecraft', 'launcher_profiles.json');   // lastUsed just changed, so the file was rewritten
@@ -7883,19 +8114,18 @@ function mcLaunchDone(r) {
     MC.run = null;
     if (mcSet().openLog) openApp('notepad', { file: { n: 'latest.log', body: mcj('log', { text: '' }).text } });
     if (ok) {
-        // THE SEAM — the game chat's app takes it from here
+        // THE SEAM — the game takes it from here. The window appearing is the
+        // whole announcement, the way it is on a real desktop.
         openApp('minecraft', { version: r.v, installation: r.inst.n, skin: mcSkin() });
-        toast('Launching Minecraft ' + r.v + '…');
-        if (!mcSet().keepOpen && openWins.mclauncher) minWin('mclauncher');
+        // with "Keep the Launcher open" off the real launcher hides itself while the game
+        // runs and comes back when the game exits — APPS.minecraft.onClose brings it back
+        if (!mcSet().keepOpen && openWins.mclauncher) { closeWin('mclauncher'); mclReturn = true; }   // after closeWin: closeMC clears the flag for closes the user makes
         mcPaintPlay();
         return;
     }
-    var when = dlStamp(), n = new Date();
-    var stem = 'crash-' + n.getFullYear() + '-' + ('0' + (n.getMonth() + 1)).slice(-2) + '-' + ('0' + n.getDate()).slice(-2) +
-        '_' + ('0' + n.getHours()).slice(-2) + '.' + ('0' + n.getMinutes()).slice(-2) + '.' + ('0' + n.getSeconds()).slice(-2) + '-client';
-    var crashes = mcj('crash', []), fname = stem + '.txt';
-    for (var ci = 2; crashes.some(function (c) { return c.n === fname; }); ci++) fname = stem + ' (' + ci + ').txt';   // two crashes can share a second
-    crashes.unshift({ n: fname, text: mcCrashText(r.v, when) });
+    var crashes = mcj('crash', []);
+    var report = mcCrashText(r.v, when, r.inst);
+    crashes.unshift({ n: fname, text: report, at: dlStamp() });
     if (crashes.length > 3) crashes.length = 3;
     mcjSet('crash', crashes);
     mcSyncFS();
@@ -7905,10 +8135,10 @@ function mcLaunchDone(r) {
     // the crash strip lives outside the play slot, so this needs the full page back
     if (MC.tab === 'play' && MC.game === 'java' && !MC.signedOut) mcPage(); else mcPaintPlay();
     dlgOpen('Minecraft: Java Edition', '<p class="dlg-msg"><b>The game crashed!</b></p>' +
-        '<p class="dlg-msg">Exit code: 1</p>' +
-        '<p class="dlg-msg" style="opacity:.75">java.lang.ClassNotFoundException: net.minecraft.client.main.Main<br>' +
-        'A crash report was saved to ' + MC_MCDIR + '\\crash-reports\\' + esc(fname) + '</p>', [
-        ['Open crash report', 'primary', function () { openApp('notepad', { file: { n: fname, body: mcCrashText(r.v, when) } }); }],
+        '<p class="dlg-msg">An unexpected issue occurred and the game has crashed. We\'re sorry for the inconvenience.</p>' +
+        '<p class="dlg-msg">Exit code: -1</p>' +
+        '<p class="dlg-msg" style="opacity:.75">A crash report was saved to ' + MC_MCDIR + '\\crash-reports\\' + esc(fname) + '</p>', [
+        ['View crash report', 'primary', function () { openApp('notepad', { file: { n: fname, body: report } }); }],   // the crash strip uses the same verb
         ['Close', '', null]
     ]);
 }
@@ -7937,7 +8167,7 @@ function mcGo(tab) {
     if (!MC) return;
     if (MC.skinEdit && MC.skinEdit.dirty && tab !== 'skins') {
         var t2 = tab;
-        dlgConfirm('Discard skin?', 'The skin editor has unsaved pixels.', 'Discard', mcLive(function () { MC.skinEdit = null; mcGo(t2); }));
+        dlgConfirm('Discard changes?', 'This skin has unsaved changes.', 'Discard', mcLive(function () { MC.skinEdit = null; mcGo(t2); }));
         return;
     }
     if (tab !== 'skins') MC.skinEdit = null;
@@ -7984,7 +8214,7 @@ function mcJavaPage() {
 /* —— Play tab —— */
 function mcPlayPage() {
     var inst = mcSelInst(), v = mcResolveVer(inst.v), vi = mcVer(v);
-    var crash = MC.crashed ? '<div class="mcl-crashbar"><span>Minecraft: Java Edition just crashed. It left a note.</span>' +
+    var crash = MC.crashed ? '<div class="mcl-crashbar"><span>Minecraft: Java Edition has crashed.</span>' +
         '<button class="mcl-linkbtn" type="button" data-mca="crashlog">View crash report</button>' +
         '<button class="mcl-crashx" type="button" data-mca="crashx" aria-label="Dismiss">✕</button></div>' : '';
     return '<div class="mcl-body mcl-playwrap">' +
@@ -8037,7 +8267,7 @@ function mcInstPage() {
                 '<button class="mcl-btn sm" type="button" data-mca="instmenu" data-id="' + esc(i.id) + '" aria-haspopup="menu">⋮</button>' +
                 '</span></div>';
         }).join('') + '</div>' +
-        '<p class="mcl-emptymsg"' + (list.length ? ' hidden' : '') + '>Nothing matches. The versions are all still there, promise.</p>' +
+        '<p class="mcl-emptymsg"' + (list.length ? ' hidden' : '') + '>No installations match your search.</p>' +
         '</div>';
 }
 function mcInstForm() {
@@ -8068,7 +8298,7 @@ function mcInstForm() {
                 }).join('') + '</div>' : '') + '</div></div>' +
         '<details class="mcl-more"><summary>More options</summary>' +
             '<label class="mcl-field"><span>Game directory</span><input class="mcl-input" type="text" data-mcin="instdir" value="' + esc(e.dir || MC_MCDIR) + '" spellcheck="false"></label>' +
-            '<label class="mcl-field"><span>JVM arguments</span><input class="mcl-input" type="text" data-mcin="instjvm" value="' + esc(e.jvm || '-Xmx2G -XX:+UseG1GC') + '" spellcheck="false"></label>' +
+            '<label class="mcl-field"><span>JVM arguments</span><input class="mcl-input" type="text" data-mcin="instjvm" value="' + esc(e.jvm || MC_JVM_DEFAULT) + '" spellcheck="false"></label>' +
         '</details>' +
         '<div class="mcl-formbtns"><button class="mcl-btn" type="button" data-mca="instcancel">Cancel</button>' +
         '<button class="mcl-btn green" type="button" data-mca="instsave">' + (isNew ? 'Create' : 'Save') + '</button></div></div>';
@@ -8140,7 +8370,7 @@ function mcEdSetPx(e, x, y, color) {
     if (color) {
         var i = e.pal.indexOf(color);
         if (i < 0) {
-            if (e.pal.length >= MC_CHARS.length) { toast('This skin has hit ' + MC_CHARS.length + ' colors. Even wool stops at 16.'); return false; }
+            if (e.pal.length >= MC_CHARS.length) return false;   // the palette is full: the stroke does nothing, same as the swatch limit in any paint tool
             e.pal.push(color); i = e.pal.length - 1;
         }
         ch = MC_CHARS.charAt(i);
@@ -8262,43 +8492,42 @@ function mcSettingsPage() {
         '<button class="mcl-tab' + (sub === 'about' ? ' sel' : '') + '" type="button" data-mcs="about">About</button></div></header>';
     if (sub === 'about') {
         return head + '<div class="mcl-body mcl-setbody"><div class="mcl-aboutcard">' + mcBlockIcon('grass', 'mcl-block lg') +
-            '<div><b>URE Launcher 2.29.1</b><i>Runs on UreOS 11 (Pixel Edition)</i><i>Blocks by Mojang, in spirit. Pixels by this machine.</i></div></div>' +
-            '<div class="mcl-setrow"><span class="mcl-set-tx"><b>Third-party licenses</b><i>Legally fascinating</i></span>' +
-            '<button class="mcl-btn sm" type="button" data-mca="licenses">View</button></div>' +
-            '<div class="mcl-setrow"><span class="mcl-set-tx"><b>The game itself</b><i>Being built in another window. The launcher holds the door.</i></span></div></div>';
+            '<div><b>Minecraft Launcher</b><i>Version 2.29.1</i><i>A fan recreation. Not affiliated with Mojang or Microsoft.</i></div></div></div>';
     }
     return head + '<div class="mcl-body mcl-setbody">' +
-        mcToggle('keepOpen', 'Keep the launcher open while the game is running', 'Off hides it into the taskbar on launch') +
-        mcToggle('openLog', 'Open the output log when the game starts', 'latest.log, in Notepad, like it is 2012') +
-        mcToggle('snapshots', 'Show snapshot versions', 'Enables snapshots in installations and version lists') +
-        mcToggle('animArt', 'Animate the Play screen art', 'The panorama drifts. Slowly. Like clouds.') +
+        mcToggle('keepOpen', 'Keep the Launcher open while games are running') +
+        mcToggle('openLog', 'Open output log when Minecraft: Java Edition starts') +
+        mcToggle('snapshots', 'Enable Snapshots') +
+        mcToggle('animArt', 'Animate the Play screen art') +
         '<div class="mcl-setrow"><span class="mcl-set-tx"><b>Storage directory</b><i>' + MC_MCDIR + '</i></span>' +
         '<button class="mcl-btn sm" type="button" data-mca="openmc">Open folder</button></div>' +
-        '<div class="mcl-setrow"><span class="mcl-set-tx"><b>Reset launcher data</b><i>Installations, skins, downloads, crashes. All of it.</i></span>' +
+        '<div class="mcl-setrow"><span class="mcl-set-tx"><b>Reset launcher data</b><i>Removes installations, skins, downloaded versions and crash reports.</i></span>' +
         '<button class="mcl-btn sm danger" type="button" data-mca="mcreset">Reset</button></div></div>';
 }
+/* The games this machine does not have. Their pages read like the launcher's
+   own: the game, a line about it, an INSTALL button — and the install ends the
+   way it would on a machine that cannot run them, with the launcher saying so. */
 var MC_OTHER = {
-    bedrock: { blurb: 'The one written in C++. This machine runs UreOS 11 (Pixel Edition), which Windows insists is not Windows.', btn: 'UNAVAILABLE', dis: 1 },
-    dungeons: { blurb: 'Four-player dungeon crawling. Needs 2.4 GB of pixels; the wallpaper is currently using them.', btn: 'INSTALL' },
-    legends: { blurb: 'Lead the overworld against the piglin invasion. The overworld here is 44 pixels tall.', btn: 'INSTALL' },
-    education: { blurb: 'Minecraft for classrooms. Your school IT admin has not approved this request. His name is also Isaac.', btn: 'REQUEST ACCESS' }
+    bedrock: { name: 'Minecraft for Windows', blurb: 'Explore your own unique world, survive the night, and create anything you can imagine!', btn: 'INSTALL' },
+    dungeons: { name: 'Minecraft Dungeons', blurb: 'Fight your way through an all-new action-adventure game, inspired by classic dungeon crawlers and set in the Minecraft universe!', btn: 'INSTALL' },
+    legends: { name: 'Minecraft Legends', blurb: 'Discover the mysteries of Minecraft Legends, a new action strategy game. Lead your allies in heroic battles to defend the Overworld from the piglins.', btn: 'INSTALL' },
+    education: { name: 'Minecraft Education', blurb: 'Minecraft Education is a game-based learning platform that promotes creativity, collaboration, and problem-solving in an immersive digital environment.', btn: 'INSTALL' }
 };
 function mcOtherGame(g) {
     var game = null, i;
     for (i = 0; i < MC_GAMES.length; i++) if (MC_GAMES[i].id === g) game = MC_GAMES[i];
-    var o = MC_OTHER[g] || { blurb: '', btn: 'OK' };
+    var o = MC_OTHER[g] || { blurb: '', btn: 'INSTALL' };
     return '<header class="mcl-head solo"><span class="mcl-head-title">' + (game ? esc(game.top + ' ' + game.sub) : '') + '</span></header>' +
         '<div class="mcl-body mcl-otherwrap"><div class="mcl-otherart">' + pxSvg(MC_RAIL_ART[g].r, MC_RAIL_ART[g].p, 'mcl-otherart-px') + '</div>' +
         '<h2>' + (game ? game.top + ' ' + game.sub : '') + '</h2>' +
         '<p class="mcl-otherblurb">' + esc(o.blurb) + '</p>' +
-        '<button class="mcl-play sm' + (o.dis ? ' dis' : '') + '" type="button" ' + (o.dis ? 'disabled' : 'data-mca="otherbtn" data-id="' + g + '"') + '>' + o.btn + '</button></div>';
+        '<button class="mcl-play sm" type="button" data-mca="otherbtn" data-id="' + g + '">' + o.btn + '</button></div>';
 }
 function mcSignIn() {
     return '<div class="mcl-body mcl-signin"><div class="mcl-signbox">' +
         '<span class="mcl-logotype sm">MINECRAFT</span>' +
         '<p>Sign in with your Microsoft account to play.</p>' +
-        '<button class="mcl-play sm" type="button" data-mca="signin">SIGN IN</button>' +
-        '<i>Forgot which of the two buttons on this machine you are? It happens.</i></div></div>';
+        '<button class="mcl-play sm" type="button" data-mca="signin">SIGN IN</button></div></div>';
 }
 
 /* —— init: one delegated handler; no listener ever stacks —— */
@@ -8310,7 +8539,7 @@ function initMC(el, id, arg) {
         go: function (t) { mcGame('java'); mcGo(t); },
         // Alt+P is "press the big green button", so it has to land you where the button is
         play: function () {
-            if (MC.run) { toast('Already working on ' + MC.run.v + '…'); return; }
+            if (MC.run) return;   // the button is already a progress bar; a second press is nothing, like the real one
             mcGame('java'); mcGo('play');
             if (MC.tab === 'play' && !MC.skinEdit) mcPlay();   // a dirty-editor confirm gets the last word
         },
@@ -8404,15 +8633,14 @@ function mcClick(ev) {
     switch (a) {
         case 'acct':
             if (MC.signedOut) return;
-            mcMenu(b, [{ k: 'manage', t: 'Manage account' }, { k: 'logout', t: 'Log out' }], function (k) {
-                if (k === 'manage') dlgInfo('Microsoft account', 'isaacure is already the most managed account on this machine.');
-                else { mcStopRun(); MC.signedOut = true; mcPage(); }   // signing out cancels the launch it was for
+            mcMenu(b, [{ k: 'logout', t: 'Log out' }], function (k) {
+                if (k === 'logout') { mcStopRun(); MC.signedOut = true; mcPage(); }   // signing out cancels the launch it was for
             });
             break;
-        case 'signin': MC.signedOut = false; toast('Welcome back, isaacure.'); mcPage(); break;
+        case 'signin': MC.signedOut = false; mcPage(); break;   // the account chip coming back is the whole confirmation
         case 'play': case 'instplay':
-            // a second Play must not re-point the selection at a download already in flight
-            if (MC.run) { toast('Already working on ' + MC.run.v + '…'); break; }
+            // a second Play must not re-point the selection at a download already in flight — and it says nothing
+            if (MC.run) break;
             if (a === 'instplay' && id) { mcjSet('sel', id); }
             if (MC.tab !== 'play') { MC.tab = 'play'; mcPage(); }
             mcPlay(); break;
@@ -8472,7 +8700,7 @@ function mcClick(ev) {
                 MC.edit = null; MC.pop = null; mcSyncFS(); mcPage();
             })(); break;
         case 'newskin': MC.skinEdit = mcNewSkinData(null); mcPage(); break;
-        case 'skinuse': mcjSet('skin', id); mcUntomb('.minecraft', 'options.txt'); mcSyncFS(); mcRefreshFaces(); mcPage(); break;   // options.txt names the active skin
+        case 'skinuse': mcjSet('skin', id); mcSyncFS(); mcRefreshFaces(); mcPage(); break;
         case 'skinmenu':
             (function () {
                 var sk = mcSkinById(id); if (!sk) return;
@@ -8482,10 +8710,10 @@ function mcClick(ev) {
                     if (k === 'edit') { MC.skinEdit = { id: sk.id, n: sk.n, model: sk.model, pal: sk.pal.slice(), rows: sk.rows.slice(), tool: 'pencil', color: '#d81e05', mirror: true, undo: [], dirty: false }; mcPage(); }
                     else if (k === 'dup') { MC.skinEdit = mcNewSkinData(sk); mcPage(); }
                     else if (k === 'del') {
-                        dlgConfirm('Delete skin?', '“' + sk.n + '” goes back to the void.', 'Delete', mcLive(function () {
+                        dlgConfirm('Delete skin?', '“' + sk.n + '” will be deleted.', 'Delete', mcLive(function () {
                             var wasActive = mcj('skin', '') === sk.id;
                             mcjSet('skins', mcSkins().filter(function (x) { return x.id !== sk.id; }));
-                            if (wasActive) { mcjSet('skin', mcSkins()[0].id); mcUntomb('.minecraft', 'options.txt'); }   // active id changed → options.txt rewritten
+                            if (wasActive) mcjSet('skin', mcSkins()[0].id);
                             mcSyncFS(); mcRefreshFaces(); mcPage();
                         }));
                     }
@@ -8501,7 +8729,7 @@ function mcClick(ev) {
             })(); break;
         case 'swatch': MC.skinEdit.color = id; MC.skinEdit.tool = MC.skinEdit.tool === 'eraser' ? 'pencil' : MC.skinEdit.tool; mcPage(); break;
         case 'edcancel':
-            if (MC.skinEdit.dirty) dlgConfirm('Discard skin?', 'The editor has unsaved pixels.', 'Discard', mcLive(function () { MC.skinEdit = null; mcPage(); }));
+            if (MC.skinEdit.dirty) dlgConfirm('Discard changes?', 'This skin has unsaved changes.', 'Discard', mcLive(function () { MC.skinEdit = null; mcPage(); }));
             else { MC.skinEdit = null; mcPage(); }
             break;
         case 'edsave':
@@ -8514,7 +8742,6 @@ function mcClick(ev) {
                     var nid = 'skin-' + Date.now().toString(36);
                     list.push({ id: nid, n: e.n, model: e.model, pal: e.pal, rows: e.rows });
                     mcjSet('skin', nid);
-                    mcUntomb('.minecraft', 'options.txt');   // a new skin becomes active, so options.txt is rewritten
                 }
                 mcjSet('skins', list);
                 MC.skinEdit = null; mcSyncFS(); mcRefreshFaces(); mcPage();
@@ -8532,20 +8759,18 @@ function mcClick(ev) {
                 mcSyncFS(); mcPage();
             })(); break;
         case 'mcreset':
-            dlgConfirm('Reset launcher data?', 'Installations, skins, downloads and crash reports all go back to factory. The .minecraft folder is rebuilt.', 'Reset', mcLive(function () {
+            dlgConfirm('Reset launcher data?', 'All installations, skins, downloaded versions and crash reports will be removed and the launcher restored to its defaults.', 'Reset', mcLive(function () {
                 mcStopRun();                                  // a run in flight would re-write everything we just wiped
                 mcj('dl', []).forEach(function (v) { try { localStorage.removeItem(PREFIX + 'mc_dld_' + v); } catch (e2) {} });
                 ['inst', 'skins', 'skin', 'sel', 'set', 'dl', 'log', 'crash'].forEach(function (k) { try { localStorage.removeItem(PREFIX + 'mc_' + k); } catch (e2) {} });
                 mcClearTombs();                               // "the .minecraft folder is rebuilt" has to mean it
                 MC.edit = null; MC.skinEdit = null; MC.crashed = null;
-                mcSkins(1); mcInst(1); mcSyncFS(); mcRefreshFaces(); mcPage(); toast('The launcher forgot everything. Fresh grass.');
+                mcSkins(1); mcInst(1); mcSyncFS(); mcRefreshFaces(); mcPage();   // the page going back to its defaults is the confirmation
             }));
             break;
-        case 'licenses': openApp('notepad', { file: { n: 'licenses.txt', body: 'URE LAUNCHER THIRD-PARTY NOTICES\n\n1. The pixels are free-range and locally sourced.\n2. The creeper on the Play screen has signed a waiver.\n3. Any resemblance to launchers living or dead is loving parody.\n4. LWJGL is real and deserves better than this file.' } }); break;
         case 'otherbtn':
-            if (id === 'dungeons') toast('Dungeons needs 2.4 GB of pixels. The wallpaper is using them.');
-            else if (id === 'legends') toast('Legends requires a marketing budget this machine does not have.');
-            else toast('Request filed with the IT admin. He says no.');
+            // the install a real launcher would start is one this machine cannot finish, and it says so in its own dialog
+            dlgError((MC_OTHER[id] || {}).name || 'Minecraft Launcher', ((MC_OTHER[id] || {}).name || 'This game') + ' isn’t available on this device.');
             break;
     }
 }
@@ -8558,6 +8783,7 @@ function closeMC() {
     if (MC && MC.run && MC.run.timer) clearInterval(MC.run.timer);
     mcCloseMenu();
     MC = null;
+    mclReturn = false;   // a launcher the user closed stays closed; the launch that hides it sets the flag after this runs
 }
 function mclFocus(el, arg) {
     if (!arg || !MC) return;
@@ -8613,11 +8839,17 @@ var APPS = {
     minecraft: { title: 'Minecraft', icon: 'ic-minecraft', w: 1080, h: 660,
         render: function () { return window.MC ? window.MC.render() : '<p style="padding:24px">The world fell into the void (minecraft.js missing).</p>'; },
         // the launcher has always passed { version, installation, skin }; the title screen is the first thing that reads it
-        init: function (el, id, arg) { if (window.MC) window.MC.init(el, arg); },
+        init: function (el, id, arg) {
+            var t = el.querySelector('.win-title'); if (t) t.textContent = 'Minecraft ' + ((arg && arg.version) || '26.2');   // the client's own title: "Minecraft <version>"
+            if (window.MC) window.MC.init(el, arg);
+        },
         onFocus: function (el) { var r = el.querySelector('.mc'); if (r) r.focus(); },
         onMinimize: function () { if (window.MC && window.MC.suspend) window.MC.suspend(); },   // hidden worlds pause; nobody dies off-screen
         onRestore: function (el) { var r = el.querySelector('.mc'); if (r) r.focus(); },
-        onClose: function () { if (window.MC) bankPlaytime('minecraft', window.MC.close() || 0); } },
+        onClose: function () {
+            if (window.MC) bankPlaytime('minecraft', window.MC.close() || 0);
+            if (mclReturn) { mclReturn = false; setTimeout(function () { openApp('mclauncher'); }, 0); }   // the launcher that hid for the game comes back
+        } },
     mclauncher: { title: 'Minecraft Launcher', icon: 'ic-mc', w: 980, h: 620, render: renderMC, init: initMC, onClose: closeMC, focusArg: mclFocus },
     sunrun:   { title: 'Sunset Runner', icon: 'ic-racer', w: 1000, h: 640,
         render: function () { return window.RACER ? window.RACER.render() : '<p style="padding:24px">The engine never turned over (racer.js missing).</p>'; },
@@ -9131,7 +9363,7 @@ var CHEATS = [
     ['Windows', [['Alt+W', 'Close window'], ['Alt+M', 'Minimize'], ['Alt+↑', 'Maximize'], ['Alt+↓', 'Restore / minimize'], ['Alt+`', 'Cycle windows'], ['Alt+Space', 'System menu']]],
     ['Full screen', [['F11', 'This window takes the screen'], ['Alt+Enter', 'The same thing, the game way'], ['Shift+F11', 'The whole page, real full screen'], ['Esc', 'Leave (if the app is not using it)'], ['Top edge', 'Peek at the title bar']]],
     ['Chrome', [['Alt+T', 'New tab'], ['Alt+W', 'Close tab'], ['Alt+Shift+T', 'Reopen closed tab'], ['Alt+1…9', 'Go to tab'], ['Alt+L', 'Address bar'], ['Alt+R', 'Reload'], ['Alt+←/→', 'Back / forward']]],
-    ['Minecraft Launcher', [['Alt+1…4', 'Play / Installations / Skins / Notes'], ['Alt+5', 'Launcher settings'], ['Alt+P', 'Press the big green button'], ['Alt+N', 'New installation']]],
+    ['Minecraft Launcher', [['Alt+1…4', 'Play / Installations / Skins / Notes'], ['Alt+5', 'Launcher settings'], ['Alt+P', 'Play'], ['Alt+N', 'New installation']]],
     ['In apps', [['Alt+←/↑', 'Explorer: back / home'], ['Enter', 'Explorer: open selected'], ['Alt+L', 'Terminal: clear'], ['←/→', 'Photos: browse'], ['F3', 'Find: next match'], ['Esc', 'Close find / this card']]]
 ];
 function closeCheat() { var c = byId('cheatsheet'); if (c) c.remove(); }
