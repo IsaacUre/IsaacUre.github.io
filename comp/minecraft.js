@@ -8013,7 +8013,7 @@
         'Voxels all the way down!', 'Runs on a computer inside a computer!',
         'Seed 4-1-1-4!', 'Do not lose that seed again!', 'world (1) is the good one!',
         'SMP with malachi!', 'Ask malachi about the roof!', 'creative flat test!',
-        'pixelsAlreadyPerfect=true!', 'Written in a text editor!', 'No blocks were harmed!',
+        'Written in a text editor!', 'No blocks were harmed!',
         'Chunk borders agree about their trees!', 'The lighting is a BFS!',
         'Ambient occlusion, baked!', 'Greedy about quads!', 'Sixteen by ninety-six!',
         'It has a real command parser!', 'Try /gamemode creative!', 'Try /seed!',

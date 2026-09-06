@@ -11,6 +11,7 @@ ends with ALL PASS or FAILURES: n. Screenshots land in ../shots/ (gitignored).
     node .claude/comp-tools/mc-play/desktop-focus.js    the shell keeps the keyboard on the game
     node .claude/comp-tools/mc-play/save-fail.js        a full browser store says so; /me and /list without cheats
     node .claude/comp-tools/mc-play/avatar-shots.js     the inventory figure, to look at (also avatar-shots-2.js, menu-shots.js)
+    node .claude/comp-tools/mc-play/launcher.js         the launcher: no OS toasts, a vanilla-shaped log, plain copy, the crash path
 
 The two probe-*.js scripts only print what they see; they are the first
 things that were run when "creative isn't working" came in.
