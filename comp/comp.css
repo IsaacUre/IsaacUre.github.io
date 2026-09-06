@@ -1740,18 +1740,161 @@ span.st-newsart .ic { width: 40px; height: 40px; }
 .cr-center p { font-size: .8rem; color: #5f6368; max-width: 400px; line-height: 1.5; }
 .cr-bigic { width: 54px; height: 54px; }
 
-/* isaacure.com */
-.cr-iu { text-align: center; }
-.cr-iuhero { padding: 26px 0 18px; }
-.cr-iulogo { width: 56px; height: 56px; margin: 0 auto 10px; }
-.cr-iu h2 { font-family: var(--f-pixel); font-size: 1rem; }
-.cr-iuhero p { font-size: .78rem; color: #5f6368; margin-top: 8px; }
-.cr-iugrid { display: flex; gap: 12px; justify-content: center; margin: 18px 0; flex-wrap: wrap; }
-.cr-iucard { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 150px; padding: 18px 10px 14px;
-    border: 1px solid #dadce0; border-radius: 8px; font-size: .74rem; color: #5f6368; }
-.cr-iucard b { color: #202124; font-size: .82rem; }
-.cr-iucard:hover { box-shadow: 0 2px 8px rgba(60,64,67,.18); }
-.cr-iufoot { font-size: .7rem; color: #9aa0a6; margin-top: 16px; }
+/* isaacure.com: the holding page, the root page's own CSS brought over rule for rule
+   (index.html at the repo root) and namespaced cr-iu-, so its .term and .screen do not
+   meet the desktop's. the tab stands in for the viewport: --iu-w and --iu-h are the
+   view's size in px, set by the page's init and kept by a ResizeObserver, wherever the
+   page says 100vw or 100vh, and .cr-iu-narrow is its phone-width block. */
+.cr-iu { position: relative; min-height: var(--iu-h, 100%); display: flex; padding: 1.5rem 1rem; background: #000; color: #FAFAF8;
+    font-family: var(--f-pixel); -webkit-font-smoothing: antialiased; overflow-x: hidden; text-align: left;
+    /* the LCD, same palette as the console; the terminal is the LCD's cream as phosphor,
+       the shell's grey for dim, and the lighter red the site uses on dark */
+    --iu-bg: #e6e4d2; --iu-ink: #1c1d17; --iu-accent: #b5180a; --iu-hi: #ffffff;
+    --iu-fg: #e6e4d2; --iu-dim: #8a8a82; --iu-warn: #ff5436; }
+
+/* the boot terminal: top-left, small, and it scrolls: once the log outgrows the view the
+   oldest lines leave through the top, as they do */
+.cr-iu-term { position: absolute; inset: 0; z-index: 10; overflow: hidden; background: #000; padding: .5rem .6rem 3rem .6rem;
+    font-family: var(--f-term); font-size: 1rem; line-height: 1.15; color: var(--iu-fg); text-shadow: 0 0 6px rgba(230,228,210,.22);
+    cursor: default; user-select: none; -webkit-user-select: none; }
+.cr-iu-tl { white-space: pre-wrap; word-break: break-word; min-height: 1.15em; }
+/* the banner (52 columns) and the eye (48) must not wrap: past a phone they take the
+   terminal's size, and under it they take what the width allows. --col is the width of
+   a column in ems, measured off whatever face is really rendering (VT323's is .4), and
+   the last clause keeps a 13-row eye frame inside a very short view */
+.cr-iu-art { white-space: pre; word-break: normal; line-height: 1; letter-spacing: 0;
+    font-size: min(1rem, calc((var(--iu-w, 100vw) - 1.2rem) / (52 * var(--col, .4))), calc((var(--iu-h, 100vh) - 5rem) / 10.4)); }
+.cr-iu-px { line-height: .8; padding-bottom: .8em; }   /* the pixel eye: two columns to a cell, .8 of a row to a cell, a cell row under each frame */
+.cr-iu-dim { color: var(--iu-dim); }
+.cr-iu-warn { color: var(--iu-warn); }
+.cr-iu-tc { display: inline-block; width: .55em; height: .95em; margin-top: .1em; background: var(--iu-fg); vertical-align: text-bottom;
+    animation: iuBlink 1.06s steps(1) infinite; }
+button.cr-iu-skip { position: absolute; right: 1rem; bottom: 1rem; z-index: 11;   /* button., or .cr button takes its face and colour */ font-family: var(--f-term); font-size: 1.1rem; line-height: 1;
+    color: var(--iu-dim); background: #000; border: 1px solid #45453f; border-radius: 4px; padding: .3rem .65rem .35rem; cursor: pointer;
+    opacity: 0; visibility: hidden;       /* not in the tab order until it can be seen */
+    animation: iuAppear .1s steps(1, start) 1.2s forwards; }
+.cr-iu-skip:hover { color: var(--iu-fg); border-color: var(--iu-dim); }
+.cr-iu-skip:focus-visible { outline: 3px solid #d81e05; outline-offset: 2px; }
+
+/* until the terminal hands off, the frame is there for assistive tech but not for eyes,
+   and its choreography is held at frame zero */
+.cr-iu-frame:not(.lit) { opacity: 0; pointer-events: none; }
+.cr-iu-frame:not(.lit) * { animation-play-state: paused !important; }
+
+/* the screen: the LCD alone, square, set straight into the black. auto margins centre it.
+   on a short view size the screen to the height there is (3rem covers the padding), never
+   narrower than 208px, which is the 176px line plus the padding around it */
+.cr-iu-frame { margin: auto; width: 100%; max-width: 364px; width: max(208px, min(100%, 364px, calc((var(--iu-h, 100vh) - 3rem) / .9))); }
+.cr-iu-screen { position: relative; aspect-ratio: 10 / 9; background: var(--iu-bg); overflow: hidden;
+    box-shadow: inset 0 0 0 2px rgba(0,0,0,.25), inset 0 0 26px rgba(0,0,0,.22); color: var(--iu-ink); }
+.cr-iu-glow { position: absolute; inset: 0; pointer-events: none; z-index: 5; background: radial-gradient(120% 80% at 50% 0%, rgba(255,255,255,.16), transparent 60%); }
+.cr-iu-scan { position: absolute; inset: 0; pointer-events: none; z-index: 6; opacity: .35;
+    background: repeating-linear-gradient(to bottom, rgba(0,0,0,.18) 0 1px, transparent 1px 3px); mix-blend-mode: multiply; }
+/* power-on surge: a white pop, a dark dip, then the LCD is just on */
+.cr-iu-flash { position: absolute; inset: 0; z-index: 7; pointer-events: none; opacity: 0; background: #fff; animation: iuSurge .34s ease .1s both; }
+@keyframes iuSurge {
+    0%   { opacity: 0;   background: #fff; }
+    14%  { opacity: .85; background: #fff; }
+    40%  { opacity: .9;  background: #06060a; }
+    72%  { opacity: .45; background: #06060a; }
+    100% { opacity: 0;   background: #06060a; }
+}
+
+/* what is on the screen */
+.cr-iu-hold { position: absolute; inset: 0; padding: .85rem .9rem; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .95rem; text-align: center; }
+/* the eye: the console's pixel mark. 48 units, 2 units to a cell, so a multiple of 24px
+   keeps every cell a whole number of pixels (96 = 4px cells, 72 = 3px) */
+.cr-iu-eye { width: 96px; height: 96px; color: var(--iu-ink); }
+/* power-on: a bright line that stretches into the picture, the way a tube warms up */
+.cr-iu-eye svg { width: 100%; height: 100%; display: block; shape-rendering: crispEdges; animation: iuOpen .5s ease .35s both; }
+@keyframes iuOpen {
+    0%   { transform: scaleY(.05); opacity: 0; }
+    40%  { opacity: 1; }
+    100% { transform: scaleY(1); opacity: 1; }
+}
+.cr-iu-glint { fill: var(--iu-hi); }
+/* once it is on, a quick look left, right, and back to you */
+.cr-iu-pupil { animation: iuGlance .7s steps(1, end) .95s; }
+@keyframes iuGlance {
+    0%        { transform: translateX(-4px); }
+    43%       { transform: translateX(4px); }
+    79%, 100% { transform: translateX(0); }
+}
+/* the blink: three frames (see the SVG), shown one at a time with steps(). the shut frame
+   holds longest and the eye opens a little slower than it closed, like a real one. once
+   as the line finishes printing, then twice an 8s cycle at uneven spacing, so it does
+   not tick like a clock. */
+.cr-iu-skin { fill: var(--iu-bg); }
+.cr-iu-edge { fill: currentColor; }
+.cr-iu-bf { opacity: 0; }
+.cr-iu-half { animation: iuBootHalf .3s steps(1, end) 1.4s, iuIdleHalf 8s steps(1, end) 3.4s infinite; }
+.cr-iu-slit { animation: iuBootSlit .3s steps(1, end) 1.4s, iuIdleSlit 8s steps(1, end) 3.4s infinite; }
+.cr-iu-shut { animation: iuBootShut .3s steps(1, end) 1.4s, iuIdleShut 8s steps(1, end) 3.4s infinite; }
+/* one blink, 300ms: half 45 · slit 40 · shut 90 · slit 55 · half 70 */
+@keyframes iuBootHalf { 0% { opacity: 1; } 15% { opacity: 0; } 76.667% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes iuBootSlit { 0% { opacity: 0; } 15% { opacity: 1; } 28.333% { opacity: 0; } 58.333% { opacity: 1; } 76.667% { opacity: 0; } 100% { opacity: 0; } }
+@keyframes iuBootShut { 0% { opacity: 0; } 28.333% { opacity: 1; } 58.333% { opacity: 0; } 100% { opacity: 0; } }
+/* the same blink at 3.28s and 7.04s of every 8s */
+@keyframes iuIdleHalf {
+    0% { opacity: 0; }
+    41% { opacity: 1; } 41.5625% { opacity: 0; } 43.875% { opacity: 1; } 44.75% { opacity: 0; }
+    88% { opacity: 1; } 88.5625% { opacity: 0; } 90.875% { opacity: 1; } 91.75% { opacity: 0; }
+    100% { opacity: 0; }
+}
+@keyframes iuIdleSlit {
+    0% { opacity: 0; }
+    41.5625% { opacity: 1; } 42.0625% { opacity: 0; } 43.1875% { opacity: 1; } 43.875% { opacity: 0; }
+    88.5625% { opacity: 1; } 89.0625% { opacity: 0; } 90.1875% { opacity: 1; } 90.875% { opacity: 0; }
+    100% { opacity: 0; }
+}
+@keyframes iuIdleShut {
+    0% { opacity: 0; }
+    42.0625% { opacity: 1; } 43.1875% { opacity: 0; }
+    89.0625% { opacity: 1; } 90.1875% { opacity: 0; }
+    100% { opacity: 0; }
+}
+
+/* the line. it types, one glyph a step (the first on the beat, the rest 45ms apart): the
+   font is strictly monospace, and at 16px (the bitmap is 8px) each glyph is exactly 16
+   whole pixels wide, so the reveal edge never cuts through a pixel */
+.cr-iu-word { font-family: var(--f-pixel); font-weight: normal; font-size: 1rem; line-height: 1.5; letter-spacing: 0; text-transform: uppercase; color: var(--iu-ink); white-space: nowrap; }
+.cr-iu-word b { font-weight: normal; color: var(--iu-accent); }
+.cr-iu-word span { display: inline-block; width: 11ch;   /* exactly 11 cells, so 11 steps never drift into the next glyph */
+    -webkit-clip-path: inset(0 100% 0 0); clip-path: inset(0 100% 0 0); animation: iuType .5s steps(11, start) 1s forwards; }
+@keyframes iuType { to { -webkit-clip-path: inset(0 0 0 0); clip-path: inset(0 0 0 0); } }
+
+/* the shell prompt, waiting. same cursor the console boots with */
+.cr-iu-row { display: flex; align-items: baseline; gap: .3rem; font-family: var(--f-term); font-size: 1.2rem; line-height: 1.1; margin-top: -.25rem;
+    opacity: 0; animation: iuAppear .1s steps(1, start) 1.8s forwards; }
+/* steps(n, start), not end, wherever a stepped animation fills forwards: an end step can
+   floor to the frame before the last and hold it; a start step lands on the last */
+@keyframes iuAppear { to { opacity: 1; visibility: visible; } }
+.cr-iu-ps { color: var(--iu-accent); }
+.cr-iu-block { display: inline-block; width: .55em; height: .95em; margin-top: .1em; background: var(--iu-ink); vertical-align: text-bottom;
+    animation: iuBlink 1.06s steps(1) infinite; }
+@keyframes iuBlink { 50% { opacity: 0; } }
+
+/* small screens: the page's phone block, keyed on the view's width rather than the window's */
+.cr-iu-narrow .cr-iu-hold { gap: .8rem; padding: .6rem .68rem; }
+.cr-iu-narrow .cr-iu-eye { width: 72px; height: 72px; }
+.cr-iu-narrow .cr-iu-row { font-size: 1.1rem; }
+
+/* forced colours (Windows High Contrast): the screen goes Canvas, so the lid skin has to
+   follow it or a blink paints a beige almond; the cursor blocks are backgrounds, which
+   forced colours would erase */
+@media (forced-colors: active) {
+    .cr-iu-skin, .cr-iu-glint { fill: Canvas; }
+    .cr-iu-block, .cr-iu-tc { forced-color-adjust: none; background: CanvasText; }
+}
+/* reduced motion: no boot, everything lands in its final state, nothing moves */
+@media (prefers-reduced-motion: reduce) {
+    .cr-iu-term, .cr-iu-skip { display: none !important; }
+    .cr-iu-frame:not(.lit) { opacity: 1; pointer-events: auto; }
+    .cr-iu-flash, .cr-iu-eye svg, .cr-iu-pupil, .cr-iu-bf, .cr-iu-word span, .cr-iu-row, .cr-iu-block, .cr-iu-skip { animation: none !important; }
+    .cr-iu-word span { -webkit-clip-path: none; clip-path: none; }
+    .cr-iu-row { opacity: 1; }
+    .cr-iu-scan { display: none; }
+}
 .cr-comp .cr-mirror { width: 220px; height: 140px; border: 2px solid #dadce0; border-radius: 6px; display: grid; place-items: center;
     background: linear-gradient(160deg, #eaf1fb, #dfe6f2); transition: transform .3s; }
 .cr-comp .cr-mirror .cr-mirror { width: 80%; height: 78%; }

@@ -2918,19 +2918,320 @@ webPage('google.com/search', {
     }
 });
 
-/* — isaacure.com — */
+/* — isaacure.com — the holding page, as it really is. The root page's own boot
+   and screen (index.html at the repo root), brought over line for line with the
+   page's viewport swapped for the tab: black, a terminal boots in the top-left
+   and prints its checks, the banner, then the LCD's pixel eye as a flipbook, and
+   hands off to the LCD, which powers on, types the line, and waits. Any key, a
+   click, or 12 seconds skips the boot. Every class here is cr-iu-, so the page's
+   .term and .screen never meet the desktop's own. */
+var IU_EYE_SVG = '<svg viewBox="0 0 48 48" shape-rendering="crispEdges"><g class="cr-iu-ink" fill="currentColor"><rect x="22" y="12" width="14" height="2"/><rect x="16" y="14" width="24" height="2"/><rect x="14" y="16" width="28" height="2"/><rect x="8" y="18" width="24" height="2"/><rect x="38" y="18" width="6" height="2"/><rect x="42" y="20" width="4" height="2"/><rect x="44" y="22" width="2" height="2"/><rect x="4" y="24" width="4" height="2"/><rect x="46" y="24" width="2" height="2"/><rect x="2" y="26" width="2" height="2"/><rect x="0" y="28" width="2" height="2"/><rect x="38" y="28" width="10" height="2"/><rect x="6" y="30" width="12" height="2"/><rect x="32" y="30" width="8" height="2"/><rect x="14" y="32" width="22" height="2"/><rect x="20" y="34" width="10" height="2"/></g><g class="cr-iu-pupil" fill="currentColor"><rect x="8" y="20" width="8" height="2"/><rect x="18" y="20" width="14" height="2"/><rect x="6" y="22" width="8" height="2"/><rect x="18" y="22" width="8" height="2"/><rect x="30" y="22" width="6" height="2"/><rect x="18" y="24" width="14" height="2"/><rect x="20" y="26" width="12" height="2"/><rect x="20" y="28" width="10" height="2"/><g class="cr-iu-glint"><rect x="16" y="20" width="2" height="2"/><rect x="14" y="22" width="4" height="2"/></g></g><g class="cr-iu-bf cr-iu-half"><g class="cr-iu-skin"><rect x="2" y="10" width="44" height="2"/><rect x="2" y="12" width="44" height="2"/><rect x="2" y="14" width="44" height="2"/><rect x="2" y="16" width="44" height="2"/><rect x="2" y="18" width="44" height="2"/><rect x="2" y="20" width="10" height="2"/><rect x="38" y="20" width="8" height="2"/><rect x="2" y="22" width="6" height="2"/><rect x="44" y="22" width="2" height="2"/><rect x="2" y="24" width="6" height="2"/></g><g class="cr-iu-edge"><rect x="12" y="20" width="26" height="2"/><rect x="8" y="22" width="36" height="2"/><rect x="8" y="24" width="4" height="2"/><rect x="38" y="24" width="8" height="2"/><rect x="2" y="26" width="6" height="2"/></g></g><g class="cr-iu-bf cr-iu-slit"><g class="cr-iu-skin"><rect x="2" y="10" width="44" height="2"/><rect x="2" y="12" width="44" height="2"/><rect x="2" y="14" width="44" height="2"/><rect x="2" y="16" width="44" height="2"/><rect x="2" y="18" width="44" height="2"/><rect x="2" y="20" width="44" height="2"/><rect x="2" y="22" width="44" height="2"/><rect x="2" y="24" width="6" height="2"/><rect x="18" y="24" width="14" height="2"/><rect x="2" y="30" width="16" height="2"/><rect x="32" y="30" width="14" height="2"/><rect x="2" y="32" width="44" height="2"/><rect x="2" y="34" width="44" height="2"/></g><g class="cr-iu-edge"><rect x="8" y="24" width="10" height="2"/><rect x="32" y="24" width="14" height="2"/><rect x="2" y="26" width="6" height="2"/><rect x="18" y="26" width="14" height="2"/><rect x="2" y="28" width="16" height="2"/><rect x="32" y="28" width="14" height="2"/><rect x="18" y="30" width="14" height="2"/></g></g><g class="cr-iu-bf cr-iu-shut"><g class="cr-iu-skin"><rect x="2" y="10" width="44" height="2"/><rect x="2" y="12" width="44" height="2"/><rect x="2" y="14" width="44" height="2"/><rect x="2" y="16" width="44" height="2"/><rect x="2" y="18" width="44" height="2"/><rect x="2" y="20" width="44" height="2"/><rect x="2" y="22" width="44" height="2"/><rect x="2" y="24" width="44" height="2"/><rect x="18" y="26" width="14" height="2"/><rect x="2" y="30" width="16" height="2"/><rect x="32" y="30" width="14" height="2"/><rect x="2" y="32" width="44" height="2"/><rect x="2" y="34" width="44" height="2"/></g><g class="cr-iu-edge"><rect x="2" y="26" width="16" height="2"/><rect x="32" y="26" width="14" height="2"/><rect x="2" y="28" width="44" height="2"/><rect x="18" y="30" width="14" height="2"/></g></g></svg>';
+/* the eye in characters, cell for cell: two columns to a cell and .8 of a row to a
+   cell, so the cells come out square in VT323. the same frames the LCD blinks with */
+var IU_EYE = {
+    open: [
+        '                      ##############',
+        '                ########################',
+        '              ############################',
+        '        ########################      ######',
+        '        ########  ##############          ####',
+        '      ########    ########    ######        ##',
+        '    ####          ##############              ##',
+        '  ##                ############',
+        '##                  ##########        ##########',
+        '      ############              ########',
+        '              ######################',
+        '                    ##########'
+    ].join('\n'),
+    left: [
+        '                      ##############',
+        '                ########################',
+        '              ############################',
+        '        ########################      ######',
+        '    ########  ##############              ####',
+        '  ########    ########    ######            ##',
+        '    ####      ##############                  ##',
+        '  ##            ############',
+        '##              ##########            ##########',
+        '      ############              ########',
+        '              ######################',
+        '                    ##########'
+    ].join('\n'),
+    right: [
+        '                      ##############',
+        '                ########################',
+        '              ############################',
+        '        ########################      ######',
+        '            ########  ##############      ####',
+        '          ########    ########    ######    ##',
+        '    ####              ##############          ##',
+        '  ##                    ############',
+        '##                      ##########    ##########',
+        '      ############              ########',
+        '              ######################',
+        '                    ##########'
+    ].join('\n'),
+    half: [
+        '',
+        '',
+        '',
+        '',
+        '            ##########################',
+        '        ####################################',
+        '        ####      ##############      ##########',
+        '  ######            ############',
+        '##                  ##########        ##########',
+        '      ############              ########',
+        '              ######################',
+        '                    ##########'
+    ].join('\n'),
+    slit: [
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '        ##########              ################',
+        '  ######          ##############',
+        '##################  ##########  ################',
+        '                  ##############',
+        '',
+        ''
+    ].join('\n'),
+    shut: [
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '                                              ##',
+        '  ################              ##############',
+        '################################################',
+        '                  ##############',
+        '',
+        ''
+    ].join('\n')
+};
+var IU_BANNER = [
+' ___ ____    _        _    ____   _   _ ____  _____',
+'|_ _/ ___|  / \\      / \\  / ___| | | | |  _ \\| ____|',
+' | |\\___ \\ / _ \\    / _ \\| |     | | | | |_) |  _|',
+' | | ___) / ___ \\  / ___ \\ |___  | |_| |  _ <| |___',
+'|___|____/_/   \\_\\/_/   \\_\\____|  \\___/|_| \\_\\_____|'
+].join('\n');
+
 webPage('isaacure.com', {
-    title: 'Isaac Ure', fav: { ic: 'ic-ure' }, searchable: true,
-    stitle: 'Isaac Ure — isaacure.com', sdesc: 'Rising sophomore at Rice. A Game Boy, three rooms, and a pixel Windows 11 desktop. You are somewhere inside it right now.', skey: 'isaac ure boy room computer personal site',
+    title: 'Isaac Ure · coming soon', fav: { ic: 'ic-ure' }, searchable: true,
+    stitle: 'Isaac Ure · coming soon', sdesc: 'Isaac Ure. Coming soon; the eye’s already on.', skey: 'isaac ure coming soon eye holding page personal site',
     render: function () {
-        return '<div class="cr-site cr-iu"><div class="cr-iuhero">' + ic('ic-ure', 'cr-iulogo') + '<h2>isaacure.com</h2><p>a website that keeps turning into operating systems</p></div>' +
-            '<div class="cr-iugrid">' +
-              crLink('isaacure.com/ureboy', crFav({ ic: 'ic-ureboy' }, 'big') + '<b>URE BOY</b><span>the console</span>', 'cr-iucard') +
-              crLink('isaacure.com/1p', crFav({ ic: 'ic-room' }, 'big') + '<b>the room</b><span>first person</span>', 'cr-iucard') +
-              crLink('isaacure.com/comp', crFav({ ic: 'ic-pc' }, 'big') + '<b>the computer</b><span>you are here</span>', 'cr-iucard') +
-            '</div><p class="cr-iufoot">© Isaac Ure · Houston · built by hand, no frameworks, some vibes</p></div>';
-    }
+        return '<div class="cr-iu">' +
+            '<div class="cr-iu-term" hidden aria-hidden="true"><div class="cr-iu-log"></div></div>' +
+            '<button class="cr-iu-skip" type="button" hidden aria-label="skip the boot">skip ▸</button>' +
+            '<div class="cr-iu-frame"><div class="cr-iu-screen">' +
+              '<div class="cr-iu-glow"></div><div class="cr-iu-scan" aria-hidden="true"></div><div class="cr-iu-flash" aria-hidden="true"></div>' +
+              '<div class="cr-iu-hold">' +
+                '<div class="cr-iu-eye" aria-hidden="true">' + IU_EYE_SVG + '</div>' +
+                '<h1 class="cr-iu-word"><span>Coming <b>soon</b></span></h1>' +
+                '<div class="cr-iu-row" aria-hidden="true"><span class="cr-iu-ps">&gt;</span><span class="cr-iu-block"></span></div>' +
+              '</div></div></div></div>';
+    },
+    init: function (view) { iuBoot(view); }
 });
+
+/* the boot. the page's own script: print lines, land results, stamp the eye frame
+   after frame, hand off. nothing types: a machine prints. anything that goes wrong
+   lights the screen; so does any key, a click, or 12 seconds. */
+function iuBoot(view) {
+    var root = view.querySelector('.cr-iu'), frame = root.querySelector('.cr-iu-frame'), term = root.querySelector('.cr-iu-term'),
+        log = root.querySelector('.cr-iu-log'), skipBtn = root.querySelector('.cr-iu-skip');
+    var lit = false, gen = 0;
+    function alive() { return root.isConnected; }   // the tab moved on (reload, nav, a switch): the old boot stops where it is
+
+    /* the tab is this page's viewport: its size, in px, stands in for 100vw and 100vh
+       in the page's CSS (the art's fit, the screen's), and under 380 wide the page's
+       phone rules apply. kept current through a resize, maximise, full screen */
+    function size() {
+        var w = view.clientWidth, h = view.clientHeight;
+        if (!w || !h) return;
+        root.style.setProperty('--iu-w', w + 'px'); root.style.setProperty('--iu-h', h + 'px');
+        root.classList.toggle('cr-iu-narrow', w <= 380);
+    }
+    size();
+    if (window.ResizeObserver) {
+        var ro = new ResizeObserver(function () { if (!alive()) { ro.disconnect(); return; } size(); });
+        ro.observe(view);
+    }
+
+    function light() {                 // hand off: drop the terminal, wake the screen
+        if (lit) return;
+        lit = true; gen++;
+        document.removeEventListener('keydown', key);
+        if (CR && CR.iuKey === key) CR.iuKey = null;
+        if (document.activeElement === skipBtn) {   // keep the keyboard on the page
+            try { view.focus({ preventScroll: true }); } catch (e) { view.focus(); }
+        }
+        if (term.parentNode) term.parentNode.removeChild(term);
+        if (skipBtn.parentNode) skipBtn.parentNode.removeChild(skipBtn);
+        frame.classList.add('lit');
+    }
+    /* any key skips, as on the page, but only while Chrome is the window with the
+       keyboard and nothing is being typed (the omnibox, the find bar); a browser
+       chord (zoom, find, reload) is not a skip, nor are lock and function keys */
+    function key(e) {
+        if (!alive()) { document.removeEventListener('keydown', key); return; }
+        if (lit || e.ctrlKey || e.metaKey || e.altKey) return;
+        if (topAppId() !== 'chrome' || dlgs.length) return;
+        function field(el) { return !!(el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)); }
+        if (field(e.target) || field(document.activeElement)) return;   // e.target too: Escape leaves the omnibox before this runs
+        if (/^(Tab|Shift|Control|Alt|Meta|AltGraph|CapsLock|NumLock|ScrollLock|Dead|Unidentified|Process|ContextMenu|PrintScreen|F\d{1,2})$/.test(e.key)) return;
+        light();
+    }
+    if (reduce || !window.Promise) { light(); return; }
+    if (CR) { if (CR.iuKey) document.removeEventListener('keydown', CR.iuKey); CR.iuKey = key; }
+    document.addEventListener('keydown', key);
+    root.addEventListener('click', function () { light(); });   // a click anywhere; the skip button's bubbles here too
+
+    /* ---- the terminal ---- */
+    var cursor = document.createElement('span'); cursor.className = 'cr-iu-tc';
+    function jump() { term.scrollTop = 1e9; }
+    function isIdle(d) { return !!(d && d.lastChild === cursor && d.firstChild.data === ''); }
+    function make(text, cls) {
+        var d = document.createElement('div');
+        d.className = 'cr-iu-tl' + (cls ? ' ' + cls : '');
+        d.appendChild(document.createTextNode(text));
+        return d;
+    }
+    function block(text, cls) {          // a line the cursor does not sit on
+        var d = make(text, cls); log.appendChild(d); jump(); return d;
+    }
+    function line(text, cls) {           // the cursor's line: writes on a waiting empty one, else a new one
+        var d = log.lastChild;
+        if (!isIdle(d)) { d = make('', ''); log.appendChild(d); }
+        d.className = 'cr-iu-tl' + (cls ? ' ' + cls : '');
+        d.firstChild.data = text;
+        d.appendChild(cursor);
+        jump();
+        return d;
+    }
+    /* a frame of output: goes in above the waiting cursor line, so the cursor stays
+       at the bottom and the frames stack up over it, oldest at the top */
+    function stamp(text) {
+        var d = make(text, 'cr-iu-art cr-iu-px'), last = log.lastChild;
+        if (isIdle(last)) log.insertBefore(d, last); else { log.appendChild(d); line(''); }
+        return d;
+    }
+    /* ease the scroll to the new bottom, so a stamped frame slides up into view and
+       the last one slides out: the flipbook the console's boot does */
+    function slide(ms) {
+        var g = gen, el = term, start = el.scrollTop, end = el.scrollHeight - el.clientHeight;
+        if (ms <= 0 || end <= start) { jump(); return Promise.resolve(); }
+        return new Promise(function (res) {
+            var t0 = Date.now();
+            (function step() {
+                if (g !== gen || !alive()) return;
+                var t = Math.min(1, (Date.now() - t0) / ms);
+                el.scrollTop = start + (end - start) * (1 - Math.pow(1 - t, 2));   // ease-out
+                if (t < 1) requestAnimationFrame(step); else res();
+            })();
+        });
+    }
+    function pause(ms) {
+        var g = gen;
+        return new Promise(function (res) { setTimeout(function () { if (g === gen && alive()) res(); }, ms); });
+    }
+    /* dotted leader to a fixed width, the way the console's checks line up */
+    function lead(left, right) {
+        var w = 34, dots = w - left.length - right.length - 2;
+        return left + ' ' + new Array(Math.max(3, dots) + 1).join('.') + ' ' + right;
+    }
+    /* a check: the leader prints now, the result lands when the check is done */
+    function check(left, right, ms, cls) {
+        var full = lead(left, right), d = line(full.slice(0, full.length - right.length));
+        return pause(ms).then(function () { d.firstChild.data = full; if (cls) d.className += ' ' + cls; });
+    }
+    function pad2(n) { return (n < 10 ? '0' : '') + n; }
+
+    /* ---- the sequence ---- */
+    function run() {
+        var g = gen, now = new Date();
+        var today = now.getFullYear() + '-' + pad2(now.getMonth() + 1) + '-' + pad2(now.getDate());
+        function eyeFrame(name, slideMs, hold) {
+            return function () { if (g !== gen) return; stamp(IU_EYE[name]); return slide(slideMs).then(function () { return pause(hold); }); };
+        }
+        /* about 3.2s end to end: the checks land in order, quick ones quicker, the
+           ones that look for something a beat longer; the eye's one blink keeps the
+           LCD's timing */
+        var seq = pause(250)
+            .then(function () { return check('> power', 'ok', 60); })
+            .then(function () { return pause(20); })
+            .then(function () { return check('> memcheck 8K', 'ok', 110); })
+            .then(function () { return pause(20); })
+            .then(function () { return check('> clock', today, 30); })
+            .then(function () { return pause(20); })
+            .then(function () { return check('> mounting /site', 'not found', 170, 'cr-iu-warn'); })
+            .then(function () { return pause(30); })
+            .then(function () { line(lead('> looking for isaacure.com', '')); return pause(220); })
+            .then(function () { line('  nothing here yet', 'cr-iu-dim'); return pause(100); })
+            .then(function () { return check('> eye subsystem', 'waking', 100); })
+            .then(function () { return pause(70); })
+            .then(function () {
+                block('');
+                block(IU_BANNER, 'cr-iu-art');
+                line('                A GOOD EYE OS  v1.0', 'cr-iu-art cr-iu-dim');
+                return pause(220);
+            })
+            .then(function () { block(''); line(''); return pause(30); })
+            // the eye powers on, has a look around, and blinks once, the LCD's blink
+            // (half 45 · slit 40 · shut 90 · slit 55 · half 70): each frame is stamped
+            // under the last and the log slides up to it
+            .then(eyeFrame('open', 120, 260))
+            .then(eyeFrame('left', 40, 70)).then(eyeFrame('right', 40, 70)).then(eyeFrame('open', 40, 80));
+        [['half', 45], ['slit', 40], ['shut', 90], ['slit', 55], ['half', 70]].forEach(function (f) { seq = seq.then(eyeFrame(f[0], 20, f[1])); });
+        seq = seq.then(eyeFrame('open', 40, 200));
+        seq.then(function () { return pause(120); })
+           .then(function () { return check('> handing off to /dev/eye0', 'ok', 80); })
+           .then(function () { return pause(200); })
+           .then(function () { if (g === gen) light(); })
+           .catch(light);
+    }
+
+    /* the terminal shows its lone cursor at once, then waits (briefly) for its face, so
+       the art does not reflow mid-boot, and waits to be looked at: in a hidden tab timers
+       crawl and frames cannot slide. the 12s budget is armed when the boot really starts;
+       the 20s one from now covers a document that never says it is visible. */
+    var started = false;
+    term.hidden = false; skipBtn.hidden = false; line('');
+    function fit() {                 // the column the face really advances, for the art's size
+        var probe = make('0000000000', 'cr-iu-art');
+        probe.style.cssText = 'position:absolute;visibility:hidden;min-height:0';
+        log.appendChild(probe);
+        var r = probe.getBoundingClientRect();   // at line-height 1 the box is one em tall, so the ratio holds under the tab's zoom
+        log.removeChild(probe);
+        if (r.width > 0 && r.height > 0) term.style.setProperty('--col', (r.width / 10 / r.height).toFixed(4));
+    }
+    function start() {
+        if (started || lit) return;
+        started = true;
+        setTimeout(light, 12000);
+        fit();
+        try { run(); } catch (e) { light(); }
+    }
+    function whenVisible(fn) {
+        if (!document.hidden) return fn();
+        document.addEventListener('visibilitychange', function f() {
+            if (!document.hidden) { document.removeEventListener('visibilitychange', f); fn(); }
+        });
+    }
+    function go() { whenVisible(start); }
+    setTimeout(function () { if (!started) light(); }, 20000);
+    if (document.fonts && document.fonts.load) {
+        document.fonts.load('1em VT323').then(function () { if (started && !lit) fit(); go(); }, go);
+        setTimeout(go, 1500);
+    } else go();
+}
+
 webPage('isaacure.com/ureboy', {
     title: 'URE BOY', fav: { ic: 'ic-ureboy' },
     render: function () { return '<div class="cr-site cr-center"><h2>This page is a whole console.</h2><p>The browser inside the computer can’t also hold the Game Boy. Physics.</p><button class="cr-btn" data-open="/ureboy/">Boot the real URE BOY ↗</button></div>'; },
@@ -4519,7 +4820,7 @@ function initChrome(el) {
     crChrome(); crTabs(); crPage();
 }
 function closeChrome() {
-    if (CR) { crDinoStop(); clearTimeout(CR.sugTmr); if (CR.keyFn) document.removeEventListener('keydown', CR.keyFn); }   // a pending autocomplete debounce must not fetch after teardown
+    if (CR) { crDinoStop(); clearTimeout(CR.sugTmr); if (CR.keyFn) document.removeEventListener('keydown', CR.keyFn); if (CR.iuKey) document.removeEventListener('keydown', CR.iuKey); }   // a pending autocomplete debounce must not fetch after teardown
     CR = null;
 }
 function crBubble(msg) {
