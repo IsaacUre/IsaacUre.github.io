@@ -355,6 +355,22 @@
           <rect x="0" y="0" width="16" height="16" fill="#d81e05"/>
           <rect x="6" y="3" width="4" height="4" fill="#faf7f0"/><rect x="4" y="9" width="8" height="4" fill="#faf7f0"/>
         </symbol>
+        <!-- the account flyout's three: a person with a gear, a padlock, a door with the arrow leaving -->
+        <symbol id="ic-acct" viewBox="0 0 16 16" shape-rendering="crispEdges">
+          <g fill="currentColor"><rect x="2" y="2" width="4" height="4"/><rect x="0" y="8" width="8" height="4"/>
+          <rect x="10" y="10" width="5" height="2"/><rect x="10" y="12" width="2" height="1"/><rect x="13" y="12" width="2" height="1"/><rect x="10" y="13" width="5" height="2"/>
+          <rect x="12" y="9" width="1" height="1"/><rect x="9" y="12" width="1" height="1"/><rect x="15" y="12" width="1" height="1"/><rect x="12" y="15" width="1" height="1"/>
+          <rect x="9" y="9" width="1" height="1"/><rect x="15" y="9" width="1" height="1"/><rect x="9" y="15" width="1" height="1"/><rect x="15" y="15" width="1" height="1"/></g>
+        </symbol>
+        <symbol id="ic-lock" viewBox="0 0 16 16" shape-rendering="crispEdges">
+          <g fill="currentColor"><rect x="4" y="1" width="8" height="2"/><rect x="4" y="3" width="2" height="4"/><rect x="10" y="3" width="2" height="4"/>
+          <rect x="2" y="7" width="12" height="2"/><rect x="2" y="9" width="5" height="4"/><rect x="9" y="9" width="5" height="4"/><rect x="2" y="13" width="12" height="2"/></g>
+        </symbol>
+        <symbol id="ic-signout" viewBox="0 0 16 16" shape-rendering="crispEdges">
+          <g fill="currentColor"><rect x="2" y="1" width="2" height="14"/><rect x="4" y="1" width="4" height="2"/><rect x="4" y="13" width="4" height="2"/>
+          <rect x="6" y="7" width="9" height="2"/><rect x="10" y="4" width="2" height="1"/><rect x="11" y="5" width="2" height="1"/><rect x="12" y="6" width="2" height="1"/>
+          <rect x="12" y="9" width="2" height="1"/><rect x="11" y="10" width="2" height="1"/><rect x="10" y="11" width="2" height="1"/></g>
+        </symbol>
         <symbol id="ic-chevron" viewBox="0 0 16 16" shape-rendering="crispEdges">
           <g fill="currentColor"><rect x="7" y="6" width="2" height="2"/><rect x="5" y="8" width="2" height="2"/><rect x="9" y="8" width="2" height="2"/>
           <rect x="3" y="10" width="2" height="2"/><rect x="11" y="10" width="2" height="2"/></g>
@@ -446,7 +462,15 @@
           </div>
 
           <div class="start-foot">
-            <button class="user" data-app="about" type="button"><svg class="ic"><use href="#ic-user"/></svg><span>Isaac Ure</span></button>
+            <!-- the name opens the account flyout (after it in markup, above it on screen), not About -->
+            <div class="user-wrap">
+              <button class="user" id="userBtn" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="userFly"><svg class="ic"><use href="#ic-user"/></svg><span>Isaac Ure</span></button>
+              <div class="uflyout px-sm lift" id="userFly" role="menu" aria-label="Account" hidden>
+                <button class="ctx-item" role="menuitem" type="button" data-uact="settings"><svg class="ic"><use href="#ic-acct"/></svg> Change account settings</button>
+                <button class="ctx-item" role="menuitem" type="button" data-uact="lock"><svg class="ic"><use href="#ic-lock"/></svg> Lock</button>
+                <button class="ctx-item" role="menuitem" type="button" data-uact="signout"><svg class="ic"><use href="#ic-signout"/></svg> Sign out</button>
+              </div>
+            </div>
             <button class="powerbtn" id="powerBtn" type="button" aria-label="Power"><svg class="ic"><use href="#ic-power"/></svg></button>
           </div>
         </div>

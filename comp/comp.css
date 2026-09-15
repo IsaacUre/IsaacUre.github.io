@@ -302,6 +302,24 @@ body.dnd, body.dnd * { cursor: grabbing !important; }
 .powerbtn { width: 38px; height: 34px; display: grid; place-items: center; border-radius: 6px; color: var(--ink); }
 .powerbtn .ic { width: 18px; height: 18px; }
 
+/* the account flyout: click the name and you get the three lines Windows
+   puts there, just above the button. It is a child of Start, so it recenters
+   and scrolls with it, and it closes with it. */
+.user-wrap { position: relative; }
+.user.on { background: rgba(255,255,255,.12); }
+.uflyout {
+    position: absolute; left: 0; bottom: calc(100% + 6px); z-index: 2;
+    min-width: 232px; padding: 5px;
+    background: var(--glass-2); border: 1px solid var(--line);
+    display: flex; flex-direction: column; gap: 1px;
+    opacity: 0; transform: translateY(6px); visibility: hidden; pointer-events: none;
+    /* visibility flips at once on open (so the first item can take focus that
+       same tick) and only after the fade on close */
+    transition: opacity .12s ease, transform .12s ease, visibility 0s linear .12s;
+}
+.uflyout.open { opacity: 1; transform: none; visibility: visible; pointer-events: auto; transition: opacity .12s ease, transform .12s ease, visibility 0s; }
+.uflyout .ctx-item { white-space: nowrap; }
+
 /* ───────────────────────────  window  ────────────────────────── */
 .win {
     position: absolute; z-index: 20;
@@ -543,6 +561,10 @@ body.dnd, body.dnd * { cursor: grabbing !important; }
 .tgl.on::after { transform: translateX(18px); background: #fff; }
 .set-btn { font-size: .8rem; color: var(--ink); background: rgba(255,255,255,.07); border: 1px solid var(--line-2); border-radius: 6px; padding: 6px 12px; }
 .set-btn:hover { background: var(--accent-lo); border-color: var(--accent); }
+.set-me { display: flex; align-items: center; gap: 14px; }
+.set-me .set-av { width: 48px; height: 48px; border: 1px solid rgba(255,255,255,.2); }
+.set-me b { display: block; font-size: 1rem; font-weight: 600; }
+.set-me span { font-size: .78rem; color: var(--ink-dim); }
 
 /* —— Calculator —— */
 .calc { display: flex; flex-direction: column; background: #1a1b22; padding: 10px; gap: 10px; }
@@ -755,6 +777,34 @@ mark.fnd.cur { background: #ff9632; color: #15151a; }
 .shutdown.on { opacity: 1; }
 .sd-spin { width: 34px; height: 34px; border: 4px solid rgba(255,255,255,.2); border-top-color: var(--accent); border-radius: 50%; animation: sdspin 1s linear infinite; }
 @keyframes sdspin { to { transform: rotate(360deg); } }
+
+/* ══════════ lock screen: Lock and Sign out, from the account flyout ══════════
+   The wallpaper with the clock on it; a click or a key trades the clock for
+   the sign-in tile. .msg is the dark panel ("Signing out…"); with .welcome
+   it goes clear and says Welcome over the blurred wallpaper instead. */
+.lock { position: fixed; inset: 0; z-index: 2000; overflow: hidden; background: #05070d; color: #fff; font-family: var(--f-ui); opacity: 0; transition: opacity .3s; cursor: default; user-select: none; }
+.lock.on { opacity: 1; }
+.lock:focus { outline: none; }
+.lock-wall { position: absolute; inset: 0; width: 100%; height: 100%; display: block; image-rendering: pixelated; image-rendering: crisp-edges; transition: filter .35s ease, transform .35s ease; }
+.lock.signin .lock-wall { filter: blur(6px) brightness(.55); transform: scale(1.04); }   /* the scale keeps the blur's soft edge off screen */
+.lock-clock { position: absolute; left: 0; right: 0; top: 13%; text-align: center; text-shadow: 0 2px 0 rgba(0,0,0,.4); transition: opacity .22s, transform .3s; }
+.lock-time { font-size: clamp(3.2rem, 11vmin, 6.4rem); font-weight: 600; line-height: 1; }
+.lock-date { font-size: clamp(1.05rem, 3vmin, 1.55rem); font-weight: 500; margin-top: 10px; }
+.lock.signin .lock-clock { opacity: 0; transform: translateY(-20px); }
+.lock-tile { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-42%); display: flex; flex-direction: column; align-items: center; gap: 14px; opacity: 0; visibility: hidden; transition: opacity .25s, transform .3s, visibility 0s linear .3s; }
+.lock.signin .lock-tile { opacity: 1; visibility: visible; transform: translateY(-50%); transition: opacity .25s, transform .3s, visibility 0s; }   /* visible at once, so Sign in can take focus */
+.lock-av { width: 120px; height: 120px; border-radius: 50%; overflow: hidden; border: 3px solid rgba(255,255,255,.4); box-shadow: 0 4px 0 rgba(0,0,0,.3); }
+.lock-av .ic { width: 100%; height: 100%; }
+.lock-name { font-size: 1.7rem; font-weight: 600; text-shadow: 0 2px 0 rgba(0,0,0,.4); }
+.lock-btn { margin-top: 4px; min-width: 200px; padding: 10px 20px; border-radius: 4px; font-size: .95rem; font-weight: 500; color: #fff; background: var(--accent); border: 1px solid rgba(255,255,255,.25); }
+.lock-btn:hover { filter: brightness(1.12); }
+.lock-btn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.lock-tray { position: absolute; right: 26px; bottom: 22px; display: flex; gap: 20px; opacity: .9; filter: drop-shadow(0 1px 0 rgba(0,0,0,.5)); }
+.lock-tray .ic { width: 20px; height: 20px; }
+.lock-msg { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; background: #05070d; color: #cfd2da; font-size: 1rem; opacity: 0; visibility: hidden; transition: opacity .3s, visibility .3s; }
+.lock.msg .lock-msg { opacity: 1; visibility: visible; }
+.lock.welcome .lock-msg { background: transparent; color: #fff; font-size: 1.5rem; text-shadow: 0 2px 0 rgba(0,0,0,.4); }
+.lock.welcome .lock-tile { opacity: 0; visibility: hidden; transition: opacity .25s, transform .3s, visibility 0s linear .25s; }   /* fades under Welcome instead of blinking out */
 
 @media (max-width: 640px) {
     .flyout { width: calc(100vw - 16px); right: 8px; }

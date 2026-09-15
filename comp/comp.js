@@ -2191,6 +2191,7 @@ function renderSettings() {
           '<button class="set-navi sel" data-pane="personalization">' + ic('ic-ure') + ' Personalization</button>' +
           '<button class="set-navi" data-pane="taskbar">' + ic('ic-taskview') + ' Taskbar</button>' +
           '<button class="set-navi" data-pane="system">' + ic('ic-pc') + ' System</button>' +
+          '<button class="set-navi" data-pane="accounts">' + ic('ic-user') + ' Accounts</button>' +
           '<button class="set-navi" data-pane="about">' + ic('ic-settings') + ' About</button>' +
         '</nav><div class="set-body"></div></div>';
 }
@@ -2226,6 +2227,14 @@ function initSettings(el, id, arg) {
             var specs = [['Device name', 'URE-PC'], ['Processor', 'Bloom Core @ 60fps'], ['Installed RAM', '640 KB (ought to be enough)'], ['GPU', 'Canvas 2D, pixelated'], ['System type', 'pixel-bit operating system'], ['Pen and touch', 'thumbs supported']];
             body.innerHTML = '<h2 class="set-h2">System &gt; About</h2><div class="set-card"><dl class="specs">' + specs.map(function (s) { return '<dt>' + esc(s[0]) + '</dt><dd>' + esc(s[1]) + '</dd>'; }).join('') + '</dl></div>' +
                 '<div class="set-card"><div class="set-row"><span>Windows specifications</span></div><dl class="specs"><dt>Edition</dt><dd>UreOS 11 Pixel Edition</dd><dt>Version</dt><dd>26H (the room)</dd><dt>Installed</dt><dd>the day you visited</dd></dl></div>';
+        } else if (name === 'accounts') {
+            // where "Change account settings" in the Start flyout lands
+            body.innerHTML = '<h2 class="set-h2">Accounts</h2>' +
+                '<div class="set-card"><div class="set-me">' + ic('ic-user', 'set-av') + '<div><b>Isaac Ure</b><span>Local account · Administrator</span></div></div>' +
+                  '<p class="set-hint">The only account on this machine. Sign out and you sign back in as him.</p></div>' +
+                '<div class="set-card"><div class="set-row"><span>Sign-in options</span></div><dl class="specs"><dt>Password</dt><dd>none (it’s a website)</dd><dt>PIN</dt><dd>not set</dd><dt>Windows Hello</dt><dd>recognizes exactly one face</dd></dl></div>' +
+                '<div class="set-card"><div class="set-row"><span>Lock this PC</span><button class="set-btn" data-act="lock">Lock</button></div><p class="set-hint">The lock screen, then the sign-in tile. Signing in is one click; there is no password to type.</p></div>' +
+                '<div class="set-card"><div class="set-row"><span>Sign out</span><button class="set-btn" data-act="signout">Sign out</button></div><p class="set-hint">You come back to everything where you left it.</p></div>';
         } else {
             body.innerHTML = '<h2 class="set-h2">About</h2><div class="set-card"><p class="set-hint">The computer is a corner of <b>isaacure.com</b> — a pixel Windows 11 built as the hub for Isaac’s stuff. Made with vanilla JS, a canvas Bloom, and no frameworks.</p></div>' +
                 '<div class="set-card"><div class="set-row"><span>More of Isaac</span><button class="set-btn" data-act="about">Open About Isaac</button></div></div>';
@@ -2252,10 +2261,14 @@ function initSettings(el, id, arg) {
             return;
         }
         var act = e.target.closest('[data-act]');
-        if (act) { var a = act.getAttribute('data-act'); if (a === 'rebloom') renderWall(); else if (a === 'about') openApp('about'); }
+        if (act) {
+            var a = act.getAttribute('data-act');
+            if (a === 'rebloom') renderWall(); else if (a === 'about') openApp('about');
+            else if (a === 'lock') lockScreen(false); else if (a === 'signout') lockScreen(true);
+        }
     });
     el._setPane = pane;                     // so a second "Display settings" click can still switch panes
-    pane(arg && (arg === 'system' || arg === 'taskbar' || arg === 'personalization') ? arg : 'personalization');
+    pane(arg && (arg === 'system' || arg === 'taskbar' || arg === 'personalization' || arg === 'accounts') ? arg : 'personalization');
 }
 
 /* —— Calculator —— */
@@ -4927,7 +4940,9 @@ var APPS = {
 
 /* ═══════════════════ Start menu + launch wiring ═════════════ */
 var startMenu = byId('startMenu'), startBtn = byId('startBtn'), startSearch = byId('startSearch');
+var userBtn = byId('userBtn'), userFly = byId('userFly');
 function setStart(open) {
+    setUserFly(false);            // the flyout never outlives the Start it hangs off, and never opens with it
     startMenu.hidden = false;
     void startMenu.offsetWidth;   // commit the unhidden state so the fade still animates —
     // fully synchronous: .open is never stale (the keybind layer gates on it, and a
@@ -4939,8 +4954,45 @@ function setStart(open) {
     else { startSearch.value = ''; filterStart(''); }
 }
 startBtn.addEventListener('click', function (e) { e.stopPropagation(); setStart(!startMenu.classList.contains('open')); });
-startMenu.addEventListener('click', function (e) { e.stopPropagation(); });
+startMenu.addEventListener('click', function (e) {
+    e.stopPropagation();
+    if (!e.target.closest('.user-wrap')) setUserFly(false);   // light-dismiss: a click anywhere else in Start
+});
 byId('powerBtn').addEventListener('click', shutdown);
+
+/* The name at the bottom of Start opens the account flyout, the way the real
+   one does — three lines just above the button — rather than the About
+   window. Change account settings is Settings > Accounts; Lock and Sign out
+   are the lock screen below. */
+function userFlyOpen() { return userFly.classList.contains('open'); }
+function setUserFly(open) {
+    if (open === userFlyOpen()) return;
+    userFly.hidden = false; void userFly.offsetWidth;   // same dance as setStart: commit, then fade
+    userFly.classList.toggle('open', open);
+    userBtn.classList.toggle('on', open);
+    userBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) userFly.querySelector('[data-uact]').focus();
+}
+userBtn.addEventListener('click', function () { setUserFly(!userFlyOpen()); });
+userFly.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-uact]'); if (!b) return;
+    var a = b.getAttribute('data-uact');
+    setUserFly(false);
+    if (a === 'settings') openApp('settings', 'accounts');
+    else if (a === 'lock') lockScreen(false);
+    else if (a === 'signout') lockScreen(true);
+});
+// it is a menu: the arrows walk it, and it goes when the focus does
+userFly.addEventListener('keydown', function (e) {
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    var items = userFly.querySelectorAll('[data-uact]'), n = items.length, i = -1;
+    for (var k = 0; k < n; k++) if (items[k] === document.activeElement) i = k;
+    items[e.key === 'ArrowDown' ? (i + 1) % n : (i <= 0 ? n - 1 : i - 1)].focus();
+    e.preventDefault();
+});
+userBtn.parentNode.addEventListener('focusout', function (e) {
+    if (e.relatedTarget && !userBtn.parentNode.contains(e.relatedTarget)) setUserFly(false);
+});
 
 function filterStart(q) {
     q = q.trim().toLowerCase();
@@ -5110,6 +5162,73 @@ function shutdown() {
         setTimeout(function () { ov.classList.remove('on'); setTimeout(function () { ov.remove(); }, 400); }, 900);
     }, reduce ? 200 : 1400);
 }
+
+/* ═══════════ lock screen: Lock and Sign out, from the account flyout ═══════════
+   Lock is the real thing: the wallpaper with the clock on it, and a click or
+   a key trades that for the sign-in tile. Sign out gets there by way of
+   "Signing out…". There is one account on this machine and it has no
+   password, so Sign in is a button — and it puts you back exactly where you
+   were, windows and all, which is the shutdown gag's policy too.
+   The overlay paints its own copy of the wallpaper (opaque, so nothing
+   behind it matters) and, while it is up, a window-capture listener swallows
+   every key before the desktop or a game can hear it. */
+var lockEl = null;
+function lockScreen(signout) {
+    if (lockEl) return;
+    setStart(false); closeFlyouts(); closeCtx(); closeFctx(); closeBctx(); closeTaskView();
+    var ov = document.createElement('div');
+    ov.className = 'lock' + (signout ? ' msg' : '');
+    ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-modal', 'true'); ov.setAttribute('aria-label', signout ? 'Signing out' : 'Locked');
+    ov.tabIndex = -1;
+    ov.innerHTML =
+        '<canvas class="lock-wall" aria-hidden="true"></canvas>' +
+        '<div class="lock-clock" aria-hidden="true"><div class="lock-time"></div><div class="lock-date"></div></div>' +
+        '<div class="lock-tile">' +
+          '<div class="lock-av">' + ic('ic-user') + '</div>' +
+          '<div class="lock-name">Isaac Ure</div>' +
+          '<button class="lock-btn" type="button">Sign in</button>' +
+        '</div>' +
+        '<div class="lock-tray" aria-hidden="true">' + ic('ic-net') + ic('ic-access') + ic('ic-power') + '</div>' +
+        '<div class="lock-msg" aria-live="polite"><div class="sd-spin"></div><p>' + (signout ? 'Signing out…' : '') + '</p></div>';
+    var cv = ov.querySelector('.lock-wall'), tEl = ov.querySelector('.lock-time'), dEl = ov.querySelector('.lock-date');
+    var btn = ov.querySelector('.lock-btn'), msg = ov.querySelector('.lock-msg p');
+    var phase = signout ? 'out' : 'locked', tick, rsT;
+    function paint() { cv.width = wall.width; cv.height = wall.height; cv.getContext('2d').drawImage(wall, 0, 0); }
+    function clock() { var n = new Date(); tEl.textContent = fmtTime(n); dEl.textContent = DOW[n.getDay()] + ', ' + MON[n.getMonth()] + ' ' + n.getDate(); }
+    function toSignin() { if (phase !== 'locked') return; phase = 'signin'; ov.setAttribute('aria-label', 'Sign in'); ov.classList.add('signin'); btn.focus(); }
+    function signIn() {
+        if (phase !== 'signin') return; phase = 'welcome';
+        msg.textContent = 'Welcome'; ov.classList.add('welcome', 'msg'); ov.focus();
+        setTimeout(unlock, reduce ? 250 : 1100);
+    }
+    function unlock() {
+        clearInterval(tick); clearTimeout(rsT); window.removeEventListener('resize', onResize);
+        lockEl = null; ov.classList.remove('on');
+        setTimeout(function () { ov.remove(); }, 350);
+    }
+    function onResize() { clearTimeout(rsT); rsT = setTimeout(paint, 200); }   // the desktop re-renders its wall at 120ms; copy the new one
+    ov.addEventListener('click', function (e) { if (e.target.closest('.lock-btn')) signIn(); else toSignin(); });
+    ov.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+    lockEl = { el: ov, key: function (e) {
+        if (e.key === 'Tab') { e.preventDefault(); (phase === 'signin' ? btn : ov).focus(); return; }   // focus stays on the lock screen
+        if (e.altKey || e.ctrlKey || e.metaKey || e.repeat) return;
+        if (phase === 'locked') { toSignin(); if (e.key === ' ' || e.key === 'Enter') e.preventDefault(); }
+        else if (phase === 'signin' && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); signIn(); }
+    } };
+    paint(); clock(); tick = setInterval(clock, 10000);
+    window.addEventListener('resize', onResize);
+    document.body.appendChild(ov);
+    void ov.offsetWidth; ov.classList.add('on');   // commit the unpainted state so the fade runs; no rAF, so it also runs headless
+    ov.focus();
+    if (signout) setTimeout(function () { ov.classList.remove('msg'); ov.setAttribute('aria-label', 'Locked'); phase = 'locked'; }, reduce ? 300 : 1500);
+}
+// Registered at load, before any app registers its own window-capture listener
+// (Racer has one), so it is first in line for every key while the screen is locked.
+window.addEventListener('keydown', function (e) {
+    if (!lockEl) return;
+    e.stopImmediatePropagation();
+    lockEl.key(e);
+}, true);
 
 /* ═════════════ in-app find (Alt+F) — Chrome-style bar ═══════════
    One find state at a time; the bar lives inside the focused window
@@ -5437,6 +5556,7 @@ document.addEventListener('auxclick', function (e) { if (e.button === 1) closeBc
 document.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape') return;
     if (closeTopDlg()) return;   // dialogs eat the first Escape
+    if (userFlyOpen()) { setUserFly(false); userBtn.focus(); return; }   // the flyout goes; Start stays
     // byId('taskView') is the right test — closeTaskView drops the id before
     // it schedules the fade, so a corpse no longer answers to it. Testing the
     // `.on` class instead would NOT work: it is added in a requestAnimationFrame,
