@@ -2,6 +2,7 @@
 __*.html
 __*.js
 comp/__*
+tcomp/__*
 
 # QC scratch: hundreds of captures and probe pages, never committed
 .claude/nnqc/
