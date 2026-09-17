@@ -430,7 +430,7 @@ byId('taskviewBtn').addEventListener('click', function (e) { e.stopPropagation()
      AUTO-HIDE         Windows 11's "automatically hide the taskbar", which
                        is a different thing and lives in Settings.
 
-   All three at once is the point: a full-screen NINTH NIGHT inside a
+   All three at once is the point: a full-screen game inside a
    full-screen page is a game filling a monitor with nothing of either
    operating system left on the glass.                                   */
 
@@ -788,7 +788,6 @@ var FS = {
         { n: 'This PC', t: 'pc', app: 'explorer', arg: 'This PC', sys: 1 },
         { n: 'About Isaac', t: 'ure', app: 'about' },
         { n: 'Google Chrome', t: 'chrome', app: 'chrome' },
-        { n: 'NINTH NIGHT', t: 'ninth', app: 'ninth' },
         { n: 'URE BOY', t: 'ureboy', app: 'ureboy' },
         { n: 'the room', t: 'room', app: 'room' },
         { n: 'Recycle Bin', t: 'bin', app: 'bin', sys: 1 }
@@ -797,7 +796,7 @@ var FS = {
     'Documents': { items: [
         { n: 'Rice', t: 'folder', go: 'Documents/Rice' }, { n: 'FSAE', t: 'folder', go: 'Documents/FSAE' },
         { n: 'Deep Blue', t: 'folder', go: 'Documents/Deep Blue' }, { n: 'DnD', t: 'folder', go: 'Documents/DnD' },
-        { n: 'My Games', t: 'folder', go: 'Documents/My Games' }, { n: 'essays', t: 'folder', go: 'Documents/essays' },
+        { n: 'essays', t: 'folder', go: 'Documents/essays' },
         { n: 'car', t: 'folder', go: 'Documents/car' },
         { n: 'about-me.txt', t: 'notepad', app: 'about' }, { n: 'resume.pdf', t: 'notepad', app: 'about' },
         { n: 'readme.txt', t: 'notepad', app: 'notepad' }
@@ -824,8 +823,7 @@ var FS_ICON = {
     pdf: 'ic-pdf', img: 'ic-img', audio: 'ic-audio', video: 'ic-video', exe: 'ic-exe', dll: 'ic-dll', sys: 'ic-sys',
     zip: 'ic-zip', code: 'ic-code', js: 'ic-js', html: 'ic-html', css: 'ic-css', font: 'ic-font', sav: 'ic-sav',
     drive: 'ic-drive', usb: 'ic-usb', disc: 'ic-disc', terminal: 'ic-terminal', calc: 'ic-calc',
-    explorer: 'ic-explorer', settings: 'ic-settings',
-    ninth: 'ic-ninth'
+    explorer: 'ic-explorer', settings: 'ic-settings'
 };
 var KIND = {
     folder: 'File folder', pc: 'Local disk', notepad: 'Text document', room: 'PNG image', gti: 'PNG image',
@@ -836,8 +834,7 @@ var KIND = {
     sys: 'System file', zip: 'Compressed (zipped) folder', code: 'Source file', js: 'JavaScript file', html: 'HTML document',
     css: 'CSS document', font: 'TrueType font file', sav: 'Save file', drive: 'Local disk', usb: 'USB drive', disc: 'CD Drive',
     terminal: 'Application', calc: 'Application',
-    explorer: 'Application', settings: 'Application',
-    ninth: 'Shortcut'
+    explorer: 'Application', settings: 'Application'
 };
 // extension → item type. Anything unlisted is a plain 'file'.
 var EXT_T = {
@@ -857,7 +854,7 @@ var EXT_KIND = {
     mp3: 'MP3 audio', wav: 'Wave sound', m4a: 'M4A audio', mp4: 'MP4 video', mov: 'QuickTime video',
     docx: 'Microsoft Word document', xlsx: 'Microsoft Excel worksheet', csv: 'Comma-separated values', pptx: 'Microsoft PowerPoint presentation',
     reg: 'Registration entries', bat: 'Windows batch file', ps1: 'PowerShell script',
-    json: 'JSON file', xml: 'XML document', wld: 'Terraria world', plr: 'Terraria player', uqs: 'URE QUEST save',
+    json: 'JSON file', xml: 'XML document', uqs: 'URE QUEST save',
     rbxl: 'Roblox place', bak: 'Backup file', tmp: 'Temporary file', inf: 'Setup information'
 };
 // extension → plausible size range in KB (deterministic pick per path)
@@ -942,8 +939,7 @@ var TREE_C = {
         'URE Softworks': {
             'GTI RUN': { 'gtirun.exe': '@gti', 'tracks.dat': 0, 'readme.txt': 'GTI RUN.\nhold A to not die. the sleeping policeman is not sleeping.' },
             'PIT LANE': { 'pitlane.exe': '@ureboy', 'strategy.dat': 0 },
-            'URE QUEST': { 'quest.exe': '@ureboy', 'party.dat': 0, 'balance.txt': 'nerf the cow? (no. never. the cow stays.)' },
-            'NINTH NIGHT': { 'ninthnight.exe': '@ninth', 'Content': { 'ballad.txt': 'In the ninth year of the thin sun\nthere was nothing left to eat.\nWe burned the doors, we burned the pews,\nwe burned the market street.\n\n[...]\n\nSo light your lamps on the ninth night\nand set one on the sill\nfor the man who walked out past the fence,\nand he went alone.\n\n(five syllables. every other closing line runs six to eight. something was taken out and you can hear the hole.)', 'families.cfg': '; words that rhyme share a nature\neat  = hunger, burn, drain\night = reveal, strip armour, true damage\nerd  = command, silence, counter\nark  = shadow, damage over time, conceal\nill  = stun, freeze, execute\n\n; nothing rhymes with sword. this is deliberate.' }, 'readme.txt': 'NINTH NIGHT — proof of concept.\n\nTwo verbs. Call leaves a rhyme. Answer detonates every rhyme that matches its sound.\n\nPress ` for the dev menu.' }
+            'URE QUEST': { 'quest.exe': '@ureboy', 'party.dat': 0, 'balance.txt': 'nerf the cow? (no. never. the cow stays.)' }
         },
         'Windows Defender': { 'MsMpEng.exe': 0, 'mpengine.dll': ['118 MB'], 'MpCmdRun.exe': 0 },
         '7-Zip': { '7z.exe': 0, '7z.dll': 0, 'History.txt': '9.20 2010-11-18\n- everything since has been vibes.\n\n(this changelog abridged for pixel reasons)' },
@@ -1039,16 +1035,9 @@ var TREE_DOCS = {
         'character sheets': { 'SOPHIE — silver ring bard.pdf': 0, 'MALACHI — chaos sorcerer.pdf': 0, 'SAMMY — beast barbarian.pdf': 0, 'THE BOULDER.pdf': 0, 'the cow.pdf': 0 },
         'DM screen cheatsheet.pdf': 0, 'dice math.xlsx': 0
     },
-    'My Games': {
-        'Terraria': {
-            'Players': { 'isaac.plr': 0, 'isaac.plr.bak': 0 },
-            'Worlds': { 'the big one.wld': 0, 'hardcore attempt 3 (RIP).wld': 0, 'the big one.wld.bak': 0 }
-        }
-    },
     'essays': {
         $: { d: '2/9/2026', j: 90 },
         'why i wanted to be a cow (age 7, recovered).txt': 'RECOVERED FROM THE OLD LAPTOP. PRESERVED VERBATIM.\n\nwhen i grow up i want to be a cow because cows get to stand in the grass all day and nobody asks them anything.\n\n(editor’s note, age 19: the kid had a point.)',
-        'absurdism and idle games.txt': 'thesis: the idle game is the most honest genre.\nthe numbers go up. it means nothing. you keep going anyway.\ncamus would have played cookie clicker. camus would have ASCENDED.',
         'college essay final.docx': 0
     },
     'car': {
@@ -1070,7 +1059,7 @@ var TREE_PICS = {
         'the matching rings.jpg': 0, 'martel at golden hour.jpg': 0, 'the tree branch (memorial).jpg': 0
     },
     'Screenshots': {
-        'terraria eye of cthulhu.png': 0, 'cookie clicker 1 trillion.png': 0, 'urequest full party.png': 0,
+        'urequest full party.png': 0,
         'gti run PB 114.png': 0, 'pit lane photo finish.png': 0, 'Screenshot 2026-03-02 014412.png': 0, 'Screenshot 2026-03-02 014415.png': 0
     },
     'argent': {
@@ -1096,7 +1085,7 @@ var TREE_MUSIC = {
 var TREE_VIDS = {
     $: { d: '12/2/2025', j: 200 },
     'Captures': {
-        'terraria boss kill.mp4': 0, 'gti run 114 PB.mp4': 0, 'cookie ascension.mp4': 0,
+        'gti run 114 PB.mp4': 0,
         'urequest heat soak fight.mp4': 0, 'pit lane last lap.mp4': 0
     },
     'argent cold start.mp4': 0,
@@ -1125,7 +1114,6 @@ var TREE_D = {
                 }
             },
             'games': {
-                'minecraft worlds backup': { 'world2016.zip': 0, 'the good seed.txt': 'seed: 4-1-1-4\nvillage at spawn. do not lose this again.' },
                 'roblox': {
                     'idle tycoon place v12.rbxl': 0, 'idle tycoon place v13 REAL.rbxl': 0, 'obby draft.rbxl': 0,
                     'how to script.txt': 'day 1: what is a variable\nday 9: made the button give 2 money instead of 1\nday 30: the tycoon has an economy. i do not fully control it anymore.\nday 31: i understand economics now (i did not, but it planted the flag)'
@@ -1141,7 +1129,7 @@ var TREE_D = {
     'DO NOT DELETE.zip': {
         'DO NOT OPEN': {
             'final warning.txt': 'you were warned.\n\n— past isaac',
-            'ok fine': { 'the secret.txt': 'there was never anything in here.\nthe folder was the friend we made along the way.\n\n(also the good minecraft seed is 4-1-1-4, in case the other note is gone.)' }
+            'ok fine': { 'the secret.txt': 'there was never anything in here.\nthe folder was the friend we made along the way.' }
         }
     },
     'movies (legal)': { $: { e: 'Nothing to see here. Legally.' } }
@@ -2066,7 +2054,7 @@ function initTerminal(el) {
     function pathLabel() { return cwd === 'Home' ? '~' : (FS[cwd] || {}).label || cwd; }
     function setCwd(k) { cwd = k; if (pathEl) pathEl.textContent = pathLabel(); }
     function findHere(name) {
-        var low = String(name || '').replace(/^"|"$/g, '').toLowerCase();   // `cd "My Games"` works too
+        var low = String(name || '').replace(/^"|"$/g, '').toLowerCase();   // `cd "Deep Blue"` works too
         var hit = null;
         itemsFor(cwd).forEach(function (it) { if (!hit && it.n.toLowerCase() === low) hit = it; });
         return hit;
@@ -3720,7 +3708,6 @@ webPage('en.wikipedia.org', {
                     crLink('en.wikipedia.org/wiki/Volkswagen_Golf', 'Volkswagen Golf', 'cr-chip') +
                     crLink('en.wikipedia.org/wiki/Game_Boy', 'Game Boy', 'cr-chip') +
                     crLink('en.wikipedia.org/wiki/Rice_University', 'Rice University', 'cr-chip') +
-                    crLink('en.wikipedia.org/wiki/Cookie_Clicker', 'Cookie Clicker', 'cr-chip') +
                 '</div></div>';
         }
         return liveSkeleton('Wikipedia article');
@@ -4937,15 +4924,6 @@ var APPS = {
     calc:     { title: 'Calculator', icon: 'ic-calc', w: 300, h: 440, render: renderCalc, init: initCalc },
     chrome:   { title: 'Google Chrome', icon: 'ic-chrome', w: 980, h: 640, titlebar: crTitlebar, render: renderChrome, init: initChrome, onClose: closeChrome },
     bin:      { title: 'Recycle Bin', icon: 'ic-bin', w: 600, h: 400, render: renderBin, init: initBin },
-    ninth: { title: 'NINTH NIGHT', icon: 'ic-ninth', w: 1160, h: 720,
-        render: function () { return window.NINTH ? window.NINTH.render() : '<p style="padding:24px">Nobody said anything (ninth.js missing).</p>'; },
-        init: function (el) { if (window.NINTH) window.NINTH.init(el); },
-        onFocus: function (el) { var r = el.querySelector('.nn'); if (r) r.focus(); },
-        // rAF keeps running behind a minimized window, so the ambience would
-        // carry on playing out of a window nobody can see
-        onMinimize: function () { if (window.NINTH && window.NINTH.suspend) window.NINTH.suspend(); },
-        onRestore: function (el) { if (window.NINTH && window.NINTH.resume) window.NINTH.resume(); var r = el.querySelector('.nn'); if (r) r.focus(); },
-        onClose: function () { if (window.NINTH) window.NINTH.close(); } },
     ureboy:   { launch: '/ureboy/' },
     room:     { launch: '/1p/' },
     gti:      { launch: '/ureboy/' }
@@ -5067,15 +5045,10 @@ quickPanel.addEventListener('click', function (e) { e.stopPropagation(); });
 calPanel.addEventListener('click', function (e) { e.stopPropagation(); });
 
 /* The taskbar volume is the system volume as far as the player is
-   concerned, so it drives whatever app owns sound. NINTH persists it
-   in its own save, which is why it survives without a store here. */
-function sysVolume() {
-    if (window.NINTH && window.NINTH.volume) { try { return Math.round(window.NINTH.volume() * 100); } catch (e) {} }
-    return 65;
-}
-function setSysVolume(pct) {
-    if (window.NINTH && window.NINTH.volume) { try { window.NINTH.volume(clamp(pct, 0, 100) / 100); } catch (e) {} }
-}
+   concerned. Nothing on this desktop reads it yet; it is a number that
+   survives a reload. */
+function sysVolume() { return clamp(+recall('vol', '65') || 0, 0, 100); }
+function setSysVolume(pct) { store('vol', String(clamp(pct, 0, 100))); }
 function buildQuick() {
     var tiles = [['ic-wifi', 'Wi-Fi', 1], ['ic-bt', 'Bluetooth', 0], ['ic-plane', 'Airplane', 0], ['ic-batt', 'Battery saver', 0], ['ic-moon', 'Night light', 0], ['ic-access', 'Accessibility', 0]];
     // the one tile here that does something. Rebuilt on every open, so it reads
@@ -5626,7 +5599,6 @@ if (location.search.indexOf('dev=maxi') >= 0) { openApp('explorer'); openWins.ex
 if (location.search.indexOf('dev=chrome') >= 0) openApp('chrome');
 var devCr = location.search.match(/dev=cr:([^&]+)/);   // ?dev=cr:<url> — open Chrome navigated somewhere (cr:dino → chrome://dino)
 if (devCr) { openApp('chrome'); var crU; try { crU = decodeURIComponent(devCr[1]); } catch (e) { crU = devCr[1]; } if (CR) crNav(crParse(/^[a-z]+$/.test(crU) ? 'chrome://' + crU : crU)); }
-if (location.search.indexOf('dev=ninth') >= 0) openApp('ninth');      // NINTH NIGHT (+ &ndev=demo, window.__ninth handle)
 if (location.search.indexOf('dev=drag') >= 0) {   // drive the real dnd engine with synthetic pointer events
     setTimeout(function () {
         function fakeDrag(fromTile, tx, ty, then) {

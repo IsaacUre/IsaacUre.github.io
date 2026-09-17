@@ -5,7 +5,7 @@ const SHOTS = require('path').join(__dirname, '..', 'shots'); require('fs').mkdi
 let fails = 0;
 const ok = (c, msg, extra) => { console.log((c ? 'PASS ' : 'FAIL ') + msg + (extra !== undefined ? '  ' + JSON.stringify(extra) : '')); if (!c) fails++; };
 (async () => {
-  const g = await D.open({ page: '/comp/', query: '?dev=mc', w: 1400, h: 900 });
+  const g = await D.open({ page: '/tcomp/', query: '?dev=mc', w: 1400, h: 900 });
   const H = (e) => g.h(e);
   const chatLines = () => g.ev(() => Array.from(document.querySelectorAll('.mc-chatlog .mc-cline')).map(e => ({ t: e.textContent, cls: e.className.replace('mc-cline', '').trim(), u: (e.querySelector('.mc-cu') || {}).textContent || null })));
   const pauseShown = () => g.ev(() => document.querySelector('.mc-pause').style.display !== 'none');

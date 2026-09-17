@@ -94,7 +94,7 @@ an ending whose pacing depends on it.
 park at module scope rather than on `RT` survives a window close and
 will reference a dead context on reopen. Everything goes on `RT.audio`.
 
-**You own `comp/comp.js` and `comp/index.html`.** You have a mandatory
+**You own `tcomp/comp.js` and `tcomp/index.html`.** You have a mandatory
 change there: `APPS.ninth` has no `onMinimize` / `onRestore`, and rAF
 keeps running behind a minimized window, so the moment you ship a
 looping node it will keep playing when the player minimizes the game.

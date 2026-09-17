@@ -8,8 +8,10 @@
 
 ## NINTH NIGHT
 
-The game at `/comp/` (`comp/ninth.js`). It is being built out by several
-chats working in parallel.
+The game at `/tcomp/` (`tcomp/ninth.js`). It is being built out by several
+chats working in parallel. It is not in `/comp/`, the public cut (see
+**tcomp** below): the job docs, the harness pages and every path in them
+mean `/tcomp/`.
 
 If asked to **"do ninth night job N"**, read
 `.claude/ninth-night/JOBS.md` and then that job's file. Read
@@ -28,20 +30,31 @@ and the dev handle reported everything working.
 `/comp/` is what the site links to and the one being polished for
 release, so it ships without Steam (and the games that only ran through
 it: Cookie Clicker, Terraria, VEILFALL, Sunset Runner), without Minecraft
-(the launcher and the game), and without the Edge gag: Chrome is simply
-installed, pinned to the taskbar and Start, with a desktop shortcut.
-NINTH NIGHT ships in both. `/tcomp/` still has all of it, at
-isaacure.com/tcomp, to try things on before they move to `/comp/`.
+(the launcher and the game), without NINTH NIGHT, and without the Edge
+gag: Chrome is simply installed, pinned to the taskbar and Start, with a
+desktop shortcut. `/tcomp/` still has all of it, at isaacure.com/tcomp,
+to try things on before they move to `/comp/`.
 
-- The two directories are not interchangeable any more: `cp tcomp/*
-  comp/` would bring Steam and Minecraft back. Move a change across file
-  by file, or as a patch. Both `index.html`s load their scripts and
-  stylesheet by relative path (`comp.js`, not `/comp/comp.js`); keep it
-  that way, since an absolute `/comp/` or `/tcomp/` in a loader tag makes
-  one copy silently run the other's code.
+- The lore those games left in the file system is out of `/comp/` too,
+  and comes back with them. All of it still exists in `tcomp/comp.js`'s
+  file tree: `Documents\My Games\Terraria` (and the `wld` and `plr` file
+  kinds), `Documents\essays\absurdism and idle games.txt`, the Terraria
+  and Cookie Clicker screenshots in `Pictures\Screenshots` and captures
+  in `Videos\Captures`, `minecraft worlds backup` under
+  `D:\archive\old laptop (2016-2019)\games`, the seed line at the end of
+  `the secret.txt` on D:, NINTH NIGHT's folder under
+  `C:\Program Files\URE Softworks`, and the Cookie Clicker chip on
+  Chrome's Wikipedia page.
+- The two directories are not interchangeable: `cp tcomp/* comp/` would
+  bring everything back. Move a change across file by file, or as a
+  patch. Both `index.html`s load their scripts and stylesheet by relative
+  path (`comp.js`, not `/comp/comp.js`); keep it that way, since an
+  absolute `/comp/` or `/tcomp/` in a loader tag makes one copy silently
+  run the other's code.
 - The saves are shared. Both copies sit on one origin and read and write
   the same localStorage keys, so a test build shares its saves with the
   live one.
-- The harness pages under `.claude/` and the NINTH NIGHT docs still point
-  at `/comp/`. The Minecraft and Terraria harnesses under
-  `.claude/comp-tools/` only have something to drive at `/tcomp/` now.
+- The NINTH NIGHT docs and every harness under `.claude/` point at
+  `/tcomp/`; nothing they drive is in `/comp/` any more. The QC logs in
+  `.claude/ninth-night/qc-2026-08-12/` still say `comp/` because they are
+  a record, not instructions.

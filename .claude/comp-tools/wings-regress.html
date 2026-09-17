@@ -23,7 +23,7 @@ var results = [], errs = [], f = document.getElementById('f');
    again on the way in, and the "your settings survived the close" check
    would be reading a fresh default and calling the game wrong for it. */
 try { localStorage.removeItem('comp_ninth'); } catch (e) {}
-f.src = '/comp/?dev=ninth&ndev=stage&nfr=60';
+f.src = '/tcomp/?dev=ninth&ndev=stage&nfr=60';
 function ck(n, p, note) { results.push({ name: n, pass: !!p, note: note == null ? '' : String(note) }); }
 window.addEventListener('error', function (e) { errs.push(e.message); });
 

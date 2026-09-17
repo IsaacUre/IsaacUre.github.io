@@ -3,7 +3,7 @@ const D = require('../mc-drive');
 let fails = 0;
 const ok = (c, msg, extra) => { console.log((c ? 'PASS ' : 'FAIL ') + msg + (extra !== undefined ? '  ' + JSON.stringify(extra) : '')); if (!c) fails++; };
 (async () => {
-  const g = await D.open({ page: '/comp/', query: '?dev=mc', w: 1400, h: 900,
+  const g = await D.open({ page: '/tcomp/', query: '?dev=mc', w: 1400, h: 900,
     init: "(function(){ var real = Storage.prototype.setItem; Storage.prototype.setItem = function (k, v) { if (window.__quota && /^comp_mc/.test(k)) { var e = new Error('QuotaExceededError'); e.name = 'QuotaExceededError'; throw e; } return real.call(this, k, v); }; })();" });
   const H = (e) => g.h(e);
   const pressEsc = () => g.ev(() => { if (document.pointerLockElement) { document.exitPointerLock(); return 'unlock'; } document.querySelector('.mc').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); return 'key'; });

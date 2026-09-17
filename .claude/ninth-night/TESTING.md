@@ -67,7 +67,7 @@ hand:
   --headless=new --disable-gpu --no-sandbox --hide-scrollbars \
   --window-size=1440,900 --virtual-time-budget=9000 \
   --screenshot="C:/absolute/path/out.png" \
-  "http://localhost:8492/comp/?dev=ninth&nwipe=1&ndev=square&nfr=240&nat=8,8"
+  "http://localhost:8492/tcomp/?dev=ninth&nwipe=1&ndev=square&nfr=240&nat=8,8"
 ```
 
 Then read the PNG. Reading screenshots is a bug finding tool, not a
@@ -92,7 +92,7 @@ and closer rather than squinting at it.
 ## The harnesses under `tools/`
 
 The shell draws the game into a window about 700px wide, so a shot of
-`/comp/` is the canvas at a third of its own resolution inside a picture
+`/tcomp/` is the canvas at a third of its own resolution inside a picture
 of Windows. These host the same game at native size instead. Every one of
 them calls the same `window.NINTH.render/init`, so anything that works in
 them works in the shell.
@@ -199,7 +199,7 @@ spend twenty minutes debugging code that is not running. If a fix
 appears to have no effect, check this first:
 
 ```js
-fetch('/comp/ninth.js', {cache:'reload'}).then(r=>r.text())
+fetch('/tcomp/ninth.js', {cache:'reload'}).then(r=>r.text())
   .then(t => 'served has my change: ' + t.includes('mySymbol'))
 ```
 
@@ -247,7 +247,7 @@ fixes introduced a softlock that only appeared once two changes met.
 Before you open the PR. The first four are one command each:
 
 ```bash
-node --check comp/ninth.js
+node --check tcomp/ninth.js
 node .claude/ninth-night/tools/audit-geometry.js
 # and these two through headless chrome, --dump-dom, as above
 #   tools/playtest.html        the verbs
@@ -264,7 +264,7 @@ canvas back to confirm the fade changed what you can see, and measures
 one tick of animation first so the figure breathing is not mistaken for
 a roof.
 
-- `node --check comp/ninth.js` passes.
+- `node --check tcomp/ninth.js` passes.
 - A save wipe to your new content, played through with real key events,
   works.
 - Nothing in the existing critical path broke: prologue to square, talk

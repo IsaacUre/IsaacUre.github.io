@@ -7,7 +7,7 @@ their sixteen critiques, and `RECON.md`. Where a design and a critique disagree,
 this file rules. Where two designs invented the same thing twice, this file names
 the survivor and says why the other lost.
 
-Line numbers are `comp/ninth.js` at `88c665c` (8279 lines). Grep the symbol, not
+Line numbers are `tcomp/ninth.js` at `88c665c` (8279 lines). Grep the symbol, not
 the line: eight branches are moving these same lines.
 
 **Nothing in this file is conditional on another branch landing first.** The two
@@ -566,7 +566,7 @@ bright.** Five family `col`, five family `glow`, `#e8e2ee` the strike white,
 milestone), `#6a5f72` the colour of a thing nobody wrote down, `#3d3350` and
 `#2a2028` the two violet-darks, `#08060c` the drop shadow every glyph in the file
 has at `+1,+1` or `+2,+2`. **No pure white anywhere**, and `#3a3340` does not
-exist in `comp/ninth.js`: `design-deton-4` and `-5` invented it for the patch
+exist in `tcomp/ninth.js`: `design-deton-4` and `-5` invented it for the patch
 plate, the tally and the Verse column while arguing three paragraphs earlier that
 `#e8e2ee` must be used instead of `#fff` because the palette is closed. All three
 become `#3d3350`.
@@ -1828,7 +1828,7 @@ a family are marked MOVED and are ruled in the sections that own them.
 | # | finding | ruling |
 |---|---|---|
 | 8 | the bloom is a ball of light at the enemy centroid, which the thesis forbids | **APPLIED.** `o.bx`, `o.by` and `o.flat` on the bag, so the detonation lights its own line rather than the bodies |
-| 12 | `#3a3340` does not exist in `comp/ninth.js` | **APPLIED.** All three uses become `#3d3350` |
+| 12 | `#3a3340` does not exist in `tcomp/ninth.js` | **APPLIED.** All three uses become `#3d3350` |
 | 13 | two paper whites for one gesture | **APPLIED.** `#e8e2ee` is the strike everywhere; `#f0e9df` stays body text |
 | 10, 11, 14 | the word fills with `glow`; the halo clips to white; the apparatus and the element are one colour | **MOVED to §3**, and the palette rule in 2.4 is written so those rulings have something to stand on: brass is the mark for measured and finished, `glow` is light, `col` is ink |
 | others | 1-7, 9, 15-30 | **MOVED.** Detonation and family findings |
@@ -7213,7 +7213,7 @@ rhyme, the game patches it the way the town did.
    The plate is sized off the rule it is patching rather than being a
    fixed stamp, because a 14x8 plate under a 6px rule is a chip and not
    a repair (crit-art-deton 25). #3d3350 and not the invented #3a3340,
-   which does not exist anywhere in comp/ninth.js (2.4). */
+   which does not exist anywhere in tcomp/ninth.js (2.4). */
 function drawSlantScreen(cx) {
     var d = RT.det;
     if (!d || RT.mapOpen || !d.K.brk || d.t < d.tset + 0.09) return;
@@ -8788,7 +8788,7 @@ Applied or refused. Nothing dropped.
 | 9 | the slam sits on top of the rule on the frame the rule strikes | **APPLIED.** `o.y = VH * 0.62` |
 | 10 | four of five families print the line in near-white | **APPLIED.** The fill is `col`; `glow` is reserved for the rhyming tail and the press mark |
 | 11 | the halo clips to pure white on three families | **APPLIED.** The halo is `col`, and `detHalo` clamps the summed alpha at 0.55 |
-| 12 | `#3a3340` does not exist in `comp/ninth.js` | **APPLIED in 2.4.** All three uses become `#3d3350` |
+| 12 | `#3a3340` does not exist in `tcomp/ninth.js` | **APPLIED in 2.4.** All three uses become `#3d3350` |
 | 13 | two paper whites for one gesture | **APPLIED in 2.4.** `#e8e2ee` is the strike everywhere; `#f0e9df` stays body text |
 | 14 | the apparatus and the element are the same colour, and brass is unused | **APPLIED.** The rule stays the sound; every cap and every bracket is `#c9a94a` |
 | 15 | a six-word line in five saturated hues is a rainbow | **APPLIED via #1.** Heads carry the hue at its lower value, tails are the only bright thing, and the line reads as one object |
@@ -8884,7 +8884,7 @@ above an edit move the ones below it.
 
 ### 5.0 How to work through it
 
-1. `node --check comp/ninth.js` **before you start**, so you know the baseline is
+1. `node --check tcomp/ninth.js` **before you start**, so you know the baseline is
    clean, and again after every numbered step. The whole game is one IIFE: a
    missing comma in an object literal is a `SyntaxError`, which is a blank canvas
    on every page of the site, and the two shared lines in 5.1 are where it will
@@ -9804,7 +9804,7 @@ pixels. Both are read-only and neither is on the hot path.
     pops. Six at once still pops one number.
 14. **A doorway mid-detonation, mid-Reprise and mid-Verse.** Nothing is on screen
     on the first frame in the new room.
-15. `node --check comp/ninth.js` is clean, and `S.opts.punch = 0` still prints the
+15. `node --check tcomp/ninth.js` is clean, and `S.opts.punch = 0` still prints the
     line, the rule and the slam.
 
 ### 5.30 For the PR body
@@ -10098,7 +10098,7 @@ illshatter  the pieces, 0.12s after illexec
 
 **Four existing names are reused and none is redefined.** `answer` and `slant` move
 from the keypress to `TSET`, 121 to 225ms later, which is the most audible change in
-the branch. `sour` and `reprise` already exist in `comp/ninth.js` and keep their
+the branch. `sour` and `reprise` already exist in `tcomp/ninth.js` and keep their
 samples; §5.30 lists `reprise` under *new sound names* and is wrong about that. The
 `erdtick` at 22 a second that `design-erd` asked for is cut.
 
@@ -10368,7 +10368,7 @@ Every FEEL row goes **above** the reset button. *Catch:* `node --check`, immedia
 200+ call sites. Two source designs declare `var T` inside a drawer. Neither throws
 *today* only because neither calls `T('...')` yet, so the trap is armed and fires
 the first time somebody wires a tunable into a drawer that looks correct.
-*Guard:* use `tr` or `rec`. *Catch:* `grep -nE "var .*\bT\b *=|function .*\(T[,)]" comp/ninth.js`
+*Guard:* use `tr` or `rec`. *Catch:* `grep -nE "var .*\bT\b *=|function .*\(T[,)]" tcomp/ninth.js`
 before commit.
 
 **4. A `NaN` anchor makes the entire canvas stop drawing.** The drag and the slant
@@ -10386,7 +10386,7 @@ called from `for each foe { for each stack }`: twenty-five bodies with a full pi
 lapsing on one frame is **200 `punch()` calls in one frame**.
 *Guard:* the call-site table in §2.10 is **closed**, and the rule is *once per thing
 the player did*. The sour path coalesces after both loops; the execute path counts
-and fires once after `live.forEach`. *Catch:* `grep -n "punch(" comp/ninth.js` and
+and fires once after `live.forEach`. *Catch:* `grep -n "punch(" tcomp/ninth.js` and
 read the enclosing function. There must be exactly the rows in that table.
 
 **6. Six sours on one frame, or eight `seen`s, become six sounds.** Same shape as
@@ -10570,7 +10570,7 @@ that reason. Use `full` only for composition.
 cd /c/Users/isaac/IsaacUre.github.io/.claude/worktrees/suspicious-driscoll-00fbd8
 
 # 1. syntax, first and after every block
-node --check comp/ninth.js
+node --check tcomp/ninth.js
 
 # 2. the server the lab and shot.py both expect. Leave it running.
 python -m http.server 8677 &
@@ -10757,19 +10757,19 @@ SHOT=/c/Users/isaac/IsaacUre.github.io/.claude/shots
 "$CHROME" --headless=new --disable-gpu --no-sandbox --hide-scrollbars \
   --window-size=1440,900 --virtual-time-budget=9000 \
   --screenshot="$SHOT/key-rhyme.png" \
-  "http://localhost:8677/comp/?dev=ninth&nwipe=1&ndev=square&nat=8,8&nfoes=4&nfr=180&nkey=1"
+  "http://localhost:8677/tcomp/?dev=ninth&nwipe=1&ndev=square&nat=8,8&nfoes=4&nfr=180&nkey=1"
 
 # the stanza keys, which have their own binding path
 "$CHROME" --headless=new --disable-gpu --no-sandbox --hide-scrollbars \
   --window-size=1440,900 --virtual-time-budget=9000 \
   --screenshot="$SHOT/key-stanza.png" \
-  "http://localhost:8677/comp/?dev=ninth&nwipe=1&ndev=square&nat=8,8&nfoes=4&nfr=180&nkey=q"
+  "http://localhost:8677/tcomp/?dev=ninth&nwipe=1&ndev=square&nat=8,8&nfoes=4&nfr=180&nkey=q"
 
 # the option row exists, is reachable, and says its own name
 "$CHROME" --headless=new --disable-gpu --no-sandbox --hide-scrollbars \
   --window-size=1440,900 --virtual-time-budget=9000 \
   --screenshot="$SHOT/key-opt.png" \
-  "http://localhost:8677/comp/?dev=ninth&nwipe=1&ndev=square&ndevtab=DEBUG&nfr=60&nkey=\`"
+  "http://localhost:8677/tcomp/?dev=ninth&nwipe=1&ndev=square&ndevtab=DEBUG&nfr=60&nkey=\`"
 ```
 
 `key-rhyme.png` must show a detonation one frame old. `key-opt.png` must show
@@ -10837,7 +10837,7 @@ them, plus the four things this merge pass cut on its own authority.
 | `spin` on particles | A `rotate` per particle per frame to produce four grey pixels at `imageSmoothingEnabled` false. The most expensive thing in the loop for the least visible result |
 | The white bleach, and the `bleach` sound | +68 and +107 of 255 on a near-black scene, three times a second. The layer ceiling is +43, there is no pure white in the palette, and the family light replaces it |
 | `bloomSprite`'s smooth radial gradient | The file's own comment forbids `createRadialGradient` in a loop, and a smooth ramp bands anyway at this depth. Six hard bands, baked once, blitted with `lighter` |
-| `#3a3340` | It does not exist in `comp/ninth.js`. Invented by two designs for the patch plate, the tally and the Verse column while arguing that the palette is closed. All three are `#3d3350` |
+| `#3a3340` | It does not exist in `tcomp/ninth.js`. Invented by two designs for the patch plate, the tally and the Verse column while arguing that the palette is closed. All three are `#3d3350` |
 | The second paper white | Two whites for one gesture. The 14ms strike frame is `#e8e2ee` everywhere it appears |
 | `FAM_TRAIL`, `FAM_PROJ`, `FAM_WORD`, `FAM_MISS` | Four tables whose keys are always the same five strings, looked up on the same frame from the same two functions. Keys on `FAM_CALL`'s row instead |
 | `groundDir`'s shared scratch object | A single mutable scratch returned to two callers on one frame is a loaded gun. The spoke computes its own vertices |
@@ -10990,7 +10990,7 @@ sample and ship a family whose two-state read is audible half the time.
 same sample as `bare`**: that difference is the whole point of `crit-art-ight` #7.
 
 **12. §5.30 calls `reprise` and `sour` new sound names.** Both already exist in
-`comp/ninth.js` (4467's table). Only their **timing** and their **coalescing**
+`tcomp/ninth.js` (4467's table). Only their **timing** and their **coalescing**
 change.
 **Recommend:** strike both from the PR body's "new" list. Twenty-five new names is
 already a lot to ask of job 2 and two of them being wrong costs credibility on the

@@ -6,7 +6,7 @@ const SHOTS = require('path').join(__dirname, '..', 'shots'); require('fs').mkdi
 let fails = 0;
 const ok = (c, msg, extra) => { console.log((c ? 'PASS ' : 'FAIL ') + msg + (extra !== undefined ? '  ' + JSON.stringify(extra) : '')); if (!c) fails++; };
 (async () => {
-  const g = await D.open({ page: '/comp/', query: '?dev=mc&mcdev=kit&mcseed=1337', w: 1400, h: 900 });
+  const g = await D.open({ page: '/tcomp/', query: '?dev=mc&mcdev=kit&mcseed=1337', w: 1400, h: 900 });
   const H = (e) => g.h(e);
   const active = () => g.ev(() => { const a = document.activeElement; return a ? (a.tagName + '.' + a.className).slice(0, 40) : null; });
   const realClick = (sel, opts) => g.ev(([sel, opts]) => {

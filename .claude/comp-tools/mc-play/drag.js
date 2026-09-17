@@ -7,7 +7,7 @@ const SHOTS = require('path').join(__dirname, '..', 'shots'); require('fs').mkdi
 let fails = 0;
 const ok = (c, msg, extra) => { console.log((c ? 'PASS ' : 'FAIL ') + msg + (extra !== undefined ? '  ' + JSON.stringify(extra) : '')); if (!c) fails++; };
 (async () => {
-  const g = await D.open({ page: '/comp/', query: '?dev=mc&mcdev=kit&mcseed=1337', w: 1400, h: 900 });
+  const g = await D.open({ page: '/tcomp/', query: '?dev=mc&mcdev=kit&mcseed=1337', w: 1400, h: 900 });
   const H = (expr) => g.h(expr);
   try {
     await g.ev(() => { const H = window.__h; H.root = () => document.querySelector('.mc'); H.ui = () => document.querySelector('.mc-mui'); });

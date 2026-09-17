@@ -2,12 +2,12 @@
 <!-- QC capture harness.
 
      The game inside the fake desktop draws its 1120x580 canvas into a
-     1160x720 window, so a headless screenshot of /comp/ is the canvas at
+     1160x720 window, so a headless screenshot of /tcomp/ is the canvas at
      about a third of its own resolution, inside a picture of Windows. This
      page hosts the same game at exactly 1120x580, and can zoom into a
      region of it, so a screenshot is the canvas and nothing else.
 
-     Same URL params as /comp/?dev=ninth&... — devDemo reads location.search.
+     Same URL params as /tcomp/?dev=ninth&... — devDemo reads location.search.
      Three extra, all prefixed h so they cannot collide with devDemo's n*:
 
        hz=<n>      zoom. nearest neighbour, so 4 means you are reading pixels
@@ -20,7 +20,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<link rel="stylesheet" href="/comp/comp.css">
+<link rel="stylesheet" href="/tcomp/comp.css">
 <style>
   html, body { margin: 0; padding: 0; background: #06050a; overflow: hidden; }
   #host { position: absolute; width: 1120px; height: 580px; transform-origin: 0 0;
@@ -29,7 +29,7 @@
 </head>
 <body>
 <div id="host"></div>
-<script src="/comp/ninth.js"></script>
+<script src="/tcomp/ninth.js"></script>
 <script>
   var q = {};
   location.search.slice(1).split('&').forEach(function (kv) { var a = kv.split('='); q[a[0]] = decodeURIComponent(a[1] || ''); });

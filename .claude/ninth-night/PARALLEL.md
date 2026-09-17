@@ -16,7 +16,7 @@ to it by the conventions below.
 | job | owns |
 |---|---|
 | 1 story | `BALLAD`, `ACH`, `grantFragment`, the VERSE banner and `doVerse`, `fillBook`, `SCRIPTS`, `checkRealisation` / `landRealisation` / `checkMark` / `checkSill`, `beat`, the stanza *text*, new places with an `a3` id prefix |
-| 2 audio | `sfx()` entirely, `RT.ac`, `S.opts.sound`, and **`comp/comp.js` and `comp/index.html` as sole owner** |
+| 2 audio | `sfx()` entirely, `RT.ac`, `S.opts.sound`, and **`tcomp/comp.js` and `tcomp/index.html` as sole owner** |
 | 3 world | `buildFloor` and `FLOORS`, `PLACES` (shape and existing entries), `NPCS`, `blocked` / `moveActor` / `exitAt` / `stepTravel` / `unstick` / `gotoPlace`, the dialogue functions, `interactables` / `doInteract`, every `draw*` for props, npcs, looks, exits, prompts, `MAP_POS` / `drawMap`, `devDemo`, `isoX` / `isoY` |
 | 4 combat | `TUNE`, `FOES`, `stats()`, the whole CALL AND ANSWER banner, `STANZAS` mechanics (not their text), `spawnFoe` / `stepFoes` / `stepChorus` / `foeDie`, every `drawFoe*`, `drawBossBar`, the arena and quiet halves of `stepScene` |
 | 5 items | `CHARMS`, `charmSum`, `coin` / `buyCharm` / `sellCharm` / `wearCharm` / `learnWord`, `panel()`, `fillKit`, `fillShop`, the coin HUD |
@@ -86,14 +86,14 @@ same commit. It now refuses unknown ids with a console warning rather
 than silently burning the save flag, but a refused achievement is still
 an achievement nobody gets.
 
-**`comp/comp.js` and `comp/index.html` have one owner: job 2.** Job 2
+**`tcomp/comp.js` and `tcomp/index.html` have one owner: job 2.** Job 2
 has a mandatory change there (`onMinimize` / `onRestore` on `APPS.ninth`,
 without which looping audio keeps playing behind a minimized window).
 Everything else reaches the desktop through the four keys on
 `window.NINTH` and needs no edit there at all. If you genuinely need
 one, hand it to job 2 rather than opening the file.
 
-**`comp/comp.css` is append only, at EOF.** One
+**`tcomp/comp.css` is append only, at EOF.** One
 `/* NINTH NIGHT: <your area> */` block after the last line. Do not edit
 anything inside the existing `.nn-*` block, including its `@media`
 query: put responsive rules in your own `@media` inside your own block.
@@ -130,7 +130,7 @@ cannot be moved in play, which is already true of four of them.
    file**, not in your diff, and confirm every job's line is still
    there: the `RT` literal, `sLoad`, the keydown chain, the `step()`
    call list.
-4. `node --check comp/ninth.js` before every commit. It is the only
+4. `node --check tcomp/ninth.js` before every commit. It is the only
    build check that exists.
 5. Run `node .claude/ninth-night/tools/audit-geometry.js` if you touched
    `PLACES` at all. It catches unreachable exits, buried NPCs, arrivals

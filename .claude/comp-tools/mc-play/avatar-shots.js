@@ -3,7 +3,7 @@
 const D = require('../mc-drive');
 const SHOTS = require('path').join(__dirname, '..', 'shots'); require('fs').mkdirSync(SHOTS, { recursive: true });   // gitignored
 (async () => {
-  const g = await D.open({ page: '/comp/', query: '?dev=mc&mcdev=kit&mcseed=1337', w: 1400, h: 900 });
+  const g = await D.open({ page: '/tcomp/', query: '?dev=mc&mcdev=kit&mcseed=1337', w: 1400, h: 900 });
   const out = (k, v) => console.log(k.padEnd(30), JSON.stringify(v));
   try {
     await g.ev(() => { const H = window.__h; H.root = () => document.querySelector('.mc'); H.ui = () => document.querySelector('.mc-mui'); });

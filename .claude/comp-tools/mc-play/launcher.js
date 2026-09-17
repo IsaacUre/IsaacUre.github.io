@@ -23,7 +23,7 @@ const TOAST_WATCH = `(() => {
 })();`;
 
 async function run(forceCrash) {
-  const g = await D.open({ page: '/comp/', query: '', w: 1400, h: 900, init: TOAST_WATCH + (forceCrash ? 'window.__mclForceCrash = true;' : '') });
+  const g = await D.open({ page: '/tcomp/', query: '', w: 1400, h: 900, init: TOAST_WATCH + (forceCrash ? 'window.__mclForceCrash = true;' : '') });
   const page = g.page;
   const click = async (sel) => { await page.waitForSelector(sel, { state: 'visible', timeout: 15000 }); await page.click(sel); };
   const text = (sel) => page.evaluate(s => { const e = document.querySelector(s); return e ? e.textContent : null; }, sel);

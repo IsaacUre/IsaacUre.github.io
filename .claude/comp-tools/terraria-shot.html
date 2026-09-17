@@ -1,5 +1,5 @@
 <!doctype html><meta charset="utf-8"><title>terraria shot</title>
-<link rel="stylesheet" href="/comp/comp.css">
+<link rel="stylesheet" href="/tcomp/comp.css">
 <style>
   html, body { margin: 0; background: #0a0810; font-family: system-ui, sans-serif; color: #ccc; }
   #stage { position: relative; display: grid; }
@@ -8,7 +8,7 @@
 </style>
 <div id="bar">loading…</div>
 <div id="stage"></div>
-<script src="/comp/terraria.js"></script>
+<script src="/tcomp/terraria.js"></script>
 <script>
 /* Deterministic scene harness for the Terraria window.
    Query params:
@@ -78,7 +78,7 @@ var log = [];
 var CSSTEXT = null;
 function trCSS() {
   if (CSSTEXT !== null) return Promise.resolve(CSSTEXT);
-  return fetch('/comp/comp.css').then(function (r) { return r.text(); }).then(function (css) {
+  return fetch('/tcomp/comp.css').then(function (r) { return r.text(); }).then(function (css) {
     var rules = css.match(/(^|\n)[^\n{}]*\.tr[-\w]*[^\n{}]*\{[^}]*\}/g) || [];
     var inj = '';
     Array.prototype.forEach.call(document.querySelectorAll('style'), function (s) { if (/\.tr \.tri/.test(s.textContent)) inj += s.textContent; });

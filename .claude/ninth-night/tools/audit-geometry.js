@@ -2,7 +2,7 @@
  *
  *   node .claude/ninth-night/tools/audit-geometry.js
  *
- * Parses the PLACES and NPCS literals straight out of comp/ninth.js and
+ * Parses the PLACES and NPCS literals straight out of tcomp/ninth.js and
  * re-derives, at the real player radius, whether the world is actually
  * playable: can you stand in every exit band, can you reach every person
  * and every examinable, does every arrival land somewhere solid.
@@ -126,7 +126,7 @@ function blocked(p, x, y, r) {
 }
 /* The game's paintSpan, so "is this prop painted over that person" is
    asked the same way here as it is on screen. Keep in step with
-   paintedBox()/paintSpan() in comp/ninth.js. */
+   paintedBox()/paintSpan() in tcomp/ninth.js. */
 function lerp(a, b, t) { return a + (b - a) * t; }
 function paintSpan(b, d, lx) {
     var bw = b[2], bh = b[3];
