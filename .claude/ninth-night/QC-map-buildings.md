@@ -12,8 +12,8 @@
 > against the canvas, and `audit-geometry.js` grew nine checks, one for
 > each class of thing in here that got past it.
 
-12 August 2026. Read-only pass over the world layer of `comp/ninth.js`. Nothing
-under `comp/` was changed.
+12 August 2026. Read-only pass over the world layer of `tcomp/ninth.js`. Nothing
+under `tcomp/` was changed.
 
 The pass ran against the file at `88c665c`. #126 and #127 landed while it was
 running and took the file from 8,280 lines to 16,317, so every line number below
@@ -64,7 +64,7 @@ changes produced no console errors.
 
 ### The roof cutaway has stopped working [25, 17]
 
-`comp/ninth.js:14069` and `:14237`.
+`tcomp/ninth.js:14069` and `:14237`.
 
 `paintedBox()` declares that a prop's paint stops at `-(hgt + over)`. It does
 not. `propSprite` sizes the sprite canvas with `ay = PAD + ceil(rry + hgt +
@@ -88,7 +88,7 @@ if (sy > y1 || sy - a.h > y1) continue;   // 6678, an overlap test rather than c
 
 ### The child walks into the well and never comes out [N12, 7]
 
-`NPCS.child.path` at `comp/ninth.js:12892` against the well at `:12639`.
+`NPCS.child.path` at `tcomp/ninth.js:12892` against the well at `:12639`.
 
 Her fourth leg runs east from `(7.4,10.0)` to her home at `(10.6,9.8)`, along
 `y ≈ 9.9`, which is inside the well's blocked band (`y 9.12..11.28` at the NPC
@@ -117,7 +117,7 @@ showing and she is only there for the 0.4 to 2.2 second start wait.
 
 ### A quarter of all walking is drawn facing backwards [N11]
 
-`comp/ninth.js:13765` (`stepNpcs`), `:2897` (`drawActor`) and `:5417`
+`tcomp/ninth.js:13765` (`stepNpcs`), `:2897` (`drawActor`) and `:5417`
 (`drawMuzzle`).
 
 `cx.scale(-1, 1)` is a mirror in screen x, and screen x is
@@ -137,7 +137,7 @@ var west = (Math.cos(RT.face) - Math.sin(RT.face)) < 0 ? -1 : 1;   // 2113
 
 ### The floor PRNG collapses to 419 numbers [14]
 
-`comp/ninth.js:1468`.
+`tcomp/ninth.js:1468`.
 
 `seed * 1103515245` reaches about 2^62. A double carries 53 bits, so the low
 bits are gone before `>>> 0` ever sees them. From seed 9 the generator visits
@@ -155,7 +155,7 @@ One line: `seed = (Math.imul(seed, 1103515245) + 12345) >>> 0`. No repeat in
 
 ### Pressing M in the prologue throws the map off the bottom of the screen [28]
 
-`comp/ninth.js:15661`.
+`tcomp/ninth.js:15661`.
 
 `lo`/`hi` accumulate only over places that are visited and not `MAP_HIDE`. A
 fresh save starts on `stage`, which is hidden, so `any` is false and the
@@ -174,7 +174,7 @@ drawn instead of `[0,0]`.
 
 ### The interiors' east wall is nine tiles long and sorts on its centre [N28]
 
-`comp/ninth.js:11358`, data at `:12665` and `:12683`.
+`tcomp/ninth.js:11358`, data at `:12665` and `:12683`.
 
 A prop is one entity with one sort key, taken at its footprint centre. Bern's
 east wall spans `x+y` from 10.4 to 20 and its key is 15.2, so everybody at
@@ -188,7 +188,7 @@ segment's key is within 1.6 tiles of its own ground.
 
 ### Both interiors keep the near wall [N33]
 
-`comp/ninth.js:12665`, `:12683`.
+`tcomp/ninth.js:12665`, `:12683`.
 
 In this projection the two faces nearest the camera are the south and the east.
 The standard iso cutaway drops both. These rooms drop only the south, so the
@@ -201,7 +201,7 @@ the way the south already does.
 
 ### Half the houses are lit from the wrong side [N16]
 
-`comp/ninth.js:14427-6874` against `:14532`.
+`tcomp/ninth.js:14427-6874` against `:14532`.
 
 The walls obey the light rule (`plaster(se, false)`, `plaster(sw, true)`). The
 roof does not: `PAINT.house` paints `farPlane` unlit and `nearPlane` lit
@@ -215,7 +215,7 @@ walls rather than the camera.
 
 ### The lamp you set down leaves nothing on screen [1]
 
-`comp/ninth.js:696`, `:15371`.
+`tcomp/ninth.js:696`, `:15371`.
 
 `setLamp` records `S.items.lamps[here] = 1` and nothing else. `lightsOf` builds
 its list from `p.props` and `p.lights` only. Grep gives exactly six sites for
@@ -233,7 +233,7 @@ and push a light for it in `lightsOf`.
 
 ### Dying leaves you winded and then walks you back into it [N1, N2, 3]
 
-`comp/ninth.js:2563-1794`.
+`tcomp/ninth.js:2563-1794`.
 
 `gotoPlace` does the pair on one line: `RT.breath = stats().breathMax;
 RT.winded = 0;`. `revive()` copies only the first half. Worse, `RT.winded -= dt`
@@ -256,7 +256,7 @@ Three lines, all next to the `RT.px`/`RT.py` assignment: `RT.winded = 0;`,
 
 ### The map draws the lane south of Wick and the mill on Wick's own row [27]
 
-`comp/ninth.js:15610`, data at `:12649`.
+`tcomp/ninth.js:15610`, data at `:12649`.
 
 Every place in the game authors north as `-y`. The square is the one exception:
 its exit named "the lane, north" sits at `y = 14.3` in a 15-tall place, so
@@ -276,7 +276,7 @@ behind two houses.
 
 ### Three of the Act 3 audience cannot be seen [N27]
 
-`comp/ninth.js:13063-5523` against `:12828`.
+`tcomp/ninth.js:13063-5523` against `:12828`.
 
 The audience are foes, and `RT.hide` is built from the player alone, so
 `coversSomeone` never fades anything for them. The south-east house sorts later
@@ -291,7 +291,7 @@ house's cone.
 
 ### The examinable the game is named after points at a street lamp [N32]
 
-`comp/ninth.js:12645`.
+`tcomp/ninth.js:12645`.
 
 "A lamp on a sill" sits at `(12.4, 8.2)`. The nearest prop is the street lamp
 at `(12.05, 7.85)`, half a tile away. The nearest actual sill light is
@@ -325,40 +325,40 @@ findings, so it is worth deciding on before fixing them one at a time.
 
 ### Smaller ones, same shape
 
-- **The cart's front wheel is on its tailgate** [N18], `comp/ninth.js:15001`.
+- **The cart's front wheel is on its tailgate** [N18], `tcomp/ninth.js:15001`.
   `c.fw` is the length of a sloped iso edge, and `PAINT.cart` uses it as a
   horizontal span. It is 11.8% too long and centred on the origin rather than
   the side's midpoint, so the rear wheel is on the side and the front wheel's
   whole 16px diameter is on the end. `bar()` exists because this exact bug
   shipped once; the cart is the last reader of `c.fw`.
 - **The fire in Bern's house burns on the floorboards** [N19],
-  `comp/ninth.js:15303`. The fire anchor takes `bx` from `u = 0.5` and `by` from
+  `tcomp/ninth.js:15303`. The fire anchor takes `bx` from `u = 0.5` and `by` from
   `u = 0.82`, and the face's foot slopes. The grate ends up 5.2px below the
   floor of its own fireplace, and the logs march further out westward.
-- **You can walk past both road fences** [N30], `comp/ninth.js:12783`, `:12700`.
+- **You can walk past both road fences** [N30], `tcomp/ninth.js:12783`, `:12700`.
   `blocked()` is a strict AABB and `moveActor` clamps to `0.5 .. W-0.5`. The
   road's west fence at `b[0] = 0.8` fails `x + r > b[0]` by exactly zero at
   `x = 0.5`; the east fence fails by exactly zero at `x = 10.5`. Hold the key
   into the edge and you walk past the fence the whole game is about walking
   past. The lane's east pair leaves 0.1 tiles free the same way.
 - **The frost in the hollow is ruled through the tile centres** [15],
-  `comp/ninth.js:1382`. The tile edges are at `k + 0.5`; `GROUND.hollow` draws
+  `tcomp/ninth.js:1382`. The tile edges are at `k + 0.5`; `GROUND.hollow` draws
   at integer `u` and `v`. The white lattice sits exactly 14.5px off the black
   one, so the one ground that is meant to look ruled has two interleaved grids
   at half-tile pitch. Measured down the `u == v` column: dark on every tile
   corner, bright exactly 14.5px off it, all the way down. Fix is the loop
   bounds: `for (var v = -0.5; v <= f.gh - 0.5; v++)`.
 - **The square replays its tutorial every time you walk in** [N4],
-  `comp/ninth.js:13026`. `SCRIPTS.mill` guards on `S.seen.millIntro`;
+  `tcomp/ninth.js:13026`. `SCRIPTS.mill` guards on `S.seen.millIntro`;
   `SCRIPTS.wick` guards on nothing but `S.a3.ending`. `wickIntro` appears
   nowhere in the file. So the hub fires 6.4 seconds of "Talk to people. Look at
   things" at a player who has been to the hollow.
-- **Bern's house subtitle contradicts Bern** [N34], `comp/ninth.js:12662`. The
+- **Bern's house subtitle contradicts Bern** [N34], `tcomp/ninth.js:12662`. The
   subtitle is "he has kept the part for forty years and never played it". Bern,
   in the same room, says "I played him thirty years". The shop item and a code
   comment agree with Bern. Three to one, and the odd one out is the line the
   player reads first and every visit.
-- **No "you are here" during Act 3** [31], `comp/ninth.js:15684`. `a3sq` is
+- **No "you are here" during Act 3** [31], `tcomp/ninth.js:15684`. `a3sq` is
   `MAP_HIDE`, so the `here` branch never fires for any node and the gold marker
   is absent from the whole final act.
 
@@ -372,7 +372,7 @@ findings, so it is worth deciding on before fixing them one at a time.
 | [3] | Two vignettes are stacked, the canvas one and the `.nn-vig` DOM element, and the CSS one re-eats the corners the canvas one was deliberately softened to stop eating. |
 | [4] | Five of the twelve house sill lights sit outside their own place (`x = 17.2` in a 17-wide place), so half of each pool falls on black. Verified by re-deriving `houseSillU` and `propVar`. |
 | [9] | Eleven of the eighteen exit prompts read badly out loud, because the names are directions and the prefix is a verb: "go to back down the lane", "go to out to the square", "go to back down". Dropping "go to " fixes all eighteen; "E" already says it is an action. |
-| [10] | An em dash inside a spoken line, `comp/ninth.js:12926`, the shepherd. It is the only one in the file used as sentence punctuation in prose. A comma does it. |
+| [10] | An em dash inside a spoken line, `tcomp/ninth.js:12926`, the shepherd. It is the only one in the file used as sentence punctuation in prose. A comma does it. |
 | [11] | The camera runs out of room on the road. It tracks for about ten tiles in the middle and is pinned at both ends, so roughly 573px of the walk is the player crossing a static frame. Caused by clamping the eye to `placeBox`, which for an 11x34 place is mostly empty triangle. |
 | [24] | `drawVignette` re-rasterises a static full-screen gradient every frame. Measured on the game's own context: 2.26 to 2.76ms, which is 62% of the square's world frame and essentially all of the arena's. Baking it to two offscreen canvases makes it 0.08ms. |
 | [29] | The map's node loop has no visited guard, so a cold save plots all ten places including six with no road attached. The `?` styling is deliberate, so what leaks is the world's size and shape, not the ending. |
@@ -463,7 +463,7 @@ which is this repo's own habit.
   walk through a door with the map up, but two `gotoPlace` calls are not the
   player's: the prologue's timer and `a3Home`. Press M during the credits and
   you land in the morning square with the map still over it.
-- **[N29] The small-prop guard at `comp/ninth.js:14231` is dead code.** Over 89
+- **[N29] The small-prop guard at `tcomp/ninth.js:14231` is dead code.** Over 89
   authored instances the smallest box is 33.35 by 33.95, so `< 24` has never
   fired. Seven lamps are already eligible to trigger the cutaway.
 

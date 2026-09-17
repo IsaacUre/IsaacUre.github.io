@@ -3,11 +3,11 @@
 pre{white-space:pre-wrap}iframe{position:fixed;left:-4000px;width:1280px;height:800px;border:0}</style>
 <pre id="out">booting</pre>
 <!-- cache-bust: headless keeps comp.js from the last run otherwise -->
-<iframe id="f" src="/comp/" allow="fullscreen"></iframe>
+<iframe id="f" src="/tcomp/" allow="fullscreen"></iframe>
 <script>
 /* headless serves the previous run's comp.js from cache otherwise */
-document.getElementById('f').src = '/comp/?_=' + Math.floor(Math.random() * 1e9);
-/* FULL SCREEN CHECKS — /comp/
+document.getElementById('f').src = '/tcomp/?_=' + Math.floor(Math.random() * 1e9);
+/* FULL SCREEN CHECKS — /tcomp/
    Every state transition of the three fullscreen layers, driven with real
    DOM events on the real desktop rather than by calling internals: the
    house rule on this project is that a build once shipped where pressing E
@@ -630,7 +630,7 @@ function run() {
         deny.setAttribute('allow', 'fullscreen \'none\'');
         deny.width = 1280; deny.height = 800;
         deny.style.cssText = 'position:fixed;left:-4000px;width:1280px;height:800px;border:0';
-        deny.src = '/comp/?_=' + Math.floor(Math.random() * 1e9);
+        deny.src = '/tcomp/?_=' + Math.floor(Math.random() * 1e9);
         document.body.appendChild(deny);
         window.__deny = deny;
     });
@@ -660,7 +660,7 @@ function run() {
         var ph = document.createElement('iframe');
         ph.setAttribute('allow', 'fullscreen');
         ph.style.cssText = 'position:fixed;left:-4000px;width:390px;height:780px;border:0';
-        ph.src = '/comp/?_=' + Math.floor(Math.random() * 1e9);
+        ph.src = '/tcomp/?_=' + Math.floor(Math.random() * 1e9);
         document.body.appendChild(ph);
         window.__phone = ph;
     });

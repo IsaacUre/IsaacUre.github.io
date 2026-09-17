@@ -64,7 +64,7 @@ everyone else invents sound names freely and job 2 fills them in later.
 
 - One PR, squash merged, rebased onto `main` rather than merging `main`
   in.
-- `node --check comp/ninth.js` clean, `node .claude/ninth-night/tools/audit-geometry.js`
+- `node --check tcomp/ninth.js` clean, `node .claude/ninth-night/tools/audit-geometry.js`
   clean if you touched `PLACES`.
 - The full critical path still playable: prologue, Bern, the lane, the
   mill, the loft, the Chorus, all three fragments. That is the

@@ -8,7 +8,7 @@
 
        ?app=ninth              which window to frame
        &sel=.nn-wings-book     frame this instead, if given
-       &q=<encoded game query> the query string handed to /comp/
+       &q=<encoded game query> the query string handed to /tcomp/
        &key=Escape,ArrowDown   keys to send once everything has settled
        &settle=900             ms to wait before sending them
 
@@ -27,7 +27,7 @@
   var Q = new URLSearchParams(location.search);
   var app = Q.get('app') || 'ninth';
   var f = document.getElementById('f');
-  f.src = '/comp/?' + (Q.get('q') || 'dev=ninth');
+  f.src = '/tcomp/?' + (Q.get('q') || 'dev=ninth');
 
   var waited = 0;
   (function wait() {

@@ -1,6 +1,6 @@
 /* mob-lab — a bench for the Minecraft mob animations.
 
-   Load it into a page already running the game (`/comp/?dev=mc&mcdev=kit`) and
+   Load it into a page already running the game (`/tcomp/?dev=mc&mcdev=kit`) and
    it gives you three things the eye alone cannot give you:
 
      __lab.place(kind, opts)   stand one mob in front of the camera, posed

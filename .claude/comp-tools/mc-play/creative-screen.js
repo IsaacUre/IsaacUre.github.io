@@ -5,7 +5,7 @@ const D = require('../mc-drive');
 let fails = 0;
 const ok = (c, msg, extra) => { console.log((c ? 'PASS ' : 'FAIL ') + msg + (extra !== undefined ? '  ' + JSON.stringify(extra) : '')); if (!c) fails++; };
 (async () => {
-  const g = await D.open({ page: '/comp/', query: '?dev=mc&mcdev=creative,kit&mcseed=1337', w: 1400, h: 900 });
+  const g = await D.open({ page: '/tcomp/', query: '?dev=mc&mcdev=creative,kit&mcseed=1337', w: 1400, h: 900 });
   const H = (e) => g.h(e);
   const curView = () => g.ev(() => { const c = document.querySelector('.mc-panelwrap .mc-cur'); return c && c.style.display !== 'none' ? (c.querySelector('.mc-ct') || { textContent: '1' }).textContent : null; });
   const tab = (i) => g.ev((i) => { const b = document.querySelector('.mc-ctab[data-ct="' + i + '"]'); const r = b.getBoundingClientRect(); b.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, clientX: r.left + 5, clientY: r.top + 5 })); window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 })); }, i);

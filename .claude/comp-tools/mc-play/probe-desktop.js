@@ -1,9 +1,9 @@
-/* Probe 2: the desktop shell (comp/index.html?dev=mc), the lore world
+/* Probe 2: the desktop shell (tcomp/index.html?dev=mc), the lore world
    "creative flat test", block placing, catalogue tabs and search. */
 const D = require('../mc-drive');
 const SHOTS = require('path').join(__dirname, '..', 'shots'); require('fs').mkdirSync(SHOTS, { recursive: true });   // gitignored
 (async () => {
-  const g = await D.open({ page: '/comp/', query: '?dev=mc', w: 1400, h: 900 });
+  const g = await D.open({ page: '/tcomp/', query: '?dev=mc', w: 1400, h: 900 });
   const out = (k, v) => console.log(k.padEnd(34), JSON.stringify(v));
   try {
     // the desktop wraps the game; point the helpers at the game root

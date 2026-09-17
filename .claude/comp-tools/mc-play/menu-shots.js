@@ -4,7 +4,7 @@
 const D = require('../mc-drive');
 const SHOTS = require('path').join(__dirname, '..', 'shots'); require('fs').mkdirSync(SHOTS, { recursive: true });   // gitignored
 (async () => {
-  const g = await D.open({ page: '/comp/', query: '?dev=mc', w: 1400, h: 900 });
+  const g = await D.open({ page: '/tcomp/', query: '?dev=mc', w: 1400, h: 900 });
   const H = (e) => g.h(e);
   const shotEl = async (name, sel, pad) => { const r = await g.ev(([sel, pad]) => { const e = document.querySelector(sel); const b = e.getBoundingClientRect(); return { x: Math.max(0, b.left - pad), y: Math.max(0, b.top - pad), width: b.width + pad * 2, height: b.height + pad * 2 }; }, [sel, pad || 0]); await g.page.screenshot({ path: SHOTS + '/vis-' + name + '.png', clip: r }); };
   try {

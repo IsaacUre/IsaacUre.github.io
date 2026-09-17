@@ -2,7 +2,7 @@
 
 Read this before doing any job. It is the context every job assumes.
 
-Live at `/comp/` on isaacure.com: open the fake Windows desktop, then the
+Live at `/tcomp/` on isaacure.com: open the fake Windows desktop, then the
 NINTH NIGHT shortcut (or Steam, or the Start menu). `?dev=ninth` opens it
 straight away and installs the `window.__ninth` dev handle.
 
@@ -62,7 +62,7 @@ begin the game with is a lie you can cast. Nobody says this out loud.
 
 ## What is built right now
 
-Roughly 8280 lines in `comp/ninth.js`, one IIFE, vanilla ES5-style, no
+Roughly 8280 lines in `tcomp/ninth.js`, one IIFE, vanilla ES5-style, no
 build step, no modules, no dependencies.
 
 - **Combat**: Call/Answer, five families, rhyme stacks, slant, sour,
@@ -95,11 +95,11 @@ whole file and it is a dev-menu toggle.
 
 ## Architecture, briefly
 
-`comp/ninth.js` exports `window.NINTH = { render, init, close, steamAch }`
-and nothing else. The desktop shell in `comp/comp.js` owns the app
+`tcomp/ninth.js` exports `window.NINTH = { render, init, close, steamAch }`
+and nothing else. The desktop shell in `tcomp/comp.js` owns the app
 registry, the Steam catalogue, the filesystem and the icons. Styles are
-the `.nn-*` block at the end of `comp/comp.css`. The SVG icon symbol and
-the script tag are in `comp/index.html`.
+the `.nn-*` block at the end of `tcomp/comp.css`. The SVG icon symbol and
+the script tag are in `tcomp/index.html`.
 
 Inside `ninth.js`:
 

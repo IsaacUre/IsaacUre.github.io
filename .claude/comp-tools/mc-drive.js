@@ -1,4 +1,4 @@
-/* Headless driver for comp/minecraft.js. Boots the game in mc-menu.html (the
+/* Headless driver for tcomp/minecraft.js. Boots the game in mc-menu.html (the
    game at native size, outside the desktop shell) or in the desktop itself,
    and drives it with REAL events — the title-screen buttons by accessible
    name, the world by keydown/keyup on .mc and mousedown on the canvas, slots

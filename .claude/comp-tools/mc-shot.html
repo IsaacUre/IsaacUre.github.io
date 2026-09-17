@@ -2,7 +2,7 @@
 <meta charset="utf-8">
 <title>mc-shot</title>
 <!--
-  Sprint QC for comp/minecraft.js: four panels of the SAME world, same spot,
+  Sprint QC for tcomp/minecraft.js: four panels of the SAME world, same spot,
   so the only thing that differs is the lens.
 
     C0  walking, fovM 1.000        C1  sprinting, fovM 1.150
@@ -28,7 +28,7 @@ html,body{margin:0;background:#111;color:#0f0;font:14px monospace;overflow:hidde
 canvas{display:block;image-rendering:pixelated;width:718px}
 .row{display:flex;gap:8px;padding:6px}
 </style>
-<iframe id="f" src="/comp/?dev=mc&mcdev=kit&mcseed=1337"></iframe>
+<iframe id="f" src="/tcomp/?dev=mc&mcdev=kit&mcseed=1337"></iframe>
 <div class="row"><div><b id="l0"></b><canvas id="c0"></canvas></div><div><b id="l1"></b><canvas id="c1"></canvas></div><div><b id="l2"></b><canvas id="c2"></canvas></div><div><b id="l3"></b><canvas id="c3" style="width:560px"></canvas></div></div>
 <script>
 var f = document.getElementById('f');

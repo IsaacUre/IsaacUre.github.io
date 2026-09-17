@@ -1,7 +1,7 @@
 === RECON: callsites ===
 # NINTH NIGHT — magic visual call-site map
 
-All line numbers are `comp/ninth.js` @ `88c665c`. File is 8279 lines.
+All line numbers are `tcomp/ninth.js` @ `88c665c`. File is 8279 lines.
 
 ---
 
@@ -480,7 +480,7 @@ This is the climax of the game and it is `bigLine` × 28 plus a saturation wipe.
 === RECON: render ===
 # NINTH NIGHT rendering primitives: a VFX author's map
 
-All line numbers are against `C:/Users/isaac/IsaacUre.github.io/.claude/worktrees/suspicious-driscoll-00fbd8/comp/ninth.js` at HEAD (8279 lines).
+All line numbers are against `C:/Users/isaac/IsaacUre.github.io/.claude/worktrees/suspicious-driscoll-00fbd8/tcomp/ninth.js` at HEAD (8279 lines).
 
 ---
 
@@ -977,9 +977,9 @@ Headroom summary for a designer: the particle cap is 900 (1385) and the busiest 
 20. `stats()` and `charmSum()` allocate on every call (483, 496) and are called inside per-foe loops. Hoist them out of any loop you write.
 
 === RECON: post ===
-# SCREEN AND POST-PROCESS LAYER — `comp/ninth.js`
+# SCREEN AND POST-PROCESS LAYER — `tcomp/ninth.js`
 
-All line numbers are against `C:/Users/isaac/IsaacUre.github.io/.claude/worktrees/suspicious-driscoll-00fbd8/comp/ninth.js` at HEAD (`88c665c`), 8279 lines.
+All line numbers are against `C:/Users/isaac/IsaacUre.github.io/.claude/worktrees/suspicious-driscoll-00fbd8/tcomp/ninth.js` at HEAD (`88c665c`), 8279 lines.
 
 ---
 
@@ -1117,7 +1117,7 @@ The rest of the file uses only `'lighter'` (23 sites) and `'source-over'`. `RT.m
 - **2748** `doReprise()`: `RT.shake = shake(9); RT.chroma = 1;` — write
 - **3841** `step()`: `RT.chroma = Math.max(0, RT.chroma - dt * 2.4);` — decay
 
-There is **no read**. Not in `draw()`, not in any `draw*` function, not in the dev handle's `state()` (1604-1609), not in `window.__ninth`, not in the DEV table. `RT` is module-private inside the IIFE so `comp/comp.js` cannot see it either (confirmed: comp.js touches only `window.NINTH.{render,init,close,steamAch,suspend,resume,volume}`). Three writes, one decay, zero reads. It is dead and it is yours.
+There is **no read**. Not in `draw()`, not in any `draw*` function, not in the dev handle's `state()` (1604-1609), not in `window.__ninth`, not in the DEV table. `RT` is module-private inside the IIFE so `tcomp/comp.js` cannot see it either (confirmed: comp.js touches only `window.NINTH.{render,init,close,steamAch,suspend,resume,volume}`). Three writes, one decay, zero reads. It is dead and it is yours.
 
 The only thing in the game that actually does a chromatic split is **`drawSlams` at 1458-1460**, and it is hard-coded:
 
@@ -1291,14 +1291,14 @@ Defaults are set in `sLoad()` at **456-463**. `S.opts = S.opts || {}` at 456, th
 
 **There is no player-facing options screen.** The only surface for `shake`, `sound` and `wasd` is the **DEV menu, DEBUG tab, backtick** (rows 1012-1014). Volume alone has a real player surface, and it is in the shell's taskbar, not in the game.
 
-To surface a new option to a player you would build the fifth panel. The pattern is fully established and needs **no edit to `comp/comp.js` or `comp/index.html`** (which job 2 owns exclusively):
+To surface a new option to a player you would build the fifth panel. The pattern is fully established and needs **no edit to `tcomp/comp.js` or `tcomp/index.html`** (which job 2 owns exclusively):
 
 1. One `<div class="nn-panel nn-p-opts" hidden>...</div>` in `render()`, next to 787-790. `render()` is ninth.js's own markup.
 2. Add `'opts'` to the `['book','kit','shop','bag']` array in `panel()` at **4739** and one `else if (open === 'opts') fillOpts();` at 4743.
 3. Write `fillOpts()` on the model of `fillKit`/`fillBag`, writing into `.nn-p-opts .nn-pb`.
 4. One `<button class="nn-b" data-nn="p:opts" ...>` in `.nn-btns` at 797-803. The delegated handler at 5050 already routes any `p:<name>`.
 5. One keybind. PARALLEL.md lists `g h j k l n o p x y z` as roughly free, minus `g` (Reprise, 2790), `i` (bag, 8253), `k` (kit, 1697), `x` (Stanza II, 1691). `o` is free and reads as "options". Register with `bindKey('o', function () { panel('opts'); });` **at the foot of the file**, next to 8253, not at the definition site — the comment at 8249-8252 is the history of why (`KEYS` is a `var` declared at 1527 and registering above it throws on load).
-6. Styles: one `/* NINTH NIGHT: options panel */` block appended at **EOF of `comp/comp.css`**, never inside the existing `.nn-*` block. CRLF, trailing newline.
+6. Styles: one `/* NINTH NIGHT: options panel */` block appended at **EOF of `tcomp/comp.css`**, never inside the existing `.nn-*` block. CRLF, trailing newline.
 
 ### Surfacing the same option to the DEV menu
 
@@ -1491,4 +1491,4 @@ Eight designers working in parallel on one file will each reach for "make it big
 2. **The technique is closed.** Hard pixels, flat matter, gradients only for light, the 1:0.5 ellipse for anything on the floor, drop shadow by offset in `#08060c`, Press Start 2P for spells and VT323 for the ballad, and anything repeated goes in a cached canvas once.
 3. **The fiction assigns the image.** `-eat` is consumption and the consumer growing. `-ight` is being looked at by people who would rather not look. `-erd` is hearing perfectly and answering nothing. `-ark` is holding the only light and not handing it over. `-ill` is stopping, and setting a lamp down. Five crimes, not five elements.
 
-Everything in Part 4 is a specific line of `comp/ninth.js` that can be pointed at in a review.
+Everything in Part 4 is a specific line of `tcomp/ninth.js` that can be pointed at in a review.
