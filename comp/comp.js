@@ -1242,6 +1242,24 @@ function fsLoad() {
     return fsSt;
 }
 function fsSave() { try { store('fs', JSON.stringify(fsSt)); } catch (e) {} }
+/* Factory files a later build took out, by fsHash of their path (the cid).
+   Someone who moved, renamed or binned one under the old build still has a
+   copy carrying that cid in their saved overlay, and the original's
+   tombstone in gone. Drop both before anything draws. */
+var FS_RETIRED = [2691851086, 810912409, 3683617432, 3087898000];
+function fsRetire() {
+    var st = fsLoad(), dirty = false;
+    function retired(cid) { return !!cid && FS_RETIRED.indexOf(fsHash(cid)) >= 0; }
+    Object.keys(st.add).forEach(function (p) {
+        var keep = st.add[p].filter(function (it) { return !(it && retired(it.cid)); });
+        if (keep.length !== st.add[p].length) { st.add[p] = keep; dirty = true; }
+    });
+    var bin = st.bin.filter(function (e) { return !(e && e.it && retired(e.it.cid)); });
+    if (bin.length !== st.bin.length) { st.bin = bin; dirty = true; }
+    var tomb = st.gone.filter(function (g) { return !retired(g); });
+    if (tomb.length !== st.gone.length) { st.gone = tomb; dirty = true; }
+    if (dirty) fsSave();
+}
 /* Persisted state can outlive the build that wrote it: a shortcut for an app
    this desktop no longer ships, a file in the bin that opened with one, or a
    dynamic file now shadowed by a factory file of the same name. Drop those
@@ -5582,6 +5600,7 @@ if (recall('tbauto', 'off') === 'on') document.body.classList.add('tb-auto');
     pageFsSync();   // a reload inside an already-full-screen page has to agree
 })();
 renderWall();
+fsRetire();     // copies of files this build no longer ships
 fsSanitize();   // files persisted by an older build that name an app this one does not ship
 renderDesktop();
 tick(); setInterval(tick, 15000);

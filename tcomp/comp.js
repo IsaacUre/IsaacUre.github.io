@@ -1285,6 +1285,24 @@ function fsLoad() {
     return fsSt;
 }
 function fsSave() { try { store('fs', JSON.stringify(fsSt)); } catch (e) {} }
+/* Factory files a later build took out, by fsHash of their path (the cid).
+   Someone who moved, renamed or binned one under the old build still has a
+   copy carrying that cid in their saved overlay, and the original's
+   tombstone in gone. Drop both before anything draws. */
+var FS_RETIRED = [2691851086, 810912409, 3683617432, 3087898000];
+function fsRetire() {
+    var st = fsLoad(), dirty = false;
+    function retired(cid) { return !!cid && FS_RETIRED.indexOf(fsHash(cid)) >= 0; }
+    Object.keys(st.add).forEach(function (p) {
+        var keep = st.add[p].filter(function (it) { return !(it && retired(it.cid)); });
+        if (keep.length !== st.add[p].length) { st.add[p] = keep; dirty = true; }
+    });
+    var bin = st.bin.filter(function (e) { return !(e && e.it && retired(e.it.cid)); });
+    if (bin.length !== st.bin.length) { st.bin = bin; dirty = true; }
+    var tomb = st.gone.filter(function (g) { return !retired(g); });
+    if (tomb.length !== st.gone.length) { st.gone = tomb; dirty = true; }
+    if (dirty) fsSave();
+}
 function itemsFor(path) {
     var st = fsLoad(), base = (FS[path] || FS.Home).items;
     return base.filter(function (it) { return (!it.when || it.when()) && st.gone.indexOf(path + '/' + it.n) < 0; }).concat(st.add[path] || []);
@@ -9966,6 +9984,7 @@ if (recall('tbauto', 'off') === 'on') document.body.classList.add('tb-auto');
 })();
 try { var chromeSt = JSON.parse(recall('chrome', 'null')); if (chromeSt) installChrome(chromeSt); } catch (e) {}   // reinstate an installed Chrome
 renderWall();
+fsRetire();     // copies of files this build no longer ships
 renderDesktop();
 // the Chrome shortcut persists as a real file — if it exists anywhere, the install is real too
 if (chromeOnDisk()) installChrome({ shortcut: false });

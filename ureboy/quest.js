@@ -3065,7 +3065,7 @@ DLG.bard = function () {
             { l: 'Play on.', next: 'chatend' }
         ] },
         chatend: { t: '*the set continues, tragically in tune*', end: true },
-        solo: { t: 'KARAOKE? Get up here! What are we singing?', o: [
+        solo: { t: 'KARAOKE? Get up here! What are you singing?', o: [
             { l: 'DRIVER\'S PERMIT', next: 'sing' },
             { l: 'BEAUTIFUL FINGS', next: 'sing' },
             { l: 'SAD GIRL AUTUMN', next: 'sing' }
@@ -3087,18 +3087,15 @@ DLG.bard = function () {
     } };
 };
 DLG.socket = function () {
-    if (hasComp('socket')) return { name: 'THE SOCKET', start: 'party', nodes: { party: { t: pick([
-        '(it is still in your pocket. you checked twice.)',
-        '(10mm. still here.)'
-    ]), end: true } } };
     return { name: 'A SOCKET', start: 'meet', nodes: {
-        meet: { t: 'Something small and silver on the floor by the rug. A 10mm socket. It has been here the whole time.', o: [
-            { l: '[PARTY] Pocket it.', next: 'join' },
+        meet: { t: 'Something silver on the floor by the rug. A socket. It has been here the whole time.', o: [
+            { l: '[PARTY] Take it.', next: 'join' },
             { l: 'Leave it.', next: 'bye' }
         ] },
-        join: { t: 'You check the side. 10. Of course it is. It goes in your pocket, and it is not leaving again.',
-            do: function () { addComp('socket'); }, end: true },
-        bye: { t: '(you leave it on the floor. you will need it later.)', end: true }
+        /* it went in your pocket, so it leaves the floor now, not on the next visit */
+        join: { t: 'You check the side. 10. Of course it is. It goes in your pocket.',
+            do: function () { addComp('socket'); RT.npcs = RT.npcs.filter(function (n) { return n.id !== 'socket'; }); }, end: true },
+        bye: { t: '(you leave it. you will need it later.)', end: true }
     } };
 };
 DLG.malachi = function () {
