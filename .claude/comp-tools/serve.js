@@ -6,7 +6,8 @@ var ROOT = path.resolve(process.argv[2] || process.cwd());
 var PORT = +(process.env.PORT || process.argv[3] || 8571);
 var TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css',
               '.png': 'image/png', '.svg': 'image/svg+xml', '.json': 'application/json',
-              '.woff2': 'font/woff2', '.woff': 'font/woff', '.ttf': 'font/ttf', '.ico': 'image/x-icon' };
+              '.woff2': 'font/woff2', '.woff': 'font/woff', '.ttf': 'font/ttf', '.ico': 'image/x-icon',
+              '.m4a': 'audio/mp4' };
 var SHOTS = path.join(__dirname, 'shots');
 http.createServer(function (req, res) {
     /* POST a canvas data-URL here and it lands on disk as a PNG. The preview
@@ -34,8 +35,20 @@ http.createServer(function (req, res) {
     if (f.indexOf(ROOT) !== 0) { res.writeHead(403); return res.end('no'); }
     fs.readFile(f, function (e, b) {
         if (e) { res.writeHead(404); return res.end('404 ' + p); }
-        res.writeHead(200, { 'Content-Type': TYPES[path.extname(f).toLowerCase()] || 'application/octet-stream',
-                             'Cache-Control': 'no-store' });
+        var type = TYPES[path.extname(f).toLowerCase()] || 'application/octet-stream';
+        /* Byte ranges, as GitHub Pages serves them: the game's music streams
+           through an <audio> element, which asks for ranges, and Safari will
+           not play media at all from a server that ignores them. */
+        var m = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || '');
+        if (m && (m[1] || m[2])) {
+            var start = m[1] ? +m[1] : Math.max(0, b.length - +m[2]);
+            var end = m[1] && m[2] ? Math.min(+m[2], b.length - 1) : b.length - 1;
+            if (start >= b.length || start > end) { res.writeHead(416, { 'Content-Range': 'bytes */' + b.length }); return res.end(); }
+            res.writeHead(206, { 'Content-Type': type, 'Content-Range': 'bytes ' + start + '-' + end + '/' + b.length,
+                                 'Content-Length': end - start + 1, 'Accept-Ranges': 'bytes', 'Cache-Control': 'no-store' });
+            return res.end(b.subarray(start, end + 1));
+        }
+        res.writeHead(200, { 'Content-Type': type, 'Accept-Ranges': 'bytes', 'Cache-Control': 'no-store' });
         res.end(b);
     });
 }).listen(PORT, function () { console.log('serving ' + ROOT + ' on http://localhost:' + PORT + '/'); });

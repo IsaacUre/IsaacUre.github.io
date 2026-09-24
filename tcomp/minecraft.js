@@ -6,8 +6,9 @@
    terrain from a seed, per-block sky+torch lighting with baked AO,
    the full survival loop (punch tree → craft → mine → smelt →
    build → don't get creeper'd), boxy mobs, hunger, farming, beds,
-   TNT, and a synth C418 impression. No assets: every texture is
-   painted onto the atlas at boot.
+   TNT, and the game's own sounds and C418 soundtrack, from
+   mc-sounds/ beside this file. Every texture is still painted onto
+   the atlas at boot.
    Interface (for the launcher app): window.MC = { render(), init(el),
    close() → raw hours, ach() → {n,total,list}, hours() }.
    ═══════════════════════════════════════════════════════════════ */
@@ -2066,6 +2067,7 @@
         var n = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
         for (var i = 0; i < n.length; i++) if (getB(x + n[i][0], y + n[i][1], z + n[i][2]) === LAVA) {
             setB(x + n[i][0], y + n[i][1], z + n[i][2], OBSIDIAN); blockParticles(x + n[i][0], y + n[i][1], z + n[i][2], STONE);
+            snd('fizz', 0, x + n[i][0] + 0.5, y + n[i][1] + 0.5, z + n[i][2] + 0.5);   // the hiss of lava going out
         }
     }
     function eatCake(x, y, z) {
@@ -2268,7 +2270,7 @@
                 if (fall > 3.5 && !water && !inFluid(WATER) && rule('fallDamage') && !RT.fly) {
                     var ff = S.armor[3] ? ench(S.armor[3], 'feather') : 0;   // feather falling boots soften the landing
                     var fdmg = Math.floor((fall - 3) * (1 - ff * 0.12));
-                    if (fdmg > 0) { hurt(fdmg, null, false, true); snd('fall'); }
+                    if (fdmg > 0) { hurt(fdmg, null, false, true); snd('fall', fdmg); }
                 }
                 // touching down ends creative flight, exactly like the real game.
                 // Spectators never land, so they keep theirs.
@@ -2287,11 +2289,12 @@
         // bubble row never appears for them
         var headWater = getB(Math.floor(S.px), Math.floor(S.py + EYE), Math.floor(S.pz)) === WATER && !invulnerable();
         if (headWater) {
+            var bubs = Math.ceil(S.air);
             S.air -= dt;
-            if (S.air <= 0) { S.air = 0; RT.drownT = (RT.drownT || 0) + dt; if (RT.drownT > 1) { RT.drownT = 0; hurt(2, null, false, true); } }
-            else if (Math.random() < dt * 1.6) snd('bubble');
+            if (S.air <= 0) { S.air = 0; RT.drownT = (RT.drownT || 0) + dt; if (RT.drownT > 1) { RT.drownT = 0; hurt(2, null, false, true, 'drown'); } }
+            else if (Math.ceil(S.air) < bubs) snd('bubble', 10 - Math.ceil(S.air));   // a bubble just went out on the HUD, and pops
         } else { S.air = Math.min(10, S.air + dt * 4); RT.drownT = 0; }
-        if (lava) { RT.lavaT = (RT.lavaT || 0) + dt; if (RT.lavaT > 0.5) { RT.lavaT = 0; hurt(4, null, false, true); } }
+        if (lava) { RT.lavaT = (RT.lavaT || 0) + dt; if (RT.lavaT > 0.5) { RT.lavaT = 0; hurt(4, null, false, true, 'fire'); } }
         else RT.lavaT = 0;
         // cactus: touching one hurts
         var fx2 = Math.floor(S.px), fz2 = Math.floor(S.pz), fy2 = Math.floor(S.py + 0.5);
@@ -2432,6 +2435,7 @@
         if (!chunkAt(lx, lz)) return;
         var ly = CH - 1; while (ly > 2 && !solidAt(lx, ly, lz)) ly--;
         RT.lightning = 0.18; RT.shake = 0.3; snd('thunder');   // non-positional: the sky is not a point source
+        snd('impact', 0, lx + 0.5, ly + 1, lz + 0.5);         // but the strike itself is: the crack where it lands
         boomParticles(lx + 0.5, ly + 1, lz + 0.5, 2);
         for (var i = RT.foes.length - 1; i >= 0; i--) {
             var f = RT.foes[i];
@@ -2439,7 +2443,8 @@
         }
         if (Math.abs(S.px - lx - 0.5) < 3 && Math.abs(S.pz - lz - 0.5) < 3) hurt(5, null, false, true);
     }
-    function hurt(n, dir, quiet, bypassArmor) {
+    // kind: 'drown' or 'fire' for the two damage sources with a cry of their own
+    function hurt(n, dir, quiet, bypassArmor, kind) {
         if (RT.dead || !(n > 0)) return;   // !(n>0) also rejects NaN
         if (invulnerable()) return;                        // creative and spectator take nothing
         var resist = effLvl('resistance');
@@ -2461,7 +2466,7 @@
         if (n <= 0) return;
         S.hp -= n;
         RT.flash = 0.35;
-        if (!quiet) snd('hurt');
+        if (!quiet) snd(kind === 'drown' ? 'hurtdrown' : kind === 'fire' ? 'hurtfire' : 'hurt');
         paintVitals();
         if (S.hp <= 0) die();
     }
@@ -2683,7 +2688,7 @@
         // a mob under the crosshair takes priority (feed / breed / milk)
         var ef = entRay();
         if (ef && h) {
-            if (ef.k === 'cow' && !ef.baby && h.id === 'bucket') { if (h.c > 1 && invFree('milk_bucket') < 1) return; swapHeld('milk_bucket', 1); snd('swim', 0, ef.x, ef.y + 0.4, ef.z); return; }
+            if (ef.k === 'cow' && !ef.baby && h.id === 'bucket') { if (h.c > 1 && invFree('milk_bucket') < 1) return; swapHeld('milk_bucket', 1); snd('milk', 0, ef.x, ef.y + 0.4, ef.z); return; }
             var food = BREED[ef.k];
             if (food && h.id === food) {
                 if (ef.baby > 0) { ef.baby = Math.max(0, ef.baby - 6); heartParticles(ef); useOne(); snd('eat', 0, ef.x, ef.y + ef.h * 0.7, ef.z); paintHotbar(); return; }
@@ -2707,7 +2712,7 @@
         // right-click armor → wear it
         if (def && def.armor && !S.armor[def.armor.slot]) {
             S.armor[def.armor.slot] = { id: h.id, c: 1, dur: h.dur, ench: h.ench, name: h.name };
-            S.inv[S.sel] = null; paintHotbar(); paintVitals(); snd('click'); unlock('armor'); return;
+            S.inv[S.sel] = null; paintHotbar(); paintVitals(); snd('equip', def.armor.tier); unlock('armor'); return;
         }
         // buckets: scoop, pour, and obsidian-forming.
         // The normal target skips fluids (you can't mine water), so scooping needs its own
@@ -2715,8 +2720,8 @@
         // obsidian (water on lava) and therefore the enchanting table unobtainable.
         if (h.id === 'bucket') {
             var ft = raycast(true);
-            if (ft && ft.b === WATER) { setB(ft.x, ft.y, ft.z, AIR, true); relight(ft.x, ft.z); dirtyAround(ft.x, ft.y, ft.z); swapHeld('water_bucket', 1); snd('swim', 0, ft.x + 0.5, ft.y + 0.5, ft.z + 0.5); return; }
-            if (ft && ft.b === LAVA) { setB(ft.x, ft.y, ft.z, AIR, true); relight(ft.x, ft.z); dirtyAround(ft.x, ft.y, ft.z); swapHeld('lava_bucket', 1); snd('lavapop', 0, ft.x + 0.5, ft.y + 0.5, ft.z + 0.5); return; }
+            if (ft && ft.b === WATER) { setB(ft.x, ft.y, ft.z, AIR, true); relight(ft.x, ft.z); dirtyAround(ft.x, ft.y, ft.z); swapHeld('water_bucket', 1); snd('bucketfill', 0, ft.x + 0.5, ft.y + 0.5, ft.z + 0.5); return; }
+            if (ft && ft.b === LAVA) { setB(ft.x, ft.y, ft.z, AIR, true); relight(ft.x, ft.z); dirtyAround(ft.x, ft.y, ft.z); swapHeld('lava_bucket', 1); snd('bucketfilllava', 0, ft.x + 0.5, ft.y + 0.5, ft.z + 0.5); return; }
         }
         if ((h.id === 'water_bucket' || h.id === 'lava_bucket') && t) {
             var bx0 = t.px, by0 = t.py, bz0 = t.pz;
@@ -2725,7 +2730,7 @@
                 setB(bx0, by0, bz0, fluidId);
                 if (fluidId === WATER) obsidianAround(bx0, by0, bz0);   // water meeting lava hardens it
                 // a bucket emptying is water or lava arriving, not a block being set down
-                swapHeld('bucket'); snd(fluidId === WATER ? 'splash' : 'fizz', 0.4, bx0 + 0.5, by0 + 0.5, bz0 + 0.5); return;
+                swapHeld('bucket'); snd(fluidId === WATER ? 'bucketempty' : 'bucketemptylava', 0, bx0 + 0.5, by0 + 0.5, bz0 + 0.5); return;
             }
         }
         if (h.id === 'milk_bucket') { swapHeld('bucket'); snd('drink'); snd('burp'); return; }   // drink → empty bucket
@@ -2734,7 +2739,7 @@
         // hoe tills
         if (def.tool && def.tool.k === 'hoe' && t && (t.b === GRASS || t.b === DIRT) && getB(t.x, t.y + 1, t.z) === AIR) {
             setB(t.x, t.y, t.z, FARMLAND);
-            snd('dig', GRASS, t.x + 0.5, t.y + 0.5, t.z + 0.5); wearHeld(1); unlock('farm');
+            snd('till', 0, t.x + 0.5, t.y + 0.5, t.z + 0.5); wearHeld(1); unlock('farm');
             return;
         }
         // bonemeal grows crops toward maturity
@@ -2752,8 +2757,9 @@
         // spawn eggs drop a mob onto the face you clicked
         if (def.egg && t) {
             if (!MOBS[def.egg] || RT.foes.length >= 64) return;
-            RT.foes.push(mkFoe(def.egg, t.px + 0.5, t.py, t.pz + 0.5));
-            snd('mob:' + def.egg + ':idle', 0, t.px + 0.5, t.py + 0.5, t.pz + 0.5); useOne(); paintHotbar();
+            var nf = mkFoe(def.egg, t.px + 0.5, t.py, t.pz + 0.5);
+            RT.foes.push(nf);
+            snd('mob:' + def.egg + ':idle', nf, t.px + 0.5, t.py + 0.5, t.pz + 0.5); useOne(); paintHotbar();
             return;
         }
         // food & bow are hold-to-use (handled in useTick); block placement is instant
@@ -2852,10 +2858,8 @@
             }
         } else if (h.id === 'bow') {
             if (invCount('arrow') < 1 && RT.bowT === 0 && !instaBuild()) return;   // creative never runs out of arrows
-            var was = RT.bowT;
+            // the real bow draws in silence; how far it was drawn is heard in the release
             RT.bowT = Math.min(1, RT.bowT + dt);
-            // three creaks across the draw, so a charged shot sounds charged
-            if (Math.floor(RT.bowT / 0.28) !== Math.floor(was / 0.28) && RT.bowT < 0.95) snd('bowpull');
         } else if (def.place != null || (def.tool && def.tool.k === 'hoe') || h.id === 'bonemeal') {
             // hold-to-build: repeat placement like the real game (mousedown already fired the first one)
             RT.placeCd -= dt;
@@ -2872,7 +2876,7 @@
                 vx: d[0] * 34 * pw, vy: d[1] * 34 * pw, vz: d[2] * 34 * pw, mine: true,
                 dmg: Math.max(1, Math.round(pw * 8)) + (pwr ? Math.ceil(pwr * 1.5) : 0), punch: pun, flame: flm, noPick: infinite, t: 0 });
             if (hb0 && hb0.id === 'bow') wearHeld(1);
-            snd('bow');
+            snd('bow', pw);
             paintHotbar();
         }
         RT.eatT = 0; RT.bowT = 0;
@@ -2888,8 +2892,7 @@
         }
         var t = RT.target;
         S.spawn = [t.x + 0.5, t.y + 1.01, t.z + 0.5];
-        RT.sleep = 0.01;
-        snd('sleep');
+        RT.sleep = 0.01;   // lying down makes no sound in the real game either
         unlock('sleep');
     }
 
@@ -3070,6 +3073,11 @@
         f.swAmt += (want - f.swAmt) * Math.min(1, dt * 8);
         f.anim += f.swAmt * 0.6662 * 20 * dt;
         if (f.anim > 6.2832) f.anim -= 6.2832;
+        // footfalls off the same ground covered, at the 0.6-a-block stride the player's use
+        if (f.ground && !md.hop && !md.aquatic && (dx || dz)) {
+            f.stepD = (f.stepD || 0) + Math.sqrt(dx * dx + dz * dz) * 0.6;
+            if (f.stepD > 1) { f.stepD = 0; foeStep(f); }
+        }
 
         f.atk = Math.max(0, f.atk - dt);
         f.aim += ((f.aiming && f.shootT > 0.9 ? 1 : 0) - f.aim) * Math.min(1, dt * 9);
@@ -3089,7 +3097,11 @@
         }
         // slimes squash flat when they land and stretch as they leave the ground
         if (md.hop) {
-            if (f.ground && !f.wasGround) f.squish = -0.5;
+            if (f.ground && !f.wasGround) {
+                f.squish = -0.5;
+                // and the landing is a squelch, from its first real landing on (not the frame it loads in)
+                if (f.wasGround === false) snd('mob:slime:squish', f, f.x, f.y, f.z);
+            }
             else if (!f.ground && f.wasGround) f.squish = 1;
             f.squish *= Math.pow(0.6, dt * 20);
             f.wasGround = f.ground;
@@ -3175,9 +3187,9 @@
         // are uncraftable (they were dead recipes before this)
         if (f.k === 'chicken' && !f.baby) {
             f.layT = (f.layT || 20 + Math.random() * 40) - dt;
-            // 'pop' is the cue that means "you picked something up"; a chicken two
-            // hundred blocks away kept firing it, and there is no distance attenuation
-            if (f.layT <= 0) { f.layT = 20 + Math.random() * 40; dropItem(f.x, f.y + 0.3, f.z, 'egg', 1); snd('mob:chicken:idle', 0, f.x, f.y + 0.6, f.z); }
+            // the laying has its own sound, the plop, and it is placed at the chicken:
+            // 'pop' is the cue that means "you picked something up", and has no distance
+            if (f.layT <= 0) { f.layT = 20 + Math.random() * 40; dropItem(f.x, f.y + 0.3, f.z, 'egg', 1); snd('mob:chicken:egg', f, f.x, f.y + 0.6, f.z); }
         }
         // fully-custom movers take over here (they run their own physics + contact)
         if (f.k === 'enderman') return endermanUpdate(f, dt, px, pz, dist);
@@ -3208,7 +3220,7 @@
                     f.shootT = 0;
                     var dl = Math.sqrt(px * px + py * py + pz * pz) || 1;
                     RT.arrows.push({ x: f.x, y: f.y + f.h * 0.8, z: f.z, vx: px / dl * 22, vy: py / dl * 22 + dist * 0.09, vz: pz / dl * 22, mine: false, dmg: 3, t: 0 });
-                    snd('bow', 0, f.x, f.y + f.h * 0.7, f.z);
+                    snd('skelshoot', 0, f.x, f.y + f.h * 0.7, f.z);
                 }
             }
             if (d.fuse) {
@@ -3236,7 +3248,7 @@
             f.hopT = (f.hopT || 0.4 + Math.random() * 0.8) - dt;
             if (f.ground) {
                 mvx = mvz = 0;
-                if (f.hopT <= 0) { f.hopT = 0.5 + Math.random() * 1.1 - f.sz * 0.08; f.vy = 6.6 + f.sz * 0.6; f.ground = false; }
+                if (f.hopT <= 0) { f.hopT = 0.5 + Math.random() * 1.1 - f.sz * 0.08; f.vy = 6.6 + f.sz * 0.6; f.ground = false; snd('mob:slime:jump', f, f.x, f.y, f.z); }
             } else { mvx *= 1.6; mvz *= 1.6; }
         }
         var water = entInWater(f);
@@ -3265,12 +3277,13 @@
             f.ifr = 1; f.atk = ATK_T;   // and it visibly takes a swing at you
             var kl = Math.sqrt(px * px + pz * pz) || 1;
             hurt(cdmg, [px / kl, pz / kl]);
+            if (f.k === 'slime') snd('mob:slime:attack', f, f.x, f.y + f.h * 0.5, f.z);   // a slime's hit is a sound of its own
         }
         // idle voice
         f.voice -= dt;
         // Mob.getAmbientSoundInterval is 80 ticks and the roll is per-tick, so
         // idle calls land irregularly around every few seconds rather than on a timer
-        if (f.voice <= 0) { f.voice = 3 + Math.random() * 9; if (d.snd) snd('mob:' + f.k + ':idle', 0, f.x, f.y + f.h * 0.8, f.z); }
+        if (f.voice <= 0) { f.voice = 3 + Math.random() * 9; if (d.snd) snd('mob:' + f.k + ':idle', f, f.x, f.y + f.h * 0.8, f.z); }
         // despawn: hostiles far away evaporate
         if (f.hostile && (Math.abs(px) > 64 || Math.abs(pz) > 64 || Math.abs(py) > 48)) return true;
         return false;
@@ -3292,7 +3305,7 @@
             }
         }
         // the cry goes with the killing blow, not with the body hitting the floor
-        if (f.k !== 'creeper') snd('mob:' + f.k + ':death', 0, f.x, f.y + f.h * 0.6, f.z);
+        snd('mob:' + f.k + ':death', f, f.x, f.y + f.h * 0.6, f.z);
         /* The body does not blink out — it keels over. Every caller of foeDie
            removes the mob from RT.foes on the very next line, so the corpse gets
            its own list: it renders and topples, but it has no AI, no hitbox, no
@@ -3311,9 +3324,7 @@
         f.hurtF = Math.max(0, f.hurtF - dt);
         f.age += dt * 20;
         if (f.dieT < DIE_T) return false;
-        poofParticles(f);
-        // a creeper has no death cry of its own, so the puff is the whole sound
-        if (f.k === 'creeper') snd('poof', 0, f.x, f.y + f.h * 0.5, f.z);
+        poofParticles(f);   // silent, as the game's is: the death cry already went with the blow
         return true;
     }
     function killFoe(f) { var i = RT.foes.indexOf(f); if (i >= 0) RT.foes.splice(i, 1); }
@@ -3343,7 +3354,7 @@
         // creative player isn't there to stare at
         if (!f.aggro && dist < 24 && !unseen()) {
             var la = look(), t = rayBox(S.px, S.py + EYE, S.pz, la, f.x - f.hw, f.y + f.h * 0.55, f.z - f.hw, f.x + f.hw, f.y + f.h, f.z + f.hw);
-            if (t != null && (!RT.target || RT.target.dist > t)) { f.aggro = 12; snd('mob:enderman:hurt', 0, f.x, f.y + 2.4, f.z); }
+            if (t != null && (!RT.target || RT.target.dist > t)) { f.aggro = 12; snd('mob:enderman:stare', f, f.x, f.y + 2.4, f.z); }
         }
         if (f.hurtF > 0.24 && Math.random() < 0.35) { teleportEnder(f); f.aggro = 12; }   // flickers away when hit
         var want = null, sp = MOBS.enderman.sp;
@@ -3363,7 +3374,8 @@
         if (f.aggro > 0 && f.ifr <= 0 && !RT.dead && Math.abs(f.x - S.px) < f.hw + HW + 0.15 && Math.abs(f.z - S.pz) < f.hw + HW + 0.15 && S.py < f.y + f.h && S.py + PH > f.y) {
             f.ifr = 1; f.atk = ATK_T; var kl = Math.sqrt(px * px + pz * pz) || 1; hurt(4, [px / kl, pz / kl]);
         }
-        f.voice -= dt; if (f.voice <= 0) { f.voice = 8 + Math.random() * 16; snd('mob:enderman:idle', 0, f.x, f.y + 2.4, f.z); }
+        // a calm one mutters; a provoked one screams
+        f.voice -= dt; if (f.voice <= 0) { f.voice = 8 + Math.random() * 16; snd('mob:enderman:' + (f.aggro > 0 ? 'scream' : 'idle'), f, f.x, f.y + 2.4, f.z); }
         if (Math.abs(px) > 72 || Math.abs(pz) > 72) return true;
         return false;
     }
@@ -3403,6 +3415,8 @@
         if (hy.y && !inWater) f.vy = 0;
         if (f.hp <= 0) { foeDie(f); return true; }
         f.hurtF = Math.max(0, f.hurtF - dt);
+        // a squid's ambient is a small wet thing, but it has one
+        f.voice -= dt; if (f.voice <= 0) { f.voice = 3 + Math.random() * 9; if (inWater) snd('mob:squid:idle', f, f.x, f.y + 0.4, f.z); }
         if (Math.abs(f.x - S.px) > 72 || Math.abs(f.z - S.pz) > 72) return true;
         return false;
     }
@@ -3472,7 +3486,7 @@
         if (tool) wearHeld(1);
         addExh(0.1);
         snd(crit ? 'crit' : 'hit', 0, f.x, f.y + f.h * 0.6, f.z);
-        if (f.hp > 0 && f.k !== 'creeper') snd('mob:' + f.k + ':hurt', 0, f.x, f.y + f.h * 0.7, f.z);
+        if (f.hp > 0) snd('mob:' + f.k + ':hurt', f, f.x, f.y + f.h * 0.7, f.z);
         if (f.hp <= 0) { foeDie(f, ench(h, 'looting')); killFoe(f); }
     }
 
@@ -3566,7 +3580,7 @@
         S.xp += amt;
         var leveled = false;
         while (S.xp >= xpForLevel(S.xpl)) { S.xp -= xpForLevel(S.xpl); S.xpl++; leveled = true; }
-        if (leveled) snd(S.xpl % 5 === 0 ? 'levelbig' : 'level');
+        if (leveled) snd(S.xpl % 5 === 0 ? 'levelbig' : 'level', S.xpl);
         if (S.xpl >= 30) unlock('xp30');
         paintXp();
         if (leveled) RT.panelDirty = 1;   // enchant options go affordable as levels arrive
@@ -3665,8 +3679,8 @@
                     if (MOBS[f.k].pass) f.flee = 4;
                     var alive = f.hp > 0;
                     if (!alive) { foeDie(f); RT.foes.splice(i, 1); }
-                    snd('hit', 0, f.x, f.y + f.h * 0.6, f.z);
-                    if (alive && f.k !== 'creeper') snd('mob:' + f.k + ':hurt', 0, f.x, f.y + f.h * 0.7, f.z);
+                    snd('thud', 0, f.x, f.y + f.h * 0.6, f.z);   // an arrow landing sounds the same in a mob as in a block
+                    if (alive) snd('mob:' + f.k + ':hurt', f, f.x, f.y + f.h * 0.7, f.z);
                     snd('arrowhit');
                     return true;
                 }
@@ -3682,7 +3696,7 @@
     function igniteTnt(x, y, z) {
         setB(x, y, z, AIR);
         RT.tnts.push({ x: x + 0.5, y: y, z: z + 0.5, vy: 0, fuse: 4 });
-        snd('fuse', 0, x + 0.5, y + 0.5, z + 0.5);
+        snd('tntfuse', 0, x + 0.5, y + 0.5, z + 0.5);
     }
     function tntUpdate(t, dt) {
         t.fuse -= dt;
@@ -4336,7 +4350,7 @@
         d.className = 'mc-toast' + (ach ? ' ach' : '');
         d.innerHTML = msg;
         wrap.appendChild(d);
-        setTimeout(function () { d.className += ' out'; }, 3600);
+        setTimeout(function () { d.className += ' out'; if (ach) snd('toastout'); }, 3600);   // an achievement slides out with a sound, as it slid in
         setTimeout(function () { if (d.parentNode) d.parentNode.removeChild(d); }, 4200);
     }
 
@@ -5987,44 +6001,63 @@
     }
 
     /* ── audio ───────────────────────────────────────────────
-       There is not one byte of sampled audio in this file. Every sound is
-       built out of oscillators and shaped noise at the moment it plays.
-       What is modelled on the real game is its ACOUSTICS:
+       Every sound in this file is one of Minecraft's own. The samples live
+       in mc-sounds/ under the paths the game's sounds.json files them by
+       (dig/stone1, mob/zombie/say2, music/game/sweden), re-encoded as AAC,
+       the one compressed format every browser decodes. What this section
+       adds is everything the game does AROUND a sample:
 
          · A SoundType per block. What a block sounds like is a property of
-           its material, and one material answers consistently across all
-           four of its uses — stone rings, wool thuds, sand shushes, glass
-           shatters, and each does so whether you break it, place it, walk
-           on it or are still mining it.
-         · The game's own volume and pitch maths for those four uses:
-           break and place at (v+1)/2 and pitch × 0.8, footsteps at v × 0.15,
-           and a quiet half-pitch tick every four ticks while a block is
-           being mined. That last one is most of what mining actually
-           SOUNDS like and it was missing entirely.
-         · Triangular pitch jitter — the game's own (rand − rand) × 0.2 + 1 —
-           plus four cut variants of every material sound. Hearing the
-           identical waveform twice is the tell of a fake.
-         · Linear attenuation out to 16 blocks × the sound's volume, and
-           stereo placement against the listener's yaw, so mobs, ambience
-           and explosions come from somewhere instead of from inside your
-           head.
+           its material, and one material answers consistently across all of
+           its uses, each with the game's own volume and pitch maths: break
+           and place at (v+1)/2 and pitch × 0.8, footsteps at v × 0.15, a
+           landing at v × 0.5 and pitch × 0.75, and a quiet half-pitch tick
+           every four ticks while a block is being mined. That last one is
+           most of what mining actually SOUNDS like.
+         · A random variant on every play, and the rolls the game's own call
+           sites make — (rand − rand) × 0.2 + 1 for a voice, half an octave
+           up for a baby, 0.8 to 1.0 for a cave.
+         · Linear attenuation out to 16 blocks × the sound's volume (a volume
+           above 1 buys range, never loudness), and stereo placement against
+           the listener's yaw, so mobs, ambience and explosions come from
+           somewhere instead of from inside your head.
          · A lowpassed master the moment your head goes under water.
          · Cave ambience seeded into unlit air pockets near the player,
            which is where the real game finds it too.
 
-       One deliberate departure: a reverb bus. Vanilla has no reverb, but its
-       cave and explosion samples were produced with one baked in, so the bus
-       is wired to exactly those and to nothing else. */
+       Loading. The short effects are fetched and decoded as the window
+       opens, the long ones (the caves, the underwater bed, thunder) on first
+       use, and music streams through an <audio> element instead, because a
+       decoded five-minute track is a hundred megabytes of floats. Every
+       effect was encoded with a few frames of silence in front, and cal.m4a
+       tells this browser exactly how much of it to cut: AAC streams do not
+       agree on where sample zero is, and a footstep that starts late or has
+       lost its attack is the tell of a fake. */
 
-    var AC = null, MASTER = null, MUFFLE = null, REVERB = null;
-    var NZ = {}, BUS = {}, LOOPS = {}, VQ = [];
+    var SND_BASE = (function () {   // beside this script, whichever page loaded it
+        var s = document.currentScript;
+        try { return new URL('mc-sounds/', s && s.src ? s.src : location.href).href; } catch (e) { return 'mc-sounds/'; }
+    })();
+    var AC = null, MASTER = null, MUFFLE = null;
+    var BUS = {}, VQ = [];
     var PAN_OK = false;
-    // MC's categories. Relative weights are this game's mix, not the game's —
-    // vanilla ships every category at 1.0 and lets you turn them down yourself.
-    var CATS = { block: 1, hostile: 1, neutral: 0.9, player: 1, ambient: 0.85, weather: 0.75, ui: 0.6, music: 1 };
+    /* MC's sound categories. Vanilla ships every one at 1.0 and so does this:
+       with the game's own samples at the game's own volumes, the mix already
+       is the game's. `uw` is the underwater bed, ambient but routed round the
+       muffle, because it is the sound of being under water rather than
+       something heard through it. */
+    var CATS = { block: 1, hostile: 1, neutral: 1, player: 1, ambient: 1, uw: 1, weather: 1, ui: 1, music: 1 };
+    var SB = {};          // path → trimmed AudioBuffer, the Promise of one, or false once it has failed
+    var SLRU = [];        // the long buffers, least recently played first
+    var SMAN = null;      // mc-sounds/manifest.json: the pad, the pulse time, every effect's true length
+    var SSKIP = 0;        // how much of the front this browser's AAC decoder already drops by itself
+    var SREADY = null;
+    var S_LONG = 3, S_KEEP = 8;   // past 3 s an effect is decoded on demand, and eight of those are kept
+    var MUS = null;       // the one streaming track
+    var SLOG = null;      // QC: what actually started, and how loud — switched on by __mc._sndlog(true)
 
     function audioInit() {
-        if (AC) return;
+        if (AC) { if (AC.state === 'suspended' && AC.resume) AC.resume(); return; }
         try { AC = new (window.AudioContext || window.webkitAudioContext)(); }
         catch (e) { AC = null; return; }
         PAN_OK = !!AC.createStereoPanner;
@@ -6036,57 +6069,23 @@
         MUFFLE.connect(MASTER);
         for (var k in CATS) if (Object.prototype.hasOwnProperty.call(CATS, k)) {
             var g = AC.createGain(); g.gain.value = 0;
-            g.connect(k === 'music' ? MASTER : MUFFLE);
+            g.connect(k === 'music' || k === 'uw' ? MASTER : MUFFLE);
             BUS[k] = g;
         }
-        REVERB = AC.createConvolver(); REVERB.buffer = revIR(2.6, 2.4); REVERB.connect(MUFFLE);
-        NZ.white = mkNoise('white'); NZ.pink = mkNoise('pink'); NZ.brown = mkNoise('brown');
-        LOOPS = {}; VQ = [];
+        VQ = [];
         applyVolumes();
+        sndBoot(AC);
     }
     function audioStop() {
         if (!AC) return;
+        musDrop();
         try { AC.close(); } catch (e) { }
-        AC = null; MASTER = null; MUFFLE = null; REVERB = null;
-        NZ = {}; BUS = {}; LOOPS = {}; VQ = [];
-    }
-    /* Three noise colours, because material noise is almost never white.
-       Grit and rustle are pink (−3 dB/oct); rumble, lava and thunder are
-       brown (−6 dB/oct); only glass and steam are genuinely white. */
-    function mkNoise(kind) {
-        var n = (AC.sampleRate * 2) | 0, b = AC.createBuffer(1, n, AC.sampleRate), d = b.getChannelData(0), i, w;
-        if (kind === 'pink') {
-            var b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
-            for (i = 0; i < n; i++) {
-                w = Math.random() * 2 - 1;
-                b0 = 0.99886 * b0 + w * 0.0555179; b1 = 0.99332 * b1 + w * 0.0750759;
-                b2 = 0.96900 * b2 + w * 0.1538520; b3 = 0.86650 * b3 + w * 0.3104856;
-                b4 = 0.55000 * b4 + w * 0.5329522; b5 = -0.7616 * b5 - w * 0.0168980;
-                d[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + w * 0.5362) * 0.11;
-                b6 = w * 0.115926;
-            }
-        } else if (kind === 'brown') {
-            var last = 0;
-            for (i = 0; i < n; i++) { w = Math.random() * 2 - 1; last = (last + 0.02 * w) / 1.02; d[i] = last * 3.4; }
-        } else for (i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
-        return b;
-    }
-    /* A rock-room impulse: 12 ms of silence, then sparse early reflections
-       riding a dense exponential tail. Sparse-then-dense is what stops it
-       reading as a spring. */
-    function revIR(dur, decay) {
-        var n = (AC.sampleRate * dur) | 0, b = AC.createBuffer(2, n, AC.sampleRate);
-        var pre = (AC.sampleRate * 0.012) | 0;
-        for (var c = 0; c < 2; c++) {
-            var d = b.getChannelData(c);
-            for (var i = pre; i < n; i++) {
-                var f = (i - pre) / (n - pre);
-                var e = Math.pow(1 - f, decay);
-                var early = f < 0.09 && Math.random() < 0.02 ? 2.6 : 1;   // discrete slap-backs up front
-                d[i] = (Math.random() * 2 - 1) * e * early * 0.62;
-            }
-        }
-        return b;
+        AC = null; MASTER = null; MUFFLE = null;
+        BUS = {}; VQ = [];
+        // the decoded effects are tens of megabytes of floats: they go with the
+        // window, and come back out of the HTTP cache when it opens again
+        SB = {}; SLRU = []; SREADY = null;
+        AMB.bed = null; AMB.sub = false; AMB.water = false;
     }
     // saves predate the sliders and hold booleans; 0/1 reads the same either way
     function sVol() { return typeof S.snd === 'number' ? S.snd : (S.snd ? 1 : 0); }
@@ -6098,62 +6097,135 @@
             var want = CATS[k] * (k === 'music' ? mv : sv);
             BUS[k].gain.setTargetAtTime(want, AC.currentTime, 0.02);
         }
+        // a silenced soundtrack stops streaming rather than play to nobody;
+        // the scheduler starts a fresh piece once it is turned back up
+        if (!mv && musPlaying()) { musStop(); if (RT && !RT.menu && !(RT.musT > 0)) RT.musT = 20; }
+    }
+
+    /* ── loading ───────────────────────────────────────────── */
+    /* The manifest and the calibration pulse come down together, and every
+       effect asked for meanwhile is already on its way beside them: the click
+       that woke the audio up should still be heard, a round trip later. */
+    function sndBoot(ac) {
+        SREADY = SMAN ? Promise.resolve() : Promise.all([
+            fetch(SND_BASE + 'manifest.json').then(function (r) {
+                if (!r.ok) throw new Error('manifest ' + r.status);
+                return r.json();
+            }),
+            sndDecode(ac, 'cal').catch(function () { return null; })
+        ]).then(function (r) {
+            SMAN = r[0];
+            SSKIP = r[1] ? calSkip(r[1]) : 0;
+        }).catch(function () { SMAN = null; });   // untrimmed effects still play, a few frames late
+        SREADY.then(function () { if (AC === ac && SMAN) sndPreload(ac); });
+    }
+    function sndDecode(ac, path) {
+        return fetch(SND_BASE + path + '.m4a').then(function (r) {
+            if (!r.ok) throw new Error(path + ' ' + r.status);
+            return r.arrayBuffer();
+        }).then(function (ab) {
+            return new Promise(function (res, rej) {
+                // the callback form, because older Safari has no promise one; the
+                // promise a newer browser hands back anyway is caught so it cannot shout
+                var p = ac.decodeAudioData(ab, res, rej);
+                if (p && p.catch) p.catch(function () { });
+            });
+        });
+    }
+    /* cal.m4a is the same pad and then one short pulse at a known time.
+       Wherever this browser's decoder puts that pulse is how far off its idea
+       of sample zero is, and every effect is trimmed by exactly that much. */
+    function calSkip(b) {
+        var d = b.getChannelData(0), pi = 0;
+        for (var i = 1; i < d.length; i++) if (Math.abs(d[i]) > Math.abs(d[pi])) pi = i;
+        if (Math.abs(d[pi]) < 0.3) return 0;   // no pulse to find: trust the timeline
+        return Math.max(-SMAN.pad, Math.min(SMAN.pad, SMAN.cal - pi / b.sampleRate));
+    }
+    function sndTrim(ac, path, b) {
+        var len = SMAN && SMAN.len[path];
+        if (len == null) return b;
+        var sr = b.sampleRate, off = Math.max(0, Math.round((SMAN.pad - SSKIP) * sr));
+        var n = Math.min(b.length - off, Math.round(len * sr));
+        if (n <= 0) return b;
+        var out = ac.createBuffer(b.numberOfChannels, n, sr);
+        for (var c = 0; c < b.numberOfChannels; c++) out.getChannelData(c).set(b.getChannelData(c).subarray(off, off + n));
+        return out;
+    }
+    function sndLoad(path) {
+        var have = SB[path];
+        if (have === false || !AC || !SREADY) return Promise.resolve(null);
+        if (have) return have.then ? have : Promise.resolve(have);
+        var ac = AC;
+        // fetch and decode straight away; only the trim has to wait for the manifest and the pulse
+        var p = Promise.all([sndDecode(ac, path), SREADY]).then(function (r) {
+            var b = sndTrim(ac, path, r[0]);
+            if (AC === ac) { SB[path] = b; if (b.duration > S_LONG) sndKeep(path); }
+            return b;
+        }, function () {
+            if (AC === ac) SB[path] = false;   // missing stays missing: nothing refetches it every frame
+            return null;
+        });
+        SB[path] = p;
+        return p;
+    }
+    // the long buffers are kept eight at a time, the least recently played let go first
+    function sndKeep(path) {
+        var i = SLRU.indexOf(path);
+        if (i >= 0) SLRU.splice(i, 1);
+        SLRU.push(path);
+        while (SLRU.length > S_KEEP) { var old = SLRU.shift(); if (SB[old] && !SB[old].then) delete SB[old]; }
+    }
+    // every short effect, the ones the first seconds of play need first, four in flight at a time
+    function sndPreload(ac) {
+        var q = [], busy = 0, k;
+        for (k in SMAN.len) if (Object.prototype.hasOwnProperty.call(SMAN.len, k) && SMAN.len[k] <= S_LONG) q.push(k);
+        function pri(p) { return /^(step|dig)\//.test(p) || p === 'random/click' ? 0 : /^(random|damage|entity\/player)\//.test(p) ? 1 : 2; }
+        q.sort(function (a, b) { return pri(a) - pri(b); });
+        (function next() {
+            while (busy < 4 && q.length && AC === ac) {
+                busy++;
+                sndLoad(q.shift()).then(function () { busy--; next(); });
+            }
+        })();
     }
 
     /* ── placement ───────────────────────────────────────────
-       Every sound event gets one submix node. All of its layers connect
-       there, so distance, stereo angle, air absorption and the reverb send
-       are each computed once per event rather than once per oscillator.
-       Returns null when the event is inaudible, and the caller then never
-       builds the graph at all — which is the only reason 40 mobs and a
-       thunderstorm can be on at once. */
+       Every sound gets one submix node, so distance and stereo angle are
+       worked out once for it. Returns null when the sound would be inaudible,
+       and the caller then never builds anything at all — which is the only
+       reason 40 mobs and a thunderstorm can be on at once. */
     function aEmit(o) {
         if (!AC) return null;
-        var gain = o.vol == null ? 1 : o.vol, d = 0, dx = 0, dz = 0;
-        /* Work out audibility BEFORE allocating anything. A culled sound that
-           still built a GainNode would make the cheap path the expensive one,
-           and the cull runs far more often than the play does. */
+        var vol = o.vol == null ? 1 : o.vol, gain = Math.min(1, vol), d = 0, dx = 0, dz = 0;
         if (o.x != null) {
             dx = o.x - S.px; dz = o.z - S.pz;
             var dy = o.y - (S.py + EYE);
             d = Math.sqrt(dx * dx + dy * dy + dz * dz);
             // MC's linear model: silence at 16 blocks × the sound's own volume,
             // which is why a distant creeper is quiet but never muddy
-            var maxD = 16 * Math.max(1, gain);
-            if (d > maxD) return null;
-            if (d > 1) gain *= (maxD - d) / (maxD - 1);
+            var maxD = 16 * Math.max(1, vol);
+            if (d >= maxD) return null;
+            gain *= 1 - d / maxD;
             if (gain < 0.0016) return null;
         }
         var g = AC.createGain(), node = g;
-        if (o.x != null) {
-            if (PAN_OK) {
-                var hl = Math.sqrt(dx * dx + dz * dz) || 1;
-                var p = AC.createStereoPanner();
-                // project onto the listener's right vector; movement uses the same
-                // basis, so strafing right really does sweep a sound to the left
-                var pv = (dx / hl) * Math.cos(S.yaw) + (dz / hl) * Math.sin(S.yaw);
-                // something directly on top of you has no direction to hear
-                p.pan.value = Math.max(-1, Math.min(1, pv)) * 0.88 * Math.min(1, d / 2.5);
-                node.connect(p); node = p;
-            }
-            /* Air absorption past 8 blocks. Vanilla filters nothing by distance;
-               a synthesized transient without this is a needle at 40 blocks
-               where a recorded one would already have gone soft. */
-            if (d > 8) {
-                var lp = AC.createBiquadFilter();
-                lp.type = 'lowpass'; lp.Q.value = 0.0001;
-                lp.frequency.value = Math.max(1200, 18000 - (d - 8) * 480);
-                node.connect(lp); node = lp;
-            }
+        if (o.x != null && PAN_OK) {
+            var hl = Math.sqrt(dx * dx + dz * dz) || 1;
+            var p = AC.createStereoPanner();
+            // project onto the listener's right vector; movement uses the same
+            // basis, so strafing right really does sweep a sound to the left
+            var pv = (dx / hl) * Math.cos(S.yaw) + (dz / hl) * Math.sin(S.yaw);
+            // something directly on top of you has no direction to hear
+            p.pan.value = Math.max(-1, Math.min(1, pv)) * 0.88 * Math.min(1, d / 2.5);
+            node.connect(p); node = p;
         }
         g.gain.value = gain;
         node.connect(BUS[o.bus || 'block']);
-        if (o.rev && REVERB) { var rs = AC.createGain(); rs.gain.value = o.rev; node.connect(rs); rs.connect(REVERB); }
         return g;
     }
-    /* A crude polyphony cap. A creeper going off inside a cave full of gravel
-       can otherwise schedule two hundred oscillators in one frame and the tab
-       audibly hitches. */
+    /* A crude polyphony cap. A creeper going off in a gravel cave during a
+       thunderstorm can otherwise start a hundred voices in one frame and the
+       tab audibly hitches. */
     function aBudget(dur) {
         var t = AC.currentTime;
         while (VQ.length && VQ[0] <= t) VQ.shift();
@@ -6163,236 +6235,81 @@
         VQ.splice(i, 0, end);
         return true;
     }
-    // the game's own pitch jitter: triangular around 1.0, never a flat rand()
+    // the game's own voice roll: triangular around 1.0, never a flat rand()
     function jit(w) { return 1 + (Math.random() - Math.random()) * (w == null ? 0.2 : w); }
+    function sndVoice() { return jit(); }
+    function sndRange(lo, w) { return function () { return lo + Math.random() * w; }; }
+    function sndSeq(pre, a, b) { var o = []; for (var i = a; i <= b; i++) o.push(pre + i); return o; }
+    function sndPick(a) { return a[(Math.random() * a.length) | 0]; }
+    /* The per-sample volumes sounds.json layers over a call site's own:
+       the quieter swim strokes, the attack set, the underwater swooshes. */
+    var SVOL = {};
+    (function () {
+        function set(v, list) { for (var i = 0; i < list.length; i++) SVOL[list[i]] = v; }
+        set(0.4, sndSeq('liquid/swim', 9, 12)); set(0.6, sndSeq('liquid/swim', 14, 17));
+        set(0.6, sndSeq('entity/player/attack/strong', 1, 4)); set(0.7, sndSeq('entity/player/attack/strong', 5, 6));
+        set(0.7, sndSeq('entity/player/attack/crit', 1, 3));
+        set(0.5, sndSeq('ambient/underwater/enter', 1, 3)); set(0.3, sndSeq('ambient/underwater/exit', 1, 3));
+        set(0.45, sndSeq('item/plant/crop', 1, 6)); set(0.9, sndSeq('block/bamboo/sapling_place', 1, 6));
+        set(0.45, ['ambient/underwater/additions/bass_whale1']); set(0.5, ['ambient/underwater/additions/bass_whale2']);
+        set(0.7, ['ambient/underwater/additions/crackles1']);
+        set(0.5, ['ambient/underwater/additions/driplets1', 'ambient/underwater/additions/driplets2']);
+    })();
 
-    /* ── synthesis primitives ───────────────────────────────── */
-    function aEnv(g, t, atk, dur, vol) {
-        vol = Math.max(0.0002, vol);
-        g.gain.setValueAtTime(0.0001, t);
-        g.gain.exponentialRampToValueAtTime(vol, t + atk);
-        g.gain.exponentialRampToValueAtTime(0.0001, t + Math.max(dur, atk + 0.01));
+    /* One sample, placed. The buffer is normally already here. When it is
+       still on its way the play waits for it, but only as long as `late`
+       allows: a footstep that lands a second after the foot is worse than no
+       footstep at all, while a cave can take its time. */
+    function sPlay(path, o) {
+        if (!AC || !path) return;
+        o.vol = (o.vol == null ? 1 : o.vol) * (SVOL[path] || 1);
+        var b = SB[path];
+        if (b && !b.then) { sStart(b, path, o); return; }
+        var ac = AC, asked = ac.currentTime, late = o.late == null ? 0.2 : o.late;
+        sndLoad(path).then(function (b2) { if (b2 && AC === ac && ac.currentTime - asked <= late) sStart(b2, path, o); });
     }
-    function aPart(d, t, f0, f1, dur, type, vol, atk) {
-        if (!d || vol <= 0.0004) return null;
-        var o = AC.createOscillator(), g = AC.createGain();
-        o.type = type || 'sine';
-        o.frequency.setValueAtTime(Math.max(12, f0), t);
-        if (f1) o.frequency.exponentialRampToValueAtTime(Math.max(12, f1), t + dur);
-        aEnv(g, t, atk || 0.003, dur, vol);
-        o.connect(g); g.connect(d);
-        o.start(t); o.stop(t + dur + 0.04);
-        return o;
-    }
-    /* Filtered noise. `off` reads from a random point in the two-second buffer,
-       so the same call twice is never the same noise twice. */
-    function aNoise(d, t, dur, vol, o) {
-        if (!d || vol <= 0.0004) return null;
-        o = o || {};
+    function sStart(b, path, o) {
+        var pitch = o.pitch || 1;
+        var d = aEmit(o);
+        if (!d || !aBudget(b.duration / pitch)) return;
+        if (b.duration > S_LONG) sndKeep(path);
         var s = AC.createBufferSource();
-        s.buffer = NZ[o.buf || 'white']; s.loop = true;
-        s.playbackRate.value = o.rate || 1;
-        var f = AC.createBiquadFilter();
-        f.type = o.type || 'lowpass';
-        f.frequency.setValueAtTime(Math.max(24, o.f0 || 1500), t);
-        if (o.f1) f.frequency.exponentialRampToValueAtTime(Math.max(24, o.f1), t + dur);
-        f.Q.value = o.q == null ? 0.9 : o.q;
-        var g = AC.createGain();
-        aEnv(g, t, o.atk || 0.002, dur, vol);
-        var tail = f;
-        if (o.hp) { var h = AC.createBiquadFilter(); h.type = 'highpass'; h.frequency.value = o.hp; h.Q.value = 0.7; f.connect(h); tail = h; }
-        s.connect(f); tail.connect(g); g.connect(d);
-        s.start(t, Math.random() * 1.6); s.stop(t + dur + 0.04);
-        return g;
-    }
-    /* Struck-object synthesis: decaying sine modes over a broadband transient.
-       WHICH frequencies ring, and for how long each one does, is the entire
-       difference between "stone" and "wood". Pitching one sample up and down
-       never gets there, which is why the old two-line hiss() could not tell
-       a log from a boulder. modes = [freq, amp, decay×]. */
-    function aModal(d, t, modes, dur, vol, spread) {
-        for (var i = 0; i < modes.length; i++) {
-            var m = modes[i];
-            var f = m[0] * (1 + (spread || 0) * (Math.random() - 0.5));
-            aPart(d, t, f, m[3] ? f * m[3] : 0, dur * (m[2] == null ? 1 : m[2]), 'sine', vol * m[1], 0.0016);
-        }
-    }
-    // a scatter of tiny bandpassed clicks — gravel underfoot, glass shards, bone
-    function aGrains(d, t, n, spread, vol, o) {
-        for (var i = 0; i < n; i++) {
-            aNoise(d, t + Math.random() * spread, o.gd || 0.022, vol * (0.35 + Math.random() * 0.75), {
-                buf: o.buf || 'pink', type: 'bandpass', atk: 0.001,
-                f0: o.f0 * (0.55 + Math.random() * 1.0), q: o.q == null ? 6 : o.q
-            });
-        }
-    }
-    /* A voice: a glottal source through parallel formant bandpasses. Two
-       formants is the whole difference between a mob and a beep — an "oo"
-       and an "aa" are the same buzz behind different resonances, and every
-       animal in the game is built out of that. */
-    function aVoice(d, t, o) {
-        if (!d) return;
-        var dur = o.dur, src = AC.createOscillator(), sg = AC.createGain();
-        src.type = o.wave || 'sawtooth';
-        src.frequency.setValueAtTime(Math.max(20, o.f0), t);
-        if (o.fmid) {   // a rise-then-fall contour, which is what a moo and a baa both do
-            src.frequency.exponentialRampToValueAtTime(Math.max(20, o.fmid), t + dur * 0.28);
-            src.frequency.exponentialRampToValueAtTime(Math.max(20, o.f1 || o.f0), t + dur);
-        } else if (o.f1) src.frequency.exponentialRampToValueAtTime(Math.max(20, o.f1), t + dur);
-        aEnv(sg, t, o.atk || 0.02, dur, 1);
-        src.connect(sg);
-        // vibrato / growl: sheep bleat and zombie moan are the same trick at
-        // different rates — 11 Hz reads as a warble, 26 Hz reads as a rasp
-        if (o.vib) {
-            var lfo = AC.createOscillator(), la = AC.createGain();
-            lfo.frequency.value = o.vib[0]; la.gain.value = o.f0 * o.vib[1];
-            lfo.connect(la); la.connect(src.frequency);
-            lfo.start(t); lfo.stop(t + dur + 0.04);
-        }
-        var fs = o.formants, tot = AC.createGain();
-        tot.gain.value = o.vol == null ? 0.5 : o.vol;
-        for (var i = 0; i < fs.length; i++) {
-            var bp = AC.createBiquadFilter(), fg = AC.createGain();
-            bp.type = 'bandpass'; bp.Q.value = fs[i][1];
-            bp.frequency.setValueAtTime(fs[i][0], t);
-            if (fs[i][3]) bp.frequency.linearRampToValueAtTime(fs[i][3], t + dur);   // a moving formant is a diphthong
-            fg.gain.value = fs[i][2];
-            sg.connect(bp); bp.connect(fg); fg.connect(tot);
-        }
-        if (o.through) { var tg = AC.createGain(); tg.gain.value = o.through; sg.connect(tg); tg.connect(tot); }
-        tot.connect(d);
-        src.start(t); src.stop(t + dur + 0.04);
-        // breath: the air that leaks around any real animal's voice
-        if (o.breath) aNoise(d, t, dur, o.breath, { buf: 'pink', type: 'bandpass', f0: fs[0][0] * 1.6, q: 1.1, atk: o.atk || 0.02 });
+        s.buffer = b; s.playbackRate.value = pitch;   // the game's pitch is a playback rate, exactly this
+        s.connect(d);
+        s.start();
+        if (SLOG) SLOG.push({ p: path, g: Math.round(d.gain.value * 1000) / 1000, r: Math.round(pitch * 1000) / 1000, bus: o.bus || 'block', at: o.x != null });
     }
 
     /* ── SoundType, one entry per material ───────────────────
-       Keyed exactly the way the real game keys it: hit (the tick while you
-       are mining), brk, place, step. `v` and `p` are the SoundType's own
-       volume and pitch — ANVIL really is quiet at 0.3 in vanilla's table.
-       Only the SoundTypes this world's blocks actually use are here; there is
-       no METAL entry because there is no metal block to place. */
+       The game's table of which samples a material breaks, is placed and is
+       walked on with. The mining tick and the landing use the step set, as
+       the real hit and fall events do. `v` and `p` are the SoundType's own
+       volume and pitch — ANVIL really is quiet at 0.3 in vanilla's table —
+       and `pp` is a planted crop's two pitches. Only the SoundTypes this
+       world's blocks actually use are here. */
     var MAT = {
-        stone: {
-            v: 1, p: 1,
-            hit: function (d, t, p, v) {
-                aModal(d, t, [[418 * p, 1, 1], [806 * p, 0.5, 0.72], [1394 * p, 0.26, 0.5], [2260 * p, 0.13, 0.34]], 0.08, v * 0.42, 0.09);
-                aNoise(d, t, 0.05, v * 0.8, { buf: 'pink', type: 'bandpass', f0: 1000 * p, f1: 430 * p, q: 1.1 });
-                aNoise(d, t, 0.011, v * 0.55, { type: 'highpass', f0: 2700 * p, q: 0.7 });
-            },
-            brk: function (d, t, p, v) {
-                MAT.stone.hit(d, t, p, v * 1.1);
-                aGrains(d, t + 0.02, 8, 0.14, v * 0.3, { f0: 1500 * p, q: 4.5 });
-                aNoise(d, t + 0.012, 0.2, v * 0.42, { buf: 'pink', type: 'lowpass', f0: 1900 * p, f1: 480 * p, q: 1.5 });
-            },
-            place: function (d, t, p, v) {
-                MAT.stone.hit(d, t, p, v);
-                aPart(d, t, 150 * p, 92 * p, 0.07, 'triangle', v * 0.35, 0.004);   // the block settling into the world
-            },
-            step: function (d, t, p, v) {
-                aNoise(d, t, 0.055, v, { buf: 'pink', type: 'bandpass', f0: 1300 * p, f1: 640 * p, q: 1.3 });
-                aModal(d, t, [[570 * p, 0.55, 0.6], [1180 * p, 0.2, 0.38]], 0.05, v * 0.34, 0.14);
-            }
-        },
-        wood: {
-            v: 1, p: 1,
-            // a hollow box: low modes, fast decay, almost nothing above 2 kHz
-            hit: function (d, t, p, v) {
-                aModal(d, t, [[186 * p, 1, 1], [402 * p, 0.62, 0.8], [893 * p, 0.3, 0.55], [1620 * p, 0.12, 0.32]], 0.1, v * 0.5, 0.07);
-                aNoise(d, t, 0.035, v * 0.55, { buf: 'pink', type: 'lowpass', f0: 1500 * p, f1: 500 * p, q: 1.6 });
-            },
-            brk: function (d, t, p, v) {
-                MAT.wood.hit(d, t, p, v * 1.15);
-                aNoise(d, t + 0.01, 0.17, v * 0.34, { buf: 'pink', type: 'bandpass', f0: 900 * p, f1: 320 * p, q: 2.2 });
-                aGrains(d, t + 0.02, 4, 0.1, v * 0.2, { f0: 1100 * p, q: 5, gd: 0.03 });   // splinters
-            },
-            place: function (d, t, p, v) { MAT.wood.hit(d, t, p, v * 1.05); aPart(d, t, 120 * p, 78 * p, 0.08, 'triangle', v * 0.3, 0.004); },
-            step: function (d, t, p, v) {
-                aModal(d, t, [[240 * p, 1, 1], [520 * p, 0.4, 0.7], [1050 * p, 0.16, 0.4]], 0.065, v * 0.62, 0.1);
-                aNoise(d, t, 0.03, v * 0.5, { buf: 'pink', type: 'lowpass', f0: 1700 * p, f1: 700 * p, q: 1.2 });
-            }
-        },
-        gravel: {
-            v: 1, p: 1,
-            // no modes at all — gravel is nothing but a cloud of little collisions
-            hit: function (d, t, p, v) {
-                aGrains(d, t, 7, 0.05, v * 0.6, { f0: 1700 * p, q: 5, gd: 0.016 });
-                aNoise(d, t, 0.05, v * 0.5, { buf: 'pink', type: 'bandpass', f0: 900 * p, f1: 420 * p, q: 1.0 });
-            },
-            brk: function (d, t, p, v) { aGrains(d, t, 16, 0.17, v * 0.5, { f0: 1600 * p, q: 5, gd: 0.02 }); aNoise(d, t, 0.16, v * 0.42, { buf: 'pink', type: 'lowpass', f0: 1600 * p, f1: 400 * p, q: 1.1 }); },
-            place: function (d, t, p, v) { MAT.gravel.hit(d, t, p, v * 1.1); },
-            step: function (d, t, p, v) { aGrains(d, t, 9, 0.045, v * 0.75, { f0: 2100 * p, q: 5.5, gd: 0.014 }); aNoise(d, t, 0.05, v * 0.6, { buf: 'pink', type: 'bandpass', f0: 1100 * p, f1: 520 * p, q: 1.0 }); }
-        },
-        grass: {
-            v: 1, p: 1,
-            // a soft swish with the ground under it; also leaves, crops and TNT,
-            // all of which really are SoundType.GRASS in the real game
-            hit: function (d, t, p, v) {
-                aNoise(d, t, 0.07, v * 0.7, { buf: 'pink', type: 'bandpass', f0: 2000 * p, f1: 900 * p, q: 0.9, atk: 0.008 });
-                aNoise(d, t, 0.045, v * 0.4, { buf: 'pink', type: 'lowpass', f0: 620 * p, q: 1.4 });
-            },
-            brk: function (d, t, p, v) {
-                aNoise(d, t, 0.15, v * 0.65, { buf: 'pink', type: 'bandpass', f0: 2600 * p, f1: 800 * p, q: 0.8, atk: 0.006 });
-                aGrains(d, t, 6, 0.11, v * 0.22, { f0: 3200 * p, q: 3, gd: 0.02 });
-            },
-            place: function (d, t, p, v) { MAT.grass.hit(d, t, p, v * 1.1); aPart(d, t, 130 * p, 85 * p, 0.06, 'triangle', v * 0.22, 0.004); },
-            step: function (d, t, p, v) { aNoise(d, t, 0.06, v, { buf: 'pink', type: 'bandpass', f0: 1800 * p, f1: 700 * p, q: 0.85, atk: 0.007 }); aNoise(d, t, 0.04, v * 0.5, { buf: 'pink', type: 'lowpass', f0: 500 * p, q: 1.5 }); }
-        },
-        sand: {
-            v: 1, p: 1,
-            // pure shush: high, soft-edged, no transient and no ring whatsoever
-            hit: function (d, t, p, v) { aNoise(d, t, 0.09, v * 0.75, { type: 'bandpass', f0: 3400 * p, f1: 1700 * p, q: 0.6, atk: 0.012 }); },
-            brk: function (d, t, p, v) { aNoise(d, t, 0.17, v * 0.7, { type: 'bandpass', f0: 3800 * p, f1: 1200 * p, q: 0.55, atk: 0.014 }); aNoise(d, t, 0.1, v * 0.25, { buf: 'pink', type: 'lowpass', f0: 700 * p, q: 1.2, atk: 0.02 }); },
-            place: function (d, t, p, v) { MAT.sand.hit(d, t, p, v * 1.1); },
-            step: function (d, t, p, v) { aNoise(d, t, 0.075, v, { type: 'bandpass', f0: 2900 * p, f1: 1400 * p, q: 0.6, atk: 0.01 }); }
-        },
-        snow: {
-            v: 1, p: 1,
-            hit: function (d, t, p, v) { aNoise(d, t, 0.06, v * 0.7, { buf: 'pink', type: 'lowpass', f0: 1500 * p, f1: 600 * p, q: 1.3, atk: 0.006 }); aGrains(d, t, 4, 0.03, v * 0.28, { f0: 2400 * p, q: 7, gd: 0.008 }); },
-            brk: function (d, t, p, v) { MAT.snow.hit(d, t, p, v * 1.2); aNoise(d, t, 0.13, v * 0.3, { buf: 'pink', type: 'lowpass', f0: 900 * p, q: 1.2, atk: 0.02 }); },
-            place: function (d, t, p, v) { MAT.snow.hit(d, t, p, v * 1.1); },
-            step: function (d, t, p, v) { aGrains(d, t, 7, 0.035, v * 0.8, { f0: 2200 * p, q: 8, gd: 0.007 }); aNoise(d, t, 0.05, v * 0.7, { buf: 'pink', type: 'lowpass', f0: 1200 * p, f1: 500 * p, q: 1.4, atk: 0.005 }); }
-        },
-        cloth: {
-            v: 1, p: 1,
-            // wool: everything above 900 Hz is simply gone
-            hit: function (d, t, p, v) { aNoise(d, t, 0.06, v * 0.8, { buf: 'pink', type: 'lowpass', f0: 900 * p, f1: 380 * p, q: 1.1, atk: 0.007 }); aPart(d, t, 170 * p, 110 * p, 0.05, 'sine', v * 0.25, 0.005); },
-            brk: function (d, t, p, v) { aNoise(d, t, 0.14, v * 0.75, { buf: 'pink', type: 'lowpass', f0: 1100 * p, f1: 300 * p, q: 1.0, atk: 0.01 }); },
-            place: function (d, t, p, v) { MAT.cloth.hit(d, t, p, v * 1.1); },
-            step: function (d, t, p, v) { aNoise(d, t, 0.06, v, { buf: 'pink', type: 'lowpass', f0: 820 * p, f1: 340 * p, q: 1.2, atk: 0.008 }); }
-        },
-        glass: {
-            v: 1, p: 1,
-            hit: function (d, t, p, v) { aModal(d, t, [[2380 * p, 1, 1], [3610 * p, 0.7, 0.85], [5240 * p, 0.4, 0.6], [7100 * p, 0.2, 0.45]], 0.11, v * 0.3, 0.02); aNoise(d, t, 0.012, v * 0.4, { type: 'highpass', f0: 3800 * p, q: 0.8 }); },
-            // the break is the ring plus a shower of shards, which is the whole sound
-            brk: function (d, t, p, v) {
-                aModal(d, t, [[2380 * p, 1, 0.4], [3610 * p, 0.8, 0.35], [5240 * p, 0.5, 0.3]], 0.1, v * 0.34, 0.05);
-                aGrains(d, t, 22, 0.3, v * 0.3, { buf: 'white', f0: 5200 * p, q: 9, gd: 0.016 });
-                aNoise(d, t, 0.05, v * 0.5, { type: 'highpass', f0: 3000 * p, q: 0.9 });
-            },
-            place: function (d, t, p, v) { MAT.glass.hit(d, t, p, v * 1.15); },
-            step: function (d, t, p, v) { aModal(d, t, [[2600 * p, 1, 1], [4100 * p, 0.5, 0.7]], 0.045, v * 0.45, 0.04); aNoise(d, t, 0.02, v * 0.5, { type: 'highpass', f0: 3400 * p, q: 0.8 }); }
-        },
-        ladder: {
-            v: 1, p: 1,
-            hit: function (d, t, p, v) { aModal(d, t, [[600 * p, 1, 1], [1320 * p, 0.4, 0.7]], 0.045, v * 0.55, 0.1); aNoise(d, t, 0.02, v * 0.4, { buf: 'pink', type: 'bandpass', f0: 2000 * p, q: 1.4 }); },
-            brk: function (d, t, p, v) { MAT.ladder.hit(d, t, p, v * 1.2); aNoise(d, t, 0.1, v * 0.3, { buf: 'pink', type: 'bandpass', f0: 1400 * p, f1: 600 * p, q: 2 }); },
-            place: function (d, t, p, v) { MAT.ladder.hit(d, t, p, v * 1.1); },
-            step: function (d, t, p, v) { MAT.ladder.hit(d, t, p, v * 0.9); }
-        },
-        anvil: {
-            v: 0.3, p: 1,   // quiet in the SoundType table, and enormous when it lands
-            hit: function (d, t, p, v) { aModal(d, t, [[262 * p, 1, 1], [538 * p, 0.7, 0.9], [1180 * p, 0.5, 0.7], [2210 * p, 0.3, 0.5], [3600 * p, 0.14, 0.35]], 0.55, v * 0.4, 0.01); aNoise(d, t, 0.02, v * 0.5, { type: 'highpass', f0: 1800 * p, q: 0.7 }); },
-            brk: function (d, t, p, v) { MAT.anvil.hit(d, t, p, v * 1.3); },
-            place: function (d, t, p, v) { MAT.anvil.hit(d, t, p, v * 1.2); aPart(d, t, 82 * p, 44 * p, 0.3, 'sine', v * 0.5, 0.005); },
-            step: function (d, t, p, v) { aModal(d, t, [[300 * p, 1, 1], [700 * p, 0.4, 0.7]], 0.12, v * 0.5, 0.03); }
-        }
+        stone: { v: 1, p: 1, brk: sndSeq('dig/stone', 1, 4), place: sndSeq('dig/stone', 1, 4), step: sndSeq('step/stone', 1, 6) },
+        wood: { v: 1, p: 1, brk: sndSeq('dig/wood', 1, 4), place: sndSeq('dig/wood', 1, 4), step: sndSeq('step/wood', 1, 6) },
+        gravel: { v: 1, p: 1, brk: sndSeq('dig/gravel', 1, 4), place: sndSeq('dig/gravel', 1, 4), step: sndSeq('step/gravel', 1, 4) },
+        grass: { v: 1, p: 1, brk: sndSeq('dig/grass', 1, 4), place: sndSeq('dig/grass', 1, 4), step: sndSeq('step/grass', 1, 6) },
+        sand: { v: 1, p: 1, brk: sndSeq('dig/sand', 1, 4), place: sndSeq('dig/sand', 1, 4), step: sndSeq('step/sand', 1, 5) },
+        snow: { v: 1, p: 1, brk: sndSeq('dig/snow', 1, 4), place: sndSeq('dig/snow', 1, 4), step: sndSeq('step/snow', 1, 4) },
+        cloth: { v: 1, p: 1, brk: sndSeq('dig/cloth', 1, 4), place: sndSeq('dig/cloth', 1, 4), step: sndSeq('step/cloth', 1, 4) },
+        // glass shatters, and is stone in every other respect
+        glass: { v: 1, p: 1, brk: sndSeq('random/glass', 1, 3), place: sndSeq('dig/stone', 1, 4), step: sndSeq('step/stone', 1, 6) },
+        ladder: { v: 1, p: 1, brk: sndSeq('dig/wood', 1, 4), place: sndSeq('dig/wood', 1, 4), step: sndSeq('step/ladder', 1, 5) },
+        anvil: { v: 0.3, p: 1, brk: sndSeq('dig/stone', 1, 4), place: ['random/anvil_land'], step: sndSeq('step/stone', 1, 6) },
+        // a growing crop snaps like a bamboo sapling and goes in with the planting
+        // rustle; a melon or pumpkin stem is the "hard" crop, wood underfoot
+        crop: { v: 1, p: 1, brk: sndSeq('block/bamboo/sapling_place', 1, 6), place: sndSeq('item/plant/crop', 1, 6), pp: [1, 1.2], step: sndSeq('step/grass', 1, 6) },
+        hardcrop: { v: 1, p: 1, brk: sndSeq('dig/wood', 1, 4), place: sndSeq('item/plant/crop', 1, 6), pp: [1, 1.2], step: sndSeq('step/wood', 1, 6) }
     };
 
     /* Which SoundType each block gets. These follow the real game's own table
        wherever this world has the same block: dirt and clay are GRAVEL not
        GRASS, cactus and cake are WOOL, TNT is GRASS, leaves are GRASS, a bed
-       is WOOD, and the redstone lamp is GLASS. */
+       is WOOD, the redstone lamp is GLASS, and wheat, carrots and potatoes
+       are CROP while the melon and pumpkin stems are HARD_CROP. */
     var MATOF = {};
     (function () {
         function set(m, list) { for (var i = 0; i < list.length; i++) MATOF[list[i]] = m; }
@@ -6400,9 +6317,10 @@
             BEDROCK, OBSIDIAN, FURN, FURN_LIT, STONEBRICK, SANDSTONE, BRICKS, ETABLE]);
         set('wood', [LOG, PLANKS, TABLE, CHEST, BOOKSHELF, BED, TORCH, PUMPKIN, MELON]);
         set('gravel', [DIRT, GRAVEL, FARMLAND, CLAY]);
-        set('grass', [GRASS, LEAVES, TALLGRASS, DANDELION, POPPY, MUSHROOM, MUSHROOM_R, SUGARCANE, TNT,
-            WHEAT0, WHEAT1, WHEAT2, WHEAT3, CARROT0, CARROT1, CARROT2, CARROT3,
-            POTATO0, POTATO1, POTATO2, POTATO3, PSTEM, MSTEM]);
+        set('grass', [GRASS, LEAVES, TALLGRASS, DANDELION, POPPY, MUSHROOM, MUSHROOM_R, SUGARCANE, TNT]);
+        set('crop', [WHEAT0, WHEAT1, WHEAT2, WHEAT3, CARROT0, CARROT1, CARROT2, CARROT3,
+            POTATO0, POTATO1, POTATO2, POTATO3]);
+        set('hardcrop', [PSTEM, MSTEM]);
         set('sand', [SAND]);
         set('snow', [SNOWGRASS]);
         set('cloth', [WOOL, CACTUS, CAKE]);
@@ -6412,374 +6330,200 @@
     })();
     function matFor(b) { return MAT[MATOF[b] || 'stone']; }
 
-    /* The real game's four call sites, with its own volume and pitch maths.
+    /* The real game's call sites, with its own volume and pitch maths.
        BlockItem.place and Block.playerWillDestroy both use (v+1)/2 at pitch
-       ×0.8; Entity.playStepSound uses v×0.15 at pitch ×1; and
-       LevelRenderer's mining tick uses (v+1)/8 at pitch ×0.5 — that half
-       pitch is why a block being mined sounds nothing like the same block
-       breaking, even though it is the same material underneath. */
-    function matPlay(b, use, x, y, z, extra) {
-        var m = matFor(b), t = AC.currentTime + 0.001;
-        var vol, pitch, dur = 0.35, bus = 'block';
-        if (use === 'step') { vol = m.v * 0.62; pitch = m.p; dur = 0.12; bus = 'player'; }
-        else if (use === 'hit') { vol = (m.v + 1) / 6; pitch = m.p * 0.5; dur = 0.2; }
-        else { vol = (m.v + 1) / 2; pitch = m.p * 0.8; }
-        pitch *= jit();
-        vol *= (extra == null ? 1 : extra);
-        var d = aEmit({ x: x, y: y, z: z, vol: vol, bus: bus });
-        if (!d || !aBudget(dur)) return;
-        m[use](d, t, pitch, 1);   // hit / brk / place / step, keyed the same as the table
+       ×0.8; Entity.playStepSound uses v×0.15 at pitch ×1; a landing is the
+       fall sound at v×0.5 and pitch ×0.75; and the mining tick is (v+1)/8 at
+       pitch ×0.5 — that half pitch is why a block being mined sounds nothing
+       like the same block breaking, even though it is the same material. */
+    function matPlay(b, use, x, y, z, bus) {
+        var m = matFor(b), list = m.step, vol, pitch;
+        if (use === 'step') { vol = m.v * 0.15; pitch = m.p; bus = bus || 'player'; }
+        else if (use === 'land') { vol = m.v * 0.5; pitch = m.p * 0.75; bus = bus || 'player'; }
+        else if (use === 'hit') { vol = (m.v + 1) / 8; pitch = m.p * 0.5; }
+        else {
+            list = m[use]; vol = (m.v + 1) / 2; pitch = m.p * 0.8;
+            if (use === 'place' && m.pp) pitch *= sndPick(m.pp);
+        }
+        sPlay(sndPick(list), { x: x, y: y, z: z, vol: vol, pitch: pitch, bus: bus || 'block', late: 0.15 });
     }
 
     /* ── mob voices ──────────────────────────────────────────
-       Formant pairs, not melodies. Idle, hurt and death are the same voice
-       at different lengths and pitches, exactly the relationship the real
-       game's three sample sets have to each other. */
-    function mobVoice(kind, mode, x, y, z) {
-        var hostile = kind === 'zombie' || kind === 'skeleton' || kind === 'creeper' || kind === 'spider' || kind === 'enderman' || kind === 'slime';
-        var d = aEmit({ x: x, y: y, z: z, vol: mode === 'death' ? 1.05 : 0.9, bus: hostile ? 'hostile' : 'neutral', rev: 0.05 });
-        if (!d || !aBudget(0.8)) return;
-        var t = AC.currentTime + 0.001;
-        // hurt is short and sharp and a third up; death is long and falls away
-        var ps = mode === 'hurt' ? 1.16 : mode === 'death' ? 0.86 : 1;
-        var ds = mode === 'hurt' ? 0.5 : mode === 'death' ? 1.5 : 1;
-        var p = ps * jit(0.14);
-        switch (kind) {
-            case 'pig':   // two nasal grunts; the second is the one that makes it a pig
-                aVoice(d, t, { f0: 305 * p, f1: 196 * p, dur: 0.12 * ds, wave: 'sawtooth', vol: 0.55, breath: 0.06, atk: 0.008, formants: [[520, 5, 1], [1180, 7, 0.5], [2400, 6, 0.12]] });
-                if (mode !== 'hurt') aVoice(d, t + 0.15 * ds, { f0: 268 * p, f1: 178 * p, dur: 0.1 * ds, wave: 'sawtooth', vol: 0.42, breath: 0.05, atk: 0.008, formants: [[480, 5, 1], [1080, 7, 0.45]] });
-                break;
-            case 'cow':   // a long /u/→/o/ with the pitch bumping up before it sags
-                aVoice(d, t, { f0: 132 * p, fmid: 158 * p, f1: 104 * p, dur: 0.85 * ds, wave: 'sawtooth', vol: 0.5, breath: 0.05, atk: 0.09, vib: [5.5, 0.012], formants: [[330, 6, 1, 460], [820, 7, 0.55, 920], [2400, 5, 0.1]] });
-                break;
-            case 'sheep': // the bleat IS the vibrato — 11 Hz at 5% and nothing else matters
-                aVoice(d, t, { f0: 244 * p, f1: 214 * p, dur: 0.5 * ds, wave: 'sawtooth', vol: 0.42, breath: 0.05, atk: 0.03, vib: [11, 0.05], formants: [[620, 6, 1, 760], [1780, 7, 0.6, 1320], [2700, 6, 0.15]] });
-                break;
-            case 'chicken':   // clipped bright clucks, and a squawk when hurt
-                for (var c = 0; c < (mode === 'hurt' ? 1 : 3); c++)
-                    aVoice(d, t + c * 0.135, { f0: 430 * p * (1 + c * 0.05), f1: 350 * p, dur: 0.06 * ds, wave: 'square', vol: 0.3, atk: 0.006, formants: [[1000, 7, 1], [2350, 8, 0.7]] });
-                if (mode !== 'idle') aVoice(d, t, { f0: 620 * p, f1: 430 * p, dur: 0.2 * ds, wave: 'sawtooth', vol: 0.3, breath: 0.06, atk: 0.01, formants: [[1200, 5, 1], [2800, 6, 0.6]] });
-                break;
-            case 'zombie':   // a low moan with a 26 Hz rasp dragged across it
-                aVoice(d, t, { f0: 92 * p, fmid: 108 * p, f1: 74 * p, dur: 0.8 * ds, wave: 'sawtooth', vol: 0.5, breath: 0.08, atk: 0.12, vib: [26, 0.09], formants: [[340, 5, 1, 420], [720, 6, 0.75, 640], [2450, 5, 0.14]] });
-                break;
-            case 'skeleton':   // dry bone taps: wood modes up an octave, no voice at all
-                var n = mode === 'idle' ? 5 : 3;
-                for (var s = 0; s < n; s++) {
-                    var f = (760 + Math.random() * 900) * p;
-                    aModal(d, t + s * (0.055 + Math.random() * 0.05), [[f, 1, 1], [f * 2.31, 0.4, 0.6]], 0.05, 0.2, 0.05);
-                    aNoise(d, t + s * 0.06, 0.012, 0.1, { buf: 'pink', type: 'bandpass', f0: 2600, q: 3 });
-                }
-                break;
-            case 'spider':   // a chitter: hiss amplitude-modulated hard and fast
-                var sd = 0.32 * ds;
-                for (var k = 0; k < 9; k++) aNoise(d, t + k * (sd / 9), sd / 9 * 0.8, 0.22 * (0.5 + Math.random() * 0.7), { buf: 'white', type: 'bandpass', f0: (2600 + Math.random() * 2200) * p, q: 3.5, atk: 0.004 });
-                aNoise(d, t, sd, 0.1, { buf: 'pink', type: 'bandpass', f0: 1400 * p, q: 1.4, atk: 0.03 });
-                break;
-            case 'enderman':   // garbled and low: a warble that keeps losing its footing
-                aVoice(d, t, { f0: 68 * p, fmid: 96 * p, f1: 54 * p, dur: 0.85 * ds, wave: 'sawtooth', vol: 0.42, breath: 0.03, atk: 0.15, vib: [7.5, 0.16], formants: [[240, 8, 1, 180], [640, 9, 0.6, 900], [1800, 7, 0.12]] });
-                break;
-            case 'slime':   // pure squelch, no voice
-                aNoise(d, t, 0.2 * ds, 0.5, { buf: 'pink', type: 'lowpass', f0: 1700 * p, f1: 220 * p, q: 8, atk: 0.012 });
-                aPart(d, t, 320 * p, 110 * p, 0.18 * ds, 'sine', 0.16, 0.012);
-                break;
-            case 'squid':
-                aNoise(d, t, 0.24 * ds, 0.34, { buf: 'brown', type: 'lowpass', f0: 900 * p, f1: 200 * p, q: 4, atk: 0.03 });
-                break;
-        }
+       Each mob's sets as the game files them, and the game's own rolls:
+       every voice line is (rand − rand) × 0.2 + 1 in pitch, +0.5 for a
+       baby; a cow and a squid speak at 0.4; a slime at 0.4 × its size, the
+       big set at 0.8 pitch and a size-1 slime the small set at 1.4, and its
+       landing squish a little higher than its jump. A creeper has no idle
+       voice at all: the hiss is the fuse. */
+    function mobSay(k, n) { return sndSeq('mob/' + k + '/say', 1, n); }
+    var MOBSND = {
+        pig: { idle: mobSay('pig', 3), hurt: mobSay('pig', 3), death: ['mob/pig/death'], step: sndSeq('mob/pig/step', 1, 5) },
+        cow: { v: 0.4, idle: mobSay('cow', 4), hurt: sndSeq('mob/cow/hurt', 1, 3), death: sndSeq('mob/cow/hurt', 1, 3), step: sndSeq('mob/cow/step', 1, 4) },
+        sheep: { idle: mobSay('sheep', 3), hurt: mobSay('sheep', 3), death: mobSay('sheep', 3), step: sndSeq('mob/sheep/step', 1, 5) },
+        chicken: { idle: mobSay('chicken', 3), hurt: sndSeq('mob/chicken/hurt', 1, 2), death: sndSeq('mob/chicken/hurt', 1, 2), step: sndSeq('mob/chicken/step', 1, 2), egg: ['mob/chicken/plop'] },
+        zombie: { idle: mobSay('zombie', 3), hurt: sndSeq('mob/zombie/hurt', 1, 2), death: ['mob/zombie/death'], step: sndSeq('mob/zombie/step', 1, 5) },
+        skeleton: { idle: mobSay('skeleton', 3), hurt: sndSeq('mob/skeleton/hurt', 1, 4), death: ['mob/skeleton/death'], step: sndSeq('mob/skeleton/step', 1, 4) },
+        creeper: { hurt: mobSay('creeper', 4), death: ['mob/creeper/death'] },
+        spider: { idle: mobSay('spider', 4), hurt: mobSay('spider', 4), death: ['mob/spider/death'], step: sndSeq('mob/spider/step', 1, 4) },
+        // an angry enderman screams where a calm one mutters, and meeting its eye has a sound of its own
+        enderman: { idle: sndSeq('mob/endermen/idle', 1, 5), scream: sndSeq('mob/endermen/scream', 1, 4), hurt: sndSeq('mob/endermen/hit', 1, 4), death: ['mob/endermen/death'], stare: ['mob/endermen/stare'] },
+        slime: { big: sndSeq('mob/slime/big', 1, 4), small: sndSeq('mob/slime/small', 1, 5), attack: sndSeq('mob/slime/attack', 1, 2) },
+        squid: { v: 0.4, idle: sndSeq('mob/squid/ambient', 1, 5), hurt: sndSeq('mob/squid/hurt', 1, 4), death: sndSeq('mob/squid/death', 1, 3), squirt: sndSeq('mob/squid/squirt', 1, 3) }
+    };
+    var HOSTILE_K = { zombie: 1, skeleton: 1, creeper: 1, spider: 1, enderman: 1, slime: 1 };
+    function mobSnd(kind, mode, f, x, y, z) {
+        var t = MOBSND[kind];
+        if (!t) return;
+        var r = (Math.random() - Math.random()) * 0.2, list = t[mode];
+        var vol = t.v || 1, pitch = r + (f && f.baby > 0 ? 1.5 : 1), late = 1;
+        if (kind === 'slime') {
+            var sz = (f && f.sz) || 1, tiny = sz <= 1;
+            if (mode === 'attack') pitch = r + 1;
+            else { list = tiny ? t.small : t.big; vol = 0.4 * sz; pitch = mode === 'squish' ? (r + 1) / 0.8 : (r + 1) * (tiny ? 1.4 : 0.8); }
+        } else if (mode === 'step') { vol = 0.15; pitch = 1; late = 0.15; }
+        else if (mode === 'stare') { vol = 2.5; pitch = 1; late = 2; }
+        else if (mode === 'egg') pitch = r + 1;
+        if (!list) return;
+        sPlay(sndPick(list), { x: x, y: y, z: z, vol: vol, pitch: pitch, bus: HOSTILE_K[kind] ? 'hostile' : 'neutral', late: late });
+        // a hurt squid inks, and the ink has its own squirt
+        if (kind === 'squid' && mode === 'hurt') sPlay(sndPick(t.squirt), { x: x, y: y, z: z, vol: vol, pitch: r + 1, bus: 'neutral', late: 0.5 });
+    }
+    // a mob's footfall: its own step set if it has one, otherwise the block it is on, as Entity.playStepSound does
+    function foeStep(f) {
+        if (!AC || !S || !sVol()) return;
+        var t = MOBSND[f.k];
+        if (t && t.step) { mobSnd(f.k, 'step', f, f.x, f.y, f.z); return; }
+        var gb = getB(Math.floor(f.x), Math.floor(f.y - 0.2), Math.floor(f.z));
+        if (gb > 0 && gb !== WATER && gb !== LAVA) matPlay(gb, 'step', f.x, f.y, f.z, HOSTILE_K[f.k] ? 'hostile' : 'neutral');
     }
 
     /* ── one-shot sound events ───────────────────────────────
        snd(name, arg, x, y, z). Leaving the position off means "at the
-       listener" — UI, your own body, and anything the real game also plays
-       non-positionally. */
+       listener" — UI, your own body, and anything the real game plays from
+       the player (`here` pins those even when a caller passes a spot). Each
+       entry is a sample set with the volume and pitch the game's own call
+       site passes; `arg` reaches the ones that depend on it. */
+    function lvlVol(l) { return Math.max(0.35, Math.min(1, (l || 0) / 30)); }
+    var SFX = {
+        /* the player */
+        hurt: { f: sndSeq('damage/hit', 1, 3), p: sndVoice, bus: 'player' },
+        die: { f: sndSeq('damage/hit', 1, 3), p: sndVoice, bus: 'player' },
+        hurtdrown: { f: sndSeq('entity/player/hurt/drown', 1, 4), p: sndVoice, bus: 'player' },
+        hurtfire: { f: sndSeq('entity/player/hurt/fire_hurt', 1, 3), p: sndVoice, bus: 'player' },
+        // arg is the damage the fall did: more than two hearts is the big thud
+        fall: { f: function (a) { return a > 4 ? ['damage/fallbig'] : ['damage/fallsmall']; }, bus: 'player' },
+        eat: { f: sndSeq('random/eat', 1, 3), v: sndRange(0.5, 0.5), p: sndVoice, bus: 'player' },
+        drink: { f: ['random/drink'], v: 0.5, p: sndRange(0.9, 0.1), bus: 'player' },
+        burp: { f: ['random/burp'], v: 0.5, p: sndRange(0.9, 0.1), bus: 'player' },
+        // arg is how fast you hit the water, blocks a second; the game weighs it the same way
+        splash: {
+            f: function (a) { return a * 0.01 >= 0.25 ? ['liquid/heavy_splash'] : ['liquid/splash', 'liquid/splash2']; },
+            v: function (a) { return Math.max(0.06, Math.min(1, a * 0.01)); }, p: function () { return jit(0.4); }, bus: 'player'
+        },
+        swim: { f: sndSeq('liquid/swim', 5, 18), v: 0.1, p: function () { return jit(0.4); }, bus: 'player' },
+        // arg is how many air bubbles have gone: each pop is a little louder and higher
+        bubble: { f: ['ui/hud/hud_bubble'], v: function (a) { return 0.5 + 0.1 * Math.max(0, a - 2); }, p: function (a) { return 1 + 0.1 * Math.max(0, a - 4); }, bus: 'player' },
+        uwenter: { f: sndSeq('ambient/underwater/enter', 1, 3), bus: 'uw' },
+        uwexit: { f: sndSeq('ambient/underwater/exit', 1, 3), bus: 'uw' },
+        uwadd: { f: sndSeq('ambient/underwater/additions/bubbles', 1, 6).concat(['ambient/underwater/additions/water1', 'ambient/underwater/additions/water2']), bus: 'uw', late: 1 },
+        uwrare: {
+            f: ['ambient/underwater/additions/animal1', 'ambient/underwater/additions/bass_whale1', 'ambient/underwater/additions/bass_whale2',
+                'ambient/underwater/additions/crackles1', 'ambient/underwater/additions/crackles2', 'ambient/underwater/additions/driplets1',
+                'ambient/underwater/additions/driplets2', 'ambient/underwater/additions/earth_crack'], bus: 'uw', late: 2
+        },
+
+        /* combat */
+        hit: { f: sndSeq('entity/player/attack/strong', 1, 6), bus: 'player', here: 1 },
+        crit: { f: sndSeq('entity/player/attack/crit', 1, 3), bus: 'player', here: 1 },
+        // arg is how far the bow was drawn, 0..1: a full draw looses higher
+        bow: { f: ['random/bow'], p: function (a) { return 1 / (Math.random() * 0.4 + 1.2) + (a || 0) * 0.5; }, bus: 'player' },
+        skelshoot: { f: ['random/bow'], p: function () { return 1 / (Math.random() * 0.4 + 0.8); }, bus: 'hostile' },
+        thud: { f: sndSeq('random/bowhit', 1, 4), p: function () { return 1.2 / (Math.random() * 0.2 + 0.9); }, bus: 'neutral' },
+        arrowhit: { f: ['random/successful_hit'], v: 0.18, p: 0.45, bus: 'player' },
+
+        /* items & UI */
+        pop: { f: ['random/pop'], v: 0.2, p: function () { return ((Math.random() - Math.random()) * 0.7 + 1) * 2; }, bus: 'player' },
+        orb: { f: ['random/orb'], v: 0.1, p: function () { return 0.5 * ((Math.random() - Math.random()) * 0.7 + 1.8); }, bus: 'player' },
+        click: { f: ['random/click'], v: 0.25, bus: 'ui', late: 0.3 },   // the first one wakes the audio, and still wants hearing
+        'break': { f: ['random/break'], v: 0.8, p: sndRange(0.8, 0.4), bus: 'player' },
+        // arg is the new level. The game only rings this on every fifth level,
+        // louder the higher you are; this one rings on every level, quietly,
+        // and keeps the game's full ring for the fifths
+        level: { f: ['random/levelup'], v: function (a) { return 0.3 * lvlVol(a); }, bus: 'player' },
+        levelbig: { f: ['random/levelup'], v: function (a) { return 0.75 * lvlVol(a); }, bus: 'player' },
+        ding: { f: ['ui/toast/in'], bus: 'ui' },            // an achievement toast sliding in...
+        toastout: { f: ['ui/toast/out'], bus: 'ui' },       // ...and back out
+        enchant: { f: sndSeq('block/enchantment_table/enchant', 1, 3), p: sndRange(0.9, 0.1), bus: 'block' },
+        anvil: { f: ['random/anvil_use'], p: sndRange(0.9, 0.1), bus: 'block' },
+        chestopen: { f: ['block/chest/open'], v: 0.5, p: sndRange(0.9, 0.1), bus: 'block' },
+        chestclose: { f: sndSeq('block/chest/close', 1, 3), v: 0.5, p: sndRange(0.9, 0.1), bus: 'block' },
+        // arg is the armor's tier: leather creaks, iron clanks, gold chimes, diamond rings
+        equip: { f: function (a) { return sndSeq('item/armor/equip_' + (a || 'leather'), 1, 6); }, bus: 'player' },
+        bucketfill: { f: sndSeq('item/bucket/fill', 1, 3), bus: 'player' },
+        bucketfilllava: { f: sndSeq('item/bucket/fill_lava', 1, 3), bus: 'player' },
+        bucketempty: { f: sndSeq('item/bucket/empty', 1, 3), bus: 'player' },
+        bucketemptylava: { f: sndSeq('item/bucket/empty_lava', 1, 3), bus: 'player' },
+        milk: { f: sndSeq('entity/cow/milk', 1, 3), bus: 'player' },
+        till: { f: sndSeq('item/hoe/till', 1, 4), bus: 'block' },
+
+        /* the world */
+        fuse: { f: ['random/fuse'], p: 0.5, bus: 'hostile' },   // a creeper's fuse is the TNT hiss an octave down
+        tntfuse: { f: ['random/fuse'], bus: 'block' },
+        boom: { f: sndSeq('random/explode', 1, 4), v: 4, p: function () { return (1 + (Math.random() - Math.random()) * 0.2) * 0.7; }, bus: 'block' },
+        thunder: { f: sndSeq('ambient/weather/thunder', 1, 3), p: sndRange(0.8, 0.2), bus: 'weather', late: 1.5 },
+        impact: { f: sndSeq('random/explode', 1, 4), v: 2, p: sndRange(0.5, 0.2), bus: 'weather' },   // where the bolt came down
+        teleport: { f: ['mob/endermen/portal', 'mob/endermen/portal2'], bus: 'hostile' },
+        lavapop: { f: ['liquid/lavapop'], v: sndRange(0.2, 0.2), p: sndRange(0.9, 0.15), bus: 'block' },
+        lava: { f: ['liquid/lava'], v: sndRange(0.2, 0.2), p: sndRange(0.9, 0.15), bus: 'block', late: 1 },
+        fizz: { f: ['random/fizz'], v: 0.5, p: function () { return 2.6 + (Math.random() - Math.random()) * 0.8; }, bus: 'block' },
+        crackle: { f: sndSeq('block/furnace/fire_crackle', 1, 5), bus: 'block' },
+        cave: { f: sndSeq('ambient/cave/cave', 1, 23), v: 0.7, p: sndRange(0.8, 0.2), bus: 'ambient', late: 3 },
+        // arg is 1 for rain landing in the open, 0 for rain landing on the roof over you
+        rain: { f: sndSeq('ambient/weather/rain', 1, 8), v: function (a) { return a ? 0.2 : 0.1; }, p: function (a) { return a ? 1 : 0.5; }, bus: 'weather', late: 0.5 }
+    };
     function snd(name, arg, x, y, z) {
         if (!S || !sVol() || !AC) return;
-        var t = AC.currentTime + 0.001, d, i, f;
-        // block sounds are driven by the material table, not by this switch
+        // block sounds are driven by the material table, not by this one
         if (name === 'dig') { matPlay(arg, 'brk', x, y, z); return; }
         if (name === 'place') { matPlay(arg, 'place', x, y, z); return; }
         if (name === 'step') { matPlay(arg, 'step', x, y, z); return; }
         if (name === 'mine') { matPlay(arg, 'hit', x, y, z); return; }
-        if (name === 'land') { matPlay(arg, 'step', x, y, z, 1.6); return; }
-        if (name.indexOf('mob:') === 0) {   // 'mob:<kind>:<idle|hurt|death>'
-            var pr = name.split(':'); mobVoice(pr[1], pr[2], x, y, z); return;
+        if (name === 'land') { matPlay(arg, 'land', x, y, z); return; }
+        if (name.indexOf('mob:') === 0) {   // 'mob:<kind>:<mode>', and arg is the mob itself
+            var pr = name.split(':'); mobSnd(pr[1], pr[2], arg, x, y, z); return;
         }
-        switch (name) {
-            /* ── the player ── */
-            case 'hurt':   // a short human grunt: /ʌ/ formants over a 200 Hz buzz
-                d = aEmit({ vol: 0.85, bus: 'player' }); if (!d) return;
-                aVoice(d, t, { f0: 214 * jit(0.16), f1: 168, dur: 0.2, wave: 'sawtooth', vol: 0.5, breath: 0.1, atk: 0.012, formants: [[700, 5, 1, 620], [1230, 6, 0.65], [2500, 5, 0.12]] });
-                break;
-            case 'die':
-                d = aEmit({ vol: 1, bus: 'player', rev: 0.12 }); if (!d) return;
-                aVoice(d, t, { f0: 226, f1: 96, dur: 0.85, wave: 'sawtooth', vol: 0.5, breath: 0.13, atk: 0.03, vib: [6, 0.02], formants: [[680, 5, 1, 430], [1180, 6, 0.6, 900], [2400, 5, 0.1]] });
-                break;
-            case 'fall':   // the landing thud, not a voice — MC's big_fall is body on ground
-                d = aEmit({ vol: 1, bus: 'player' }); if (!d) return;
-                aNoise(d, t, 0.22, 0.55, { buf: 'brown', type: 'lowpass', f0: 620, f1: 150, q: 1.4, atk: 0.004 });
-                aPart(d, t, 118, 52, 0.2, 'sine', 0.3, 0.004);
-                aVoice(d, t + 0.02, { f0: 190, f1: 140, dur: 0.16, wave: 'sawtooth', vol: 0.25, breath: 0.12, atk: 0.01, formants: [[660, 4, 1], [1150, 5, 0.5]] });
-                break;
-            case 'eat':   // one chomp; the caller fires four across the eating animation
-                d = aEmit({ vol: 0.7, bus: 'player' }); if (!d) return;
-                f = jit(0.25);
-                aNoise(d, t, 0.055, 0.4, { buf: 'pink', type: 'bandpass', f0: 2300 * f, f1: 900 * f, q: 1.6, atk: 0.005 });
-                aPart(d, t, 340 * f, 190 * f, 0.05, 'triangle', 0.14, 0.006);
-                break;
-            case 'drink':
-                d = aEmit({ vol: 0.7, bus: 'player' }); if (!d) return;
-                for (i = 0; i < 3; i++) aNoise(d, t + i * 0.13, 0.08, 0.3, { buf: 'pink', type: 'lowpass', f0: 700 * jit(0.3), f1: 260, q: 6, atk: 0.01 });
-                break;
-            case 'burp':
-                d = aEmit({ vol: 0.7, bus: 'player' }); if (!d) return;
-                aVoice(d, t, { f0: 148 * jit(0.15), f1: 74, dur: 0.34, wave: 'sawtooth', vol: 0.45, breath: 0.07, atk: 0.02, vib: [19, 0.07], formants: [[420, 4, 1, 300], [900, 5, 0.5]] });
-                break;
-            case 'splash':   // entering water; arg is the impact speed 0..1
-                d = aEmit({ x: x, y: y, z: z, vol: 0.7 + (arg || 0) * 0.5, bus: 'player' }); if (!d) return;
-                aNoise(d, t, 0.045, 0.6, { type: 'bandpass', f0: 1500, f1: 4200, q: 0.7, atk: 0.003 });
-                aNoise(d, t, 0.4, 0.35, { buf: 'pink', type: 'lowpass', f0: 4000, f1: 500, q: 1.1, atk: 0.006 });
-                for (i = 0; i < 9; i++) aPart(d, t + 0.03 + Math.random() * 0.3, 700 + Math.random() * 1600, 2200 + Math.random() * 2000, 0.05, 'sine', 0.07, 0.004);
-                break;
-            case 'swim':   // one stroke
-                d = aEmit({ x: x, y: y, z: z, vol: 0.45, bus: 'player' }); if (!d) return;
-                aNoise(d, t, 0.22, 0.42, { buf: 'pink', type: 'bandpass', f0: 900 * jit(0.3), f1: 2400, q: 0.8, atk: 0.05 });
-                break;
-            case 'bubble':   // drowning
-                d = aEmit({ vol: 0.5, bus: 'player' }); if (!d) return;
-                for (i = 0; i < 4; i++) aPart(d, t + i * 0.06, 400 + Math.random() * 500, 1300 + Math.random() * 900, 0.07, 'sine', 0.16, 0.004);
-                break;
-
-            /* ── combat ── */
-            case 'hit':   // the weapon connecting, distinct from the mob's own yelp
-                d = aEmit({ x: x, y: y, z: z, vol: 0.85, bus: 'player' }); if (!d) return;
-                aNoise(d, t, 0.055, 0.55, { buf: 'pink', type: 'bandpass', f0: 1100 * jit(0.2), f1: 420, q: 1.3, atk: 0.002 });
-                aPart(d, t, 240 * jit(0.2), 120, 0.09, 'triangle', 0.28, 0.003);
-                break;
-            case 'crit':
-                d = aEmit({ x: x, y: y, z: z, vol: 0.9, bus: 'player' }); if (!d) return;
-                aNoise(d, t, 0.07, 0.5, { buf: 'pink', type: 'bandpass', f0: 1600, f1: 500, q: 1.2, atk: 0.002 });
-                aModal(d, t, [[820, 1, 1], [1640, 0.5, 0.7], [2600, 0.25, 0.5]], 0.16, 0.2, 0.02);
-                break;
-            case 'bow':   // string release: a low twang plus the arrow's air
-                d = aEmit({ x: x, y: y, z: z, vol: 0.85, bus: 'player' }); if (!d) return;
-                f = jit(0.18);
-                aPart(d, t, 320 * f, 140 * f, 0.14, 'triangle', 0.22, 0.003);
-                aNoise(d, t, 0.13, 0.3, { buf: 'pink', type: 'bandpass', f0: 2600 * f, f1: 900, q: 2.2, atk: 0.004 });
-                aNoise(d, t + 0.03, 0.16, 0.12, { type: 'bandpass', f0: 3400, f1: 6000, q: 1.4, atk: 0.05 });
-                break;
-            case 'bowpull':   // the creak of the draw, in three steps like the real thing
-                d = aEmit({ vol: 0.5, bus: 'player' }); if (!d) return;
-                aNoise(d, t, 0.12, 0.2, { buf: 'pink', type: 'bandpass', f0: 800 * jit(0.2), f1: 1500, q: 4, atk: 0.05 });
-                break;
-            case 'thud':   // arrow into a block
-                d = aEmit({ x: x, y: y, z: z, vol: 0.8, bus: 'block' }); if (!d) return;
-                aModal(d, t, [[300 * jit(0.2), 1, 1], [740, 0.4, 0.6]], 0.07, 0.35, 0.1);
-                aNoise(d, t, 0.045, 0.35, { buf: 'pink', type: 'lowpass', f0: 1400, f1: 500, q: 1.5 });
-                break;
-            case 'arrowhit':   // the little bell when your arrow lands on something alive
-                d = aEmit({ vol: 0.6, bus: 'player' }); if (!d) return;
-                aPart(d, t, 1180, 0, 0.16, 'sine', 0.2, 0.002);
-                aPart(d, t, 1770, 0, 0.11, 'sine', 0.1, 0.002);
-                break;
-
-            /* ── items & UI ── */
-            case 'pop':   // item pickup: MC pitches this one high and wide
-                d = aEmit({ vol: 0.55, bus: 'player' }); if (!d) return;
-                f = 1.6 + (Math.random() - Math.random()) * 0.5;
-                aPart(d, t, 420 * f, 900 * f, 0.055, 'sine', 0.3, 0.004);
-                aNoise(d, t, 0.02, 0.1, { type: 'bandpass', f0: 2600 * f, q: 2 });
-                break;
-            case 'orb':   // xp: a bright two-partial chime, pitch all over the place
-                d = aEmit({ vol: 0.5, bus: 'player' }); if (!d) return;
-                f = 0.9 + (Math.random() - Math.random()) * 0.35;
-                aPart(d, t, 1180 * f, 0, 0.12, 'sine', 0.2, 0.003);
-                aPart(d, t, 1770 * f, 0, 0.09, 'sine', 0.09, 0.003);
-                break;
-            case 'click':   // ui.button.click — a dry wooden tick, no pitch to speak of
-                d = aEmit({ vol: 0.7, bus: 'ui' }); if (!d) return;
-                aModal(d, t, [[1150, 1, 1], [2300, 0.3, 0.5]], 0.028, 0.3, 0.02);
-                aNoise(d, t, 0.008, 0.2, { type: 'highpass', f0: 2200, q: 0.7 });
-                break;
-            case 'break':   // a tool giving out
-                d = aEmit({ vol: 0.8, bus: 'player' }); if (!d) return;
-                aNoise(d, t, 0.16, 0.4, { buf: 'pink', type: 'bandpass', f0: 2400, f1: 700, q: 1.6, atk: 0.002 });
-                aModal(d, t, [[640, 1, 1], [1310, 0.5, 0.6], [2080, 0.3, 0.4]], 0.12, 0.22, 0.06);
-                break;
-            case 'level':
-                d = aEmit({ vol: 0.9, bus: 'player', rev: 0.08 }); if (!d) return;
-                aPart(d, t, 523, 0, 0.5, 'sine', 0.18, 0.01); aPart(d, t, 784, 0, 0.45, 'sine', 0.1, 0.02);
-                aPart(d, t + 0.09, 1046, 0, 0.5, 'sine', 0.13, 0.01);
-                break;
-            case 'levelbig':
-                d = aEmit({ vol: 1, bus: 'player', rev: 0.14 }); if (!d) return;
-                aPart(d, t, 523, 0, 0.6, 'sine', 0.18, 0.01); aPart(d, t + 0.1, 659, 0, 0.6, 'sine', 0.15, 0.01);
-                aPart(d, t + 0.2, 784, 0, 0.7, 'sine', 0.14, 0.01); aPart(d, t + 0.2, 1046, 0, 0.8, 'sine', 0.1, 0.02);
-                break;
-            case 'ding':   // achievement
-                d = aEmit({ vol: 0.85, bus: 'ui', rev: 0.1 }); if (!d) return;
-                aPart(d, t, 880, 0, 0.3, 'sine', 0.16, 0.006); aPart(d, t + 0.11, 1320, 0, 0.45, 'sine', 0.13, 0.006);
-                break;
-            case 'enchant':   // the table's whispery flourish
-                d = aEmit({ vol: 0.9, bus: 'block', rev: 0.22 }); if (!d) return;
-                for (i = 0; i < 7; i++) aPart(d, t + i * 0.055, 600 + Math.random() * 900, 0, 0.2, 'sine', 0.075, 0.02);
-                aNoise(d, t, 0.55, 0.1, { buf: 'pink', type: 'bandpass', f0: 3000, f1: 1400, q: 3, atk: 0.1 });
-                break;
-            case 'anvil':   // the anvil's own SoundType, struck hard
-                d = aEmit({ x: x, y: y, z: z, vol: 1, bus: 'block', rev: 0.12 }); if (!d) return;
-                MAT.anvil.hit(d, t, jit(0.1), 1.6);
-                break;
-            case 'chestopen':
-                d = aEmit({ x: x, y: y, z: z, vol: 0.7, bus: 'block' }); if (!d) return;
-                aNoise(d, t, 0.35, 0.22, { buf: 'pink', type: 'bandpass', f0: 480 * jit(0.15), f1: 900, q: 5, atk: 0.06 });
-                aModal(d, t, [[210, 1, 1], [460, 0.4, 0.7]], 0.1, 0.16, 0.08);
-                break;
-            case 'chestclose':
-                d = aEmit({ x: x, y: y, z: z, vol: 0.7, bus: 'block' }); if (!d) return;
-                aNoise(d, t, 0.26, 0.2, { buf: 'pink', type: 'bandpass', f0: 800 * jit(0.15), f1: 380, q: 5, atk: 0.05 });
-                aModal(d, t + 0.24, [[190, 1, 1], [420, 0.5, 0.6], [880, 0.2, 0.4]], 0.09, 0.3, 0.08);
-                break;
-            case 'sleep':
-                d = aEmit({ vol: 0.6, bus: 'player' }); if (!d) return;
-                aNoise(d, t, 0.5, 0.3, { buf: 'pink', type: 'lowpass', f0: 900, f1: 260, q: 1.1, atk: 0.1 });
-                break;
-
-            /* ── world ── */
-            case 'poof':   // a mob dissolving into its puff of smoke
-                d = aEmit({ x: x, y: y, z: z, vol: 0.7, bus: 'ambient' }); if (!d) return;
-                aNoise(d, t, 0.3, 0.32, { buf: 'pink', type: 'bandpass', f0: 2400, f1: 700, q: 1.1, atk: 0.01 });
-                break;
-            case 'fuse':   // creeper / primed TNT: filtered noise climbing, plus a breath
-                d = aEmit({ x: x, y: y, z: z, vol: 1.2, bus: 'hostile' }); if (!d) return;
-                aNoise(d, t, 1.5, 0.5, { type: 'bandpass', f0: 1400, f1: 5200, q: 1.5, atk: 0.06 });
-                aNoise(d, t, 1.5, 0.18, { buf: 'brown', type: 'lowpass', f0: 500, q: 1, atk: 0.1 });
-                break;
-            case 'boom':
-                d = aEmit({ x: x, y: y, z: z, vol: 4, bus: 'block', rev: 0.5 }); if (!d) return;
-                aNoise(d, t, 0.06, 0.9, { buf: 'white', type: 'highpass', f0: 900, q: 0.7, atk: 0.001 });     // the crack
-                aNoise(d, t, 1.3, 0.85, { buf: 'brown', type: 'lowpass', f0: 900, f1: 90, q: 0.9, atk: 0.006 }); // the body
-                aPart(d, t, 92, 26, 1.1, 'sine', 0.6, 0.004);                                                   // the punch
-                aGrains(d, t + 0.09, 18, 0.75, 0.16, { f0: 1800, q: 4, gd: 0.03 });                             // the rubble
-                break;
-            case 'thunder':
-                d = aEmit({ vol: 2.4, bus: 'weather', rev: 0.45 }); if (!d) return;
-                aNoise(d, t, 0.09, 0.8, { buf: 'white', type: 'highpass', f0: 700, q: 0.7, atk: 0.002 });
-                aNoise(d, t, 2.2, 0.85, { buf: 'brown', type: 'lowpass', f0: 700, f1: 70, q: 0.8, atk: 0.02 });
-                aPart(d, t, 74, 24, 1.9, 'sine', 0.55, 0.01);
-                for (i = 0; i < 5; i++) aNoise(d, t + 0.4 + i * 0.32, 0.5, 0.16 * (1 - i * 0.15), { buf: 'brown', type: 'lowpass', f0: 380, q: 1, atk: 0.1 });   // the roll
-                break;
-            case 'teleport':   // enderman: a swallowed whoosh, not a laser
-                d = aEmit({ x: x, y: y, z: z, vol: 1, bus: 'hostile', rev: 0.15 }); if (!d) return;
-                aNoise(d, t, 0.24, 0.34, { buf: 'pink', type: 'bandpass', f0: 3200, f1: 500, q: 4, atk: 0.006 });
-                aPart(d, t, 620, 130, 0.2, 'sine', 0.14, 0.004);
-                break;
-            case 'lavapop':
-                d = aEmit({ x: x, y: y, z: z, vol: 0.9, bus: 'ambient' }); if (!d) return;
-                aNoise(d, t, 0.09, 0.35, { buf: 'brown', type: 'lowpass', f0: 700 * jit(0.4), f1: 180, q: 5, atk: 0.004 });
-                aPart(d, t, 190 * jit(0.4), 70, 0.1, 'sine', 0.18, 0.004);
-                break;
-            case 'fizz':   // water meeting lava
-                d = aEmit({ x: x, y: y, z: z, vol: 1, bus: 'ambient' }); if (!d) return;
-                aNoise(d, t, 0.7, 0.4, { type: 'highpass', f0: 2600, q: 0.7, atk: 0.01 });
-                break;
-            case 'cave':   // see caveAmbience(); arg picks the texture
-                caveSound(arg, x, y, z);
-                break;
-        }
-    }
-
-    /* ── cave ambience ───────────────────────────────────────
-       The real game's most effective sound design is also its simplest: it
-       finds an unlit air pocket somewhere near you and plays something
-       reverberant from it. Nothing is approaching, nothing is scripted, and
-       it works because the sound has a direction and that direction is not
-       where you are looking. Five textures, all heavily wetted. */
-    function caveSound(which, x, y, z) {
-        var d = aEmit({ x: x, y: y, z: z, vol: 1.4, bus: 'ambient', rev: 0.85 });
-        if (!d || !aBudget(3)) return;
-        var t = AC.currentTime + 0.001, i, f;
-        switch (which) {
-            case 0:   // a drone sagging away under you
-                f = 88 * jit(0.3);
-                aPart(d, t, f, f * 0.62, 3.2, 'sine', 0.3, 0.7);
-                aPart(d, t, f * 1.503, f * 0.94, 2.8, 'sine', 0.13, 0.9);
-                aNoise(d, t, 3.4, 0.09, { buf: 'brown', type: 'lowpass', f0: 340, q: 1.2, atk: 0.9 });
-                break;
-            case 1:   // something metal, a long way off
-                aModal(d, t, [[318, 1, 1], [641, 0.6, 0.85], [1090, 0.35, 0.6], [1830, 0.16, 0.4]], 1.9, 0.16, 0.06);
-                aNoise(d, t, 0.03, 0.15, { type: 'highpass', f0: 1800, q: 0.7 });
-                break;
-            case 2:   // rock shifting: a rumble that swells and stops
-                aNoise(d, t, 2.6, 0.4, { buf: 'brown', type: 'lowpass', f0: 190 * jit(0.3), q: 1.6, atk: 0.8 });
-                aPart(d, t, 44, 31, 2.4, 'sine', 0.22, 0.9);
-                break;
-            case 3:   // a breath through a gap
-                aNoise(d, t, 2.1, 0.24, { buf: 'pink', type: 'bandpass', f0: 900 * jit(0.4), f1: 300, q: 2.4, atk: 0.7 });
-                break;
-            case 4:   // three dripping-water notes, wide apart
-                for (i = 0; i < 3; i++) {
-                    var w = t + i * (0.5 + Math.random() * 1.1);
-                    f = 1500 + Math.random() * 1400;
-                    aPart(d, w, f, f * 1.9, 0.075, 'sine', 0.2, 0.002);
-                }
-                break;
-        }
-    }
-
-    /* ── looping ambience ────────────────────────────────────
-       Rain, the sea inside your own head while submerged, lava, and a lit
-       furnace. Each is one long noise source whose gain is steered by the
-       world every frame, so they fade in and out rather than switching. */
-    function loop(id, make) {
-        if (LOOPS[id]) return LOOPS[id];
-        var L = make();
-        LOOPS[id] = L;
-        return L;
-    }
-    function loopGain(id, want, tc) {
-        var L = LOOPS[id];
-        if (!L) return;
-        L.g.gain.setTargetAtTime(Math.max(0.0001, want), AC.currentTime, tc || 0.35);
-    }
-    function mkLoop(bus, build) {
-        var g = AC.createGain(); g.gain.value = 0.0001; g.connect(BUS[bus]);
-        var L = { g: g, n: [] };
-        build(L, g);
-        return L;
-    }
-    function loopNoise(L, dest, buf, type, freq, q, rate, gain) {
-        var s = AC.createBufferSource(); s.buffer = NZ[buf]; s.loop = true; s.playbackRate.value = rate || 1;
-        var f = AC.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q;
-        var g = AC.createGain(); g.gain.value = gain;
-        s.connect(f); f.connect(g); g.connect(dest);
-        s.start(AC.currentTime, Math.random() * 1.5);
-        L.n.push(s);
-        return { s: s, f: f, g: g };
+        var e = SFX[name];
+        if (!e) return;
+        var path = sndPick(typeof e.f === 'function' ? e.f(arg) : e.f);
+        var vol = e.v == null ? 1 : typeof e.v === 'function' ? e.v(arg) : e.v;
+        var pitch = e.p == null ? 1 : typeof e.p === 'function' ? e.p(arg) : e.p;
+        sPlay(path, { x: e.here ? null : x, y: y, z: z, vol: vol, pitch: pitch, bus: e.bus, late: e.late });
     }
 
     /* ── the ambience driver ─────────────────────────────────
-       Runs every frame. Everything here reads the world and steers a gain;
-       nothing here allocates unless the player has actually walked into a
-       situation that needs it. */
-    var AMB = { scan: 0, lava: 0, lavaP: null, fire: 0, fireP: null, caveCd: 22, water: false, wet: 0, swimD: 0, lx: 0, lz: 0 };
+       Runs every frame. Everything here reads the world and decides whether
+       something should sound; nothing allocates unless the player has
+       actually walked into a situation that needs it. */
+    var AMB = { scan: 0, lava: 0, lavaP: null, fireP: null, caveCd: 22, water: false, sub: false, swimD: 0, lx: 0, lz: 0, rainT: 0, bed: null };
     function ambienceTick(dt) {
         if (!AC) return;
         var sv = sVol();
         var hx = Math.floor(S.px), hy = Math.floor(S.py + EYE), hz = Math.floor(S.pz);
-        var head = getB(hx, hy, hz);
-        var sub = head === WATER;
+        var sub = getB(hx, hy, hz) === WATER;
 
         /* Head under water: the real game lowpasses everything the moment you
-           go under, and un-does it the moment you surface. */
+           go under, and un-does it the moment you surface. The eyes crossing
+           the surface is a sound of its own each way. */
         var mf = sub ? 620 : 21000;
         MUFFLE.frequency.setTargetAtTime(mf, AC.currentTime, 0.08);
         MASTER.gain.setTargetAtTime(sub ? 0.3 : 0.42, AC.currentTime, 0.1);
+        if (sub !== AMB.sub) { AMB.sub = sub; if (sv) snd(sub ? 'uwenter' : 'uwexit'); }
 
-        // body entering / leaving water: a splash scaled by how hard you hit it
+        // the body going into water: a splash scaled by how hard it hit
         var bodyW = getB(hx, Math.floor(S.py + 0.4), hz) === WATER;
         if (bodyW !== AMB.water) {
             AMB.water = bodyW;
-            if (sv) snd('splash', Math.min(1, Math.abs(RT.vy || 0) / 14), S.px, S.py + 0.4, S.pz);
+            if (sv && bodyW) snd('splash', Math.abs(RT.vy || 0), S.px, S.py + 0.4, S.pz);
             AMB.swimD = 0;
         }
         // swimming strokes, on distance travelled, the way footsteps are
@@ -6789,38 +6533,25 @@
         }
         AMB.lx = S.px; AMB.lz = S.pz;
 
-        if (!sv) {   // muted: let every loop fall silent but keep the graph alive
-            for (var q in LOOPS) if (Object.prototype.hasOwnProperty.call(LOOPS, q)) loopGain(q, 0.0001, 0.1);
-            return;
+        uwBed(sv && sub, dt);
+        if (!sv) return;
+
+        /* Under water the bed is joined, now and then, by a stream of bubbles,
+           and more rarely by something bigger somewhere out in the dark —
+           the game's own "additions" and "rare additions" rolls. */
+        if (sub) {
+            if (Math.random() < dt * 0.22) snd('uwadd');
+            else if (Math.random() < dt * 0.022) snd('uwrare');
         }
 
-        /* underwater: a low sea plus the odd bubble */
-        if (sub) {
-            loop('under', function () {
-                return mkLoop('ambient', function (L, g) {
-                    loopNoise(L, g, 'brown', 'lowpass', 330, 1.4, 0.7, 0.5);
-                    loopNoise(L, g, 'brown', 'lowpass', 120, 2.2, 0.35, 0.7);
-                });
-            });
-            loopGain('under', 0.5, 0.25);
-            if (Math.random() < dt * 0.7) {
-                var bd = aEmit({ vol: 0.4, bus: 'ambient' });
-                if (bd) { var bf = 500 + Math.random() * 900; aPart(bd, AC.currentTime + 0.001, bf, bf * 2.4, 0.06, 'sine', 0.16, 0.003); }
-            }
-        } else loopGain('under', 0.0001, 0.2);
-
-        /* rain: loud in the open, a distant hush once there is a roof on you */
+        /* Rain is not a loop in the real game. Every few ticks it picks a spot
+           where rain is landing near you and plays one short clip from there,
+           half as loud and an octave down when that spot is above your head,
+           which is the whole of how a roof sounds in the rain. */
         if (S.weather >= 1) {
-            loop('rain', function () {
-                return mkLoop('weather', function (L, g) {
-                    loopNoise(L, g, 'white', 'bandpass', 2600, 0.55, 1, 0.35);   // the hiss
-                    loopNoise(L, g, 'pink', 'highpass', 900, 0.7, 1, 0.3);       // the patter
-                    loopNoise(L, g, 'brown', 'lowpass', 260, 1.2, 0.8, 0.35);    // the weight of it
-                });
-            });
-            var sky = getSky(hx, hy, hz) / 15;
-            loopGain('rain', (0.16 + sky * 0.5) * (S.weather === 2 ? 1.25 : 1), 0.7);
-        } else loopGain('rain', 0.0001, 1.2);
+            AMB.rainT -= dt;
+            if (AMB.rainT <= 0) { AMB.rainT = 0.1 + Math.random() * 0.2; rainDrop(); }
+        }
 
         /* Nearest lava and nearest lit furnace, resampled twice a second. A
            390-cell box is cheap enough to just walk, and it means the roar
@@ -6839,32 +6570,12 @@
             }
             AMB.lavaP = lp; AMB.fireP = fp; AMB.lava = lp ? Math.min(1, ln / 12) : 0;
         }
+        // lava pops often and roars now and then; a lit furnace crackles
         if (AMB.lavaP) {
-            loop('lava', function () {
-                return mkLoop('ambient', function (L, g) {
-                    loopNoise(L, g, 'brown', 'lowpass', 240, 1.6, 0.55, 0.85);
-                    loopNoise(L, g, 'pink', 'bandpass', 700, 1.1, 0.6, 0.18);
-                });
-            });
-            var ld = Math.sqrt((AMB.lavaP[0] - S.px) * (AMB.lavaP[0] - S.px) + (AMB.lavaP[1] - S.py) * (AMB.lavaP[1] - S.py) + (AMB.lavaP[2] - S.pz) * (AMB.lavaP[2] - S.pz));
-            loopGain('lava', Math.max(0.0001, (1 - Math.min(1, ld / 8)) * (0.2 + AMB.lava * 0.5)), 0.5);
             if (Math.random() < dt * (0.35 + AMB.lava)) snd('lavapop', 0, AMB.lavaP[0], AMB.lavaP[1], AMB.lavaP[2]);
-        } else loopGain('lava', 0.0001, 0.5);
-
-        if (AMB.fireP) {
-            loop('fire', function () {
-                return mkLoop('ambient', function (L, g) {
-                    loopNoise(L, g, 'pink', 'bandpass', 1500, 0.8, 1, 0.4);
-                    loopNoise(L, g, 'brown', 'lowpass', 400, 1.2, 0.8, 0.4);
-                });
-            });
-            var fd = Math.sqrt((AMB.fireP[0] - S.px) * (AMB.fireP[0] - S.px) + (AMB.fireP[1] - S.py) * (AMB.fireP[1] - S.py) + (AMB.fireP[2] - S.pz) * (AMB.fireP[2] - S.pz));
-            loopGain('fire', Math.max(0.0001, (1 - Math.min(1, fd / 6)) * 0.16), 0.4);
-            if (Math.random() < dt * 1.6) {   // the crackle sits on top of the loop
-                var cd = aEmit({ x: AMB.fireP[0], y: AMB.fireP[1], z: AMB.fireP[2], vol: 0.35, bus: 'ambient' });
-                if (cd) aNoise(cd, AC.currentTime + 0.001, 0.03, 0.4, { buf: 'pink', type: 'bandpass', f0: 1600 + Math.random() * 2600, q: 4, atk: 0.002 });
-            }
-        } else loopGain('fire', 0.0001, 0.4);
+            if (Math.random() < dt * (0.02 + AMB.lava * 0.1)) snd('lava', 0, AMB.lavaP[0], AMB.lavaP[1], AMB.lavaP[2]);
+        }
+        if (AMB.fireP && Math.random() < dt * 0.3) snd('crackle', 0, AMB.fireP[0], AMB.fireP[1], AMB.fireP[2]);
 
         /* Cave sounds. The real game looks for a spot near the player that is
            air, unlit by sky AND unlit by torches, and a few blocks off — then
@@ -6892,72 +6603,105 @@
                 if (cd2 < 25 || cd2 > 400) continue;
                 if (getB(cx, cy, cz) !== AIR) continue;
                 if (getSky(cx, cy, cz) > 0 || getBlk(cx, cy, cz) > 3) continue;
-                snd('cave', (Math.random() * 5) | 0, cx + 0.5, cy + 0.5, cz + 0.5);
+                snd('cave', 0, cx + 0.5, cy + 0.5, cz + 0.5);
                 AMB.caveCd = 34 + Math.random() * 76;    // one PLAYED: now leave it alone for a while
                 break;
             }
         }
     }
+    // one clip of rain, from wherever it is landing somewhere within ten blocks
+    function rainDrop() {
+        var rx = Math.floor(S.px) + ((Math.random() * 21) | 0) - 10, rz = Math.floor(S.pz) + ((Math.random() * 21) | 0) - 10;
+        if (!chunkAt(rx, rz)) return;
+        var ry = CH - 1;
+        while (ry > 1 && getB(rx, ry, rz) === AIR) ry--;
+        snd('rain', ry + 1 > S.py + EYE + 1 ? 0 : 1, rx + 0.5, ry + 1, rz + 0.5);
+    }
+    /* The underwater bed is the one true loop: it fades in over a second or
+       two once your head is under, fades out as you surface, and lets go of
+       its voice a few seconds after that. */
+    function uwBed(on, dt) {
+        var L = AMB.bed, path = 'ambient/underwater/underwater_ambience';
+        if (on && !L) {
+            var b = SB[path];
+            if (!b || b.then) { sndLoad(path); return; }
+            var g = AC.createGain(); g.gain.value = 0.0001; g.connect(BUS.uw);
+            var s = AC.createBufferSource(); s.buffer = b; s.loop = true; s.connect(g); s.start();
+            L = AMB.bed = { s: s, g: g, off: 0 };
+            sndKeep(path);
+        }
+        if (!L) return;
+        L.g.gain.setTargetAtTime(on ? 0.65 : 0.0001, AC.currentTime, on ? 0.6 : 0.3);
+        L.off = on ? 0 : L.off + dt;
+        if (L.off > 3) { try { L.s.stop(); } catch (e) { } AMB.bed = null; }
+    }
 
     /* ── music ───────────────────────────────────────────────
-       Original generative material, not a transcription of anything. What is
-       borrowed is the SHAPE of the real game's soundtrack: unmetered, very
-       quiet, mostly rest, a soft attack on every note, and long silences
-       between pieces — vanilla waits ten to twenty minutes, which is far too
-       long for a browser tab, so this waits two and a half to six.
-       Underground and after dark it drops into a sparser, lower register. */
-    var MSCALE = {
-        // (root-relative semitone sets; the mood picks one and a register)
-        day: [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24],       // major pentatonic, wide
-        night: [0, 2, 3, 7, 9, 12, 14, 15, 19, 21],          // minor-ish, one blue note
-        cave: [0, 3, 5, 7, 10, 12, 15, 17, 19, 22]           // suspended, no third to land on
+       C418's soundtrack, chosen the way the game chooses it: the menu set on
+       the title screen; the overworld set in survival; the creative set, and
+       the overworld's with it, in creative; and the three underwater pieces
+       when your head is under water as a piece begins. The real game leaves
+       ten to twenty minutes between pieces, far too long for a browser tab,
+       so this leaves two and a half to six. As in the game, a menu piece
+       still playing when you walk into a world is left to finish, and walking
+       back out to the title screen cuts whatever the world was playing. */
+    var MUSIC = {
+        menu: ['music/menu/mutation', 'music/menu/moog_city_2', 'music/menu/beginning_2', 'music/menu/floating_trees'],
+        game: ['music/game/minecraft', 'music/game/clark', 'music/game/sweden', 'music/game/subwoofer_lullaby',
+            'music/game/living_mice', 'music/game/haggstrom', 'music/game/danny', 'music/game/key',
+            'music/game/oxygene', 'music/game/dry_hands', 'music/game/wet_hands', 'music/game/mice_on_venus'],
+        creative: ['music/game/creative/biome_fest', 'music/game/creative/blind_spots', 'music/game/creative/haunt_muskie',
+            'music/game/creative/aria_math', 'music/game/creative/dreiton', 'music/game/creative/taswell'],
+        water: ['music/game/water/axolotl', 'music/game/water/dragon_fish', 'music/game/water/shuniji']
     };
-    function musNote(t, f, dur, vol, pan) {
-        if (!AC) return;
-        // music is not positional, so it builds its own chain rather than going
-        // through aEmit — the only placement it wants is a fixed stereo offset
-        var d = AC.createGain(), node = d;
-        d.gain.value = 1;
-        if (PAN_OK && pan) { var p = AC.createStereoPanner(); p.pan.value = pan; d.connect(p); node = p; }
-        node.connect(BUS.music);
-        var rs = AC.createGain(); rs.gain.value = 0.3; node.connect(rs); rs.connect(REVERB);
-        /* An electric-piano-ish voice: a sine fundamental that holds, a soft
-           octave that decays quicker, and a breath of inharmonic partial that
-           is gone almost immediately. Three decay rates is what makes a
-           struck note sound struck. */
-        aPart(d, t, f, 0, dur, 'sine', vol, 0.06);
-        aPart(d, t, f * 2.001, 0, dur * 0.55, 'sine', vol * 0.3, 0.05);
-        aPart(d, t, f * 3.004, 0, dur * 0.22, 'triangle', vol * 0.1, 0.04);
-        aPart(d, t, f * 0.5, 0, dur * 0.8, 'sine', vol * 0.16, 0.12);
+    function musEl() {
+        if (MUS || !AC) return MUS;
+        var el = new Audio(), g = AC.createGain();
+        el.preload = 'auto';
+        AC.createMediaElementSource(el).connect(g); g.connect(BUS.music);
+        var m = MUS = { el: el, g: g, cur: null, kind: null, last: null };
+        el.addEventListener('ended', function () {
+            if (MUS !== m) return;
+            m.cur = null;
+            // the world's scheduler takes over again; the title screen runs its own
+            if (RT && m.kind !== 'menu') RT.musT = 150 + Math.random() * 210;
+        });
+        return m;
+    }
+    function musStart(kind, list) {
+        var m = musEl();
+        if (!m) return;
+        var pool = list.filter(function (p) { return p !== m.last; });
+        var p = sndPick(pool.length ? pool : list);
+        m.kind = kind; m.cur = p; m.last = p;
+        m.el.src = SND_BASE + p + '.m4a';
+        var pr = m.el.play();
+        if (pr && pr.catch) pr.catch(function () { if (MUS === m && m.cur === p) m.cur = null; });   // refused: try again next time round
+    }
+    function musPlaying() { return !!(MUS && MUS.cur && !MUS.el.paused); }
+    function musStop() { if (MUS && MUS.cur) { MUS.el.pause(); MUS.cur = null; } }
+    function musDrop() {   // the window closing
+        if (!MUS) return;
+        MUS.el.pause(); MUS.el.removeAttribute('src');
+        try { MUS.el.load(); } catch (e) { }
+        MUS = null;
     }
     function playMusic() {
         if (!AC || !mVol()) { RT.musT = 20; return; }   // muted now ≠ muted forever: keep the scheduler alive
-        var st = skyState();
-        var mood = S.py < 52 ? 'cave' : st.day ? 'day' : 'night';
-        var sc = MSCALE[mood];
-        var root = (mood === 'cave' ? 130.81 : mood === 'night' ? 174.61 : 196) * (Math.random() < 0.3 ? 2 : 1);
-        var t0 = AC.currentTime + 1.2, at = t0;
-        var n = (mood === 'cave' ? 7 : 12) + ((Math.random() * 10) | 0);
-        var idx = 2 + ((Math.random() * 3) | 0);
-        // a pad underneath the whole piece, so the silences are not empty
-        var pd = aEmit({ vol: 1, bus: 'music', rev: 0.5 });
-        if (pd) {
-            var plen = 6 + n * 1.8;
-            aPart(pd, t0, root * 0.5, 0, plen, 'sine', 0.028, 2.2);
-            aPart(pd, t0, root * 0.752, 0, plen * 0.8, 'sine', 0.016, 3);
-        }
-        for (var i = 0; i < n; i++) {
-            idx += (Math.random() * 5 | 0) - 2;
-            idx = Math.max(0, Math.min(sc.length - 1, idx));
-            var f = root * Math.pow(2, sc[idx] / 12);
-            var dur = 2.4 + Math.random() * 2.6;
-            var vol = 0.055 * (0.7 + Math.random() * 0.6);
-            musNote(at, f, dur, vol, (Math.random() - 0.5) * 0.5);
-            // a loose harmony a fifth or an octave up, some of the time
-            if (Math.random() < 0.26) musNote(at + 0.12 + Math.random() * 0.3, f * (Math.random() < 0.5 ? 1.4983 : 2), dur * 1.1, vol * 0.55, (Math.random() - 0.5) * 0.6);
-            at += (mood === 'cave' ? 1.5 : 0.85) + Math.random() * 2.1;
-        }
-        RT.musT = (at - t0) + 150 + Math.random() * 210;
+        if (musPlaying()) { RT.musT = 20; return; }     // the title screen's piece is still finishing
+        if (getB(Math.floor(S.px), Math.floor(S.py + EYE), Math.floor(S.pz)) === WATER) musStart('water', MUSIC.water);
+        else if (isCreative()) musStart('creative', MUSIC.creative.concat(MUSIC.game));
+        else musStart('game', MUSIC.game);
+        RT.musT = 0;   // nothing more until this piece ends
+    }
+    function menuMusic(dt) {
+        if (!AC) return;
+        if (MUS && MUS.cur && MUS.kind !== 'menu') { musStop(); RT.menuMusT = 0.5; }   // the title screen replaces the world's piece
+        if (musPlaying() || !mVol()) return;
+        RT.menuMusT = (RT.menuMusT == null ? 0.5 : RT.menuMusT) - dt;
+        if (RT.menuMusT > 0) return;
+        RT.menuMusT = 1 + Math.random() * 29;   // the game's own gap between menu pieces, for when this one ends
+        musStart('menu', MUSIC.menu);
     }
 
     /* ── the options sliders ─────────────────────────────────
@@ -7155,6 +6899,7 @@
         if (RT.menu) {
             if (!RT.built) bootStep();
             mnFrame(RT.menu, dt);
+            menuMusic(dt);
             return;
         }
         if (!RT.built) { bootStep(); return; }
@@ -10903,9 +10648,35 @@
                directly and a way to read back the graph it built. */
             _snd: function (n, a, x, y, z) { audioInit(); snd(n, a, x, y, z); },
             _amb: function (dt) { audioInit(); ambienceTick(dt || 0.05); },
-            _mus: function () { audioInit(); playMusic(); },
+            _mus: function (skip) { audioInit(); if (skip) musStop(); playMusic(); },   // skip: cut the current piece first
             _ac: function () { return AC; },
             _mats: function () { var o = {}; for (var k in MATOF) o[k] = MATOF[k]; return o; },
+            // every sample that starts from here on (true), read it back (no argument), or stop logging (false)
+            _sndlog: function (on) { if (on) SLOG = []; var l = SLOG; if (on === false) SLOG = null; return l; },
+            // every path any table here can ask for, so a check can hold them against what shipped
+            _sndPaths: function () {
+                var o = {}, k, j;
+                // the args each argument-dependent event is actually called with
+                var PROBE = { fall: [2, 6], splash: [8, 40], equip: ARM_TIERS };
+                function add(v) { if (typeof v === 'string') o[v] = 1; else if (v && v.length) for (var i = 0; i < v.length; i++) add(v[i]); }
+                for (k in MAT) add([MAT[k].brk, MAT[k].place, MAT[k].step]);
+                for (k in MOBSND) for (j in MOBSND[k]) if (j !== 'v') add(MOBSND[k][j]);
+                for (k in SFX) {
+                    var f = SFX[k].f;
+                    if (typeof f !== 'function') add(f);
+                    else (PROBE[k] || [0]).forEach(function (a) { add(f(a)); });
+                }
+                add('ambient/underwater/underwater_ambience');
+                for (k in MUSIC) add(MUSIC[k]);
+                return Object.keys(o).sort();
+            },
+            // what the sample loader holds, and what the soundtrack is doing
+            _sounds: function () {
+                var n = 0, wait = 0, bad = [];
+                for (var k in SB) if (Object.prototype.hasOwnProperty.call(SB, k)) { if (SB[k] === false) bad.push(k); else if (SB[k].then) wait++; else n++; }
+                return { base: SND_BASE, manifest: !!SMAN, skip: SSKIP, loaded: n, pending: wait, failed: bad, voices: VQ.length,
+                    music: MUS ? { cur: MUS.cur, kind: MUS.kind, paused: MUS.el.paused, t: MUS.el.currentTime } : null };
+            },
             dbg: function () { return { target: RT.target, digT: RT.digT, digNeed: RT.digNeed, mouseL: RT.mouse.l, paused: RT.paused, panel: !!RT.panel, dead: RT.dead, yaw: S.yaw, pitch: S.pitch, sprint: RT.sprint, fly: RT.fly, fovM: RT.fovM, parts: RT.parts.length }; },
             state: function () {
                 return { ready: RT.ready, px: S.px, py: S.py, pz: S.pz, chunks: RT.ckeys.length,
