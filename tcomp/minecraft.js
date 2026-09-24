@@ -2069,7 +2069,7 @@
         }
     }
     function eatCake(x, y, z) {
-        if (S.food >= 20 && !invulnerable()) { toast('You are not hungry'); return; }   // creative bites regardless
+        if (S.food >= 20 && !invulnerable()) return;   // a full stomach just refuses; creative bites regardless
         var t = tentAt(x, y, z, 'cake');
         S.food = Math.min(20, S.food + 2); S.sat = Math.min(S.food, S.sat + 0.4);
         t.bites = (t.bites || 0) + 1; snd('eat'); paintVitals();
@@ -2286,6 +2286,7 @@
         // drowning — creative and spectator hold their breath forever, so the
         // bubble row never appears for them
         var headWater = getB(Math.floor(S.px), Math.floor(S.py + EYE), Math.floor(S.pz)) === WATER && !invulnerable();
+        RT.eyeWater = headWater;
         if (headWater) {
             S.air -= dt;
             if (S.air <= 0) { S.air = 0; RT.drownT = (RT.drownT || 0) + dt; if (RT.drownT > 1) { RT.drownT = 0; hurt(2, null, false, true); } }
@@ -2412,7 +2413,6 @@
         if (S.wt <= 0 && rule('doWeatherCycle')) {
             if (S.weather === 0) { S.weather = Math.random() < 0.28 ? (Math.random() < 0.3 ? 2 : 1) : 0; S.wt = S.weather ? 45 + Math.random() * 120 : 180 + Math.random() * 240; }
             else { S.weather = 0; S.wt = 180 + Math.random() * 240; }
-            if (S.weather >= 1) toast(S.weather === 2 ? 'A thunderstorm rolls in' : 'It starts to rain');
         }
         if (S.weather >= 1 && RT.parts.length < 260) {
             var bio = biomeAt(Math.floor(S.px), Math.floor(S.pz)), snow = bio === 3;
@@ -2879,11 +2879,11 @@
     }
     function trySleep() {
         var st = skyState();
-        if (st.day && st.sunE > 0.05) { toast('You can only sleep at night'); return; }
+        if (st.day && st.sunE > 0.05) { actionBar('You can sleep only at night and during thunderstorms'); return; }
         for (var i = 0; i < RT.foes.length; i++) {
             var f = RT.foes[i];
             if (f.hostile && Math.abs(f.x - S.px) < 12 && Math.abs(f.z - S.pz) < 12 && Math.abs(f.y - S.py) < 6) {
-                toast('You may not rest now; there are monsters nearby'); return;
+                actionBar('You may not rest now; there are monsters nearby'); return;
             }
         }
         var t = RT.target;
@@ -3631,9 +3631,12 @@
         var dist = Math.sqrt(px * px + py * py + pz * pz);
         if (dist < 1.6) { d.x += px / dist * 6 * dt; d.y += py / dist * 6 * dt; d.z += pz / dist * 6 * dt; }
         if (dist < 0.6) {
+            var before = [];
+            for (var hb = 0; hb < 9; hb++) before.push(S.inv[hb] ? S.inv[hb].id + ':' + S.inv[hb].c : '');
             var left = invGive(d.it, d.c, d.dur, d.ench, d.iname);
             if (left === d.c) return false;         // no room at all: it stays
             snd('pop');
+            for (hb = 0; hb < 9; hb++) if ((S.inv[hb] ? S.inv[hb].id + ':' + S.inv[hb].c : '') !== before[hb]) RT.pops[hb] = 5 * HUD_TICK;
             paintHotbar();
             RT.panelDirty = 1;   // an open screen shows the same slots; keep it honest
             if (d.it === 'leather') unlock('cow');
@@ -4169,12 +4172,18 @@
         return v;
     }
 
-    /* ── item icons: fake-iso cubes off the atlas ───────────── */
+    /* ── item icons: fake-iso cubes off the atlas ─────────────
+       An item in a slot is 16×16 GUI pixels. The game blits a flat item's
+       16×16 texture at exactly that size, and renders a block's model into
+       the same square at the screen's real resolution. So icons are built at
+       16 × (device pixels per GUI pixel): flat items as exact squares of
+       texels, blocks drawn at device resolution. One cache per scale. */
     var ICON = {};
     function iconURL(id) {
-        if (ICON[id]) return ICON[id];
-        var def = I[id], cv = document.createElement('canvas');
-        cv.width = cv.height = 32;
+        var r = Math.max(2, (RT && RT.gs) || 2), key = id + '@' + r;
+        if (ICON[key]) return ICON[key];
+        var def = I[id], cv = document.createElement('canvas'), k = r / 2;   // the drawings below are on a 32-unit square
+        cv.width = cv.height = 16 * r;
         var c = cv.getContext('2d');
         c.imageSmoothingEnabled = false;
         function tsrc(tid) { return { x: (tid % 16) * 16, y: ((tid / 16) | 0) * 16 }; }
@@ -4182,7 +4191,7 @@
             var tx = TEX[def.place];
             var top = tsrc(texTop(tx)), side = tsrc(texSide(tx));
             function face(tf, sx, shade) {
-                c.setTransform(tf[0], tf[1], tf[2], tf[3], tf[4], tf[5]);
+                c.setTransform(tf[0] * k, tf[1] * k, tf[2] * k, tf[3] * k, tf[4] * k, tf[5] * k);
                 c.drawImage(ATLAS, sx.x, sx.y, 16, 16, 0, 0, 16, 16);
                 if (shade) { c.globalCompositeOperation = 'source-atop'; c.fillStyle = 'rgba(8,8,16,' + shade + ')'; c.fillRect(0, 0, 16, 16); c.globalCompositeOperation = 'source-over'; }
                 c.setTransform(1, 0, 0, 1, 0, 0);
@@ -4196,6 +4205,7 @@
             // is hashed off the mob name so an egg looks identical every session.
             var col = EGG_COL[def.egg] || ['#c8c8c8', '#8a8a8a'];
             var band = [8, 14, 18, 20, 22, 22, 20, 14], bi;
+            c.setTransform(k, 0, 0, k, 0, 0);
             c.fillStyle = col[0];
             for (bi = 0; bi < band.length; bi++) c.fillRect(16 - band[bi] / 2, 4 + bi * 3, band[bi], 3);
             var eh = 0;
@@ -4211,78 +4221,408 @@
         } else {
             var tid = def && def.tile != null ? def.tile : (def && def.place != null ? texTop(TEX[def.place]) : TILE.i_stick);
             var s = tsrc(tid);
-            c.drawImage(ATLAS, s.x, s.y, 16, 16, 2, 2, 28, 28);
+            c.drawImage(ATLAS, s.x, s.y, 16, 16, 0, 0, 16 * r, 16 * r);
         }
-        ICON[id] = cv.toDataURL();
-        return ICON[id];
+        ICON[key] = cv.toDataURL();
+        return ICON[key];
     }
+
+    /* ── GUI sprites ────────────────────────────────────────────
+       Every piece of in-game chrome is painted here once, at 1×, in GUI pixels
+       and at the sizes the game's own sprites have, then handed to the
+       stylesheet as a --spr-<name> custom property on .mc. The DOM draws them
+       at --gs with nearest-neighbour sampling, so one sprite pixel is always a
+       whole square of device pixels. They are our own drawings of the same
+       furniture, not copies of Mojang's textures, the same way the block atlas
+       is. */
+    var GSPR = null;
+    function sprMap(cx, rows, pal, ox, oy) {
+        for (var y = 0; y < rows.length; y++) for (var x = 0; x < rows[y].length; x++) {
+            var c = pal[rows[y].charAt(x)];
+            if (c) { cx.fillStyle = c; cx.fillRect((ox || 0) + x, (oy || 0) + y, 1, 1); }
+        }
+    }
+    function sprRect(cx, x, y, w, h, c) { cx.fillStyle = c; cx.fillRect(x, y, w, h); }
+    function guiSprites() {
+        if (GSPR) return GSPR;
+        GSPR = {};
+        function mk(name, w, h, draw) {
+            var cv = document.createElement('canvas');
+            cv.width = w; cv.height = h;
+            var cx = cv.getContext('2d');
+            draw(cx, w, h);
+            GSPR[name] = { cv: cv, w: w, h: h, url: cv.toDataURL() };
+        }
+        sprHud(mk);
+        sprPanels(mk);
+        var css = '.mc{';
+        for (var k in GSPR) css += '--spr-' + k + ':url(' + GSPR[k].url + ');';
+        css += '}';
+        var st = document.getElementById('mc-gui-css');
+        if (!st) { st = document.createElement('style'); st.id = 'mc-gui-css'; document.head.appendChild(st); }
+        st.textContent = css;
+        return GSPR;
+    }
+
+    /* ── HUD ────────────────────────────────────────────────────
+       Laid out the way the game's Gui lays it out: on the scaled screen,
+       from its bottom centre, in whole GUI pixels. Hotbar at (W/2 - 91, H - 22),
+       the XP bar seven pixels above it, hearts and armour on the left from
+       H - 39, food and air mirrored on the right. The parts that move do it on
+       the game's own 20 Hz tick: the heart blink after a hit, the jitter at four
+       health, the regeneration wave, hunger's shake when saturation runs out. */
+    var HUD_TICK = 0.05;
+
+    /* the HUD's sprites: the game's sizes and layout, our drawings */
+    function sprHud(mk) {
+        var rnd = mulb(0x40FBA2);
+        function n(a) { return Math.round((rnd() * 2 - 1) * a); }
+        function grey(v, a) { v = Math.max(0, Math.min(255, v + n(a || 0))); return 'rgb(' + v + ',' + v + ',' + v + ')'; }
+        /* The hotbar: nine 20-pixel cells inside a black outline. Every cell is
+           framed by a light line and then a dark one on each side, the bar's
+           top-left corner catches the most light, and the 16×16 well in the
+           middle is a dark tint the world shows through. */
+        mk('hotbar', 182, 22, function (cx) {
+            sprRect(cx, 0, 0, 182, 22, '#000000');
+            for (var i = 0; i < 9; i++) for (var y = 0; y < 20; y++) for (var x = 0; x < 20; x++) {
+                var X = 1 + i * 20 + x, Y = 1 + y, c;
+                if (y === 0) c = grey(i === 0 && x < 2 ? 206 : i === 0 && x < 4 ? 171 : 147, 3);
+                else if (x === 0) c = grey(i === 0 ? (y < 3 ? 171 : 147) : 126, 3);
+                else if (y === 19 || x === 19) c = grey(96, 5);
+                else if (x === 18) c = grey(y === 1 ? 112 : 126, 5);
+                else if (y === 18) c = grey(x === 1 ? 112 : 126, 6);
+                else if (y === 1 || x === 1) c = grey(97, 5);
+                else c = 'rgba(' + (37 + n(8)) + ',' + (36 + n(7)) + ',' + (7 + n(3)) + ',0.73)';
+                cx.clearRect(X, Y, 1, 1);
+                sprRect(cx, X, Y, 1, 1, c);
+            }
+        });
+        /* The selected slot's frame: 24 wide, one row shorter than it is wide so
+           it stops at the bottom of the screen, a black line and then a raised
+           light band four pixels deep round a hole the slot shows through. */
+        mk('hotbar_sel', 24, 23, function (cx) {
+            var band = ['#000000', '#ffffff', '#dcdcdc', '#a6a6a6'];
+            for (var y = 0; y < 23; y++) for (var x = 0; x < 24; x++) {
+                var d = Math.min(x, y, 23 - x, 23 - y);
+                if (d < 4) sprRect(cx, x, y, 1, 1, band[d]);
+            }
+        });
+        function bar(cx, edge, rows) {   // a 182×5 strip with a one-pixel outline and clipped corners
+            sprRect(cx, 1, 0, 180, 1, edge); sprRect(cx, 1, 4, 180, 1, edge);
+            sprRect(cx, 0, 1, 1, 3, edge); sprRect(cx, 181, 1, 1, 3, edge);
+            for (var r = 0; r < 3; r++) for (var x = 1; x < 181; x++) {
+                var b = rows[r];
+                sprRect(cx, x, 1 + r, 1, 1, 'rgb(' + (b[0] + n(b[3])) + ',' + (b[1] + n(b[3])) + ',' + (b[2] + n(b[3] >> 1)) + ')');
+            }
+        }
+        mk('xp_bg', 182, 5, function (cx) { bar(cx, '#000000', [[44, 44, 44, 3], [30, 30, 30, 3], [22, 22, 22, 3]]); });
+        mk('xp_fg', 182, 5, function (cx) { bar(cx, '#102a18', [[100, 152, 60, 16], [150, 214, 106, 14], [104, 158, 66, 12]]); });
+        /* 15×15, as the game's is, with the nine-pixel cross in the middle:
+           drawn at ((W - 15) / 2, (H - 15) / 2), which puts the crossing one
+           GUI pixel up and left of the true centre, like the real one */
+        mk('cross', 15, 15, function (cx) { sprRect(cx, 7, 3, 1, 9, '#ffffff'); sprRect(cx, 3, 7, 9, 1, '#ffffff'); });
+
+        /* the 9×9 icons. o outline, f fill, h highlight, s shade */
+        var HEART = ['..oo.oo..', '.offoffo.', 'ofhfffffo', 'offfffffo', 'osfffffso', '.osfffso.', '..osfso..', '...oso...', '....o....'];
+        var ARMOR = ['.oo...oo.', 'ohfo.ohfo', 'offfofffo', 'osfffffso', '.offfffo.', '.offfffo.', '.offfffo.', '.ossssso.', '..ooooo..'];
+        var FOOD = ['..ooo....', '.orrro...', 'orrhtto..', 'orrttbo..', '.odtbbo..', '..oddbwo.', '...ooowo.', '.....owwo', '......oo.'];
+        var BUBBLE = ['..oooo...', '.owwllo..', 'owllllbo.', 'owllllbo.', 'ollllbbo.', 'olllbbbo.', '.obbbbo..', '..oooo...', '.........'];
+        function icon(name, rows, pal, keep) {   // keep(x, y) chooses which pixels a half icon carries
+            mk(name, 9, 9, function (cx) {
+                for (var y = 0; y < 9; y++) for (var x = 0; x < 9; x++) {
+                    var k = rows[y].charAt(x), c = pal[k];
+                    if (!c || (keep && !keep(x, y, k))) continue;
+                    sprRect(cx, x, y, 1, 1, c);
+                }
+            });
+        }
+        function left(x) { return x <= 4; }
+        function right(x) { return x >= 4; }
+        var DARK = 'rgba(22,22,22,0.72)';
+        // containers carry the outline; the hearts drawn over them carry only their colour
+        icon('h_cont', HEART, { o: '#000000', f: DARK, h: DARK, s: DARK });
+        icon('h_cont_bl', HEART, { o: '#ffffff', f: DARK, h: DARK, s: DARK });
+        var HEARTS = {
+            n: { f: '#ff1313', h: '#ffc8c8', s: '#bb1313' },       // normal
+            bl: { f: '#ffffff', h: '#ffffff', s: '#d0d0d0' },      // the health just lost, flashing
+            p: { f: '#94a41c', h: '#d4e27c', s: '#627012' },       // poisoned
+            w: { f: '#343434', h: '#6e6e6e', s: '#161616' },       // withered
+            fz: { f: '#7cc4f0', h: '#e2f6ff', s: '#3f86c0' },      // frozen
+            a: { f: '#e8c21e', h: '#fff4a8', s: '#b08a0c' }        // absorbing
+        };
+        for (var hk in HEARTS) {
+            var hp = { f: HEARTS[hk].f, h: HEARTS[hk].h, s: HEARTS[hk].s };
+            icon('h_' + hk, HEART, hp);
+            icon('h_' + hk + '_half', HEART, hp, left);
+            // hardcore: the same heart with two dark eyes set in the upper humps
+            var hc = { f: hp.f, h: hp.h, s: hp.s, e: '#000000' };
+            var HH = HEART.slice(); HH[2] = 'ofhfffffo'; HH[3] = 'ofefffefo';
+            icon('h_' + hk + '_hc', HH, hc);
+            icon('h_' + hk + '_hc_half', HH, hc, left);
+        }
+        var AR = { o: '#000000', f: '#b8b9c4', h: '#e6e7f2', s: '#696a70' };
+        icon('a_full', ARMOR, AR);
+        icon('a_half', ARMOR, AR, function (x, y, k) { return k === 'o' || left(x); });
+        icon('a_empty', ARMOR, { o: '#000000', f: DARK, h: DARK, s: DARK });
+        var FD = { o: '#000000', r: '#d42a2a', h: '#dfb18f', t: '#b88458', b: '#9d6d43', d: '#613c1b', w: '#fff7dc' };
+        var FH = { o: '#000000', r: '#7d9a2a', h: '#c3d890', t: '#96ad52', b: '#6f873a', d: '#3a4c15', w: '#e7f2c8' };
+        icon('f_empty', FOOD, { o: '#000000', r: DARK, h: DARK, t: DARK, b: DARK, d: DARK, w: DARK });
+        icon('f_full', FOOD, FD); icon('f_half', FOOD, FD, function (x, y, k) { return k === 'o' ? right(x) || y > 4 : right(x); });
+        icon('f_hunger_empty', FOOD, { o: '#1e2a0a', r: 'rgba(24,34,10,0.72)', h: 'rgba(24,34,10,0.72)', t: 'rgba(24,34,10,0.72)', b: 'rgba(24,34,10,0.72)', d: 'rgba(24,34,10,0.72)', w: 'rgba(24,34,10,0.72)' });
+        icon('f_hunger_full', FOOD, FH); icon('f_hunger_half', FOOD, FH, function (x, y, k) { return k === 'o' ? right(x) || y > 4 : right(x); });
+        icon('air', BUBBLE, { o: '#274ea3', w: '#ffffff', l: '#aad7ff', b: '#6ea5e6' });
+        mk('air_pop', 9, 9, function (cx) {
+            sprMap(cx, ['.........', '.o.....o.', '..w...w..', '.........', 'ow.....wo', '.........', '..w...w..', '.o.....o.', '.........'],
+                { o: '#274ea3', w: '#cfe8ff' });
+        });
+        /* A status effect's frame in the top-right corner: a raised grey tile;
+           the ambient one (a beacon's) is tinted blue. */
+        function effFrame(cx, face, lite, dark) {
+            sprRect(cx, 1, 0, 22, 1, '#000000'); sprRect(cx, 1, 23, 22, 1, '#000000');
+            sprRect(cx, 0, 1, 1, 22, '#000000'); sprRect(cx, 23, 1, 1, 22, '#000000');
+            sprRect(cx, 1, 1, 22, 22, face);
+            sprRect(cx, 1, 1, 21, 1, lite); sprRect(cx, 1, 1, 1, 21, lite);
+            sprRect(cx, 2, 22, 21, 1, dark); sprRect(cx, 22, 2, 1, 21, dark);
+        }
+        mk('eff_bg', 24, 24, function (cx) { effFrame(cx, '#c6c6c6', '#ffffff', '#555555'); });
+        /* An effect's 18×18 icon. The game draws every effect its own picture;
+           ours is one bottle, filled with the effect's own colour, so the row of
+           frames still reads at a glance. */
+        function bottle(col) {
+            return function (cx) {
+                var fill = {}, x, y;
+                for (y = 0; y < 18; y++) for (x = 0; x < 18; x++) {
+                    var body = (x - 8.5) * (x - 8.5) + (y - 11.5) * (y - 11.5) <= 27.5, neck = x >= 7 && x <= 10 && y >= 3 && y <= 6, cork = x >= 7 && x <= 10 && y >= 1 && y <= 2;
+                    if (body || neck || cork) fill[x + ',' + y] = cork ? 'c' : body && y >= 10 ? 'l' : 'g';
+                }
+                for (var k in fill) {
+                    var xy = k.split(','), px = +xy[0], py = +xy[1];
+                    var edge = !fill[(px - 1) + ',' + py] || !fill[(px + 1) + ',' + py] || !fill[px + ',' + (py - 1)] || !fill[px + ',' + (py + 1)];
+                    var c = edge ? '#2a2a2a' : fill[k] === 'c' ? '#9a7442' : fill[k] === 'l' ? col : 'rgba(214,226,255,0.55)';
+                    sprRect(cx, px, py, 1, 1, c);
+                }
+                sprRect(cx, 5, 10, 1, 2, 'rgba(255,255,255,0.85)'); sprRect(cx, 6, 9, 1, 1, 'rgba(255,255,255,0.85)');
+            };
+        }
+        for (var eid in EFFECTS) mk('eff_' + eid, 18, 18, bottle(EFFECTS[eid].c));
+        mk('eff_bg_amb', 24, 24, function (cx) { effFrame(cx, '#8fb3d8', '#d8ecff', '#3a5a82'); });
+        /* A toast: 160×32, dark, in a thin light frame with the corners cut. */
+        mk('toast', 160, 32, function (cx) {
+            sprRect(cx, 2, 0, 156, 1, '#000000'); sprRect(cx, 2, 31, 156, 1, '#000000');
+            sprRect(cx, 0, 2, 1, 28, '#000000'); sprRect(cx, 159, 2, 1, 28, '#000000');
+            sprRect(cx, 1, 1, 1, 1, '#000000'); sprRect(cx, 158, 1, 1, 1, '#000000'); sprRect(cx, 1, 30, 1, 1, '#000000'); sprRect(cx, 158, 30, 1, 1, '#000000');
+            sprRect(cx, 2, 1, 156, 30, '#212121'); sprRect(cx, 1, 2, 158, 28, '#212121');
+            sprRect(cx, 2, 1, 156, 1, '#5a5a5a'); sprRect(cx, 1, 2, 1, 28, '#5a5a5a');
+            sprRect(cx, 2, 30, 156, 1, '#101010'); sprRect(cx, 158, 2, 1, 28, '#101010');
+        });
+    }
+
+    /* the item stack decorations, shared by the hotbar and every container: the
+       icon in its own layer (so the pick-up pop can squash it without squashing
+       the count), the count bottom-right in white with its shadow, and the
+       durability bar under it */
     function paintSlot(el, st) {
-        if (!st) { el.style.backgroundImage = ''; el.innerHTML = ''; el.className = el.className.replace(/ has| glint/g, ''); return; }
-        el.style.backgroundImage = 'url(' + iconURL(st.id) + ')';
+        if (!st) {
+            if (el._st !== null) { el._st = null; el.style.backgroundImage = ''; el.style.removeProperty('--ic'); el.innerHTML = ''; }
+            el.className = el.className.replace(/ has| glint/g, '');
+            return;
+        }
+        var url = 'url(' + iconURL(st.id) + ')';
+        el.style.backgroundImage = url;
+        el.style.setProperty('--ic', url);
         if (el.className.indexOf(' has') < 0) el.className += ' has';
         var glint = (st.ench && Object.keys(st.ench).length) || (I[st.id] && I[st.id].glint);
         el.className = el.className.replace(/ glint/g, '') + (glint ? ' glint' : '');
-        var html = st.c > 1 ? '<span class="mc-ct">' + st.c + '</span>' : '';
+        var html = '<i class="mc-it"></i>';
+        if (st.c > 1) html += mtHTML(String(st.c), null, 'mc-ct');
         var max = itemMaxDur(st.id);
         if (st.dur != null && max != null && st.dur < max) {
-            var pc = st.dur / max;
-            html += '<span class="mc-dur"><i style="width:' + Math.round(pc * 100) + '%;background:' + (pc > 0.5 ? '#4be04b' : pc > 0.2 ? '#e0c04b' : '#e04b4b') + '"></i></span>';
+            // ItemStack.getBarWidth / getBarColor: 13 pixels at full, the hue running green to red
+            var f = Math.max(0, st.dur / max), w = Math.round(13 * f), hue = f / 3;
+            html += '<span class="mc-dur"><i style="width:calc(var(--px) * ' + w + ');background:' + hsvHex(hue, 1, 1) + '"></i></span>';
         }
+        el._st = st;
         el.innerHTML = html;
     }
+    function hsvHex(h, s, v) {   // Mth.hsvToRgb
+        var i = Math.floor(h * 6) % 6, f = h * 6 - Math.floor(h * 6), p = v * (1 - s), q = v * (1 - f * s), t = v * (1 - (1 - f) * s);
+        var rgb = [[v, t, p], [q, v, p], [p, v, t], [p, q, v], [t, p, v], [v, p, q]][i];
+        return '#' + rgb.map(function (c) { return ('0' + Math.round(c * 255).toString(16)).slice(-2); }).join('');
+    }
 
-    /* ── HUD ────────────────────────────────────────────────── */
-    function hudTile(name) { var t = TILE[name]; return 'background-position:-' + (t % 16) * 18 + 'px -' + ((t / 16) | 0) * 18 + 'px'; }
+    /* The whole HUD is placed in device pixels from GUI arithmetic, so it sits on
+       the same grid as the menus at every scale. */
+    function hudPlace(e, x, y) {
+        if (!e) return;
+        var s = RT.gs || 2, l = (x * s) + 'px', t = (y * s) + 'px';
+        if (e.style.left !== l) e.style.left = l;
+        if (e.style.top !== t) e.style.top = t;
+    }
+    function hudLayout() {
+        if (!RT || !RT.el || !RT.gs) return;
+        var el = RT.el, W = RT.gw, H = RT.gh, hx = (W >> 1) - 91, hy = H - 22;
+        hudPlace(el.querySelector('.mc-hbbar'), hx, hy);
+        hudPlace(el.querySelector('.mc-hotbar'), hx, hy);
+        hudPlace(el.querySelector('.mc-xpbar'), hx, H - 29);
+        hudPlace(el.querySelector('.mc-cross'), (W - 15) >> 1, (H - 15) >> 1);
+        paintHotbar(); paintXp(); hudTick(true);
+        chatLayout(); paintChat(); paintEffects(); toastFrame(0);
+        if (RT.f3) paintDebug();
+    }
     function paintHotbar() {
         var bar = RT.el.querySelector('.mc-hotbar');
         if (!bar) return;
         var cells = bar.children;
         for (var i = 0; i < 9; i++) {
-            cells[i].className = 'mc-slot mc-hb' + (i === S.sel ? ' sel' : '') + (S.inv[i] ? ' has' : '');
+            var cls = 'mc-slot mc-hb' + (i === S.sel ? ' sel' : '') + (S.inv[i] ? ' has' : '');
+            if (cells[i].className.replace(/ glint/g, '') !== cls) cells[i].className = cls;
             paintSlot(cells[i], S.inv[i]);
         }
-        var h = held();
-        var tip = RT.el.querySelector('.mc-tip');
-        if (h && RT.tipId !== h.id) { tip.textContent = I[h.id] ? I[h.id].t : h.id; tip.className = 'mc-tip show'; RT.tipT = 2; }
-        if (!h) { tip.className = 'mc-tip'; }
-        RT.tipId = h ? h.id : null;
+        hudPlace(RT.el.querySelector('.mc-hbsel'), (RT.gw >> 1) - 91 - 1 + S.sel * 20, RT.gh - 23);
+        hudTipTick(false);
     }
-    function paintVitals() {
-        var el = RT.el, i, out = '';
-        for (i = 0; i < 10; i++) {
-            var v = S.hp - i * 2;
-            out += '<i class="mc-ico" style="' + hudTile(v >= 2 ? 'h_heart' : v === 1 ? 'h_heart_half' : 'h_heart_bg') + '"></i>';
-        }
-        el.querySelector('.mc-hearts').innerHTML = out;
-        out = '';
-        for (i = 9; i >= 0; i--) {
-            var f = S.food - i * 2;
-            out += '<i class="mc-ico" style="' + hudTile(f >= 2 ? 'h_food' : f === 1 ? 'h_food_half' : 'h_food_bg') + '"></i>';
-        }
-        el.querySelector('.mc-food').innerHTML = out;
-        var air = el.querySelector('.mc-air');
-        if (S.air < 9.9) {
-            out = '';
-            for (i = 0; i < 10; i++) out += '<i class="mc-ico" style="' + hudTile('h_bubble') + ';opacity:' + (S.air > i ? 1 : 0.15) + '"></i>';
-            air.innerHTML = out; air.style.display = '';
-        } else air.style.display = 'none';
-        paintArmorBar();
+    /* Gui.renderSelectedItemName: switching to a different item (or a differently
+       named one) shows its name for 40 ticks, fully opaque until the last ten and
+       fading over those; rarity picks the colour, a custom name goes italic. The
+       line sits at H - 59, or 14 lower in creative where there are no bars. */
+    function itemRarity(st) {
+        var r = (I[st.id] && I[st.id].rarity) || 0;   // 0 common, 1 uncommon, 2 rare, 3 epic
+        if (st.ench && Object.keys(st.ench).length) r = r < 2 ? 2 : 3;
+        return r;
     }
-    function armorPoints() { var p = 0; for (var i = 0; i < 4; i++) if (S.armor[i]) p += (I[S.armor[i].id].armor.def || 0) + (ench(S.armor[i], 'protection') * 0.5); return p; }
-    function armorTough() { var p = 0; for (var i = 0; i < 4; i++) if (S.armor[i]) p += I[S.armor[i].id].armor.tough || 0; return p; }
-    function paintArmorBar() {
-        var bar = RT.el.querySelector('.mc-armor'); if (!bar) return;
-        var pts = Math.round(armorPoints());
-        if (pts <= 0) { bar.style.display = 'none'; return; }
-        bar.style.display = ''; var out = '';
-        for (var i = 0; i < 10; i++) { var v = pts - i * 2; out += '<i class="mc-ico" style="' + hudTile(v >= 2 ? 'h_armor' : v === 1 ? 'h_armor_half' : 'h_armor_bg') + '"></i>'; }
-        bar.innerHTML = out;
+    var RARITY_COL = ['#ffffff', '#ffff55', '#55ffff', '#ff55ff'];
+    function itemName(st) { return st.name || (I[st.id] ? I[st.id].t : st.id); }
+    function hudTipTick(tick) {
+        var h = held(), tip = RT.el.querySelector('.mc-tip');
+        if (!tip) return;
+        var key = h ? h.id + '|' + (h.name || '') : null;
+        if (!h) RT.tipTk = 0;
+        else if (key !== RT.tipKey) {
+            RT.tipTk = 40;
+            mtSet(tip, itemName(h), RARITY_COL[itemRarity(h)]);
+            tip.classList.toggle('it', !!h.name);
+        } else if (tick && RT.tipTk > 0) RT.tipTk--;
+        RT.tipKey = key;
+        var a = Math.min(255, Math.floor(RT.tipTk * 256 / 10));
+        tip.style.opacity = a > 0 ? (a / 255).toFixed(3) : '0';
+        if (a > 0) {
+            var w = mfWidth(tip.getAttribute('data-t') || '') + 1;
+            hudPlace(tip, (RT.gw - w) >> 1, RT.gh - 59 + (invulnerable() ? 14 : 0));
+        }
+    }
+
+    /* — hearts, armour, food, air, on the tick — */
+    function hudRand(seed) { return mulb(seed | 0); }
+    function hudIcons(box, n, list) {   // keep exactly n <i> children, then hand them to the painter
+        while (box.children.length < n) box.appendChild(document.createElement('i'));
+        while (box.children.length > n) box.removeChild(box.lastChild);
+        return box.children;
+    }
+    function hudIcon(e, x, y, layers) {
+        hudPlace(e, x, y);
+        var bg = layers.map(function (k) { return 'var(--spr-' + k + ')'; }).join(',');
+        if (e._bg !== bg) { e._bg = bg; e.style.backgroundImage = bg; }
+    }
+    function heartKind() {
+        if (effLvl('poison')) return 'p';
+        if (effLvl('wither')) return 'w';
+        if (RT.frozen) return 'fz';
+        return 'n';
+    }
+    function paintVitals() { hudTick(true); }
+    function paintArmorBar() { hudTick(true); }
+    function hudTick(redraw) {
+        if (!RT || !RT.el || !RT.gs) return;
+        var el = RT.el, W = RT.gw, H = RT.gh, tk = RT.hudTk || 0;
+        if (!redraw) RT.hudTk = ++tk;
+        // Gui.renderPlayerHealth's bookkeeping: a hit sets a 20-tick blink, a heal
+        // under invulnerability a 10-tick one, and the white "lost" hearts hold
+        // the old health for a second before catching up
+        var hp = Math.max(0, Math.ceil(S.hp)), now = RT.now * 1000;
+        if (RT.hLast == null) { RT.hLast = hp; RT.hDisp = hp; RT.hLastT = now; RT.hBlink = 0; }
+        if (hp < RT.hLast && RT.iframe > 0) { RT.hLastT = now; RT.hBlink = tk + 20; }
+        else if (hp > RT.hLast && RT.iframe > 0) { RT.hLastT = now; RT.hBlink = tk + 10; }
+        if (now - RT.hLastT > 1000) { RT.hDisp = hp; RT.hLastT = now; }
+        RT.hLast = hp;
+        var blink = RT.hBlink > tk && ((RT.hBlink - tk) / 3 | 0) % 2 === 1;
+        var rnd = hudRand(tk * 312871);
+        var lx = (W >> 1) - 91, rx = (W >> 1) + 91, hy = H - 39;
+        var maxHp = Math.max(20, RT.hDisp, hp), abs = Math.ceil(RT.absorb || 0);
+        var rows = Math.ceil((maxHp + abs) / 2 / 10), rowH = Math.max(10 - (rows - 2), 3);
+        var wave = effLvl('regeneration') ? tk % Math.ceil(maxHp + 5) : -1;
+        var hc = !!S.hardcore, kind = heartKind(), sfx = hc ? '_hc' : '';
+        var nH = Math.ceil(maxHp / 2), nA = Math.ceil(abs / 2);
+        var hearts = hudIcons(el.querySelector('.mc-hearts'), nH + nA);
+        for (var l = nH + nA - 1; l >= 0; l--) {
+            var x = lx + (l % 10) * 8, y = hy - ((l / 10) | 0) * rowH;
+            if (hp + abs <= 4) y += (rnd() * 2) | 0;
+            if (l < nH && l === wave) y -= 2;
+            var layers = [], i2 = l * 2;
+            if (i2 < hp) layers.push('h_' + kind + sfx + (i2 + 1 === hp ? '_half' : ''));
+            if (blink && i2 < RT.hDisp) layers.push('h_bl' + sfx + (i2 + 1 === RT.hDisp ? '_half' : ''));
+            if (l >= nH) { var j2 = i2 - nH * 2; if (j2 < abs) layers.push('h_' + (kind === 'w' ? 'w' : 'a') + sfx + (j2 + 1 === abs ? '_half' : '')); }
+            layers.push(blink ? 'h_cont_bl' : 'h_cont');
+            hudIcon(hearts[l], x, y, layers);
+        }
+        // armour: ten icons over the top row of hearts, only when there is any
+        var pts = Math.round(armorPoints()), arm = el.querySelector('.mc-armor');
+        var ai = hudIcons(arm, pts > 0 ? 10 : 0);
+        for (var k = 0; k < ai.length; k++)
+            hudIcon(ai[k], lx + k * 8, hy - (rows - 1) * rowH - 10, [k * 2 + 1 < pts ? 'a_full' : k * 2 + 1 === pts ? 'a_half' : 'a_empty']);
+        // food, right to left, shaking while saturation is gone
+        var fd = Math.max(0, Math.ceil(S.food)), hun = effLvl('hunger') ? 'f_hunger_' : 'f_';
+        var fi = hudIcons(el.querySelector('.mc-food'), 10);
+        for (var j = 0; j < 10; j++) {
+            var fy = hy;
+            if ((S.sat || 0) <= 0 && tk % (fd * 3 + 1) === 0) fy += ((rnd() * 3) | 0) - 1;
+            var fl = [hun + 'empty'];
+            if (j * 2 + 1 < fd) fl.unshift(hun + 'full'); else if (j * 2 + 1 === fd) fl.unshift(hun + 'half');
+            hudIcon(fi[j], rx - j * 8 - 9, fy, fl);
+        }
+        // air: shown while underwater or not yet refilled; the last bubble bursts before it goes
+        var air = Math.max(0, Math.min(300, Math.round((S.air == null ? 10 : S.air) * 30)));
+        var bi = [];
+        if (RT.eyeWater || air < 300) {
+            var full = Math.ceil((air - 2) * 10 / 300), burst = Math.ceil(air * 10 / 300) - full;
+            bi = hudIcons(el.querySelector('.mc-air'), Math.max(0, full + burst));
+            for (var b = 0; b < bi.length; b++) hudIcon(bi[b], rx - b * 8 - 9, hy - 10, [b < full ? 'air' : 'air_pop']);
+        } else hudIcons(el.querySelector('.mc-air'), 0);
+        hudTipTick(!redraw);
+        actionBarTick(!redraw);
+    }
+    /* The bar fills (int)(progress × 183) pixels of its 182, and the level sits
+       over it in 0x80FF20, drawn five times: four black copies a pixel out in
+       each direction, then the green one. That outline is not a shadow, so it
+       is baked into an image rather than asked of CSS. */
+    var XP_LVL = {};
+    function xpLevelImg(n) {
+        var s = String(n);
+        if (XP_LVL[s]) return XP_LVL[s];
+        var w = mfWidth(s) + 2, cv = document.createElement('canvas');
+        cv.width = w; cv.height = MF_ROWS + 2;
+        var cx = cv.getContext('2d');
+        mfText(cx, s, 2, 1, '#000000', false); mfText(cx, s, 0, 1, '#000000', false);
+        mfText(cx, s, 1, 2, '#000000', false); mfText(cx, s, 1, 0, '#000000', false);
+        mfText(cx, s, 1, 1, '#80ff20', false);
+        XP_LVL[s] = { url: 'url(' + cv.toDataURL() + ')', w: w, h: MF_ROWS + 2 };
+        return XP_LVL[s];
     }
     function paintXp() {
         var el = RT.el, fill = el.querySelector('.mc-xpfill'), lvl = el.querySelector('.mc-xplvl');
-        if (fill) fill.style.width = Math.round(xpBarFrac() * 100) + '%';
-        if (lvl) lvl.textContent = S.xpl > 0 ? S.xpl : '';
+        if (fill) fill.style.width = 'calc(var(--px) * ' + Math.min(182, Math.floor(xpBarFrac() * 183)) + ')';
+        if (!lvl) return;
+        if (S.xpl > 0) {
+            var im = xpLevelImg(S.xpl);
+            lvl.style.display = '';
+            lvl.style.backgroundImage = im.url;
+            lvl.style.width = 'calc(var(--px) * ' + im.w + ')'; lvl.style.height = 'calc(var(--px) * ' + im.h + ')';
+            lvl.textContent = String(S.xpl);
+            // (W - font.width(s)) / 2 at H - 35, less the one-pixel outline margin
+            hudPlace(lvl, ((RT.gw - (mfWidth(String(S.xpl)) + 1)) >> 1) - 1, RT.gh - 35 - 1);
+        } else { lvl.style.display = 'none'; lvl.textContent = ''; }
     }
+    function armorPoints() { var p = 0; for (var i = 0; i < 4; i++) if (S.armor[i]) p += (I[S.armor[i].id].armor.def || 0) + (ench(S.armor[i], 'protection') * 0.5); return p; }
+    function armorTough() { var p = 0; for (var i = 0; i < 4; i++) if (S.armor[i]) p += I[S.armor[i].id].armor.tough || 0; return p; }
     /* Creative hides the four bars that only mean something in survival —
        hearts, hunger, armour, experience — and spectator drops the hotbar and
        crosshair on top of that. Done with a class rather than four display
@@ -4291,6 +4631,26 @@
         if (!RT || !RT.el) return;
         RT.el.classList.toggle('mc-nohud', invulnerable());
         RT.el.classList.toggle('mc-spect', isSpectator());
+    }
+    /* ItemStack popTime: for five ticks after a pick-up the hotbar draws that
+       item squashed to 1/(1 + t/5) of its width and (2 + t/5)/2 of its height
+       about the point (8, 12), easing back as t runs down. Done per frame with
+       the fractional tick, like the game's partialTick. */
+    function hudFrame(dt) {
+        if (!RT || !RT.el) return;
+        toastFrame(dt);
+        if (RT.chat) paintChatInput(); else chatAlpha();
+        if (!RT.pops || RT.paused) return;
+        var bar = RT.el.querySelector('.mc-hotbar');
+        if (!bar) return;
+        for (var i = 0; i < 9; i++) {
+            var cell = bar.children[i], p = RT.pops[i];
+            if (!(p > 0) && !cell._pop) continue;
+            p = Math.max(0, p - dt); RT.pops[i] = p;
+            var f = p / HUD_TICK, it = cell.querySelector('.mc-it');
+            if (it) it.style.transform = f > 0 ? 'scale(' + (1 / (1 + f / 5)).toFixed(4) + ',' + ((2 + f / 5) / 2).toFixed(4) + ')' : '';
+            cell._pop = f > 0;
+        }
     }
 
     /* ── toasts + achievements ──────────────────────────────── */
@@ -4309,7 +4669,7 @@
         { id: 'farm', t: 'Time to Farm!', d: 'Till soil with a hoe' },
         { id: 'moar', t: 'MOAR Tools', d: 'Craft one of each tool type' },
         { id: 'diamonds', t: 'DIAMONDS!', d: 'Mine diamond with an iron pickaxe' },
-        { id: 'sniper', t: 'Sniper Duel', d: 'Kill a skeleton with an arrow' },
+        { id: 'sniper', t: 'Sniper Duel', d: 'Kill a skeleton with an arrow', ch: 1 },
         { id: 'sleep', t: 'Sweet Dreams', d: 'Sleep in a bed to change your respawn point' },
         { id: 'armor', t: 'Suit Up', d: 'Wear a piece of armor' },
         { id: 'enchant', t: 'Enchanter', d: 'Enchant an item at the table' },
@@ -4319,6 +4679,12 @@
         { id: 'gapple', t: 'Golden Bite', d: 'Eat a golden apple' },
         { id: 'xp30', t: 'Seasoned', d: 'Reach experience level 30' }
     ];
+    /* each advancement's toast icon, an item the game has */
+    var ACH_IC = { inventory: 'table', wood: 'log', table: 'table', pick: 'wood_pick', upgrade: 'stone_pick', furnace: 'furnace',
+        iron: 'iron', sword: 'wood_sword', hunter: 'iron_sword', cow: 'leather', bread: 'bread', farm: 'wood_hoe', moar: 'iron_pick',
+        diamonds: 'diamond', sniper: 'arrow', sleep: 'bed', armor: 'iron_chest', enchant: 'etable', anvil2: 'anvil', breed: 'wheat',
+        ender: 'ender_pearl', gapple: 'golden_apple', xp30: 'ench_book' };
+    function achIcon(a) { var ic = ACH_IC[a.id]; return ic && I[ic] ? ic : 'table'; }
     function unlock(id) {
         if (!S || S.ach[id]) return;
         var a = null;
@@ -4326,18 +4692,76 @@
         if (!a) return;   // ignore ids not in the list (keeps achN honest)
         S.ach[id] = Date.now();
         S.achN++;
-        toast('<b>Achievement Get!</b>' + a.t, true);
+        toastPush({ title: a.ch ? 'Challenge Complete!' : 'Advancement Made!', text: a.t, icon: achIcon(a), color: a.ch ? '#ff88ff' : '#ffff00' });
         snd('ding');
     }
-    function toast(msg, ach) {
-        var wrap = RT.el.querySelector('.mc-toasts');
-        if (!wrap) return;
-        var d = document.createElement('div');
-        d.className = 'mc-toast' + (ach ? ' ach' : '');
-        d.innerHTML = msg;
-        wrap.appendChild(d);
-        setTimeout(function () { d.className += ' out'; }, 3600);
-        setTimeout(function () { if (d.parentNode) d.parentNode.removeChild(d); }, 4200);
+    /* Toasts, the way ToastManager runs them: 160×32 each, down the top-right
+       corner a 32-pixel slot at a time, as many as the screen has room for and
+       the rest queued. Each slides in over 600 ms on a squared ease, holds for
+       five seconds, and slides out the same way. An advancement's title is
+       drawn without a shadow at (30, 7) — yellow, or light purple for a
+       challenge — with the name in white at (30, 18) and its icon at (8, 8); a
+       system toast has no icon and starts its text at 18. */
+    var TOAST_SLIDE = 0.6, TOAST_HOLD = 5;
+    function toastPush(t) {
+        if (!RT || !RT.el) return;
+        (RT.toastQ = RT.toastQ || []).push(t);
+        toastFrame(0);
+    }
+    function toast(msg) {   // a plain message: a system toast, "<b>Title</b>text" or just a title
+        var m = /^<b>(.*?)<\/b>(.*)$/.exec(String(msg));
+        toastPush({ title: m ? m[1] : String(msg), text: m ? m[2] : '' });
+    }
+    function toastEl(t) {
+        var d = document.createElement('div'), tx = t.icon ? 30 : 18;
+        d.className = 'mc-toast';
+        var html = t.icon ? '<i class="mc-tic" style="background-image:url(' + iconURL(t.icon) + ')"></i>' : '';
+        html += '<span class="mc-tl" style="left:calc(var(--px) * ' + tx + ');top:calc(var(--px) * 7)">' + mtHTML(t.title, t.color || '#ffff00', 'ns') + '</span>';
+        if (t.text) html += '<span class="mc-tl" style="left:calc(var(--px) * ' + tx + ');top:calc(var(--px) * 18)">' + mtHTML(t.text, '#ffffff', 'ns') + '</span>';
+        d.innerHTML = html;
+        return d;
+    }
+    function toastFrame(dt) {
+        var wrap = RT && RT.el && RT.el.querySelector('.mc-toasts');
+        if (!wrap || !RT.gs) return;
+        var list = RT.toasts = RT.toasts || [], slots = Math.max(1, Math.floor(RT.gh / 32)), i;
+        while (RT.toastQ && RT.toastQ.length && list.length < slots) {
+            var t = RT.toastQ.shift(), used = {};
+            for (i = 0; i < list.length; i++) used[list[i].slot] = 1;
+            for (i = 0; used[i]; i++) {}
+            t.slot = i; t.age = 0; t.el = toastEl(t);
+            wrap.appendChild(t.el);
+            list.push(t);
+        }
+        for (var k = list.length - 1; k >= 0; k--) {
+            var o = list[k];
+            o.age += dt;
+            if (o.age >= TOAST_SLIDE * 2 + TOAST_HOLD) { o.el.remove(); list.splice(k, 1); continue; }
+            var v;
+            if (o.age < TOAST_SLIDE) { v = o.age / TOAST_SLIDE; v *= v; }
+            else if (o.age < TOAST_SLIDE + TOAST_HOLD) v = 1;
+            else { v = (o.age - TOAST_SLIDE - TOAST_HOLD) / TOAST_SLIDE; v = 1 - v * v; }
+            // the slide is sub-pixel in the game (a float translate), so it is here: device pixels, not GUI ones
+            o.el.style.left = Math.round((RT.gw - 160 * v) * RT.gs) + 'px';
+            o.el.style.top = (o.slot * 32 * RT.gs) + 'px';
+        }
+    }
+    /* Gui.setOverlayMessage: one line centred above the hotbar, its top at
+       H - 72. Sixty ticks: fully opaque for forty, then fading over twenty. */
+    function actionBar(text) {
+        var e = RT && RT.el && RT.el.querySelector('.mc-actbar');
+        if (!e) return;
+        mtSet(e, text, '#ffffff');
+        RT.actTk = 60;
+        actionBarTick(false);
+    }
+    function actionBarTick(tick) {
+        var e = RT.el.querySelector('.mc-actbar');
+        if (!e) return;
+        if (tick && RT.actTk > 0) RT.actTk--;
+        var a = Math.min(255, Math.floor((RT.actTk || 0) * 255 / 20));
+        e.style.opacity = a > 8 ? (a / 255).toFixed(3) : '0';
+        if (a > 8) hudPlace(e, (RT.gw >> 1) - ((mfWidth(e.getAttribute('data-t') || '') + 1) >> 1), RT.gh - 72);
     }
 
     /* ── pause / death / sleep ──────────────────────────────── */
@@ -4437,24 +4861,101 @@
             S.t = DAY_MS * 0.02;   // sunrise
             RT.sleep = 0;
             ov.style.display = 'none';
-            toast('Rise and shine');
         }
     }
 
     /* ── F3 ─────────────────────────────────────────────────── */
+    /* F3, laid out the way DebugScreenOverlay lays it out: a column down each
+       side from two pixels in, nine to a line, every line on its own grey
+       backdrop (0x90505050) a pixel wider than the text all round, the text in
+       0xE0E0E0 with no shadow, and the right column right-aligned. Blank lines
+       carry no backdrop. The numbers are this engine's own. */
+    var DBG_DIR = [['south', 'positive Z'], ['west', 'negative X'], ['north', 'negative Z'], ['east', 'positive X']];
+    function dbgLines() {
+        var bx = Math.floor(S.px), by = Math.floor(S.py), bz = Math.floor(S.pz), cx = bx >> 4, cy = by >> 4, cz = bz >> 4;
+        var yawD = ((S.yaw * 180 / Math.PI) % 360 + 540) % 360 - 180, pitD = S.pitch * 180 / Math.PI;
+        var dir = DBG_DIR[((Math.round(S.yaw / (Math.PI / 2)) % 4) + 4) % 4];
+        var sky = getSky(bx, by, bz), blk = getBlk(bx, by, bz), day = Math.floor((RT.worldMs || 0) / CYCLE);
+        var ents = RT.foes.length + RT.drops.length + RT.orbs.length + RT.arrows.length;
+        var o = optLoad(), hgt = heightAt(bx, bz);
+        var L = [
+            'Minecraft ' + RT.ver + ' (' + RT.ver + '/vanilla)',
+            RT.fps + ' fps T: ' + (o.vsync ? 'inf vsync' : 'inf') + ' ' + (o.fancy ? 'fancy' : 'fast') + (o.clouds ? ' fancy-clouds' : '') + ' B: 2',
+            'Integrated server @ ' + (1000 / Math.max(1, RT.fps)).toFixed(1) + ' ms ticks, 0 tx, 0 rx',
+            'C: ' + RT.ckeys.length + '/' + RT.ckeys.length + ' (s) D: ' + VIEW + ', pC: 000, pU: 00, aB: ' + (RT.meshQ ? RT.meshQ.length : 0),
+            'E: ' + ents + '/' + ents + ', SD: ' + VIEW,
+            'P: ' + RT.parts.length + '. T: ' + ents,
+            'Client Chunk Cache: ' + RT.ckeys.length + ', ' + RT.ckeys.length,
+            'ServerChunkCache: ' + RT.ckeys.length,
+            'minecraft:overworld FC: 0',
+            '',
+            'XYZ: ' + S.px.toFixed(3) + ' / ' + S.py.toFixed(5) + ' / ' + S.pz.toFixed(3),
+            'Block: ' + bx + ' ' + by + ' ' + bz + ' [' + (bx & 15) + ' ' + (by & 15) + ' ' + (bz & 15) + ']',
+            'Chunk: ' + cx + ' ' + cy + ' ' + cz + ' [' + (cx & 31) + ' ' + (cz & 31) + ' in r.' + (cx >> 5) + '.' + (cz >> 5) + '.mca]',
+            'Facing: ' + dir[0] + ' (Towards ' + dir[1] + ') (' + yawD.toFixed(1) + ' / ' + pitD.toFixed(1) + ')',
+            'Client Light: ' + Math.max(sky, blk) + ' (' + sky + ' sky, ' + blk + ' block)',
+            'Server Light: (' + sky + ' sky, ' + blk + ' block)',
+            'CH S: ' + hgt + ' M: ' + hgt,
+            'SH S: ' + hgt + ' O: ' + hgt + ' M: ' + hgt + ' ML: ' + hgt,
+            'Biome: minecraft:' + ['plains', 'forest', 'desert', 'windswept_hills'][biomeAt(bx, bz)],
+            'Local Difficulty: ' + (0.75 + (S.diff || 0) * 0.5).toFixed(2) + ' // 0.00 (Day ' + day + ')',
+            'Sounds: ' + (AC ? 1 : 0) + '/247 + 0/8 (Mood 0%)',
+            '',
+            'Debug charts: [F3+1] Profiler hidden; [F3+2] FPS + TPS hidden; [F3+3] Ping hidden',
+            'For help: press F3 + Q'
+        ];
+        var mem = performance && performance.memory, cores = navigator.hardwareConcurrency || 4;
+        var used = mem ? Math.round(mem.usedJSHeapSize / 1048576) : 256, tot = mem ? Math.round(mem.jsHeapSizeLimit / 1048576) : 2048;
+        var R = [
+            'Java: 21.0.7 64bit',
+            'Mem: ' + Math.round(used / tot * 100) + '% ' + used + '/' + tot + 'MB',
+            'Allocation rate: ' + Math.max(1, Math.round((RT.parts.length + ents) / 8)) + 'MB /s',
+            'Allocated: ' + Math.round(used / tot * 100) + '% ' + used + 'MB',
+            '',
+            'CPU: ' + cores + 'x ' + (RT.dbgCpu || 'Web worker-less JavaScript'),
+            '',
+            'Display: ' + RT.el.clientWidth + 'x' + RT.el.clientHeight + ' (' + (RT.dbgGpu ? RT.dbgGpu[0] : 'WebGL') + ')',
+            RT.dbgGpu ? RT.dbgGpu[1] : 'WebGL 1.0',
+            'WebGL ' + (RT.G && RT.G.gl && RT.G.gl.getParameter ? RT.G.gl.getParameter(RT.G.gl.VERSION) : '1.0')
+        ];
+        var t = RT.target;
+        if (t) {
+            var id = t.b != null ? t.b : getB(t.x, t.y, t.z), bd = B[id];
+            R.push('', 'Targeted Block: ' + t.x + ', ' + t.y + ', ' + t.z, 'minecraft:' + blockKey(id));
+        }
+        return { L: L, R: R };
+    }
+    var BLOCK_KEY = null;
+    function blockKey(id) {   // the item that places a block names it: "Grass Block" → grass_block
+        if (!BLOCK_KEY) {
+            BLOCK_KEY = {};
+            for (var k in I) if (I[k].place != null && BLOCK_KEY[I[k].place] == null) BLOCK_KEY[I[k].place] = String(I[k].t || k).toLowerCase().replace(/[^a-z0-9]+/g, '_');
+        }
+        return BLOCK_KEY[id] || 'block_' + id;
+    }
     function paintDebug() {
         var d = RT.el.querySelector('.mc-debug');
         if (!RT.f3) { d.style.display = 'none'; return; }
         d.style.display = '';
-        var bx = Math.floor(S.px), by = Math.floor(S.py), bz = Math.floor(S.pz);
-        var dirs = ['south +Z', 'west -X', 'north -Z', 'east +X'];
-        var dir = dirs[((Math.round(S.yaw / (Math.PI / 2)) % 4) + 4) % 4];
-        d.innerHTML = 'Minecraft (comp/urecraft)<br>' +
-            RT.fps + ' fps, ' + RT.ckeys.length + ' chunks, ' + (RT.foes.length + RT.drops.length) + ' entities<br>' +
-            'XYZ: ' + S.px.toFixed(2) + ' / ' + S.py.toFixed(2) + ' / ' + S.pz.toFixed(2) + '<br>' +
-            'Block: ' + bx + ' ' + by + ' ' + bz + '  Facing: ' + dir + '<br>' +
-            'Light: ' + getSky(bx, by, bz) + ' sky, ' + getBlk(bx, by, bz) + ' block<br>' +
-            'Biome: ' + ['Plains', 'Forest', 'Desert', 'Mountains'][biomeAt(bx, bz)] + '  Seed: ' + S.seed;
+        if (!RT.dbgGpu && RT.G && RT.G.gl) {   // the renderer's own name, where the browser will say
+            try {
+                var ext = RT.G.gl.getExtension('WEBGL_debug_renderer_info');
+                RT.dbgGpu = ext ? [RT.G.gl.getParameter(ext.UNMASKED_VENDOR_WEBGL), RT.G.gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)] : [RT.G.gl.getParameter(RT.G.gl.VENDOR), RT.G.gl.getParameter(RT.G.gl.RENDERER)];
+            } catch (e) { RT.dbgGpu = ['WebGL', 'WebGL']; }
+        }
+        var ln = dbgLines(), all = [], s;
+        ln.L.forEach(function (t, i) { all.push([t, 0, i]); });
+        ln.R.forEach(function (t, i) { all.push([t, 1, i]); });
+        var kids = hudIcons(d, all.length);
+        for (var i = 0; i < all.length; i++) {
+            var e = kids[i], txt = all[i][0];
+            if (!e.firstChild) e.innerHTML = '<span class="mt ns"></span>';
+            e.className = txt ? 'mc-dl' : 'mc-dl blank';
+            mtSet(e.firstChild, txt, '#e0e0e0');
+            var w = txt ? mfWidth(txt) + 1 : 0;
+            hudPlace(e, (all[i][1] ? RT.gw - 2 - w : 2) - 1, 2 + all[i][2] * 9 - 1);
+            e.style.width = 'calc(var(--px) * ' + (w + 2) + ')';
+        }
     }
 
     /* ── tile entities: furnaces + chests ───────────────────── */
@@ -4642,9 +5143,10 @@
         var o = RT.enchOpts && RT.enchOpts[i]; if (!o || !o.ench) return;
         var it = RT.enchItem, lap = RT.enchLapis;
         if (!enchantable(it)) return;
-        if (S.xpl < o.level) { toast('Not a high enough level'); return; }
-        if (!lap || lap.c < o.lapis) { toast('Not enough Lapis Lazuli'); return; }
-        if (S.xpl < o.lapis) { toast('Not enough experience'); return; }   // the slot number is the real level charge
+        // an option you cannot afford is a dead button, not a message
+        if (S.xpl < o.level) return;
+        if (!lap || lap.c < o.lapis) return;
+        if (S.xpl < o.lapis) return;   // the slot number is the real level charge
         takeXpLevels(o.lapis);                       // enchanting costs levels
         lap.c -= o.lapis; if (!lap.c) RT.enchLapis = null;
         if (it.id === 'book') it.id = 'ench_book';
@@ -4692,7 +5194,7 @@
     function enchLevelCost(e) { var c = 0; if (e) for (var k in e) c += e[k]; return c; }
     function applyAnvil() {
         var res = anvilResult(); if (!res) return;
-        if (S.xpl < res.cost) { toast('Not enough experience'); return; }
+        if (S.xpl < res.cost) return;
         takeXpLevels(res.cost);
         var out = res.out; if (RT.anvilName) out.name = RT.anvilName;
         RT.anvilA = null;
@@ -5216,6 +5718,9 @@
         }
         c.setTransform(1, 0, 0, 1, 0, 0);
     }
+
+    function sprPanels(mk) {}
+    function panelLayout() {}
 
     /* ── panels ─────────────────────────────────────────────── */
     function slotGroup(g) {
@@ -7222,10 +7727,13 @@
             furnaceTick(dt);
             genStep();
             meshStep(2);
+            // the HUD's animations run on the game's own 20 Hz tick, and pause with it
+            RT.hudTickT = (RT.hudTickT || 0) + dt;
+            while (RT.hudTickT >= HUD_TICK) { RT.hudTickT -= HUD_TICK; hudTick(false); }
             RT.hudT += dt;
             if (RT.hudT > 0.2) {
                 RT.hudT = 0;
-                paintVitals(); paintXp(); paintDebug(); tipFade(dt); paintChat(); paintEffects();
+                paintXp(); paintDebug(); paintChat(); paintEffects();
                 /* An open panel is only ever repainted by its own click handlers, so
                    anything the SIM changed behind it stayed invisible: a furnace's
                    output, items you walked over, a helmet that shattered mid-fight,
@@ -7248,10 +7756,8 @@
             RT.cv.style.transform = 'translate(' + ((Math.random() - 0.5) * sh) + 'px,' + ((Math.random() - 0.5) * sh) + 'px)';
         } else RT.cv.style.transform = '';
         drawFrame();
+        hudFrame(dt);
         if (RT.av) avatarDraw();   // the figure in the inventory box, turning with the pointer and swaying
-    }
-    function tipFade() {
-        if (RT.tipT > 0) { RT.tipT -= 0.2; if (RT.tipT <= 0) RT.el.querySelector('.mc-tip').className = 'mc-tip'; }
     }
     function bootBar(f) {
         var b = RT.el.querySelector('.mc-bar i');
@@ -7725,6 +8231,193 @@
         return lines.length ? lines : [''];
     }
 
+    /* — the same face as a web font —
+       The menus draw through mfText, but the in-game GUI is DOM: the HUD, the
+       containers, chat, tooltips and the text boxes. So the glyph table above
+       is compiled into a real TrueType font at boot and handed to the browser
+       as a FontFace. Every lit pixel becomes part of a rectangle contour, runs
+       merged across rows, at 128 units to the pixel and 1024 to the em: at a
+       font-size of 8 × the GUI scale, one font pixel is exactly one GUI pixel
+       and every edge falls on a device pixel. Ascent 7 plus descent 2 is the
+       9-pixel line, so a CSS line box of 9 GUI pixels has no half-leading and
+       the baseline never lands between two pixels. */
+    var MF_FAMILY = 'MCUI', MF_FACE = null;
+    function mfRects(gl) {
+        var open = {}, out = [], r, k;
+        for (r = 0; r <= MF_ROWS; r++) {
+            var row = r < MF_ROWS ? (gl.rows[r] || '') : '', runs = {}, x = 0;
+            while (x < row.length) {
+                if (row.charAt(x) !== '#') { x++; continue; }
+                var x0 = x;
+                while (x < row.length && row.charAt(x) === '#') x++;
+                runs[x0 + ',' + x] = [x0, x];
+            }
+            for (k in open) if (!runs[k]) { out.push(open[k]); delete open[k]; }   // the run ended above this row
+            for (k in runs) if (open[k]) open[k].r1 = r; else open[k] = { x0: runs[k][0], x1: runs[k][1], r0: r, r1: r };
+        }
+        return out;
+    }
+    function mfFontBytes() {
+        var f = mfBuild(), P = 128, UPM = 1024, ASC = 7 * P, DSC = 2 * P, i;
+        var chars = Object.keys(f.g).filter(function (c) { return c.length === 1; })
+            .sort(function (a, b) { return a.charCodeAt(0) - b.charCodeAt(0); });
+        var glyphs = [{ adv: 6 * P, rects: [] }];   // .notdef: the unknown glyph's room, no ink
+        var codes = [];
+        chars.forEach(function (ch) {
+            glyphs.push({ adv: (f.g[ch].w + 1) * P, rects: mfRects(f.g[ch]) });
+            codes.push([ch.charCodeAt(0), glyphs.length - 1]);
+        });
+        function Buf() { this.b = []; }
+        Buf.prototype = {
+            u8: function (v) { this.b.push(v & 255); return this; },
+            u16: function (v) { this.b.push((v >> 8) & 255, v & 255); return this; },
+            u32: function (v) { this.b.push((v >>> 24) & 255, (v >>> 16) & 255, (v >>> 8) & 255, v & 255); return this; },
+            pad: function () { while (this.b.length % 4) this.b.push(0); return this; }
+        };
+        // glyf + loca, and the metrics they imply
+        var glyf = new Buf(), loca = [], fx0 = 0, fy0 = 0, fx1 = 0, fy1 = 0, maxPts = 0, maxCtr = 0;
+        var advMax = 0, minLsb = 1e9, minRsb = 1e9, xMaxExt = 0, advSum = 0, advN = 0;
+        for (i = 0; i < glyphs.length; i++) {
+            var g = glyphs[i];
+            loca.push(glyf.b.length);
+            advMax = Math.max(advMax, g.adv);
+            if (g.adv) { advSum += g.adv; advN++; }
+            g.lsb = 0;
+            if (!g.rects.length) continue;
+            var pts = [], x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+            g.rects.forEach(function (rc) {
+                var a = rc.x0 * P, b = rc.x1 * P, top = (7 - rc.r0) * P, bot = (6 - rc.r1) * P;
+                pts.push([a, bot], [a, top], [b, top], [b, bot]);   // clockwise with y up: an outer contour
+                x0 = Math.min(x0, a); x1 = Math.max(x1, b); y0 = Math.min(y0, bot); y1 = Math.max(y1, top);
+            });
+            g.lsb = x0;
+            fx0 = Math.min(fx0, x0); fy0 = Math.min(fy0, y0); fx1 = Math.max(fx1, x1); fy1 = Math.max(fy1, y1);
+            maxPts = Math.max(maxPts, pts.length); maxCtr = Math.max(maxCtr, g.rects.length);
+            minLsb = Math.min(minLsb, x0); minRsb = Math.min(minRsb, g.adv - x1); xMaxExt = Math.max(xMaxExt, x1);
+            glyf.u16(g.rects.length).u16(x0).u16(y0).u16(x1).u16(y1);
+            for (var c = 0; c < g.rects.length; c++) glyf.u16(c * 4 + 3);
+            glyf.u16(0);                                     // no hinting instructions
+            for (var p = 0; p < pts.length; p++) glyf.u8(1); // every point on-curve, both coordinates as int16 deltas
+            var px = 0, py = 0;
+            for (p = 0; p < pts.length; p++) { glyf.u16(pts[p][0] - px); px = pts[p][0]; }
+            for (p = 0; p < pts.length; p++) { glyf.u16(pts[p][1] - py); py = pts[p][1]; }
+            glyf.pad();
+        }
+        loca.push(glyf.b.length);
+        var T = {};
+        var head = new Buf();
+        head.u32(0x00010000).u32(0x00010000).u32(0).u32(0x5F0F3CF5).u16(0x000B).u16(UPM)
+            .u32(0).u32(0).u32(0).u32(0).u16(fx0).u16(fy0).u16(fx1).u16(fy1)
+            .u16(0).u16(8).u16(2).u16(1).u16(0);
+        T.head = head;
+        var hhea = new Buf();
+        hhea.u32(0x00010000).u16(ASC).u16(-DSC).u16(0).u16(advMax).u16(minLsb).u16(minRsb).u16(xMaxExt)
+            .u16(1).u16(0).u16(0).u16(0).u16(0).u16(0).u16(0).u16(0).u16(glyphs.length);
+        T.hhea = hhea;
+        var hmtx = new Buf();
+        glyphs.forEach(function (gg) { hmtx.u16(gg.adv).u16(gg.lsb); });
+        T.hmtx = hmtx;
+        var maxp = new Buf();
+        maxp.u32(0x00010000).u16(glyphs.length).u16(maxPts).u16(maxCtr).u16(0).u16(0).u16(2)
+            .u16(0).u16(0).u16(0).u16(0).u16(0).u16(0).u16(0).u16(0);
+        T.maxp = maxp;
+        var lc = new Buf();
+        loca.forEach(function (o) { lc.u32(o); });
+        T.loca = lc;
+        T.glyf = glyf;
+        var lo = codes[0][0], hi = codes[codes.length - 1][0];
+        var os2 = new Buf();
+        os2.u16(4).u16(Math.round(advSum / advN)).u16(400).u16(5).u16(0)
+            .u16(4 * P).u16(4 * P).u16(0).u16(P).u16(4 * P).u16(4 * P).u16(0).u16(4 * P)
+            .u16(P).u16(3 * P).u16(0);
+        for (i = 0; i < 10; i++) os2.u8(0);                  // panose: no classification
+        os2.u32(0x00000003).u32(0x00000020).u32(0).u32(0);   // Basic Latin, Latin-1, Arrows
+        os2.u8(78).u8(79).u8(78).u8(69);                     // vendor 'NONE'
+        os2.u16(0x00C0).u16(lo).u16(Math.min(hi, 0xFFFF)).u16(ASC).u16(-DSC).u16(0).u16(ASC).u16(DSC)
+            .u32(1).u32(0).u16(5 * P).u16(7 * P).u16(0).u16(32).u16(1);
+        T['OS/2'] = os2;
+        // cmap: one (3,1) format 4 table, a segment per run of consecutive code points
+        var segs = [];
+        codes.forEach(function (cg) {
+            var s = segs[segs.length - 1];
+            if (s && cg[0] === s.end + 1 && cg[1] === s.gid + (cg[0] - s.start)) s.end = cg[0];
+            else segs.push({ start: cg[0], end: cg[0], gid: cg[1] });
+        });
+        segs.push({ start: 0xFFFF, end: 0xFFFF, gid: 0, last: true });
+        var sc = segs.length, lg = Math.floor(Math.log(sc) / Math.LN2), sr = 2 * Math.pow(2, lg);
+        var sub = new Buf();
+        sub.u16(4).u16(16 + sc * 8).u16(0).u16(sc * 2).u16(sr).u16(lg).u16(sc * 2 - sr);
+        segs.forEach(function (s) { sub.u16(s.end); });
+        sub.u16(0);
+        segs.forEach(function (s) { sub.u16(s.start); });
+        segs.forEach(function (s) { sub.u16(s.last ? 1 : (s.gid - s.start) & 0xFFFF); });
+        segs.forEach(function () { sub.u16(0); });
+        var cmap = new Buf();
+        cmap.u16(0).u16(1).u16(3).u16(1).u32(12);
+        cmap.b = cmap.b.concat(sub.b);
+        T.cmap = cmap;
+        var names = [[1, MF_FAMILY], [2, 'Regular'], [3, MF_FAMILY + ' Regular 1.0'], [4, MF_FAMILY + ' Regular'], [5, 'Version 1.0'], [6, MF_FAMILY + '-Regular']];
+        var name = new Buf(), store = new Buf();
+        name.u16(0).u16(names.length).u16(6 + 12 * names.length);
+        names.forEach(function (nm) {
+            name.u16(3).u16(1).u16(0x0409).u16(nm[0]).u16(nm[1].length * 2).u16(store.b.length);
+            for (var j = 0; j < nm[1].length; j++) store.u16(nm[1].charCodeAt(j));
+        });
+        name.b = name.b.concat(store.b);
+        T.name = name;
+        var post = new Buf();
+        post.u32(0x00030000).u32(0).u16(-P).u16(P).u32(0).u32(0).u32(0).u32(0).u32(0);
+        T.post = post;
+        // the sfnt wrapper: a table directory sorted by tag, every table 4-aligned
+        var tags = Object.keys(T).sort(), nt = tags.length, el = Math.floor(Math.log(nt) / Math.LN2);
+        var out = new Buf();
+        out.u32(0x00010000).u16(nt).u16(16 * Math.pow(2, el)).u16(el).u16(nt * 16 - 16 * Math.pow(2, el));
+        function sum(b) { var s = 0; for (var q = 0; q < b.length; q += 4) s = (s + ((b[q] << 24) | ((b[q + 1] || 0) << 16) | ((b[q + 2] || 0) << 8) | (b[q + 3] || 0))) >>> 0; return s; }
+        var off = 12 + nt * 16, body = [], headAt = 0;
+        tags.forEach(function (t) {
+            var b = T[t].b;
+            out.u8(t.charCodeAt(0)).u8(t.charCodeAt(1)).u8(t.charCodeAt(2)).u8(t.charCodeAt(3));
+            out.u32(sum(b)).u32(off).u32(b.length);
+            if (t === 'head') headAt = off;
+            body = body.concat(b);
+            while (body.length % 4) body.push(0);
+            off = 12 + nt * 16 + body.length;
+        });
+        var all = out.b.concat(body), adj = (0xB1B0AFBA - sum(all)) >>> 0;
+        all[headAt + 8] = adj >>> 24; all[headAt + 9] = (adj >>> 16) & 255; all[headAt + 10] = (adj >>> 8) & 255; all[headAt + 11] = adj & 255;
+        return new Uint8Array(all);
+    }
+    /* Registered once per page. The returned promise settles when the face is
+       usable; text drawn before then falls back for a frame and snaps over. */
+    function mfWebFont() {
+        if (MF_FACE) return MF_FACE;
+        try {
+            var face = new FontFace(MF_FAMILY, mfFontBytes().buffer);
+            document.fonts.add(face);
+            MF_FACE = face.load().then(function () { return face; }, function () { return null; });
+        } catch (e) { MF_FACE = Promise.resolve(null); }
+        return MF_FACE;
+    }
+    /* DOM text that looks like mfText. An .mt element keeps its real text (for
+       screen readers, selection and anything that reads textContent) but paints
+       it transparent; its ::after paints the same string in --c and its
+       ::before the shadow in --sc, one GUI pixel down and right. Two separate
+       layers, each through #mccrisp on its own: thresholding them together
+       left the anti-aliased seam where the text overlaps its own shadow as a
+       grey that is neither colour. .ns drops the shadow, for the container
+       labels vanilla draws without one. */
+    function mtSet(el, text, color) {
+        if (!el) return;
+        text = String(text == null ? '' : text);
+        if (el.getAttribute('data-t') !== text) { el.textContent = text; el.setAttribute('data-t', text); }
+        if (color && el._mtc !== color) { el._mtc = color; el.style.setProperty('--c', color); el.style.setProperty('--sc', mfShadow(color)); }
+    }
+    function mtHTML(text, color, cls, attrs) {
+        text = String(text == null ? '' : text);
+        return '<span class="mt' + (cls ? ' ' + cls : '') + '" data-t="' + escHtml(text) + '"' +
+            (color ? ' style="--c:' + color + ';--sc:' + mfShadow(color) + '"' : '') + (attrs || '') + '>' + escHtml(text) + '</span>';
+    }
+
     /* ── GUI scale and the drawing surface ───────────────────
        Vanilla lays the whole interface out on a small virtual screen and
        blits it at an integer multiple, picking the largest multiple that
@@ -7736,6 +8429,21 @@
         var s = 1;
         while (s < GUI_MAXS && (!want || s < want) && w / (s + 1) >= GUI_MINW && h / (s + 1) >= GUI_MINH) s++;
         return s;
+    }
+    /* The in-game GUI is DOM, laid out in the same GUI pixels as the menus: --gs
+       on the root is the scale and the stylesheet sizes everything as a multiple
+       of it. RT.gw × RT.gh is the scaled screen vanilla does its HUD arithmetic
+       on (W/2 - 91, H - 22 ...); hudLayout() turns that into whole device
+       pixels, so nothing ever lands between two of them. */
+    function guiResize() {
+        if (!RT || !RT.el) return;
+        var w = RT.el.clientWidth || 960, h = RT.el.clientHeight || 560;
+        var s = guiScale(w, h, optLoad().guiScale), gw = Math.floor(w / s), gh = Math.floor(h / s);
+        if (s === RT.gs && gw === RT.gw && gh === RT.gh) return;
+        RT.gs = s; RT.gw = gw; RT.gh = gh;
+        RT.el.style.setProperty('--gs', String(s));
+        hudLayout();
+        if (RT.panel) panelLayout();
     }
 
     /* ── the menu ────────────────────────────────────────────
@@ -8180,6 +8888,7 @@
         m.W = Math.floor(cw / m.scale);
         m.H = Math.floor(ch / m.scale);
         m.dirty = true;
+        guiResize();
     }
 
     /* — the DOM shadow layer —
@@ -9453,25 +10162,33 @@
     /* ── skeleton + wiring ──────────────────────────────────── */
     function render() {
         return '<div class="mc" tabindex="0">' +
+            /* The DOM half of the GUI sets its text in the MCUI web font, and the
+               browser anti-aliases every glyph edge — on Windows it smears each one
+               across two pixels at 242 and 93. Rounding the alpha back to 0 or 1
+               recovers the bitmap exactly, so every .mt layer runs through this. */
+            '<svg class="mc-defs" width="0" height="0" aria-hidden="true" focusable="false"><filter id="mccrisp" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">' +
+            '<feComponentTransfer><feFuncA type="discrete" tableValues="0 1"/></feComponentTransfer></filter></svg>' +
             '<canvas class="mc-cv"></canvas>' +
             '<div class="mc-vig"></div>' +
             /* The crosshair lives OUTSIDE .mc-hud. Inside it, .mc-hud's z-index made
                a stacking context and mix-blend-mode:difference had nothing but
                transparent pixels to blend against — so the crosshair was a flat #ddd
                cross, invisible over snow, sand and bright sky. */
-            '<div class="mc-cross"><i></i><i class="v"></i></div>' +
+            '<i class="mc-cross"></i>' +
             '<div class="mc-hud">' +
-            '<div class="mc-armor"></div>' +
-            '<div class="mc-vitals"><div class="mc-hearts"></div><div class="mc-food"></div></div>' +
-            '<div class="mc-air"></div>' +
-            '<div class="mc-tip"></div>' +
-            '<div class="mc-xpbar"><i class="mc-xpfill"></i><span class="mc-xplvl"></span></div>' +
+            '<div class="mc-armor"></div><div class="mc-hearts"></div><div class="mc-food"></div><div class="mc-air"></div>' +
+            '<i class="mc-hbbar"></i>' +
             '<div class="mc-hotbar">' + slotsHTML('inv', 0, 9, 'mc-hb') + '</div>' +
+            '<i class="mc-hbsel"></i>' +
+            '<div class="mc-xpbar"><i class="mc-xpfill"></i></div><i class="mc-xplvl"></i>' +
+            '<span class="mc-tip mt"></span><span class="mc-actbar mt"></span>' +
             '</div>' +
             '<div class="mc-effects" style="display:none"></div>' +
             '<div class="mc-chat"><div class="mc-chatlog"></div>' +
-              '<div class="mc-sug" style="display:none"><div class="mc-sugu"></div><div class="mc-sugl"></div></div>' +
+              '<div class="mc-sug" style="display:none"><div class="mc-sugu"><span class="mt"></span></div><div class="mc-sugl"></div></div>' +
+              '<i class="mc-chatbar"></i>' +
               '<input class="mc-chatin" maxlength="256" spellcheck="false" autocomplete="off">' +
+              '<div class="mc-chatmir"></div>' +
               '<div class="mc-chattab"></div></div>' +
             '<div class="mc-toasts"></div>' +
             '<div class="mc-panelwrap" style="display:none"></div>' +
@@ -10205,26 +10922,131 @@
         }
     }
 
-    /* ── the chat overlay ────────────────────────────────── */
+    /* ── the chat overlay ────────────────────────────────────
+       ChatComponent, measured. Lines are nine GUI pixels; the newest sits with
+       its bottom at H - 40 and its text four pixels in; each carries a black
+       backdrop 332 wide at half the text's alpha (the default text background
+       opacity). Closed, the last ten lines show, each fully opaque for nine
+       seconds and fading over the tenth on a squared curve; open, the last
+       twenty show at full strength and the wheel scrolls back through the rest.
+       Messages wrap at 320. */
+    var CHAT_W = 320;
+    function chatSegs(m) {   // a message as coloured runs: the syntax-error context line is three
+        if (m.u == null) return [{ t: m.t, c: m.c === 'err' ? '#ff5555' : m.c === 'dim' || m.c === 'mc-ctx' ? '#aaaaaa' : '#ffffff' }];
+        return [{ t: m.t, c: '#aaaaaa' }, { t: m.u, c: '#ff5555', ul: 1 }, { t: '<--[HERE]', c: '#ff5555', it: 1 }];
+    }
+    function chatWrapped() {   // every message, split to the chat's width, oldest first
+        var log = RT.chatLog || [], out = [];
+        for (var i = 0; i < log.length; i++) {
+            var m = log[i], segs = chatSegs(m);
+            if (segs.length === 1) {
+                var parts = mfWrap(segs[0].t, CHAT_W);
+                for (var p = 0; p < parts.length; p++) out.push({ m: m, segs: [{ t: parts[p], c: segs[0].c }], key: i + ':' + p });
+            } else out.push({ m: m, segs: segs, key: i + ':0' });
+        }
+        return out;
+    }
+    function chatFade(age) {   // ChatComponent.getTimeFactor, in seconds
+        var d = (1 - age / CHAT_FADE) * 10;
+        d = Math.max(0, Math.min(1, d));
+        return d * d;
+    }
     function paintChat() {
-        if (!RT || !RT.el) return;
+        if (!RT || !RT.el || !RT.gs) return;
         var wrap = RT.el.querySelector('.mc-chat');
         if (!wrap) return;
-        var log = RT.chatLog || [];
-        var open = !!RT.chat;
-        // closed chat shows only the recent lines, and fades them out
-        var now = RT.now || 0;
-        var vis = open ? log.slice(-18) : log.filter(function (m) { return now - m.at < CHAT_FADE; }).slice(-10);
-        wrap.querySelector('.mc-chatlog').innerHTML = vis.map(function (m) {
-            var age = now - m.at;
-            var op = (!open && age > CHAT_FADE - 1.5) ? (CHAT_FADE - age) / 1.5 : 1;
-            return '<div class="mc-cline' + (m.c ? ' ' + m.c : '') + '"' +
-                   (op < 1 ? ' style="opacity:' + op.toFixed(2) + '"' : '') + '>' + escHtml(m.t) +
-                   (m.u != null ? '<span class="mc-cu">' + escHtml(m.u) + '</span><span class="mc-chere">&lt;--[HERE]</span>' : '') + '</div>';
-        }).join('');
+        var open = !!RT.chat, now = RT.now || 0, lines = chatWrapped(), max = open ? 20 : 10;
+        if (!open) RT.chatScroll = 0;
+        var scroll = Math.max(0, Math.min(RT.chatScroll || 0, Math.max(0, lines.length - max)));
+        RT.chatScroll = scroll;
+        var vis = [];
+        for (var j = 0; j < max; j++) {
+            var L = lines[lines.length - 1 - scroll - j];
+            if (!L) break;
+            if (!open && now - L.m.at >= CHAT_FADE) break;
+            vis.push(L);
+        }
+        var log = wrap.querySelector('.mc-chatlog'), sig = open + '|' + RT.gh + '|' + vis.map(function (l) { return l.key; }).join(',');
+        if (log._sig !== sig) {
+            log._sig = sig;
+            log.innerHTML = vis.map(function (L, j) { return [L, j]; }).reverse().map(function (Lj) {
+                var L = Lj[0], j = Lj[1];
+                var html = '', x = 4;
+                L.segs.forEach(function (s) {
+                    html += '<span class="mc-cseg' + (s.ul ? ' mc-cu' : s.it ? ' mc-chere' : '') + '" style="left:calc(var(--px) * ' + x + ')">' + mtHTML(s.t, s.c, (s.ul ? 'ul' : '') + (s.it ? ' it' : '')) + '</span>';
+                    x += mfWidth(s.t) + 1;
+                });
+                return '<div class="mc-cline' + (L.m.c ? ' ' + L.m.c : '') + '" data-k="' + L.key + '" style="top:calc(var(--px) * ' + (RT.gh - 40 - (j + 1) * 9) + ')">' + html + '</div>';
+            }).join('');
+        }
         wrap.classList.toggle('open', open);
-        var lg = wrap.querySelector('.mc-chatlog');
-        lg.scrollTop = lg.scrollHeight;
+        chatAlpha();
+    }
+    function chatAlpha() {   // per frame: only lines in their last second actually change
+        var log = RT.el.querySelector('.mc-chatlog'), open = !!RT.chat, now = RT.now || 0;
+        if (!log || !log.children.length) return;
+        var byKey = {}, lines = chatWrapped();
+        for (var i = 0; i < lines.length; i++) byKey[lines[i].key] = lines[i];
+        for (var k = 0; k < log.children.length; k++) {
+            var el = log.children[k], L = byKey[el.getAttribute('data-k')];
+            var d = open || !L ? 1 : chatFade(now - L.m.at), a = Math.floor(255 * d);
+            var op = a > 3 ? (a / 255).toFixed(3) : '0';
+            if (el._op !== op) { el._op = op; el.style.setProperty('--ca', op); }
+        }
+    }
+    /* The open chat line: a black bar at half alpha across the bottom, the text
+       at (4, H - 10) in 0xE0E0E0 with commands coloured the way
+       CommandSuggestions formats them — the command name and literals grey,
+       arguments cycling aqua, yellow, green, light purple, gold, anything that
+       does not parse red — and the EditBox cursor blinking every 300 ms: an
+       underscore at the end of the text, a bar inside it. */
+    var CMD_ARGC = ['#55ffff', '#ffff55', '#55ff55', '#ff55ff', '#ffaa00'];
+    function chatInputSegs(v) {
+        if (v.charAt(0) !== '/') return [{ t: v, c: '#e0e0e0' }];
+        var out = [{ t: '/', c: '#e0e0e0' }], toks = v.slice(1).split(/( )/), cmd = null, ai = 0, lits = {};
+        for (var i = 0; i < toks.length; i++) {
+            var t = toks[i];
+            if (t === ' ' || t === '') { if (t) out.push({ t: t, c: '#aaaaaa' }); continue; }
+            if (!cmd) {
+                cmd = CMDS[stripNs(t).toLowerCase()];
+                var known = cmd && cmdAllowed(cmd);
+                if (known && cmd.usage) String(cmd.usage).replace(/[<\[][^>\]]*[>\]]/g, ' ').split(/\s+/).forEach(function (w) { if (w && w.charAt(0) !== '/') lits[w] = 1; });
+                out.push({ t: t, c: known ? '#aaaaaa' : '#ff5555' });
+                if (!known) { out.push({ t: toks.slice(i + 1).join(''), c: '#ff5555' }); break; }
+                continue;
+            }
+            if (lits[t]) out.push({ t: t, c: '#aaaaaa' });
+            else { out.push({ t: t, c: CMD_ARGC[ai % CMD_ARGC.length] }); ai++; }
+        }
+        return out;
+    }
+    function paintChatInput() {
+        var mir = RT.el.querySelector('.mc-chatmir'), inp = RT.el.querySelector('.mc-chatin');
+        if (!mir || !inp || !RT.chat) return;
+        var v = inp.value, segs = chatInputSegs(v), room = RT.gw - 8;
+        // like the EditBox, keep the cursor in view: past the box's width, show the tail
+        var caret = inp.selectionStart == null ? v.length : inp.selectionStart, skip = 0;
+        while (skip < caret && mfWidth(v.slice(skip, caret)) > room - 6) skip++;
+        var html = '', x = 0, at = 0;
+        segs.forEach(function (s) {
+            var t = s.t, a0 = at, a1 = at + t.length;
+            at = a1;
+            if (a1 <= skip) return;
+            if (a0 < skip) t = t.slice(skip - a0);
+            html += '<span class="mc-cseg" style="left:calc(var(--px) * ' + x + ')">' + mtHTML(t, s.c) + '</span>';
+            x += mfWidth(t) + 1;
+        });
+        var cx = caret > skip ? mfWidth(v.slice(skip, caret)) + 1 : 0, blinkOn = (((performance.now() - (RT.chat.focusT || 0)) / 300) | 0) % 2 === 0;
+        if (blinkOn) html += caret < v.length ? '<i class="mc-cbar" style="left:calc(var(--px) * ' + (cx - 1) + ')"></i>'
+                                            : '<span class="mc-cseg" style="left:calc(var(--px) * ' + cx + ')">' + mtHTML('_', '#e0e0e0') + '</span>';
+        if (mir._html !== html) { mir._html = html; mir.innerHTML = html; }
+    }
+    function chatLayout() {
+        var el = RT.el, W = RT.gw, H = RT.gh;
+        var bar = el.querySelector('.mc-chatbar'), inp = el.querySelector('.mc-chatin'), mir = el.querySelector('.mc-chatmir');
+        if (bar) { hudPlace(bar, 2, H - 14); bar.style.width = 'calc(var(--px) * ' + (W - 4) + ')'; }
+        if (inp) { hudPlace(inp, 4, H - 12); inp.style.width = 'calc(var(--px) * ' + (W - 8) + ')'; }
+        if (mir) hudPlace(mir, 4, H - 10);
     }
     function escHtml(s) {
         return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -10236,6 +11058,7 @@
         RT.chat = { hist: RT.chatHist || [], hi: -1, draft: '', relock: !!document.pointerLockElement,
                     hits: [], si: -1, sstart: 0, usage: '', applied: false };
         RT.chatHist = RT.chat.hist;
+        RT.chat.focusT = performance.now();
         RT.keys = {};                      // a held W must not keep walking while you type
         if (RT.mouse) RT.mouse.l = RT.mouse.r = false;   // nor a held button keep mining
         RT.digT = 0;
@@ -10251,6 +11074,7 @@
         inp.focus();
         inp.setSelectionRange(inp.value.length, inp.value.length);
         refreshSug(false);          // typing "/" should already be offering commands
+        chatLayout(); paintChatInput();
     }
     function closeChat(relock) {
         if (!RT || !RT.chat) return;
@@ -10347,36 +11171,45 @@
         if (!keepSel || RT.chat.si >= RT.chat.hits.length) RT.chat.si = RT.chat.hits.length ? 0 : -1;
         paintSug();
     }
+    /* CommandSuggestions: the list sits right above the input, its bottom three
+       pixels over it, starting under the token being completed. Rows are 12
+       pixels on 0xD0000000; the text starts a pixel in, yellow for the
+       selected entry and 0xAAAAAA for the rest; at most ten show, with a dotted
+       edge when there are more. With nothing to offer it shows the command's
+       usage instead, one line on the same black. */
+    var SUG_ROWS = 10;
     function paintSug() {
         var box = RT.el.querySelector('.mc-sug');
         if (!box) return;
-        var c = RT.chat;
-        if (!c || (!c.hits.length && !c.usage)) { box.style.display = 'none'; box.querySelector('.mc-sugl').innerHTML = ''; return; }
-        var inp = RT.el.querySelector('.mc-chatin');
+        var c = RT.chat, usage = box.querySelector('.mc-sugu'), list = box.querySelector('.mc-sugl');
+        if (!c || (!c.hits.length && !c.usage)) { box.style.display = 'none'; list.innerHTML = ''; mtSet(usage.firstChild, ''); return; }
         box.style.display = '';
-        box.querySelector('.mc-sugu').textContent = c.usage || '';
-        // keep the highlighted entry inside the window when the list is long
-        var MAXS = 12, off = 0;
-        if (c.si >= MAXS) off = c.si - MAXS + 1;
-        if (off > c.hits.length - MAXS) off = Math.max(0, c.hits.length - MAXS);
-        box.querySelector('.mc-sugl').innerHTML = c.hits.slice(off, off + MAXS).map(function (h, i) {
-            var idx = off + i;
-            return '<div class="mc-sugi' + (idx === c.si ? ' on' : '') + '" data-si="' + idx + '">' + escHtml(h) + '</div>';
-        }).join('');
-        // line the box up with the token it is completing, but never off the left
-        var pad = parseFloat(getComputedStyle(inp).paddingLeft) || 0;
-        var x = pad + textWidth(inp.value.slice(0, c.sstart), inp);
-        box.style.left = Math.max(0, Math.round(x) - 4) + 'px';
-        // The list scrolls, and replacing its innerHTML above just reset scrollTop
-        // to 0. Walk the highlight back into view or Tab runs off the bottom of a
-        // box that still looks like it is showing the first entry.
-        var onRow = box.querySelector('.mc-sugi.on');
-        if (onRow) {
-            var list = box.querySelector('.mc-sugl');
-            var top = onRow.offsetTop, bot = top + onRow.offsetHeight;
-            if (bot > list.clientHeight) list.scrollTop = bot - list.clientHeight;
-            else if (top < list.scrollTop) list.scrollTop = top;
+        var inp = RT.el.querySelector('.mc-chatin'), pre = inp.value.slice(0, c.sstart);
+        var x = 4 + (pre ? mfWidth(pre) + 1 : 0), H = RT.gh;
+        mtSet(usage.firstChild, c.usage || '', '#aaaaaa');
+        usage.style.display = c.hits.length ? 'none' : '';
+        if (!c.hits.length) {
+            var uw = mfWidth(c.usage || '') + 1;
+            hudPlace(usage, x - 1, H - 27);
+            usage.style.width = 'calc(var(--px) * ' + (uw + 2) + ')';
+            list.innerHTML = '';
+            return;
         }
+        var off = 0;
+        if (c.si >= SUG_ROWS) off = c.si - SUG_ROWS + 1;
+        if (off > c.hits.length - SUG_ROWS) off = Math.max(0, c.hits.length - SUG_ROWS);
+        var rows = c.hits.slice(off, off + SUG_ROWS), wmax = 0;
+        rows.forEach(function (h) { wmax = Math.max(wmax, mfWidth(h) + 1); });
+        var y = H - 15 - rows.length * 12;
+        list.innerHTML = rows.map(function (h, i) {
+            var idx = off + i;
+            return '<div class="mc-sugi' + (idx === c.si ? ' on' : '') + '" data-si="' + idx + '" style="top:calc(var(--px) * ' + (i * 12) + ')">' +
+                mtHTML(h, idx === c.si ? '#ffff00' : '#aaaaaa') + '</div>';
+        }).join('') + (off > 0 ? '<i class="mc-sugdots" style="top:0"></i>' : '') +
+            (off + SUG_ROWS < c.hits.length ? '<i class="mc-sugdots" style="top:calc(var(--px) * ' + (rows.length * 12 - 1) + ')"></i>' : '');
+        hudPlace(list, x - 1, y);
+        list.style.width = 'calc(var(--px) * ' + (wmax + 1) + ')';
+        list.style.height = 'calc(var(--px) * ' + (rows.length * 12) + ')';
     }
     /* Write candidate `i` over the token being completed.
        `freeze` keeps the candidate list exactly as it stands. That matters while
@@ -10449,20 +11282,35 @@
         }
         return p.length >= from ? p : list[0].slice(0, from);
     }
-    /* ── active-effect HUD ───────────────────────────────── */
+    /* ── active-effect HUD ─────────────────────────────────
+       Gui.renderEffects: a 24×24 frame per effect in the top-right corner,
+       beneficial ones along the top (y = 1) and harmful ones on a row below
+       (y = 27), each 25 pixels left of the last. The 18×18 icon sits three in
+       and, in the last ten seconds, pulses on the game's formula. Names and
+       times are not on the HUD at all; they are the inventory screen's. */
+    var EFF_BAD = { slowness: 1, mining_fatigue: 1, instant_damage: 1, weakness: 1, poison: 1, wither: 1, hunger: 1, nausea: 1, blindness: 1, levitation: 1, darkness: 1 };
     function paintEffects() {
-        if (!RT || !RT.el) return;
+        if (!RT || !RT.el || !RT.gs) return;
         var box = RT.el.querySelector('.mc-effects');
         if (!box) return;
-        var ids = Object.keys(S.eff || {});
-        box.innerHTML = ids.map(function (id) {
-            var e = S.eff[id], d = EFFECTS[id];
-            if (!d) return '';
-            var t = e.t >= 1e8 ? '∞' : fmtTimeLeft(e.t);
-            return '<div class="mc-eff"><i style="background:' + d.c + '"></i>' +
-                   '<b>' + escHtml(d.t) + (e.amp ? ' ' + roman(e.amp + 1) : '') + '</b><span>' + t + '</span></div>';
-        }).join('');
-        box.style.display = ids.length ? '' : 'none';
+        var ids = Object.keys(S.eff || {}).filter(function (id) { return EFFECTS[id] && !EFFECTS[id].instant; });
+        box.style.display = ids.length && !RT.panel ? '' : 'none';
+        var kids = hudIcons(box, ids.length), good = 0, bad = 0;
+        ids.sort().reverse();
+        for (var i = 0; i < ids.length; i++) {
+            var id = ids[i], e = S.eff[id], neg = !!EFF_BAD[id], n = neg ? ++bad : ++good;
+            var el = kids[i];
+            if (!el.firstChild) el.innerHTML = '<b></b>';
+            el.className = 'mc-eff' + (e.amb ? ' amb' : '');
+            el.firstChild.style.backgroundImage = 'var(--spr-eff_' + id + ')';
+            hudPlace(el, RT.gw - 25 * n, neg ? 27 : 1);
+            var f = 1, tk = e.t * 20;
+            if (!e.amb && tk <= 200 && e.t < 1e8) {
+                var j1 = 10 - tk / 20;
+                f = Math.max(0, Math.min(0.5, tk / 10 / 5 * 0.5)) + Math.cos(tk * Math.PI / 5) * Math.max(0, Math.min(0.25, j1 / 10 * 0.25));
+            }
+            el.firstChild.style.opacity = f.toFixed(3);
+        }
     }
     function fmtTimeLeft(s) {
         s = Math.max(0, Math.ceil(s));
@@ -10493,6 +11341,8 @@
         normalizeCmdState();
         buildAtlas();
         texInit();
+        mfWebFont();
+        guiSprites();
         if (!document.getElementById('mc-atlas-css')) {   // HUD icons sample the atlas via CSS
             var st = document.createElement('style');
             st.id = 'mc-atlas-css';
@@ -10518,7 +11368,8 @@
             hover: null,                                                             // the panel slot under the pointer
             paused: false, dead: S.hp <= 0, ready: false, lit: false, expectUnlock: false,
             worldMs: 0, playT: 0, baseHrs: S.hrs || 0, lastT: 0, secT: 0, hudT: 0, saveT: 0,
-            fps: 0, fpsN: 0, fpsT: 0, f3: false, musT: 25, tipT: 0, tipId: null, devFree: !!devModes, raf: 0, timers: [],
+            fps: 0, fpsN: 0, fpsT: 0, f3: false, musT: 25, tipTk: 0, tipKey: null, devFree: !!devModes, raf: 0, timers: [],
+            gs: 0, gw: 0, gh: 0, hudTk: 0, hudTickT: 0, pops: [0, 0, 0, 0, 0, 0, 0, 0, 0],
             built: false, ver: launched || '26.2', inst: (opts && opts.installation) || null
         };
         buildSkyGeo(G);
@@ -10547,7 +11398,8 @@
         }
         ensureChunks();
         sizeCanvas();
-        RT.ro = new ResizeObserver(function () { sizeCanvas(); if (RT && RT.menu) mnSize(RT.menu); });
+        guiResize();
+        RT.ro = new ResizeObserver(function () { sizeCanvas(); guiResize(); if (RT && RT.menu) mnSize(RT.menu); });
         RT.ro.observe(root);
         if (!devModes) mnOpen('loading');
         wireInput(root, cv);
@@ -10779,7 +11631,9 @@
         root.addEventListener('wheel', function (e) {
             // over the creative catalogue the wheel scrolls the list, not the hotbar
             if (RT.panel && RT.panel.kind === 'creative') { creativeScroll(e.deltaY > 0 ? 1 : -1); e.preventDefault(); return; }
-            if (RT.panel || RT.paused || RT.chat) return;
+            // open chat: the wheel walks back through what scrolled off, a line a notch
+            if (RT.chat) { RT.chatScroll = Math.max(0, (RT.chatScroll || 0) + (e.deltaY < 0 ? 1 : -1)); paintChat(); e.preventDefault(); return; }
+            if (RT.panel || RT.paused) return;
             S.sel = ((S.sel + (e.deltaY > 0 ? 1 : -1)) % 9 + 9) % 9;
             paintHotbar();
             e.preventDefault();
@@ -11101,7 +11955,7 @@
         // the font specimen in .claude/comp-tools/mc-menu.html measures these
         // read-only introspection for .claude/comp-tools: the harnesses DRIVE the
         // real controls and only ever use this to see what happened afterwards
-        __proof: { text: mfText, adv: mfAdvance, width: mfWidth, logo: mnLogo,
+        __proof: { text: mfText, adv: mfAdvance, width: mfWidth, logo: mnLogo, webfont: mfWebFont, ttf: mfFontBytes, family: MF_FAMILY,
             probe: function (x, y, z) { return getB(x, y, z); },
             save: function () { return S ? { seed: S.seed, wtype: S.wtype, py: S.py, gm: S.gm, diff: S.diff, wid: S.wid, cheats: S.cheats } : null; },
             menu: function () {
