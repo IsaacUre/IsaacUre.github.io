@@ -2399,7 +2399,8 @@ function crLink(url, label, cls) { return '<button class="cr-l ' + (cls || '') +
 
 /* ═════════════════════ the fake web ═════════════════════ */
 var WEB = {};
-function webPage(host, def) { def.host = host; WEB[host] = def; return def; }
+var WEB_CLAIMS = [];                             // [pattern, key]: a page that also owns addresses beyond its exact key
+function webPage(host, def) { def.host = host; WEB[host] = def; if (def.claim) WEB_CLAIMS.push([def.claim, host]); return def; }
 
 /* — Google New Tab — */
 webPage('chrome://newtab', {
@@ -2880,28 +2881,653 @@ webPage('isaacure.com/comp', {
     }
 });
 
-/* — GitHub — */
-webPage('github.com/IsaacUre', {
-    title: 'IsaacUre — GitHub', fav: { ch: 'G', c: '#24292f' }, searchable: true,
-    stitle: 'IsaacUre (Isaac Ure) · GitHub', sdesc: 'Rice ’29. One repo that keeps growing rooms. Commit messages in “Area: what and why” or else.', skey: 'github repo code commits',
-    render: function () {
-        var cells = '';
-        for (var w = 0; w < 52; w++) for (var d = 0; d < 7; d++) {
-            var v = (w * 7 + d) % 13 === 0 ? 4 : ((w + d * 3) % 11 === 0 ? 3 : ((w * d) % 7 === 0 ? 2 : ((w + d) % 5 === 0 ? 1 : 0)));
-            if (w > 44) v = Math.min(4, v + 2);                       // the /comp/ sprint is visible from space
-            cells += '<i class="g' + v + '"></i>';
+/* — GitHub: IsaacUre's real public profile —
+   A copy of github.com/IsaacUre as a logged-out visitor sees it, filled in
+   live from GitHub's public REST API in the visitor's own browser. No token
+   ships in this file and fetch() sends no cookies cross-origin, so only public
+   data can ever arrive; private repositories are impossible to show, and the
+   repo list is filtered to public ones anyway.
+   What the REST API has no endpoint for comes from elsewhere:
+   - the contribution calendar: github-contributions-api.jogruber.de, a free
+     mirror of the calendar github.com itself renders (CORS, no key, and it
+     spends none of the visitor's GitHub quota). If it does not answer, the
+     calendar is rebuilt from the REST API: IsaacUre's commits on each public
+     repo's default branch, plus every pull request he opened, dated in his
+     time zone, plus one for creating each repository. On 2026-09-24 that
+     rebuild matched GitHub's own calendar on every single day (345
+     contributions, 38 active days, busiest 37).
+   - achievements and star lists: no API at all, so those are the saved copy.
+   Anonymous callers get 60 requests an hour per IP, so everything live is
+   kept per visitor for 15 minutes (never in incognito), requests stop the
+   moment GitHub reports the limit, and when GitHub does not answer the page
+   draws the saved copy below and says so at the bottom.
+   Icons are Octicons (MIT License, Copyright (c) 2026 GitHub Inc.). The
+   Octocat mark and GitHub's achievement artwork are deliberately not
+   reproduced: the header has a wordmark and the badges are plain medallions. */
+var GHP_USER = 'IsaacUre';
+var GHP_API = 'https://api.github.com';
+var GHP_CALAPI = 'https://github-contributions-api.jogruber.de/v4/';
+var GHP_TZ = 'America/Chicago';          // GitHub dates his commits and PRs in it (checked day by day against the live calendar)
+var GHP_TTL = 15 * 60 * 1000;
+var GHP_OCT = {"book":[16,"M0 1.75A.75.75 0 0 1 .75 1h4.253c1.227 0 2.317.59 3 1.501A3.743 3.743 0 0 1 11.006 1h4.245a.75.75 0 0 1 .75.75v10.5a.75.75 0 0 1-.75.75h-4.507a2.25 2.25 0 0 0-1.591.659l-.622.621a.75.75 0 0 1-1.06 0l-.622-.621A2.25 2.25 0 0 0 5.258 13H.75a.75.75 0 0 1-.75-.75Zm7.251 10.324.004-5.073-.002-2.253A2.25 2.25 0 0 0 5.003 2.5H1.5v9h3.757a3.75 3.75 0 0 1 1.994.574ZM8.755 4.75l-.004 7.322a3.752 3.752 0 0 1 1.992-.572H14.5v-9h-3.495a2.25 2.25 0 0 0-2.25 2.25Z"],"repo":[16,"M2 2.5A2.5 2.5 0 0 1 4.5 0h8.75a.75.75 0 0 1 .75.75v12.5a.75.75 0 0 1-.75.75h-2.5a.75.75 0 0 1 0-1.5h1.75v-2h-8a1 1 0 0 0-.714 1.7.75.75 0 1 1-1.072 1.05A2.495 2.495 0 0 1 2 11.5Zm10.5-1h-8a1 1 0 0 0-1 1v6.708A2.486 2.486 0 0 1 4.5 9h8ZM5 12.25a.25.25 0 0 1 .25-.25h3.5a.25.25 0 0 1 .25.25v3.25a.25.25 0 0 1-.4.2l-1.45-1.087a.249.249 0 0 0-.3 0L5.4 15.7a.25.25 0 0 1-.4-.2Z"],"table":[16,"M0 1.75C0 .784.784 0 1.75 0h12.5C15.216 0 16 .784 16 1.75v12.5A1.75 1.75 0 0 1 14.25 16H1.75A1.75 1.75 0 0 1 0 14.25ZM6.5 6.5v8h7.75a.25.25 0 0 0 .25-.25V6.5Zm8-1.5V1.75a.25.25 0 0 0-.25-.25H6.5V5Zm-13 1.5v7.75c0 .138.112.25.25.25H5v-8ZM5 5V1.5H1.75a.25.25 0 0 0-.25.25V5Z"],"package":[16,"m8.878.392 5.25 3.045c.54.314.872.89.872 1.514v6.098a1.75 1.75 0 0 1-.872 1.514l-5.25 3.045a1.75 1.75 0 0 1-1.756 0l-5.25-3.045A1.75 1.75 0 0 1 1 11.049V4.951c0-.624.332-1.201.872-1.514L7.122.392a1.75 1.75 0 0 1 1.756 0ZM7.875 1.69l-4.63 2.685L8 7.133l4.755-2.758-4.63-2.685a.248.248 0 0 0-.25 0ZM2.5 5.677v5.372c0 .09.047.171.125.216l4.625 2.683V8.432Zm6.25 8.271 4.625-2.683a.25.25 0 0 0 .125-.216V5.677L8.75 8.432Z"],"star":[16,"M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.751.751 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Zm0 2.445L6.615 5.5a.75.75 0 0 1-.564.41l-3.097.45 2.24 2.184a.75.75 0 0 1 .216.664l-.528 3.084 2.769-1.456a.75.75 0 0 1 .698 0l2.77 1.456-.53-3.084a.75.75 0 0 1 .216-.664l2.24-2.183-3.096-.45a.75.75 0 0 1-.564-.41L8 2.694Z"],"people":[16,"M2 5.5a3.5 3.5 0 1 1 5.898 2.549 5.508 5.508 0 0 1 3.034 4.084.75.75 0 1 1-1.482.235 4 4 0 0 0-7.9 0 .75.75 0 0 1-1.482-.236A5.507 5.507 0 0 1 3.102 8.05 3.493 3.493 0 0 1 2 5.5ZM11 4a3.001 3.001 0 0 1 2.22 5.018 5.01 5.01 0 0 1 2.56 3.012.749.749 0 0 1-.885.954.752.752 0 0 1-.549-.514 3.507 3.507 0 0 0-2.522-2.372.75.75 0 0 1-.574-.73v-.352a.75.75 0 0 1 .416-.672A1.5 1.5 0 0 0 11 5.5.75.75 0 0 1 11 4Zm-5.5-.5a2 2 0 1 0-.001 3.999A2 2 0 0 0 5.5 3.5Z"],"repo-forked":[16,"M5 5.372v.878c0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75v-.878a2.25 2.25 0 1 1 1.5 0v.878a2.25 2.25 0 0 1-2.25 2.25h-1.5v2.128a2.251 2.251 0 1 1-1.5 0V8.5h-1.5A2.25 2.25 0 0 1 3.5 6.25v-.878a2.25 2.25 0 1 1 1.5 0ZM5 3.25a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Zm6.75.75a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm-3 8.75a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Z"],"location":[16,"m12.596 11.596-3.535 3.536a1.5 1.5 0 0 1-2.122 0l-3.535-3.536a6.5 6.5 0 1 1 9.192-9.193 6.5 6.5 0 0 1 0 9.193Zm-1.06-8.132v-.001a5 5 0 1 0-7.072 7.072L8 14.07l3.536-3.534a5 5 0 0 0 0-7.072ZM8 9a2 2 0 1 1-.001-3.999A2 2 0 0 1 8 9Z"],"link":[16,"m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"],"organization":[16,"M1.75 16A1.75 1.75 0 0 1 0 14.25V1.75C0 .784.784 0 1.75 0h8.5C11.216 0 12 .784 12 1.75v12.5c0 .085-.006.168-.018.25h2.268a.25.25 0 0 0 .25-.25V8.285a.25.25 0 0 0-.111-.208l-1.055-.703a.749.749 0 1 1 .832-1.248l1.055.703c.487.325.779.871.779 1.456v5.965A1.75 1.75 0 0 1 14.25 16h-3.5a.766.766 0 0 1-.197-.026c-.099.017-.2.026-.303.026h-3a.75.75 0 0 1-.75-.75V14h-1v1.25a.75.75 0 0 1-.75.75Zm-.25-1.75c0 .138.112.25.25.25H4v-1.25a.75.75 0 0 1 .75-.75h2.5a.75.75 0 0 1 .75.75v1.25h2.25a.25.25 0 0 0 .25-.25V1.75a.25.25 0 0 0-.25-.25h-8.5a.25.25 0 0 0-.25.25ZM3.75 6h.5a.75.75 0 0 1 0 1.5h-.5a.75.75 0 0 1 0-1.5ZM3 3.75A.75.75 0 0 1 3.75 3h.5a.75.75 0 0 1 0 1.5h-.5A.75.75 0 0 1 3 3.75Zm4 3A.75.75 0 0 1 7.75 6h.5a.75.75 0 0 1 0 1.5h-.5A.75.75 0 0 1 7 6.75ZM7.75 3h.5a.75.75 0 0 1 0 1.5h-.5a.75.75 0 0 1 0-1.5ZM3 9.75A.75.75 0 0 1 3.75 9h.5a.75.75 0 0 1 0 1.5h-.5A.75.75 0 0 1 3 9.75ZM7.75 9h.5a.75.75 0 0 1 0 1.5h-.5a.75.75 0 0 1 0-1.5Z"],"git-pull-request":[16,"M1.5 3.25a2.25 2.25 0 1 1 3 2.122v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 1.5 3.25Zm5.677-.177L9.573.677A.25.25 0 0 1 10 .854V2.5h1A2.5 2.5 0 0 1 13.5 5v5.628a2.251 2.251 0 1 1-1.5 0V5a1 1 0 0 0-1-1h-1v1.646a.25.25 0 0 1-.427.177L7.177 3.427a.25.25 0 0 1 0-.354ZM3.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm8.25.75a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Z"],"repo-push":[16,"M2 2.5A2.5 2.5 0 0 1 4.5 0h8.75a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0V1.5h-8a1 1 0 0 0-1 1v6.708A2.493 2.493 0 0 1 4.5 9h2.25a.75.75 0 0 1 0 1.5H4.5a1 1 0 0 0 0 2h4.75a.75.75 0 0 1 0 1.5H4.5A2.5 2.5 0 0 1 2 11.5Zm12.23 7.79h-.001l-1.224-1.224v6.184a.75.75 0 0 1-1.5 0V9.066L10.28 10.29a.75.75 0 0 1-1.06-1.061l2.505-2.504a.75.75 0 0 1 1.06 0L15.29 9.23a.751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018Z"],"three-bars":[16,"M1 2.75A.75.75 0 0 1 1.75 2h12.5a.75.75 0 0 1 0 1.5H1.75A.75.75 0 0 1 1 2.75Zm0 5A.75.75 0 0 1 1.75 7h12.5a.75.75 0 0 1 0 1.5H1.75A.75.75 0 0 1 1 7.75ZM1.75 12h12.5a.75.75 0 0 1 0 1.5H1.75a.75.75 0 0 1 0-1.5Z"],"search":[16,"M10.68 11.74a6 6 0 0 1-7.922-8.982 6 6 0 0 1 8.982 7.922l3.04 3.04a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215ZM11.5 7a4.499 4.499 0 1 0-8.997 0A4.499 4.499 0 0 0 11.5 7Z"],"triangle-down":[16,"m4.427 7.427 3.396 3.396a.25.25 0 0 0 .354 0l3.396-3.396A.25.25 0 0 0 11.396 7H4.604a.25.25 0 0 0-.177.427Z"],"law":[16,"M8.75.75V2h.985c.304 0 .603.08.867.231l1.29.736c.038.022.08.033.124.033h2.234a.75.75 0 0 1 0 1.5h-.427l2.111 4.692a.75.75 0 0 1-.154.838l-.53-.53.529.531-.001.002-.002.002-.006.006-.006.005-.01.01-.045.04c-.21.176-.441.327-.686.45C14.556 10.78 13.88 11 13 11a4.498 4.498 0 0 1-2.023-.454 3.544 3.544 0 0 1-.686-.45l-.045-.04-.016-.015-.006-.006-.004-.004v-.001a.75.75 0 0 1-.154-.838L12.178 4.5h-.162c-.305 0-.604-.079-.868-.231l-1.29-.736a.245.245 0 0 0-.124-.033H8.75V13h2.5a.75.75 0 0 1 0 1.5h-6.5a.75.75 0 0 1 0-1.5h2.5V3.5h-.984a.245.245 0 0 0-.124.033l-1.289.737c-.265.15-.564.23-.869.23h-.162l2.112 4.692a.75.75 0 0 1-.154.838l-.53-.53.529.531-.001.002-.002.002-.006.006-.016.015-.045.04c-.21.176-.441.327-.686.45C4.556 10.78 3.88 11 3 11a4.498 4.498 0 0 1-2.023-.454 3.544 3.544 0 0 1-.686-.45l-.045-.04-.016-.015-.006-.006-.004-.004v-.001a.75.75 0 0 1-.154-.838L2.178 4.5H1.75a.75.75 0 0 1 0-1.5h2.234a.249.249 0 0 0 .125-.033l1.288-.737c.265-.15.564-.23.869-.23h.984V.75a.75.75 0 0 1 1.5 0Zm2.945 8.477c.285.135.718.273 1.305.273s1.02-.138 1.305-.273L13 6.327Zm-10 0c.285.135.718.273 1.305.273s1.02-.138 1.305-.273L3 6.327Z"],"zap":[16,"M9.504.43a1.516 1.516 0 0 1 2.437 1.713L10.415 5.5h2.123c1.57 0 2.346 1.909 1.22 3.004l-7.34 7.142a1.249 1.249 0 0 1-.871.354h-.302a1.25 1.25 0 0 1-1.157-1.723L5.633 10.5H3.462c-1.57 0-2.346-1.909-1.22-3.004L9.503.429Zm1.047 1.074L3.286 8.571A.25.25 0 0 0 3.462 9H6.75a.75.75 0 0 1 .694 1.034l-1.713 4.188 6.982-6.793A.25.25 0 0 0 12.538 7H9.25a.75.75 0 0 1-.683-1.06l2.008-4.418.003-.006a.036.036 0 0 0-.004-.009l-.006-.006-.008-.001c-.003 0-.006.002-.009.004Z"],"mail":[16,"M1.75 2h12.5c.966 0 1.75.784 1.75 1.75v8.5A1.75 1.75 0 0 1 14.25 14H1.75A1.75 1.75 0 0 1 0 12.25v-8.5C0 2.784.784 2 1.75 2ZM1.5 12.251c0 .138.112.25.25.25h12.5a.25.25 0 0 0 .25-.25V5.809L8.38 9.397a.75.75 0 0 1-.76 0L1.5 5.809v6.442Zm13-8.181v-.32a.25.25 0 0 0-.25-.25H1.75a.25.25 0 0 0-.25.25v.32L8 7.88Z"],"check":[16,"M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"],"repo-template":[16,"M13.25 8a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-.75.75h-2.5a.75.75 0 0 1 0-1.5h1.75v-2h-.75a.75.75 0 0 1 0-1.5h.75v-.25a.75.75 0 0 1 .75-.75ZM5 12.25a.25.25 0 0 1 .25-.25h3.5a.25.25 0 0 1 .25.25v3.25a.25.25 0 0 1-.4.2l-1.45-1.087a.249.249 0 0 0-.3 0L5.4 15.7a.25.25 0 0 1-.4-.2ZM2.75 8a.75.75 0 0 1 .75.75v.268c.083-.012.166-.018.25-.018h.5a.75.75 0 0 1 0 1.5h-.5a.25.25 0 0 0-.25.25v.75c0 .28.114.532.3.714a.75.75 0 1 1-1.05 1.072A2.495 2.495 0 0 1 2 11.5V8.75A.75.75 0 0 1 2.75 8ZM11 .75a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0V1.5h-.75A.75.75 0 0 1 11 .75Zm-5 0A.75.75 0 0 1 6.75 0h2.5a.75.75 0 0 1 0 1.5h-2.5A.75.75 0 0 1 6 .75Zm0 9A.75.75 0 0 1 6.75 9h2.5a.75.75 0 0 1 0 1.5h-2.5A.75.75 0 0 1 6 9.75ZM4.992.662a.75.75 0 0 1-.636.848c-.436.063-.783.41-.846.846a.751.751 0 0 1-1.485-.212A2.501 2.501 0 0 1 4.144.025a.75.75 0 0 1 .848.637ZM2.75 4a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 2.75 4Zm10.5 0a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5a.75.75 0 0 1 .75-.75Z"],"x":[16,"M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.749.749 0 0 1 1.275.326.749.749 0 0 1-.215.734L9.06 8l3.22 3.22a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L8 9.06l-3.22 3.22a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"]};
+/* the saved copy, 2026-09-24 18:09 UTC; public fields only */
+var GHP_SNAP = {
+    asOf: '2026-09-24T18:09:53Z',
+    user: { login: 'IsaacUre', name: null, bio: null, company: null, blog: '', location: null, twitter_username: null, followers: 0, following: 0, public_repos: 2, avatar_url: 'https://avatars.githubusercontent.com/u/98616888?v=4', created_at: '2022-01-28T20:01:53Z' },
+    repos: [
+        { name: 'IsaacUre.github.io', fork: false, description: 'Website', language: 'JavaScript', stargazers_count: 0, forks_count: 0, license: null, archived: false, mirror: false, template: false, pushed_at: '2026-09-24T17:32:56Z', created_at: '2026-04-01T21:39:53Z' },
+        { name: 'Background-Auto-Sync-for-Anki-Addon', fork: true, description: 'This addon will automatically synchronize your collection with AnkiWeb', language: 'Python', stargazers_count: 0, forks_count: 0, license: 'GNU General Public License v3.0', archived: false, mirror: false, template: false, pushed_at: '2026-09-01T19:34:14Z', created_at: null }
+    ],
+    parents: { 'Background-Auto-Sync-for-Anki-Addon': 'athulkrishna2015/Background-Auto-Sync-for-Anki-Addon' },
+    orgs: [],
+    cal: { src: 'saved', start: '2025-09-21', counts: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,20,2,0,0,0,0,0,0,0,0,0,0,0,0,5,4,0,0,0,0,0,0,0,6,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,2,0,0,0,0,17,10,6,0,0,0,0,0,0,0,0,0,9,5,0,0,20,16,0,24,6,0,2,0,0,0,8,9,0,6,0,0,0,24,5,0,0,0,0,0,0,0,0,0,0,0,11,37,0,0,0,2,14,4,8,4,0,0,0,0,4,0,0,0,0,0,0,0,0,0,0,0,0,1,0,16,2,6,12,0,0,0,0,0,0,0,0,6,0,6,0,0,0,0,0,0,4], levels: null, total: 345 },
+    act: { '2026-09': { commits: { 'IsaacUre/IsaacUre.github.io': 26 }, prs: { 'IsaacUre/IsaacUre.github.io': { merged: 26, open: 0, closed: 0 } }, created: [] } },
+    // no API has these; they are what the profile showed on the day of the copy
+    achievements: [['Pair Extraordinaire', 'x4', 'gold', 'people'], ['Pull Shark', 'x3', 'silver', 'git-pull-request'], ['YOLO', '', 'plain', 'zap']],
+    lists: [['old', 0]]
+};
+var GHP = null;                           // the open profile view's state
+var GHP_MON = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+var GHP_TABS = [['overview', 'Overview', 'book'], ['repositories', 'Repositories', 'repo'], ['projects', 'Projects', 'table'], ['packages', 'Packages', 'package'], ['stars', 'Stars', 'star']];
+var GHP_LEVEL = ['#eff2f5', '#aceebb', '#4ac26b', '#2da44e', '#116329'];
+var GHP_HALLOWEEN = ['#eff2f5', '#f0db3d', '#ffd642', '#f68c41', '#1f2328'];   // reported to replace the greens on Oct 31 only
+
+/* —— small helpers —— */
+function ghpIc(n, cls) {
+    var o = GHP_OCT[n];
+    return o ? '<svg class="ghp-oct' + (cls ? ' ' + cls : '') + '" viewBox="0 0 ' + o[0] + ' 16" width="' + o[0] + '" height="16" aria-hidden="true"><path d="' + o[1] + '"></path></svg>' : '';
+}
+function ghpName(s) { return typeof s === 'string' && /^[A-Za-z0-9._-]{1,100}$/.test(s); }                    // a login or repo name safe to put in a URL
+function ghpFull(s) { return typeof s === 'string' && /^[A-Za-z0-9-]{1,39}\/[A-Za-z0-9._-]{1,100}$/.test(s); } // owner/repo
+function ghpExt(href, html, cls) { return '<a class="' + (cls || '') + '" href="' + esc(href) + '" target="_blank" rel="noopener noreferrer">' + html + '</a>'; }
+function ghpPlural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
+function ghpAbbr(n) {                     // cards abbreviate (2.4k, 65.5k, 250k); the Repositories tab does not
+    n = nnum(n);
+    if (n < 1000) return String(n);
+    if (n < 1e5) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+    if (n < 1e6) return Math.round(n / 1000) + 'k';
+    return (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'm';
+}
+var GHP_DTF = null;
+function ghpDay(t) {                      // an instant -> its YYYY-MM-DD in IsaacUre's time zone
+    var d = t instanceof Date ? t : new Date(t);
+    if (!t || isNaN(d.getTime())) return '';
+    try {
+        if (!GHP_DTF) GHP_DTF = new Intl.DateTimeFormat('en-US', { timeZone: GHP_TZ, year: 'numeric', month: '2-digit', day: '2-digit' });
+        var p = {}; GHP_DTF.formatToParts(d).forEach(function (x) { p[x.type] = x.value; });
+        return p.year + '-' + p.month + '-' + p.day;
+    } catch (e) { return d.toISOString().slice(0, 10); }
+}
+function ghpD(s) { var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s || ''); return m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])) : null; }
+function ghpAdd(s, n) { var d = ghpD(s); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
+function ghpDow(s) { return ghpD(s).getUTCDay(); }
+function ghpToday() { return ghpDay(new Date()); }
+function ghpOrd(n) { return n + ((n % 100 >= 11 && n % 100 <= 13) ? 'th' : (['th', 'st', 'nd', 'rd'][n % 10] || 'th')); }
+function ghpMonthStart(mk) { return mk + '-01'; }
+function ghpMonthEnd(mk) { var d = ghpD(mk + '-01'); d.setUTCMonth(d.getUTCMonth() + 1); d.setUTCDate(0); return d.toISOString().slice(0, 10); }
+function ghpPrevMonth(mk) { var d = ghpD(mk + '-01'); d.setUTCMonth(d.getUTCMonth() - 1); return d.toISOString().slice(0, 7); }
+function ghpAgo(iso) {                    // github.com's <relative-time>: relative inside 30 days, then "on Sep 1"
+    var t = Date.parse(iso || ''); if (!isFinite(t)) return '';
+    var s = Math.max(0, (Date.now() - t) / 1000), r = null;
+    try { r = new Intl.RelativeTimeFormat('en', { numeric: 'auto' }); } catch (e) {}
+    if (s < 30 * 86400 && r) {
+        if (s < 10) return 'now';
+        if (s < 60) return r.format(-Math.round(s), 'second');
+        if (s < 3600) return r.format(-Math.round(s / 60), 'minute');
+        if (s < 86400) return r.format(-Math.round(s / 3600), 'hour');
+        var days = Math.round(s / 86400);
+        if (days < 6) return r.format(-days, 'day');
+        var w = Math.round(days / 7);
+        return w < 4 ? r.format(-w, 'week') : r.format(-1, 'month');
+    }
+    var d = new Date(t), y = d.getUTCFullYear();
+    return 'on ' + GHP_MON[d.getUTCMonth()].slice(0, 3) + ' ' + d.getUTCDate() + (y !== new Date().getUTCFullYear() ? ', ' + y : '');
+}
+
+/* —— the data: what the page draws from —— */
+function ghpClone(o) { return JSON.parse(JSON.stringify(o)); }
+function ghpSaved() {                     // this visitor's last live answer, if any (incognito has none)
+    if (CR && CR.incog) return null;
+    var j = jsonAs(recall('ghp', 'null'), {});
+    return j && j.v === 1 && j.user && Array.isArray(j.repos) && j.cal ? j : null;
+}
+function ghpData() {
+    var s = ghpSaved(), snap = ghpClone(GHP_SNAP);
+    if (!s) { snap.saved = GHP_SNAP.asOf; return snap; }
+    s.achievements = snap.achievements; s.lists = snap.lists;
+    s.act = s.act || {};
+    return s;
+}
+function ghpKeep(st) {
+    if (CR && CR.incog) return;
+    var d = st.d;
+    try { store('ghp', JSON.stringify({ v: 1, t: Date.now(), user: d.user, repos: d.repos, parents: d.parents || {}, orgs: d.orgs || [], cal: d.cal, act: d.act || {} })); } catch (e) {}
+}
+function ghpPickUser(u) {
+    return { login: String(u.login), name: u.name ? String(u.name) : null, bio: u.bio ? String(u.bio) : null, company: u.company ? String(u.company) : null,
+             blog: u.blog ? String(u.blog) : '', location: u.location ? String(u.location) : null, twitter_username: ghpName(u.twitter_username) ? u.twitter_username : null,
+             followers: nnum(u.followers), following: nnum(u.following), public_repos: nnum(u.public_repos),
+             avatar_url: /^https:\/\/avatars\.githubusercontent\.com\//.test(u.avatar_url || '') ? String(u.avatar_url) : GHP_SNAP.user.avatar_url,
+             created_at: String(u.created_at || GHP_SNAP.user.created_at) };
+}
+function ghpPublic(r) { return r && r.private === false && (r.visibility === undefined || r.visibility === 'public') && ghpName(r.name); }
+function ghpPickRepo(r) {
+    return { name: r.name, fork: !!r.fork, description: r.description ? String(r.description) : null, language: r.language ? String(r.language) : null,
+             stargazers_count: nnum(r.stargazers_count), forks_count: nnum(r.forks_count), license: r.license && r.license.name ? String(r.license.name) : null,
+             archived: !!r.archived, mirror: !!r.mirror_url, template: !!r.is_template, pushed_at: String(r.pushed_at || ''), created_at: String(r.created_at || '') };
+}
+
+/* —— the live pipeline —— */
+function ghpAlive(st) { return GHP === st && st.view.isConnected; }
+function ghpGet(st, url, gh, fn) {        // gh: a GitHub request (spends the hourly quota, obeys the limit)
+    if (gh && st.halt) { fn('halt', null); return; }
+    st.pending++;
+    liveGet(url, function (err, j, r) {
+        st.pending--;
+        if (!ghpAlive(st)) return;        // navigated away: nothing more is drawn or fetched
+        if (gh && err && r && (r.status === 403 || r.status === 429)) {
+            var h = r.headers, rem = h && h.get('x-ratelimit-remaining');
+            if (r.status === 429 || rem === '0') { st.halt = true; st.limitReset = nnum(h && h.get('x-ratelimit-reset')) * 1000; }
         }
-        return '<div class="cr-site cr-gh"><div class="cr-ghhead"><span class="cr-ghav">' + ic('ic-ure') + '</span>' +
-            '<div><h2>IsaacUre</h2><p>Rice ’29 · Mathematical Economic Analysis · builds operating systems by accident</p></div>' +
-            '<a class="cr-ghreal" href="https://github.com/IsaacUre" target="_blank" rel="noopener">View on real GitHub ↗</a></div>' +
-            '<div class="cr-ghrepos"><b>Pinned</b>' +
-              '<div class="cr-ghrepo"><span class="cr-ghname">IsaacUre.github.io</span><span class="cr-ghdesc">isaacure.com — URE BOY, three rooms, a pixel Windows 11, and now a browser inside the browser.</span><span class="cr-ghmeta"><i class="cr-dot" style="background:#f1e05a"></i> JavaScript · ★ 59 · Updated today</span></div>' +
-              '<div class="cr-ghrepo dim"><span class="cr-ghname">fsae-financing</span><span class="cr-ghpriv">Private</span><span class="cr-ghdesc">Spreadsheets. So many spreadsheets.</span><span class="cr-ghmeta"><i class="cr-dot" style="background:#277d3a"></i> Excel-adjacent · Updated Friday</span></div>' +
-              '<div class="cr-ghrepo dim"><span class="cr-ghname">dm-notes</span><span class="cr-ghpriv">Private</span><span class="cr-ghdesc">If my players find this repo the campaign is over.</span><span class="cr-ghmeta"><i class="cr-dot" style="background:#7b53c9"></i> Markdown · Updated 2 days ago</span></div>' +
-            '</div>' +
-            '<div class="cr-ghgraph"><b>1,204 contributions in the last year</b><div class="cr-ghcells">' + cells + '</div><span class="cr-ghless">Less <i class="g0"></i><i class="g1"></i><i class="g2"></i><i class="g3"></i><i class="g4"></i> More</span></div></div>';
+        if (gh && !err) st.live = true;
+        try { fn(err, j); } catch (e) { st.bug = String(e && e.message || e); }
+        if (!st.pending) ghpSettle(st);
+    });
+}
+function ghpSettle(st) {                  // everything in flight has answered
+    if (st.live) { st.d.saved = null; st.d.t = Date.now(); ghpKeep(st); }
+    ghpPaint(st, ['status']);
+}
+function ghpFetch(st) {
+    var d = st.d, base = GHP_API + '/users/' + GHP_USER;
+    st.pending = 0; st.live = false; st.halt = false;
+    ghpGet(st, base, true, function (err, u) {
+        if (err || !u || typeof u.login !== 'string' || u.login.toLowerCase() !== GHP_USER.toLowerCase()) return;
+        d.user = ghpPickUser(u); ghpTitle(st); ghpPaint(st, ['side', 'tabs', 'list']);
+    });
+    ghpGet(st, base + '/repos?per_page=100&sort=updated', true, function (err, list) {
+        if (err || !Array.isArray(list)) return;
+        d.repos = list.filter(ghpPublic).map(ghpPickRepo); st.reposLive = true;
+        d.parents = d.parents || {};
+        d.repos.filter(function (r) { return r.fork && !d.parents[r.name]; }).slice(0, 4).forEach(function (r) {
+            // "Forked from owner/repo": only the single-repository endpoint knows the parent
+            ghpGet(st, GHP_API + '/repos/' + GHP_USER + '/' + r.name, true, function (e2, full) {
+                if (e2 || !full || !full.parent || !ghpFull(full.parent.full_name)) return;
+                d.parents[r.name] = full.parent.full_name; ghpPaint(st, ['pop', 'list']);
+            });
+        });
+        ghpPaint(st, ['tabs', 'pop', 'list']);
+        ghpAfterRepos(st);
+    });
+    ghpGet(st, base + '/orgs', true, function (err, orgs) {
+        if (err || !Array.isArray(orgs)) return;
+        d.orgs = orgs.filter(function (o) { return o && ghpName(o.login); }).slice(0, 24).map(function (o) {
+            return { login: o.login, avatar_url: /^https:\/\/avatars\.githubusercontent\.com\//.test(o.avatar_url || '') ? String(o.avatar_url) : '' };
+        });
+        ghpPaint(st, ['side']);
+    });
+    ghpCalendar(st, null);
+}
+function ghpCalParse(j, year) {           // the mirror's answer -> { start, counts, levels, total }, or null if it looks wrong
+    if (!j || !j.total || !Array.isArray(j.contributions) || !j.contributions.length) return null;
+    var total = nnum(year ? j.total[year] : j.total.lastYear);
+    var rows = j.contributions.filter(function (c) { return c && ghpD(c.date); }).sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
+    if (!rows.length) return null;
+    var counts = [], levels = [], day = rows[0].date, i = 0;
+    for (; i < rows.length; i++) {
+        if (rows[i].date !== day) return null;    // gaps or duplicates: not the shape we know
+        counts.push(Math.max(0, Math.floor(nnum(rows[i].count))));
+        levels.push(Math.min(4, Math.max(0, Math.floor(nnum(rows[i].level)))));
+        day = ghpAdd(day, 1);
+    }
+    if (counts.length > 400) return null;
+    return { src: 'github', start: rows[0].date, counts: counts, levels: levels, total: total };
+}
+function ghpCalendar(st, year) {
+    var url = GHP_CALAPI + GHP_USER.toLowerCase() + '?y=' + (year || 'last');
+    ghpGet(st, url, false, function (err, j) {
+        var cal = err ? null : ghpCalParse(j, year);
+        if (year) { if (cal) st.years[year] = cal; else st.yearFail = year; ghpPaint(st, ['cal']); return; }
+        if (cal) { st.d.cal = cal; st.calOk = true; ghpPaint(st, ['cal']); }
+        else { st.calBad = true; ghpAfterRepos(st); }
+    });
+}
+function ghpAfterRepos(st) {              // runs when the repo list lands and again if the calendar mirror fails
+    if (!st.reposLive) return;
+    var today = ghpToday(), mk = today.slice(0, 7);
+    if (st.calBad && !st.calRest) {       // rebuild the whole year from the REST API; this month's activity falls out of it
+        st.calRest = true;
+        var start = ghpAdd(today, -ghpDow(today) - 364);
+        ghpRange(st, start, today, function (out) {
+            if (out.partial) return;       // keep the saved calendar rather than draw an undercount
+            var counts = [];
+            for (var s = start; s <= today; s = ghpAdd(s, 1)) counts.push(out.days[s] || 0);
+            st.d.cal = { src: 'rest', start: start, counts: counts, levels: null, total: counts.reduce(function (a, b) { return a + b; }, 0) };
+            for (var k in out.act) st.d.act[k] = out.act[k];
+            st.actLive = true; ghpPaint(st, ['cal', 'act']);
+        });
+    } else if (!st.actBusy && !st.calRest) {
+        st.actBusy = true;
+        ghpRange(st, ghpMonthStart(mk), today, function (out) {
+            if (out.partial) return;
+            st.d.act[mk] = out.act[mk] || ghpNoAct(); st.actLive = true; ghpPaint(st, ['act']);
+        });
+    }
+}
+function ghpNoAct() { return { commits: {}, prs: {}, created: [] }; }
+/* IsaacUre's contributions between two of his local days, by GitHub's rules:
+   commits on the default branch whose author resolves to him, pull requests he
+   opened (any state), and one for each repository he created or forked. */
+function ghpRange(st, from, to, cb) {
+    var d = st.d, out = { days: {}, act: {}, partial: false }, left = 0;
+    function act(day) { var k = day.slice(0, 7); return out.act[k] || (out.act[k] = ghpNoAct()); }
+    function add(day) { out.days[day] = (out.days[day] || 0) + 1; }
+    function fin() { if (--left === 0) cb(out); }
+    var mine = GHP_USER.toLowerCase();
+    (d.repos || []).forEach(function (r) {
+        var c = ghpDay(r.created_at);
+        if (c && c >= from && c <= to) { add(c); if (!r.fork) act(c).created.push(GHP_USER + '/' + r.name); }
+    });
+    var scan = (d.repos || []).filter(function (r) {
+        return !r.fork && ghpDay(r.pushed_at) >= from && (!r.created_at || ghpDay(r.created_at) <= to);
+    }).slice(0, 4);
+    if (!scan.length) { cb(out); return; }
+    left = scan.length * 2;
+    scan.forEach(function (r) {
+        var full = GHP_USER + '/' + r.name, repoApi = GHP_API + '/repos/' + full;
+        (function commits(page) {
+            ghpGet(st, repoApi + '/commits?author=' + GHP_USER + '&since=' + ghpAdd(from, -1) + 'T00:00:00Z&until=' + ghpAdd(to, 1) + 'T23:59:59Z&per_page=100&page=' + page, true, function (err, list) {
+                if (err || !Array.isArray(list)) { out.partial = true; fin(); return; }
+                list.forEach(function (c) {
+                    if (!c || !c.author || String(c.author.login || '').toLowerCase() !== mine || !c.commit || !c.commit.author) return;
+                    var day = ghpDay(c.commit.author.date);
+                    if (day >= from && day <= to) { add(day); var a = act(day); a.commits[full] = (a.commits[full] || 0) + 1; }
+                });
+                if (list.length === 100 && page < 10) commits(page + 1); else fin();
+            });
+        })(1);
+        (function pulls(page) {
+            ghpGet(st, repoApi + '/pulls?state=all&sort=created&direction=desc&per_page=100&page=' + page, true, function (err, list) {
+                if (err || !Array.isArray(list)) { out.partial = true; fin(); return; }
+                var oldest = to;
+                list.forEach(function (p) {
+                    if (!p || !p.user) return;
+                    var day = ghpDay(p.created_at); if (day && day < oldest) oldest = day;
+                    if (String(p.user.login || '').toLowerCase() !== mine || !(day >= from && day <= to)) return;
+                    add(day);
+                    var a = act(day), s = a.prs[full] || (a.prs[full] = { merged: 0, open: 0, closed: 0 });
+                    s[p.merged_at ? 'merged' : p.state === 'open' ? 'open' : 'closed']++;
+                });
+                if (list.length === 100 && oldest >= from && page < 10) pulls(page + 1); else fin();
+            });
+        })(1);
+    });
+}
+function ghpStars(st) {                   // the Stars tab is fetched only when it is opened
+    if (st.stars || st.starsBusy) return;
+    st.starsBusy = true;
+    ghpGet(st, GHP_API + '/users/' + GHP_USER + '/starred?per_page=100', true, function (err, list) {
+        st.starsBusy = false;
+        if (err || !Array.isArray(list)) { st.starsFail = true; ghpPaint(st, ['stars']); return; }
+        st.stars = list.filter(function (r) { return r && r.owner && ghpName(r.owner.login) && ghpPublic(r); }).map(function (r) {
+            var p = ghpPickRepo(r); p.owner = r.owner.login; return p;
+        });
+        ghpPaint(st, ['stars', 'tabs']);
+    });
+}
+function ghpMore(st) {                    // "Show more activity": one month further back
+    var last = st.months[st.months.length - 1], mk = ghpPrevMonth(last);
+    if (mk < String(st.d.user.created_at || '').slice(0, 7)) return;
+    if (st.d.act[mk] || st.calRest) { st.months.push(mk); ghpPaint(st, ['act']); return; }
+    if (st.moreBusy) return;
+    st.moreBusy = true; ghpPaint(st, ['act']);
+    ghpRange(st, ghpMonthStart(mk), ghpMonthEnd(mk), function (out) {
+        st.moreBusy = false;
+        if (!out.partial) st.d.act[mk] = out.act[mk] || ghpNoAct();
+        st.months.push(mk); ghpPaint(st, ['act']);
+    });
+}
+
+/* —— drawing —— */
+function ghpTab(url) { var m = /[?&]tab=([a-z]+)/i.exec(url || ''); var t = m ? m[1].toLowerCase() : 'overview'; return GHP_TABS.some(function (x) { return x[0] === t; }) ? t : 'overview'; }
+function ghpHref(tab) { return 'github.com/' + GHP_USER + (tab === 'overview' ? '' : '?tab=' + tab); }
+function ghpTitle(st) {
+    var u = st.d.user, tab = GHP_TABS.filter(function (x) { return x[0] === st.tab; })[0];
+    var t = st.tab === 'overview' ? u.login + (u.name ? ' (' + u.name + ')' : '') + ' · GitHub' : u.login + ' / ' + tab[1] + ' · GitHub';
+    liveTitle(st.url, t);
+}
+function ghpHeader() {
+    var nav = [['Platform', 'https://github.com/features'], ['Solutions', 'https://github.com/solutions'], ['Resources', 'https://github.com/resources'], ['Open Source', 'https://github.com/open-source'], ['Enterprise', 'https://github.com/enterprise']];
+    return '<header class="ghp-top">' +
+        '<button class="ghp-burger" type="button" aria-label="Toggle navigation">' + ghpIc('three-bars') + '</button>' +
+        crLink('github.com', 'GitHub', 'ghp-logo') +
+        '<nav class="ghp-mktg" aria-label="Global">' + nav.map(function (n) { return ghpExt(n[1], esc(n[0]) + ghpIc('triangle-down', 'ghp-caret'), 'ghp-mitem'); }).join('') + ghpExt('https://github.com/pricing', 'Pricing', 'ghp-mitem') + '</nav>' +
+        '<label class="ghp-search">' + ghpIc('search') + '<input class="ghp-q" type="text" placeholder="Search" spellcheck="false" autocomplete="off" aria-label="Search or jump to"><kbd>/</kbd></label>' +
+        ghpExt('https://github.com/login?return_to=https%3A%2F%2Fgithub.com%2F' + GHP_USER, 'Sign in', 'ghp-signin') +
+        ghpExt('https://github.com/signup?source=header', 'Sign up', 'ghp-signup') +
+    '</header>';
+}
+function ghpCount(d, tab, st) {
+    if (tab === 'repositories') return nnum(d.user.public_repos);
+    if (tab === 'stars' && st && st.stars) return st.stars.length;
+    return 0;
+}
+function ghpTabsInner(d, tab, st) {
+    return GHP_TABS.map(function (t) {
+        var n = t[0] === 'overview' ? 0 : ghpCount(d, t[0], st);
+        return crLink(ghpHref(t[0]), ghpIc(t[2]) + '<span>' + t[1] + '</span>' + (n ? '<span class="ghp-counter">' + n.toLocaleString() + '</span>' : ''), 'ghp-tab' + (t[0] === tab ? ' on' : ''));
+    }).join('');
+}
+function ghpSideInner(d) {
+    var u = d.user, h = '';
+    h += '<div class="ghp-vcard"><span class="ghp-avwrap">' + ghpExt('https://github.com/' + GHP_USER, '<img class="ghp-av" alt="View ' + esc(u.login) + '\'s full-sized avatar" width="296" height="296" referrerpolicy="no-referrer" src="' + esc(u.avatar_url) + '">', 'ghp-avlink') + '</span>' +
+        '<h1 class="ghp-names">' + (u.name ? '<span class="ghp-fullname">' + esc(u.name) + '</span>' : '') + '<span class="ghp-login">' + esc(u.login) + '</span></h1></div>';
+    h += ghpExt('https://github.com/login?return_to=https%3A%2F%2Fgithub.com%2F' + GHP_USER, 'Follow', 'ghp-btn ghp-block ghp-follow');
+    if (u.bio) h += '<div class="ghp-bio">' + esc(u.bio) + '</div>';
+    if (u.followers || u.following) {
+        h += '<div class="ghp-follows">' + ghpIc('people') + ghpExt('https://github.com/' + GHP_USER + '?tab=followers', '<b>' + ghpAbbr(u.followers) + '</b> ' + (u.followers === 1 ? 'follower' : 'followers'), 'ghp-mlink') +
+             ' · ' + ghpExt('https://github.com/' + GHP_USER + '?tab=following', '<b>' + ghpAbbr(u.following) + '</b> following', 'ghp-mlink') + '</div>';
+    }
+    var det = [];
+    if (u.company) det.push(ghpIc('organization') + '<span>' + esc(u.company) + '</span>');
+    if (u.location) det.push(ghpIc('location') + '<span>' + esc(u.location) + '</span>');
+    if (u.blog) {
+        var href = /^https?:\/\//i.test(u.blog) ? u.blog : 'https://' + u.blog;
+        if (/^https?:\/\/[^\s"'<>]+$/i.test(href)) det.push(ghpIc('link') + ghpExt(href, esc(u.blog), 'ghp-dlink'));
+    }
+    if (u.twitter_username) det.push(ghpIc('link') + ghpExt('https://x.com/' + u.twitter_username, '@' + esc(u.twitter_username), 'ghp-dlink'));
+    if (det.length) h += '<ul class="ghp-details">' + det.map(function (x) { return '<li>' + x + '</li>'; }).join('') + '</ul>';
+    if (d.achievements && d.achievements.length) {
+        h += '<div class="ghp-sec"><h2 class="ghp-sech">' + ghpExt('https://github.com/' + GHP_USER + '?tab=achievements', 'Achievements', 'ghp-hlink') + '</h2><div class="ghp-badges">' +
+            d.achievements.map(function (a) {
+                return '<span class="ghp-badge t-' + a[2] + '" title="Achievement: ' + esc(a[0]) + '" aria-label="Achievement: ' + esc(a[0]) + '">' + ghpIc(a[3]) + (a[1] ? '<span class="ghp-tier">' + esc(a[1]) + '</span>' : '') + '</span>';
+            }).join('') + '</div></div>';
+    }
+    if (d.orgs && d.orgs.length) {
+        h += '<div class="ghp-sec"><h2 class="ghp-sech">Organizations</h2><div class="ghp-orgs">' + d.orgs.map(function (o) {
+            return ghpExt('https://github.com/' + o.login, o.avatar_url ? '<img alt="@' + esc(o.login) + '" width="32" height="32" referrerpolicy="no-referrer" src="' + esc(o.avatar_url) + '">' : esc(o.login), 'ghp-org');
+        }).join('') + '</div></div>';
+    }
+    h += '<div class="ghp-block-report">' + ghpExt('https://github.com/contact/report-abuse?report=' + GHP_USER, 'Block or report ' + esc(u.login), 'ghp-mlink') + '</div>';
+    return h;
+}
+function ghpLang(l) {
+    var c = typeof GH_LANG !== 'undefined' && Object.prototype.hasOwnProperty.call(GH_LANG, l) ? GH_LANG[l] : '#8b949e';
+    return '<span class="ghp-lang"><span class="ghp-ldot" style="background-color:' + c + '"></span>' + esc(l) + '</span>';
+}
+function ghpParent(d, r) { var p = r.fork && d.parents && d.parents[r.name]; return ghpFull(p) ? p : null; }
+function ghpPopInner(d) {
+    var repos = (d.repos || []).slice().sort(function (a, b) { return (b.stargazers_count - a.stargazers_count) || (a.pushed_at < b.pushed_at ? 1 : a.pushed_at > b.pushed_at ? -1 : 0); }).slice(0, 6);
+    if (!repos.length) return '';
+    return '<h2 class="ghp-h2">Popular repositories</h2><ol class="ghp-cards">' + repos.map(function (r) {
+        var p = ghpParent(d, r), meta = [];
+        if (r.language) meta.push(ghpLang(r.language));
+        if (r.stargazers_count) meta.push(ghpExt('https://github.com/' + GHP_USER + '/' + r.name + '/stargazers', ghpIc('star') + ghpAbbr(r.stargazers_count), 'ghp-mlink'));
+        if (r.forks_count) meta.push(ghpExt('https://github.com/' + GHP_USER + '/' + r.name + '/forks', ghpIc('repo-forked') + ghpAbbr(r.forks_count), 'ghp-mlink'));
+        return '<li class="ghp-card"><div class="ghp-cardtop">' + ghpIc(r.fork ? 'repo-forked' : r.template ? 'repo-template' : 'repo', 'ghp-cardic') +
+            crLink('github.com/' + GHP_USER + '/' + r.name, '<span class="ghp-repo">' + esc(r.name) + '</span>', 'ghp-cname') +
+            '<span class="ghp-label">' + (r.archived ? 'Public archive' : 'Public') + '</span></div>' +
+            (p ? '<p class="ghp-forked">Forked from ' + crLink('github.com/' + p, esc(p), 'ghp-mlink') + '</p>' : '') +
+            (r.description ? '<p class="ghp-cdesc">' + esc(r.description) + '</p>' : '') +
+            (meta.length ? '<p class="ghp-cmeta">' + meta.join('') + '</p>' : '') + '</li>';
+    }).join('') + '</ol>';
+}
+function ghpCalGrid(cal, st, year) {      // GitHub's table: Sunday-first rows, a column per week, months over it
+    var today = ghpToday(), start = cal.start, counts = cal.counts, n = counts.length;
+    var first = ghpAdd(start, -ghpDow(start));                    // pad back to that week's Sunday
+    var last = ghpAdd(start, n - 1), weeks = Math.ceil(((ghpD(last) - ghpD(first)) / 864e5 + 1) / 7);
+    var max = Math.max.apply(null, counts.concat([0])), pal = today.slice(5) === '10-31' ? GHP_HALLOWEEN : GHP_LEVEL;
+    function lvl(i) { var c = counts[i]; return cal.levels ? cal.levels[i] : (c ? Math.ceil(4 * c / Math.max(1, max)) : 0); }
+    var head = '<tr class="ghp-calhead"><td class="ghp-dayl"><span class="sr-only">Day of Week</span></td>', w, spans = [];
+    for (w = 0; w < weeks; w++) {
+        var m = ghpAdd(first, w * 7).slice(0, 7);
+        if (spans.length && spans[spans.length - 1][0] === m) spans[spans.length - 1][1]++; else spans.push([m, 1]);
+    }
+    spans.forEach(function (s) {
+        var name = GHP_MON[+s[0].slice(5) - 1];
+        head += '<td class="ghp-monl" colspan="' + s[1] + '"><span class="sr-only">' + name + '</span>' + (s[1] >= 2 ? '<span aria-hidden="true">' + name.slice(0, 3) + '</span>' : '') + '</td>';
+    });
+    head += '</tr>';
+    var body = '', DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    for (var r = 0; r < 7; r++) {
+        body += '<tr><td class="ghp-dayl"><span class="sr-only">' + DAYS[r] + '</span>' + (r % 2 ? '<span aria-hidden="true">' + DAYS[r].slice(0, 3) + '</span>' : '') + '</td>';
+        for (w = 0; w < weeks; w++) {
+            var day = ghpAdd(first, w * 7 + r), i = (ghpD(day) - ghpD(start)) / 864e5;
+            if (i < 0 || i >= n || day > today) { body += '<td></td>'; continue; }
+            var c = counts[i], L = lvl(i), dd = ghpD(day);
+            var tip = (c ? ghpPlural(c, 'contribution', 'contributions') : 'No contributions') + ' on ' + GHP_MON[dd.getUTCMonth()] + ' ' + ghpOrd(dd.getUTCDate()) + '.';
+            body += '<td class="ghp-day" data-level="' + L + '" data-tip="' + esc(tip) + '" style="background-color:' + pal[L] + '"></td>';
+        }
+        body += '</tr>';
+    }
+    return '<table class="ghp-calgrid" role="grid" aria-readonly="true"><caption class="sr-only">Contribution Graph</caption><thead>' + head + '</thead><tbody>' + body + '</tbody></table>';
+}
+function ghpCalInner(d, st) {
+    var year = st && st.year, cal = year ? st.years[year] : d.cal;
+    if (!cal) cal = d.cal;
+    var heading = ghpPlural(nnum(cal.total), 'contribution', 'contributions') + (year ? ' in ' + year : ' in the last year');
+    var created = nnum(String(d.user.created_at || '').slice(0, 4)) || 2022, thisYear = +ghpToday().slice(0, 4), years = '';
+    for (var y = thisYear; y >= created; y--) {
+        years += '<li><button type="button" class="ghp-year' + ((year ? +year === y : y === thisYear) ? ' on' : '') + '" data-year="' + y + '">' + y + '</button></li>';
+    }
+    var legend = '<span class="ghp-legend">Less ' + GHP_LEVEL.map(function (c, i) { return '<span class="ghp-lsq" style="background-color:' + c + '" data-level="' + i + '"></span>'; }).join('') + ' More</span>';
+    return '<div class="ghp-calrow"><div class="ghp-calmain">' +
+            '<h2 class="ghp-h2 ghp-calh">' + heading + '</h2>' +
+            '<div class="ghp-calbox"><div class="ghp-calscroll">' + ghpCalGrid(cal, st, year) + '</div>' +
+            '<div class="ghp-calfoot">' + ghpExt('https://docs.github.com/articles/why-are-my-contributions-not-showing-up-on-my-profile', 'Learn how we count contributions', 'ghp-mlink') + legend + '</div></div>' +
+            (st && st.yearFail ? '<p class="ghp-note">The ' + esc(String(st.yearFail)) + ' calendar did not load. Try again in a minute.</p>' : '') +
+        '</div><ul class="ghp-years" aria-label="Contribution years">' + years + '</ul></div>';
+}
+function ghpActInner(d, st) {
+    var months = st ? st.months : [d.saved ? Object.keys(d.act).sort().pop() : ghpToday().slice(0, 7)], h = '<h2 class="ghp-h2 ghp-acth">Contribution activity</h2>';
+    months.forEach(function (mk) {
+        var a = d.act[mk], y = mk.slice(0, 4), name = GHP_MON[+mk.slice(5) - 1];
+        h += '<div class="ghp-month"><h3 class="ghp-monh"><span>' + name + ' <span class="ghp-muted">' + y + '</span></span></h3>';
+        var items = '';
+        if (a) {
+            var cr = Object.keys(a.commits || {}).filter(ghpFull), cn = cr.reduce(function (s, k) { return s + nnum(a.commits[k]); }, 0);
+            if (cn) {
+                var cmax = Math.max.apply(null, cr.map(function (k) { return nnum(a.commits[k]); }));
+                items += '<div class="ghp-tli"><span class="ghp-tlb">' + ghpIc('repo-push') + '</span><details class="ghp-tlbody" open><summary>Created ' + ghpPlural(cn, 'commit', 'commits') + ' in ' + ghpPlural(cr.length, 'repository', 'repositories') + '</summary><ul class="ghp-tlist">' +
+                    cr.map(function (k) { var n = nnum(a.commits[k]); return '<li>' + crLink('github.com/' + k, esc(k), 'ghp-tlrepo') + '<span class="ghp-tlcount">' + ghpPlural(n, 'commit', 'commits') + '</span><span class="ghp-bar"><span style="width:' + Math.max(4, Math.round(100 * n / cmax)) + '%"></span></span></li>'; }).join('') +
+                    '</ul></details></div>';
+            }
+            var created = (a.created || []).filter(ghpFull);
+            if (created.length) {
+                items += '<div class="ghp-tli"><span class="ghp-tlb">' + ghpIc('repo') + '</span><details class="ghp-tlbody" open><summary>Created ' + ghpPlural(created.length, 'repository', 'repositories') + '</summary><ul class="ghp-tlist">' +
+                    created.map(function (k) { return '<li>' + crLink('github.com/' + k, esc(k), 'ghp-tlrepo') + '</li>'; }).join('') + '</ul></details></div>';
+            }
+            var pr = Object.keys(a.prs || {}).filter(ghpFull), pn = pr.reduce(function (s, k) { var x = a.prs[k]; return s + nnum(x.merged) + nnum(x.open) + nnum(x.closed); }, 0);
+            if (pn) {
+                items += '<div class="ghp-tli"><span class="ghp-tlb">' + ghpIc('git-pull-request') + '</span><details class="ghp-tlbody" open><summary>Opened ' + ghpPlural(pn, 'pull request', 'pull requests') + ' in ' + ghpPlural(pr.length, 'repository', 'repositories') + '</summary><ul class="ghp-tlist">' +
+                    pr.map(function (k) {
+                        var x = a.prs[k], bits = [];
+                        if (x.merged) bits.push('<span class="ghp-pill merged">' + nnum(x.merged) + ' merged</span>');
+                        if (x.open) bits.push('<span class="ghp-pill open">' + nnum(x.open) + ' open</span>');
+                        if (x.closed) bits.push('<span class="ghp-pill closed">' + nnum(x.closed) + ' closed</span>');
+                        return '<li>' + crLink('github.com/' + k, esc(k), 'ghp-tlrepo') + '<span class="ghp-tlcount">' + bits.join('') + '</span></li>';
+                    }).join('') + '</ul></details></div>';
+            }
+        }
+        h += items ? '<div class="ghp-tl">' + items + '</div>' : '<p class="ghp-noact">' + esc(d.user.login) + ' had no activity during this period.</p>';
+        h += '</div>';
+    });
+    var oldest = months[months.length - 1], done = ghpPrevMonth(oldest) < String(d.user.created_at || '').slice(0, 7);
+    if (!done) h += '<button type="button" class="ghp-btn ghp-block ghp-more"' + (st && st.moreBusy ? ' disabled' : '') + '>' + (st && st.moreBusy ? 'Loading…' : 'Show more activity') + '</button>';
+    return h;
+}
+function ghpRepoRows(d, st) {
+    var f = st ? st.filter : { q: '', type: 'all', lang: 'all', sort: 'updated' }, q = f.q.trim().toLowerCase();
+    var list = (d.repos || []).filter(function (r) {
+        if (q && r.name.toLowerCase().indexOf(q) < 0) return false;
+        if (f.type === 'sources' && r.fork) return false;
+        if (f.type === 'forks' && !r.fork) return false;
+        if (f.type === 'archived' && !r.archived) return false;
+        if (f.type === 'mirrors' && !r.mirror) return false;
+        if (f.type === 'templates' && !r.template) return false;
+        if (f.type === 'sponsorable') return false;
+        if (f.lang !== 'all' && r.language !== f.lang) return false;
+        return true;
+    });
+    list.sort(function (a, b) {
+        if (f.sort === 'name') return a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1;
+        if (f.sort === 'stars') return (b.stargazers_count - a.stargazers_count) || (a.pushed_at < b.pushed_at ? 1 : -1);
+        return a.pushed_at < b.pushed_at ? 1 : a.pushed_at > b.pushed_at ? -1 : 0;
+    });
+    var filtered = q || f.type !== 'all' || f.lang !== 'all', h = '';
+    if (filtered) {
+        var typeWord = { all: 'all', sources: 'source', forks: 'forked', archived: 'archived', mirrors: 'mirror', templates: 'template', sponsorable: 'sponsorable' }[f.type];
+        h += '<div class="ghp-results"><span><b>' + list.length + '</b> ' + (list.length === 1 ? 'result' : 'results') + ' for <b>' + typeWord + '</b> repositories' + (q ? ' matching <b>' + esc(f.q.trim()) + '</b>' : '') + (f.lang !== 'all' ? ' written in <b>' + esc(f.lang) + '</b>' : '') + ' sorted by <b>' + { updated: 'last updated', name: 'name', stars: 'stars' }[f.sort] + '</b></span><button type="button" class="ghp-clear">' + ghpIc('x') + 'Clear filter</button></div>';
+    }
+    if (!(d.repos || []).length) return h + '<p class="ghp-blank">' + esc(d.user.login) + ' doesn\'t have any public repositories yet.</p>';
+    if (!list.length) return h + '<p class="ghp-blank">' + esc(d.user.login) + ' doesn\'t have any repositories that match.</p>';
+    return h + '<ul class="ghp-rlist">' + list.map(function (r) {
+        var p = ghpParent(d, r), meta = [];
+        if (r.language) meta.push(ghpLang(r.language));
+        if (r.stargazers_count) meta.push(ghpExt('https://github.com/' + GHP_USER + '/' + r.name + '/stargazers', ghpIc('star') + nnum(r.stargazers_count).toLocaleString(), 'ghp-mlink'));
+        if (r.forks_count) meta.push(ghpExt('https://github.com/' + GHP_USER + '/' + r.name + '/forks', ghpIc('repo-forked') + nnum(r.forks_count).toLocaleString(), 'ghp-mlink'));
+        if (r.license) meta.push('<span>' + ghpIc('law') + esc(r.license) + '</span>');
+        if (r.pushed_at) meta.push('<span>Updated <time datetime="' + esc(r.pushed_at) + '">' + ghpAgo(r.pushed_at) + '</time></span>');
+        return '<li class="ghp-ritem"><div class="ghp-rmain"><h3 class="ghp-rname">' + crLink('github.com/' + GHP_USER + '/' + r.name, esc(r.name), 'ghp-cname') +
+            '<span class="ghp-label">' + (r.archived ? 'Public archive' : 'Public') + '</span></h3>' +
+            (p ? '<p class="ghp-forked">Forked from ' + crLink('github.com/' + p, esc(p), 'ghp-mlink') + '</p>' : '') +
+            (r.description ? '<p class="ghp-rdesc">' + esc(r.description) + '</p>' : '') +
+            '<p class="ghp-rmeta">' + meta.join('') + '</p></div>' +
+            '<div class="ghp-rside">' + ghpExt('https://github.com/login?return_to=%2F' + GHP_USER + '%2F' + encodeURIComponent(r.name), ghpIc('star') + 'Star', 'ghp-btn ghp-btnsm') + '</div></li>';
+    }).join('') + '</ul>';
+}
+function ghpMenu(key, label, cur, opts) {
+    return '<details class="ghp-menu"><summary class="ghp-btn">' + label + ghpIc('triangle-down', 'ghp-caret') + '</summary><div class="ghp-menubox" role="menu"><div class="ghp-menuh">Select ' + label.toLowerCase() + '</div>' +
+        opts.map(function (o) { return '<button type="button" role="menuitemradio" aria-checked="' + (o[0] === cur) + '" class="ghp-mopt" data-f="' + key + '" data-v="' + esc(o[0]) + '">' + (o[0] === cur ? ghpIc('check') : '<span class="ghp-mcheck"></span>') + esc(o[1]) + '</button>'; }).join('') + '</div></details>';
+}
+function ghpReposInner(d, st) {
+    var f = st ? st.filter : { q: '', type: 'all', lang: 'all', sort: 'updated' };
+    var langs = []; (d.repos || []).forEach(function (r) { if (r.language && langs.indexOf(r.language) < 0) langs.push(r.language); });
+    langs.sort();
+    return '<div class="ghp-rbar"><input class="ghp-rq" type="search" placeholder="Find a repository…" value="' + esc(f.q) + '" autocomplete="off" aria-label="Find a repository…">' +
+        '<div class="ghp-rbtns">' +
+        ghpMenu('type', 'Type', f.type, [['all', 'All'], ['sources', 'Sources'], ['forks', 'Forks'], ['archived', 'Archived'], ['sponsorable', 'Can be sponsored'], ['mirrors', 'Mirrors'], ['templates', 'Templates']]) +
+        ghpMenu('lang', 'Language', f.lang, [['all', 'All']].concat(langs.map(function (l) { return [l, l]; }))) +
+        ghpMenu('sort', 'Sort', f.sort, [['updated', 'Last updated'], ['name', 'Name'], ['stars', 'Stars']]) +
+        '</div></div><div id="ghpRepoList">' + ghpRepoRows(d, st) + '</div>';
+}
+function ghpStarsInner(d, st) {
+    var h = '<div class="ghp-lists"><h2 class="ghp-h2">Lists (' + (d.lists || []).length + ')</h2><div class="ghp-listgrid">' + (d.lists || []).map(function (l) {
+        return ghpExt('https://github.com/stars/' + GHP_USER + '/lists/' + encodeURIComponent(l[0]), '<b>' + esc(l[0]) + '</b><span>' + ghpPlural(nnum(l[1]), 'repository', 'repositories') + '</span>', 'ghp-listcard');
+    }).join('') + '</div></div><h2 class="ghp-h2">Stars</h2>';
+    if (!st || (!st.stars && !st.starsFail)) return h + '<p class="ghp-blank ghp-muted">Loading…</p>';
+    if (st.starsFail) return h + '<p class="ghp-blank">GitHub did not answer. Try again in a minute.</p>';
+    if (!st.stars.length) return h + '<p class="ghp-blank">' + esc(d.user.login) + ' doesn\'t have any starred repositories yet.</p>';
+    return h + '<ul class="ghp-rlist">' + st.stars.map(function (r) {
+        var full = r.owner + '/' + r.name, meta = [];
+        if (r.language) meta.push(ghpLang(r.language));
+        if (r.stargazers_count) meta.push('<span>' + ghpIc('star') + nnum(r.stargazers_count).toLocaleString() + '</span>');
+        if (r.forks_count) meta.push('<span>' + ghpIc('repo-forked') + nnum(r.forks_count).toLocaleString() + '</span>');
+        if (r.pushed_at) meta.push('<span>Updated <time datetime="' + esc(r.pushed_at) + '">' + ghpAgo(r.pushed_at) + '</time></span>');
+        return '<li class="ghp-ritem"><div class="ghp-rmain"><h3 class="ghp-rname">' + crLink('github.com/' + full, esc(r.owner) + ' / <b>' + esc(r.name) + '</b>', 'ghp-cname') + '</h3>' +
+            (r.description ? '<p class="ghp-rdesc">' + esc(r.description) + '</p>' : '') + '<p class="ghp-rmeta">' + meta.join('') + '</p></div></li>';
+    }).join('') + '</ul>';
+}
+function ghpBody(d, tab, st) {
+    if (tab === 'repositories') return ghpReposInner(d, st);
+    if (tab === 'stars') return '<div id="ghpStars">' + ghpStarsInner(d, st) + '</div>';
+    if (tab === 'projects') return '<div class="ghp-rbar"><input class="ghp-rq" type="search" placeholder="Search all projects" aria-label="Search all projects" disabled></div><div class="ghp-blankbox"><h3>There aren\'t any projects yet</h3><p>0 open and 0 closed projects found.</p></div>';
+    if (tab === 'packages') return '<div class="ghp-blankbox">' + ghpIc('package', 'ghp-bigic') + '<h3>Get started with GitHub Packages</h3><p>Safely publish packages, store your packages alongside your code, and share your packages privately with your team.</p>' + ghpExt('https://docs.github.com/packages', 'Learn more', 'ghp-mlink ghp-accent') + '</div>';
+    return '<div id="ghpPop">' + ghpPopInner(d) + '</div><div id="ghpCal">' + ghpCalInner(d, st) + '</div><div id="ghpAct">' + ghpActInner(d, st) + '</div>';
+}
+function ghpStatusInner(d, st) {
+    if (st && st.halt) return 'GitHub\'s hourly limit for this network ran out' + (st.limitReset ? ' until ' + fmtTime(new Date(st.limitReset)) : '') + ', so parts of this page are the saved copy.';
+    if (d.saved) return 'This is the saved copy from ' + GHP_MON[+d.saved.slice(5, 7) - 1].slice(0, 3) + ' ' + +d.saved.slice(8, 10) + ', ' + d.saved.slice(0, 4) + '. ' + (st && st.pending ? 'Asking GitHub for the live profile…' : 'GitHub did not answer, so the live profile could not be fetched.');
+    return 'Live from the GitHub API' + (d.t ? ', fetched at ' + fmtTime(new Date(d.t)) : '') + '. ' + ghpExt('https://github.com/' + GHP_USER, 'Open on GitHub', 'ghp-mlink ghp-accent');
+}
+function ghpFoot() {
+    var links = [['Terms', 'https://docs.github.com/site-policy/github-terms/github-terms-of-service'], ['Privacy', 'https://docs.github.com/site-policy/privacy-policies/github-privacy-statement'], ['Security', 'https://github.com/security'], ['Status', 'https://www.githubstatus.com/'], ['Community', 'https://github.community/'], ['Docs', 'https://docs.github.com/'], ['Contact', 'https://support.github.com?tags=dotcom-footer']];
+    return '<footer class="ghp-foot"><span>© ' + ghpToday().slice(0, 4) + ' GitHub, Inc.</span>' + links.map(function (l) { return ghpExt(l[1], l[0], 'ghp-flink'); }).join('') +
+        '<span class="ghp-flink">Manage cookies</span><span class="ghp-flink">Do not share my personal information</span></footer>';
+}
+function ghpPage(d, tab, st) {
+    return '<div class="cr-ghp">' + ghpHeader() +
+        '<div class="ghp-tabs"><nav class="ghp-tabsin" id="ghpTabs" aria-label="User profile">' + ghpTabsInner(d, tab, st) + '</nav></div>' +
+        '<div class="ghp-layout"><aside class="ghp-side" id="ghpSide">' + ghpSideInner(d) + '</aside>' +
+        '<main class="ghp-main" id="ghpMain">' + ghpBody(d, tab, st) + '<p class="ghp-status" id="ghpStatus">' + ghpStatusInner(d, st) + '</p></main></div>' +
+        ghpFoot() + '<div class="ghp-tip" id="ghpTip" hidden></div></div>';
+}
+function ghpPaint(st, parts) {
+    if (!ghpAlive(st)) return;
+    var v = st.view, d = st.d;
+    function put(id, html) { var el = v.querySelector('#' + id); if (el) el.innerHTML = html; }
+    parts.forEach(function (p) {
+        if (p === 'side') put('ghpSide', ghpSideInner(d));
+        else if (p === 'tabs') put('ghpTabs', ghpTabsInner(d, st.tab, st));
+        else if (p === 'pop') put('ghpPop', ghpPopInner(d));
+        else if (p === 'cal') { put('ghpCal', ghpCalInner(d, st)); ghpCalEnd(st); }
+        else if (p === 'act') put('ghpAct', ghpActInner(d, st));
+        else if (p === 'list') put('ghpRepoList', ghpRepoRows(d, st));
+        else if (p === 'stars') put('ghpStars', ghpStarsInner(d, st));
+        else if (p === 'status') put('ghpStatus', ghpStatusInner(d, st));
+    });
+    if (parts.indexOf('status') < 0) put('ghpStatus', ghpStatusInner(d, st));
+}
+function ghpCalEnd(st) { var s = st.view.querySelector('.ghp-calscroll'); if (s) s.scrollLeft = s.scrollWidth; }   // the recent end, like the real one
+
+webPage('github.com/IsaacUre', {
+    live: true,                                               // keeps ?tab= in the address, like github.com
+    claim: /^github\.com\/isaacure\/?(?:[?#].*)?$/,           // ...and those addresses land here, not on the generic GitHub page
+    title: 'IsaacUre · GitHub', fav: { ch: 'G', c: '#1f2328' }, searchable: true,
+    stitle: 'IsaacUre · GitHub', sdesc: 'IsaacUre has 2 repositories available. Follow their code on GitHub.', skey: 'github isaacure isaac ure repositories code profile contributions',
+    render: function () { return ghpPage(ghpData(), ghpTab(liveUrl()), null); },
+    init: function (view) {
+        var d = ghpData();
+        // the saved copy's activity is its own month; a live answer's is this month
+        var st = { view: view, url: liveUrl(), d: d, pending: 0, years: {}, months: [d.saved ? Object.keys(d.act).sort().pop() : ghpToday().slice(0, 7)], filter: { q: '', type: 'all', lang: 'all', sort: 'updated' } };
+        st.tab = ghpTab(st.url);
+        GHP = st;
+        ghpTitle(st);
+        ghpCalEnd(st);
+        var tip = view.querySelector('#ghpTip'), root = view.querySelector('.cr-ghp');
+        view.addEventListener('click', function (e) {
+            var t = e.target;
+            var y = t.closest('.ghp-year');
+            if (y) {
+                var yr = +y.getAttribute('data-year'), cur = +ghpToday().slice(0, 4);
+                st.yearFail = null; st.year = yr === cur ? null : String(yr);
+                if (st.year && !st.years[st.year]) ghpCalendar(st, st.year);
+                ghpPaint(st, ['cal']); return;
+            }
+            if (t.closest('.ghp-more')) { ghpMore(st); return; }
+            var o = t.closest('.ghp-mopt');
+            if (o) { st.filter[o.getAttribute('data-f')] = o.getAttribute('data-v'); var m = o.closest('details'); if (m) m.open = false; ghpRefreshRepos(st); return; }
+            if (t.closest('.ghp-clear')) { st.filter = { q: '', type: 'all', lang: 'all', sort: 'updated' }; var q = view.querySelector('.ghp-rq'); if (q) q.value = ''; ghpRefreshRepos(st); return; }
+            if (t.closest('.ghp-burger')) { root.classList.toggle('ghp-navopen'); return; }
+            var open = view.querySelectorAll('.ghp-menu[open]');
+            for (var i = 0; i < open.length; i++) if (!open[i].contains(t)) open[i].open = false;
+        });
+        view.addEventListener('input', function (e) { if (e.target.classList.contains('ghp-rq') && st.tab === 'repositories') { st.filter.q = e.target.value; ghpPaint(st, ['list']); } });
+        view.addEventListener('keydown', function (e) {
+            if (!e.target.classList.contains('ghp-q') || e.key !== 'Enter') return;
+            var q = e.target.value.trim(); if (!q) return;
+            if (/^[A-Za-z0-9-]{1,39}(\/[A-Za-z0-9._-]{1,100})?$/.test(q)) crNav('github.com/' + q);
+            else crNav('google.com/search?q=' + encodeURIComponent(q + ' github'));
+        });
+        view.addEventListener('mouseover', function (e) {
+            var c = e.target.closest && e.target.closest('.ghp-day');
+            if (!c || !tip || !root) return;
+            tip.textContent = c.getAttribute('data-tip'); tip.hidden = false;
+            var a = c.getBoundingClientRect(), b = root.getBoundingClientRect(), z = CR && CR.zoom ? CR.zoom : 1;
+            tip.style.left = ((a.left + a.width / 2 - b.left) / z) + 'px'; tip.style.top = ((a.top - b.top) / z - 6) + 'px';
+        });
+        view.addEventListener('mouseout', function (e) { if (tip && e.target.closest && e.target.closest('.ghp-day')) tip.hidden = true; });
+        var fresh = !st.d.saved && Date.now() - (st.d.t || 0) < GHP_TTL;
+        if (!fresh) ghpFetch(st);
+        if (st.tab === 'stars') ghpStars(st);
+        ghpPaint(st, ['status']);
     }
 });
+function ghpRefreshRepos(st) {            // the whole filter bar redraws so the menus show the new choice; the query box keeps its focus
+    var bar = st.view.querySelector('.ghp-rbtns');
+    if (bar) { var tmp = document.createElement('div'); tmp.innerHTML = ghpReposInner(st.d, st); var nb = tmp.querySelector('.ghp-rbtns'); if (nb) bar.replaceWith(nb); }
+    ghpPaint(st, ['list']);
+}
 
 /* — Wikipedia: the GTI article — */
 webPage('en.wikipedia.org/wiki/Volkswagen_Golf_GTI', {
@@ -3278,17 +3904,20 @@ function liveFill(view, url, html, title) {
     if (!view.isConnected) return;
     view.innerHTML = html;
     liveWireBack(view);
-    if (title && CR) {
-        if (!CR.incog) {                                   // a private page's real title stays out of the shared map
-            if (Object.keys(LIVE_TITLES).length > 80) LIVE_TITLES = Object.create(null);   // check BEFORE the set, or the 81st write is wiped with the rest
-            LIVE_TITLES[url] = title;
-            var h = crHist();                              // retitle the history entry the nav just wrote
-            for (var i = 0; i < h.length; i++) if (h[i].u === url) { h[i].t = title; break; }
-            crjSet('hist', h);
-        }
-        crTabs();
-    }
+    liveTitle(url, title);
     if (find.appId === 'chrome' && findOpenNow()) runFind();
+}
+/* a live page tells the tab (and the history entry the nav just wrote) its real name */
+function liveTitle(url, title) {
+    if (!title || !CR) return;
+    if (!CR.incog) {                                       // a private page's real title stays out of the shared map
+        if (Object.keys(LIVE_TITLES).length > 80) LIVE_TITLES = Object.create(null);   // check BEFORE the set, or the 81st write is wiped with the rest
+        LIVE_TITLES[url] = title;
+        var h = crHist();                                  // retitle the history entry the nav just wrote
+        for (var i = 0; i < h.length; i++) if (h[i].u === url) { h[i].t = title; break; }
+        crjSet('hist', h);
+    }
+    crTabs();
 }
 /* the little proof-of-life chip live pages wear */
 function liveChip() { return '<span class="cr-lvchip" title="Fetched from the real site just now">● live</span>'; }
@@ -4022,6 +4651,7 @@ function crResolveKey(input) {
     function known(k) { return Object.prototype.hasOwnProperty.call(WEB_LC, k) ? WEB_LC[k] : null; }
     var lc = u.toLowerCase();
     if (known(lc)) return known(lc);
+    for (var ci = 0; ci < WEB_CLAIMS.length; ci++) if (WEB_CLAIMS[ci][0].test(lc)) return WEB_CLAIMS[ci][1];   // e.g. github.com/IsaacUre?tab=stars
     if (lc.indexOf('google.com/search') === 0) return 'google.com/search';
     var host = lc.split(/[/?#]/)[0].split(':')[0];       // host only: drop /path, ?query, #frag, and :port
     return known(host);
