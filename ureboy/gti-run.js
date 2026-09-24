@@ -966,7 +966,7 @@
         { name: 'PINE SPRINT',  st: 0, boss: 'ZETTA',    frac: 0.780, len: 2.0 },
         { name: 'I-45 RUSH',    st: 1, boss: 'MALACHI',  frac: 0.830, len: 2.1 },
         { name: 'SEAWALL GP',   st: 2, boss: 'RILEY',    frac: 0.875, len: 2.2 },
-        { name: 'COW COUNTRY',  st: 3, boss: 'SOPHIE',   frac: 0.915, len: 2.3 },
+        { name: 'COW COUNTRY',  st: 3, boss: 'THE BOULDER', frac: 0.915, len: 2.3 },
         { name: 'VILLAGE LOOP', st: 4, boss: 'THE INTERN', frac: 0.950, len: 2.4 },
         { name: 'RAIN DASH',    st: 5, boss: 'P0420 GHOST', frac: 0.985, len: 2.5 },
         { name: 'BASIN DUEL',   st: 6, boss: 'DADS 992', frac: 1.030, len: 2.8 }

@@ -1051,7 +1051,7 @@ var TREE_DOCS = {
         $: { d: '11/5/2025', j: 220 },
         'campaign': {
             'session 0 notes.txt': 'pitch: low-fantasy road campaign. the party shares one (1) enchanted hatchback.\nhouse rule: nat 20 on a persuasion check against me and I legally have to say yes.',
-            'session 1 — the silver garage.txt': 'party met the mechanic-oracle. she speaks only in torque specs.\nsophie talked us OUT of a fight for the first time in table history.\nloot: a coupler of dubious provenance.',
+            'session 1 — the silver garage.txt': 'party met the mechanic-oracle. she speaks only in torque specs.\nthe party talked its way OUT of a fight for the first time in table history.\nloot: a coupler of dubious provenance.',
             'session 2 — hedges road.txt': 'random encounter table came up "sleeping policeman" and no one was ready.\nmalachi cast something he had not prepared. ruled it worked because it was funny.',
             'session 3 — the depths.txt': 'the boulder puzzle took 90 minutes.\nthe party named the boulder. the party now refuses to leave the boulder.\ni have written a stat block for the boulder. this is my life now.',
             'the intercooler arc.txt': 'big bad: HEAT SOAK, tyrant of summer.\nthe prophecy is a parts list. the quest is an install.\nfinale: they have to finish the install MID-FIGHT. do not let them know the box has been in the trunk since session 1.',
@@ -1059,7 +1059,7 @@ var TREE_DOCS = {
             'loot table.xlsx': 0
         },
         'maps': { 'hedges road.png': 0, 'the commons.png': 0, 'the depths.png': 0 },
-        'character sheets': { 'SOPHIE — silver ring bard.pdf': 0, 'MALACHI — chaos sorcerer.pdf': 0, 'SAMMY — beast barbarian.pdf': 0, 'THE BOULDER.pdf': 0, 'the cow.pdf': 0 },
+        'character sheets': { 'MALACHI — chaos sorcerer.pdf': 0, 'SAMMY — beast barbarian.pdf': 0, 'THE BOULDER.pdf': 0, 'the cow.pdf': 0 },
         'DM screen cheatsheet.pdf': 0, 'dice math.xlsx': 0
     },
     'My Games': {
@@ -1081,7 +1081,7 @@ var TREE_DOCS = {
         'IE intake receipt.pdf': 0, 'intercooler receipt.pdf': 0, 'dyno day.pdf': 0
     },
     'ideas.txt': 'website but it is a game boy\ngame boy but it is a room\nroom but it is first person\nfirst person but there is a computer\ncomputer but it has a website on it (careful)',
-    'karaoke setlist.txt': 'opener: something safe.\nmid-set: the duet. non-negotiable.\ncloser: the one that wrecks the voice. worth it every time.\nrule: never follow sophie. you will not survive following sophie.',
+    'karaoke setlist.txt': 'opener: something safe.\nmid-set: sad girl autumn. non-negotiable.\ncloser: the one that wrecks the voice. worth it every time.',
     'reading list.txt': 'camus — the myth of sisyphus (again)\ncamus — the stranger (again again)\nsomething about water infrastructure that i will absolutely finish\nthe FSAE rulebook (573 pages, riveting, five stars)'
 };
 
@@ -1089,8 +1089,8 @@ var TREE_PICS = {
     $: { d: '10/12/2025', j: 260 },
     'Camera Roll': {
         'IMG_2041.jpg': 0, 'IMG_2042.jpg': 0, 'IMG_2044.jpg': 0, 'IMG_2049.jpg': 0, 'IMG_2050.jpg': 0, 'IMG_2051.jpg': 0,
-        'IMG_2057.jpg': 0, 'IMG_2063.jpg': 0, 'IMG_2071.jpg': 0, 'IMG_2072.jpg': 0, 'IMG_2088.jpg': 0,
-        'the matching rings.jpg': 0, 'martel at golden hour.jpg': 0, 'the tree branch (memorial).jpg': 0
+        'IMG_2057.jpg': 0, 'IMG_2063.jpg': 0, 'IMG_2071.jpg': 0, 'IMG_2072.jpg': 0, 'IMG_2088.jpg': 0, 'IMG_2094.jpg': 0,
+        'martel at golden hour.jpg': 0, 'the tree branch (memorial).jpg': 0
     },
     'Screenshots': {
         'terraria eye of cthulhu.png': 0, 'cookie clicker 1 trillion.png': 0, 'urequest full party.png': 0,
@@ -1111,7 +1111,7 @@ var TREE_MUSIC = {
         'sleeping policeman (remix).mp3': 0, 'the on-ramp song.mp3': 0, 'heat soak.mp3': 0, 'stage one and a half.mp3': 0
     },
     'study': { 'lofi for psets.mp3': 0, 'rain on martel.mp3': 0, 'library at 1am.mp3': 0, 'chamomile steep timer.mp3': 0, 'proofs and consequences.mp3': 0 },
-    'karaoke night': { 'the one sophie always picks.mp3': 0, 'the one i always pick.mp3': 0, 'the duet (do not distribute).mp3': 0, 'crowd work practice.mp3': 0 },
+    'karaoke night': { 'the one i always pick.mp3': 0, 'sad girl autumn (do not distribute).mp3': 0, 'crowd work practice.mp3': 0 },
     'ure boy theme.mp3': 0,
     'desktop.ini': 0
 };
@@ -5365,7 +5365,7 @@ READS['dyno day.pdf'] =
 READS['transcript (unofficial).pdf'] =
     'RICE UNIVERSITY — UNOFFICIAL TRANSCRIPT\n\nStudent: Ure, Isaac Owen\nProgram: Mathematical Economic Analysis\n\n[grades redacted by the student, who is being modest in a way that tells you everything]\n\nDean’s note: none. Deans only write when something is wrong.';
 READS['DM screen cheatsheet.pdf'] =
-    'BEHIND THE SCREEN — QUICK TABLES\n\n1. If the plan is funny, it works on a 10+.\n2. If sophie rolls persuasion, start writing the new plot.\n3. The boulder is CR 0 and morale +5. Do not touch.\n4. When in doubt: a stranger arrives with a car problem.\n5. HEAT SOAK monologues until interrupted. He wants to be interrupted.';
+    'BEHIND THE SCREEN — QUICK TABLES\n\n1. If the plan is funny, it works on a 10+.\n2. If someone nat 20s persuasion against me, start writing the new plot.\n3. The boulder is CR 0 and morale +5. Do not touch.\n4. When in doubt: a stranger arrives with a car problem.\n5. HEAT SOAK monologues until interrupted. He wants to be interrupted.';
 function rdBody(name) {
     if (READS[name]) return READS[name];
     var stem = name.replace(/\.[^.]+$/, ''), rnd = lcgFor(fsHash(name)), out = [stem.toUpperCase(), ''];

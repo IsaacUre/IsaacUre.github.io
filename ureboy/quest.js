@@ -1502,23 +1502,23 @@ defSpr('heatsoak', [                    /* HEAT SOAK, TYRANT OF SUMMER. every de
 '.....oo..oo..oo..oo.............',
 '................................']);
 /* ── companions ── */
-defSpr('csophie', [                     /* Sophie. the matching silver ring glints. */
+defSpr('csocket', [                     /* the 10mm socket. stamped 10, hex end up. */
 '................',
 '....oooooooo....',
-'...oHHHHHHHHo...',
-'..oHHHHHHHHHHo..',
-'..oHH111111HHo..',
-'..oH1e1111e1Ho..',
-'..oH11122111Ho..',
-'..oHH112211HHo..',
-'..oHooMMMMooHo..',
-'..oH.MMMMMM.Ho..',
-'..oHoMmMMmMoHo..',
-'...o1oMMMMo1o...',
-'...W.oMmmMo.....',
-'....oMMMMMMo....',
-'....o88oo88o....',
-'.....oo..oo.....'], { '1': '#eec39a', '2': '#c68d5c', e: '#3f6a45', M: '#d86aa0', m: '#a84e80', W: '#e8ecf2' });
+'...oWXKKKKXZo...',
+'...oWKKKKKKZo...',
+'...oWXKKKKXZo...',
+'...oggggggggo...',
+'...oWXXXXXXZo...',
+'...oWggXgggZo...',
+'...oWXgXgXgZo...',
+'...oWXgXgXgZo...',
+'...oWXgXgXgZo...',
+'...oWXgXgggZo...',
+'...oWXXXXXXZo...',
+'....oZZZZZZo....',
+'....oZZZZZZo....',
+'.....oooooo.....'], { W: '#eef1f5', X: '#a9afb8', g: '#7a8089', Z: '#555b64' });
 defSpr('cmalachi', [                    /* Malachi. western goth. dark Americana. */
 '.....oooooo.....',
 '..oooKKKKKKooo..',
@@ -2170,8 +2170,8 @@ var MAPS = {
         props: [],
         npcs: [
             { id: 'barista', spr: 'barista', x: 3, y: 2, dlg: 'barista' },
-            { id: 'sophie', spr: 'csophie', x: 8, y: 7, dlg: 'sophie',
-              gone: function () { return G && G.party && G.party.indexOf('sophie') >= 0; } },
+            { id: 'socket', spr: 'csocket', x: 8, y: 7, dlg: 'socket',
+              gone: function () { return G && G.party && G.party.indexOf('socket') >= 0; } },
             { id: 'bard', spr: 'bard', x: 10, y: 5, dlg: 'bard', bob: true },
             { id: 'oracle', spr: 'oracle', x: 2, y: 8, dlg: 'oracle' },
             { id: 'stu3', spr: 'stu2', x: 6, y: 8, dlg: 'stu3' }
@@ -2675,14 +2675,14 @@ var DEFAULT_LOOK = buildLook(defaultLookIx('sorc', 0));
    weak (enemy -atk) · stun (skip next act) · extra (hero acts again) ·
    guardall (party halves next hits) · sharpen (party +atk 2 turns) */
 var COMPANIONS = {
-    sophie: { n: 'SOPHIE', spr: 'csophie', hpm: 14,
-        bio: 'Matching silver rings. Unmatched side-eye.',
-        camp: ['"The boulder is my favorite. Don\'t tell the owl."', '"Your car\'s name is longer than my schedule."'],
-        basic: { n: 'SWING', dice: [1, 6, 2] },
+    socket: { n: 'THE SOCKET', spr: 'csocket', hpm: 14,
+        bio: 'The 10mm. Found, at last.',
+        camp: ['(it catches the firelight.)', '(you check your pocket again.)'],
+        basic: { n: 'TAP', dice: [1, 6, 2] },
         moves: [
-            { id: 'ring', n: 'MATCHING RING', uses: 2, kind: 'heal', dice: [2, 6, 2], desc: 'silver harmony: heal 2d6+2, steadies fear.' },
-            { id: 'sideeye', n: 'SIDE-EYE', uses: 2, kind: 'weak', val: 2, turns: 2, desc: 'the look. enemy -2 attack, 2 turns.' },
-            { id: 'tag', n: 'TAG TEAM', uses: 1, kind: 'extra', desc: 'you act again. immediately. she believes in you.' }
+            { id: 'snug', n: 'SNUG FIT', uses: 2, kind: 'heal', dice: [2, 6, 2], desc: 'exactly the right size. heal 2d6+2, steadies fear.' },
+            { id: 'strip', n: 'STRIP', uses: 2, kind: 'weak', val: 2, turns: 2, desc: 'their threads, not yours. enemy -2 attack, 2 turns.' },
+            { id: 'ratchet', n: 'RATCHET', uses: 1, kind: 'extra', desc: 'you act again. immediately.' }
         ] },
     sammy: { n: 'SAMMY THE OWL', spr: 'sammy', hpm: 12,
         bio: 'Academic owl. Sees everything, grades nothing.',
@@ -2730,7 +2730,7 @@ var COMPANIONS = {
             { id: 'bethec', n: 'BE THE COW', uses: 1, kind: 'sharpen', val: 3, turns: 2, desc: 'everyone briefly understands. +3 attack, 2 turns.' }
         ] },
 };
-var COMP_ORDER = ['sophie', 'sammy', 'malachi', 'boulder', 'walkhome', 'cow'];
+var COMP_ORDER = ['socket', 'sammy', 'malachi', 'boulder', 'walkhome', 'cow'];
 function hasComp(id) { return G && G.party && G.party.indexOf(id) >= 0; }
 function addComp(id) {
     if (!G.party) G.party = [];
@@ -2842,6 +2842,9 @@ function migrateG() {
     if (!G) return;
     G.party = G.party || [];
     G.active = G.active || [];
+    /* drop companions a save remembers that the game no longer has */
+    G.party = G.party.filter(function (id) { return COMPANIONS[id]; });
+    G.active = G.active.filter(function (id) { return COMPANIONS[id]; });
     G.inv = (G.inv || []).map(function (it) {
         if (it.id === 'o2') return { id: 'specs', n: it.n };
         if (it.id === 'cat') return { id: 'coupler', n: it.n };
@@ -3058,16 +3061,16 @@ DLG.bard = function () {
             'Requests? I know four songs and one of them is legally a chant.',
             'The crowd wants "Wonderwall of Text". The crowd always wants "Wonderwall of Text".'
         ]), o: [
-            { l: '[DUET] Karaoke!', if: function () { return hasComp('sophie') && !G.flags.karaokeDone; }, next: 'duet' },
+            { l: '[SOLO] Karaoke!', if: function () { return !G.flags.karaokeDone; }, next: 'solo' },
             { l: 'Play on.', next: 'chatend' }
         ] },
         chatend: { t: '*the set continues, tragically in tune*', end: true },
-        duet: { t: 'A DUET? Get up here! What are we singing?', o: [
+        solo: { t: 'KARAOKE? Get up here! What are we singing?', o: [
             { l: 'DRIVER\'S PERMIT', next: 'sing' },
             { l: 'BEAUTIFUL FINGS', next: 'sing' },
             { l: 'SAD GIRL AUTUMN', next: 'sing' }
         ] },
-        sing: { t: 'You and Sophie absolutely DEMOLISH the bridge. The crowd is misty-eyed. Someone lights a phone flashlight. The party feels INVINCIBLE.',
+        sing: { t: 'You absolutely DEMOLISH the bridge. The crowd is misty-eyed. Someone lights a phone flashlight. You feel INVINCIBLE.',
             do: function () {
                 G.flags.karaokeDone = 1;
                 healPlayer(G.hpm);
@@ -3083,23 +3086,19 @@ DLG.bard = function () {
         later: { t: 'The set runs all night. The lighting, tragically, is "moody".', end: true }
     } };
 };
-DLG.sophie = function () {
-    var inParty = hasComp('sophie');
-    return { name: 'SOPHIE', start: inParty ? 'party' : 'meet', nodes: {
-        meet: { t: 'There you are. I saved you a seat and they still brought me two teas. Nice ring, by the way. Wonder who has the other one.', o: [
-            { l: '[PARTY] Adventure?', next: 'join' },
-            { l: 'How\'s the tea?', next: 'tea' },
-            { l: 'Just saying hi.', next: 'hi' }
+DLG.socket = function () {
+    if (hasComp('socket')) return { name: 'THE SOCKET', start: 'party', nodes: { party: { t: pick([
+        '(it is still in your pocket. you checked twice.)',
+        '(10mm. still here.)'
+    ]), end: true } } };
+    return { name: 'A SOCKET', start: 'meet', nodes: {
+        meet: { t: 'Something small and silver on the floor by the rug. A 10mm socket. It has been here the whole time.', o: [
+            { l: '[PARTY] Pocket it.', next: 'join' },
+            { l: 'Leave it.', next: 'bye' }
         ] },
-        tea: { t: 'Chamomile. Obviously. I know who I\'m sitting with.', next: 'meet' },
-        hi: { t: 'Hi yourself. Go save your car. Text me. All five messages of it.', end: true },
-        join: { t: 'You want ME to fight a heat demon with you. ...obviously yes. But I\'m taking the good snacks and I am NOT carrying the boulder.',
-            do: function () { addComp('sophie'); }, end: true },
-        party: { t: pick([
-            'The rings are matching today. Good sign. Roll something big.',
-            'If the owl lectures me one more time about citations, I\'m benching him.',
-            'You\'re doing great. The car misses you though.'
-        ]), end: true }
+        join: { t: 'You check the side. 10. Of course it is. It goes in your pocket, and it is not leaving again.',
+            do: function () { addComp('socket'); }, end: true },
+        bye: { t: '(you leave it on the floor. you will need it later.)', end: true }
     } };
 };
 DLG.malachi = function () {
@@ -5216,7 +5215,7 @@ function ScBattle(ids, opts) {
                 if (f) { f.conds.push({ id: 'stun', turns: 1 }); msgStep(al.def.n + ': ' + m2.n + '! ' + f.def.n + ' is stopped cold.', 1.2); }
                 break;
             case 'extra':
-                msgStep(al.def.n + ': ' + m2.n + '! a surge of confidence: act again!', 1.1);
+                msgStep(al.def.n + ': ' + m2.n + '! you act again.', 1.1);
                 thenFn(function () { bt.phase = 'menu'; bt.menuSel = 0; bt.pendingAlly = idx + 1; });
                 return;
             case 'guardall':
@@ -5847,7 +5846,7 @@ function ScCredits() {
         ['STARRING', G.name.slice(0, 12), 'the ' + CLASSES[G.cls].n.split(' ')[1]],
         ['FEATURING', 'The Torque Priest', 'The Dice Oracle', 'A Boulder (happy)', 'A Cow (as himself)'],
         ['ANTAGONIST', 'HEAT SOAK, who was', 'only thermodynamics'],
-        ['SPECIAL THANKS', 'chamomile', 'fast glass', 'the 10mm socket', '(wherever it is)'],
+        ['SPECIAL THANKS', 'chamomile', 'fast glass', 'the 10mm socket', hasComp('socket') ? '(found it)' : '(wherever it is)'],
         ['NO SQUIRRELS', 'WERE HARMED.', 'Several were', 'inconvenienced.'],
         ['THE RECORD', 'days ' + G.day + ' · foes ' + G.kills, 'nat20s ' + G.nat20s + ' · RIP ' + G.deaths, 'steps ' + G.steps],
         ['...', '', 'somewhere,', 'faintly...', '', 'a browser tab', 'opens. downpipes.', '', '(you won\'t leave', 'her stock. we know.)'],
