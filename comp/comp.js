@@ -1244,21 +1244,32 @@ function fsLoad() {
 function fsSave() { try { store('fs', JSON.stringify(fsSt)); } catch (e) {} }
 /* Factory files a later build took out, by fsHash of their path (the cid).
    Someone who moved, renamed or binned one under the old build still has a
-   copy carrying that cid in their saved overlay, and the original's
-   tombstone in gone. Drop both before anything draws. */
+   copy carrying that cid in their saved overlay, the original's tombstone in
+   gone, and, if the copy sat on the Desktop, its icon spot. Drop all of it
+   at boot. Shapes this build never writes are left alone, not thrown on. */
 var FS_RETIRED = [2691851086, 810912409, 3683617432, 3087898000];
 function fsRetire() {
-    var st = fsLoad(), dirty = false;
+    var st = fsLoad(), dirty = false, desk = false;
     function retired(cid) { return !!cid && FS_RETIRED.indexOf(fsHash(cid)) >= 0; }
     Object.keys(st.add).forEach(function (p) {
-        var keep = st.add[p].filter(function (it) { return !(it && retired(it.cid)); });
+        if (!Array.isArray(st.add[p])) return;
+        var keep = st.add[p].filter(function (it) {
+            if (!(it && retired(it.cid))) return true;
+            if (p === 'Desktop' && it.n in deskLoad()) { delete deskLoad()[it.n]; desk = true; }
+            return false;
+        });
         if (keep.length !== st.add[p].length) { st.add[p] = keep; dirty = true; }
     });
-    var bin = st.bin.filter(function (e) { return !(e && e.it && retired(e.it.cid)); });
-    if (bin.length !== st.bin.length) { st.bin = bin; dirty = true; }
-    var tomb = st.gone.filter(function (g) { return !retired(g); });
-    if (tomb.length !== st.gone.length) { st.gone = tomb; dirty = true; }
+    if (Array.isArray(st.bin)) {
+        var bin = st.bin.filter(function (e) { return !(e && e.it && retired(e.it.cid)); });
+        if (bin.length !== st.bin.length) { st.bin = bin; dirty = true; }
+    }
+    if (Array.isArray(st.gone)) {
+        var tomb = st.gone.filter(function (g) { return !retired(g); });
+        if (tomb.length !== st.gone.length) { st.gone = tomb; dirty = true; }
+    }
     if (dirty) fsSave();
+    if (desk) deskSave();
 }
 /* Persisted state can outlive the build that wrote it: a shortcut for an app
    this desktop no longer ships, a file in the bin that opened with one, or a
