@@ -1192,9 +1192,10 @@ button.cr-iu-skip { position: absolute; right: 1rem; bottom: 1rem; z-index: 11; 
 .cr-ghp .ghp-mitem { display: inline-flex; align-items: center; gap: 4px; padding: 8px; border-radius: 6px; color: #1f2328; font-size: 16px; font-weight: 500; white-space: nowrap; }
 .cr-ghp .ghp-mitem:hover { text-decoration: none; color: #59636e; }
 .ghp-caret { width: 12px; height: 12px; color: #59636e; }
-.ghp-search { display: none; align-items: center; gap: 8px; width: 240px; height: 32px; padding: 0 6px 0 8px; border: 1px solid #d1d9e0; border-radius: 6px; color: #59636e; background: #fff; cursor: text; }
+.ghp-search { display: none; align-items: center; gap: 8px; flex: 0 1 240px; width: auto; min-width: 0; height: 32px; padding: 0 6px 0 8px; border: 1px solid #d1d9e0; border-radius: 6px; color: #59636e; background: #fff; cursor: text; }
 .ghp-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; font-size: 14px; color: #1f2328; }
 .ghp-search input::placeholder { color: #59636e; }
+.ghp-search kbd { flex: none; }   /* the box gives up width before Sign in and Sign up are pushed off */
 .ghp-search kbd { font: 11px ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; border: 1px solid #d1d9e0; border-radius: 4px; padding: 0 5px; line-height: 16px; color: #59636e; }
 .cr-ghp .ghp-signin { color: #1f2328; font-size: 16px; font-weight: 500; padding: 5px 8px; white-space: nowrap; }
 .cr-ghp .ghp-signup { display: none; color: #1f2328; font-size: 16px; font-weight: 500; padding: 4px 12px; border: 1px solid #d1d9e0; border-radius: 6px; white-space: nowrap; }
@@ -1346,7 +1347,7 @@ button.cr-iu-skip { position: absolute; right: 1rem; bottom: 1rem; z-index: 11; 
 .ghp-menu { position: relative; }
 .ghp-menu > summary { list-style: none; }
 .ghp-menu > summary::-webkit-details-marker { display: none; }
-.ghp-menubox { position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; width: 300px; max-width: 80vw; padding-bottom: 4px; background: #fff; border: 1px solid #d1d9e0; border-radius: 12px; box-shadow: 0 8px 24px #424a5333; overflow: hidden; }
+.ghp-menubox { position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; width: 300px; max-width: calc(100cqw - 16px); padding-bottom: 4px; background: #fff; border: 1px solid #d1d9e0; border-radius: 12px; box-shadow: 0 8px 24px #424a5333; overflow: hidden; }
 .ghp-menuh { padding: 8px 16px; font-size: 12px; font-weight: 600; border-bottom: 1px solid #d1d9e0b3; }
 .cr-ghp .ghp-mopt { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 16px; font-size: 12px; text-align: left; border-bottom: 1px solid #d1d9e0b3; }
 .cr-ghp .ghp-mopt:hover { background: #818b981a; }
