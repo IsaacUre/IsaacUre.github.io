@@ -100,6 +100,18 @@ class CDP:
         finally:
             self.ws.s.settimeout(None)
 
+def shutdown(proc, c=None):
+    """Close Edge properly. Killing only the browser process leaves its renderer, GPU and
+    utility processes behind on Windows, a few hundred MB a run; Browser.close takes them all."""
+    try:
+        if c: c.call('Browser.close')
+    except Exception:
+        pass
+    try:
+        proc.wait(timeout=10)
+    except Exception:
+        subprocess.run(['taskkill', '/T', '/F', '/PID', str(proc.pid)], capture_output=True)
+
 def launch(port=9333, w=820, h=620, profile=None):
     profile = profile or os.path.join(tempfile.gettempdir(), 'mc-sounds-edge-profile')   # never the user's own Edge profile
     proc = subprocess.Popen([EDGE, '--headless=new', f'--remote-debugging-port={port}', f'--user-data-dir={profile}',

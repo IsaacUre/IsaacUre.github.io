@@ -14,7 +14,7 @@ and trims every effect by exactly what this browser needs. Music is streamed rat
 trimmed, so it is not padded, but its moov box is moved to the front so a stream can start
 without first fetching the end of the file.
 """
-import os, sys, wave, json, struct, math, subprocess, tempfile
+import os, sys, wave, json, struct, math, subprocess, tempfile, shutil
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, '..', '..', '..'))
@@ -130,8 +130,14 @@ def faststart(path):
     open(path, 'wb').write(res)
 
 def main(prefixes):
+    tmp = tempfile.mkdtemp(prefix='mc-sounds-')   # the padded WAVs: tens of megabytes, gone when the build is
+    try:
+        build(prefixes, tmp)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+def build(prefixes, tmp):
     want = lambda p: not prefixes or any(p.startswith(x) for x in prefixes)
-    tmp = tempfile.mkdtemp(prefix='mc-sounds-')
     jobs, lengths = [], {}
     for p in SFX:
         if not want(p): continue

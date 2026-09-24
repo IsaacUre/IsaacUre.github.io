@@ -21,7 +21,7 @@ HTMLMediaElement.play, and a meter on whatever the page connects to the speakers
 """
 import sys, os, json, time, collections
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from cdp import launch
+from cdp import launch, shutdown
 
 BASE = os.environ.get('MC_BASE', 'http://localhost:8571')
 MENU = BASE + '/.claude/comp-tools/mc-menu.html?w=780&h=560'
@@ -114,7 +114,7 @@ def p_paths():
         c.wait_for('window.__mc && window.__mc.state && window.__mc.state().ready', 180, 0.5)
         asked = set(c.eval('__mc._sndPaths()'))
     finally:
-        proc.kill()
+        shutdown(proc, c)
     shipped = set()
     for d, _, fs in os.walk(SOUNDS):
         for f in fs:
@@ -148,7 +148,7 @@ def p_title():
         probs += sift(c)[0]
         check(not probs, 'no errors', probs or None)
     finally:
-        proc.kill()
+        shutdown(proc, c)
 
 EVENTS = [
     ('hurt', 0, 0, 'damage/hit'), ('die', 0, 0, 'damage/hit'), ('hurtdrown', 0, 0, 'entity/player/hurt/drown'),
@@ -245,7 +245,7 @@ def p_events():
             probs = sift(c)[0]
             check(not probs, f'no errors in the {mode} world', probs or None)
         finally:
-            proc.kill()
+            shutdown(proc, c)
 
 def p_world():
     proc, c = boot(MENU.replace('?', '?mcdev=kit&'), lock=True)
@@ -276,7 +276,7 @@ def p_world():
         probs = sift(c)[0]
         check(not probs, 'no errors', probs or None)
     finally:
-        proc.kill()
+        shutdown(proc, c)
 
 def p_desktop():
     proc, c = boot(BASE + '/tcomp/', 1400, 900)
@@ -298,7 +298,7 @@ def p_desktop():
         check(len(plays) == 1 and '/tcomp/mc-sounds/music/menu/' in plays[0], 'and its title screen plays a menu piece', plays)
         check(not probs, 'no errors', probs or None)
     finally:
-        proc.kill()
+        shutdown(proc, c)
 
 PASSES = {'paths': p_paths, 'title': p_title, 'events': p_events, 'world': p_world, 'desktop': p_desktop}
 if __name__ == '__main__':
