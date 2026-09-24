@@ -1223,8 +1223,6 @@ button.cr-iu-skip { position: absolute; right: 1rem; bottom: 1rem; z-index: 11; 
 .cr-ghp .ghp-btn:hover { background: #eff2f5; text-decoration: none; }
 .cr-ghp .ghp-btn[disabled] { color: #818b98; cursor: default; }
 .cr-ghp .ghp-block { display: flex; width: 100%; }
-.cr-ghp .ghp-btnsm { height: 28px; padding: 0 12px; font-size: 12px; }
-.ghp-btnsm .ghp-oct { color: #59636e; margin-right: 2px; }
 .cr-ghp .ghp-follow { margin-bottom: 16px; }
 .ghp-bio { margin-bottom: 16px; font-size: 16px; overflow-wrap: anywhere; }
 .ghp-follows { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin-bottom: 16px; color: #59636e; }
@@ -1252,7 +1250,8 @@ button.cr-iu-skip { position: absolute; right: 1rem; bottom: 1rem; z-index: 11; 
 .t-gold .ghp-tier { color: #7d4e00; background: #fff8c5; border-color: #d4a72c; }
 .ghp-orgs { display: flex; flex-wrap: wrap; gap: 4px; }
 .ghp-org img { display: block; width: 32px; height: 32px; border-radius: 6px; box-shadow: 0 0 0 1px #1f232826; }
-.ghp-block-report { margin-top: 16px; padding-top: 16px; border-top: 1px solid #d1d9e0b3; font-size: 12px; }
+.ghp-block-report { margin-top: 16px; padding-top: 16px; border-top: 1px solid #d1d9e0b3; font-size: 14px; font-weight: 500; }
+.cr-ghp .ghp-block-report .ghp-mlink:hover { color: #59636e; text-decoration: underline; }   /* a link-style button: it underlines, it does not turn blue */
 @container (min-width: 768px) {
     .ghp-layout { grid-template-columns: 256px minmax(0, 1fr); padding: 24px 24px 0; }
     .ghp-tabsin { padding: 0 24px 0 calc(24px + 256px + 16px); }
@@ -1310,7 +1309,9 @@ button.cr-iu-skip { position: absolute; right: 1rem; bottom: 1rem; z-index: 11; 
 .cr-ghp .ghp-year.on { background: #0969da; color: #fff; }
 .ghp-note { margin: 4px 0 0; font-size: 12px; color: #59636e; }
 .ghp-tip { position: absolute; z-index: 30; transform: translate(-50%, -100%); padding: 5px 8px; font-size: 12px; line-height: 1.5; color: #fff; background: #25292e; border-radius: 6px; white-space: nowrap; pointer-events: none; }
-.ghp-tip::after { content: ""; position: absolute; top: 100%; left: 50%; margin-left: -5px; border: 5px solid transparent; border-top-color: #25292e; }
+.ghp-tip::after { content: ""; position: absolute; top: 100%; left: 50%; margin-left: calc(var(--ghp-dx, 0px) - 5px); border: 5px solid transparent; border-top-color: #25292e; }   /* --ghp-dx: how far the tip was pushed back inside the page */
+.ghp-tip.ghp-tipb { transform: translate(-50%, 0); }
+.ghp-tip.ghp-tipb::after { top: auto; bottom: 100%; border-top-color: transparent; border-bottom-color: #25292e; }
 /* contribution activity */
 .ghp-acth { margin-top: 0; }
 .ghp-monh { position: relative; height: 14px; margin: 16px 0 8px; font-size: 12px; font-weight: 600; line-height: 14px; }
@@ -1360,10 +1361,12 @@ button.cr-iu-skip { position: absolute; right: 1rem; bottom: 1rem; z-index: 11; 
 .ghp-rname { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 0 0 4px; font-size: 20px; font-weight: 600; line-height: 1.25; }
 .ghp-rname .cr-l b { font-weight: 600; }
 .ghp-rdesc { margin: 4px 0 8px; font-size: 14px; color: #59636e; overflow-wrap: anywhere; }
-.ghp-rside { flex: 0 0 auto; }
 .ghp-blank { margin: 0; padding: 40px 16px; text-align: center; font-size: 20px; font-weight: 600; }
 .ghp-blank.ghp-muted { font-size: 14px; font-weight: 400; }
 .ghp-lists { margin-bottom: 24px; }
+.ghp-listhead { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.ghp-listhead .ghp-h2 { margin: 0; }
+.ghp-listname { margin: 0; font-size: 16px; font-weight: 600; }
 .ghp-listgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
 .cr-ghp .ghp-listcard { display: flex; flex-direction: column; gap: 4px; padding: 16px; color: #1f2328; border: 1px solid #d1d9e0; border-radius: 6px; }
 .cr-ghp .ghp-listcard:hover { text-decoration: none; border-color: #818b98; }
@@ -1372,6 +1375,19 @@ button.cr-iu-skip { position: absolute; right: 1rem; bottom: 1rem; z-index: 11; 
 .ghp-blankbox h3 { margin: 0 0 4px; font-size: 20px; font-weight: 600; }
 .ghp-blankbox p { margin: 0 0 8px; color: #59636e; }
 .ghp-bigic { width: 24px; height: 24px; margin-bottom: 8px; color: #59636e; }
+.ghp-pkghead { margin: 16px 0 24px; text-align: center; }
+.ghp-pkghead h2 { margin: 0 0 4px; font-size: 20px; font-weight: 600; }
+.ghp-pkghead p { margin: 0; color: #59636e; }
+@container (min-width: 768px) { .ghp-regs { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.ghp-regname { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font-size: 16px; font-weight: 600; }
+.ghp-regdesc { flex: 1 1 auto; margin: 0 0 8px; font-size: 12px; color: #59636e; }
+/* ?tab=followers and ?tab=following */
+.ghp-people { margin: 0; padding: 0; list-style: none; }
+.ghp-person { display: flex; align-items: center; gap: 16px; padding: 24px 0; border-bottom: 1px solid #d1d9e0b3; }
+.ghp-pav { display: block; width: 50px; height: 50px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 1px #1f232826; }
+.cr-ghp .ghp-plogin { font-size: 16px; color: #59636e; }
+.ghp-pager { display: flex; justify-content: center; gap: 8px; margin-top: 16px; }
+.cr-ghp .ghp-pager span.ghp-btn { color: #818b98; cursor: default; }
 /* the live/saved line, and GitHub's footer */
 .ghp-status { margin: 24px 0 0; padding-top: 12px; font-size: 12px; color: #59636e; border-top: 1px solid #d1d9e0b3; }
 .ghp-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 16px; max-width: 1280px; margin: 40px auto 0; padding: 32px 16px 40px; font-size: 12px; color: #59636e; border-top: 1px solid #d1d9e0b3; }
