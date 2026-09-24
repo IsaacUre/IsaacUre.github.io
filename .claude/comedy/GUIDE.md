@@ -29,7 +29,7 @@ of a PC is the joke, so nothing on it should wink at that or explain it.
 | No em dashes, and no hyphen doing an em dash's job. Rewrite when that reads better than a punctuation swap. Code comments are exempt. | First message, em dash ruling | High |
 | Drop a decorative subtitle or tagline rather than reword it. | Weekend Deal: "axing the little text" | Medium (one ruling) |
 | Things that are true about him stay: chamomile, the intercooler, Camus. The target is generated filler, not personal references. | Rulings on chamomile, intercooler, Camus | High |
-| One person is out of the site's lore for good. Nothing mentions or implies her: no name, no matching rings, no duet, no bard sheet. Karaoke and the sad girl setlist are his and stay. | Sep 24 call (his words are in the private doc) | High |
+| One person is out of the site's lore for good. Nothing mentions or implies her: no name or initials, no matching rings, no duet, no bard sheet. Karaoke and the sad girl setlist are his and stay. | Sep 24 call (his words are in the private doc) | High |
 | Kept doesn't mean kept word for word. He wants to see each instance so he can judge how it's written. | Camus ruling | High |
 | Running gags he didn't choose (the cow, the sleeping policeman) are undecided, not disliked. | "I'm not sure lmao", "keep this question for later" | Low |
 | Overall: nothing corny. | First message | High |
@@ -44,7 +44,7 @@ numbers are rows 1 to 15 of REVIEW.md.
 
 | Date | Topic | His words | What it settled |
 | --- | --- | --- | --- |
-| Sep 24 | One person out of the lore | His words are in the private doc, not repeated here. | She stays out everywhere: no name, no matching rings, no duet, no bard sheet. The 10mm socket takes her URE QUEST slot and THE BOULDER takes her GTI RUN race. Karaoke stays, as his solo. Another chat made the edit on its own branch; it isn't in main as of Sep 24. |
+| Sep 24 | One person out of the lore | His words are in the private doc, not repeated here. | She stays out everywhere: no name or initials, no matching rings, no duet, no bard sheet. The 10mm socket takes her URE QUEST slot and THE BOULDER takes her GTI RUN race. Karaoke stays, as his solo. The edit is PR #163. |
 | Sep 24 | comp and tcomp | "prioritise just what's visible with comp and then move onto tcomp and then the other stuff. Anything done to comp should be done to tcomp." | Work order: comp's visible copy, then tcomp-only copy, then the rest. Every comp change is mirrored in tcomp. |
 | Sep 24 | This guide | "Don't treat it like the bible but maybe keeping it in mind." | Predictions get flagged as predictions. |
 | Sep 6 | Row 1, em dashes | "Please get rid of all em dashes... rewrite things to not need an em dash if that's a better outcome... Code comments should be fine." | All visible em dashes go. |

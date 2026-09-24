@@ -648,7 +648,7 @@
         ['THRESHER', ['#1a3a8f', 0]],  // 9
         ['RUWMC', ['#1a5a3a', 0]],     // 10
         ['BE A COW', ['#4a3a1a', 0]],  // 11
-        ['S+I', ['#b5180a', 0]],       // 12
+        ['KARAOKE', ['#b5180a', 0]],   // 12
         ['FSAE', ['#1a3a8f', 0]],      // 13
         ['H2O CASH', ['#153a6e', 0]],  // 14
         ['SURF', ['#1a6aa8', 0]]       // 15
@@ -966,7 +966,7 @@
         { name: 'PINE SPRINT',  st: 0, boss: 'ZETTA',    frac: 0.780, len: 2.0 },
         { name: 'I-45 RUSH',    st: 1, boss: 'MALACHI',  frac: 0.830, len: 2.1 },
         { name: 'SEAWALL GP',   st: 2, boss: 'RILEY',    frac: 0.875, len: 2.2 },
-        { name: 'COW COUNTRY',  st: 3, boss: 'SOPHIE',   frac: 0.915, len: 2.3 },
+        { name: 'COW COUNTRY',  st: 3, boss: 'THE BOULDER', frac: 0.915, len: 2.3 },
         { name: 'VILLAGE LOOP', st: 4, boss: 'THE INTERN', frac: 0.950, len: 2.4 },
         { name: 'RAIN DASH',    st: 5, boss: 'P0420 GHOST', frac: 0.985, len: 2.5 },
         { name: 'BASIN DUEL',   st: 6, boss: 'DADS 992', frac: 1.030, len: 2.8 }
