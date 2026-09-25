@@ -2666,6 +2666,10 @@ button.cr-iu-skip { position: absolute; right: 1rem; bottom: 1rem; z-index: 11; 
 .mc-defs { position: absolute; left: 0; top: 0; width: 0; height: 0; overflow: hidden; }
 .mc-cv { display: block; width: 100%; height: 100%; image-rendering: pixelated; image-rendering: crisp-edges; }
 .mc-vig { position: absolute; inset: 0; pointer-events: none; z-index: 2; transition: background 80ms linear; }
+/* Gui.renderVignette: textures/misc/vignette.png multiplied over the view, clear in the middle and dark at the
+   corners, as strong as it is dark where you stand; its opacity eases a percent a tick */
+.mc-vign { position: absolute; inset: 0; pointer-events: none; z-index: 2; opacity: 0;
+    background: radial-gradient(ellipse 72% 72% at 50% 50%, rgba(0, 0, 0, 0) 45%, rgba(0, 0, 0, 0.38) 78%, rgba(0, 0, 0, 0.78) 100%); }
 .mc-hud { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
 /* a direct child of .mc, not of .mc-hud — see render(): the blend needs the world
    behind it, and .mc-hud's z-index would isolate it away */

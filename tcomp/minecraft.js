@@ -1857,7 +1857,8 @@
     }
     function drawFrame() {
         var G = RT.G, gl = G.gl, sky = skyState();
-        var eyeY = S.py + EYE, headIn = getB(Math.floor(S.px), Math.floor(eyeY), Math.floor(S.pz));
+        var live = !RT.menu && !!CAM, pt = live ? camPt() : 0;
+        var eyeY = S.py + (live ? camEye(pt) : EYE), headIn = getB(Math.floor(S.px), Math.floor(eyeY), Math.floor(S.pz));
         var under = headIn === WATER, inLava = headIn === LAVA;
         var fogC = under ? [0.04, 0.12, 0.4] : inLava ? [0.6, 0.2, 0.05] : sky.sky;
         var fogR = under ? [4, 16] : inLava ? [0.3, 3] : [(VIEW - 1.2) * CW, (VIEW + 0.4) * CW];
@@ -1867,7 +1868,12 @@
         /* RT.fov overrides the base entirely — the title screen's panorama is
            rendered at the cube renderer's 85°, not the game's 70°. RT.fovM is
            the sprint stretch, and is 1 whenever nobody is running. */
-        var proj = mPersp((RT.fov || FOV) * (RT.fovM || 1), RT.cv.width / RT.cv.height, 0.08, 260);
+        /* the options' FOV (vertical, 70 = Normal) times the eased modifier, squeezed
+           by death and by water or lava; the bob and the hurt tilt sit between the
+           projection and the view, as GameRenderer puts them */
+        var fovR = RT.fov ? RT.fov : (optLoad().fov || 70) * Math.PI / 180 * (live ? (CAM.fovO + (CAM.fov - CAM.fovO) * pt) * camFovK(pt) : 1);
+        var proj = mPersp(fovR, RT.cv.width / RT.cv.height, 0.08, 260);
+        if (live) proj = mMul(proj, emGl(camFx(pt)));
         var rot = mMul(mRotX(S.pitch), mRotY(S.yaw));
         var view = mMul(rot, mTrans(-S.px, -eyeY, -S.pz));
         var pv = mMul(proj, view);
@@ -1991,7 +1997,7 @@
             gl.useProgram(G.prog);
             // the hand keeps the base FOV while the world widens, exactly like the
             // real game — it is the world stretching past you that sells the speed
-            gl.uniformMatrix4fv(G.u.mvp, false, mPersp(FOV, RT.cv.width / RT.cv.height, 0.05, 10));
+            gl.uniformMatrix4fv(G.u.mvp, false, mPersp(FOV * camFovK(camPt()), RT.cv.width / RT.cv.height, 0.05, 10));   // 70, whatever the options say
             gl.uniform2f(G.u.fogR, 50, 100);
             gl.bindBuffer(gl.ARRAY_BUFFER, G.dyn);
             gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(hv), gl.DYNAMIC_DRAW);
@@ -2301,7 +2307,6 @@
         if (fluid) RT.fallY = S.py;
         addExh(Math.sqrt(dx * dx + dz * dz) * (RT.sprint ? 0.1 : 0.01));
         // head bob drives the hand sway
-        if ((dx || dz) && RT.ground) RT.bob += dt * (RT.sprint ? 11 : 7);
         // drowning — creative and spectator hold their breath forever, so the
         // bubble row never appears for them
         var headWater = getB(Math.floor(S.px), Math.floor(S.py + EYE), Math.floor(S.pz)) === WATER && !invulnerable();
@@ -2359,6 +2364,7 @@
         var ratio = (RT.sprint ? SPRINT / WALK : 1) * (1 + 0.2 * effLvl('speed') - 0.15 * effLvl('slowness'));
         if (ratio < 0) ratio = 0;   // Slowness VII and up would otherwise invert the lens
         var m = (RT.fly ? 1.1 : 1) * (ratio + 1) / 2;
+        if (RT.bowT > 0) { var bp = Math.min(RT.bowT, 1); m *= 1 - bp * bp * 0.15; }   // a drawn bow zooms in
         return m < 0.1 ? 0.1 : m > 1.5 ? 1.5 : m;
     }
     function fovTick(dt) {
@@ -2451,7 +2457,7 @@
         var lx = Math.floor(S.px + Math.cos(ang) * r), lz = Math.floor(S.pz + Math.sin(ang) * r);
         if (!chunkAt(lx, lz)) return;
         var ly = CH - 1; while (ly > 2 && !solidAt(lx, ly, lz)) ly--;
-        RT.lightning = 0.18; RT.shake = 0.3; snd('thunder');   // non-positional: the sky is not a point source
+        RT.lightning = 0.18; snd('thunder');   // non-positional: the sky is not a point source
         snd('impact', 0, lx + 0.5, ly + 1, lz + 0.5);         // but the strike itself is: the crack where it lands
         boomParticles(lx + 0.5, ly + 1, lz + 0.5, 2);
         for (var i = RT.foes.length - 1; i >= 0; i--) {
@@ -2495,8 +2501,8 @@
         if (n <= 0) return;
         RT.lastSrc = src || { m: kind === 'drown' ? 'drown' : kind === 'fire' ? 'lava' : 'generic' };
         stat('c', 'damage_taken', n * 10);
+        camHurt(dir);
         S.hp -= n;
-        RT.flash = 0.35;
         if (!quiet) snd(kind === 'drown' ? 'hurtdrown' : kind === 'fire' ? 'hurtfire' : 'hurt');
         paintVitals();
         if (S.hp <= 0) die();
@@ -2792,7 +2798,8 @@
         }
         // carrots & potatoes are both food and crop: plant on farmland when aimed there, else fall through to eating
         if (def.crop && def.place != null && t && getB(t.px, t.py, t.pz) === AIR && getB(t.px, t.py - 1, t.pz) === FARMLAND) {
-            setB(t.px, t.py, t.pz, def.place); stat('u', held().id); useOne(); paintHotbar(); snd('place', def.place, t.px + 0.5, t.py + 0.5, t.pz + 0.5); return;
+            setB(t.px, t.py, t.pz, def.place); stat('u', held().id); useOne(); paintHotbar();
+            if (CAM) CAM.mainH = 0;   // Minecraft.startUseItem's itemUsed: the next block rises into the hand snd('place', def.place, t.px + 0.5, t.py + 0.5, t.pz + 0.5); return;
         }
         // spawn eggs drop a mob onto the face you clicked
         if (def.egg && t) {
@@ -2882,6 +2889,7 @@
         if (def.food) {
             // a full stomach stops a survival meal; creative can always eat (Player.canEat is true for invulnerable)
             if (S.food >= 20 && h.id !== 'flesh' && !invulnerable()) { RT.eatT = 0; return; }
+            if (!RT.eatT && CAM) CAM.mainH = 0;   // starting to eat is an item use too
             RT.eatT += dt;
             if (RT.eatT > 0.25 && Math.floor(RT.eatT / 0.3) !== Math.floor((RT.eatT - dt) / 0.3)) snd(def.bowl || h.id === 'milk_bucket' ? 'drink' : 'eat');
             if (RT.eatT >= 1.6) {
@@ -3479,6 +3487,7 @@
         return Math.max(1, ticks) / 20;
     }
     function swingArm(restart) {
+        camSwing();
         // a fresh click restarts the swing mid-arc; a held button only queues the
         // next one, which is the difference between spamming and holding
         if (restart || RT.swing <= 0) { RT.swingT = swingTime(); RT.swing = RT.swingT; }
@@ -3803,7 +3812,6 @@
             }
         }
         boomParticles(ex, ey, ez, r);
-        RT.shake = 0.5;
         snd('boom', 0, ex, ey, ez);
     }
     function blockParticles(x, y, z, b) {
@@ -4184,61 +4192,232 @@
         }
     }
 
-    /* ── first-person hand (view space) ─────────────────────── */
+    /* ── the camera and the hands, on the game's tick ─────────────
+       GameRenderer and ItemInHandRenderer keep their state on the 20 Hz tick
+       and draw between ticks at the partial tick. Here that is: the view bob
+       (walkDist and bob), the FOV modifier, the hurt tilt and the death roll,
+       the eye easing down into a sneak, the hand lagging behind the look
+       (xBob, yBob), both hands' equip heights, the swing, and the vignette's
+       slow brightness. */
+    var CAM = null;
+    function camNew() {
+        return { acc: 0, walk: 0, walkO: 0, bob: 0, bobO: 0, fov: 1, fovO: 1, hurt: 0, hurtDir: 0, death: 0, eye: EYE, eyeO: EYE,
+            xb: S ? S.pitch * 180 / Math.PI : 0, yb: S ? S.yaw * 180 / Math.PI : 0, xbO: 0, ybO: 0, last: null,
+            mainH: 0, mainHO: 0, offH: 0, offHO: 0, vMain: '', vOff: '', vMainSt: null, vOffSt: null, swOn: false, swT: 0, att: 0, attO: 0, vig: 0, vigO: 0 };
+    }
+    // canInstantlyReplace: the same item, count and components, damage aside
+    function stackKey(st) { return st ? st.id + ':' + st.c + ':' + (st.name || '') + ':' + (st.ench ? JSON.stringify(st.ench) : '') : ''; }
+    function swingDur() { var haste = effLvl('haste'), fat = effLvl('mining_fatigue'); return Math.max(1, haste ? 6 - haste : fat ? 6 + fat * 2 : 6); }
+    function camTick() {
+        var C = CAM;
+        // LocalPlayer.move adds 0.6 of each tick's horizontal travel to walkDist; the bob chases min(0.1, speed) on the ground
+        var hv = C.last ? Math.sqrt((S.px - C.last[0]) * (S.px - C.last[0]) + (S.pz - C.last[2]) * (S.pz - C.last[2])) : 0;
+        if (hv > 2) hv = 0;   // a teleport, a respawn
+        C.last = [S.px, S.py, S.pz];
+        C.walkO = C.walk; C.bobO = C.bob;
+        var swim = RT.sprint && getB(Math.floor(S.px), Math.floor(S.py + EYE), Math.floor(S.pz)) === WATER;
+        C.bob += ((RT.ground && !RT.dead && !RT.fly && !swim ? Math.min(0.1, hv) : 0) - C.bob) * 0.4;
+        C.walk += 0.6 * hv;
+        C.fovO = C.fov;
+        C.fov = Math.max(0.1, Math.min(1.5, C.fov + (fovTarget() - C.fov) * 0.5));
+        if (C.hurt > 0) C.hurt--;
+        C.death = RT.dead ? C.death + 1 : 0;
+        // the eye: 1.62 standing, 1.27 crouched, half the gap a tick
+        C.eyeO = C.eye;
+        C.eye += ((RT.keys && RT.keys.shift && !RT.fly && !swim ? 1.27 : EYE) - C.eye) * 0.5;
+        C.xbO = C.xb; C.ybO = C.yb;
+        C.xb += (S.pitch * 180 / Math.PI - C.xb) * 0.5; C.yb += (S.yaw * 180 / Math.PI - C.yb) * 0.5;
+        // the swing: attackAnim = swingTime / duration, six ticks unless Haste or Mining Fatigue
+        C.attO = C.att;
+        var dur = swingDur();
+        if (C.swOn) { C.swT++; if (C.swT >= dur) { C.swT = 0; C.swOn = false; } } else C.swT = 0;
+        C.att = C.swT / dur;
+        // ItemInHandRenderer.tick: the old item drops, the new one rises on the cube of the attack recharge
+        C.mainHO = C.mainH; C.offHO = C.offH;
+        var hm = held() || null, ho = S.off || null, km = stackKey(hm), ko = stackKey(ho);
+        if (C.vMain === km) C.vMainSt = hm;
+        if (C.vOff === ko) C.vOffSt = ho;
+        var c = RT.atkCdMax > 0 ? Math.max(0, Math.min(1, ((RT.atkCdMax - RT.atkCd) * 20 + 1) / (RT.atkCdMax * 20))) : 1;
+        C.mainH += Math.max(-0.4, Math.min(0.4, (C.vMain !== km ? 0 : c * c * c) - C.mainH));
+        C.offH += Math.max(-0.4, Math.min(0.4, (C.vOff !== ko ? 0 : 1) - C.offH));
+        if (C.mainH < 0.1) { C.vMain = km; C.vMainSt = hm; }
+        if (C.offH < 0.1) { C.vOff = ko; C.vOffSt = ho; }
+        // Gui.updateVignetteBrightness: 1% of the way a tick toward 1 - brightness at the eye
+        var L = cellLight(S.px, S.py + EYE, S.pz), f = Math.max(L[0] * skyState().dayF, L[1]);
+        C.vigO = C.vig;
+        C.vig += (Math.max(0, Math.min(1, 1 - f / (4 - 3 * f))) - C.vig) * 0.01;
+    }
+    function camFrame(dt) {
+        if (!CAM) CAM = camNew();
+        CAM.acc += Math.min(0.25, dt);
+        while (CAM.acc >= HUD_TICK) { CAM.acc -= HUD_TICK; camTick(); }
+    }
+    function camPt() { return CAM ? Math.max(0, Math.min(1, CAM.acc / HUD_TICK)) : 0; }
+    function camSwing() {   // LivingEntity.swing: a swing only starts over once it is past halfway
+        if (!CAM) CAM = camNew();
+        var dur = swingDur();
+        if (!CAM.swOn || CAM.swT >= (dur >> 1) || CAM.swT < 0) { CAM.swT = -1; CAM.swOn = true; }
+    }
+    function camHurt(dir) {   // animateHurt: ten ticks of tilt, toward the side it came from when it came from somewhere
+        if (!CAM) CAM = camNew();
+        CAM.hurt = 10;
+        if (dir) CAM.hurtDir = Math.atan2(-dir[1], -dir[0]) * 180 / Math.PI - (S.yaw * 180 / Math.PI + 180);
+    }
+    function emRz(a) { var c = Math.cos(a), s = Math.sin(a); return [c, -s, 0, 0, s, c, 0, 0, 0, 0, 1, 0]; }
+    function emGl(E) { return [E[0], E[4], E[8], 0, E[1], E[5], E[9], 0, E[2], E[6], E[10], 0, E[3], E[7], E[11], 1]; }
+    /* GameRenderer.bobHurt then bobView, in view space: the death roll, the
+       hurt tilt (-sin(t^4 pi) x 14 degrees about the direction of the hit,
+       times Damage Tilt) and the walking bob */
+    function camFx(pt) {
+        var M = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0], D = Math.PI / 180, o = optLoad();
+        if (!CAM) return M;
+        if (RT.dead) { var d = Math.min(CAM.death + pt, 20); M = emMul(M, emRz((40 - 8000 / (d + 200)) * D)); }
+        var ht = CAM.hurt - pt;
+        if (CAM.hurt > 0 && ht >= 0) {
+            var t = ht / 10, s = Math.sin(t * t * t * t * Math.PI), tilt = o.tilt == null ? 1 : o.tilt;
+            M = emMul(M, emRy(-CAM.hurtDir * D)); M = emMul(M, emRz(-s * 14 * tilt * D)); M = emMul(M, emRy(CAM.hurtDir * D));
+        }
+        if (o.bob !== false) {
+            var P = -(CAM.walk + (CAM.walk - CAM.walkO) * pt) * Math.PI, b = CAM.bobO + (CAM.bob - CAM.bobO) * pt;
+            M = emMul(M, emT(Math.sin(P) * b * 0.5, -Math.abs(Math.cos(P) * b), 0));
+            M = emMul(M, emRz(Math.sin(P) * b * 3 * D));
+            M = emMul(M, emRx(Math.abs(Math.cos(P - 0.2) * b) * 5 * D));
+        }
+        return M;
+    }
+    // the death and fluid squeeze on the field of view, shared by the world and the hand
+    function camFovK(pt) {
+        var k = 1;
+        if (RT.dead && CAM) { var d = Math.min(CAM.death + pt, 20); k /= 1 + 2 * (1 - 500 / (d + 500)); }
+        var hb = getB(Math.floor(S.px), Math.floor(S.py + camEye(pt)), Math.floor(S.pz));
+        if (hb === WATER || hb === LAVA) k *= 6 / 7;
+        return k;
+    }
+    function camEye(pt) { return CAM ? CAM.eyeO + (CAM.eye - CAM.eyeO) * pt : EYE; }
+
+    /* ── the held item, drawn the game's way ──
+       A flat item is its 16x16 sprite made solid, ItemModelGenerator's way: a
+       front face and a mirrored back one pixel apart, and a one-pixel strip
+       along every edge between an opaque pixel and a clear one, taking that
+       pixel's colour. Built once per texture from the atlas's own alpha. */
+    var HAND_MODEL = {};
+    function flatModel(tid) {
+        if (HAND_MODEL[tid]) return HAND_MODEL[tid];
+        var tx = (tid % 16) * 16, ty = ((tid / 16) | 0) * 16, a = null;
+        try { a = ATLAS.getContext('2d').getImageData(tx, ty, 16, 16).data; } catch (e) {}
+        function op(x, y) { return x >= 0 && y >= 0 && x < 16 && y < 16 && (!a || a[(y * 16 + x) * 4 + 3] > 127); }
+        var uv = tileUV(tid), q = [], U = TS16 / 16;
+        function tex(px, py, ins) { return [uv[0] + (px + ins) * U, uv[1] + (py + ins) * U]; }
+        // front (+z) and back (-z): the whole square, the clear texels discarded by the shader
+        q.push({ p: [[0, 0, 8.5], [16, 0, 8.5], [16, 16, 8.5], [0, 16, 8.5]], t: [[uv[0] + INSET, uv[1] + TS16 - INSET], [uv[0] + TS16 - INSET, uv[1] + TS16 - INSET], [uv[0] + TS16 - INSET, uv[1] + INSET], [uv[0] + INSET, uv[1] + INSET]], sh: 1 });
+        q.push({ p: [[16, 0, 7.5], [0, 0, 7.5], [0, 16, 7.5], [16, 16, 7.5]], t: [[uv[0] + TS16 - INSET, uv[1] + TS16 - INSET], [uv[0] + INSET, uv[1] + TS16 - INSET], [uv[0] + INSET, uv[1] + INSET], [uv[0] + TS16 - INSET, uv[1] + INSET]], sh: 0.85 });
+        for (var y = 0; y < 16; y++) for (var x = 0; x < 16; x++) {
+            if (!op(x, y)) continue;
+            var y0 = 15 - y, y1 = 16 - y, t0 = tex(x, y, 0.1), t1 = tex(x, y, 0.9), tt = [[t0[0], t1[1]], [t1[0], t1[1]], [t1[0], t0[1]], [t0[0], t0[1]]];
+            if (!op(x - 1, y)) q.push({ p: [[x, y0, 7.5], [x, y0, 8.5], [x, y1, 8.5], [x, y1, 7.5]], t: tt, sh: 0.7 });
+            if (!op(x + 1, y)) q.push({ p: [[x + 1, y0, 8.5], [x + 1, y0, 7.5], [x + 1, y1, 7.5], [x + 1, y1, 8.5]], t: tt, sh: 0.7 });
+            if (!op(x, y - 1)) q.push({ p: [[x, y1, 8.5], [x + 1, y1, 8.5], [x + 1, y1, 7.5], [x, y1, 7.5]], t: tt, sh: 0.9 });
+            if (!op(x, y + 1)) q.push({ p: [[x, y0, 7.5], [x + 1, y0, 7.5], [x + 1, y0, 8.5], [x, y0, 8.5]], t: tt, sh: 0.55 });
+        }
+        return (HAND_MODEL[tid] = q);
+    }
+    function pushModel(v, M, quads, scale, sk, bl) {
+        for (var i = 0; i < quads.length; i++) {
+            var Q = quads[i];
+            for (var k = 0; k < 4; k++) {
+                var p = emAt(M, Q.p[k][0] * scale, Q.p[k][1] * scale, Q.p[k][2] * scale);
+                v.push(p[0], p[1], p[2], Q.t[k][0], Q.t[k][1], sk, bl, Q.sh, 0);
+            }
+        }
+    }
+    function pushCube(v, M, x0, y0, z0, x1, y1, z1, tileFn, sk, bl) {   // a box in model units, a tile a face
+        for (var d = 0; d < 6; d++) {
+            var uv0 = tileUV(tileFn(d));
+            for (var k = 0; k < 4; k++) {
+                var cr = FACE_C[d][k], f = faceUV(d, cr);
+                var p = emAt(M, cr[0] ? x1 : x0, cr[1] ? y1 : y0, cr[2] ? z1 : z0);
+                v.push(p[0], p[1], p[2], uv0[0] + INSET + f[0] * (TS16 - 2 * INSET), uv0[1] + INSET + f[1] * (TS16 - 2 * INSET), sk, bl, FACE_SHADE[d], 0);
+            }
+        }
+    }
+    function isCubeItem(def) { return !!(def && def.place != null && !B[def.place].cross && !B[def.place].half); }
+    /* ItemInHandRenderer.renderArmWithItem for one hand (i = 1 right, -1 left):
+       eating raises it to the mouth, a drawn bow comes round and stretches,
+       anything else rides the swing; then the model's first-person display
+       transform, the same for flat items and tools ([0, -90, 25] at
+       [1.13, 3.2, 1.13] px, x0.68) and [0, 45, 0] at x0.4 for a block */
+    function handItem(v, M, st, i, s, h, sk, bl) {
+        var D = Math.PI / 180, def = I[st.id], sq = Math.sqrt(s);
+        if (i === 1 && RT.eatT > 0 && def && def.food) {
+            var f = 32 - RT.eatT * 20 + 1, r = Math.max(0, f / 32);
+            if (r < 0.8) M = emMul(M, emT(0, Math.abs(Math.cos(f / 4 * Math.PI) * 0.1), 0));
+            var k = 1 - Math.pow(r, 27);
+            M = emMul(M, emT(k * 0.6 * i, k * -0.5, 0));
+            M = emMul(M, emRy(i * k * 90 * D)); M = emMul(M, emRx(k * 10 * D)); M = emMul(M, emRz(i * k * 30 * D));
+            M = emMul(M, emT(i * 0.56, -0.52 - 0.6 * h, -0.72));
+        } else if (i === 1 && st.id === 'bow' && RT.bowT > 0) {
+            M = emMul(M, emT(i * 0.56, -0.52 - 0.6 * h, -0.72));
+            M = emMul(M, emT(i * -0.2785682, 0.18344387, 0.15731531));
+            M = emMul(M, emRx(-13.935 * D)); M = emMul(M, emRy(i * 35.3 * D)); M = emMul(M, emRz(i * -9.785 * D));
+            var t = RT.bowT * 20, pp = t / 20; pp = Math.min((pp * pp + 2 * pp) / 3, 1);
+            if (pp > 0.1) M = emMul(M, emT(0, Math.sin((t - 0.1) * 1.3) * (pp - 0.1) * 0.004, 0));
+            M = emMul(M, emT(0, 0, pp * 0.04));
+            M = emMul(M, emS(1, 1, 1 + pp * 0.2));
+            M = emMul(M, emRy(-i * 45 * D));
+        } else {
+            M = emMul(M, emT(i * -0.4 * Math.sin(sq * Math.PI), 0.2 * Math.sin(sq * 2 * Math.PI), -0.2 * Math.sin(s * Math.PI)));
+            M = emMul(M, emT(i * 0.56, -0.52 - 0.6 * h, -0.72));
+            M = emMul(M, emRy(i * (45 - 20 * Math.sin(s * s * Math.PI)) * D));
+            M = emMul(M, emRz(i * -20 * Math.sin(sq * Math.PI) * D));
+            M = emMul(M, emRx(-80 * Math.sin(sq * Math.PI) * D));
+            M = emMul(M, emRy(i * -45 * D));
+        }
+        if (isCubeItem(def)) {
+            M = emMul(M, emRy((i > 0 ? 45 : -225) * D));
+            M = emMul(M, emS(0.4, 0.4, 0.4));
+            M = emMul(M, emT(-0.5, -0.5, -0.5));
+            pushCube(v, M, 0, 0, 0, 1, 1, 1, (function (pl) { return function (dd) { return texFace(TEX[pl], dd); }; })(def.place), sk, bl);
+        } else {
+            M = emMul(M, emT(i * 1.13 / 16, 3.2 / 16, 1.13 / 16));
+            M = emMul(M, emRy(i * -90 * D)); M = emMul(M, emRz(i * 25 * D));
+            M = emMul(M, emS(0.68, 0.68, 0.68));
+            M = emMul(M, emT(-0.5, -0.5, -0.5));
+            var tid = def && def.tile != null ? def.tile : (def && def.place != null ? texTop(TEX[def.place]) : TILE.i_stick);
+            pushModel(v, M, flatModel(tid), 1 / 16, sk, bl);
+        }
+    }
+    /* renderPlayerArm: the empty main hand, the right arm out of the player
+       model (a 4x12x4 box pivoted at (-5, 2, 0), turned 0.1 rad) put where the
+       game puts it, the swing sweeping it in and up */
+    function handArm(v, M, i, s, h, sk, bl) {
+        var D = Math.PI / 180, sq = Math.sqrt(s);
+        M = emMul(M, emT(i * (0.64000005 - 0.3 * Math.sin(sq * Math.PI)), -0.6 + 0.4 * Math.sin(sq * 2 * Math.PI) - 0.6 * h, -0.71999997 - 0.4 * Math.sin(s * Math.PI)));
+        M = emMul(M, emRy(i * 45 * D)); M = emMul(M, emRy(i * 70 * Math.sin(sq * Math.PI) * D)); M = emMul(M, emRz(i * -20 * Math.sin(s * s * Math.PI) * D));
+        M = emMul(M, emT(i * -1, 3.6, 3.5)); M = emMul(M, emRz(i * 120 * D)); M = emMul(M, emRx(200 * D)); M = emMul(M, emRy(i * -135 * D));
+        M = emMul(M, emT(i * 5.6, 0, 0));
+        M = emMul(M, emT(-5 / 16 * i, 2 / 16, 0)); M = emMul(M, emRz(0.1 * i));
+        pushCube(v, M, (i > 0 ? -3 : -1) / 16, -2 / 16, -2 / 16, (i > 0 ? 1 : 3) / 16, 10 / 16, 2 / 16, function () { return TILE.hand; }, sk, bl);
+    }
+    /* ── first-person hands (view space) ──
+       The bob and the hurt tilt, then the sway toward where you were looking a
+       tick ago, then each hand: the main hand's item, or its bare arm, and the
+       off hand's item when it holds one (not while a bow is drawn). */
     function handGeo() {
         if (RT.menu) return [];         // nobody is holding anything on the title screen
         if (isSpectator()) return [];   // a CSS class cannot reach WebGL: the hand was still there
-        if (RT.dead || RT.sleep) return [];
-        var v = [], h = held(), def = h && I[h.id];
-        var L = cellLight(S.px, S.py + EYE, S.pz);
-        var sk2 = Math.max(0.18, L[0]), bl2 = L[1];
-        /* The real game's swing is not a symmetric bob. It drives position from
-           f = sin(√p · π) — which leaps out in the first third and eases back
-           over the rest — and rotation from f2 = sin(p² · π), which lags behind
-           it. Two envelopes out of phase is the whole reason a swing reads as a
-           strike and not a nod. p runs 0→1 across the swing. */
-        var p = RT.swing > 0 && RT.swingT > 0 ? Math.max(0, Math.min(1, 1 - RT.swing / RT.swingT)) : 0;
-        var f = RT.swing > 0 ? Math.sin(Math.sqrt(p) * Math.PI) : 0;
-        var f2 = RT.swing > 0 ? Math.sin(p * p * Math.PI) : 0;
-        var bobX = Math.sin(RT.bob) * 0.012, bobY = Math.abs(Math.cos(RT.bob)) * 0.014;
-        // the arm sweeps in across the view, drives forward, then drops through
-        var ox = 0.42 + bobX - f * 0.19;
-        var oy = -0.42 - bobY + f * 0.07 - f2 * 0.19;
-        var oz = -0.72 - f * 0.23;
-        // swapping items drops the hand out of frame and lifts the new one in
-        oy -= (RT.equip || 0) * 0.65;
-        var pull = RT.bowT > 0 ? RT.bowT * 0.12 : 0;
-        var eatN = RT.eatT > 0 ? Math.sin(RT.eatT * 22) * 0.03 : 0;
-        oy += eatN; oz += pull;
-        if (def && def.place != null && !B[def.place].cross && !B[def.place].half) {
-            // a held block turns as it is driven down, so you see its top face bite
-            // in — but only so far, or it goes edge-on and vanishes mid-swing
-            pushBox(v, ox, oy, oz, 0.16, 0.16, 0.16, Math.cos(0.62 - f * 0.35), Math.sin(0.62 - f * 0.35), f2 * 0.7, 0,
-                (function (pl) { return function (dd) { return texFace(TEX[pl], dd); }; })(def.place),
-                sk2, bl2, 0);
-        } else if (h) {
-            var tid = def && def.tile != null ? def.tile : TILE.i_stick;
-            var u0 = tileUV(tid);
-            // an angled card: item sprites read great edge-on at this res
-            var yc2 = Math.cos(0.8 + f * 0.95), ys2 = Math.sin(0.8 + f * 0.95);
-            // and it tips over its own leading edge on the follow-through
-            var tipC = Math.cos(f2 * 0.6), tipS = Math.sin(f2 * 0.6);
-            var cs = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
-            for (var k = 0; k < 4; k++) {
-                var a = cs[k][0] * 0.22, b = cs[k][1] * 0.22;
-                var by = b * tipC, bz = b * tipS;
-                v.push(ox + yc2 * a, oy + by + 0.08, oz + ys2 * a + bz,
-                    cs[k][0] > 0 ? u0[0] + TS16 - INSET : u0[0] + INSET,
-                    cs[k][1] > 0 ? u0[1] + INSET : u0[1] + TS16 - INSET,
-                    sk2, bl2, 1, 0);
-            }
-        } else {
-            // a bare fist rotates hardest of all — there is no item to read, so the
-            // motion has to carry the whole punch. It still has to stay on screen,
-            // so the arc is tempered and the arm pivots rather than translating away.
-            pushBox(v, ox + 0.05, oy + f2 * 0.06, oz, 0.09, 0.09, 0.3, Math.cos(0.5 - f * 0.3), Math.sin(0.5 - f * 0.3), f2 * 0.95, -0.2,
-                function () { return TILE.hand; }, sk2, bl2, 0);
-        }
+        if (RT.dead || RT.sleep || !CAM) return [];
+        var v = [], pt = camPt(), D = Math.PI / 180;
+        var L = cellLight(S.px, S.py + EYE, S.pz), sk = Math.max(0.18, L[0]), bl = L[1];
+        var base = camFx(pt);
+        base = emMul(base, emRx((S.pitch / D - (CAM.xbO + (CAM.xb - CAM.xbO) * pt)) * 0.1 * D));
+        base = emMul(base, emRy((S.yaw / D - (CAM.ybO + (CAM.yb - CAM.ybO) * pt)) * 0.1 * D));
+        var da = CAM.att - CAM.attO; if (da < 0) da += 1;
+        var s = CAM.attO + da * pt;
+        var hMain = 1 - (CAM.mainHO + (CAM.mainH - CAM.mainHO) * pt), hOff = 1 - (CAM.offHO + (CAM.offH - CAM.offHO) * pt);
+        var hm = CAM.vMainSt, ho = CAM.vOffSt, bow = hm && hm.id === 'bow' && RT.bowT > 0;
+        if (hm) handItem(v, base, hm, 1, s, hMain, sk, bl);
+        else handArm(v, base, 1, s, hMain, sk, bl);
+        if (ho && !bow) handItem(v, base, ho, -1, 0, hOff, sk, bl);
         return v;
     }
 
@@ -9245,12 +9424,11 @@
                 RT.atkCd = RT.atkCdMax = attackCooldown(heldNow);   // a new item in hand starts its swing from empty
             }
             RT.equip = Math.max(0, RT.equip - dt / EQUIP_T);
-            RT.flash = Math.max(0, RT.flash - dt);
-            RT.shake = Math.max(0, RT.shake - dt);
             RT.lightning = Math.max(0, (RT.lightning || 0) - dt);
             RT.target = raycast();
             stepPlayer(dt);
             statMove(dt);
+            camFrame(dt);
             fovTick(dt);
             digTick(dt);
             useTick(dt);
@@ -9309,13 +9487,14 @@
         entGeo();
         var vig = RT.el.querySelector('.mc-vig');
         var headB = getB(Math.floor(S.px), Math.floor(S.py + EYE), Math.floor(S.pz));
-        vig.style.background = RT.lightning > 0 ? 'rgba(255,255,255,' + (RT.lightning * 2.2) + ')'
-            : RT.flash > 0 ? 'rgba(200,20,20,' + (RT.flash * 0.9) + ')'
-            : headB === WATER ? 'rgba(20,50,180,0.22)' : headB === LAVA ? 'rgba(220,80,10,0.5)' : 'transparent';
-        if (RT.shake > 0) {
-            var sh = RT.shake * 6;
-            RT.cv.style.transform = 'translate(' + ((Math.random() - 0.5) * sh) + 'px,' + ((Math.random() - 0.5) * sh) + 'px)';
-        } else RT.cv.style.transform = '';
+        /* Java has no red flash when you are hurt and no shake for an explosion:
+           the camera's tilt is the hurt, and lava is its fog. Under water the game
+           lays its faint underwater texture over the view; a lightning strike
+           lights the sky, a little of which reaches the whole scene. */
+        vig.style.background = RT.lightning > 0 ? 'rgba(255,255,255,' + Math.min(0.12, RT.lightning * 0.7) + ')'
+            : headB === WATER ? 'rgba(18,40,120,0.12)' : 'transparent';
+        var vgn = RT.el.querySelector('.mc-vign');   // Gui.renderVignette: stronger the darker it is where you stand
+        if (vgn && CAM) { var vo = (CAM.vigO + (CAM.vig - CAM.vigO) * camPt()).toFixed(3); if (vgn._o !== vo) { vgn._o = vo; vgn.style.opacity = vo; } }
         drawFrame();
         hudFrame(dt);
         if (RT.av) avatarDraw();   // the figure in the inventory box, turning with the pointer and swaying
@@ -9425,7 +9604,7 @@
         /* The panorama renders at 85°; leaving that set would hand the world
            the title screen's field of view. fovM is the sprint stretch and
            belongs to the world that was just thrown away. */
-        RT.fov = 0; RT.fovM = 1; RT.fly = false;
+        RT.fov = 0; RT.fovM = 1; RT.fly = false; CAM = null;
         chunkCacheDrop();
     }
     function mnFreshWorld(w) {
@@ -10381,7 +10560,7 @@
         snd: true, mus: true,                       // Music & Sounds
         fancy: true, vsync: true, bob: true, clouds: true,   // Video Settings
         autoJump: false, sens: 100, invert: false,  // Controls and Mouse Settings
-        panoStill: false, noShake: false,           // Accessibility
+        panoStill: false, tilt: 1,           // Accessibility
         chat: 0, sug: true,                         // Chat Settings
         mpwarn: true                                // the third-party-play warning is shown until it is dismissed
     };
@@ -11702,8 +11881,8 @@
                 function (mm, n) { o.splash = !n; optSave(); mm.splash = o.splash ? (mm.splash || mnPickSplash()) : null; }),
             mnCycle('pano', 0, 0, 150, 20, 'Panorama Motion', ['OFF', 'ON'], o.panoStill ? 0 : 1,
                 function (mm, n) { o.panoStill = !n; optSave(); }),
-            mnCycle('shake', 0, 0, 150, 20, 'Screen Shake', ['OFF', 'ON'], o.noShake ? 0 : 1,
-                function (mm, n) { o.noShake = !n; optSave(); }),
+            mnSlider('tilt', 0, 0, 150, 20, 'Damage Tilt: ' + Math.round((o.tilt == null ? 1 : o.tilt) * 100) + '%', o.tilt == null ? 1 : o.tilt,
+                function (mm, f) { o.tilt = Math.round(f * 100) / 100; optSave(); }),
             mnCycle('big', 0, 0, 150, 20, 'Larger GUI', ['OFF', 'ON'], o.guiScale >= 3 ? 1 : 0,
                 function (mm, n) { o.guiScale = n ? 3 : 0; optSave(); mnSize(mm); })
         ];
@@ -11803,7 +11982,7 @@
             '<svg class="mc-defs" width="0" height="0" aria-hidden="true" focusable="false"><filter id="mccrisp" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">' +
             '<feComponentTransfer><feFuncA type="discrete" tableValues="0 1"/></feComponentTransfer></filter></svg>' +
             '<canvas class="mc-cv"></canvas>' +
-            '<div class="mc-vig"></div>' +
+            '<div class="mc-vig"></div><div class="mc-vign"></div>' +
             /* The crosshair lives OUTSIDE .mc-hud. Inside it, .mc-hud's z-index made
                a stacking context and mix-blend-mode:difference had nothing but
                transparent pixels to blend against — so the crosshair was a flat #ddd
@@ -13187,6 +13366,7 @@
             if (k === 'q' && !RT.panel && !RT.paused && !RT.dead) {
                 var h = held();
                 if (h) {
+                    swingArm(true);   // dropping swings the arm
                     tossItem(h, 1);   // the enchantments and the name go with it, as they should
                     h.c--; if (!h.c) S.inv[S.sel] = null;
                     paintHotbar();
