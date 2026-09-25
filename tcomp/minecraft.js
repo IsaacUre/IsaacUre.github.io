@@ -719,13 +719,26 @@
             trect(0, 0, 16, 16, '#9c6b35'); sprinkle(['#8f6130', '#a9763c'], 40);
             trect(0, 0, 16, 1, '#5e3f1c'); trect(0, 15, 16, 1, '#5e3f1c'); trect(0, 0, 1, 16, '#5e3f1c'); trect(15, 0, 1, 16, '#5e3f1c');
         });
-        for (var cs = 0; cs < 4; cs++) (function (stg) {
+        /* destroy_stage_0 to 9: one network of cracks, grown from the middle by
+           random walks and branches, each stage showing the next tenth of it */
+        var CRACK = (function () {
+            var r = mulb(0xC2AC4), at = {}, order = 0, walkers = [[8, 8], [7, 8], [8, 7]];
+            for (var st = 0; st < 170 && walkers.length; st++) {
+                var w = walkers[(r() * walkers.length) | 0], d = (r() * 8) | 0;
+                var nx = w[0] + [1, -1, 0, 0, 1, -1, 1, -1][d], ny = w[1] + [0, 0, 1, -1, 1, 1, -1, -1][d];
+                if (nx < 0 || ny < 0 || nx > 15 || ny > 15) continue;
+                if (at[nx + ',' + ny] == null) at[nx + ',' + ny] = order++;
+                w[0] = nx; w[1] = ny;
+                if (r() < 0.07 && walkers.length < 9) walkers.push([nx, ny]);
+            }
+            return { at: at, n: order };
+        })();
+        for (var cs = 0; cs < 10; cs++) (function (stg) {
             tile('crack' + stg, function () {
-                for (var i = 0; i < 8 + stg * 10; i++) {
-                    var x = (trnd() * 16) | 0, y = (trnd() * 16) | 0;
-                    tpx(x, y, 'rgba(20,16,12,0.85)');
-                    if (trnd() < 0.6) tpx(x + 1, y, 'rgba(20,16,12,0.6)');
-                    if (stg > 1 && trnd() < 0.5) tpx(x, y + 1, 'rgba(20,16,12,0.6)');
+                var lim = CRACK.n * (stg + 1) / 10;
+                for (var k in CRACK.at) if (CRACK.at[k] < lim) {
+                    var p = k.split(',');
+                    tpx(p[0] | 0, p[1] | 0, CRACK.at[k] < lim * 0.6 ? 'rgba(18,14,10,0.9)' : 'rgba(30,24,18,0.7)');
                 }
             });
         })(cs);
@@ -1698,7 +1711,7 @@
         'uniform vec2 uFogR;uniform float uAlpha;varying vec2 vUv;varying vec2 vLt;varying float vAo;varying float vWh;varying float vD;' +
         'void main(){vec4 c=texture2D(uTex,vUv);if(c.a<0.5)discard;' +
         'float l=max(vLt.x*uDay,vLt.y);float b=l/(4.0-3.0*l);b=mix(0.045,1.0,b);' +
-        'vec3 rgb=c.rgb*b*vAo;rgb=mix(rgb,vec3(1.0),vWh);' +
+        'vec3 rgb=(vWh<0.0?mix(c.rgb,vec3(1.0,0.0,0.0),-vWh):mix(c.rgb,vec3(1.0),vWh))*b*vAo;' +
         'float f=smoothstep(uFogR.x,uFogR.y,vD);rgb=mix(rgb,uFogC,f);' +
         'gl_FragColor=vec4(rgb,c.a*uAlpha);}';
     var VS_FLAT = 'attribute vec3 aPos;uniform mat4 uMvp;void main(){gl_Position=uMvp*vec4(aPos,1.0);gl_PointSize=2.0;}';
@@ -1935,14 +1948,14 @@
         }
         // mining crack + target outline
         if (RT.target && RT.digT > 0 && RT.digAt) {
-            var stg = Math.min(3, (RT.digT / RT.digNeed * 4) | 0);
-            var cr = cubeQuads(RT.digAt[0], RT.digAt[1], RT.digAt[2], TILE['crack' + stg]);
+            var stg = Math.min(9, Math.floor(RT.digT / RT.digNeed * 10) - 1);   // stage (int)(progress x 10) - 1, none below a tenth
+            var cr = stg < 0 ? [] : cubeQuads(RT.digAt[0], RT.digAt[1], RT.digAt[2], TILE['crack' + stg]);
             gl.enable(gl.POLYGON_OFFSET_FILL); gl.polygonOffset(-1.5, -1.5);
             gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
             gl.bindBuffer(gl.ARRAY_BUFFER, G.dyn);
             gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(cr), gl.DYNAMIC_DRAW);
             bindMain(G, G.dyn);
-            gl.drawElements(gl.TRIANGLES, cr.length / 36 * 6, gl.UNSIGNED_SHORT, 0);
+            if (cr.length) gl.drawElements(gl.TRIANGLES, cr.length / 36 * 6, gl.UNSIGNED_SHORT, 0);
             gl.disable(gl.BLEND); gl.disable(gl.POLYGON_OFFSET_FILL);
         }
         if (RT.target) {
@@ -1952,7 +1965,7 @@
                 x0, y0, z0, x0, y1, z0, x1, y0, z0, x1, y1, z0, x1, y0, z1, x1, y1, z1, x0, y0, z1, x0, y1, z1];
             gl.useProgram(G.flat);
             gl.uniformMatrix4fv(G.uf.mvp, false, pv);
-            gl.uniform4f(G.uf.col, 0.05, 0.05, 0.05, 0.85);
+            gl.uniform4f(G.uf.col, 0, 0, 0, 0.4);   // LevelRenderer's outline: black at alpha 0.4
             gl.bindBuffer(gl.ARRAY_BUFFER, G.lineB);
             gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(L), gl.DYNAMIC_DRAW);
             gl.vertexAttribPointer(G.uf.pos, 3, gl.FLOAT, false, 12, 0);
@@ -3110,7 +3123,7 @@
        instead of moon-walking on the spot. This file used to add a flat six
        radians a second no matter what, which is why every mob moved like every
        other mob. */
-    var DIE_T = 0.62, ATK_T = 0.35;
+    var DIE_T = 1.0, ATK_T = 0.35;   // deathTime runs to 20 ticks
     function foeTick(f, dt) {
         var ox = f.x, oy = f.y, oz = f.z;
         var gone = foeUpdate(f, dt);
@@ -3367,7 +3380,7 @@
            place in the spawn cap and nothing to say to the save file. The puff of
            smoke that used to fire here now fires when the body finishes falling,
            which is where the real game puts it. */
-        if (RT.dying.length < 24) { f.dieT = 0; f.dieSide = Math.random() < 0.5 ? -1 : 1; RT.dying.push(f); }
+        if (RT.dying.length < 24) { f.dieT = 0; f.dieSide = 1; RT.dying.push(f); }
         else poofParticles(f);
         if (f.pk) spawnXp(f.x, f.y + 0.5, f.z, d.xp != null ? d.xp : (f.hostile ? 5 : 1 + ((Math.random() * 3) | 0)));
         if (f.hostile) unlock('hunter');
@@ -3920,13 +3933,13 @@
         if (md.cube) s *= f.h / (8 * PX) * 0.92;   // a slime is only ever as big as its own hitbox
         R.sx = R.sy = R.sz = s;
         if (f.dieT != null) {
-            // twenty ticks to keel over, then it shrinks out of the world and puffs
-            var t = Math.min(1, f.dieT / DIE_T);
-            R.rz = t * 1.5708 * f.dieSide;
-            if (t > 0.72) { var k = 1 - (t - 0.72) / 0.28; R.sx *= k; R.sy *= k; R.sz *= k; }
+            /* LivingEntityRenderer.setupRotations: over onto its side on
+               sqrt((deathTime - 1) / 20 x 1.6), flat after about thirteen ticks,
+               lying there until the twentieth, when it goes up in smoke */
+            var dtk = f.dieT * 20;
+            R.rz = Math.min(1, Math.sqrt(Math.max(0, (dtk - 1) / 20 * 1.6))) * 1.5708;
             return;
         }
-        if (f.hurtF > 0) R.rx -= Math.sin(Math.min(1, f.hurtF / 0.3) * Math.PI) * 0.17;   // rocked back by the blow
         if (f.fuse > 0) {
             /* the swell: a creeper goes WIDE, barely taller, and shivers at a
                frequency that has nothing to do with either */
@@ -4053,9 +4066,13 @@
         var md = MOBS[f.k];
         if (!md) return;
         var L = cellLight(f.x, f.y + f.h * 0.5, f.z);
-        var wh = f.hurtF > 0 ? 0.5 : 0;
-        if (f.fuse > 0) wh = Math.max(wh, (RT.worldMs / 90) & 1 ? 0.7 : 0.15);
-        if (f.fire > 0) wh = Math.max(wh, (RT.worldMs / 120) & 1 ? 0.5 : 0.1);
+        /* OverlayTexture: a hurt or dying mob is drawn 30% red for its ten hurt
+           ticks; a creeper about to blow flashes white on the beat of its swell */
+        if (f.hpSeen == null) f.hpSeen = f.hp;
+        if (f.hp < f.hpSeen) f.redT = RT.worldMs + 500;
+        f.hpSeen = f.hp;
+        var wh = f.dieT != null || RT.worldMs < (f.redT || 0) ? -0.3 : 0;
+        if (f.fuse > 0 && ((f.fuse / 1.5 * 10) | 0) % 2) wh = Math.max(0.5, Math.min(1, f.fuse / 1.5));
         TQ.skin = TILE[md.skin]; TQ.alt = TILE[md.alt || md.skin];
         TQ.face = TILE[md.rage && f.aggro > 0 ? md.rage : md.face];
         TQ.tex = null;
@@ -4153,19 +4170,32 @@
                 function (dd) { return dd === 2 || dd === 3 ? TILE.tnt_top : TILE.tnt_side; },
                 TL[0], TL[1], (t.fuse * 5 & 1) ? 0.75 : 0.1);
         }
+        /* ItemEntityRenderer: every drop the item's own model, bobbing
+           sin(age / 10 + offset) x 0.1 + 0.1 and turning a radian a second from
+           its own random start, at its ground size (a flat item at half size two
+           pixels up, a block at a quarter three up); a stack shows 2 to 5 copies,
+           a block's scattered 0.15 each way and a flat item's fanned 1.5 pixels
+           apart */
         for (i = 0; i < RT.drops.length; i++) {
             var dr = RT.drops[i], def = I[dr.it];
-            var bob = 0.12 + Math.sin(RT.worldMs / 400 + i) * 0.04;
-            var DL = cellLight(dr.x, dr.y + 0.2, dr.z);
-            if (def && def.place != null && !B[def.place].cross && !B[def.place].half) {
-                var spin = RT.worldMs / 800 + i;
-                pushBox(v, dr.x, dr.y + bob + 0.13, dr.z, 0.13, 0.13, 0.13, Math.cos(spin), Math.sin(spin), 0, 0,
-                    (function (pl) { return function (dd) { return texFace(TEX[pl], dd); }; })(def.place),
-                    DL[0], DL[1], 0);
-            } else {
-                var tid2 = def && def.tile != null ? def.tile : (def && def.place != null ? texTop(TEX[def.place]) : TILE.i_stick);
-                var u2 = tileUV(tid2);
-                pushBillboard(v, dr.x, dr.y + bob + 0.15, dr.z, 0.17, u2[0] + INSET, u2[1] + INSET, u2[0] + TS16 - INSET, u2[1] + TS16 - INSET, DL[0], DL[1], 0);
+            if (dr.bo == null) dr.bo = Math.random() * Math.PI * 2;
+            var tk = RT.worldMs / 50 + (dr.bo * 7919 % 20), cube = isCubeItem(def);
+            var DL = cellLight(dr.x, dr.y + 0.2, dr.z), gs = cube ? 0.25 : 0.5;
+            var M0 = emMul(emT(dr.x, dr.y + Math.sin(tk / 10 + dr.bo) * 0.1 + 0.1 + 0.25 * gs, dr.z), emRy(tk / 20 + dr.bo));
+            var n = dr.c > 48 ? 5 : dr.c > 32 ? 4 : dr.c > 16 ? 3 : dr.c > 1 ? 2 : 1, rnd = mulb(dr.it.length * 131 + dr.c);
+            for (var cpy = 0; cpy < n; cpy++) {
+                var M = M0;
+                if (cube) {
+                    if (cpy) M = emMul(M, emT((rnd() * 2 - 1) * 0.15, (rnd() * 2 - 1) * 0.15, (rnd() * 2 - 1) * 0.15));
+                    M = emMul(M, emT(0, 3 / 16, 0)); M = emMul(M, emS(gs, gs, gs)); M = emMul(M, emT(-0.5, -0.5, -0.5));
+                    pushCube(v, M, 0, 0, 0, 1, 1, 1, (function (pl) { return function (dd) { return texFace(TEX[pl], dd); }; })(def.place), DL[0], DL[1]);
+                } else {
+                    var zo = (cpy - (n - 1) / 2) * 0.09375;
+                    M = emMul(M, emT(cpy ? (rnd() * 2 - 1) * 0.0375 : 0, cpy ? (rnd() * 2 - 1) * 0.0375 : 0, zo));
+                    M = emMul(M, emT(0, 2 / 16, 0)); M = emMul(M, emS(gs, gs, gs)); M = emMul(M, emT(-0.5, -0.5, -0.5));
+                    var tid2 = def && def.tile != null ? def.tile : (def && def.place != null ? texTop(TEX[def.place]) : TILE.i_stick);
+                    pushModel(v, M, flatModel(tid2), 1 / 16, DL[0], DL[1]);
+                }
             }
         }
         for (i = 0; i < RT.arrows.length; i++) {
