@@ -56,6 +56,7 @@
             tents: {},                     // 'x,y,z' → furnace/chest tile state
             ents: [],                      // saved mobs + item drops
             ach: {}, achN: 0,
+            rbk: [], rb: {},               // recipes known, in the order learned; each recipe book's open and filter settings
             hrs: 0,                        // lifetime raw hours
             snd: 1, mus: 1,               // 0..1 sliders; saves from before them hold true/false and read as 1/0
             deaths: 0,
@@ -85,6 +86,8 @@
         if (S.diff == null) S.diff = 2;
         if (!S.eff || typeof S.eff !== 'object' || S.eff instanceof Array) S.eff = {};
         if (S.off === undefined) S.off = null;   // the off hand, from before it existed
+        // the recipe book, from before it existed: learn what the inventory already teaches, without a toast
+        if (!Array.isArray(S.rbk)) { S.rbk = []; S.rbQuiet = 1; }
         if (!S.rules || typeof S.rules !== 'object' || S.rules instanceof Array) S.rules = {};
         for (var k in GR_DEF) if (S.rules[k] === undefined) S.rules[k] = GR_DEF[k];
     }
@@ -5137,7 +5140,13 @@
         var d = document.createElement('div');
         d.className = 'mc-toast';
         var html = '';
-        if (t.icon) {   // AdvancementToast: icon at (8, 8), header (30, 7), name (30, 18)
+        if (t.kind === 'recipe') {   // RecipeToast: the header in dark purple at (30, 7), the line under it in black, no shadows
+            d.classList.add('mc-rtoast');
+            html = '<i class="mc-tic mc-tcat"></i><i class="mc-tic mc-tit"></i>' +
+                '<span class="mc-tl" style="left:calc(var(--px) * 30);top:calc(var(--px) * 7)">' + mtHTML('New Recipes Unlocked!', '#500050', 'ns') + '</span>' +
+                '<span class="mc-tl" style="left:calc(var(--px) * 30);top:calc(var(--px) * 18)">' + mtHTML('Check your recipe book', '#000000', 'ns') + '</span>';
+            t.w = 160;
+        } else if (t.icon) {   // AdvancementToast: icon at (8, 8), header (30, 7), name (30, 18)
             html = '<i class="mc-tic" style="background-image:url(' + iconURL(t.icon) + ')"></i>' +
                 '<span class="mc-tl" style="left:calc(var(--px) * 30);top:calc(var(--px) * 7)">' + mtHTML(t.title, t.color || '#ffff00', 'ns') + '</span>' +
                 (t.text ? '<span class="mc-tl" style="left:calc(var(--px) * 30);top:calc(var(--px) * 18)">' + mtHTML(t.text, '#ffffff', 'ns') + '</span>' : '');
@@ -5172,6 +5181,15 @@
             var o = list[k];
             if (o.age < TOAST_SLIDE + TOAST_HOLD && o.age + dt >= TOAST_SLIDE + TOAST_HOLD) snd('toastout');
             o.age += dt;
+            o.life = (o.life || 0) + dt;
+            if (o.kind === 'recipe') {   // what was learned takes turns, five seconds shared between them, the station small behind it
+                var rn = o.items.length, ri = Math.floor(o.life * 1000 / Math.max(1, 5000 / rn)) % rn;
+                if (o.ri !== ri || o.rgs !== RT.gs) {
+                    o.ri = ri; o.rgs = RT.gs;
+                    o.el.querySelector('.mc-tcat').style.backgroundImage = 'url(' + iconURL(o.items[ri][0]) + ')';
+                    o.el.querySelector('.mc-tit').style.backgroundImage = 'url(' + iconURL(o.items[ri][1]) + ')';
+                }
+            }
             if (o.age >= TOAST_SLIDE * 2 + TOAST_HOLD) { o.el.remove(); list.splice(k, 1); continue; }
             var v;
             if (o.age < TOAST_SLIDE) { v = o.age / TOAST_SLIDE; v *= v; }
@@ -7267,7 +7285,479 @@
         }
         mk('rbook', 20, 18, rbook(K, F, D));
         mk('rbook_h', 20, 18, rbook('#00073e', '#8892c9', '#343e75'));
+        /* the recipe book: its page is the panel's own frame at 147x166; the tabs
+           down its left side are the creative tabs turned on their side, #8B8B8B
+           and stopping at the book's edge, or panel grey and running into it when
+           selected; 25x25 recipe buttons, grey for what you can make and red for
+           what you cannot; the 26x16 switch, pressed in with its picture lit while
+           it shows only what you can make; the 12x17 page arrows */
+        mk('rb_bg', 147, 166, function (cx) { frame(cx, 147, 166); });
+        function rbTab(sel) {
+            return function (cx) {
+                var end = sel ? 35 : 30, fill = sel ? F : W8;
+                sprRect(cx, 1, 1, end - 1, 25, fill);
+                sprRect(cx, 2, 0, end - 2, 1, K); sprRect(cx, 2, 26, end - 2, 1, K); sprRect(cx, 0, 2, 1, 23, K);
+                px(cx, 1, 1, K); px(cx, 1, 25, K);
+                sprRect(cx, 2, 1, end - 2, 2, L); sprRect(cx, 1, 2, 2, 22, L);
+                sprRect(cx, 3, 24, end - 3, 2, D); px(cx, 2, 25, D);
+                if (sel) {   // where it opens into the book: the book's white edge turns along the tab's
+                    sprRect(cx, 32, 3, 3, 21, F);
+                    sprRect(cx, 33, 0, 2, 3, L); sprRect(cx, 33, 24, 2, 3, L);
+                }
+            };
+        }
+        mk('rb_tab', 35, 27, rbTab(false)); mk('rb_tab_s', 35, 27, rbTab(true));
+        function rbSlot(face, lite, dark) {
+            return function (cx) {
+                sprRect(cx, 1, 1, 23, 23, face);
+                sprRect(cx, 1, 0, 23, 1, K); sprRect(cx, 1, 24, 23, 1, K); sprRect(cx, 0, 1, 1, 23, K); sprRect(cx, 24, 1, 1, 23, K);
+                sprRect(cx, 1, 1, 22, 1, lite); sprRect(cx, 1, 2, 1, 21, lite);
+                sprRect(cx, 2, 23, 22, 1, dark); sprRect(cx, 23, 2, 1, 21, dark);
+            };
+        }
+        mk('rb_ok', 25, 25, rbSlot('#9d9d9d', '#d8d8d8', '#5b5b5b'));
+        mk('rb_no', 25, 25, rbSlot('#b26363', '#e59a9a', '#6b2c2c'));
+        var RB_FLAME = ['...o....', '..oy....', '..oyo.o.', '.oyyo.oy', '.oyyyoyy', 'oyywyyyo', 'oywwwyyo', '.oyyyyo.'];
+        function rbFilter(on, hi, fur) {
+            return function (cx) {
+                var e = hi ? L : K;
+                sprRect(cx, 1, 0, 24, 1, e); sprRect(cx, 1, 15, 24, 1, e); sprRect(cx, 0, 1, 1, 14, e); sprRect(cx, 25, 1, 1, 14, e);
+                sprRect(cx, 1, 1, 24, 14, on ? '#7c7c7c' : W8);
+                sprRect(cx, 1, 1, 24, 1, on ? D : L); sprRect(cx, 1, 2, 1, 13, on ? D : L);
+                sprRect(cx, 2, 14, 23, 1, on ? L : D); sprRect(cx, 24, 2, 1, 12, on ? L : D);
+                if (fur) sprMap(cx, RB_FLAME, on ? { o: '#c43c00', y: '#ff9a00', w: '#fff27a' } : { o: '#4a4a4a', y: '#6e6e6e', w: '#a0a0a0' }, 9, 4);
+                else for (var gy = 0; gy < 3; gy++) for (var gx = 0; gx < 3; gx++) sprRect(cx, 8 + gx * 4, 2 + gy * 4, 3, 3, on ? '#46b446' : '#6e6e6e');
+            };
+        }
+        [['rb_f', false], ['rb_ff', true]].forEach(function (v) {
+            mk(v[0] + '0', 26, 16, rbFilter(false, false, v[1])); mk(v[0] + '0h', 26, 16, rbFilter(false, true, v[1]));
+            mk(v[0] + '1', 26, 16, rbFilter(true, false, v[1])); mk(v[0] + '1h', 26, 16, rbFilter(true, true, v[1]));
+        });
+        function rbArrow(right, c) {
+            return function (cx) {
+                for (var i = 0; i < 9; i++) {
+                    var h = 17 - 2 * i, x = right ? 1 + i : 10 - i;
+                    sprRect(cx, x, i, 1, h, SD);
+                    if (h > 2) sprRect(cx, x, i + 1, 1, h - 2, c);
+                }
+                sprRect(cx, right ? 0 : 11, 0, 1, 17, SD);
+            };
+        }
+        mk('rb_next', 12, 17, rbArrow(true, '#c6c6c6')); mk('rb_nexth', 12, 17, rbArrow(true, '#ffffff'));
+        mk('rb_prev', 12, 17, rbArrow(false, '#c6c6c6')); mk('rb_prevh', 12, 17, rbArrow(false, '#ffffff'));
+        // the recipe toast's white card
+        mk('toast_rc', 160, 32, function (cx) {
+            sprRect(cx, 2, 0, 156, 1, K); sprRect(cx, 2, 31, 156, 1, K); sprRect(cx, 0, 2, 1, 28, K); sprRect(cx, 159, 2, 1, 28, K);
+            px(cx, 1, 1, K); px(cx, 158, 1, K); px(cx, 1, 30, K); px(cx, 158, 30, K);
+            sprRect(cx, 2, 1, 156, 30, '#f2f2f2'); sprRect(cx, 1, 2, 158, 28, '#f2f2f2');
+            sprRect(cx, 2, 1, 156, 1, L); sprRect(cx, 1, 2, 1, 28, L);
+            sprRect(cx, 2, 30, 156, 1, '#b4b4b4'); sprRect(cx, 158, 2, 1, 28, '#b4b4b4');
+        });
     }
+    /* ── the recipe book ─────────────────────────────────────────
+       RecipeBookComponent, beside the inventory, the crafting table and the
+       furnace. The green book opens a 147x166 page at ((W - 147) / 2 - 86,
+       (H - 166) / 2) and the container slides right to 177 + (W - w - 200) / 2
+       to make room; on a screen under 379 wide the page is centred and the
+       container hidden until a recipe is picked or Esc closes the book.
+       On the page: the search box at (25, 13), the switch at (110, 12) that
+       shows only what you can make, the category tabs down the left edge
+       (35x27, 27 apart, only those holding a recipe you know), and twenty
+       recipes a page, five across from (11, 31) at 25 apart, with arrows and
+       "1/3" under them. A recipe you can make fills the grid (shift for as
+       many as you have for, a second click for one more each); one you cannot
+       is laid out as a ghost. Recipes are learned the way the game's recipe
+       advancements teach them, from an ingredient in your inventory, and a
+       toast says so; each new one pops once, with its tab, the first time the
+       book shows it. Open or shut, and the switch, are the world's: one pair
+       for crafting, one for the furnace. */
+    var RB_TABS = {
+        craft: [{ id: 'search', ic: ['compass'] }, { id: 'equip', ic: ['iron_axe', 'gold_sword'] }, { id: 'build', ic: ['bricks'] },
+                { id: 'misc', ic: ['lava_bucket', 'apple'] }, { id: 'red', ic: ['redstone'] }],
+        furnace: [{ id: 'search', ic: ['compass'] }, { id: 'food', ic: ['pork_raw'] }, { id: 'blocks', ic: ['stone'] }, { id: 'misc', ic: ['lava_bucket', 'emerald'] }]
+    };
+    var RB_SEARCH = { craft: ['equip', 'build', 'misc', 'red'], furnace: ['food', 'blocks', 'misc'] };   // SearchRecipeBookCategory's order
+    // each recipe's category as its recipe file files it; tools and armour are equipment, the rest misc
+    var RB_CAT = { planks: 'build', wool: 'build', stonebrick: 'build', sandstone: 'build', bricks: 'build', bookshelf: 'build', melon: 'build',
+                   tnt: 'red', rlamp: 'red', arrow: 'equip', bow: 'equip', flint_steel: 'equip' };
+    var RB_ALL = null;
+    function rbAll() {
+        if (RB_ALL) return RB_ALL;
+        var list = [];
+        RECIPES.forEach(function (r) {
+            // one recipe with a choice in it, the way the game writes the torch: coal or charcoal in the same cell
+            for (var k = 0; k < list.length; k++) {
+                var q = list[k], same = q.out === r.out && q.n === r.n && q.shape && r.shape && q.shape.length === r.shape.length && q.shape[0].length === r.shape[0].length;
+                if (same) r.shape.forEach(function (row, y) { row.forEach(function (id, x) { if (!id !== !q.shape[y][x]) same = false; }); });
+                if (!same) continue;
+                r.shape.forEach(function (row, y) {
+                    row.forEach(function (id, x) { var c = rbAlts(q.shape[y][x]); if (id && c.indexOf(id) < 0) q.shape[y][x] = c.concat([id]); });
+                });
+                return;
+            }
+            var d = I[r.out] || {};
+            list.push({ key: 'c:' + r.out, book: 'craft', out: r.out, n: r.n, less: r.less ? r.less.slice() : null,
+                shape: r.shape ? r.shape.map(function (row) { return row.slice(); }) : null, cat: RB_CAT[r.out] || (d.tool || d.armor ? 'equip' : 'misc') });
+        });
+        for (var inp in SMELTS) {
+            var o = SMELTS[inp], od = I[o] || {};
+            list.push({ key: 's:' + inp, book: 'furnace', out: o, n: 1, inp: inp, cat: od.food ? 'food' : od.place != null ? 'blocks' : 'misc' });
+        }
+        list.forEach(function (r) {   // what teaches it: any of its ingredients (the chest waits for ten filled slots, as its advancement does)
+            var t = {};
+            rbCellsOf(r, 3).forEach(function (c) { rbAlts(c[1]).forEach(function (id) { t[id] = 1; }); });
+            r.trig = r.out === 'chest' ? null : Object.keys(t);
+        });
+        return (RB_ALL = list);
+    }
+    function rbAlts(c) { return Array.isArray(c) ? c : [c]; }
+    function rbId(r) { return r.inp ? r.out + '_from_smelting_' + r.inp : r.out; }   // what /recipe calls it
+    function rbKind() { var k = RT && RT.panel && RT.panel.kind; return k === 'inv' || k === 'table' ? 'craft' : k === 'furnace' ? 'furnace' : null; }
+    function rbState() {
+        var k = rbKind();
+        if (!k) return null;
+        S.rb = S.rb || {};
+        return S.rb[k] || (S.rb[k] = { open: false, filter: false });
+    }
+    function rbShown() { var st = rbState(); return !!(st && st.open && RT.el.querySelector('.mc-panelwrap .mc-rb')); }
+    function rbNarrow() { return RT.gw < 379; }
+    function rbKnown() {
+        var m = RT.rbKnown;
+        if (!m || m.src !== S.rbk) { m = RT.rbKnown = { src: S.rbk }; S.rbk.forEach(function (k) { m[k] = 1; }); }
+        return m;
+    }
+    // a stack the book will use: not renamed, enchanted or worn (Inventory.isUsableForCrafting)
+    function rbPlain(st) {
+        var m = st ? itemMaxDur(st.id) : null;
+        return !!st && !st.name && !(st.ench && Object.keys(st.ench).length) && !(st.dur != null && m != null && st.dur < m);
+    }
+    /* StackedItemContents: what it could be made from, the inventory's plain
+       stacks and what the grid (or the furnace's input and output) holds already */
+    function rbHave(id) {
+        var n = 0, i, k = rbKind();
+        for (i = 0; i < 36; i++) if (S.inv[i] && S.inv[i].id === id && rbPlain(S.inv[i])) n += S.inv[i].c;
+        if (k === 'craft') for (i = 0; i < 9; i++) if (RT.craft[i] && RT.craft[i].id === id && rbPlain(RT.craft[i])) n += RT.craft[i].c;
+        if (k === 'furnace') { var t = S.tents[RT.panel.key]; if (t) [t.fin, t.out].forEach(function (s) { if (s && s.id === id && rbPlain(s)) n += s.c; }); }
+        return n;
+    }
+    function rbTake(id, n) {   // out of the inventory in slot order, the off hand last
+        for (var i = 0; i <= 36 && n > 0; i++) {
+            var st = i < 36 ? S.inv[i] : S.off;
+            if (!st || st.id !== id || !rbPlain(st)) continue;
+            var k = Math.min(n, st.c);
+            st.c -= k; n -= k;
+            if (!st.c) { if (i < 36) S.inv[i] = null; else S.off = null; }
+        }
+    }
+    // PlaceRecipeHelper: a recipe under half the grid's width or height is centred on that axis
+    function rbCellsOf(r, w) {
+        if (r.inp) return [[0, r.inp]];
+        var out = [];
+        if (r.less) { r.less.forEach(function (id, k) { out.push([k, id]); }); return out; }
+        var rh = r.shape.length, rw = r.shape[0].length;
+        var ox = rw < w / 2 ? Math.floor(w / 2 - rw / 2) : 0, oy = rh < w / 2 ? Math.floor(w / 2 - rh / 2) : 0;
+        r.shape.forEach(function (row, y) { row.forEach(function (id, x) { if (id) out.push([(y + oy) * w + x + ox, id]); }); });
+        return out;
+    }
+    function rbPick(r) {   // an item for every cell; of a choice, the one there is most of
+        return rbCellsOf(r, r.inp ? 1 : RT.craftW).map(function (c) {
+            var alts = rbAlts(c[1]), best = alts[0];
+            alts.forEach(function (id) { if (rbHave(id) > rbHave(best)) best = id; });
+            return [c[0], best];
+        });
+    }
+    function rbMost(r) {   // getBiggestCraftableStack, clamped to the ingredients' stack size
+        var need = {}, most = 64, k;
+        rbPick(r).forEach(function (c) { need[c[1]] = (need[c[1]] || 0) + 1; });
+        for (k in need) most = Math.min(most, Math.floor(rbHave(k) / need[k]), stkMax(k));
+        return most;
+    }
+    function rbFits(r) { var w = RT.craftW; return !!r.inp || (r.less ? r.less.length <= w * w : r.shape.length <= w && r.shape[0].length <= w); }
+    /* what the page lists: the tab's categories in the game's order, the recipes
+       known and fitting this grid, matched against the search, and only the
+       makeable ones while the switch is on */
+    function rbList() {
+        var kind = rbKind(), st = rbState(), v = RT.rbv, tab = RB_TABS[kind][v.tab].id, q = (v.q || '').trim().toLowerCase(), known = rbKnown(), out = [];
+        (tab === 'search' ? RB_SEARCH[kind] : [tab]).forEach(function (cat) {
+            rbAll().forEach(function (r) {
+                if (r.book !== kind || r.cat !== cat || !known[r.key] || !rbFits(r)) return;
+                if (q && itemName({ id: r.out, c: 1 }).toLowerCase().indexOf(q) < 0) return;
+                var ok = rbMost(r) > 0;
+                if (!st.filter || ok) out.push({ r: r, ok: ok });
+            });
+        });
+        return out;
+    }
+    function rbTabsOn() {   // the search tab, then each category holding a recipe you know that fits
+        var kind = rbKind(), known = rbKnown(), on = [];
+        RB_TABS[kind].forEach(function (T, k) {
+            if (!k || rbAll().some(function (r) { return r.book === kind && r.cat === T.id && known[r.key] && rbFits(r); })) on.push(k);
+        });
+        return on;
+    }
+    function rbTabsPop() {   // RecipeBookTabButton.startAnimation: a category with a recipe you have not been shown yet
+        var kind = rbKind(), st = rbState(), now = performance.now();
+        if (!S.rbNew) return;
+        RT.rbPopT = RT.rbPopT || {};
+        RB_TABS[kind].forEach(function (T, k) {
+            if (k && rbAll().some(function (r) { return r.book === kind && r.cat === T.id && S.rbNew[r.key] && rbFits(r) && (!st.filter || rbMost(r) > 0); })) RT.rbPopT['t:' + T.id] = now;
+        });
+    }
+    function rbPaint() {
+        var el = RT.el.querySelector('.mc-panelwrap .mc-rb');
+        if (!el || !RT.rbv) return;
+        var kind = rbKind(), st = rbState(), v = RT.rbv, on = rbTabsOn(), now = performance.now(), pops = RT.rbPopT = RT.rbPopT || {};
+        if (on.indexOf(v.tab) < 0) { v.tab = 0; v.page = 0; }
+        function pop(id) { return pops[id] && now - pops[id] < 750 ? ' data-pop="' + pops[id] + '"' : ''; }
+        var tabs = '';
+        on.forEach(function (k, n) {
+            var T = RB_TABS[kind][k], sel = k === v.tab;   // the selected tab is drawn two pixels further out
+            tabs += '<button class="mc-rbtab' + (sel ? ' on' : '') + '" type="button" data-rbt="' + k + '"' + pop('t:' + T.id) + ' style="' + iwAt(sel ? -32 : -30, 3 + 27 * n, 35, 27) + '">' +
+                T.ic.map(function (ic, j) { return '<i style="' + pAt(T.ic.length === 1 ? 9 : j ? 14 : 3, 5) + ';background-image:url(' + iconURL(ic) + ')"></i>'; }).join('') + '</button>';
+        });
+        var list = RT.rbList = rbList(), pages = Math.ceil(list.length / 20), html = '';
+        if (v.page >= pages) v.page = 0;   // RecipeBookPage.updateCollections: past the end is back to the start
+        for (var k = 0; k < 20; k++) {
+            var c = list[v.page * 20 + k];
+            if (!c) break;
+            if (S.rbNew && S.rbNew[c.r.key]) { delete S.rbNew[c.r.key]; pops['r:' + c.r.key] = now; }   // shown, so no longer new: it pops the once
+            html += '<button class="mc-rbr" type="button" data-rbr="' + (v.page * 20 + k) + '"' + pop('r:' + c.r.key) + ' style="' + iwAt(11 + 25 * (k % 5), 31 + 25 * ((k / 5) | 0), 25, 25) +
+                ';background-image:var(--spr-rb_' + (c.ok ? 'ok' : 'no') + ')"><i style="background-image:url(' + iconURL(c.r.out) + ')"></i></button>';
+        }
+        if (pages > 1) {
+            if (v.page < pages - 1) html += '<button class="mc-rbarr next" type="button" data-rb="next" style="' + iwAt(93, 137, 12, 17) + '"></button>';
+            if (v.page > 0) html += '<button class="mc-rbarr prev" type="button" data-rb="prev" style="' + iwAt(38, 137, 12, 17) + '"></button>';
+            var pg = (v.page + 1) + '/' + pages;   // white, no shadow, centred on x 73
+            html += iwText(pg, 73 - ((mfWidth(pg) + 1) >> 1), 141, '#ffffff', 'ns');
+        }
+        var te = el.querySelector('.mc-rbtabs'), pe = el.querySelector('.mc-rbpage'), fb = el.querySelector('.mc-rbfilter');
+        if (te._html !== tabs) { te._html = tabs; te.innerHTML = tabs; }
+        if (pe._html !== html) { pe._html = html; pe.innerHTML = html; }
+        fb.classList.toggle('on', !!st.filter);
+        fb.classList.toggle('fur', kind === 'furnace');
+    }
+    // open, shut, or brought up to date: the book lives beside the panel, not in it
+    function rbSync() {
+        var wrap = RT.el.querySelector('.mc-panelwrap'), st = rbState(), el = wrap && wrap.querySelector('.mc-rb');
+        if (!wrap) return;
+        if (!st || !st.open) { if (el) el.parentNode.removeChild(el); tipRender(null); return; }
+        RT.rbv = RT.rbv || { tab: 0, page: 0, q: '' };
+        if (!el) {
+            el = document.createElement('div');
+            el.className = 'mc-rb';
+            el.innerHTML = '<i class="mc-rbbg"></i><div class="mc-rbtabs"></div>' +
+                '<div class="mc-rbq" style="' + iwAt(25, 13, 81, 14) + '"><input class="mc-rbqin" maxlength="50" spellcheck="false" autocomplete="off" aria-label="Search">' +
+                '<div class="mc-rbqmir mc-fmir"></div></div>' +
+                '<button class="mc-rbfilter" type="button" data-rb="filter" style="' + iwAt(110, 12, 26, 16) + '"></button><div class="mc-rbpage"></div>';
+            wrap.insertBefore(el, wrap.querySelector('.mc-cur'));
+            var qi = el.querySelector('.mc-rbqin');
+            qi.value = RT.rbv.q;
+            qi.addEventListener('input', function () { RT.rbv.q = qi.value; rbPaint(); panelHoverRefresh(); });
+            qi.addEventListener('keydown', function (e) {
+                e.stopPropagation();   // the box owns the keyboard while it has it; Esc still gets you out
+                if (e.key === 'Escape') { e.preventDefault(); qi.blur(); RT.el.focus(); rbEscape(); }
+            });
+            qi.addEventListener('keyup', function (e) { e.stopPropagation(); });
+            qi.addEventListener('mousedown', function (e) { e.stopPropagation(); });
+            qi.addEventListener('focus', function () { qi._ft = performance.now(); });
+            rbTabsPop();
+        }
+        rbPaint();
+    }
+    function rbEscape() {   // RecipeBookComponent.keyPressed: Esc shuts a book that covers the screen, otherwise the screen
+        if (rbShown() && rbNarrow()) rbToggle(false); else closePanel();
+    }
+    function rbToggle(on) {
+        rbState().open = on;
+        rbSync();
+        RT.panel.gs = 0;   // the container moves: lay it out and paint it again
+        panelLayout();
+    }
+    // every part of the book is a widget, so every press clicks; the left button only, the right as well on a recipe
+    function rbAct(el, btn, shift) {
+        var st = rbState(), v = RT.rbv;
+        snd('click');
+        if (el.classList.contains('mc-rbook')) { rbToggle(!st.open); return; }
+        if (el.hasAttribute('data-rbr')) { if (btn === 0) rbClick(+el.getAttribute('data-rbr'), shift); return; }   // the right button lists a recipe's others; ours have none
+        if (el.hasAttribute('data-rbt')) {
+            var k = +el.getAttribute('data-rbt');
+            if (k !== v.tab) { v.tab = k; v.page = 0; }
+        } else {
+            var a = el.getAttribute('data-rb');
+            if (a === 'filter') st.filter = !st.filter;
+            else if (a === 'next') v.page++;
+            else if (a === 'prev') v.page = Math.max(0, v.page - 1);
+        }
+        rbPaint();
+        panelHoverRefresh();
+    }
+    function rbTip(el) {
+        if (el.classList.contains('mc-rbfilter')) return [{ t: rbState().filter ? (rbKind() === 'furnace' ? 'Showing Smeltable' : 'Showing Craftable') : 'Showing All' }];
+        var c = RT.rbList && RT.rbList[+el.getAttribute('data-rbr')];
+        return c ? itemTipLines({ id: c.r.out, c: c.r.n }, 'rb') : null;
+    }
+    /* ServerPlaceRecipe.clearGrid and the test before it: the grid goes back into
+       the inventory, and in survival nothing happens if it would not all fit;
+       creative drops what does not */
+    function rbClearGrid(slots) {
+        var snap = { inv: S.inv.map(function (s) { return s && Object.assign({}, s); }), off: S.off && Object.assign({}, S.off) }, lost = [];
+        slots.forEach(function (sl) {
+            var st = sl.get();
+            if (!st) return;
+            var left = invGive(st.id, st.c, st.dur, st.ench, st.name);
+            if (left) lost.push({ id: st.id, c: left, dur: st.dur, ench: st.ench, name: st.name });
+        });
+        if (lost.length && !instaBuild()) { S.inv = snap.inv; S.off = snap.off; return false; }
+        slots.forEach(function (sl) { sl.set(null); });
+        lost.forEach(function (st) { dropItem(S.px, S.py + 1, S.pz, st.id, st.c, st.dur, false, st.ench, st.name); });
+        return true;
+    }
+    function rbGridHolds(r) {   // the grid's stacks, if what is in it already makes this
+        var m = matchRecipe(RT.craft, RT.craftW), out = [];
+        if (!m || m.out !== r.out || m.n !== r.n) return null;
+        for (var i = 0; i < 9; i++) if (RT.craft[i]) out.push(RT.craft[i]);
+        return out;
+    }
+    /* a recipe clicked: RecipeBookComponent.tryPlaceRecipe and ServerPlaceRecipe.
+       One of each, or with shift as many as you have for, up to a stack; a click
+       on the recipe the grid already holds adds one more to every stack, if each
+       has room. What you cannot make is laid out as a ghost. On a screen too
+       narrow for both, the book then closes to show the grid. */
+    function rbClick(idx, shift) {
+        var c = RT.rbList && RT.rbList[idx];
+        if (!c) return;
+        var r = c.r, most = rbMost(r), t = r.inp ? S.tents[RT.panel.key] : null, grid = [], i;
+        if (most < 1 && RT.rbGhost === r) return;   // already showing where it goes
+        if (r.inp && !t) return;
+        rbGhostSet(null);
+        if (r.inp) grid = [{ get: function () { return t.fin; }, set: function (v) { t.fin = v; } }, { get: function () { return t.out; }, set: function (v) { t.out = v; } }];
+        else for (i = 0; i < 9; i++) (function (i) { grid.push({ get: function () { return RT.craft[i]; }, set: function (v) { RT.craft[i] = v; } }); })(i);
+        if (most < 1) { if (rbClearGrid(grid)) rbGhostSet(r); }
+        else {
+            var n = 1, inGrid = r.inp ? (t.fin && t.fin.id === r.inp ? [t.fin] : null) : rbGridHolds(r), full = false;
+            if (shift) n = most;
+            else if (inGrid) {
+                n = 64;
+                inGrid.forEach(function (s) { n = Math.min(n, s.c); if (Math.min(most, stkMax(s.id)) < s.c + 1) full = true; });
+                n++;
+            }
+            var cells = rbPick(r);   // chosen while the grid still counts
+            if (!full && rbClearGrid(grid)) cells.forEach(function (cl) {
+                rbTake(cl[1], n);
+                if (r.inp) t.fin = { id: cl[1], c: n }; else RT.craft[cl[0]] = { id: cl[1], c: n };
+            });
+        }
+        paintPanel(); paintHotbar();
+        if (rbNarrow()) rbToggle(false);
+    }
+    /* GhostSlots: each slot of the recipe washed out over 0x30FF0000 (24x24
+       round a big result slot) with 0x30FFFFFF over the item's own pixels; a
+       choice of ingredient, and the fuel, take turns every 30 ticks (held
+       while Ctrl is down); the result shows its count. It stays until a
+       crafting slot is clicked, even with the book shut. */
+    function rbGhostSet(r) {
+        RT.rbGhost = r;
+        var wrap = RT.el.querySelector('.mc-panelwrap');
+        if (wrap) rbGhostPaint(wrap);
+    }
+    function rbGhostHit(g) {
+        if (RT.rbGhost && (g === 'craft' || g === 'cout' || g === 'fin' || g === 'ffuel' || g === 'fout')) rbGhostSet(null);
+    }
+    function rbFuels() { return RT.rbFuels || (RT.rbFuels = Object.keys(I).filter(function (id) { return I[id].fuel > 0; })); }
+    function rbCycle() { return Math.floor((RT.rbTime || 0) / 30); }
+    function rbGhostPaint(wrap) {
+        var old = wrap.querySelectorAll('.mc-slot.ghost'), i;
+        for (i = 0; i < old.length; i++) {
+            old[i].classList.remove('ghost', 'gbig');
+            var gi = old[i].querySelectorAll('.mc-ghost, .mc-gct');
+            for (var j = 0; j < gi.length; j++) gi[j].parentNode.removeChild(gi[j]);
+        }
+        RT.rbGhostAt = {};
+        var gh = RT.rbGhost;
+        if (!gh || !RT.panel) return;
+        var ix = rbCycle(), list;
+        if (gh.inp) {
+            var t = S.tents[RT.panel.key], fu = rbFuels();
+            list = [['fin', 0, gh.inp], ['fout', 0, gh.out, gh.n]];
+            if (t && !t.fuel && fu.length) list.push(['ffuel', 0, fu[ix % fu.length]]);
+        } else {
+            list = rbCellsOf(gh, RT.craftW).map(function (c) { var a = rbAlts(c[1]); return ['craft', c[0], a[ix % a.length]]; });
+            list.push(['cout', 0, gh.out, gh.n]);
+        }
+        list.forEach(function (c) {
+            var el = wrap.querySelector('.mc-slot[data-g="' + c[0] + '"][data-i="' + c[1] + '"]');
+            if (!el) return;
+            RT.rbGhostAt[c[0] + ':' + c[1]] = c[2];
+            el.classList.add('ghost');
+            if ((c[0] === 'cout' && RT.panel.kind === 'table') || c[0] === 'fout') el.classList.add('gbig');
+            el.insertAdjacentHTML('beforeend', '<i class="mc-it mc-ghost" style="--ic:url(' + iconURL(c[2]) + ')"></i>' + (c[3] > 1 ? mtHTML(String(c[3]), null, 'mc-ct mc-gct') : ''));
+        });
+    }
+    // per frame: the search box, the ghost's turns, and the pops
+    function rbFrameTick(dt) {
+        if (!rbKind()) return;
+        var was = rbCycle(), wrap = RT.el.querySelector('.mc-panelwrap');
+        if (!(RT.keys && RT.keys.control)) RT.rbTime = (RT.rbTime || 0) + dt * 20;
+        if (RT.rbGhost && rbCycle() !== was && wrap) { rbGhostPaint(wrap); panelHoverRefresh(); }
+        var el = wrap && wrap.querySelector('.mc-rb');
+        if (!el) return;
+        var qi = el.querySelector('.mc-rbqin');
+        paintFieldMirror(qi, el.querySelector('.mc-rbqmir'), '#ffffff', 73, { t: 'Search...', c: '#aaaaaa', cls: 'it' });
+        el.querySelector('.mc-rbq').classList.toggle('on', document.activeElement === qi);
+        // a pop is 1 + 0.1 sin(pi t / 15) over fifteen ticks, a button all over, a tab only up and down
+        var pops = el.querySelectorAll('[data-pop]'), now = performance.now();
+        for (var i = 0; i < pops.length; i++) {
+            var a = (now - +pops[i].getAttribute('data-pop')) / 750, f = a >= 1 ? 1 : 1 + 0.1 * Math.sin(Math.PI * (1 - Math.max(0, a)));
+            var tf = f === 1 ? '' : pops[i].classList.contains('mc-rbtab') ? 'scaleY(' + f.toFixed(4) + ')' : 'scale(' + f.toFixed(4) + ')';
+            if (pops[i].style.transform !== tf) pops[i].style.transform = tf;
+        }
+    }
+    /* Learning: a recipe is yours once one of its ingredients is in your
+       inventory (the chest once ten slots are filled), when you make it, or by
+       /recipe. RecipeToast says so, one card for the lot. */
+    function rbLearn(keys, quiet) {
+        if (!S || !S.rbk || !keys.length) return 0;
+        var fresh = keys.filter(function (k, n) { return S.rbk.indexOf(k) < 0 && keys.indexOf(k) === n; });
+        if (!fresh.length) return 0;
+        fresh.forEach(function (k) { S.rbk.push(k); });
+        RT.rbKnown = null;
+        if (quiet) return fresh.length;
+        S.rbNew = S.rbNew || {};
+        var all = rbAll();
+        fresh.forEach(function (k) {
+            S.rbNew[k] = 1;
+            for (var i = 0; i < all.length; i++) if (all[i].key === k) { recipeToast(all[i].book === 'furnace' ? 'furnace' : 'table', all[i].out); break; }
+        });
+        if (RT.panel && rbShown()) { rbTabsPop(); rbPaint(); }
+        return fresh.length;
+    }
+    function rbScan() {
+        if (!S || !S.rbk || !RT || !RT.ready || RT.menu) return;
+        var have = {}, used = 0;
+        [].concat(S.inv.slice(0, 36), S.armor || [], [S.off]).forEach(function (st) { if (st) { have[st.id] = 1; used++; } });
+        var sig = Object.keys(have).sort().join() + (used >= 10 ? '+' : '');
+        if (sig === RT.rbSig) return;
+        RT.rbSig = sig;
+        var learn = [];
+        rbAll().forEach(function (r) { if (r.trig ? r.trig.some(function (id) { return have[id]; }) : used >= 10) learn.push(r.key); });
+        var quiet = !!S.rbQuiet;
+        delete S.rbQuiet;
+        rbLearn(learn, quiet);
+    }
+    /* RecipeToast.addOrUpdate: a recipe toast still up takes the new one and
+       starts its five seconds over; otherwise a new card */
+    function recipeToast(cat, out) {
+        var all = (RT.toasts || []).concat(RT.toastQ || []);
+        for (var i = 0; i < all.length; i++) {
+            var t = all[i];
+            if (t.kind !== 'recipe' || t.age > TOAST_SLIDE + TOAST_HOLD) continue;
+            t.items.push([cat, out]);
+            if (t.age > TOAST_SLIDE) t.age = TOAST_SLIDE;
+            return;
+        }
+        toastPush({ kind: 'recipe', items: [[cat, out]] });
+    }
+
     /* Where a screen goes: centred on the scaled screen with the game's integer
        arithmetic, leftPos = (W - imageWidth) div 2, topPos = (H - imageHeight) div 2.
        Positions inside it are the game's own slot and label coordinates. */
@@ -7276,9 +7766,16 @@
         if (!RT || !RT.panel || !RT.gs) return;
         var wrap = RT.el.querySelector('.mc-panelwrap'), p = wrap && wrap.querySelector('.mc-panel');
         if (!p) return;
-        var d = PANEL_DIM[RT.panel.kind] || [176, 166];
-        RT.panel.lx = (RT.gw - d[0]) >> 1; RT.panel.ly = (RT.gh - d[1]) >> 1;
+        var d = PANEL_DIM[RT.panel.kind] || [176, 166], rb = wrap.querySelector('.mc-rb'), narrow = rbNarrow();
+        /* RecipeBookComponent.updateScreenPosition: with the book open the screen
+           moves right to 177 + (W - w - 200) / 2 and the book sits at
+           (W - 147) / 2 - 86; too narrow for both, the book is centred and the
+           screen behind it hidden */
+        RT.panel.lx = rb && !narrow ? 177 + ((RT.gw - d[0] - 200) >> 1) : (RT.gw - d[0]) >> 1;
+        RT.panel.ly = (RT.gh - d[1]) >> 1;
         hudPlace(p, RT.panel.lx, RT.panel.ly);
+        p.style.display = rb && narrow ? 'none' : '';
+        if (rb) hudPlace(rb, ((RT.gw - 147) >> 1) - (narrow ? 0 : 86), (RT.gh - 166) >> 1);
         // a new GUI scale means new icons (they are baked per scale) and a new box for the figure
         if (RT.panel.gs !== RT.gs) { RT.panel.gs = RT.gs; if (RT.av) avatarAttach(); paintPanel(); }
         panelCurTo();
@@ -7418,6 +7915,8 @@
         wrap.innerHTML = panelMarkup(kind);
         wrap.style.display = '';
         RT.hovEl = null;
+        RT.rbv = null; RT.rbGhost = null; RT.rbGhostAt = {}; RT.rbPopT = {};   // a new screen, a new book: the first tab, no search, no ghost
+        rbSync();
         panelLayout();
         unlockCursor();
         // .mc-panelwrap is a PERSISTENT node — only its innerHTML is replaced per open. Re-running
@@ -7442,6 +7941,7 @@
         RT.qc = null;   // a sweep in progress ends with the screen
         RT.av = null;   // and so does the figure in the box
         RT.hover = null; RT.lastClk = null; RT.hovEl = null; RT.cDrag = 0;
+        RT.rbGhost = null; RT.rbGhostAt = {}; RT.rbv = null;
         var i, give = [RT.cur, RT.enchItem, RT.enchLapis, RT.anvilA, RT.anvilB];
         for (i = 0; i < 9; i++) { give.push(RT.craft[i]); RT.craft[i] = null; }
         RT.cur = null; RT.enchItem = null; RT.enchLapis = null; RT.anvilA = null; RT.anvilB = null; RT.enchOpts = null;
@@ -7491,6 +7991,8 @@
         if (kind === 'creative') paintCreativeBar(wrap);
         if (RT.qc) qcPaint();   // a repaint mid-sweep (a furnace ticking behind the screen) keeps the preview
         if (RT.av) avatarSync();   // armour on or off, a different item in hand: the figure follows the slots
+        if (rbKind()) rbPaint();   // the book redraws what you can make as the inventory changes
+        rbGhostPaint(wrap);
         panelHoverRefresh();       // the same pointer may be over something new now
     }
     /* AbstractFurnaceScreen: the lit flame shows its bottom ceil(13p) + 1 rows,
@@ -7599,7 +8101,7 @@
         while (skip < caret && mfWidth(v.slice(skip, caret)) > room - 6) skip++;
         var show = v.slice(skip), html = show ? mtHTML(show, inp.disabled ? '#707070' : col) : '';
         var focused = document.activeElement === inp && !inp.disabled;
-        if (!v && hint && !focused) html = mtHTML(hint, '#555555');   // the hint, dark grey, only while the box is empty and idle
+        if (!v && hint && !focused) html = typeof hint === 'string' ? mtHTML(hint, '#555555') : mtHTML(hint.t, hint.c, hint.cls);   // the hint, dark grey, only while the box is empty and idle
         function xAt(k) { return k > skip ? mfWidth(v.slice(skip, k)) + 1 : 0; }
         var cx = xAt(caret);
         if (focused && (((performance.now() - (inp._ft || 0)) / 300) | 0) % 2 === 0) {
@@ -7854,6 +8356,7 @@
             for (var i = 0; i < 9; i++) if (RT.craft[i]) { RT.craft[i].c--; if (!RT.craft[i].c) RT.craft[i] = null; }
             stat('cr', r.out, r.n);
             craftHooks(r.out);
+            rbLearn(['c:' + r.out]);   // making it teaches it
             snd('click');
         } while (shiftAll && guard++ < 64);
     }
@@ -7968,6 +8471,7 @@
         return true;
     }
     function slotClick(g, idx, right, shift) {
+        rbGhostHit(g);
         if (g === 'cout') { takeCraft(shift); paintPanel(); paintHotbar(); return; }
         if (g === 'anvOut') { applyAnvil(shift); return; }
         if (g === 'creat') { creativeClick(idx, right, shift); return; }
@@ -8135,7 +8639,7 @@
         var wrap = RT.el.querySelector('.mc-panelwrap');
         if (!wrap || !RT.panel) return;
         var under = slotAt(target, wrap), el = target && target.closest ? target : null;
-        var tabEl = el && el.closest('.mc-ctab'), eo = el && el.closest('.mc-enchopt');
+        var tabEl = el && el.closest('.mc-ctab'), eo = el && el.closest('.mc-enchopt'), rbEl = el && el.closest('.mc-rbr, .mc-rbfilter');
         var hovEl = under ? under.el : null;
         if (RT.hovEl !== hovEl) {
             if (RT.hovEl) RT.hovEl.classList.remove('hov');
@@ -8146,6 +8650,9 @@
         var lines = null;
         if (tabEl) { var td = CTABS[tabEl.getAttribute('data-ct') | 0]; if (td) lines = [{ t: td.t }]; }
         else if (eo) lines = enchTipLines(eo.getAttribute('data-o') | 0);
+        else if (rbEl) lines = rbTip(rbEl);
+        // GhostSlots.renderTooltip: over a ghost, with the book open, the ghost's item
+        else if (under && RT.rbGhostAt && RT.rbGhostAt[under.g + ':' + under.i] && rbShown()) lines = itemTipLines({ id: RT.rbGhostAt[under.g + ':' + under.i], c: 1 }, under.g);
         else if (under && under.g === 'ctrash') lines = [{ t: 'Destroy Item' }];
         else if (under && !RT.cur) { var st = slotStackAt(under.g, under.i); if (st) lines = itemTipLines(st, under.g); }
         tipRender(lines, clientX, clientY);
@@ -8172,6 +8679,7 @@
         if (a) paintFieldMirror(a, wrap.querySelector('.mc-anvmir'), '#ffffff', 103);
         if (sb) paintFieldMirror(sb, wrap.querySelector('.mc-csmir'), '#ffffff', 80);
         if (RT.panel.kind === 'ench') enchBookFrame(dt || 0);
+        rbFrameTick(dt || 0);
     }
     /* ── drag-splitting — the real game's "quick craft" ──────────
        With a stack on the cursor, pressing a mouse button over a slot is NOT
@@ -8244,6 +8752,7 @@
         if (!qcAccepts(g, i, RT.cur)) return;
         if (q.type !== 2 && RT.cur.c <= q.slots.length) return;   // never more slots than items
         q.slots.push({ g: g, i: i });
+        rbGhostHit(g);   // a sweep across the grid is a click on it
         qcPaint();
     }
     function qcCancel() {
@@ -8364,6 +8873,7 @@
     function hoverSwap(n) {
         var h = RT.hover;
         if (!h || h.g === 'ctrash') return;   // the bin only ever clears the cursor
+        rbGhostHit(h.g);
         var hbGet = function () { return n === 40 ? S.off || null : S.inv[n]; };
         var hbSet = function (v) { if (n === 40) S.off = v || null; else S.inv[n] = v || null; };
         var hb = hbGet();
@@ -8402,6 +8912,7 @@
     function hoverThrow(all) {
         var h = RT.hover;
         if (!h || h.g === 'fout' || h.g === 'anvOut' || h.g === 'ctrash') return;
+        rbGhostHit(h.g);
         if (h.g === 'creat') {   // the catalogue hands one out to throw, a stack with Ctrl
             var cst = slotGroup('creat').get(h.i);
             if (!cst || cst.lock) return;
@@ -8467,6 +8978,16 @@
         wrap.addEventListener('mousedown', function (e) {
             panelCurTo(e.clientX, e.clientY);
             if (e.button > 2 || RT.qc) return;
+            /* the recipe book takes its clicks first; a click anywhere but its
+               search box or a recipe takes the keyboard back from the box */
+            var rbq = wrap.querySelector('.mc-rbqin'), rbHit = e.target && e.target.closest ? e.target.closest('.mc-rbook, .mc-rb') : null;
+            if (rbq && document.activeElement === rbq && !(rbHit && e.target.closest('.mc-rbr, .mc-rbarr'))) { rbq.blur(); RT.el.focus(); }
+            if (rbHit) {
+                var rbEl = e.target.closest('.mc-rbook, .mc-rbtab, .mc-rbr, .mc-rbfilter, .mc-rbarr');
+                if (rbEl && (e.button === 0 || (e.button === 2 && rbEl.classList.contains('mc-rbr')))) rbAct(rbEl, e.button, e.shiftKey);
+                e.preventDefault(); e.stopPropagation();
+                return;
+            }
             if (e.button === 0) {
                 var bar = barAt(e.target);
                 // the press only grabs the scroller; it is dragging that moves it, as the real one does
@@ -9459,6 +9980,7 @@
             stepPlayer(dt);
             statMove(dt);
             camFrame(dt);
+            if ((RT.rbScanT = (RT.rbScanT || 0) + dt) >= 0.25) { RT.rbScanT = 0; rbScan(); }   // inventory_changed, for the recipe advancements
             fovTick(dt);
             digTick(dt);
             useTick(dt);
@@ -12408,6 +12930,32 @@
         chatSay('Gave ' + n + ' [' + (I[item].t || item) + '] to Steve' + (left ? ' (' + left + ' would not fit)' : ''));
     }, function (a) { return a === 0 ? ['@s', '@p'] : a === 1 ? itemNames() : []; });
 
+    cmd('recipe', '/recipe <give|take> <targets> <*|recipe>', 'Gives or takes player recipes', function (rd, raw) {
+        var sub = rd.word().toLowerCase();
+        if (sub !== 'give' && sub !== 'take') return usageErr('recipe', raw, rd.i);
+        var selAt = rd.i, sel = rd.selectorTok();
+        if (!sel) return usageErr('recipe', raw, rd.i);
+        var tg = resolveTargets(sel);
+        if (tg === null) return chatSyntax('Invalid entity selector', raw, selAt);
+        if (!playerTargeted(tg)) return chatErr('No player was found');
+        var rAt = rd.i, w = stripNs(rd.word());
+        if (!w) return usageErr('recipe', raw, rd.i);
+        var list = w === '*' ? rbAll() : rbAll().filter(function (r) { return rbId(r) === w; });
+        if (!list.length) return chatSyntax('Unknown recipe: minecraft:' + w, raw, rAt + 1);
+        var keys = list.map(function (r) { return r.key; });
+        if (sub === 'give') {
+            var n = rbLearn(keys);
+            return n ? chatSay('Unlocked ' + n + ' recipes for Steve') : chatErr('No new recipes were learned');
+        }
+        var had = keys.filter(function (k) { return S.rbk.indexOf(k) >= 0; });
+        if (!had.length) return chatErr('No recipes could be forgotten');
+        S.rbk = S.rbk.filter(function (k) { return keys.indexOf(k) < 0; });
+        had.forEach(function (k) { if (S.rbNew) delete S.rbNew[k]; });
+        RT.rbKnown = null;
+        if (RT.panel && rbShown()) rbPaint();
+        chatSay('Took ' + had.length + ' recipes from Steve');
+    }, function (a) { return a === 0 ? ['give', 'take'] : a === 1 ? ['@s', '@p'] : a === 2 ? ['*'].concat(rbAll().map(rbId)) : []; });
+
     cmd('clear', '/clear [target] [item]', 'Clears items from inventory', function (rd, raw) {
         var selAt = rd.i, sel = rd.selectorTok();
         // the target is optional, so "/clear diamond" names an item, not a player
@@ -13325,7 +13873,7 @@
             var k = e.key.toLowerCase();
             if (e.key === 'Escape') {
                 if (RT.chat) { closeChat(true); e.stopPropagation(); e.preventDefault(); }
-                else if (RT.panel) { closePanel(); e.stopPropagation(); }
+                else if (RT.panel) { rbEscape(); e.stopPropagation(); }
                 else if (RT.sleep && !RT.woke && !RT.paused && !RT.dead) { leaveBed(); e.stopPropagation(); e.preventDefault(); }
                 // a screen behind the Game Menu backs out to it, not to the world; the death screens ignore Escape
                 else if (RT.iw && RT.iw.scr !== 'pause') { var iwd = IW_SCR[RT.iw.scr]; if (iwd.esc) iwd.esc(); e.stopPropagation(); e.preventDefault(); }
@@ -13352,6 +13900,11 @@
                 if (ci && document.activeElement !== ci) ci.focus();
                 e.stopPropagation();
                 return;
+            }
+            // with the recipe book open the chat key goes to its search box (RecipeBookComponent.keyPressed)
+            if (k === 't' && RT.panel && rbShown()) {
+                var rbq = RT.el.querySelector('.mc-rbqin');
+                if (rbq && document.activeElement !== rbq) { rbq.focus(); rbq._ft = performance.now(); e.preventDefault(); e.stopPropagation(); return; }
             }
             // over the catalogue the chat key does what the real screen's does: it goes to Search
             if ((k === 't' || k === '/') && RT.panel && RT.panel.kind === 'creative' && (CTABS[RT.cTab] || CTABS[0]).id !== 'search') {
@@ -13736,7 +14289,14 @@
             craftGrid: function (arr) { RT.craftW = 3; for (var i = 0; i < 9; i++) RT.craft[i] = arr[i] ? { id: arr[i][0], c: arr[i][1] } : null; },
             shiftCraft: function () { takeCraft(true); },
             invSnap: function () { var o = {}; for (var i = 0; i < 36; i++) { var s = S.inv[i]; if (s) o[s.id] = (o[s.id] || 0) + s.c; } return o; },
-            invFree: invFree, craftSnap: function () { return RT.craft.map(function (s) { return s ? s.id + ':' + s.c : null; }); }
+            invFree: invFree, craftSnap: function () { return RT.craft.map(function (s) { return s ? s.id + ':' + s.c : null; }); },
+            rb: function () {
+                var st = rbState();
+                return { known: S.rbk.slice(), open: !!(st && st.open), shown: rbShown(), filter: !!(st && st.filter), tab: RT.rbv ? RT.rbv.tab : null,
+                    page: RT.rbv ? RT.rbv.page : null, list: (RT.rbList || []).map(function (c) { return rbId(c.r) + (c.ok ? '' : '!'); }),
+                    ghost: RT.rbGhost ? rbId(RT.rbGhost) : null, lx: RT.panel ? RT.panel.lx : null, fresh: Object.keys(S.rbNew || {}) };
+            },
+            rbLearnAll: function () { return rbLearn(rbAll().map(function (r) { return r.key; })); }
         };
         if (has('mobs')) setTimeout(function () {
             var list = ['zombie', 'skeleton', 'creeper', 'spider', 'enderman', 'slime', 'pig', 'cow', 'sheep', 'chicken'];

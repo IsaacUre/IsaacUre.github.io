@@ -2724,6 +2724,9 @@ button.cr-iu-skip { position: absolute; right: 1rem; bottom: 1rem; z-index: 11; 
     border-image: var(--spr-toast) 4 fill / calc(var(--px) * 4) stretch; image-rendering: pixelated; }
 .mc-toast .mc-tic { position: absolute; left: calc(var(--px) * 8); top: calc(var(--px) * 8); width: calc(var(--px) * 16); height: calc(var(--px) * 16); background-size: 100% 100%; image-rendering: pixelated; }
 .mc-toast .mc-tl { position: absolute; }
+/* RecipeToast: the white card, the crafting table (or furnace) small in the corner behind what was learned */
+.mc-toast.mc-rtoast::before { border-image-source: var(--spr-toast_rc); }
+.mc-toast .mc-tcat { left: calc(var(--px) * 1.8); top: calc(var(--px) * 1.8); width: calc(var(--px) * 9.6); height: calc(var(--px) * 9.6); }
 .mc-actbar { opacity: 0; }
 /* the attack indicator and F3's 3D crosshair sit beside .mc-cross, outside .mc-hud, for the same inverting blend */
 .mc-atk { position: absolute; left: 0; top: 0; z-index: 4; display: none; pointer-events: none; mix-blend-mode: difference; image-rendering: pixelated; }
@@ -2752,11 +2755,50 @@ button.cr-iu-skip { position: absolute; right: 1rem; bottom: 1rem; z-index: 11; 
 /* a slot inside a drag-split sweep: 0x80FFFFFF behind the stack it would get */
 .mc-panel .mc-slot.qc::before { content: ''; background: rgba(255, 255, 255, 0.502); }
 .mc-panel .mc-slot.qc.hov::before { background: rgba(255, 255, 255, 0.689); }
+/* GhostSlots: a recipe you cannot make yet, 0x30FF0000 under each item (24x24 round a big result slot)
+   and 0x30FFFFFF over the item's own pixels */
+.mc-panel .mc-slot.ghost::before { content: ''; background: rgba(255, 0, 0, 0.188); }
+.mc-panel .mc-slot.ghost.gbig::before { left: calc(var(--px) * -3); top: calc(var(--px) * -3); width: calc(var(--px) * 24); height: calc(var(--px) * 24); }
+.mc-slot .mc-ghost::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: rgba(255, 255, 255, 0.188);
+    -webkit-mask: var(--ic) 0 0 / 100% 100% no-repeat; mask: var(--ic) 0 0 / 100% 100% no-repeat; }
 .mc-cur { position: absolute; left: 0; top: 0; width: calc(var(--px) * 16); height: calc(var(--px) * 16); z-index: 12; pointer-events: none; display: none; --o: 0px; }
 .mc-avbox { overflow: hidden; }
 .mc-av { display: block; width: 100%; height: 100%; }
 .mc-rbook { width: calc(var(--px) * 20); height: calc(var(--px) * 18); padding: 0; margin: 0; border: 0; background: var(--spr-rbook) 0 0 / 100% 100% no-repeat; image-rendering: pixelated; cursor: default; outline: none; }
 .mc-rbook:hover, .mc-rbook.hov { background-image: var(--spr-rbook_h); }
+/* the recipe book beside the container: RecipeBookComponent's 147x166 page, the category tabs down its
+   left edge, the search box, the switch, twenty recipes a page and the arrows under them */
+.mc-rb { position: absolute; left: 0; top: 0; width: calc(var(--px) * 147); height: calc(var(--px) * 166); }
+.mc-rb > *, .mc-rbtabs > *, .mc-rbpage > * { position: absolute; }
+.mc-rbtabs, .mc-rbpage { left: 0; top: 0; }
+.mc-rbbg { left: 0; top: 0; width: 100%; height: 100%; background: var(--spr-rb_bg) 0 0 / 100% 100% no-repeat; image-rendering: pixelated; pointer-events: none; }
+.mc-rbtab, .mc-rbr, .mc-rbfilter, .mc-rbarr { padding: 0; margin: 0; border: 0; background: 0 0 / 100% 100% no-repeat; image-rendering: pixelated; cursor: default; outline: none; }
+/* a new recipe, and its tab, pop once about (8, 12); rbFrameTick sets the scale */
+.mc-rbtab, .mc-rbr { transform-origin: calc(var(--px) * 8) calc(var(--px) * 12); }
+.mc-rbtab { background-image: var(--spr-rb_tab); }
+.mc-rbtab.on { background-image: var(--spr-rb_tab_s); }
+.mc-rbtab i, .mc-rbr i { position: absolute; width: calc(var(--px) * 16); height: calc(var(--px) * 16); background: 0 0 / 100% 100% no-repeat; image-rendering: pixelated; pointer-events: none; }
+.mc-rbr i { left: calc(var(--px) * 4); top: calc(var(--px) * 4); }
+.mc-rbfilter { background-image: var(--spr-rb_f0); }
+.mc-rbfilter:hover { background-image: var(--spr-rb_f0h); }
+.mc-rbfilter.on { background-image: var(--spr-rb_f1); }
+.mc-rbfilter.on:hover { background-image: var(--spr-rb_f1h); }
+.mc-rbfilter.fur { background-image: var(--spr-rb_ff0); }
+.mc-rbfilter.fur:hover { background-image: var(--spr-rb_ff0h); }
+.mc-rbfilter.fur.on { background-image: var(--spr-rb_ff1); }
+.mc-rbfilter.fur.on:hover { background-image: var(--spr-rb_ff1h); }
+.mc-rbarr.next { background-image: var(--spr-rb_next); }
+.mc-rbarr.next:hover { background-image: var(--spr-rb_nexth); }
+.mc-rbarr.prev { background-image: var(--spr-rb_prev); }
+.mc-rbarr.prev:hover { background-image: var(--spr-rb_prevh); }
+/* its search box: the text_field sprite, white while it has the keyboard, the text at (4, 3) */
+.mc-rbq::before { content: ''; position: absolute; inset: 0; box-sizing: border-box; border: var(--px) solid transparent;
+    border-image: var(--spr-field) 1 fill / var(--px) stretch; image-rendering: pixelated; pointer-events: none; }
+.mc-rbq.on::before { border-image-source: var(--spr-field_h); }
+.mc-rbq input { position: absolute; left: 0; top: 0; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; outline: none; background: transparent;
+    color: transparent; caret-color: transparent; font: inherit; opacity: 0; cursor: text; }
+.mc-rbq input::selection { background: transparent; }
+.mc-rbq .mc-rbqmir { position: absolute; left: calc(var(--px) * 4); top: calc(var(--px) * 3); }
 /* the furnace: the flame shows its bottom rows and burns down from the top; the arrow fills from the left */
 .mc-flame { width: calc(var(--px) * 14); height: 0; background: var(--spr-flame) 0 100% / calc(var(--px) * 14) calc(var(--px) * 14) no-repeat; image-rendering: pixelated; pointer-events: none; }
 .mc-farrow { width: 0; height: calc(var(--px) * 16); background: var(--spr-burn) 0 0 / calc(var(--px) * 24) calc(var(--px) * 16) no-repeat; image-rendering: pixelated; pointer-events: none; }
