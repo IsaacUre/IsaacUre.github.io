@@ -337,15 +337,30 @@ function animCount(p, which) { return p.evaluate(function (w) { return window.__
             rec('T28 ' + ZV.join('x') + ' (1280x800 at ' + Math.round(128000 / ZV[0]) + '%): a page from the pinned commands = a page from the content', inBar && a0 === b0 && stepMain > 0 && a1 < maxY && Math.abs(stepMain - stepBar) <= 1 && pads.top === '0px' && parseFloat(pads.bottom) === pads.barH + 4, { stepMain: stepMain, stepBar: stepBar, padsMain: padsMain, pads: pads, a0: a0, b0: b0 });
             await c.close();
         }
-        // and a resting bar near the fold: the first Tab onto it doesn't throw the page up
-        for (var RV of [[1280, 480], [1280, 540], [390, 480], [320, 430], [844, 520]]) {
-            c = await ctxWith(browser, { viewport: { width: RV[0], height: RV[1] } });
+        // and a resting bar near the fold: the first Tab onto it doesn't throw the page up. the
+        // heights are found, not fixed: for each width, the shortest window whose resting
+        // "> about" is whole on screen in the bottom 56px (where a bottom scroll padding would
+        // have counted it hidden and centred it)
+        for (var RW2 of [1280, 844, 500, 390, 320]) {
+            c = await ctxWith(browser, { viewport: { width: RW2, height: 800 } });
+            await warm(c);
+            p = await c.newPage();
+            await p.goto(URL, { waitUntil: 'load' }); await sleep(400);
+            var RH = null;
+            for (var hh = 360; hh <= 900; hh += 2) {
+                await p.setViewportSize({ width: RW2, height: hh }); await sleep(60);
+                var lr = await p.evaluate(function () { var r = document.querySelector('#bar a[href="#about"]').getBoundingClientRect(); return { top: r.top, bottom: r.bottom, vh: innerHeight }; });
+                if (lr.top >= 0 && lr.bottom <= lr.vh && lr.bottom > lr.vh - 56) { RH = hh; break; }
+            }
+            await c.close();
+            if (!RH) { rec('T28b resting bar near the fold at ' + RW2 + ' wide: found a window to try', false, 'none from 360 to 900 tall'); continue; }
+            c = await ctxWith(browser, { viewport: { width: RW2, height: RH } });
             await warm(c);
             p = await c.newPage();
             await p.goto(URL, { waitUntil: 'load' }); await sleep(400);
             await p.keyboard.press('Tab'); await p.keyboard.press('Tab'); await sleep(400);
             var rt = await p.evaluate(function () { var a = document.activeElement, r = a.getBoundingClientRect(); return { f: a.getAttribute('href'), y: Math.round(scrollY), top: Math.round(r.top), bottom: Math.round(r.bottom), vh: innerHeight }; });
-            rec('T28b resting bar at ' + RV.join('x') + ': Tab onto "> about" moves the page only as far as it must', rt.f === '#about' && rt.y <= 60 && rt.top >= 0 && rt.bottom <= rt.vh, rt);
+            rec('T28b resting bar at ' + RW2 + 'x' + RH + ': Tab onto "> about" moves the page only as far as it must', rt.f === '#about' && rt.y <= 60 && rt.top >= 0 && rt.bottom <= rt.vh, rt);
             await c.close();
         }
 
