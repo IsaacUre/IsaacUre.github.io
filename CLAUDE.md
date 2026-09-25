@@ -99,5 +99,5 @@ the root. (It was at `/new/` at first; that path is gone, not redirected.)
   site" one out and may add one back later (it would be the place for
   `comp/` and `1p/`). GitHub is off the Contact list on purpose until he has
   a GitHub he wants to show; don't put it back unless he asks.
-- `.claude/test/rig/` has its checks (169 of them, plus axe and
+- `.claude/test/rig/` has its checks (170 of them, plus axe and
   html-validate). Run them after any change; its README says how.

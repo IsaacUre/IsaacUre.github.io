@@ -58,6 +58,11 @@ function icoCenter(p, k) { return p.evaluate(function (i) { var r = document.que
         await p.evaluate(function (y) { scrollTo(0, y - 250); }, tt); await sleep(2500);
         var n1 = (await plays(p)).length;
         rec('T33 back within 20s: no replay', n1 === 5, { plays: n1 });
+        var tBack = Date.now();
+        await sleep(Math.max(0, 21500 - (Date.now() - tBack)));
+        await p.evaluate(function () { scrollBy(0, 20); }); await sleep(1200);
+        var n1c = (await plays(p)).length;
+        rec('T33c back early and staying: 20s later a nudge of the page replays nothing', n1c === 5, { plays: n1c });
         await p.evaluate(function () { scrollTo(0, 0); }); await sleep(18500);
         await p.evaluate(function (y) { scrollTo(0, y - 250); }, tt); await sleep(2800);
         var n2 = (await plays(p)).length;
@@ -77,11 +82,12 @@ function icoCenter(p, k) { return p.evaluate(function (i) { var r = document.que
         // T34b a pointer that the page scrolls under (not moved by hand) doesn't play it
         await p.mouse.move(5, 5); await sleep(900);
         cc = await icoCenter(p, 'pad');
-        await p.mouse.move(cc.x, cc.y + 120); await sleep(900);   // resting below the pad
+        await p.mouse.move(cc.x, cc.y - 120); await sleep(900);   // resting above the pad
         var s0 = (await plays(p)).length;
-        await p.mouse.wheel(0, 120); await sleep(700);             // the page moves the pad under it
+        await p.mouse.wheel(0, 120); await sleep(900);             // the page carries the pad up under it
+        var under = await p.evaluate(function (pt) { var e = document.elementFromPoint(pt.x, pt.y); return !!(e && e.closest && e.closest('svg[data-pic="pad"]')); }, { x: cc.x, y: cc.y - 120 });
         var s1 = (await plays(p)).length;
-        rec('T34b scrolling a picture under a still pointer plays nothing', s1 === s0, { before: s0, after: s1 });
+        rec('T34b scrolling a picture under a still pointer plays nothing (the pad did pass under it)', under && s1 === s0, { under: under, before: s0, after: s1 });
         rec('T31b no page errors', (await errs(p)).length === 0, await errs(p));
         await c.close();
 
