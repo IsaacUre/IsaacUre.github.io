@@ -121,8 +121,9 @@
         @media (max-width: 380px) {
             :root { --fs-ans: 1.25rem; }
         }
-        /* the longest check line, "> about ... who is this guy", is 27 columns. a 320 screen
-           has 25 of them at 28px and 30 at 24px */
+        /* "> about ... who is this guy" is 27 columns: a 320 screen has 25 of them at 28px and
+           30 at 24px, so at 24px it keeps to one row. "> log ... effectively mini resume" is
+           33, and on any phone its result drops to the next line, as a check line does (.row) */
         @media (max-width: 360px) {
             :root { --fs-h2: 1.5rem; }
         }
@@ -570,7 +571,7 @@
         .ro dt .ld { margin-right: 0; min-width: 0; width: 0; contain: inline-size; }   /* the dots never count toward the key's width */
         .ro dd { flex: 1 1 0; min-width: 0; margin-left: 1ch; overflow-wrap: anywhere; text-wrap: pretty; }
 
-        /* off the clock: a picture each, drawn on the eye's grid at 3px a cell, glowing the
+        /* the tiles: a picture each, drawn on the eye's grid at 3px a cell, glowing the
            way the text does */
         .tiles { list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 30ch), 1fr)); gap: 1.4em 4ch; margin-top: 1.3em; }
         .tile { display: grid; grid-template-columns: 66px minmax(0, 1fr); column-gap: 2ch; align-items: start; }
