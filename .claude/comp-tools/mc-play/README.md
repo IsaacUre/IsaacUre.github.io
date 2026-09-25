@@ -15,3 +15,6 @@ ends with ALL PASS or FAILURES: n. Screenshots land in ../shots/ (gitignored).
 
 The two probe-*.js scripts only print what they see; they are the first
 things that were run when "creative isn't working" came in.
+
+The game's sound has its own build and checks in ../mc-sounds/ (stdlib
+Python and headless Edge, so they run without Playwright).

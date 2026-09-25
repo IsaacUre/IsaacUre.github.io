@@ -7,3 +7,6 @@ tcomp/__*
 # QC scratch: hundreds of captures and probe pages, never committed
 .claude/nnqc/
 .claude/comp-tools/shots/
+
+# Python bytecode from the tooling under .claude/
+__pycache__/
