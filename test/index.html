@@ -1050,8 +1050,9 @@
                     if (r.bottom <= 0 || r.top >= vh) p.off = true;   // right off the screen since it played
                     continue;
                 }
-                // owed again: checked here, not while it is away, so a jump straight back (a link, Home) counts too
-                if (p.done && !p.a && p.off && now - p.at >= AGAIN) p.done = false;
+                // owed again: checked here, not while it is away, so a jump straight back (a link, Home) counts
+                // too; and a return uses the trip up either way, so one that came back early doesn't go off later
+                if (p.off) { if (p.done && !p.a && now - p.at >= AGAIN) p.done = false; p.off = false; }
                 p.inAt = p.inAt || now;
                 if (p.done || p.a || has(p.sec, 'pend')) continue;
                 due = Math.max(p.inAt + BEAT, (p.sec.iuAt || 0) + p.line + BEAT, t + GAP);
@@ -1063,7 +1064,7 @@
         }
         function again(p) {                // a pointer resting on one, or a tap; not the page moving under a still pointer
             var now = +new Date();
-            if (now - movedAt < 300 || now - p.at < p.ms + REST || has(p.sec, 'pend')) return;
+            if (now - movedAt < 300 || now - p.at < p.ms + REST || has(p.sec, 'pend') || now < (p.sec.iuAt || 0) + p.line) return;   // nor before its line prints
             play(p);
         }
         function hook(p) {
