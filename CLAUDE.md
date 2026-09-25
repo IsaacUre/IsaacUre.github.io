@@ -80,12 +80,18 @@ the root. (It was at `/new/` at first; that path is gone, not redirected.)
   before adding a biographical claim (a date, a title, a number), and don't
   copy one from `comp/`, `ureboy/` or `behind-the-lens/`: the computer is
   half lore, and the other two still carry old dates.
-- Nothing on it loops, and the screen settles within five seconds of the
-  boot's hand-off (WCAG 2.2.2). Without JS, or under reduced motion, it is
-  simply the finished page. Keep both true.
+- The screen stays alive the way the holding page's does: its eye blinks
+  twice every 8s and its cursor (and Contact's) keeps blinking. Isaac asked
+  for that over WCAG 2.2.2's five-second rule, so don't "fix" it. Everything
+  else settles within five seconds of the boot's hand-off, and without JS or
+  under reduced motion it is simply the finished page, with nothing moving.
+- Stepped animations that fill backwards use end steps (or none): a start
+  step filled backwards shows its first frame during the delay in browsers
+  without the easing spec's "before flag". That is how the name once showed
+  its I before typing it.
 - It loads everything by absolute path (`/images/...`, `/favicon.svg`), so
   moving it to the root is a copy.
 - There is no section for the rest of the site yet. Isaac took the "This
   site" one out and will add one when `comp/` and `1p/` are ready to link.
-- `.claude/test/rig/` has its checks (154 of them, plus axe and
+- `.claude/test/rig/` has its checks (156 of them, plus axe and
   html-validate). Run them after any change; its README says how.

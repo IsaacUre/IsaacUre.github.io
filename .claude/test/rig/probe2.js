@@ -208,7 +208,9 @@ function animCount(p, which) { return p.evaluate(function (w) { return window.__
             }
         }
 
-        /* ── T22 (d) blinks follow a live switch to reduced motion ── */
+        /* ── T22 (d) blinks follow a live switch to reduced motion. the screen's eye blinks on its
+             own CSS loop, so the script never blinks it; the foot's eye is the script's ── */
+        var idleRunning = function () { return document.getAnimations().filter(function (a) { return /^idle/.test(a.animationName || '') && a.playState === 'running'; }).length; };
         c = await ctxWith(browser, { viewport: { width: 1280, height: 800 } });
         await warm(c);
         p = await c.newPage();
@@ -216,15 +218,16 @@ function animCount(p, which) { return p.evaluate(function (w) { return window.__
         await p.keyboard.press('End'); await sleep(700);
         var foot1 = await animCount(p, 'foot');
         await p.keyboard.press('Home'); await sleep(800);
-        var hero1 = await animCount(p, 'hero');
+        var hero1 = await animCount(p, 'hero'), loop1 = await p.evaluate(idleRunning);
         await p.emulateMedia({ reducedMotion: 'reduce' }); await sleep(100);
+        var loop2 = await p.evaluate(idleRunning);
         await p.keyboard.press('End'); await sleep(700);
         await p.keyboard.press('Home'); await sleep(800);
         var foot2 = await animCount(p, 'foot'), hero2 = await animCount(p, 'hero');
-        rec('T22 blinks play, then stop at a live switch to reduced motion', foot1 === 3 && hero1 === 3 && foot2 === 3 && hero2 === 3, { foot1: foot1, hero1: hero1, foot2: foot2, hero2: hero2 });
+        rec('T22 the foot eye blinks, the screen\'s eye loops; a live switch to reduced motion stops both', foot1 === 3 && hero1 === 0 && loop1 === 3 && loop2 === 0 && foot2 === 3 && hero2 === 0, { foot1: foot1, hero1: hero1, loop1: loop1, loop2: loop2, foot2: foot2, hero2: hero2 });
         await c.close();
 
-        /* ── T23 (e) no blink on top of a blink ── */
+        /* ── T23 (e) no blink on top of a blink: never on the screen's looping eye, and not twice on the foot's ── */
         c = await ctxWith(browser, { viewport: { width: 1280, height: 800 } });
         await warm(c);
         p = await c.newPage();
@@ -232,35 +235,38 @@ function animCount(p, which) { return p.evaluate(function (w) { return window.__
         await p.goto(URL, { waitUntil: 'domcontentloaded' });
         await sleep(Math.max(0, 300 - (Date.now() - tLoad))); await p.evaluate(function () { scrollTo(0, 1400); });
         await sleep(Math.max(0, 750 - (Date.now() - tLoad))); await p.evaluate(function () { scrollTo(0, 0); });
-        await sleep(1500);
-        var n1 = await animCount(p, 'hero');
-        rec('T23 back within the first second: the CSS blink alone, no second one', n1 === 0, { heroAnimateCalls: n1 });
-        await sleep(600);
+        await sleep(2200);
         await p.evaluate(function () { scrollTo(0, 1400); }); await sleep(200);
-        await p.evaluate(function () { scrollTo(0, 0); }); await sleep(120);
-        var n2 = await animCount(p, 'hero');
+        await p.evaluate(function () { scrollTo(0, 0); }); await sleep(300);
+        var n1 = await animCount(p, 'hero');
+        rec('T23 the screen\'s eye: no scripted blink on top of its own, early or late', n1 === 0, { heroAnimateCalls: n1 });
+        await p.evaluate(function () { scrollTo(0, document.documentElement.scrollHeight); }); await sleep(120);
+        var f1 = await animCount(p, 'foot');
         await p.evaluate(function () { scrollTo(0, 1400); }); await sleep(100);
-        await p.evaluate(function () { scrollTo(0, 0); }); await sleep(700);
-        var n3 = await animCount(p, 'hero');
-        rec('T23b a later return blinks once; a second return mid-blink adds none', n2 === 3 && n3 === 3, { n2: n2, n3: n3 });
+        await p.evaluate(function () { scrollTo(0, document.documentElement.scrollHeight); }); await sleep(700);
+        var f2 = await animCount(p, 'foot');
+        await p.evaluate(function () { scrollTo(0, 1400); }); await sleep(300);
+        await p.evaluate(function () { scrollTo(0, document.documentElement.scrollHeight); }); await sleep(300);
+        var f3 = await animCount(p, 'foot');
+        rec('T23b the foot eye: a return blinks once, a second return mid-blink adds none, a later one blinks again', f1 === 3 && f2 === 3 && f3 === 6, { f1: f1, f2: f2, f3: f3 });
         await c.close();
 
-        /* ── T24 (f) never spent out of sight, and no replay on a wobble ── */
+        /* ── T24 (f) the foot eye: never spent out of sight, and no replay on a wobble ── */
         for (var BV of [[1280, 800], [844, 390], [390, 844]]) {
             c = await ctxWith(browser, BV[0] === 390 ? { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 } : { viewport: { width: BV[0], height: BV[1] } });
             await warm(c);
             p = await c.newPage();
-            await p.goto(URL, { waitUntil: 'load' }); await sleep(2400);
-            var eyeTop = await p.evaluate(function () { return document.querySelector('.eye').getBoundingClientRect().top + scrollY; });
-            await p.evaluate(function () { scrollTo(0, 3000); }); await sleep(200);
-            await p.evaluate(function (t) { scrollTo(0, t + 40); }, eyeTop); await sleep(700);   // the bottom of the eye in view, not its lids
-            var part = await animCount(p, 'hero');
-            await p.evaluate(function () { scrollTo(0, 0); }); await sleep(200);
-            var full = await animCount(p, 'hero');
-            var inView = await p.evaluate(function () { var q = document.querySelector('.eye').getBoundingClientRect(); return q.top + q.height / 4 >= 0 && q.top + q.height * .75 <= innerHeight; });
-            for (i = 0; i < 5; i++) { await p.evaluate(function (t) { scrollTo(0, t + 40); }, eyeTop); await sleep(120); await p.evaluate(function () { scrollTo(0, 0); }); await sleep(600); }
-            var wob = await animCount(p, 'hero');
-            rec('T24 ' + BV.join('x') + ': held back while the lids are out of view, one blink when they arrive, none on a wobble', part === 0 && full === 3 && inView && wob === 3, { part: part, full: full, wobble: wob });
+            await p.goto(URL, { waitUntil: 'load' }); await sleep(1200);
+            var geo = await p.evaluate(function () { var q = document.querySelector('.foot-eye').getBoundingClientRect(); return { top: q.top + scrollY, h: q.height, vh: innerHeight, max: document.documentElement.scrollHeight - innerHeight }; });
+            var yPart = Math.round(geo.top - geo.vh + geo.h * .5), yFull = geo.max;   // only its top half in view; then all of it
+            await p.evaluate(function (y) { scrollTo(0, y); }, yPart); await sleep(700);
+            var part = await animCount(p, 'foot');
+            await p.evaluate(function (y) { scrollTo(0, y); }, yFull); await sleep(200);
+            var full = await animCount(p, 'foot');
+            var inView = await p.evaluate(function () { var q = document.querySelector('.foot-eye').getBoundingClientRect(); return q.top + q.height / 4 >= 0 && q.top + q.height * .75 <= innerHeight; });
+            for (i = 0; i < 5; i++) { await p.evaluate(function (y) { scrollTo(0, y); }, yPart); await sleep(120); await p.evaluate(function (y) { scrollTo(0, y); }, yFull); await sleep(600); }
+            var wob = await animCount(p, 'foot');
+            rec('T24 ' + BV.join('x') + ': the foot eye waits while its lids are out of view, blinks once when they arrive, not on a wobble', part === 0 && full === 3 && inView && wob === 3, { part: part, full: full, wobble: wob, geo: geo });
             await c.close();
         }
 
@@ -366,7 +372,8 @@ function animCount(p, which) { return p.evaluate(function (w) { return window.__
             await c.close();
         }
 
-        /* ── T29 (o)(i) the power-on is over inside 5s; the name has its own layer ── */
+        /* ── T29 (o)(i) the power-on is over inside 5s, and only the holding page's loops go on (the
+             eye's idle blink, the cursor); the name has its own layer and types on an end step ── */
         for (var HV of ['cold', 'warm']) {
             c = await ctxWith(browser, { viewport: { width: 1280, height: 800 } });
             if (HV === 'warm') await warm(c);
@@ -375,27 +382,42 @@ function animCount(p, which) { return p.evaluate(function (w) { return window.__
             var tRef = 0;
             if (HV === 'cold') { await sleep(500); await p.keyboard.press('Space'); tRef = await waitHandoff(p); }
             var endT = await p.evaluate(function (t0) {
-                var top = document.getElementById('top'), latest = 0, inf = false;
+                var top = document.getElementById('top'), latest = 0, loops = [];
                 document.getAnimations().forEach(function (a) {
                     var tg = a.effect && a.effect.target; if (!tg || !top.contains(tg)) return;
-                    var ct = a.effect.getComputedTiming(); if (ct.iterations === Infinity) inf = true;
+                    var ct = a.effect.getComputedTiming();
+                    if (ct.iterations === Infinity) { loops.push(a.animationName); return; }
                     var start = a.startTime === null ? document.timeline.currentTime : a.startTime;
                     latest = Math.max(latest, start + ct.endTime - t0);
                 });
-                return { latest: Math.round(latest), inf: inf, iter: getComputedStyle(document.querySelector('.term-block')).animationIterationCount, wc: getComputedStyle(document.querySelector('.holding-word .nm')).willChange };
+                var nm = getComputedStyle(document.querySelector('.holding-word .nm'));
+                return { latest: Math.round(latest), loops: loops.sort().join(','), wc: nm.willChange, ease: nm.animationTimingFunction };
             }, tRef);
-            rec('T29 ' + HV + ': the hero settles ' + endT.latest + 'ms after ' + (HV === 'cold' ? 'the hand-off' : 'navigation') + ' (under 5s), 3 blinks, name layered', endT.latest < 5000 && !endT.inf && endT.iter === '3' && endT.wc === 'transform', endT);
+            rec('T29 ' + HV + ': the power-on settles ' + endT.latest + 'ms after ' + (HV === 'cold' ? 'the hand-off' : 'navigation') + ' (under 5s); the eye and cursor loop; name layered, end-stepped', endT.latest < 5000 && endT.loops === 'idleHalf,idleShut,idleSlit,termBlink' && endT.wc === 'transform' && (HV === 'warm' || /steps\(9(, (end|jump-end))?\)/.test(endT.ease)), endT);
             await c.close();
         }
-        // and nothing has moved in the hero after 5s, sampled for real
+        // and nothing but those loops moves in the hero after 5s, sampled for real: the loops are
+        // stopped for the two shots, and everything else must hold still between them
         c = await ctxWith(browser, { viewport: { width: 1280, height: 800 } });
         p = await c.newPage();
         await p.goto(URL, { waitUntil: 'domcontentloaded' }); await sleep(500); await p.keyboard.press('Space'); await waitHandoff(p);
-        await atAfter(p, 5000);
+        await atAfter(p, 4990);
+        await p.addStyleTag({ content: '.eye .bf, .term-block { animation: none !important; }' });
+        await sleep(30);
         var shotA = await p.screenshot({ clip: { x: 0, y: 0, width: 1280, height: 600 } });
         await sleep(1500);
         var shotB = await p.screenshot({ clip: { x: 0, y: 0, width: 1280, height: 600 } });
-        rec('T29b the first screen is still from 5s to 6.5s after the hand-off', Buffer.compare(shotA, shotB) === 0, { bytesA: shotA.length, bytesB: shotB.length });
+        rec('T29b loops aside, the first screen is still from 5s to 6.5s after the hand-off', Buffer.compare(shotA, shotB) === 0, { bytesA: shotA.length, bytesB: shotB.length });
+        await c.close();
+        // the name is hidden through its whole wait, types from its first glyph on the beat, and lets go once typed
+        c = await ctxWith(browser, { viewport: { width: 1280, height: 800 } });
+        p = await c.newPage();
+        await p.goto(URL, { waitUntil: 'domcontentloaded' }); await sleep(500); await p.keyboard.press('Space'); await waitHandoff(p);
+        var clipAt = function () { return p.evaluate(function () { return getComputedStyle(document.querySelector('.holding-word .nm')).clipPath; }); };
+        await atAfter(p, 150); var c1 = await clipAt();
+        await atAfter(p, 620); var c2 = await clipAt();
+        await atAfter(p, 1300); var c3 = await clipAt();
+        rec('T29c the name: hidden through the wait (+150, +620ms), unclipped once typed (+1300ms)', /inset\(0(px)? 100%/.test(c1) && /inset\(0(px)? 100%/.test(c2) && c3 === 'none', { at150: c1, at620: c2, at1300: c3 });
         await c.close();
 
         /* ── T30 a first visit at the top: what the first screen shows of the page prints after the commands ── */
