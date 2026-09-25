@@ -1,18 +1,18 @@
-# /new test rig
+# /test rig
 
-Checks for `new/index.html`, run in the container's Chromium with real key,
+Checks for `test/index.html`, run in the container's Chromium with real key,
 mouse and touch events. Nothing here is published (it's a dotfolder).
 
-    cd .claude/new/rig && npm install                        # axe-core, html-validate
-    node serve.js 8650 &                                     # the repo at /, so /new/ is new/
-    node probe.js  http://127.0.0.1:8650/new/ /tmp/probe     # 88 checks
-    node probe2.js http://127.0.0.1:8650/new/ /tmp/probe2    # 66 checks
-    node audit.js  http://127.0.0.1:8650/new/                # axe, WCAG 2.x A/AA, 1280 and 375 wide
-    npx html-validate -c htmlvalidate.json ../../../new/index.html
-    node shoot.js  http://127.0.0.1:8650/new/ /tmp/shots     # screenshots and a report
-    node look.js   http://127.0.0.1:8650/new/ /tmp/look      # short windows, large text, a phone, a cold hand-off
+    cd .claude/test/rig && npm install                        # axe-core, html-validate
+    node serve.js 8650 &                                     # the repo at /, so /test/ is test/
+    node probe.js  http://127.0.0.1:8650/test/ /tmp/probe     # 88 checks
+    node probe2.js http://127.0.0.1:8650/test/ /tmp/probe2    # 66 checks
+    node audit.js  http://127.0.0.1:8650/test/                # axe, WCAG 2.x A/AA, 1280 and 375 wide
+    npx html-validate -c htmlvalidate.json ../../../test/index.html
+    node shoot.js  http://127.0.0.1:8650/test/ /tmp/shots     # screenshots and a report
+    node look.js   http://127.0.0.1:8650/test/ /tmp/look      # short windows, large text, a phone, a cold hand-off
 
-`serve.js 8650 <dir>` serves a candidate copy at /new/ instead, with
+`serve.js 8650 <dir>` serves a candidate copy at /test/ instead, with
 /images/ still from the repo.
 
 - probe.js: the boot and its skips, warm visits, deep links, the pinned

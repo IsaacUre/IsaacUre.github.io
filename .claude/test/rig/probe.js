@@ -1,4 +1,4 @@
-/* Behavioural probe for the final /new page. Usage: node probe.js <baseUrl> <outDir> */
+/* Behavioural probe for the /test page. Usage: node probe.js <baseUrl> <outDir> */
 var pw = require('/opt/node22/lib/node_modules/playwright');
 var fs = require('fs'), path = require('path');
 var BASE = process.argv[2], OUT = path.resolve(process.argv[3] || 'probe');

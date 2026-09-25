@@ -1,4 +1,4 @@
-/* Regression-fix probe for /new. Usage: node probe2.js <baseUrl> <outDir> */
+/* Regression-fix probe for /test. Usage: node probe2.js <baseUrl> <outDir> */
 var pw = require('/opt/node22/lib/node_modules/playwright');
 var fs = require('fs'), path = require('path');
 var BASE = process.argv[2], OUT = path.resolve(process.argv[3] || 'probe2');
