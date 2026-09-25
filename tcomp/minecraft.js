@@ -56,6 +56,7 @@
             tents: {},                     // 'x,y,z' → furnace/chest tile state
             ents: [],                      // saved mobs + item drops
             ach: {}, achN: 0,
+            rbk: [], rb: {},               // recipes known, in the order learned; each recipe book's open and filter settings
             hrs: 0,                        // lifetime raw hours
             snd: 1, mus: 1,               // 0..1 sliders; saves from before them hold true/false and read as 1/0
             deaths: 0,
@@ -84,6 +85,9 @@
         if (!mayFly()) S.fly = false;
         if (S.diff == null) S.diff = 2;
         if (!S.eff || typeof S.eff !== 'object' || S.eff instanceof Array) S.eff = {};
+        if (S.off === undefined) S.off = null;   // the off hand, from before it existed
+        // the recipe book, from before it existed: learn what the inventory already teaches, without a toast
+        if (!Array.isArray(S.rbk)) { S.rbk = []; S.rbQuiet = 1; }
         if (!S.rules || typeof S.rules !== 'object' || S.rules instanceof Array) S.rules = {};
         for (var k in GR_DEF) if (S.rules[k] === undefined) S.rules[k] = GR_DEF[k];
     }
@@ -389,6 +393,16 @@
             }
         }
     })();
+    /* the game's own numbers for the tool classes, per tier (wood, stone, iron,
+       gold, diamond): what a hit does and how many full-strength hits a second */
+    var TOOL_DMG = { pick: [0, 2, 3, 4, 2, 5], axe: [0, 7, 9, 9, 7, 9], shovel: [0, 2.5, 3.5, 4.5, 2.5, 5.5], hoe: [0, 1, 1, 1, 1, 1] };
+    var TOOL_SPD = { sword: [0, 1.6, 1.6, 1.6, 1.6, 1.6], pick: [0, 1.2, 1.2, 1.2, 1.2, 1.2], shovel: [0, 1, 1, 1, 1, 1],
+                     axe: [0, 0.8, 0.8, 0.9, 1, 1], hoe: [0, 1, 2, 3, 1, 4] };
+    function attackSpeed(id) {
+        var t = id && I[id] && I[id].tool;
+        return t && TOOL_SPD[t.k] ? TOOL_SPD[t.k][t.tier] || 4 : 4;
+    }
+    function attackCooldown(id) { return 1 / attackSpeed(id); }   // seconds to a full-strength swing: 20 / speed ticks
     var SWORD_DMG = [0, 4, 5, 6, 4, 7];
     (function () {   // 5 tools × 5 tiers, generated
         var kinds = { pick: 'Pickaxe', axe: 'Axe', shovel: 'Shovel', sword: 'Sword', hoe: 'Hoe' };
@@ -396,7 +410,7 @@
             var cap = TIER_N[tier].charAt(0).toUpperCase() + TIER_N[tier].slice(1);
             I[TIER_N[tier] + '_' + k] = {
                 t: cap + (tier === 4 ? 'en' : '') + ' ' + kinds[k], stk: 1,
-                tool: { k: k, tier: tier, mult: TIER_MULT[tier], dmg: k === 'sword' ? SWORD_DMG[tier] : 1 + tier, dur: TIER_DUR[tier] },
+                tool: { k: k, tier: tier, mult: TIER_MULT[tier], dmg: k === 'sword' ? SWORD_DMG[tier] : TOOL_DMG[k][tier], dur: TIER_DUR[tier] },
                 fuel: tier === 1 ? 10 : 0
             };
         }
@@ -708,13 +722,26 @@
             trect(0, 0, 16, 16, '#9c6b35'); sprinkle(['#8f6130', '#a9763c'], 40);
             trect(0, 0, 16, 1, '#5e3f1c'); trect(0, 15, 16, 1, '#5e3f1c'); trect(0, 0, 1, 16, '#5e3f1c'); trect(15, 0, 1, 16, '#5e3f1c');
         });
-        for (var cs = 0; cs < 4; cs++) (function (stg) {
+        /* destroy_stage_0 to 9: one network of cracks, grown from the middle by
+           random walks and branches, each stage showing the next tenth of it */
+        var CRACK = (function () {
+            var r = mulb(0xC2AC4), at = {}, order = 0, walkers = [[8, 8], [7, 8], [8, 7]];
+            for (var st = 0; st < 170 && walkers.length; st++) {
+                var w = walkers[(r() * walkers.length) | 0], d = (r() * 8) | 0;
+                var nx = w[0] + [1, -1, 0, 0, 1, -1, 1, -1][d], ny = w[1] + [0, 0, 1, -1, 1, 1, -1, -1][d];
+                if (nx < 0 || ny < 0 || nx > 15 || ny > 15) continue;
+                if (at[nx + ',' + ny] == null) at[nx + ',' + ny] = order++;
+                w[0] = nx; w[1] = ny;
+                if (r() < 0.07 && walkers.length < 9) walkers.push([nx, ny]);
+            }
+            return { at: at, n: order };
+        })();
+        for (var cs = 0; cs < 10; cs++) (function (stg) {
             tile('crack' + stg, function () {
-                for (var i = 0; i < 8 + stg * 10; i++) {
-                    var x = (trnd() * 16) | 0, y = (trnd() * 16) | 0;
-                    tpx(x, y, 'rgba(20,16,12,0.85)');
-                    if (trnd() < 0.6) tpx(x + 1, y, 'rgba(20,16,12,0.6)');
-                    if (stg > 1 && trnd() < 0.5) tpx(x, y + 1, 'rgba(20,16,12,0.6)');
+                var lim = CRACK.n * (stg + 1) / 10;
+                for (var k in CRACK.at) if (CRACK.at[k] < lim) {
+                    var p = k.split(',');
+                    tpx(p[0] | 0, p[1] | 0, CRACK.at[k] < lim * 0.6 ? 'rgba(18,14,10,0.9)' : 'rgba(30,24,18,0.7)');
                 }
             });
         })(cs);
@@ -950,7 +977,37 @@
         /* weather particles + xp orb */
         tile('rain', function () { trect(7, 0, 2, 16, '#7fb0e8'); tpx(7, 2, '#a8d0f5'); });
         tile('snow', function () { trect(6, 6, 4, 4, '#ffffff'); tpx(5, 7, '#e8f4ff'); tpx(10, 8, '#e8f4ff'); });
-        tile('xporb', function () { trect(5, 5, 6, 6, '#a6e22e'); trect(6, 4, 4, 8, '#a6e22e'); trect(4, 6, 8, 4, '#a6e22e'); tpx(6, 6, '#e8ff8a'); tpx(9, 9, '#6a9a1e'); });
+        /* the XP orb: a round lime ball, dark at the rim and pale at the heart, for
+           the renderer to tint (ExperienceOrbRenderer multiplies it by a colour that
+           pulses from green to yellow) */
+        tile('xporb', function () {
+            trect(5, 4, 6, 8, '#6f8f10'); trect(4, 5, 8, 6, '#6f8f10');
+            trect(5, 5, 6, 6, '#d8f850'); trect(6, 4, 4, 1, '#b8dc30'); trect(6, 11, 4, 1, '#88aa18');
+            trect(6, 6, 3, 3, '#f4ffa8'); tpx(6, 6, '#ffffe0'); tpx(10, 10, '#a0c028'); tpx(9, 10, '#a0c028');
+        });
+        /* fire_0 and fire_1, for anything that burns: three licks of flame a tile,
+           each from a pale yellow root through orange to ragged dark red tips,
+           low and broken between them, so what burns shows through */
+        function paintFire(ph) {
+            for (var x = 0; x < 16; x++) {
+                var lick = Math.pow(0.5 + 0.5 * Math.sin(x * 1.25 + ph + trnd() * 0.6), 1.6);
+                var hgt = Math.round(2 + lick * 12 + trnd() * 2);
+                for (var y = 0; y < hgt; y++) {
+                    var t = y / hgt;
+                    if ((t > 0.5 && trnd() < 0.5 * t) || (y < 4 && lick < 0.25 && trnd() < 0.45)) continue;
+                    tpx(x, 15 - y, t < 0.3 ? (lick > 0.6 ? '#ffe68a' : '#ffc933') : t < 0.6 ? '#ffa31c' : t < 0.85 ? '#ee640e' : '#bc360a');
+                }
+            }
+        }
+        tile('fire0', function () { paintFire(0); });
+        tile('fire1', function () { paintFire(2.1); });
+        /* the poof a mob leaves: generic_7, the biggest of the eight smoke puffs,
+           a pale ring round a paler heart; the particle shrinks through the rest */
+        tile('puff', function () {
+            trect(5, 2, 6, 12, '#b4b4b4'); trect(2, 5, 12, 6, '#b4b4b4'); trect(3, 3, 10, 10, '#b4b4b4');
+            trect(5, 3, 6, 10, '#dedede'); trect(3, 5, 10, 6, '#dedede'); trect(4, 4, 8, 8, '#dedede');
+            trect(6, 5, 3, 3, '#f4f4f4');
+        });
         /* armor icons: silhouette per slot × tier colour */
         (function () {
             var TC = { leather: ['#8a4f28', '#6e3f1e'], iron: ['#d0d0d0', '#a8a8a8'], gold: ['#f5cf3a', '#c9a01e'], diamond: ['#63e0e0', '#3bb8c9'] };
@@ -1687,7 +1744,8 @@
         'uniform vec2 uFogR;uniform float uAlpha;varying vec2 vUv;varying vec2 vLt;varying float vAo;varying float vWh;varying float vD;' +
         'void main(){vec4 c=texture2D(uTex,vUv);if(c.a<0.5)discard;' +
         'float l=max(vLt.x*uDay,vLt.y);float b=l/(4.0-3.0*l);b=mix(0.045,1.0,b);' +
-        'vec3 rgb=c.rgb*b*vAo;rgb=mix(rgb,vec3(1.0),vWh);' +
+        'vec3 rgb=(vWh>1.5?c.rgb*vec3(sin(vWh*6.2831853)*0.5+0.5,1.0,(sin(vWh*6.2831853+4.1887903)+1.0)*0.1)' +
+        ':vWh<0.0?mix(c.rgb,vec3(1.0,0.0,0.0),-vWh):mix(c.rgb,vec3(1.0),vWh))*b*vAo;' +
         'float f=smoothstep(uFogR.x,uFogR.y,vD);rgb=mix(rgb,uFogC,f);' +
         'gl_FragColor=vec4(rgb,c.a*uAlpha);}';
     var VS_FLAT = 'attribute vec3 aPos;uniform mat4 uMvp;void main(){gl_Position=uMvp*vec4(aPos,1.0);gl_PointSize=2.0;}';
@@ -1846,7 +1904,8 @@
     }
     function drawFrame() {
         var G = RT.G, gl = G.gl, sky = skyState();
-        var eyeY = S.py + EYE, headIn = getB(Math.floor(S.px), Math.floor(eyeY), Math.floor(S.pz));
+        var live = !RT.menu && !!CAM, pt = live ? camPt() : 0;
+        var eyeY = S.py + (live ? camEye(pt) : EYE), headIn = getB(Math.floor(S.px), Math.floor(eyeY), Math.floor(S.pz));
         var under = headIn === WATER, inLava = headIn === LAVA;
         var fogC = under ? [0.04, 0.12, 0.4] : inLava ? [0.6, 0.2, 0.05] : sky.sky;
         var fogR = under ? [4, 16] : inLava ? [0.3, 3] : [(VIEW - 1.2) * CW, (VIEW + 0.4) * CW];
@@ -1856,7 +1915,12 @@
         /* RT.fov overrides the base entirely — the title screen's panorama is
            rendered at the cube renderer's 85°, not the game's 70°. RT.fovM is
            the sprint stretch, and is 1 whenever nobody is running. */
-        var proj = mPersp((RT.fov || FOV) * (RT.fovM || 1), RT.cv.width / RT.cv.height, 0.08, 260);
+        /* the options' FOV (vertical, 70 = Normal) times the eased modifier, squeezed
+           by death and by water or lava; the bob and the hurt tilt sit between the
+           projection and the view, as GameRenderer puts them */
+        var fovR = RT.fov ? RT.fov : (optLoad().fov || 70) * Math.PI / 180 * (live ? (CAM.fovO + (CAM.fov - CAM.fovO) * pt) * camFovK(pt) : 1);
+        var proj = mPersp(fovR, RT.cv.width / RT.cv.height, 0.08, 260);
+        if (live) proj = mMul(proj, emGl(camFx(pt)));
         var rot = mMul(mRotX(S.pitch), mRotY(S.yaw));
         var view = mMul(rot, mTrans(-S.px, -eyeY, -S.pz));
         var pv = mMul(proj, view);
@@ -1918,14 +1982,14 @@
         }
         // mining crack + target outline
         if (RT.target && RT.digT > 0 && RT.digAt) {
-            var stg = Math.min(3, (RT.digT / RT.digNeed * 4) | 0);
-            var cr = cubeQuads(RT.digAt[0], RT.digAt[1], RT.digAt[2], TILE['crack' + stg]);
+            var stg = Math.min(9, Math.floor(RT.digT / RT.digNeed * 10) - 1);   // stage (int)(progress x 10) - 1, none below a tenth
+            var cr = stg < 0 ? [] : cubeQuads(RT.digAt[0], RT.digAt[1], RT.digAt[2], TILE['crack' + stg]);
             gl.enable(gl.POLYGON_OFFSET_FILL); gl.polygonOffset(-1.5, -1.5);
             gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
             gl.bindBuffer(gl.ARRAY_BUFFER, G.dyn);
             gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(cr), gl.DYNAMIC_DRAW);
             bindMain(G, G.dyn);
-            gl.drawElements(gl.TRIANGLES, cr.length / 36 * 6, gl.UNSIGNED_SHORT, 0);
+            if (cr.length) gl.drawElements(gl.TRIANGLES, cr.length / 36 * 6, gl.UNSIGNED_SHORT, 0);
             gl.disable(gl.BLEND); gl.disable(gl.POLYGON_OFFSET_FILL);
         }
         if (RT.target) {
@@ -1935,7 +1999,7 @@
                 x0, y0, z0, x0, y1, z0, x1, y0, z0, x1, y1, z0, x1, y0, z1, x1, y1, z1, x0, y0, z1, x0, y1, z1];
             gl.useProgram(G.flat);
             gl.uniformMatrix4fv(G.uf.mvp, false, pv);
-            gl.uniform4f(G.uf.col, 0.05, 0.05, 0.05, 0.85);
+            gl.uniform4f(G.uf.col, 0, 0, 0, 0.4);   // LevelRenderer's outline: black at alpha 0.4
             gl.bindBuffer(gl.ARRAY_BUFFER, G.lineB);
             gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(L), gl.DYNAMIC_DRAW);
             gl.vertexAttribPointer(G.uf.pos, 3, gl.FLOAT, false, 12, 0);
@@ -1980,7 +2044,7 @@
             gl.useProgram(G.prog);
             // the hand keeps the base FOV while the world widens, exactly like the
             // real game — it is the world stretching past you that sells the speed
-            gl.uniformMatrix4fv(G.u.mvp, false, mPersp(FOV, RT.cv.width / RT.cv.height, 0.05, 10));
+            gl.uniformMatrix4fv(G.u.mvp, false, mPersp(FOV * camFovK(camPt()), RT.cv.width / RT.cv.height, 0.05, 10));   // 70, whatever the options say
             gl.uniform2f(G.u.fogR, 50, 100);
             gl.bindBuffer(gl.ARRAY_BUFFER, G.dyn);
             gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(hv), gl.DYNAMIC_DRAW);
@@ -2004,10 +2068,14 @@
     /* ── inventory data ─────────────────────────────────────── */
     function itemMaxDur(id) { var d = I[id]; return d ? (d.tool ? d.tool.dur : d.armor ? d.armor.dur : d.dur) : null; }
     function invGive(id, n, dur, enchObj, name) {   // returns the count that didn't fit
-        var max = stkMax(id), i, s;
-        if (max > 1 && !enchObj) for (i = 0; i < 36 && n > 0; i++) {
-            s = S.inv[i];
-            if (s && s.id === id && s.c < max && !s.ench) { var add = Math.min(max - s.c, n); s.c += add; n -= add; }
+        /* Inventory.add: a matching stack with room is topped up in the selected
+           slot first, then the off hand, then the rest in order; what is left
+           goes into the first empty slot, the hotbar before the backpack */
+        var max = stkMax(id), i, s, order = [S.sel, -1];
+        for (i = 0; i < 36; i++) if (i !== S.sel) order.push(i);
+        if (max > 1 && !enchObj) for (var k = 0; k < order.length && n > 0; k++) {
+            s = order[k] < 0 ? S.off : S.inv[order[k]];
+            if (s && s.id === id && s.c < max && !s.ench && (s.name || '') === (name || '')) { var add = Math.min(max - s.c, n); s.c += add; n -= add; }
         }
         for (i = 0; i < 36 && n > 0; i++) {
             if (!S.inv[i]) {
@@ -2071,17 +2139,17 @@
         }
     }
     function eatCake(x, y, z) {
-        if (S.food >= 20 && !invulnerable()) { toast('You are not hungry'); return; }   // creative bites regardless
+        if (S.food >= 20 && !invulnerable()) return;   // a full stomach just refuses; creative bites regardless
         var t = tentAt(x, y, z, 'cake');
         S.food = Math.min(20, S.food + 2); S.sat = Math.min(S.food, S.sat + 0.4);
-        t.bites = (t.bites || 0) + 1; snd('eat'); paintVitals();
+        t.bites = (t.bites || 0) + 1; snd('eat'); paintVitals(); stat('c', 'eat_cake_slice');
         if (t.bites >= 7) { setB(x, y, z, AIR); }
     }
     function wearHeld(n) {
         var h = held();
         if (!h || h.dur == null) return;
         wearItem(h, n);
-        if (h.dur <= 0) { S.inv[S.sel] = null; snd('break'); }
+        if (h.dur <= 0) { stat('b', h.id); S.inv[S.sel] = null; snd('break'); }
         paintHotbar();
     }
     function wearItem(st, n) {   // unbreaking gives each point a chance to not count
@@ -2236,6 +2304,7 @@
             if (k[' '] && RT.ground) {
                 RT.vy = JUMP * (1 + 0.18 * effLvl('jump_boost'));
                 RT.ground = false;
+                stat('c', 'jump');
                 addExh(RT.sprint ? 0.2 : 0.05);
             }
         }
@@ -2265,12 +2334,13 @@
                 }
                 RT.ground = true;
                 var fall = RT.fallY - S.py;
+                if (fall >= 2 && !RT.fly) stat('c', 'fall_one_cm', Math.round(fall * 100));   // Player.causeFallDamage counts two blocks and up
                 // re-sample fluid at the landing box: a fast fall can plunge through a shallow
                 // pond in one frame, so the frame-start `water` misses it
                 if (fall > 3.5 && !water && !inFluid(WATER) && rule('fallDamage') && !RT.fly) {
                     var ff = S.armor[3] ? ench(S.armor[3], 'feather') : 0;   // feather falling boots soften the landing
                     var fdmg = Math.floor((fall - 3) * (1 - ff * 0.12));
-                    if (fdmg > 0) { hurt(fdmg, null, false, true); snd('fall', fdmg); }
+                    if (fdmg > 0) { hurt(fdmg, null, false, true, null, { m: fall > 5 ? 'fallhigh' : 'fall' }); snd('fall', fdmg); }
                 }
                 // touching down ends creative flight, exactly like the real game.
                 // Spectators never land, so they keep theirs.
@@ -2284,10 +2354,10 @@
         if (fluid) RT.fallY = S.py;
         addExh(Math.sqrt(dx * dx + dz * dz) * (RT.sprint ? 0.1 : 0.01));
         // head bob drives the hand sway
-        if ((dx || dz) && RT.ground) RT.bob += dt * (RT.sprint ? 11 : 7);
         // drowning — creative and spectator hold their breath forever, so the
         // bubble row never appears for them
         var headWater = getB(Math.floor(S.px), Math.floor(S.py + EYE), Math.floor(S.pz)) === WATER && !invulnerable();
+        RT.eyeWater = headWater;
         if (headWater) {
             var bubs = Math.ceil(S.air);
             S.air -= dt;
@@ -2298,7 +2368,7 @@
         else RT.lavaT = 0;
         // cactus: touching one hurts
         var fx2 = Math.floor(S.px), fz2 = Math.floor(S.pz), fy2 = Math.floor(S.py + 0.5);
-        if (getB(fx2, fy2, fz2) === CACTUS || cactusTouch()) { RT.cactT = (RT.cactT || 0) + dt; if (RT.cactT > 0.5) { RT.cactT = 0; hurt(1, null, false, true); } }
+        if (getB(fx2, fy2, fz2) === CACTUS || cactusTouch()) { RT.cactT = (RT.cactT || 0) + dt; if (RT.cactT > 0.5) { RT.cactT = 0; hurt(1, null, false, true, null, { m: 'cactus' }); } }
         else RT.cactT = 0;
         /* Footsteps. Entity.moveDist accumulates the horizontal distance at 0.6×
            and fires a step when it passes the next whole number, so the real
@@ -2341,6 +2411,7 @@
         var ratio = (RT.sprint ? SPRINT / WALK : 1) * (1 + 0.2 * effLvl('speed') - 0.15 * effLvl('slowness'));
         if (ratio < 0) ratio = 0;   // Slowness VII and up would otherwise invert the lens
         var m = (RT.fly ? 1.1 : 1) * (ratio + 1) / 2;
+        if (RT.bowT > 0) { var bp = Math.min(RT.bowT, 1); m *= 1 - bp * bp * 0.15; }   // a drawn bow zooms in
         return m < 0.1 ? 0.1 : m > 1.5 ? 1.5 : m;
     }
     function fovTick(dt) {
@@ -2407,7 +2478,7 @@
         } else RT.regenT = 0;
         if (S.food <= 0) {
             RT.starveT += dt;
-            if (RT.starveT >= 4) { RT.starveT = 0; if (S.hp > 1) { hurt(1, null, true); } }
+            if (RT.starveT >= 4) { RT.starveT = 0; if (S.hp > 1) { hurt(1, null, true, false, null, { m: 'starve' }); } }
         } else RT.starveT = 0;
     }
     function weatherTick(dt) {
@@ -2415,7 +2486,6 @@
         if (S.wt <= 0 && rule('doWeatherCycle')) {
             if (S.weather === 0) { S.weather = Math.random() < 0.28 ? (Math.random() < 0.3 ? 2 : 1) : 0; S.wt = S.weather ? 45 + Math.random() * 120 : 180 + Math.random() * 240; }
             else { S.weather = 0; S.wt = 180 + Math.random() * 240; }
-            if (S.weather >= 1) toast(S.weather === 2 ? 'A thunderstorm rolls in' : 'It starts to rain');
         }
         if (S.weather >= 1 && RT.parts.length < 260) {
             var bio = biomeAt(Math.floor(S.px), Math.floor(S.pz)), snow = bio === 3;
@@ -2434,17 +2504,29 @@
         var lx = Math.floor(S.px + Math.cos(ang) * r), lz = Math.floor(S.pz + Math.sin(ang) * r);
         if (!chunkAt(lx, lz)) return;
         var ly = CH - 1; while (ly > 2 && !solidAt(lx, ly, lz)) ly--;
-        RT.lightning = 0.18; RT.shake = 0.3; snd('thunder');   // non-positional: the sky is not a point source
+        RT.lightning = 0.18; snd('thunder');   // non-positional: the sky is not a point source
         snd('impact', 0, lx + 0.5, ly + 1, lz + 0.5);         // but the strike itself is: the crack where it lands
         boomParticles(lx + 0.5, ly + 1, lz + 0.5, 2);
         for (var i = RT.foes.length - 1; i >= 0; i--) {
             var f = RT.foes[i];
             if (Math.abs(f.x - lx - 0.5) < 3 && Math.abs(f.z - lz - 0.5) < 3) { f.hp -= 8; f.hurtF = 0.3; f.fire = Math.max(f.fire || 0, 5); if (f.hp <= 0) { foeDie(f); RT.foes.splice(i, 1); } }
         }
-        if (Math.abs(S.px - lx - 0.5) < 3 && Math.abs(S.pz - lz - 0.5) < 3) hurt(5, null, false, true);
+        if (Math.abs(S.px - lx - 0.5) < 3 && Math.abs(S.pz - lz - 0.5) < 3) hurt(5, null, false, true, null, { m: 'lightning' });
     }
     // kind: 'drown' or 'fire' for the two damage sources with a cry of their own
-    function hurt(n, dir, quiet, bypassArmor, kind) {
+    /* The death message, CombatTracker's line for whatever dealt the last hit,
+       printed in chat and on the death screen */
+    var DEATH_MSG = { generic: '%1 died', fall: '%1 hit the ground too hard', fallhigh: '%1 fell from a high place', drown: '%1 drowned',
+        lava: '%1 tried to swim in lava', fire: '%1 burned to death', cactus: '%1 was pricked to death', starve: '%1 starved to death',
+        lightning: '%1 was struck by lightning', explosion: '%1 blew up', magic: '%1 was killed by magic', kill: '%1 was killed',
+        void: '%1 fell out of the world', wall: '%1 suffocated in a wall', mob: '%1 was slain by %2', arrow: '%1 was shot by %2',
+        creeper: '%1 was blown up by %2' };
+    function deathMsg() {
+        var s = RT.lastSrc || { m: 'generic' };
+        return (DEATH_MSG[s.m] || DEATH_MSG.generic).replace('%1', 'Steve').replace('%2', s.by || '');
+    }
+    // src: what dealt it, for the death message ({ m: kind of death, by: who })
+    function hurt(n, dir, quiet, bypassArmor, kind, src) {
         if (RT.dead || !(n > 0)) return;   // !(n>0) also rejects NaN
         if (invulnerable()) return;                        // creative and spectator take nothing
         var resist = effLvl('resistance');
@@ -2464,8 +2546,10 @@
         }
         if (dir) { RT.vy = Math.max(RT.vy, 4.5); axisMove(dir[0] * 0.35, 0, dir[1] * 0.35); }   // knockback fires even on a fully-absorbed hit
         if (n <= 0) return;
+        RT.lastSrc = src || { m: kind === 'drown' ? 'drown' : kind === 'fire' ? 'lava' : 'generic' };
+        stat('c', 'damage_taken', n * 10);
+        camHurt(dir);
         S.hp -= n;
-        RT.flash = 0.35;
         if (!quiet) snd(kind === 'drown' ? 'hurtdrown' : kind === 'fire' ? 'hurtfire' : 'hurt');
         paintVitals();
         if (S.hp <= 0) die();
@@ -2487,6 +2571,7 @@
             if (a) dropItem(S.px, S.py + 1, S.pz, a.id, a.c, a.dur, true, a.ench, a.name);
             S.armor[i] = null;
         }
+        if (S.off && !keep) { dropItem(S.px, S.py + 1, S.pz, S.off.id, S.off.c, S.off.dur, true, S.off.ench, S.off.name); S.off = null; }
         // experience spills out, capped the way the real game caps it
         var spill = keep ? 0 : Math.min(100, 7 * S.xpl);
         if (!keep) { S.xpl = 0; S.xp = 0; }
@@ -2499,14 +2584,17 @@
         // typed into a box you could not see
         closeChat(false);
         unlockCursor();
+        if (rule('showDeathMessages') !== false) chatSay(deathMsg());
+        stat('c', 'deaths'); S.stats.c.time_since_death = 0;
+        if (RT.lastSrc && RT.lastSrc.by) stat('kb', RT.lastSrc.by.toLowerCase());
         showDeath();
         snd('die');
     }
     function respawn() {
         var sp = S.spawn || S.wspawn;
         S.px = sp[0]; S.py = sp[1]; S.pz = sp[2];
-        S.hp = 20; S.food = 20; S.sat = 5; S.air = 10;
-        RT.vy = 0; RT.fallY = S.py; RT.dead = false; RT.exh = 0;
+        S.hp = 20; S.food = 20; S.sat = 5; S.air = 10; S.score = 0;
+        RT.vy = 0; RT.fallY = S.py; RT.dead = false; RT.exh = 0; RT.statPos = null;
         hideDeath();
         ensureChunks(true);
         paintVitals(); paintHotbar();
@@ -2599,6 +2687,11 @@
         snd('dig', b, x + 0.5, y + 0.5, z + 0.5);
         blockParticles(x, y, z, b);
         setB(x, y, z, AIR);
+        if (!creative) {   // Block.playerDestroy counts the block; ItemStack.mineBlock counts the tool
+            var mid = PLACE2ITEM[b];
+            if (mid && I[mid]) stat('m', mid);
+            if (h && I[h.id] && I[h.id].tool) stat('u', h.id);
+        }
         if (harvest) {
             var ds = dropFor(b, fortune, silk);
             for (var i = 0; i < ds.length; i++) dropItem(x + 0.5, y + 0.3, z + 0.5, ds[i][0], ds[i][1]);
@@ -2752,7 +2845,8 @@
         }
         // carrots & potatoes are both food and crop: plant on farmland when aimed there, else fall through to eating
         if (def.crop && def.place != null && t && getB(t.px, t.py, t.pz) === AIR && getB(t.px, t.py - 1, t.pz) === FARMLAND) {
-            setB(t.px, t.py, t.pz, def.place); useOne(); paintHotbar(); snd('place', def.place, t.px + 0.5, t.py + 0.5, t.pz + 0.5); return;
+            setB(t.px, t.py, t.pz, def.place); stat('u', held().id); useOne(); paintHotbar();
+            if (CAM) CAM.mainH = 0;   // Minecraft.startUseItem's itemUsed: the next block rises into the hand snd('place', def.place, t.px + 0.5, t.py + 0.5, t.pz + 0.5); return;
         }
         // spawn eggs drop a mob onto the face you clicked
         if (def.egg && t) {
@@ -2842,6 +2936,7 @@
         if (def.food) {
             // a full stomach stops a survival meal; creative can always eat (Player.canEat is true for invulnerable)
             if (S.food >= 20 && h.id !== 'flesh' && !invulnerable()) { RT.eatT = 0; return; }
+            if (!RT.eatT && CAM) CAM.mainH = 0;   // starting to eat is an item use too
             RT.eatT += dt;
             if (RT.eatT > 0.25 && Math.floor(RT.eatT / 0.3) !== Math.floor((RT.eatT - dt) / 0.3)) snd(def.bowl || h.id === 'milk_bucket' ? 'drink' : 'eat');
             if (RT.eatT >= 1.6) {
@@ -2849,6 +2944,7 @@
                 S.sat = Math.min(S.food, S.sat + def.food.sat);
                 if (def.heal) S.hp = Math.min(20, S.hp + def.heal);   // golden apple heals
                 var wasId = h.id, wasBowl = def.bowl;
+                stat('u', wasId);
                 if (!instaBuild()) { h.c--; if (!h.c) S.inv[S.sel] = null; }
                 if (wasBowl && !instaBuild()) invGive('bowl', 1);       // stew leaves the bowl
                 RT.eatT = 0; snd('burp');
@@ -2883,16 +2979,22 @@
     }
     function trySleep() {
         var st = skyState();
-        if (st.day && st.sunE > 0.05) { toast('You can only sleep at night'); return; }
+        if (st.day && st.sunE > 0.05) { actionBar('You can sleep only at night and during thunderstorms'); return; }
         for (var i = 0; i < RT.foes.length; i++) {
             var f = RT.foes[i];
             if (f.hostile && Math.abs(f.x - S.px) < 12 && Math.abs(f.z - S.pz) < 12 && Math.abs(f.y - S.py) < 6) {
-                toast('You may not rest now; there are monsters nearby'); return;
+                actionBar('You may not rest now; there are monsters nearby'); return;
             }
         }
         var t = RT.target;
+        var sp0 = S.spawn;
         S.spawn = [t.x + 0.5, t.y + 1.01, t.z + 0.5];
+        if (!sp0 || sp0[0] !== S.spawn[0] || sp0[1] !== S.spawn[1] || sp0[2] !== S.spawn[2]) chatSay('Respawn point set');
         RT.sleep = 0.01;   // lying down makes no sound in the real game either
+        RT.woke = 0;
+        stat('c', 'sleep_in_bed'); S.stats.c.time_since_rest = 0;
+        unlockCursor();    // InBedChatScreen frees the pointer for Leave Bed
+        bedLayout();
         unlock('sleep');
     }
 
@@ -3055,7 +3157,7 @@
        instead of moon-walking on the spot. This file used to add a flat six
        radians a second no matter what, which is why every mob moved like every
        other mob. */
-    var DIE_T = 0.62, ATK_T = 0.35;
+    var DIE_T = 1.0, ATK_T = 0.35;   // deathTime runs to 20 ticks
     function foeTick(f, dt) {
         var ox = f.x, oy = f.y, oz = f.z;
         var gone = foeUpdate(f, dt);
@@ -3160,7 +3262,9 @@
         f.ifr = Math.max(0, f.ifr - dt); f.hurtF = Math.max(0, f.hurtF - dt);
         var px = S.px - f.x, pz = S.pz - f.z, py = (S.py + 0.9) - (f.y + f.h * 0.6);
         var dist = Math.sqrt(px * px + pz * pz + py * py);
-        // set-on-fire (fire aspect / lava): damage over time
+        // set-on-fire (fire aspect / lava / the sun): damage over time, until water or rain puts it out
+        if (f.fire > 0 && (getB(Math.floor(f.x), Math.floor(f.y + 0.2), Math.floor(f.z)) === WATER ||
+            (S.weather > 0 && getSky(Math.floor(f.x), Math.floor(f.y + f.h), Math.floor(f.z)) >= 15))) f.fire = 0;
         if (f.fire > 0) {
             f.fire -= dt; f.fireT = (f.fireT || 0) + dt;
             if (f.fireT > 0.5) { f.fireT = 0; f.hp -= 1; f.hurtF = 0.2; fireParticles(f); if (f.hp <= 0) { foeDie(f); return true; } }
@@ -3177,7 +3281,7 @@
                     var baby = mkFoe(f.k, (f.x + m.x) / 2, f.y, (f.z + m.z) / 2); baby.baby = 20;
                     if (RT.foes.length < 60) RT.foes.push(baby);
                     spawnXp(f.x, f.y + 0.4, f.z, 1 + ((Math.random() * 7) | 0));
-                    unlock('breed');
+                    unlock('breed'); stat('c', 'animals_bred');
                     break;
                 }
             }
@@ -3198,8 +3302,7 @@
         if (d.burns) {
             var st = skyState();
             if (st.day && st.sunE > 0.08 && getSky(Math.floor(f.x), Math.floor(f.y + f.h), Math.floor(f.z)) >= 14) {
-                f.burnT += dt;
-                if (f.burnT > 1) { f.burnT = 0; f.hp -= 2; f.hurtF = 0.25; fireParticles(f); }
+                f.fire = Math.max(f.fire || 0, 8);   // Mob.isSunBurnTick: igniteForSeconds(8)
             }
         }
         // intent
@@ -3227,7 +3330,7 @@
                 if (dist < 3) { if (!f.fuse) snd('fuse', 0, f.x, f.y + f.h * 0.6, f.z); f.fuse += dt; want = null; sp = 0; }
                 else if (f.fuse > 0 && dist > 7) f.fuse = Math.max(0, f.fuse - dt * 2);
                 else if (f.fuse > 0) f.fuse += dt * 0.4;   // committed once lit unless you really run
-                if (f.fuse >= 1.5) { killFoe(f); explode(f.x, f.y + f.h / 2, f.z, 3, 22); return false; }
+                if (f.fuse >= 1.5) { killFoe(f); explode(f.x, f.y + f.h / 2, f.z, 3, 22, 'Creeper'); return false; }
             }
         } else {
             f.wt -= dt;
@@ -3276,7 +3379,7 @@
             S.py < f.y + f.h && S.py + PH > f.y) {
             f.ifr = 1; f.atk = ATK_T;   // and it visibly takes a swing at you
             var kl = Math.sqrt(px * px + pz * pz) || 1;
-            hurt(cdmg, [px / kl, pz / kl]);
+            hurt(cdmg, [px / kl, pz / kl], false, false, null, { m: 'mob', by: targetName(f) });
             if (f.k === 'slime') snd('mob:slime:attack', f, f.x, f.y + f.h * 0.5, f.z);   // a slime's hit is a sound of its own
         }
         // idle voice
@@ -3312,7 +3415,7 @@
            place in the spawn cap and nothing to say to the save file. The puff of
            smoke that used to fire here now fires when the body finishes falling,
            which is where the real game puts it. */
-        if (RT.dying.length < 24) { f.dieT = 0; f.dieSide = Math.random() < 0.5 ? -1 : 1; RT.dying.push(f); }
+        if (RT.dying.length < 24) { f.dieT = 0; f.dieSide = 1; RT.dying.push(f); }
         else poofParticles(f);
         if (f.pk) spawnXp(f.x, f.y + 0.5, f.z, d.xp != null ? d.xp : (f.hostile ? 5 : 1 + ((Math.random() * 3) | 0)));
         if (f.hostile) unlock('hunter');
@@ -3372,7 +3475,7 @@
         if (hy.y) { if (f.vy < 0) f.ground = true; f.vy = 0; } else if (Math.abs(f.vy) > 1) f.ground = false;
         if (f.hp <= 0) { foeDie(f); return true; }
         if (f.aggro > 0 && f.ifr <= 0 && !RT.dead && Math.abs(f.x - S.px) < f.hw + HW + 0.15 && Math.abs(f.z - S.pz) < f.hw + HW + 0.15 && S.py < f.y + f.h && S.py + PH > f.y) {
-            f.ifr = 1; f.atk = ATK_T; var kl = Math.sqrt(px * px + pz * pz) || 1; hurt(4, [px / kl, pz / kl]);
+            f.ifr = 1; f.atk = ATK_T; var kl = Math.sqrt(px * px + pz * pz) || 1; hurt(4, [px / kl, pz / kl], false, false, null, { m: 'mob', by: 'Enderman' });
         }
         // a calm one mutters; a provoked one screams
         f.voice -= dt; if (f.voice <= 0) { f.voice = 8 + Math.random() * 16; snd('mob:enderman:' + (f.aggro > 0 ? 'scream' : 'idle'), f, f.x, f.y + 2.4, f.z); }
@@ -3432,6 +3535,7 @@
         return Math.max(1, ticks) / 20;
     }
     function swingArm(restart) {
+        camSwing();
         // a fresh click restarts the swing mid-arc; a held button only queues the
         // next one, which is the difference between spamming and holding
         if (restart || RT.swing <= 0) { RT.swingT = swingTime(); RT.swing = RT.swingT; }
@@ -3463,17 +3567,22 @@
         swingArm(true);
         var f = entRay();
         var h = held(), tool = h && I[h.id] && I[h.id].tool;
-        var charged = RT.atkCd <= 0.02;   // full attack-cooldown → full-strength hit
-        RT.atkCd = tool && tool.k === 'sword' ? 0.5 : tool ? 0.55 : 0.35;
+        /* Player.attack: the swing's strength is how far the weapon has recharged
+           (20 / attack speed ticks from the last swing), and it scales the hit by
+           0.2 + 0.8 f squared and the Sharpness bonus by f; above 0.9 it counts as
+           charged, which a critical needs. Every swing, hit or miss, starts over. */
+        var cdMax = RT.atkCdMax || attackCooldown(h && h.id);
+        var fch = RT.atkCd > 0 ? Math.max(0, Math.min(1, 1 - RT.atkCd / cdMax)) : 1, charged = fch > 0.9;
+        RT.atkCd = RT.atkCdMax = attackCooldown(h && h.id);
         if (!f) return;
         if (f.ifr > 0.6) return;
-        var dmg = tool ? tool.dmg : 1;
-        if (!charged) dmg *= 0.45;                          // hasty spam-click does less
-        dmg += ench(h, 'sharp') > 0 ? 0.5 * ench(h, 'sharp') + 0.5 : 0;
-        // critical: mid-fall, charged, not in fluid / on a ladder
-        var crit = charged && RT.vy < -0.1 && !RT.ground && !inFluid(WATER) && !onLadder();
+        var dmg = (tool ? tool.dmg : 1) * (0.2 + fch * fch * 0.8);
+        dmg += (ench(h, 'sharp') > 0 ? 0.5 * ench(h, 'sharp') + 0.5 : 0) * fch;
+        // critical: mid-fall, charged, not sprinting, not in fluid or on a ladder
+        var crit = charged && RT.vy < -0.1 && !RT.ground && !RT.sprint && !inFluid(WATER) && !onLadder();
         if (crit) { dmg *= 1.5; critParticles(f); }
         f.hp -= dmg;
+        stat('c', 'damage_dealt', Math.round(Math.min(dmg, f.hp + dmg) * 10));
         f.ifr = 0.5; f.hurtF = 0.3;
         // fire aspect
         if (ench(h, 'fire') > 0) f.fire = Math.max(f.fire || 0, 4);
@@ -3487,7 +3596,7 @@
         addExh(0.1);
         snd(crit ? 'crit' : 'hit', 0, f.x, f.y + f.h * 0.6, f.z);
         if (f.hp > 0) snd('mob:' + f.k + ':hurt', f, f.x, f.y + f.h * 0.7, f.z);
-        if (f.hp <= 0) { foeDie(f, ench(h, 'looting')); killFoe(f); }
+        if (f.hp <= 0) { stat('c', 'mob_kills'); stat('k', f.k); foeDie(f, ench(h, 'looting')); killFoe(f); }
     }
 
     /* ── spawning ───────────────────────────────────────────── */
@@ -3578,6 +3687,7 @@
     function addXp(amt) {
         if (amt <= 0) return;
         S.xp += amt;
+        S.score = (S.score || 0) + amt;   // Player.increaseScore: the death screen's score is the experience you gathered
         var leveled = false;
         while (S.xp >= xpForLevel(S.xpl)) { S.xp -= xpForLevel(S.xpl); S.xpl++; leveled = true; }
         if (leveled) snd(S.xpl % 5 === 0 ? 'levelbig' : 'level', S.xpl);
@@ -3645,9 +3755,15 @@
         var dist = Math.sqrt(px * px + py * py + pz * pz);
         if (dist < 1.6) { d.x += px / dist * 6 * dt; d.y += py / dist * 6 * dt; d.z += pz / dist * 6 * dt; }
         if (dist < 0.6) {
+            var before = [];
+            for (var hb = 0; hb < 9; hb++) before.push(S.inv[hb] ? S.inv[hb].id + ':' + S.inv[hb].c : '');
+            before.push(S.off ? S.off.id + ':' + S.off.c : '');
             var left = invGive(d.it, d.c, d.dur, d.ench, d.iname);
             if (left === d.c) return false;         // no room at all: it stays
+            stat('p', d.it, d.c - left);
             snd('pop');
+            for (hb = 0; hb < 9; hb++) if ((S.inv[hb] ? S.inv[hb].id + ':' + S.inv[hb].c : '') !== before[hb]) RT.pops[hb] = 5 * HUD_TICK;
+            if ((S.off ? S.off.id + ':' + S.off.c : '') !== before[9]) RT.pops[9] = 5 * HUD_TICK;   // the off hand pops too
             paintHotbar();
             RT.panelDirty = 1;   // an open screen shows the same slots; keep it honest
             if (d.it === 'leather') unlock('cow');
@@ -3688,7 +3804,7 @@
         } else if (!RT.dead &&
             a.x > S.px - HW && a.x < S.px + HW && a.y > S.py && a.y < S.py + PH && a.z > S.pz - HW && a.z < S.pz + HW) {
             var l = Math.sqrt(a.vx * a.vx + a.vz * a.vz) || 1;
-            hurt(a.dmg, [a.vx / l, a.vz / l]);
+            hurt(a.dmg, [a.vx / l, a.vz / l], false, false, null, { m: 'arrow', by: 'Skeleton' });
             return true;
         }
         return false;
@@ -3708,7 +3824,7 @@
         if (t.fuse <= 0) { explode(t.x, t.y + 0.5, t.z, 4, 26); return true; }
         return false;
     }
-    function explode(ex, ey, ez, r, maxDmg) {
+    function explode(ex, ey, ez, r, maxDmg, by) {
         var bx = Math.round(ex), by = Math.round(ey), bz = Math.round(ez), i;
         for (var dx = -r; dx <= r; dx++) for (var dy = -r; dy <= r; dy++) for (var dz = -r; dz <= r; dz++) {
             if (dx * dx + dy * dy + dz * dz > r * r + 0.5) continue;
@@ -3733,7 +3849,7 @@
         var pd = Math.sqrt((S.px - ex) * (S.px - ex) + (S.py + 0.9 - ey) * (S.py + 0.9 - ey) + (S.pz - ez) * (S.pz - ez));
         if (pd < r * 2) {
             var l = Math.sqrt((S.px - ex) * (S.px - ex) + (S.pz - ez) * (S.pz - ez)) || 1;
-            hurt(Math.round(maxDmg * (1 - pd / (r * 2))), [(S.px - ex) / l, (S.pz - ez) / l]);
+            hurt(Math.round(maxDmg * (1 - pd / (r * 2))), [(S.px - ex) / l, (S.pz - ez) / l], false, false, null, by ? { m: 'creeper', by: by } : { m: 'explosion' });
         }
         for (i = RT.foes.length - 1; i >= 0; i--) {
             var fo = RT.foes[i];
@@ -3744,7 +3860,6 @@
             }
         }
         boomParticles(ex, ey, ez, r);
-        RT.shake = 0.5;
         snd('boom', 0, ex, ey, ez);
     }
     function blockParticles(x, y, z, b) {
@@ -3761,12 +3876,19 @@
             RT.parts.push({ x: f.x + (Math.random() - 0.5) * 0.6, y: f.y + Math.random() * f.h, z: f.z + (Math.random() - 0.5) * 0.6,
                 vx: 0, vy: 1.5, vz: 0, life: 0.4, u: uv0[0] + Math.random() * TS16 * 0.8, v: uv0[1] + Math.random() * TS16 * 0.8, s: 0.09 });
     }
+    /* LivingEntity.makePoofParticles and ExplodeParticle: twenty puffs spread
+       through the body, drifting out on a little random push, slowed by 0.9 a
+       tick and rising faintly, grey to white, a tenth of a block times 1 to 7
+       (mostly small), living 18 to 82 ticks and shrinking through eight sizes */
     function poofParticles(f) {
-        var uv0 = tileUV(TILE.wool);
-        for (var i = 0; i < 12; i++)
-            RT.parts.push({ x: f.x + (Math.random() - 0.5) * 0.7, y: f.y + Math.random() * f.h, z: f.z + (Math.random() - 0.5) * 0.7,
-                vx: (Math.random() - 0.5) * 1.5, vy: 0.8 + Math.random() * 1.4, vz: (Math.random() - 0.5) * 1.5,
-                life: 0.5, u: uv0[0] + 4 * TS16 / 16, v: uv0[1] + 4 * TS16 / 16, s: 0.11 });
+        var uv0 = tileUV(TILE.puff), hw = f.hw || 0.3;
+        for (var i = 0; i < 20; i++) {
+            var g = function () { return (Math.random() + Math.random() + Math.random() - 1.5) * 0.02 * 20 + (Math.random() * 2 - 1) * 0.05 * 20; };
+            var life = (Math.floor(16 / (Math.random() * 0.8 + 0.2)) + 2) / 20;
+            RT.parts.push({ x: f.x + (Math.random() * 2 - 1) * hw, y: f.y + Math.random() * f.h, z: f.z + (Math.random() * 2 - 1) * hw,
+                vx: g(), vy: g(), vz: g(), life: life, life0: life, puff: 1, u: uv0[0] + INSET, v: uv0[1] + INSET, us: TS16 - 2 * INSET,
+                s: 0.1 * (Math.random() * Math.random() * 6 + 1), dim: Math.random() * 0.3 + 0.7 });
+        }
     }
     function critParticles(f) {
         var uv0 = tileUV(TILE.rlamp);   // warm little sparks around the hit
@@ -3787,6 +3909,12 @@
     function partUpdate(p, dt) {
         p.life -= dt;
         if (p.life <= 0) return true;
+        if (p.puff) {   // no weight to speak of: friction 0.9 a tick, gravity -0.1
+            var fr = Math.pow(0.9, dt * 20);
+            p.vx *= fr; p.vz *= fr; p.vy = p.vy * fr + 0.04 * 0.1 * 20 * dt * 20;
+            p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
+            return false;
+        }
         p.vy -= 10 * dt;
         p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
         if (solidAt(Math.floor(p.x), Math.floor(p.y), Math.floor(p.z))) { p.vy = 0; p.vx = 0; p.vz = 0; p.y = Math.ceil(p.y); }
@@ -3853,13 +3981,13 @@
         if (md.cube) s *= f.h / (8 * PX) * 0.92;   // a slime is only ever as big as its own hitbox
         R.sx = R.sy = R.sz = s;
         if (f.dieT != null) {
-            // twenty ticks to keel over, then it shrinks out of the world and puffs
-            var t = Math.min(1, f.dieT / DIE_T);
-            R.rz = t * 1.5708 * f.dieSide;
-            if (t > 0.72) { var k = 1 - (t - 0.72) / 0.28; R.sx *= k; R.sy *= k; R.sz *= k; }
+            /* LivingEntityRenderer.setupRotations: over onto its side on
+               sqrt((deathTime - 1) / 20 x 1.6), flat after about thirteen ticks,
+               lying there until the twentieth, when it goes up in smoke */
+            var dtk = f.dieT * 20;
+            R.rz = Math.min(1, Math.sqrt(Math.max(0, (dtk - 1) / 20 * 1.6))) * 1.5708;
             return;
         }
-        if (f.hurtF > 0) R.rx -= Math.sin(Math.min(1, f.hurtF / 0.3) * Math.PI) * 0.17;   // rocked back by the blow
         if (f.fuse > 0) {
             /* the swell: a creeper goes WIDE, barely taller, and shivers at a
                frequency that has nothing to do with either */
@@ -3986,9 +4114,13 @@
         var md = MOBS[f.k];
         if (!md) return;
         var L = cellLight(f.x, f.y + f.h * 0.5, f.z);
-        var wh = f.hurtF > 0 ? 0.5 : 0;
-        if (f.fuse > 0) wh = Math.max(wh, (RT.worldMs / 90) & 1 ? 0.7 : 0.15);
-        if (f.fire > 0) wh = Math.max(wh, (RT.worldMs / 120) & 1 ? 0.5 : 0.1);
+        /* OverlayTexture: a hurt or dying mob is drawn 30% red for its ten hurt
+           ticks; a creeper about to blow flashes white on the beat of its swell */
+        if (f.hpSeen == null) f.hpSeen = f.hp;
+        if (f.hp < f.hpSeen) f.redT = RT.worldMs + 500;
+        f.hpSeen = f.hp;
+        var wh = f.dieT != null || RT.worldMs < (f.redT || 0) ? -0.3 : 0;
+        if (f.fuse > 0 && ((f.fuse / 1.5 * 10) | 0) % 2) wh = Math.max(0.5, Math.min(1, f.fuse / 1.5));
         TQ.skin = TILE[md.skin]; TQ.alt = TILE[md.alt || md.skin];
         TQ.face = TILE[md.rage && f.aggro > 0 ? md.rage : md.face];
         TQ.tex = null;
@@ -4067,6 +4199,28 @@
                 sk, bl, ao === undefined ? 1 : ao, wh);
         }
     }
+    /* EntityRenderDispatcher.renderFlame: a burning mob wears fire_0 and fire_1
+       in turn, square quads 1.4 times its width stacked up its height 0.45
+       apart, each 0.9 the width of the one below and set a little further back,
+       turned to face you and pushed toward you, full bright. The game animates
+       the two textures; here they trade places and mirror every tick or two. */
+    function pushFlame(v, f) {
+        var w = (f.hw || 0.3) * 2 * 1.4, h = f.h / w, x1 = 0.5, y0 = 0, z = 0, k = 0, tk = Math.floor(RT.worldMs / 50);
+        var tx = S.px - f.x, tz = S.pz - f.z, tl = Math.sqrt(tx * tx + tz * tz) || 1;
+        tx /= tl; tz /= tl;
+        var rx = tz, rz = -tx, push = (0.3 - Math.floor(h) * 0.02) * w;
+        var bx = f.x + tx * push, bz = f.z + tz * push;
+        while (h > 0) {
+            var uv = tileUV((k + tk) % 2 ? TILE.fire1 : TILE.fire0), u0 = uv[0] + INSET, u1 = uv[0] + TS16 - INSET, va = uv[1] + INSET, vb = uv[1] + TS16 - INSET;
+            if (((k >> 1) + (tk >> 1)) % 2 === 0) { var sw = u0; u0 = u1; u1 = sw; }
+            var cx = bx + tx * z * w, cz = bz + tz * z * w, ya = f.y + y0 * w, yb = f.y + (y0 + 1.4) * w, hx = rx * x1 * w, hz = rz * x1 * w;
+            v.push(cx - hx, ya, cz - hz, u0, vb, 1, 1, 1, 0);
+            v.push(cx + hx, ya, cz + hz, u1, vb, 1, 1, 1, 0);
+            v.push(cx + hx, yb, cz + hz, u1, va, 1, 1, 1, 0);
+            v.push(cx - hx, yb, cz - hz, u0, va, 1, 1, 1, 0);
+            h -= 0.45; y0 += 0.45; x1 *= 0.9; z -= 0.03; k++;
+        }
+    }
     function cellLight(x, y, z) {
         return [Math.max(getSky(Math.floor(x), Math.floor(y), Math.floor(z)), 0) / 15,
                 Math.max(getBlk(Math.floor(x), Math.floor(y), Math.floor(z)), 0) / 15];
@@ -4079,6 +4233,8 @@
         RT.camU = [sy * sp, cp, -cy * sp];
         for (i = 0; i < RT.foes.length; i++) pushMob(v, RT.foes[i]);
         for (i = 0; i < RT.dying.length; i++) pushMob(v, RT.dying[i]);   // bodies still falling over
+        for (i = 0; i < RT.foes.length; i++) if (RT.foes[i].fire > 0) pushFlame(v, RT.foes[i]);
+        for (i = 0; i < RT.dying.length; i++) if (RT.dying[i].fire > 0) pushFlame(v, RT.dying[i]);
         for (i = 0; i < RT.tnts.length; i++) {
             var t = RT.tnts[i];
             var TL = cellLight(t.x, t.y + 0.5, t.z);
@@ -4086,19 +4242,32 @@
                 function (dd) { return dd === 2 || dd === 3 ? TILE.tnt_top : TILE.tnt_side; },
                 TL[0], TL[1], (t.fuse * 5 & 1) ? 0.75 : 0.1);
         }
+        /* ItemEntityRenderer: every drop the item's own model, bobbing
+           sin(age / 10 + offset) x 0.1 + 0.1 and turning a radian a second from
+           its own random start, at its ground size (a flat item at half size two
+           pixels up, a block at a quarter three up); a stack shows 2 to 5 copies,
+           a block's scattered 0.15 each way and a flat item's fanned 1.5 pixels
+           apart */
         for (i = 0; i < RT.drops.length; i++) {
             var dr = RT.drops[i], def = I[dr.it];
-            var bob = 0.12 + Math.sin(RT.worldMs / 400 + i) * 0.04;
-            var DL = cellLight(dr.x, dr.y + 0.2, dr.z);
-            if (def && def.place != null && !B[def.place].cross && !B[def.place].half) {
-                var spin = RT.worldMs / 800 + i;
-                pushBox(v, dr.x, dr.y + bob + 0.13, dr.z, 0.13, 0.13, 0.13, Math.cos(spin), Math.sin(spin), 0, 0,
-                    (function (pl) { return function (dd) { return texFace(TEX[pl], dd); }; })(def.place),
-                    DL[0], DL[1], 0);
-            } else {
-                var tid2 = def && def.tile != null ? def.tile : (def && def.place != null ? texTop(TEX[def.place]) : TILE.i_stick);
-                var u2 = tileUV(tid2);
-                pushBillboard(v, dr.x, dr.y + bob + 0.15, dr.z, 0.17, u2[0] + INSET, u2[1] + INSET, u2[0] + TS16 - INSET, u2[1] + TS16 - INSET, DL[0], DL[1], 0);
+            if (dr.bo == null) dr.bo = Math.random() * Math.PI * 2;
+            var tk = RT.worldMs / 50 + (dr.bo * 7919 % 20), cube = isCubeItem(def);
+            var DL = cellLight(dr.x, dr.y + 0.2, dr.z), gs = cube ? 0.25 : 0.5;
+            var M0 = emMul(emT(dr.x, dr.y + Math.sin(tk / 10 + dr.bo) * 0.1 + 0.1 + 0.25 * gs, dr.z), emRy(tk / 20 + dr.bo));
+            var n = dr.c > 48 ? 5 : dr.c > 32 ? 4 : dr.c > 16 ? 3 : dr.c > 1 ? 2 : 1, rnd = mulb(dr.it.length * 131 + dr.c);
+            for (var cpy = 0; cpy < n; cpy++) {
+                var M = M0;
+                if (cube) {
+                    if (cpy) M = emMul(M, emT((rnd() * 2 - 1) * 0.15, (rnd() * 2 - 1) * 0.15, (rnd() * 2 - 1) * 0.15));
+                    M = emMul(M, emT(0, 3 / 16, 0)); M = emMul(M, emS(gs, gs, gs)); M = emMul(M, emT(-0.5, -0.5, -0.5));
+                    pushCube(v, M, 0, 0, 0, 1, 1, 1, (function (pl) { return function (dd) { return texFace(TEX[pl], dd); }; })(def.place), DL[0], DL[1]);
+                } else {
+                    var zo = (cpy - (n - 1) / 2) * 0.09375;
+                    M = emMul(M, emT(cpy ? (rnd() * 2 - 1) * 0.0375 : 0, cpy ? (rnd() * 2 - 1) * 0.0375 : 0, zo));
+                    M = emMul(M, emT(0, 2 / 16, 0)); M = emMul(M, emS(gs, gs, gs)); M = emMul(M, emT(-0.5, -0.5, -0.5));
+                    var tid2 = def && def.tile != null ? def.tile : (def && def.place != null ? texTop(TEX[def.place]) : TILE.i_stick);
+                    pushModel(v, M, flatModel(tid2), 1 / 16, DL[0], DL[1]);
+                }
             }
         }
         for (i = 0; i < RT.arrows.length; i++) {
@@ -4109,86 +4278,306 @@
             pushBox(v, ar.x, ar.y, ar.z, 0.03, 0.03, 0.28, Math.cos(ayaw), Math.sin(ayaw), -apitch, 0,
                 function () { return TILE.arrow; }, AL[0], AL[1], 0);
         }
+        /* ExperienceOrbRenderer: 0.1 up, facing you, full bright, its colour
+           (sin(t) + 1) / 2 red, full green and (sin(t + 4.19) + 1) / 10 blue at
+           t = age / 2 in ticks, so it throbs green to yellow a couple of times a
+           second; the shader reads the phase out of the overlay value */
         for (i = 0; i < RT.orbs.length; i++) {
-            var o = RT.orbs[i], ou = tileUV(TILE.xporb);
-            var obob = Math.sin(RT.worldMs / 220 + i) * 0.03;
-            pushBillboard(v, o.x, o.y + 0.12 + obob, o.z, o.v >= 7 ? 0.16 : 0.11, ou[0] + INSET, ou[1] + INSET, ou[0] + TS16 - INSET, ou[1] + TS16 - INSET, 1, 0.4, 0);
+            var o = RT.orbs[i], ou = tileUV(TILE.xporb), oph = ((o.age * 10) % 6.2831853) / 6.2831853;
+            pushBillboard(v, o.x, o.y + 0.1, o.z, o.v >= 7 ? 0.16 : 0.11, ou[0] + INSET, ou[1] + INSET, ou[0] + TS16 - INSET, ou[1] + TS16 - INSET, 1, 1, 2 + oph);
         }
         for (i = 0; i < RT.parts.length; i++) {
             var pp = RT.parts[i];
             var PL = cellLight(pp.x, pp.y, pp.z);
             // dim: a flat tint on the mote, the way the real game darkens block
             // dust to 0.6 — without it, sand kicked off sand is invisible
-            pushBillboard(v, pp.x, pp.y, pp.z, pp.s, pp.u, pp.v, pp.u + TS16 / 10, pp.v + TS16 / 10, Math.max(0.25, PL[0]), PL[1], 0, pp.dim || 1);
+            var ps = pp.puff ? pp.s * (8 - Math.min(7, Math.floor((1 - pp.life / pp.life0) * 8))) / 8 : pp.s, pus = pp.us || TS16 / 10;
+            pushBillboard(v, pp.x, pp.y, pp.z, ps, pp.u, pp.v, pp.u + pus, pp.v + pus, Math.max(0.25, PL[0]), PL[1], 0, pp.dim || 1);
         }
         if (RT.sleep) {   // fade handled by overlay; nothing extra here
         }
     }
 
-    /* ── first-person hand (view space) ─────────────────────── */
+    /* ── the camera and the hands, on the game's tick ─────────────
+       GameRenderer and ItemInHandRenderer keep their state on the 20 Hz tick
+       and draw between ticks at the partial tick. Here that is: the view bob
+       (walkDist and bob), the FOV modifier, the hurt tilt and the death roll,
+       the eye easing down into a sneak, the hand lagging behind the look
+       (xBob, yBob), both hands' equip heights, the swing, and the vignette's
+       slow brightness. */
+    var CAM = null;
+    function camNew() {
+        return { acc: 0, walk: 0, walkO: 0, bob: 0, bobO: 0, fov: 1, fovO: 1, hurt: 0, hurtDir: 0, death: 0, eye: EYE, eyeO: EYE,
+            xb: S ? S.pitch * 180 / Math.PI : 0, yb: S ? S.yaw * 180 / Math.PI : 0, xbO: 0, ybO: 0, last: null,
+            mainH: 0, mainHO: 0, offH: 0, offHO: 0, vMain: '', vOff: '', vMainSt: null, vOffSt: null, swOn: false, swT: 0, att: 0, attO: 0, vig: 0, vigO: 0 };
+    }
+    // canInstantlyReplace: the same item, count and components, damage aside
+    function stackKey(st) { return st ? st.id + ':' + st.c + ':' + (st.name || '') + ':' + (st.ench ? JSON.stringify(st.ench) : '') : ''; }
+    function swingDur() { var haste = effLvl('haste'), fat = effLvl('mining_fatigue'); return Math.max(1, haste ? 6 - haste : fat ? 6 + fat * 2 : 6); }
+    function camTick() {
+        var C = CAM;
+        // LocalPlayer.move adds 0.6 of each tick's horizontal travel to walkDist; the bob chases min(0.1, speed) on the ground
+        var hv = C.last ? Math.sqrt((S.px - C.last[0]) * (S.px - C.last[0]) + (S.pz - C.last[2]) * (S.pz - C.last[2])) : 0;
+        if (hv > 2) hv = 0;   // a teleport, a respawn
+        C.last = [S.px, S.py, S.pz];
+        C.walkO = C.walk; C.bobO = C.bob;
+        var swim = RT.sprint && getB(Math.floor(S.px), Math.floor(S.py + EYE), Math.floor(S.pz)) === WATER;
+        C.bob += ((RT.ground && !RT.dead && !RT.fly && !swim ? Math.min(0.1, hv) : 0) - C.bob) * 0.4;
+        C.walk += 0.6 * hv;
+        C.fovO = C.fov;
+        C.fov = Math.max(0.1, Math.min(1.5, C.fov + (fovTarget() - C.fov) * 0.5));
+        if (C.hurt > 0) C.hurt--;
+        C.death = RT.dead ? C.death + 1 : 0;
+        // the eye: 1.62 standing, 1.27 crouched, half the gap a tick
+        C.eyeO = C.eye;
+        C.eye += ((RT.keys && RT.keys.shift && !RT.fly && !swim ? 1.27 : EYE) - C.eye) * 0.5;
+        C.xbO = C.xb; C.ybO = C.yb;
+        C.xb += (S.pitch * 180 / Math.PI - C.xb) * 0.5; C.yb += (S.yaw * 180 / Math.PI - C.yb) * 0.5;
+        // the swing: attackAnim = swingTime / duration, six ticks unless Haste or Mining Fatigue
+        C.attO = C.att;
+        var dur = swingDur();
+        if (C.swOn) { C.swT++; if (C.swT >= dur) { C.swT = 0; C.swOn = false; } } else C.swT = 0;
+        C.att = C.swT / dur;
+        // ItemInHandRenderer.tick: the old item drops, the new one rises on the cube of the attack recharge
+        C.mainHO = C.mainH; C.offHO = C.offH;
+        var hm = held() || null, ho = S.off || null, km = stackKey(hm), ko = stackKey(ho);
+        if (C.vMain === km) C.vMainSt = hm;
+        if (C.vOff === ko) C.vOffSt = ho;
+        var c = RT.atkCdMax > 0 ? Math.max(0, Math.min(1, ((RT.atkCdMax - RT.atkCd) * 20 + 1) / (RT.atkCdMax * 20))) : 1;
+        C.mainH += Math.max(-0.4, Math.min(0.4, (C.vMain !== km ? 0 : c * c * c) - C.mainH));
+        C.offH += Math.max(-0.4, Math.min(0.4, (C.vOff !== ko ? 0 : 1) - C.offH));
+        if (C.mainH < 0.1) { C.vMain = km; C.vMainSt = hm; }
+        if (C.offH < 0.1) { C.vOff = ko; C.vOffSt = ho; }
+        // Gui.updateVignetteBrightness: 1% of the way a tick toward 1 - brightness at the eye
+        var L = cellLight(S.px, S.py + EYE, S.pz), f = Math.max(L[0] * skyState().dayF, L[1]);
+        C.vigO = C.vig;
+        C.vig += (Math.max(0, Math.min(1, 1 - f / (4 - 3 * f))) - C.vig) * 0.01;
+    }
+    function camFrame(dt) {
+        if (!CAM) CAM = camNew();
+        CAM.acc += Math.min(0.25, dt);
+        while (CAM.acc >= HUD_TICK) { CAM.acc -= HUD_TICK; camTick(); }
+    }
+    function camPt() { return CAM ? Math.max(0, Math.min(1, CAM.acc / HUD_TICK)) : 0; }
+    function camSwing() {   // LivingEntity.swing: a swing only starts over once it is past halfway
+        if (!CAM) CAM = camNew();
+        var dur = swingDur();
+        if (!CAM.swOn || CAM.swT >= (dur >> 1) || CAM.swT < 0) { CAM.swT = -1; CAM.swOn = true; }
+    }
+    function camHurt(dir) {   // animateHurt: ten ticks of tilt, toward the side it came from when it came from somewhere
+        if (!CAM) CAM = camNew();
+        CAM.hurt = 10;
+        if (dir) CAM.hurtDir = Math.atan2(-dir[1], -dir[0]) * 180 / Math.PI - (S.yaw * 180 / Math.PI + 180);
+    }
+    function emRz(a) { var c = Math.cos(a), s = Math.sin(a); return [c, -s, 0, 0, s, c, 0, 0, 0, 0, 1, 0]; }
+    function emGl(E) { return [E[0], E[4], E[8], 0, E[1], E[5], E[9], 0, E[2], E[6], E[10], 0, E[3], E[7], E[11], 1]; }
+    /* GameRenderer.bobHurt then bobView, in view space: the death roll, the
+       hurt tilt (-sin(t^4 pi) x 14 degrees about the direction of the hit,
+       times Damage Tilt) and the walking bob */
+    function camFx(pt) {
+        var M = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0], D = Math.PI / 180, o = optLoad();
+        if (!CAM) return M;
+        if (RT.dead) { var d = Math.min(CAM.death + pt, 20); M = emMul(M, emRz((40 - 8000 / (d + 200)) * D)); }
+        var ht = CAM.hurt - pt;
+        if (CAM.hurt > 0 && ht >= 0) {
+            var t = ht / 10, s = Math.sin(t * t * t * t * Math.PI), tilt = o.tilt == null ? 1 : o.tilt;
+            M = emMul(M, emRy(-CAM.hurtDir * D)); M = emMul(M, emRz(-s * 14 * tilt * D)); M = emMul(M, emRy(CAM.hurtDir * D));
+        }
+        if (o.bob !== false) {
+            var P = -(CAM.walk + (CAM.walk - CAM.walkO) * pt) * Math.PI, b = CAM.bobO + (CAM.bob - CAM.bobO) * pt;
+            M = emMul(M, emT(Math.sin(P) * b * 0.5, -Math.abs(Math.cos(P) * b), 0));
+            M = emMul(M, emRz(Math.sin(P) * b * 3 * D));
+            M = emMul(M, emRx(Math.abs(Math.cos(P - 0.2) * b) * 5 * D));
+        }
+        return M;
+    }
+    // the death and fluid squeeze on the field of view, shared by the world and the hand
+    function camFovK(pt) {
+        var k = 1;
+        if (RT.dead && CAM) { var d = Math.min(CAM.death + pt, 20); k /= 1 + 2 * (1 - 500 / (d + 500)); }
+        var hb = getB(Math.floor(S.px), Math.floor(S.py + camEye(pt)), Math.floor(S.pz));
+        if (hb === WATER || hb === LAVA) k *= 6 / 7;
+        return k;
+    }
+    function camEye(pt) { return CAM ? CAM.eyeO + (CAM.eye - CAM.eyeO) * pt : EYE; }
+
+    /* ── the held item, drawn the game's way ──
+       A flat item is its 16x16 sprite made solid, ItemModelGenerator's way: a
+       front face and a mirrored back one pixel apart, and a one-pixel strip
+       along every edge between an opaque pixel and a clear one, taking that
+       pixel's colour. Built once per texture from the atlas's own alpha. */
+    var HAND_MODEL = {};
+    function flatModel(tid) {
+        if (HAND_MODEL[tid]) return HAND_MODEL[tid];
+        var tx = (tid % 16) * 16, ty = ((tid / 16) | 0) * 16, a = null;
+        try { a = ATLAS.getContext('2d').getImageData(tx, ty, 16, 16).data; } catch (e) {}
+        function op(x, y) { return x >= 0 && y >= 0 && x < 16 && y < 16 && (!a || a[(y * 16 + x) * 4 + 3] > 127); }
+        var uv = tileUV(tid), q = [], U = TS16 / 16;
+        function tex(px, py, ins) { return [uv[0] + (px + ins) * U, uv[1] + (py + ins) * U]; }
+        // front (+z) and back (-z): the whole square, the clear texels discarded by the shader
+        q.push({ p: [[0, 0, 8.5], [16, 0, 8.5], [16, 16, 8.5], [0, 16, 8.5]], t: [[uv[0] + INSET, uv[1] + TS16 - INSET], [uv[0] + TS16 - INSET, uv[1] + TS16 - INSET], [uv[0] + TS16 - INSET, uv[1] + INSET], [uv[0] + INSET, uv[1] + INSET]], sh: 1 });
+        q.push({ p: [[16, 0, 7.5], [0, 0, 7.5], [0, 16, 7.5], [16, 16, 7.5]], t: [[uv[0] + TS16 - INSET, uv[1] + TS16 - INSET], [uv[0] + INSET, uv[1] + TS16 - INSET], [uv[0] + INSET, uv[1] + INSET], [uv[0] + TS16 - INSET, uv[1] + INSET]], sh: 0.85 });
+        for (var y = 0; y < 16; y++) for (var x = 0; x < 16; x++) {
+            if (!op(x, y)) continue;
+            var y0 = 15 - y, y1 = 16 - y, t0 = tex(x, y, 0.1), t1 = tex(x, y, 0.9), tt = [[t0[0], t1[1]], [t1[0], t1[1]], [t1[0], t0[1]], [t0[0], t0[1]]];
+            if (!op(x - 1, y)) q.push({ p: [[x, y0, 7.5], [x, y0, 8.5], [x, y1, 8.5], [x, y1, 7.5]], t: tt, sh: 0.7 });
+            if (!op(x + 1, y)) q.push({ p: [[x + 1, y0, 8.5], [x + 1, y0, 7.5], [x + 1, y1, 7.5], [x + 1, y1, 8.5]], t: tt, sh: 0.7 });
+            if (!op(x, y - 1)) q.push({ p: [[x, y1, 8.5], [x + 1, y1, 8.5], [x + 1, y1, 7.5], [x, y1, 7.5]], t: tt, sh: 0.9 });
+            if (!op(x, y + 1)) q.push({ p: [[x, y0, 7.5], [x + 1, y0, 7.5], [x + 1, y0, 8.5], [x, y0, 8.5]], t: tt, sh: 0.55 });
+        }
+        return (HAND_MODEL[tid] = q);
+    }
+    function pushModel(v, M, quads, scale, sk, bl) {
+        for (var i = 0; i < quads.length; i++) {
+            var Q = quads[i];
+            for (var k = 0; k < 4; k++) {
+                var p = emAt(M, Q.p[k][0] * scale, Q.p[k][1] * scale, Q.p[k][2] * scale);
+                v.push(p[0], p[1], p[2], Q.t[k][0], Q.t[k][1], sk, bl, Q.sh, 0);
+            }
+        }
+    }
+    function pushCube(v, M, x0, y0, z0, x1, y1, z1, tileFn, sk, bl) {   // a box in model units, a tile a face
+        for (var d = 0; d < 6; d++) {
+            var uv0 = tileUV(tileFn(d));
+            for (var k = 0; k < 4; k++) {
+                var cr = FACE_C[d][k], f = faceUV(d, cr);
+                var p = emAt(M, cr[0] ? x1 : x0, cr[1] ? y1 : y0, cr[2] ? z1 : z0);
+                v.push(p[0], p[1], p[2], uv0[0] + INSET + f[0] * (TS16 - 2 * INSET), uv0[1] + INSET + f[1] * (TS16 - 2 * INSET), sk, bl, FACE_SHADE[d], 0);
+            }
+        }
+    }
+    function isCubeItem(def) { return !!(def && def.place != null && !B[def.place].cross && !B[def.place].half); }
+    /* ItemInHandRenderer.renderArmWithItem for one hand (i = 1 right, -1 left):
+       eating raises it to the mouth, a drawn bow comes round and stretches,
+       anything else rides the swing; then the model's first-person display
+       transform, the same for flat items and tools ([0, -90, 25] at
+       [1.13, 3.2, 1.13] px, x0.68) and [0, 45, 0] at x0.4 for a block */
+    function handItem(v, M, st, i, s, h, sk, bl) {
+        var D = Math.PI / 180, def = I[st.id], sq = Math.sqrt(s);
+        if (i === 1 && RT.eatT > 0 && def && def.food) {
+            var f = 32 - RT.eatT * 20 + 1, r = Math.max(0, f / 32);
+            if (r < 0.8) M = emMul(M, emT(0, Math.abs(Math.cos(f / 4 * Math.PI) * 0.1), 0));
+            var k = 1 - Math.pow(r, 27);
+            M = emMul(M, emT(k * 0.6 * i, k * -0.5, 0));
+            M = emMul(M, emRy(i * k * 90 * D)); M = emMul(M, emRx(k * 10 * D)); M = emMul(M, emRz(i * k * 30 * D));
+            M = emMul(M, emT(i * 0.56, -0.52 - 0.6 * h, -0.72));
+        } else if (i === 1 && st.id === 'bow' && RT.bowT > 0) {
+            M = emMul(M, emT(i * 0.56, -0.52 - 0.6 * h, -0.72));
+            M = emMul(M, emT(i * -0.2785682, 0.18344387, 0.15731531));
+            M = emMul(M, emRx(-13.935 * D)); M = emMul(M, emRy(i * 35.3 * D)); M = emMul(M, emRz(i * -9.785 * D));
+            var t = RT.bowT * 20, pp = t / 20; pp = Math.min((pp * pp + 2 * pp) / 3, 1);
+            if (pp > 0.1) M = emMul(M, emT(0, Math.sin((t - 0.1) * 1.3) * (pp - 0.1) * 0.004, 0));
+            M = emMul(M, emT(0, 0, pp * 0.04));
+            M = emMul(M, emS(1, 1, 1 + pp * 0.2));
+            M = emMul(M, emRy(-i * 45 * D));
+        } else {
+            M = emMul(M, emT(i * -0.4 * Math.sin(sq * Math.PI), 0.2 * Math.sin(sq * 2 * Math.PI), -0.2 * Math.sin(s * Math.PI)));
+            M = emMul(M, emT(i * 0.56, -0.52 - 0.6 * h, -0.72));
+            M = emMul(M, emRy(i * (45 - 20 * Math.sin(s * s * Math.PI)) * D));
+            M = emMul(M, emRz(i * -20 * Math.sin(sq * Math.PI) * D));
+            M = emMul(M, emRx(-80 * Math.sin(sq * Math.PI) * D));
+            M = emMul(M, emRy(i * -45 * D));
+        }
+        if (isCubeItem(def)) {
+            M = emMul(M, emRy((i > 0 ? 45 : -225) * D));
+            M = emMul(M, emS(0.4, 0.4, 0.4));
+            M = emMul(M, emT(-0.5, -0.5, -0.5));
+            pushCube(v, M, 0, 0, 0, 1, 1, 1, (function (pl) { return function (dd) { return texFace(TEX[pl], dd); }; })(def.place), sk, bl);
+        } else {
+            M = emMul(M, emT(i * 1.13 / 16, 3.2 / 16, 1.13 / 16));
+            M = emMul(M, emRy(i * -90 * D)); M = emMul(M, emRz(i * 25 * D));
+            M = emMul(M, emS(0.68, 0.68, 0.68));
+            M = emMul(M, emT(-0.5, -0.5, -0.5));
+            var tid = def && def.tile != null ? def.tile : (def && def.place != null ? texTop(TEX[def.place]) : TILE.i_stick);
+            pushModel(v, M, flatModel(tid), 1 / 16, sk, bl);
+        }
+    }
+    /* renderPlayerArm: the empty main hand, the right arm out of the player
+       model (a 4x12x4 box pivoted at (-5, 2, 0), turned 0.1 rad) put where the
+       game puts it, the swing sweeping it in and up */
+    function handArm(v, M, i, s, h, sk, bl) {
+        var D = Math.PI / 180, sq = Math.sqrt(s);
+        M = emMul(M, emT(i * (0.64000005 - 0.3 * Math.sin(sq * Math.PI)), -0.6 + 0.4 * Math.sin(sq * 2 * Math.PI) - 0.6 * h, -0.71999997 - 0.4 * Math.sin(s * Math.PI)));
+        M = emMul(M, emRy(i * 45 * D)); M = emMul(M, emRy(i * 70 * Math.sin(sq * Math.PI) * D)); M = emMul(M, emRz(i * -20 * Math.sin(s * s * Math.PI) * D));
+        M = emMul(M, emT(i * -1, 3.6, 3.5)); M = emMul(M, emRz(i * 120 * D)); M = emMul(M, emRx(200 * D)); M = emMul(M, emRy(i * -135 * D));
+        M = emMul(M, emT(i * 5.6, 0, 0));
+        M = emMul(M, emT(-5 / 16 * i, 2 / 16, 0)); M = emMul(M, emRz(0.1 * i));
+        pushCube(v, M, (i > 0 ? -3 : -1) / 16, -2 / 16, -2 / 16, (i > 0 ? 1 : 3) / 16, 10 / 16, 2 / 16, function () { return TILE.hand; }, sk, bl);
+    }
+    /* ── first-person hands (view space) ──
+       The bob and the hurt tilt, then the sway toward where you were looking a
+       tick ago, then each hand: the main hand's item, or its bare arm, and the
+       off hand's item when it holds one (not while a bow is drawn). */
     function handGeo() {
         if (RT.menu) return [];         // nobody is holding anything on the title screen
         if (isSpectator()) return [];   // a CSS class cannot reach WebGL: the hand was still there
-        if (RT.dead || RT.sleep) return [];
-        var v = [], h = held(), def = h && I[h.id];
-        var L = cellLight(S.px, S.py + EYE, S.pz);
-        var sk2 = Math.max(0.18, L[0]), bl2 = L[1];
-        /* The real game's swing is not a symmetric bob. It drives position from
-           f = sin(√p · π) — which leaps out in the first third and eases back
-           over the rest — and rotation from f2 = sin(p² · π), which lags behind
-           it. Two envelopes out of phase is the whole reason a swing reads as a
-           strike and not a nod. p runs 0→1 across the swing. */
-        var p = RT.swing > 0 && RT.swingT > 0 ? Math.max(0, Math.min(1, 1 - RT.swing / RT.swingT)) : 0;
-        var f = RT.swing > 0 ? Math.sin(Math.sqrt(p) * Math.PI) : 0;
-        var f2 = RT.swing > 0 ? Math.sin(p * p * Math.PI) : 0;
-        var bobX = Math.sin(RT.bob) * 0.012, bobY = Math.abs(Math.cos(RT.bob)) * 0.014;
-        // the arm sweeps in across the view, drives forward, then drops through
-        var ox = 0.42 + bobX - f * 0.19;
-        var oy = -0.42 - bobY + f * 0.07 - f2 * 0.19;
-        var oz = -0.72 - f * 0.23;
-        // swapping items drops the hand out of frame and lifts the new one in
-        oy -= (RT.equip || 0) * 0.65;
-        var pull = RT.bowT > 0 ? RT.bowT * 0.12 : 0;
-        var eatN = RT.eatT > 0 ? Math.sin(RT.eatT * 22) * 0.03 : 0;
-        oy += eatN; oz += pull;
-        if (def && def.place != null && !B[def.place].cross && !B[def.place].half) {
-            // a held block turns as it is driven down, so you see its top face bite
-            // in — but only so far, or it goes edge-on and vanishes mid-swing
-            pushBox(v, ox, oy, oz, 0.16, 0.16, 0.16, Math.cos(0.62 - f * 0.35), Math.sin(0.62 - f * 0.35), f2 * 0.7, 0,
-                (function (pl) { return function (dd) { return texFace(TEX[pl], dd); }; })(def.place),
-                sk2, bl2, 0);
-        } else if (h) {
-            var tid = def && def.tile != null ? def.tile : TILE.i_stick;
-            var u0 = tileUV(tid);
-            // an angled card: item sprites read great edge-on at this res
-            var yc2 = Math.cos(0.8 + f * 0.95), ys2 = Math.sin(0.8 + f * 0.95);
-            // and it tips over its own leading edge on the follow-through
-            var tipC = Math.cos(f2 * 0.6), tipS = Math.sin(f2 * 0.6);
-            var cs = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
-            for (var k = 0; k < 4; k++) {
-                var a = cs[k][0] * 0.22, b = cs[k][1] * 0.22;
-                var by = b * tipC, bz = b * tipS;
-                v.push(ox + yc2 * a, oy + by + 0.08, oz + ys2 * a + bz,
-                    cs[k][0] > 0 ? u0[0] + TS16 - INSET : u0[0] + INSET,
-                    cs[k][1] > 0 ? u0[1] + INSET : u0[1] + TS16 - INSET,
-                    sk2, bl2, 1, 0);
-            }
-        } else {
-            // a bare fist rotates hardest of all — there is no item to read, so the
-            // motion has to carry the whole punch. It still has to stay on screen,
-            // so the arc is tempered and the arm pivots rather than translating away.
-            pushBox(v, ox + 0.05, oy + f2 * 0.06, oz, 0.09, 0.09, 0.3, Math.cos(0.5 - f * 0.3), Math.sin(0.5 - f * 0.3), f2 * 0.95, -0.2,
-                function () { return TILE.hand; }, sk2, bl2, 0);
-        }
+        if (RT.dead || RT.sleep || !CAM) return [];
+        var v = [], pt = camPt(), D = Math.PI / 180;
+        var L = cellLight(S.px, S.py + EYE, S.pz), sk = Math.max(0.18, L[0]), bl = L[1];
+        var base = camFx(pt);
+        base = emMul(base, emRx((S.pitch / D - (CAM.xbO + (CAM.xb - CAM.xbO) * pt)) * 0.1 * D));
+        base = emMul(base, emRy((S.yaw / D - (CAM.ybO + (CAM.yb - CAM.ybO) * pt)) * 0.1 * D));
+        var da = CAM.att - CAM.attO; if (da < 0) da += 1;
+        var s = CAM.attO + da * pt;
+        var hMain = 1 - (CAM.mainHO + (CAM.mainH - CAM.mainHO) * pt), hOff = 1 - (CAM.offHO + (CAM.offH - CAM.offHO) * pt);
+        var hm = CAM.vMainSt, ho = CAM.vOffSt, bow = hm && hm.id === 'bow' && RT.bowT > 0;
+        if (hm) handItem(v, base, hm, 1, s, hMain, sk, bl);
+        else handArm(v, base, 1, s, hMain, sk, bl);
+        if (ho && !bow) handItem(v, base, ho, -1, 0, hOff, sk, bl);
         return v;
     }
 
-    /* ── item icons: fake-iso cubes off the atlas ───────────── */
+    /* ── item icons: fake-iso cubes off the atlas ─────────────
+       An item in a slot is 16×16 GUI pixels. The game blits a flat item's
+       16×16 texture at exactly that size, and renders a block's model into
+       the same square at the screen's real resolution. So icons are built at
+       16 × (device pixels per GUI pixel): flat items as exact squares of
+       texels, blocks drawn at device resolution. One cache per scale. */
+    /* Two creative-tab icons for things this world has no item for: the
+       compass on Search Items and the oak sign on Functional Blocks. Our own
+       drawings, sixteen pixels square like every item. */
+    var ICON_ART = {
+        compass: { pal: { k: '#1f1f1f', a: '#c8c8c8', A: '#8a8a8a', f: '#3c3c3c', r: '#e02b2b', R: '#9c1616', w: '#d8d8d8' }, rows: [
+            '................',
+            '.....kkkkkk.....',
+            '...kkaaaaaakk...',
+            '..kaaffffffAAk..',
+            '..kaffffffffAk..',
+            '.kaffffffffrfAk.',
+            '.kaffffffffRfAk.',
+            '.kafffffffrffAk.',
+            '.kaffffffRfffAk.',
+            '.kafffffwffffAk.',
+            '.kaffffwfffffAk.',
+            '..kafffffffffk..',
+            '..kAAffffffAAk..',
+            '...kkAAAAAAkk...',
+            '.....kkkkkk.....',
+            '................'] },
+        oak_sign: { pal: { k: '#3b2a15', p: '#b8945f', P: '#9d7a47', q: '#a8864f', s: '#6b4f2a', S: '#4f3a1e' }, rows: [
+            '................',
+            '................',
+            'kkkkkkkkkkkkkkkk',
+            'kppppppppppppppk',
+            'kpPPPPppqPPPPppk',
+            'kppppppppppppppk',
+            'kpqPPPPPppPPPqpk',
+            'kppppppppppppppk',
+            'kPPPPPPPPPPPPPPk',
+            'kkkkkkksSkkkkkkk',
+            '.......sSk......',
+            '......ksSk......',
+            '......ksSk......',
+            '......ksSk......',
+            '......ksSk......',
+            '......kkkk......'] }
+    };
     var ICON = {};
     function iconURL(id) {
-        if (ICON[id]) return ICON[id];
-        var def = I[id], cv = document.createElement('canvas');
-        cv.width = cv.height = 32;
+        var r = Math.max(2, (RT && RT.gs) || 2), key = id + '@' + r;
+        if (ICON[key]) return ICON[key];
+        var def = I[id], cv = document.createElement('canvas'), k = r / 2;   // the drawings below are on a 32-unit square
+        cv.width = cv.height = 16 * r;
         var c = cv.getContext('2d');
         c.imageSmoothingEnabled = false;
         function tsrc(tid) { return { x: (tid % 16) * 16, y: ((tid / 16) | 0) * 16 }; }
@@ -4196,7 +4585,7 @@
             var tx = TEX[def.place];
             var top = tsrc(texTop(tx)), side = tsrc(texSide(tx));
             function face(tf, sx, shade) {
-                c.setTransform(tf[0], tf[1], tf[2], tf[3], tf[4], tf[5]);
+                c.setTransform(tf[0] * k, tf[1] * k, tf[2] * k, tf[3] * k, tf[4] * k, tf[5] * k);
                 c.drawImage(ATLAS, sx.x, sx.y, 16, 16, 0, 0, 16, 16);
                 if (shade) { c.globalCompositeOperation = 'source-atop'; c.fillStyle = 'rgba(8,8,16,' + shade + ')'; c.fillRect(0, 0, 16, 16); c.globalCompositeOperation = 'source-over'; }
                 c.setTransform(1, 0, 0, 1, 0, 0);
@@ -4210,6 +4599,7 @@
             // is hashed off the mob name so an egg looks identical every session.
             var col = EGG_COL[def.egg] || ['#c8c8c8', '#8a8a8a'];
             var band = [8, 14, 18, 20, 22, 22, 20, 14], bi;
+            c.setTransform(k, 0, 0, k, 0, 0);
             c.fillStyle = col[0];
             for (bi = 0; bi < band.length; bi++) c.fillRect(16 - band[bi] / 2, 4 + bi * 3, band[bi], 3);
             var eh = 0;
@@ -4222,81 +4612,490 @@
             }
             c.fillStyle = 'rgba(255,255,255,0.28)';
             c.fillRect(12, 7, 3, 4);
+        } else if (!def && ICON_ART[id]) {
+            c.setTransform(r, 0, 0, r, 0, 0);
+            sprMap(c, ICON_ART[id].rows, ICON_ART[id].pal);
+            c.setTransform(1, 0, 0, 1, 0, 0);
         } else {
             var tid = def && def.tile != null ? def.tile : (def && def.place != null ? texTop(TEX[def.place]) : TILE.i_stick);
             var s = tsrc(tid);
-            c.drawImage(ATLAS, s.x, s.y, 16, 16, 2, 2, 28, 28);
+            c.drawImage(ATLAS, s.x, s.y, 16, 16, 0, 0, 16 * r, 16 * r);
         }
-        ICON[id] = cv.toDataURL();
-        return ICON[id];
+        ICON[key] = cv.toDataURL();
+        return ICON[key];
     }
+
+    /* ── GUI sprites ────────────────────────────────────────────
+       Every piece of in-game chrome is painted here once, at 1×, in GUI pixels
+       and at the sizes the game's own sprites have, then handed to the
+       stylesheet as a --spr-<name> custom property on .mc. The DOM draws them
+       at --gs with nearest-neighbour sampling, so one sprite pixel is always a
+       whole square of device pixels. They are our own drawings of the same
+       furniture, not copies of Mojang's textures, the same way the block atlas
+       is. */
+    var GSPR = null;
+    function sprMap(cx, rows, pal, ox, oy) {
+        for (var y = 0; y < rows.length; y++) for (var x = 0; x < rows[y].length; x++) {
+            var c = pal[rows[y].charAt(x)];
+            if (c) { cx.fillStyle = c; cx.fillRect((ox || 0) + x, (oy || 0) + y, 1, 1); }
+        }
+    }
+    function sprRect(cx, x, y, w, h, c) { cx.fillStyle = c; cx.fillRect(x, y, w, h); }
+    function guiSprites() {
+        if (GSPR) return GSPR;
+        GSPR = {};
+        function mk(name, w, h, draw) {
+            var cv = document.createElement('canvas');
+            cv.width = w; cv.height = h;
+            var cx = cv.getContext('2d');
+            draw(cx, w, h);
+            GSPR[name] = { cv: cv, w: w, h: h, url: cv.toDataURL() };
+        }
+        sprHud(mk);
+        sprPanels(mk);
+        sprWidgets(mk);
+        sprAdv(mk);
+        sprStats(mk);
+        sprMenu(mk);
+        var css = '.mc{';
+        for (var k in GSPR) css += '--spr-' + k + ':url(' + GSPR[k].url + ');';
+        css += '}';
+        var st = document.getElementById('mc-gui-css');
+        if (!st) { st = document.createElement('style'); st.id = 'mc-gui-css'; document.head.appendChild(st); }
+        st.textContent = css;
+        return GSPR;
+    }
+
+    /* ── HUD ────────────────────────────────────────────────────
+       Laid out the way the game's Gui lays it out: on the scaled screen,
+       from its bottom centre, in whole GUI pixels. Hotbar at (W/2 - 91, H - 22),
+       the XP bar seven pixels above it, hearts and armour on the left from
+       H - 39, food and air mirrored on the right. The parts that move do it on
+       the game's own 20 Hz tick: the heart blink after a hit, the jitter at four
+       health, the regeneration wave, hunger's shake when saturation runs out. */
+    var HUD_TICK = 0.05;
+
+    /* the HUD's sprites: the game's sizes and layout, our drawings */
+    function sprHud(mk) {
+        var rnd = mulb(0x40FBA2);
+        function n(a) { return Math.round((rnd() * 2 - 1) * a); }
+        function grey(v, a) { v = Math.max(0, Math.min(255, v + n(a || 0))); return 'rgb(' + v + ',' + v + ',' + v + ')'; }
+        /* The hotbar: nine 20-pixel cells inside a black outline. Every cell is
+           framed by a light line and then a dark one on each side, the bar's
+           top-left corner catches the most light, and the 16×16 well in the
+           middle is a dark tint the world shows through. */
+        mk('hotbar', 182, 22, function (cx) {
+            sprRect(cx, 0, 0, 182, 22, '#000000');
+            for (var i = 0; i < 9; i++) for (var y = 0; y < 20; y++) for (var x = 0; x < 20; x++) {
+                var X = 1 + i * 20 + x, Y = 1 + y, c;
+                if (y === 0) c = grey(i === 0 && x < 2 ? 206 : i === 0 && x < 4 ? 171 : 147, 3);
+                else if (x === 0) c = grey(i === 0 ? (y < 3 ? 171 : 147) : 126, 3);
+                else if (y === 19 || x === 19) c = grey(96, 5);
+                else if (x === 18) c = grey(y === 1 ? 112 : 126, 5);
+                else if (y === 18) c = grey(x === 1 ? 112 : 126, 6);
+                else if (y === 1 || x === 1) c = grey(97, 5);
+                else c = 'rgba(' + (37 + n(8)) + ',' + (36 + n(7)) + ',' + (7 + n(3)) + ',0.73)';
+                cx.clearRect(X, Y, 1, 1);
+                sprRect(cx, X, Y, 1, 1, c);
+            }
+        });
+        /* The selected slot's frame: 24 wide, one row shorter than it is wide so
+           it stops at the bottom of the screen, a black line and then a raised
+           light band four pixels deep round a hole the slot shows through. */
+        mk('hotbar_sel', 24, 23, function (cx) {
+            var band = ['#000000', '#ffffff', '#dcdcdc', '#a6a6a6'];
+            for (var y = 0; y < 23; y++) for (var x = 0; x < 24; x++) {
+                var d = Math.min(x, y, 23 - x, 23 - y);
+                if (d < 4) sprRect(cx, x, y, 1, 1, band[d]);
+            }
+        });
+        function bar(cx, edge, rows) {   // a 182×5 strip with a one-pixel outline and clipped corners
+            sprRect(cx, 1, 0, 180, 1, edge); sprRect(cx, 1, 4, 180, 1, edge);
+            sprRect(cx, 0, 1, 1, 3, edge); sprRect(cx, 181, 1, 1, 3, edge);
+            for (var r = 0; r < 3; r++) for (var x = 1; x < 181; x++) {
+                var b = rows[r];
+                sprRect(cx, x, 1 + r, 1, 1, 'rgb(' + (b[0] + n(b[3])) + ',' + (b[1] + n(b[3])) + ',' + (b[2] + n(b[3] >> 1)) + ')');
+            }
+        }
+        mk('xp_bg', 182, 5, function (cx) { bar(cx, '#000000', [[44, 44, 44, 3], [30, 30, 30, 3], [22, 22, 22, 3]]); });
+        mk('xp_fg', 182, 5, function (cx) { bar(cx, '#102a18', [[100, 152, 60, 16], [150, 214, 106, 14], [104, 158, 66, 12]]); });
+        /* 15×15, as the game's is, with the nine-pixel cross in the middle:
+           drawn at ((W - 15) / 2, (H - 15) / 2), which puts the crossing one
+           GUI pixel up and left of the true centre, like the real one */
+        mk('cross', 15, 15, function (cx) { sprRect(cx, 7, 3, 1, 9, '#ffffff'); sprRect(cx, 3, 7, 9, 1, '#ffffff'); });
+
+        /* the 9×9 icons. o outline, f fill, h highlight, s shade */
+        var HEART = ['..oo.oo..', '.offoffo.', 'ofhfffffo', 'offfffffo', 'osfffffso', '.osfffso.', '..osfso..', '...oso...', '....o....'];
+        var ARMOR = ['.oo...oo.', 'ohfo.ohfo', 'offfofffo', 'osfffffso', '.offfffo.', '.offfffo.', '.offfffo.', '.ossssso.', '..ooooo..'];
+        var FOOD = ['..ooo....', '.orrro...', 'orrhtto..', 'orrttbo..', '.odtbbo..', '..oddbwo.', '...ooowo.', '.....owwo', '......oo.'];
+        var BUBBLE = ['..oooo...', '.owwllo..', 'owllllbo.', 'owllllbo.', 'ollllbbo.', 'olllbbbo.', '.obbbbo..', '..oooo...', '.........'];
+        function icon(name, rows, pal, keep) {   // keep(x, y) chooses which pixels a half icon carries
+            mk(name, 9, 9, function (cx) {
+                for (var y = 0; y < 9; y++) for (var x = 0; x < 9; x++) {
+                    var k = rows[y].charAt(x), c = pal[k];
+                    if (!c || (keep && !keep(x, y, k))) continue;
+                    sprRect(cx, x, y, 1, 1, c);
+                }
+            });
+        }
+        function left(x) { return x <= 4; }
+        function right(x) { return x >= 4; }
+        var DARK = 'rgba(22,22,22,0.72)';
+        // containers carry the outline; the hearts drawn over them carry only their colour
+        icon('h_cont', HEART, { o: '#000000', f: DARK, h: DARK, s: DARK });
+        icon('h_cont_bl', HEART, { o: '#ffffff', f: DARK, h: DARK, s: DARK });
+        var HEARTS = {
+            n: { f: '#ff1313', h: '#ffc8c8', s: '#bb1313' },       // normal
+            bl: { f: '#ffffff', h: '#ffffff', s: '#d0d0d0' },      // the health just lost, flashing
+            p: { f: '#94a41c', h: '#d4e27c', s: '#627012' },       // poisoned
+            w: { f: '#343434', h: '#6e6e6e', s: '#161616' },       // withered
+            fz: { f: '#7cc4f0', h: '#e2f6ff', s: '#3f86c0' },      // frozen
+            a: { f: '#e8c21e', h: '#fff4a8', s: '#b08a0c' }        // absorbing
+        };
+        for (var hk in HEARTS) {
+            var hp = { f: HEARTS[hk].f, h: HEARTS[hk].h, s: HEARTS[hk].s };
+            icon('h_' + hk, HEART, hp);
+            icon('h_' + hk + '_half', HEART, hp, left);
+            // hardcore: the same heart with two dark eyes set in the upper humps
+            var hc = { f: hp.f, h: hp.h, s: hp.s, e: '#000000' };
+            var HH = HEART.slice(); HH[2] = 'ofhfffffo'; HH[3] = 'ofefffefo';
+            icon('h_' + hk + '_hc', HH, hc);
+            icon('h_' + hk + '_hc_half', HH, hc, left);
+        }
+        var AR = { o: '#000000', f: '#b8b9c4', h: '#e6e7f2', s: '#696a70' };
+        icon('a_full', ARMOR, AR);
+        icon('a_half', ARMOR, AR, function (x, y, k) { return k === 'o' || left(x); });
+        icon('a_empty', ARMOR, { o: '#000000', f: DARK, h: DARK, s: DARK });
+        var FD = { o: '#000000', r: '#d42a2a', h: '#dfb18f', t: '#b88458', b: '#9d6d43', d: '#613c1b', w: '#fff7dc' };
+        var FH = { o: '#000000', r: '#7d9a2a', h: '#c3d890', t: '#96ad52', b: '#6f873a', d: '#3a4c15', w: '#e7f2c8' };
+        icon('f_empty', FOOD, { o: '#000000', r: DARK, h: DARK, t: DARK, b: DARK, d: DARK, w: DARK });
+        icon('f_full', FOOD, FD); icon('f_half', FOOD, FD, function (x, y, k) { return k === 'o' ? right(x) || y > 4 : right(x); });
+        icon('f_hunger_empty', FOOD, { o: '#1e2a0a', r: 'rgba(24,34,10,0.72)', h: 'rgba(24,34,10,0.72)', t: 'rgba(24,34,10,0.72)', b: 'rgba(24,34,10,0.72)', d: 'rgba(24,34,10,0.72)', w: 'rgba(24,34,10,0.72)' });
+        icon('f_hunger_full', FOOD, FH); icon('f_hunger_half', FOOD, FH, function (x, y, k) { return k === 'o' ? right(x) || y > 4 : right(x); });
+        icon('air', BUBBLE, { o: '#274ea3', w: '#ffffff', l: '#aad7ff', b: '#6ea5e6' });
+        icon('air_empty', BUBBLE, { o: '#1b3163', w: 'rgba(20,30,60,0.35)', l: 'rgba(20,30,60,0.35)', b: 'rgba(20,30,60,0.35)' });
+        /* the attack indicator under the crosshair: a dim 16×4 bar, a white fill
+           over it, and a small sword for "ready to hit what you are looking at";
+           drawn in white and grey because they go through the crosshair's
+           inverting blend */
+        mk('atk_bg', 16, 4, function (cx) { sprRect(cx, 0, 0, 16, 4, '#303030'); sprRect(cx, 1, 1, 14, 2, '#101010'); });
+        mk('atk_fg', 16, 4, function (cx) { sprRect(cx, 0, 0, 16, 4, '#303030'); sprRect(cx, 1, 1, 14, 2, '#f0f0f0'); });
+        mk('atk_full', 16, 16, function (cx) {
+            sprMap(cx, ['.............ww.', '............www.', '...........www..', '..........www...', '.........www....', '........www.....',
+                        '..w....www......', '..ww..www.......', '...wwwww........', '....www.........', '...wwwww........', '..ww...ww.......',
+                        '.ww.....w.......', 'ww..............', '................', '................'], { w: '#ffffff' });
+        });
+        mk('air_pop', 9, 9, function (cx) {
+            sprMap(cx, ['.........', '.o.....o.', '..w...w..', '.........', 'ow.....wo', '.........', '..w...w..', '.o.....o.', '.........'],
+                { o: '#274ea3', w: '#cfe8ff' });
+        });
+        /* A status effect's frame in the top-right corner: a raised grey tile;
+           the ambient one (a beacon's) is tinted blue. */
+        function effFrame(cx, face, lite, dark) {
+            sprRect(cx, 1, 0, 22, 1, '#000000'); sprRect(cx, 1, 23, 22, 1, '#000000');
+            sprRect(cx, 0, 1, 1, 22, '#000000'); sprRect(cx, 23, 1, 1, 22, '#000000');
+            sprRect(cx, 1, 1, 22, 22, face);
+            sprRect(cx, 1, 1, 21, 1, lite); sprRect(cx, 1, 1, 1, 21, lite);
+            sprRect(cx, 2, 22, 21, 1, dark); sprRect(cx, 22, 2, 1, 21, dark);
+        }
+        mk('eff_bg', 24, 24, function (cx) { effFrame(cx, '#c6c6c6', '#ffffff', '#555555'); });
+        /* An effect's 18×18 icon. The game draws every effect its own picture;
+           ours is one bottle, filled with the effect's own colour, so the row of
+           frames still reads at a glance. */
+        function bottle(col) {
+            return function (cx) {
+                var fill = {}, x, y;
+                for (y = 0; y < 18; y++) for (x = 0; x < 18; x++) {
+                    var body = (x - 8.5) * (x - 8.5) + (y - 11.5) * (y - 11.5) <= 27.5, neck = x >= 7 && x <= 10 && y >= 3 && y <= 6, cork = x >= 7 && x <= 10 && y >= 1 && y <= 2;
+                    if (body || neck || cork) fill[x + ',' + y] = cork ? 'c' : body && y >= 10 ? 'l' : 'g';
+                }
+                for (var k in fill) {
+                    var xy = k.split(','), px = +xy[0], py = +xy[1];
+                    var edge = !fill[(px - 1) + ',' + py] || !fill[(px + 1) + ',' + py] || !fill[px + ',' + (py - 1)] || !fill[px + ',' + (py + 1)];
+                    var c = edge ? '#2a2a2a' : fill[k] === 'c' ? '#9a7442' : fill[k] === 'l' ? col : 'rgba(214,226,255,0.55)';
+                    sprRect(cx, px, py, 1, 1, c);
+                }
+                sprRect(cx, 5, 10, 1, 2, 'rgba(255,255,255,0.85)'); sprRect(cx, 6, 9, 1, 1, 'rgba(255,255,255,0.85)');
+            };
+        }
+        for (var eid in EFFECTS) mk('eff_' + eid, 18, 18, bottle(EFFECTS[eid].c));
+        mk('eff_bg_amb', 24, 24, function (cx) { effFrame(cx, '#8fb3d8', '#d8ecff', '#3a5a82'); });
+        /* A toast: 160×32, dark, in a thin light frame with the corners cut. */
+        mk('toast', 160, 32, function (cx) {
+            sprRect(cx, 2, 0, 156, 1, '#000000'); sprRect(cx, 2, 31, 156, 1, '#000000');
+            sprRect(cx, 0, 2, 1, 28, '#000000'); sprRect(cx, 159, 2, 1, 28, '#000000');
+            sprRect(cx, 1, 1, 1, 1, '#000000'); sprRect(cx, 158, 1, 1, 1, '#000000'); sprRect(cx, 1, 30, 1, 1, '#000000'); sprRect(cx, 158, 30, 1, 1, '#000000');
+            sprRect(cx, 2, 1, 156, 30, '#212121'); sprRect(cx, 1, 2, 158, 28, '#212121');
+            sprRect(cx, 2, 1, 156, 1, '#5a5a5a'); sprRect(cx, 1, 2, 1, 28, '#5a5a5a');
+            sprRect(cx, 2, 30, 156, 1, '#101010'); sprRect(cx, 158, 2, 1, 28, '#101010');
+        });
+    }
+
+    /* the item stack decorations, shared by the hotbar and every container: the
+       icon in its own layer (so the pick-up pop can squash it without squashing
+       the count), the count bottom-right in white with its shadow, and the
+       durability bar under it */
     function paintSlot(el, st) {
-        if (!st) { el.style.backgroundImage = ''; el.innerHTML = ''; el.className = el.className.replace(/ has| glint/g, ''); return; }
-        el.style.backgroundImage = 'url(' + iconURL(st.id) + ')';
+        if (!st) {
+            if (el._st !== null) {
+                el._st = null; el.style.backgroundImage = ''; el.style.removeProperty('--ic');
+                // an armour, off-hand or lapis slot shows its #555555 outline where the item would be
+                var ei = el.getAttribute && el.getAttribute('data-ei');
+                el.innerHTML = ei ? '<i class="mc-it mc-ei" style="--ic:var(--spr-' + ei + ')"></i>' : '';
+            }
+            el.className = el.className.replace(/ has| glint/g, '');
+            return;
+        }
+        var url = 'url(' + iconURL(st.id) + ')';
+        el.style.backgroundImage = url;
+        el.style.setProperty('--ic', url);
         if (el.className.indexOf(' has') < 0) el.className += ' has';
         var glint = (st.ench && Object.keys(st.ench).length) || (I[st.id] && I[st.id].glint);
         el.className = el.className.replace(/ glint/g, '') + (glint ? ' glint' : '');
-        var html = st.c > 1 ? '<span class="mc-ct">' + st.c + '</span>' : '';
+        var html = '<i class="mc-it"></i>';
+        if (st.c > 1) html += mtHTML(String(st.c), null, 'mc-ct');
         var max = itemMaxDur(st.id);
         if (st.dur != null && max != null && st.dur < max) {
-            var pc = st.dur / max;
-            html += '<span class="mc-dur"><i style="width:' + Math.round(pc * 100) + '%;background:' + (pc > 0.5 ? '#4be04b' : pc > 0.2 ? '#e0c04b' : '#e04b4b') + '"></i></span>';
+            // ItemStack.getBarWidth / getBarColor: 13 pixels at full, the hue running green to red
+            var f = Math.max(0, st.dur / max), w = Math.round(13 * f), hue = f / 3;
+            html += '<span class="mc-dur"><i style="width:calc(var(--px) * ' + w + ');background:' + hsvHex(hue, 1, 1) + '"></i></span>';
         }
+        el._st = st;
         el.innerHTML = html;
     }
+    function hsvHex(h, s, v) {   // Mth.hsvToRgb
+        var i = Math.floor(h * 6) % 6, f = h * 6 - Math.floor(h * 6), p = v * (1 - s), q = v * (1 - f * s), t = v * (1 - (1 - f) * s);
+        var rgb = [[v, t, p], [q, v, p], [p, v, t], [p, q, v], [t, p, v], [v, p, q]][i];
+        return '#' + rgb.map(function (c) { return ('0' + Math.round(c * 255).toString(16)).slice(-2); }).join('');
+    }
 
-    /* ── HUD ────────────────────────────────────────────────── */
-    function hudTile(name) { var t = TILE[name]; return 'background-position:-' + (t % 16) * 18 + 'px -' + ((t / 16) | 0) * 18 + 'px'; }
+    /* The whole HUD is placed in device pixels from GUI arithmetic, so it sits on
+       the same grid as the menus at every scale. */
+    function hudPlace(e, x, y) {
+        if (!e) return;
+        var s = RT.gs || 2, l = (x * s) + 'px', t = (y * s) + 'px';
+        if (e.style.left !== l) e.style.left = l;
+        if (e.style.top !== t) e.style.top = t;
+    }
+    function hudLayout() {
+        if (!RT || !RT.el || !RT.gs) return;
+        var el = RT.el, W = RT.gw, H = RT.gh, hx = (W >> 1) - 91, hy = H - 22;
+        hudPlace(el.querySelector('.mc-hbbar'), hx, hy);
+        hudPlace(el.querySelector('.mc-hotbar'), hx, hy);
+        hudPlace(el.querySelector('.mc-xpbar'), hx, H - 29);
+        hudPlace(el.querySelector('.mc-cross'), (W - 15) >> 1, (H - 15) >> 1);
+        paintHotbar(); paintXp(); hudTick(true);
+        chatLayout(); paintChat(); paintEffects(); toastFrame(0);
+        if (RT.f3) paintDebug();
+        if (RT.iw) iwRender(false);
+        bedLayout();
+    }
     function paintHotbar() {
         var bar = RT.el.querySelector('.mc-hotbar');
         if (!bar) return;
         var cells = bar.children;
         for (var i = 0; i < 9; i++) {
-            cells[i].className = 'mc-slot mc-hb' + (i === S.sel ? ' sel' : '') + (S.inv[i] ? ' has' : '');
+            var cls = 'mc-slot mc-hb' + (i === S.sel ? ' sel' : '') + (S.inv[i] ? ' has' : '');
+            if (cells[i].className.replace(/ glint/g, '') !== cls) cells[i].className = cls;
             paintSlot(cells[i], S.inv[i]);
         }
-        var h = held();
-        var tip = RT.el.querySelector('.mc-tip');
-        if (h && RT.tipId !== h.id) { tip.textContent = I[h.id] ? I[h.id].t : h.id; tip.className = 'mc-tip show'; RT.tipT = 2; }
-        if (!h) { tip.className = 'mc-tip'; }
-        RT.tipId = h ? h.id : null;
-    }
-    function paintVitals() {
-        var el = RT.el, i, out = '';
-        for (i = 0; i < 10; i++) {
-            var v = S.hp - i * 2;
-            out += '<i class="mc-ico" style="' + hudTile(v >= 2 ? 'h_heart' : v === 1 ? 'h_heart_half' : 'h_heart_bg') + '"></i>';
+        hudPlace(RT.el.querySelector('.mc-hbsel'), (RT.gw >> 1) - 91 - 1 + S.sel * 20, RT.gh - 23);
+        /* Gui.renderItemHotbar: with something in the off hand, its cell (29x24) at
+           (W/2 - 120, H - 23) on the side of the off hand, the item at (W/2 - 117, H - 19) */
+        var off = RT.el.querySelector('.mc-offslot'), ofr = RT.el.querySelector('.mc-hboff');
+        if (off && ofr) {
+            var shw = S.off ? '' : 'none';
+            if (off.style.display !== shw) { off.style.display = shw; ofr.style.display = shw; }
+            paintSlot(off, S.off || null);
+            hudPlace(ofr, (RT.gw >> 1) - 120, RT.gh - 23);
+            hudPlace(off, (RT.gw >> 1) - 117, RT.gh - 19);
         }
-        el.querySelector('.mc-hearts').innerHTML = out;
-        out = '';
-        for (i = 9; i >= 0; i--) {
-            var f = S.food - i * 2;
-            out += '<i class="mc-ico" style="' + hudTile(f >= 2 ? 'h_food' : f === 1 ? 'h_food_half' : 'h_food_bg') + '"></i>';
-        }
-        el.querySelector('.mc-food').innerHTML = out;
-        var air = el.querySelector('.mc-air');
-        if (S.air < 9.9) {
-            out = '';
-            for (i = 0; i < 10; i++) out += '<i class="mc-ico" style="' + hudTile('h_bubble') + ';opacity:' + (S.air > i ? 1 : 0.15) + '"></i>';
-            air.innerHTML = out; air.style.display = '';
-        } else air.style.display = 'none';
-        paintArmorBar();
+        hudTipTick(false);
     }
-    function armorPoints() { var p = 0; for (var i = 0; i < 4; i++) if (S.armor[i]) p += (I[S.armor[i].id].armor.def || 0) + (ench(S.armor[i], 'protection') * 0.5); return p; }
-    function armorTough() { var p = 0; for (var i = 0; i < 4; i++) if (S.armor[i]) p += I[S.armor[i].id].armor.tough || 0; return p; }
-    function paintArmorBar() {
-        var bar = RT.el.querySelector('.mc-armor'); if (!bar) return;
-        var pts = Math.round(armorPoints());
-        if (pts <= 0) { bar.style.display = 'none'; return; }
-        bar.style.display = ''; var out = '';
-        for (var i = 0; i < 10; i++) { var v = pts - i * 2; out += '<i class="mc-ico" style="' + hudTile(v >= 2 ? 'h_armor' : v === 1 ? 'h_armor_half' : 'h_armor_bg') + '"></i>'; }
-        bar.innerHTML = out;
+    /* Gui.renderSelectedItemName: switching to a different item (or a differently
+       named one) shows its name for 40 ticks, fully opaque until the last ten and
+       fading over those; rarity picks the colour, a custom name goes italic. The
+       line sits at H - 59, or 14 lower in creative where there are no bars. */
+    function itemRarity(st) {
+        var r = (I[st.id] && I[st.id].rarity) || 0;   // 0 common, 1 uncommon, 2 rare, 3 epic
+        if (st.ench && Object.keys(st.ench).length) r = r < 2 ? 2 : 3;
+        return r;
+    }
+    var RARITY_COL = ['#ffffff', '#ffff55', '#55ffff', '#ff55ff'];
+    function itemName(st) { return st.name || (I[st.id] ? I[st.id].t : st.id); }
+    function hudTipTick(tick) {
+        var h = held(), tip = RT.el.querySelector('.mc-tip');
+        if (!tip) return;
+        var key = h ? h.id + '|' + (h.name || '') : null;
+        if (!h) RT.tipTk = 0;
+        else if (key !== RT.tipKey) {
+            RT.tipTk = 40;
+            mtSet(tip, itemName(h), RARITY_COL[itemRarity(h)]);
+            tip.classList.toggle('it', !!h.name);
+        } else if (tick && RT.tipTk > 0) RT.tipTk--;
+        RT.tipKey = key;
+        var a = Math.min(255, Math.floor(RT.tipTk * 256 / 10));
+        tip.style.opacity = a > 0 ? (a / 255).toFixed(3) : '0';
+        if (a > 0) {
+            var w = mfWidth(tip.getAttribute('data-t') || '') + 1;
+            hudPlace(tip, (RT.gw - w) >> 1, RT.gh - 59 + (invulnerable() ? 14 : 0));
+        }
+    }
+
+    /* — hearts, armour, food, air, on the tick — */
+    /* java.util.Random, which is what Gui's LegacyRandomSource is: reseeded with
+       tickCount × 312871 before the hearts are drawn, then drawn from in the
+       game's order (hearts high to low, food right to left, empty bubbles), so
+       the jitter and the shake land on the same pixels they do in the game. */
+    var JR_MUL = 0x5DEECE66Dn, JR_MASK = (1n << 48n) - 1n;
+    function hudRand(seed) {
+        var st = (BigInt(Math.trunc(seed)) ^ JR_MUL) & JR_MASK;
+        function next(bits) { st = (st * JR_MUL + 0xBn) & JR_MASK; return Number(BigInt.asIntN(32, st >> BigInt(48 - bits))); }
+        return {
+            nextInt: function (n) {
+                if ((n & -n) === n) return Number((BigInt(n) * BigInt(next(31))) >> 31n);
+                var bits, val;
+                do { bits = next(31); val = bits % n; } while (bits - val + (n - 1) > 2147483647);
+                return val;
+            }
+        };
+    }
+    function hudIcons(box, n, list) {   // keep exactly n <i> children, then hand them to the painter
+        while (box.children.length < n) box.appendChild(document.createElement('i'));
+        while (box.children.length > n) box.removeChild(box.lastChild);
+        return box.children;
+    }
+    function hudIcon(e, x, y, layers) {
+        hudPlace(e, x, y);
+        var bg = layers.map(function (k) { return 'var(--spr-' + k + ')'; }).join(',');
+        if (e._bg !== bg) { e._bg = bg; e.style.backgroundImage = bg; }
+    }
+    function heartKind() {
+        if (effLvl('poison')) return 'p';
+        if (effLvl('wither')) return 'w';
+        if (RT.frozen) return 'fz';
+        return 'n';
+    }
+    function paintVitals() { hudTick(true); }
+    /* Gui's attack indicator in its default crosshair mode, at (W/2 - 8, H/2 + 9):
+       while the swing is recharging, the dim bar with (int)(f × 17) columns of
+       white over it; charged, and looking at something alive with a weapon
+       slower than the bare hand, the little sword instead. */
+    function atkTick() {
+        var e = RT.el.querySelector('.mc-atk');
+        if (!e) return;
+        var max = RT.atkCdMax || 0.35, f = RT.atkCd > 0 ? Math.max(0, Math.min(1, 1 - RT.atkCd / max)) : 1, show = '';
+        if (!isSpectator() && !RT.f3) {
+            if (f < 1) show = 'bar';
+            else if (max > 0.25 && !RT.panel) { var tf = entRay(); if (tf && tf.hp > 0) show = 'full'; }
+        }
+        if (e._show !== show) { e._show = show; e.className = 'mc-atk' + (show ? ' ' + show : ''); }
+        hudPlace(e, (RT.gw >> 1) - 8, (RT.gh >> 1) + 9);
+        if (show === 'bar') { var fg = e.firstChild, w = 'calc(var(--px) * ' + Math.floor(f * 17) + ')'; if (fg.style.width !== w) fg.style.width = w; }
+    }
+    function paintArmorBar() { hudTick(true); }
+    function hudTick(redraw) {
+        if (!RT || !RT.el || !RT.gs) return;
+        var el = RT.el, W = RT.gw, H = RT.gh, tk = RT.hudTk || 0;
+        if (!redraw) RT.hudTk = ++tk;
+        // Gui.renderPlayerHealth's bookkeeping: a hit sets a 20-tick blink, a heal
+        // under invulnerability a 10-tick one, and the white "lost" hearts hold
+        // the old health for a second before catching up
+        var hp = Math.max(0, Math.ceil(S.hp)), now = RT.now * 1000;
+        if (RT.hLast == null) { RT.hLast = hp; RT.hDisp = hp; RT.hLastT = now; RT.hBlink = 0; }
+        if (hp < RT.hLast && RT.iframe > 0) { RT.hLastT = now; RT.hBlink = tk + 20; }
+        else if (hp > RT.hLast && RT.iframe > 0) { RT.hLastT = now; RT.hBlink = tk + 10; }
+        if (now - RT.hLastT > 1000) { RT.hDisp = hp; RT.hLastT = now; }
+        RT.hLast = hp;
+        var blink = RT.hBlink > tk && ((RT.hBlink - tk) / 3 | 0) % 2 === 1;
+        var rnd = hudRand(tk * 312871);
+        var lx = (W >> 1) - 91, rx = (W >> 1) + 91, hy = H - 39;
+        var maxHp = Math.max(20, RT.hDisp, hp), abs = Math.ceil(RT.absorb || 0);
+        var rows = Math.ceil((maxHp + abs) / 2 / 10), rowH = Math.max(10 - (rows - 2), 3);
+        var wave = effLvl('regeneration') ? tk % Math.ceil(maxHp + 5) : -1;
+        var hc = !!S.hardcore, kind = heartKind(), sfx = hc ? '_hc' : '';
+        var nH = Math.ceil(maxHp / 2), nA = Math.ceil(abs / 2);
+        var hearts = hudIcons(el.querySelector('.mc-hearts'), nH + nA);
+        for (var l = nH + nA - 1; l >= 0; l--) {
+            var x = lx + (l % 10) * 8, y = hy - ((l / 10) | 0) * rowH;
+            if (hp + abs <= 4) y += rnd.nextInt(2);
+            if (l < nH && l === wave) y -= 2;
+            var layers = [], i2 = l * 2;
+            if (i2 < hp) layers.push('h_' + kind + sfx + (i2 + 1 === hp ? '_half' : ''));
+            if (blink && i2 < RT.hDisp) layers.push('h_bl' + sfx + (i2 + 1 === RT.hDisp ? '_half' : ''));
+            if (l >= nH) { var j2 = i2 - nH * 2; if (j2 < abs) layers.push('h_' + (kind === 'w' ? 'w' : 'a') + sfx + (j2 + 1 === abs ? '_half' : '')); }
+            layers.push(blink ? 'h_cont_bl' : 'h_cont');
+            hudIcon(hearts[l], x, y, layers);
+        }
+        // armour: ten icons over the top row of hearts, only when there is any
+        var pts = Math.round(armorPoints()), arm = el.querySelector('.mc-armor');
+        var ai = hudIcons(arm, pts > 0 ? 10 : 0);
+        for (var k = 0; k < ai.length; k++)
+            hudIcon(ai[k], lx + k * 8, hy - (rows - 1) * rowH - 10, [k * 2 + 1 < pts ? 'a_full' : k * 2 + 1 === pts ? 'a_half' : 'a_empty']);
+        // food, right to left, shaking while saturation is gone
+        var fd = Math.max(0, Math.ceil(S.food)), hun = effLvl('hunger') ? 'f_hunger_' : 'f_';
+        var fi = hudIcons(el.querySelector('.mc-food'), 10);
+        for (var j = 0; j < 10; j++) {
+            var fy = hy;
+            if ((S.sat || 0) <= 0 && tk % (fd * 3 + 1) === 0) fy += rnd.nextInt(3) - 1;
+            var fl = [hun + 'empty'];
+            if (j * 2 + 1 < fd) fl.unshift(hun + 'full'); else if (j * 2 + 1 === fd) fl.unshift(hun + 'half');
+            hudIcon(fi[j], rx - j * 8 - 9, fy, fl);
+        }
+        /* air, the 1.21.2 way: while the eyes are under or the supply is not yet
+           back, full bubbles from the right, the one being used bursting for a
+           moment, and the spent ones left as empty outlines, which wobble when
+           there is nothing left at all */
+        var air = Math.max(0, Math.min(300, Math.round((S.air == null ? 10 : S.air) * 30))), inW = !!RT.eyeWater, bubs = [];
+        if (inW || air < 300) {
+            var full = Math.ceil((air - 2) * 10 / 300), cur = Math.ceil(air * 10 / 300);
+            var empty = 10 - Math.ceil((air + (air !== 0 && inW ? 1 : 0)) * 10 / 300), popping = full !== cur;
+            for (var bn = 1; bn <= 10; bn++) {
+                var bx = rx - (bn - 1) * 8 - 9;
+                if (bn <= full) bubs.push([bx, hy - 10, 'air']);
+                else if (popping && bn === cur && inW) bubs.push([bx, hy - 10, 'air_pop']);
+                else if (bn > 10 - empty) bubs.push([bx, hy - 10 + (empty === 10 && tk % 2 === 0 ? rnd.nextInt(2) : 0), 'air_empty']);
+            }
+        }
+        var bi = hudIcons(el.querySelector('.mc-air'), bubs.length);
+        for (var b = 0; b < bubs.length; b++) hudIcon(bi[b], bubs[b][0], bubs[b][1], [bubs[b][2]]);
+        atkTick();
+        hudTipTick(!redraw);
+        actionBarTick(!redraw);
+    }
+    /* The bar fills (int)(progress × 183) pixels of its 182, and the level sits
+       over it in 0x80FF20, drawn five times: four black copies a pixel out in
+       each direction, then the green one. That outline is not a shadow, so it
+       is baked into an image rather than asked of CSS. */
+    var XP_LVL = {};
+    function xpLevelImg(n) {
+        var s = String(n);
+        if (XP_LVL[s]) return XP_LVL[s];
+        var w = mfWidth(s) + 2, cv = document.createElement('canvas');
+        cv.width = w; cv.height = MF_ROWS + 2;
+        var cx = cv.getContext('2d');
+        mfText(cx, s, 2, 1, '#000000', false); mfText(cx, s, 0, 1, '#000000', false);
+        mfText(cx, s, 1, 2, '#000000', false); mfText(cx, s, 1, 0, '#000000', false);
+        mfText(cx, s, 1, 1, '#80ff20', false);
+        XP_LVL[s] = { url: 'url(' + cv.toDataURL() + ')', w: w, h: MF_ROWS + 2 };
+        return XP_LVL[s];
     }
     function paintXp() {
         var el = RT.el, fill = el.querySelector('.mc-xpfill'), lvl = el.querySelector('.mc-xplvl');
-        if (fill) fill.style.width = Math.round(xpBarFrac() * 100) + '%';
-        if (lvl) lvl.textContent = S.xpl > 0 ? S.xpl : '';
+        if (fill) fill.style.width = 'calc(var(--px) * ' + Math.min(182, Math.floor(xpBarFrac() * 183)) + ')';
+        if (!lvl) return;
+        if (S.xpl > 0) {
+            var im = xpLevelImg(S.xpl);
+            lvl.style.display = '';
+            lvl.style.backgroundImage = im.url;
+            lvl.style.width = 'calc(var(--px) * ' + im.w + ')'; lvl.style.height = 'calc(var(--px) * ' + im.h + ')';
+            lvl.textContent = String(S.xpl);
+            // (W - font.width(s)) / 2 at H - 35, less the one-pixel outline margin
+            hudPlace(lvl, ((RT.gw - (mfWidth(String(S.xpl)) + 1)) >> 1) - 1, RT.gh - 35 - 1);
+        } else { lvl.style.display = 'none'; lvl.textContent = ''; }
     }
+    function armorPoints() { var p = 0; for (var i = 0; i < 4; i++) if (S.armor[i]) p += (I[S.armor[i].id].armor.def || 0) + (ench(S.armor[i], 'protection') * 0.5); return p; }
+    function armorTough() { var p = 0; for (var i = 0; i < 4; i++) if (S.armor[i]) p += I[S.armor[i].id].armor.tough || 0; return p; }
     /* Creative hides the four bars that only mean something in survival —
        hearts, hunger, armour, experience — and spectator drops the hotbar and
        crosshair on top of that. Done with a class rather than four display
@@ -4305,6 +5104,51 @@
         if (!RT || !RT.el) return;
         RT.el.classList.toggle('mc-nohud', invulnerable());
         RT.el.classList.toggle('mc-spect', isSpectator());
+    }
+    /* ItemStack popTime: for five ticks after a pick-up the hotbar draws that
+       item squashed to 1/(1 + t/5) of its width and (2 + t/5)/2 of its height
+       about the point (8, 12), easing back as t runs down. Done per frame with
+       the fractional tick, like the game's partialTick. */
+    /* With F3 up the crosshair is the three world axes as seen from the camera:
+       X red, Y green, Z blue, ten GUI pixels long from the centre of the screen. */
+    function cross3d() {
+        var cv = RT.el.querySelector('.mc-cross3d');
+        if (!cv) return;
+        var on = !!RT.f3 && !isSpectator() && !RT.panel && !RT.menu;
+        cv.style.display = on ? '' : 'none';
+        RT.el.classList.toggle('mc-f3', !!RT.f3);
+        if (!on) return;
+        var s = RT.gs, n = 32 * s;
+        if (cv.width !== n) { cv.width = cv.height = n; cv.style.width = cv.style.height = n + 'px'; }
+        hudPlace(cv, (RT.gw >> 1) - 16, (RT.gh >> 1) - 16);
+        var c = cv.getContext('2d'), yaw = S.yaw, p = S.pitch;
+        c.clearRect(0, 0, n, n);
+        // camera right and up, in world axes: yaw 0 faces +Z (south), positive pitch looks down
+        var rgt = [-Math.cos(yaw), 0, -Math.sin(yaw)], up = [-Math.sin(yaw) * Math.sin(p), Math.cos(p), Math.cos(yaw) * Math.sin(p)];
+        [[[1, 0, 0], '#ff0000'], [[0, 1, 0], '#00ff00'], [[0, 0, 1], '#0000ff']].forEach(function (ax) {
+            var d = ax[0], sx = d[0] * rgt[0] + d[1] * rgt[1] + d[2] * rgt[2], sy = d[0] * up[0] + d[1] * up[1] + d[2] * up[2];
+            c.strokeStyle = ax[1]; c.lineWidth = s; c.lineCap = 'butt';
+            c.beginPath(); c.moveTo(n / 2, n / 2); c.lineTo(n / 2 + sx * 10 * s, n / 2 - sy * 10 * s); c.stroke();
+        });
+    }
+    function hudFrame(dt) {
+        if (!RT || !RT.el) return;
+        toastFrame(dt);
+        cross3d();
+        if (RT.chat) paintChatInput(); else chatAlpha();
+        if (RT.panel) panelFrame(dt);
+        iwFrame();
+        if (!RT.pops || RT.paused) return;
+        var bar = RT.el.querySelector('.mc-hotbar');
+        if (!bar) return;
+        for (var i = 0; i < 10; i++) {
+            var cell = i < 9 ? bar.children[i] : RT.el.querySelector('.mc-offslot'), p = RT.pops[i];
+            if (!cell || (!(p > 0) && !cell._pop)) continue;
+            p = Math.max(0, p - dt); RT.pops[i] = p;
+            var f = p / HUD_TICK, it = cell.querySelector('.mc-it');
+            if (it) it.style.transform = f > 0 ? 'scale(' + (1 / (1 + f / 5)).toFixed(4) + ',' + ((2 + f / 5) / 2).toFixed(4) + ')' : '';
+            cell._pop = f > 0;
+        }
     }
 
     /* ── toasts + achievements ──────────────────────────────── */
@@ -4323,7 +5167,7 @@
         { id: 'farm', t: 'Time to Farm!', d: 'Till soil with a hoe' },
         { id: 'moar', t: 'MOAR Tools', d: 'Craft one of each tool type' },
         { id: 'diamonds', t: 'DIAMONDS!', d: 'Mine diamond with an iron pickaxe' },
-        { id: 'sniper', t: 'Sniper Duel', d: 'Kill a skeleton with an arrow' },
+        { id: 'sniper', t: 'Sniper Duel', d: 'Kill a skeleton with an arrow', ch: 1 },
         { id: 'sleep', t: 'Sweet Dreams', d: 'Sleep in a bed to change your respawn point' },
         { id: 'armor', t: 'Suit Up', d: 'Wear a piece of armor' },
         { id: 'enchant', t: 'Enchanter', d: 'Enchant an item at the table' },
@@ -4333,6 +5177,12 @@
         { id: 'gapple', t: 'Golden Bite', d: 'Eat a golden apple' },
         { id: 'xp30', t: 'Seasoned', d: 'Reach experience level 30' }
     ];
+    /* each advancement's toast icon, an item the game has */
+    var ACH_IC = { inventory: 'table', wood: 'log', table: 'table', pick: 'wood_pick', upgrade: 'stone_pick', furnace: 'furnace',
+        iron: 'iron', sword: 'wood_sword', hunter: 'iron_sword', cow: 'leather', bread: 'bread', farm: 'wood_hoe', moar: 'iron_pick',
+        diamonds: 'diamond', sniper: 'arrow', sleep: 'bed', armor: 'iron_chest', enchant: 'etable', anvil2: 'anvil', breed: 'wheat',
+        ender: 'ender_pearl', gapple: 'golden_apple', xp30: 'ench_book' };
+    function achIcon(a) { var ic = ACH_IC[a.id]; return ic && I[ic] ? ic : 'table'; }
     function unlock(id) {
         if (!S || S.ach[id]) return;
         var a = null;
@@ -4340,18 +5190,105 @@
         if (!a) return;   // ignore ids not in the list (keeps achN honest)
         S.ach[id] = Date.now();
         S.achN++;
-        toast('<b>Achievement Get!</b>' + a.t, true);
-        snd('ding');
+        toastPush({ title: a.ch ? 'Challenge Complete!' : 'Advancement Made!', text: a.t, icon: achIcon(a), color: a.ch ? '#ff88ff' : '#ffff00' });
     }
-    function toast(msg, ach) {
-        var wrap = RT.el.querySelector('.mc-toasts');
-        if (!wrap) return;
+    /* Toasts, the way ToastManager runs them: 160×32 each, down the top-right
+       corner a 32-pixel slot at a time, as many as the screen has room for and
+       the rest queued. Each slides in over 600 ms on a squared ease, holds for
+       five seconds, and slides out the same way. An advancement's title is
+       drawn without a shadow at (30, 7) — yellow, or light purple for a
+       challenge — with the name in white at (30, 18) and its icon at (8, 8); a
+       system toast has no icon and starts its text at 18. */
+    var TOAST_SLIDE = 0.6, TOAST_HOLD = 5;
+    function toastPush(t) {
+        if (!RT || !RT.el) return;
+        (RT.toastQ = RT.toastQ || []).push(t);
+        toastFrame(0);
+    }
+    function toast(msg) {   // a plain message: a system toast, "<b>Title</b>text" or just a title
+        var m = /^<b>(.*?)<\/b>(.*)$/.exec(String(msg));
+        toastPush({ title: m ? m[1] : String(msg), text: m ? m[2] : '' });
+    }
+    function toastEl(t) {
         var d = document.createElement('div');
-        d.className = 'mc-toast' + (ach ? ' ach' : '');
-        d.innerHTML = msg;
-        wrap.appendChild(d);
-        setTimeout(function () { d.className += ' out'; if (ach) snd('toastout'); }, 3600);   // an achievement slides out with a sound, as it slid in
-        setTimeout(function () { if (d.parentNode) d.parentNode.removeChild(d); }, 4200);
+        d.className = 'mc-toast';
+        var html = '';
+        if (t.kind === 'recipe') {   // RecipeToast: the header in dark purple at (30, 7), the line under it in black, no shadows
+            d.classList.add('mc-rtoast');
+            html = '<i class="mc-tic mc-tcat"></i><i class="mc-tic mc-tit"></i>' +
+                '<span class="mc-tl" style="left:calc(var(--px) * 30);top:calc(var(--px) * 7)">' + mtHTML('New Recipes Unlocked!', '#500050', 'ns') + '</span>' +
+                '<span class="mc-tl" style="left:calc(var(--px) * 30);top:calc(var(--px) * 18)">' + mtHTML('Check your recipe book', '#000000', 'ns') + '</span>';
+            t.w = 160;
+        } else if (t.icon) {   // AdvancementToast: icon at (8, 8), header (30, 7), name (30, 18)
+            html = '<i class="mc-tic" style="background-image:url(' + iconURL(t.icon) + ')"></i>' +
+                '<span class="mc-tl" style="left:calc(var(--px) * 30);top:calc(var(--px) * 7)">' + mtHTML(t.title, t.color || '#ffff00', 'ns') + '</span>' +
+                (t.text ? '<span class="mc-tl" style="left:calc(var(--px) * 30);top:calc(var(--px) * 18)">' + mtHTML(t.text, '#ffffff', 'ns') + '</span>' : '');
+            t.w = 160;
+        } else {   // SystemToast: title at (18, 7), or 12 alone; message lines 12 apart below it; as wide as it needs
+            var lines = t.text ? [t.text] : [];
+            html = '<span class="mc-tl" style="left:calc(var(--px) * 18);top:calc(var(--px) * ' + (lines.length ? 7 : 12) + ')">' + mtHTML(t.title, t.color || '#ffff00', 'ns') + '</span>';
+            lines.forEach(function (ln, k) { html += '<span class="mc-tl" style="left:calc(var(--px) * 18);top:calc(var(--px) * ' + (19 + 12 * k) + ')">' + mtHTML(ln, '#ffffff', 'ns') + '</span>'; });
+            var wmax = mfWidth(t.title) + 1;
+            lines.forEach(function (ln) { wmax = Math.max(wmax, mfWidth(ln) + 1); });
+            t.w = Math.max(160, wmax + 30);
+            d.style.height = 'calc(var(--px) * ' + (20 + Math.max(1, lines.length) * 12) + ')';
+        }
+        d.style.width = 'calc(var(--px) * ' + t.w + ')';
+        d.innerHTML = html;
+        return d;
+    }
+    function toastFrame(dt) {
+        var wrap = RT && RT.el && RT.el.querySelector('.mc-toasts');
+        if (!wrap || !RT.gs) return;
+        var list = RT.toasts = RT.toasts || [], slots = 5, i;
+        while (RT.toastQ && RT.toastQ.length && list.length < slots) {
+            var t = RT.toastQ.shift(), used = {};
+            for (i = 0; i < list.length; i++) used[list[i].slot] = 1;
+            for (i = 0; used[i]; i++) {}
+            t.slot = i; t.age = 0; t.el = toastEl(t);
+            wrap.appendChild(t.el);
+            list.push(t);
+            snd('ding');
+        }
+        for (var k = list.length - 1; k >= 0; k--) {
+            var o = list[k];
+            if (o.age < TOAST_SLIDE + TOAST_HOLD && o.age + dt >= TOAST_SLIDE + TOAST_HOLD) snd('toastout');
+            o.age += dt;
+            o.life = (o.life || 0) + dt;
+            if (o.kind === 'recipe') {   // what was learned takes turns, five seconds shared between them, the station small behind it
+                var rn = o.items.length, ri = Math.floor(o.life * 1000 / Math.max(1, 5000 / rn)) % rn;
+                if (o.ri !== ri || o.rgs !== RT.gs) {
+                    o.ri = ri; o.rgs = RT.gs;
+                    o.el.querySelector('.mc-tcat').style.backgroundImage = 'url(' + iconURL(o.items[ri][0]) + ')';
+                    o.el.querySelector('.mc-tit').style.backgroundImage = 'url(' + iconURL(o.items[ri][1]) + ')';
+                }
+            }
+            if (o.age >= TOAST_SLIDE * 2 + TOAST_HOLD) { o.el.remove(); list.splice(k, 1); continue; }
+            var v;
+            if (o.age < TOAST_SLIDE) { v = o.age / TOAST_SLIDE; v *= v; }
+            else if (o.age < TOAST_SLIDE + TOAST_HOLD) v = 1;
+            else { v = (o.age - TOAST_SLIDE - TOAST_HOLD) / TOAST_SLIDE; v = 1 - v * v; }
+            // the slide is sub-pixel in the game (a float translate), so it is here: device pixels, not GUI ones
+            o.el.style.left = Math.round((RT.gw - (o.w || 160) * v) * RT.gs) + 'px';
+            o.el.style.top = (o.slot * 32 * RT.gs) + 'px';
+        }
+    }
+    /* Gui.setOverlayMessage: one line centred above the hotbar, its top at
+       H - 72. Sixty ticks: fully opaque for forty, then fading over twenty. */
+    function actionBar(text) {
+        var e = RT && RT.el && RT.el.querySelector('.mc-actbar');
+        if (!e) return;
+        mtSet(e, text, '#ffffff');
+        RT.actTk = 60;
+        actionBarTick(false);
+    }
+    function actionBarTick(tick) {
+        var e = RT.el.querySelector('.mc-actbar');
+        if (!e) return;
+        if (tick && RT.actTk > 0) RT.actTk--;
+        var a = Math.min(255, Math.floor((RT.actTk || 0) * 255 / 20));
+        e.style.opacity = a > 8 ? (a / 255).toFixed(3) : '0';
+        if (a > 8) hudPlace(e, (RT.gw >> 1) - ((mfWidth(e.getAttribute('data-t') || '') + 1) >> 1), RT.gh - 72);
     }
 
     /* ── pause / death / sleep ──────────────────────────────── */
@@ -4363,112 +5300,773 @@
            the sim does. It sits above the menu and eats clicks, so Back to Game,
            Achievements and both toggles all became dead buttons. Waking on pause is
            what the real game does anyway. */
-        if (RT.sleep) { RT.sleep = 0; RT.el.querySelector('.mc-sleepov').style.display = 'none'; }
+        if (RT.sleep) leaveBed();
         closeChat(false);   // a half-typed command must not float over the menu
         sSave();
-        var p = RT.el.querySelector('.mc-pause');
-        paintOpts();
-        p.style.display = '';
-        paintAchList();
+        iwShow('pause');
     }
     /* ── Open to LAN ────────────────────────────────────────
-       The screen behind the pause menu's button: a game mode for players who
-       would join, an Allow Cheats switch, a port, Start LAN World. There is
-       nobody on this LAN, but the switch is the real game's only way to turn
-       commands on in a world created without them, so it does exactly that —
-       for the rest of the session, the way the real one does, and the button
-       greys once the world is out. */
+       The LAN World screen: a game mode for players who would join, an Allow
+       Commands switch, a port, Start LAN World. There is nobody on this LAN,
+       but the switch is the real game's only way to turn commands on in a
+       world created without them, so it does exactly that, for the rest of the
+       session, the way the real one does, and the button greys once the world
+       is out. */
     function lanOpen() {
         if (!RT || !RT.paused || RT.lan) return;
         RT.lanUI = { gm: S.gm, cheats: cheatsOn(), port: '', pick: String(1024 + ((Math.random() * (65535 - 1024)) | 0)) };   // an empty box takes the picked port
-        RT.el.querySelector('.mc-pmain').style.display = 'none';
-        RT.el.querySelector('.mc-achs').style.display = 'none';
-        var lan = RT.el.querySelector('.mc-lan');
-        lan.style.display = '';
-        lanPaint(true);
-        snd('click');
-    }
-    function lanPaint(setPort) {
-        var u = RT.lanUI;
-        if (!u) return;
-        RT.el.querySelector('.mc-langm').textContent = 'Game Mode: ' + GM_NAME[u.gm];
-        RT.el.querySelector('.mc-lanch').textContent = 'Allow Cheats: ' + (u.cheats ? 'ON' : 'OFF');
-        var pin = RT.el.querySelector('.mc-lanport');
-        if (setPort) { pin.value = u.port; pin.placeholder = u.pick; }
-        var ok = lanPortOk(u.port);
-        RT.el.querySelector('.mc-lanmsg').textContent = ok ? '' : 'Not a valid port. Leave the edit box empty or enter a number between 1024 and 65535.';
-        RT.el.querySelector('.mc-lanstart').disabled = !ok;
+        iwShow('lan');
     }
     function lanPortOk(p) { p = String(p).trim(); return p === '' || (/^\d{4,5}$/.test(p) && +p >= 1024 && +p <= 65535); }
     function lanClose() {
         if (!RT || !RT.el) return;
         RT.lanUI = null;
-        RT.el.querySelector('.mc-lan').style.display = 'none';
-        RT.el.querySelector('.mc-pmain').style.display = '';
+        if (RT.paused) iwShow('pause');
         RT.el.focus();
     }
     function lanStart() {
         var u = RT && RT.lanUI;
-        if (!u || !lanPortOk(u.port)) { if (u) lanPaint(false); return; }
+        if (!u || !lanPortOk(u.port)) { if (u) iwRender(false); return; }
         RT.lan = { gm: u.gm, cheats: !!u.cheats, port: +(String(u.port).trim() || u.pick) };
-        lanClose();
-        RT.el.querySelector('.mc-lanbtn').disabled = true;   // the world is out; the real button greys the same way
+        RT.lanUI = null;
         chatSay('Local game hosted on port ' + RT.lan.port);
-        snd('click');
         hidePause();
         lockCursor();
     }
     function hidePause() {
         RT.paused = false;
-        if (RT.lanUI) lanClose();
-        RT.el.querySelector('.mc-pause').style.display = 'none';
-        RT.el.querySelector('.mc-achs').style.display = 'none';
+        RT.lanUI = null;
+        iwHide();
         RT.lastT = 0;   // don't count paused time as a frame
         RT.el.focus();  // the clicked button just vanished with the menu — keys must land on the game root
     }
-    function paintAchList() {
-        var el = RT.el.querySelector('.mc-achs .mc-achrows'), out = '';
-        for (var i = 0; i < ACH.length; i++) {
-            var got = !!S.ach[ACH[i].id];
-            out += '<div class="mc-achrow' + (got ? ' got' : '') + '"><b>' + ACH[i].t + '</b><span>' + ACH[i].d + '</span></div>';
-        }
-        el.innerHTML = out;
-        RT.el.querySelector('.mc-achn').textContent = S.achN + ' / ' + ACH.length;
-    }
     function showDeath() {
-        var d = RT.el.querySelector('.mc-death');
-        d.querySelector('.mc-dscore').textContent = 'Score: ' + (S.achN * 100 + ((S.hrs * 60) | 0));
-        d.style.display = '';
+        unlockCursor();
+        iwShow('death', { msg: deathMsg(), score: S.score || 0 });
     }
-    function hideDeath() { RT.el.querySelector('.mc-death').style.display = 'none'; RT.el.focus(); }
+    function hideDeath() { iwHide(); RT.el.focus(); }
+    /* InBedChatScreen: in bed the pointer is free and "Leave Bed" waits at
+       (W/2 - 100, H - 40); taking it, or Escape, gets you up with the night
+       still dark, and the overlay goes with you */
+    function leaveBed() {
+        RT.sleep = 0; RT.woke = 0;
+        var ov = RT.el.querySelector('.mc-sleepov'); if (ov) ov.style.display = 'none';
+        var b = RT.el.querySelector('.mc-bed'); if (b) b.style.display = 'none';
+        RT.el.focus();
+    }
+    function bedLayout() {
+        var b = RT.el.querySelector('.mc-bed');
+        if (!b) return;
+        var on = !!RT.sleep && !RT.woke && !RT.paused && !RT.dead;
+        if (on && b.style.display === 'none') {
+            b.innerHTML = iwBtn('mc-leavebed', 'leave', (RT.gw >> 1) - 100, RT.gh - 40, 200, 'Leave Bed');
+            b._W = RT.gw; b._H = RT.gh;
+        } else if (on && (b._W !== RT.gw || b._H !== RT.gh)) {
+            b.innerHTML = iwBtn('mc-leavebed', 'leave', (RT.gw >> 1) - 100, RT.gh - 40, 200, 'Leave Bed');
+            b._W = RT.gw; b._H = RT.gh;
+        }
+        b.style.display = on ? '' : 'none';
+    }
+    /* ── in-world screens ────────────────────────────────────────
+       The Game Menu, the screens behind its buttons, the death screen and its
+       confirmation: Screens over the world, laid out on the GUI grid where the
+       game lays them out, their widgets the game's 20-pixel buttons. Each is a
+       real <button> wearing the widget sprite, so Tab, Enter, Space and screen
+       readers work the way the game's keyboard navigation does. Under the Game
+       Menu and its sub-screens the world and the HUD are blurred, the game's
+       Menu Background Blur of 5 (three box passes of radius 5, about a
+       5.5-pixel Gaussian on the screen), beneath the in-world menu background;
+       the death screens keep the world sharp under their red gradient. */
+    var IW_SCR = {};
+    function iwAt(x, y, w, h) { return pAt(x, y) + (w ? ';width:calc(var(--px) * ' + w + ')' : '') + (h ? ';height:calc(var(--px) * ' + h + ')' : ''); }
+    function iwText(t, x, y, col, mcls) { return '<span class="mc-iwt" style="' + pAt(x, y) + '">' + mtHTML(t, col || '#ffffff', mcls) + '</span>'; }
+    // drawCenteredString: x = W/2 - width/2, both whole pixels
+    function iwCenter(t, W, y, col) { return iwText(t, (W >> 1) - ((mfWidth(t) + 1) >> 1), y, col); }
+    function iwLabel(label, w, off) {
+        var tw = mfWidth(label) + 1;
+        return '<span class="mc-wbl" style="left:calc(var(--px) * ' + ((w >> 1) - (tw >> 1)) + ')">' + mtHTML(label, off ? '#a0a0a0' : '#ffffff') + '</span>';
+    }
+    function iwBtn(cls, act, x, y, w, label, off) {
+        return '<button type="button" class="mc-wb' + (cls ? ' ' + cls : '') + '" data-act="' + act + '" data-w="' + w + '"' + (off ? ' disabled' : '') +
+            ' style="' + iwAt(x, y, w) + '">' + iwLabel(label, w, off) + '</button>';
+    }
+    function iwIcon(cls, act, x, y, icon, name, off) {
+        return '<button type="button" class="mc-wb mc-wbi' + (cls ? ' ' + cls : '') + '" data-act="' + act + '" data-tip="' + escHtml(name) + '" aria-label="' + escHtml(name) + '"' +
+            (off ? ' disabled' : '') + ' style="' + iwAt(x, y, 20) + '"><i style="background-image:var(--spr-' + icon + ')"></i></button>';
+    }
+    function iwSetBtn(b, label, off) {   // a button whose label or state changed, updated in place so it keeps focus
+        if (!b) return;
+        var w = +b.getAttribute('data-w') || 200, html = iwLabel(label, w, off);
+        if (b._html !== html) { b._html = html; b.innerHTML = html; }
+        if (b.disabled !== !!off) {
+            var had = document.activeElement === b;
+            b.disabled = !!off;
+            if (had && off) RT.el.focus();
+        }
+    }
+    function iwShow(scr, d) {
+        if (!IW_SCR[scr]) return;
+        RT.iw = { scr: scr, t0: RT.now || 0, live: false, d: d || {} };
+        iwRender(true);
+    }
+    function iwHide() {
+        RT.iw = null;
+        ['.mc-pause', '.mc-death'].forEach(function (q) { var h = RT.el.querySelector(q); if (h) h.style.display = 'none'; });
+        RT.el.classList.remove('mc-blur');
+    }
+    function iwRender(full) {
+        var iw = RT.iw;
+        if (!iw || !RT.gs) return;
+        var def = IW_SCR[iw.scr], host = RT.el.querySelector(def.host === 'death' ? '.mc-death' : '.mc-pause');
+        var other = RT.el.querySelector(def.host === 'death' ? '.mc-pause' : '.mc-death');
+        if (other) other.style.display = 'none';
+        host.style.display = '';
+        RT.el.classList.toggle('mc-blur', def.host !== 'death');
+        RT.el.style.setProperty('--mblur', (5.5 / (window.devicePixelRatio || 1)).toFixed(2) + 'px');
+        var layers = host.querySelectorAll('.mc-iwl'), layer = null;
+        for (var i = 0; i < layers.length; i++) {
+            var mine = layers[i].classList.contains(def.layer);
+            layers[i].style.display = mine ? '' : 'none';
+            if (mine) layer = layers[i];
+        }
+        if (full || layer._scr !== iw.scr || layer._W !== RT.gw || layer._H !== RT.gh) {
+            var act = document.activeElement, keep = act && layer.contains(act) ? act.getAttribute('data-act') : null;
+            layer._scr = iw.scr; layer._W = RT.gw; layer._H = RT.gh;
+            layer.innerHTML = def.html(RT.gw, RT.gh, iw);
+            if (def.wire) def.wire(layer, iw);
+            if (keep) { var back = layer.querySelector('[data-act="' + keep + '"]'); if (back && !back.disabled) back.focus(); }
+            tipRender(null, 0, 0, host.querySelector('.mc-iwtip'));
+        }
+        if (def.update) def.update(layer, iw);
+    }
+    /* per frame: the death screens' one-second lock, the text boxes' cursors */
+    function iwFrame() {
+        var iw = RT.iw;
+        if (!iw) return;
+        var def = IW_SCR[iw.scr];
+        if (def.delay && !iw.live && (RT.now || 0) - iw.t0 >= 1) { iw.live = true; iwRender(false); }   // 20 ticks
+        if (def.frame) def.frame(iw);
+    }
+    /* the widgets' shared plumbing, wired once on each host: a press plays the
+       click (never on a greyed widget), a click acts, a hovered icon button names
+       itself in a tooltip, and Escape is the screen's own */
+    function iwWire(host) {
+        host.addEventListener('mousedown', function (e) {
+            var b = e.target.closest && e.target.closest('.mc-wb');
+            if (b && !b.disabled && e.button === 0) { audioInit(); snd('click'); }
+            if (!(e.target.closest && e.target.closest('input'))) e.preventDefault();   // a press must not park focus on the button
+            e.stopPropagation();
+        });
+        host.addEventListener('click', function (e) {
+            var b = e.target.closest && e.target.closest('.mc-wb');
+            if (!b || b.disabled || !RT.iw) return;
+            if (!e.detail) { audioInit(); snd('click'); }   // Enter or Space: no press came first
+            var def = IW_SCR[RT.iw.scr];
+            if (def.act) def.act(b.getAttribute('data-act'), b);
+            e.stopPropagation();
+        });
+        host.addEventListener('mousemove', function (e) {
+            var b = e.target.closest && e.target.closest('[data-tip]'), tip = host.querySelector('.mc-iwtip');
+            var lines = null;
+            if (b) lines = b.getAttribute('data-tip').split('\n').map(function (t) { return { t: t }; });
+            tipRender(lines, e.clientX, e.clientY, tip);
+        });
+        host.addEventListener('mouseleave', function () { tipRender(null, 0, 0, host.querySelector('.mc-iwtip')); });
+        host.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') {
+                e.preventDefault(); e.stopPropagation();
+                var def = RT.iw && IW_SCR[RT.iw.scr];
+                if (def && def.esc) def.esc();
+                return;
+            }
+            e.stopPropagation();   // Tab, Enter, Space and typing belong to the focused widget
+        });
+        host.addEventListener('keyup', function (e) { e.stopPropagation(); });
+    }
+
+    /* ── the Game Menu ──
+       PauseScreen as 26.2 builds it: a 212x166 grid at ((W - 212) / 2,
+       (H - 166) / 4) of 204-wide rows and 98-wide halves with 8 between them,
+       its first row 50 down; the title 40 from the top. Report Bugs and Give
+       Feedback open their links; this world's only other players would come
+       over LAN, so Friends is where the LAN World screen lives; Player
+       Reporting is greyed with nobody else here. */
+    IW_SCR.pause = {
+        host: 'pause', layer: 'mc-pmain',
+        html: function (W, H) {
+            var x0 = ((W - 212) * 0.5) | 0, y0 = ((H - 166) * 0.25) | 0;
+            return iwCenter('Game Menu', W, 40) +
+                iwBtn('mc-resume', 'resume', x0 + 4, y0 + 50, 204, 'Back to Game') +
+                iwBtn('mc-advbtn', 'adv', x0 + 4, y0 + 74, 98, 'Advancements') +
+                iwBtn('mc-statbtn', 'stats', x0 + 110, y0 + 74, 98, 'Statistics') +
+                iwIcon('mc-bugbtn', 'bugs', x0 + 60, y0 + 98, 'ic_bug', 'Report Bugs') +
+                iwIcon('mc-fbbtn', 'feedback', x0 + 84, y0 + 98, 'ic_feedback', 'Give Feedback') +
+                iwIcon('mc-lanbtn', 'lan', x0 + 108, y0 + 98, 'ic_friends', 'Friends', !!RT.lan) +
+                iwIcon('mc-repbtn', 'report', x0 + 132, y0 + 98, 'ic_report', 'Player Reporting', true) +
+                iwBtn('mc-optbtn', 'options', x0 + 4, y0 + 122, 204, 'Options...') +
+                iwBtn('mc-totitle', 'quit', x0 + 4, y0 + 146, 204, 'Save and Quit to Title');
+        },
+        update: function (layer) { var b = layer.querySelector('.mc-lanbtn'); if (b) b.disabled = !!RT.lan; },
+        act: function (a) {
+            if (a === 'resume') { hidePause(); lockCursor(); }
+            else if (a === 'quit') mnToTitle();
+            else if (a === 'lan') lanOpen();
+            else if (a === 'options') iwOptions();
+            else if (a === 'bugs') iwShow('link', { url: 'https://aka.ms/snapshotbugs?ref=game' });
+            else if (a === 'feedback') iwShow('link', { url: 'https://aka.ms/javafeedback?ref=game' });
+            else if (a === 'adv' || a === 'stats') iwShow(a);
+        },
+        esc: function () { hidePause(); lockCursor(); }
+    };
+    /* ConfirmLinkScreen for a trusted link: the question, the address under it,
+       and Open in Browser, Copy to Clipboard and Cancel, 100 wide and 5 apart */
+    IW_SCR.link = {
+        host: 'pause', layer: 'mc-plink',
+        html: function (W, H, iw) {
+            var tt = Math.max(10, Math.min(80, ((H - 9) >> 1) - 29)), by = Math.max(((H / 6) | 0) + 96, Math.min(H - 24, tt + 20 + 9 + 20)), cx = W >> 1;
+            return iwCenter('Do you want to open this link or copy it to your clipboard?', W, tt) + iwCenter(iw.d.url, W, tt + 20) +
+                iwBtn('', 'open', cx - 155, by, 100, 'Open in Browser') + iwBtn('', 'copy', cx - 50, by, 100, 'Copy to Clipboard') + iwBtn('', 'cancel', cx + 55, by, 100, 'Cancel');
+        },
+        act: function (a) {
+            var url = RT.iw.d.url;
+            if (a === 'open') { try { window.open(url, '_blank', 'noopener'); } catch (e) {} }
+            if (a === 'copy') { try { navigator.clipboard.writeText(url); } catch (e) {} }
+            iwShow('pause');
+        },
+        esc: function () { iwShow('pause'); }
+    };
+    /* ShareToLanScreen: the title at 50, "Settings for Other Players" at 82,
+       Game Mode and Allow Commands side by side at 100, "Port Number" at 142 over
+       a 150-wide box at 160 whose hint is the port it picked, and Start LAN World
+       and Cancel along the bottom. A bad port turns the box's text red, puts the
+       reason in its tooltip and greys Start. */
+    var LAN_GM = [0, 3, 1, 2];   // the cycle's order: Survival, Spectator, Creative, Adventure
+    var LAN_BAD = 'Not a valid port.\nLeave the edit box empty or enter a number between 1024 and 65535.';
+    IW_SCR.lan = {
+        host: 'pause', layer: 'mc-lan',
+        html: function (W, H) {
+            var u = RT.lanUI, cx = W >> 1;
+            return iwCenter('LAN World', W, 50) + iwCenter('Settings for Other Players', W, 82) +
+                iwBtn('mc-langm', 'gm', cx - 155, 100, 150, 'Game Mode: ' + GM_NAME[u.gm]) +
+                iwBtn('mc-lanch', 'ch', cx + 5, 100, 150, 'Allow Commands: ' + (u.cheats ? 'ON' : 'OFF')) +
+                iwCenter('Port Number', W, 142) +
+                '<div class="mc-iwfield" style="' + iwAt(cx - 75, 160, 150, 20) + '"><input class="mc-lanport" maxlength="5" inputmode="numeric" spellcheck="false" autocomplete="off" aria-label="Port Number">' +
+                '<div class="mc-iwmir mc-fmir"></div></div><span class="mc-lanmsg" hidden></span>' +
+                iwBtn('mc-lanstart', 'start', cx - 155, H - 28, 150, 'Start LAN World') +
+                iwBtn('mc-lancancel', 'cancel', cx + 5, H - 28, 150, 'Cancel');
+        },
+        wire: function (layer) {
+            var pin = layer.querySelector('.mc-lanport'), u = RT.lanUI;
+            pin.value = u.port; pin.placeholder = u.pick;
+            pin.addEventListener('input', function () { if (RT.lanUI) { RT.lanUI.port = pin.value; iwRender(false); } });
+            pin.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); lanStart(); } });
+            pin.addEventListener('focus', function () { pin._ft = performance.now(); });
+        },
+        update: function (layer) {
+            var u = RT.lanUI, ok = lanPortOk(u.port), box = layer.querySelector('.mc-iwfield');
+            iwSetBtn(layer.querySelector('.mc-langm'), 'Game Mode: ' + GM_NAME[u.gm]);
+            iwSetBtn(layer.querySelector('.mc-lanch'), 'Allow Commands: ' + (u.cheats ? 'ON' : 'OFF'));
+            iwSetBtn(layer.querySelector('.mc-lanstart'), 'Start LAN World', !ok);
+            layer.querySelector('.mc-lanmsg').textContent = ok ? '' : LAN_BAD;
+            if (ok) box.removeAttribute('data-tip'); else box.setAttribute('data-tip', LAN_BAD);
+            IW_SCR.lan.frame(RT.iw);
+        },
+        frame: function () {
+            var layer = RT.el.querySelector('.mc-pause .mc-lan'), pin = layer && layer.querySelector('.mc-lanport');
+            if (!pin || !RT.lanUI) return;
+            layer.querySelector('.mc-iwfield').classList.toggle('on', document.activeElement === pin);
+            paintFieldMirror(pin, layer.querySelector('.mc-iwmir'), lanPortOk(RT.lanUI.port) ? '#e0e0e0' : '#df5050', 142, RT.lanUI.pick);
+        },
+        act: function (a) {
+            var u = RT.lanUI;
+            if (a === 'gm') { u.gm = LAN_GM[(LAN_GM.indexOf(u.gm) + 1) % 4]; iwRender(false); }
+            else if (a === 'ch') { u.cheats = !u.cheats; iwRender(false); }
+            else if (a === 'start') lanStart();
+            else if (a === 'cancel') lanClose();
+        },
+        esc: function () { lanClose(); }
+    };
+    /* ── the death screen ──
+       DeathScreen: the world stays sharp behind a gradient from 0x60500000 at
+       the top to 0xA0803030 at the bottom; "You Died!" at twice the size, centred
+       at y 60; the cause at 85; "Score: " and the score in yellow at 100; Respawn
+       and Title Screen at H/4 + 72 and + 96, both dead for the first twenty ticks.
+       Escape does nothing. */
+    IW_SCR.death = {
+        host: 'death', layer: 'mc-dmain', delay: true,
+        html: function (W, H, iw) {
+            var t = 'You Died!', x2 = ((W >> 1) >> 1) - ((mfWidth(t) + 1) >> 1);
+            var sc = 'Score: ', n = String(iw.d.score || 0), sw = mfWidth(sc + n) + 1, sx = (W >> 1) - (sw >> 1);
+            return iwText(t, x2 * 2, 60, '#ffffff', 'x2') + iwCenter(iw.d.msg || '', W, 85) +
+                '<span class="mc-dscore">' + iwText(sc, sx, 100, '#ffffff') + iwText(n, sx + mfWidth(sc) + 1, 100, '#ffff55') + '</span>' +
+                iwBtn('mc-respawn', 'respawn', (W >> 1) - 100, (H >> 2) + 72, 200, 'Respawn', true) +
+                iwBtn('mc-dtitle', 'title', (W >> 1) - 100, (H >> 2) + 96, 200, 'Title Screen', true);
+        },
+        update: function (layer, iw) {
+            iwSetBtn(layer.querySelector('.mc-respawn'), 'Respawn', !iw.live);
+            iwSetBtn(layer.querySelector('.mc-dtitle'), 'Title Screen', !iw.live);
+        },
+        act: function (a) {
+            if (a === 'respawn') { respawn(); lockCursor(); }
+            else if (a === 'title') iwShow('dquit', RT.iw.d);
+        }
+    };
+    /* its ConfirmScreen, on the same red: "Are you sure you want to quit?" with
+       Title Screen and Respawn, and the same twenty-tick lock */
+    IW_SCR.dquit = {
+        host: 'death', layer: 'mc-dquit', delay: true,
+        html: function (W, H) {
+            var tt = Math.max(10, Math.min(80, (H >> 1) - 29)), by = Math.max(((H / 6) | 0) + 96, Math.min(H - 24, tt + 40));
+            return iwCenter('Are you sure you want to quit?', W, tt) +
+                iwBtn('mc-dqtitle', 'title', (W >> 1) - 155, by, 150, 'Title Screen', true) +
+                iwBtn('mc-dqrespawn', 'respawn', (W >> 1) + 5, by, 150, 'Respawn', true);
+        },
+        update: function (layer, iw) {
+            iwSetBtn(layer.querySelector('.mc-dqtitle'), 'Title Screen', !iw.live);
+            iwSetBtn(layer.querySelector('.mc-dqrespawn'), 'Respawn', !iw.live);
+        },
+        act: function (a) {
+            if (a === 'respawn') { respawn(); lockCursor(); }
+            else if (a === 'title') mnToTitle();
+        }
+    };
+    /* ── Advancements ──────────────────────────────────────────────
+       AdvancementsScreen: "Advancements" over a 252x140 window at
+       ((W - 252) / 2, (H - 140) / 2), a single tab, so no tab strip and the
+       window titled with the tab's root, "Minecraft". Its 234x113 view shows
+       the tree on tiled stone: every node 28 across and 27 down a step, joined
+       by the game's white lines on black, a gold frame once earned and grey
+       before; a node shows once it is done, or its parent or grandparent is,
+       and so does everything on the way to it. Drag or scroll to move about.
+       Hovering darkens the view and draws the node's bar, blue or gold, with
+       its title and, under it, the description in the frame's colour. */
+    var ADV_PARENT = { inventory: 'root', wood: 'inventory', table: 'wood', pick: 'table', upgrade: 'pick', furnace: 'upgrade', iron: 'furnace',
+        diamonds: 'iron', enchant: 'diamonds', xp30: 'enchant', armor: 'iron', anvil2: 'iron', moar: 'pick', farm: 'table', bread: 'farm',
+        gapple: 'bread', sword: 'table', hunter: 'sword', sniper: 'hunter', ender: 'hunter', cow: 'sword', breed: 'cow', sleep: 'root' };
+    var ADV_KIND = { sniper: 'challenge', diamonds: 'goal', xp30: 'goal' };
+    var ADV_ROOT = { id: 'root', t: 'Minecraft', d: 'The heart and story of the game', ic: 'grass_block' };
+    function advTree() {
+        var all = [ADV_ROOT].concat(ACH), by = {}, kids = {};
+        all.forEach(function (a) { by[a.id] = a; if (a.id !== 'root') (kids[ADV_PARENT[a.id] || 'root'] = kids[ADV_PARENT[a.id] || 'root'] || []).push(a.id); });
+        function done(id) { return id === 'root' ? S.achN > 0 : !!S.ach[id]; }
+        // positions for the whole tree: a leaf a row, a parent midway down its children
+        var pos = {}, row = 0;
+        (function place(id, d) {
+            var ch = kids[id] || [];
+            if (!ch.length) { pos[id] = { x: d * 28, y: row++ * 27 }; return; }
+            ch.forEach(function (c) { place(c, d + 1); });
+            pos[id] = { x: d * 28, y: Math.floor((pos[ch[0]].y + pos[ch[ch.length - 1]].y) / 2) };
+        })('root', 0);
+        // AdvancementVisibilityEvaluator: done, or a done parent or grandparent, or a visible descendant
+        var vis = {};
+        (function visit(id, p1, p2) {
+            var any = false;
+            (kids[id] || []).forEach(function (c) { if (visit(c, done(id), p1)) any = true; });
+            return (vis[id] = done(id) || p1 || p2 || any);
+        })('root', false, false);
+        var nodes = [], b = { x0: 1e9, x1: -1e9, y0: 1e9, y1: -1e9 };
+        all.forEach(function (a) {
+            if (!vis[a.id]) return;
+            var p = pos[a.id], n = { id: a.id, a: a, x: p.x, y: p.y, done: done(a.id), kind: ADV_KIND[a.id] || 'task', parent: a.id === 'root' ? null : ADV_PARENT[a.id] || 'root' };
+            nodes.push(n);
+            b.x0 = Math.min(b.x0, n.x); b.x1 = Math.max(b.x1, n.x + 28); b.y0 = Math.min(b.y0, n.y); b.y1 = Math.max(b.y1, n.y + 27);
+        });
+        return { nodes: nodes, by: nodes.reduce(function (m, n) { m[n.id] = n; return m; }, {}), b: b, empty: S.achN === 0 };
+    }
+    function advLine(x0, x1, y, col) {   // hLine, both ends included
+        var a = Math.min(x0, x1), w = Math.abs(x1 - x0) + 1;
+        return '<i style="left:calc(var(--px) * ' + a + ');top:calc(var(--px) * ' + y + ');width:calc(var(--px) * ' + w + ');height:var(--px);background:' + col + '"></i>';
+    }
+    function advVLine(x, y0, y1, col) {   // vLine: both ends left out
+        var a = Math.min(y0, y1) + 1, h = Math.abs(y1 - y0) - 1;
+        return h > 0 ? '<i style="left:calc(var(--px) * ' + x + ');top:calc(var(--px) * ' + a + ');width:var(--px);height:calc(var(--px) * ' + h + ');background:' + col + '"></i>' : '';
+    }
+    function advContent(T) {
+        var html = '', pass;
+        // AdvancementWidget.drawConnectivity: the black shadow pass under the white one
+        for (pass = 0; pass < 2; pass++) T.nodes.forEach(function (n) {
+            var P = n.parent && T.by[n.parent];
+            if (!P) return;
+            var i = P.x + 13, j = P.x + 30, k = P.y + 13, l = n.x + 13, i1 = n.y + 13;
+            if (!pass) {
+                html += advLine(j, i, k - 1, '#000') + advLine(j + 1, i, k, '#000') + advLine(j, i, k + 1, '#000') +
+                    advLine(l, j - 1, i1 - 1, '#000') + advLine(l, j - 1, i1, '#000') + advLine(l, j - 1, i1 + 1, '#000') +
+                    advVLine(j - 1, i1, k, '#000') + advVLine(j + 1, i1, k, '#000');
+            } else html += advLine(j, i, k, '#fff') + advLine(l, j, i1, '#fff') + advVLine(j, i1, k, '#fff');
+        });
+        T.nodes.forEach(function (n) {
+            html += '<i class="mc-advf" style="' + pAt(n.x + 3, n.y) + ';background-image:var(--spr-adv_' + n.kind + (n.done ? '_o' : '_u') + ')"></i>' +
+                '<i class="mc-advi" style="' + pAt(n.x + 8, n.y + 5) + ';background-image:url(' + iconURL(n.a.ic || achIcon(n.a)) + ')"></i>';
+        });
+        return html;
+    }
+    // AdvancementWidget's width and description lines: the title plus 29, the description split to fit round that
+    function advMeasure(n) {
+        if (n.w) return;
+        var base = 29 + mfWidth(n.a.t) + 1, best = null, bd = 1e9;
+        [0, 10, -10, 25, -25].some(function (o) {
+            var ls = mfWrap(n.a.d, base - o), mw = ls.reduce(function (m, s) { return Math.max(m, mfWidth(s) + 1); }, 0), dd = Math.abs(mw - base);
+            if (dd < bd) { bd = dd; best = ls; }
+            return dd <= 10;
+        });
+        n.lines = best;
+        n.w = best.reduce(function (m, s) { return Math.max(m, mfWidth(s) + 1); }, base) + 3 + 5;
+    }
+    function advHover(A, n) {
+        var box = RT.el.querySelector('.mc-advs .mc-advhov');
+        if (!box) return;
+        if (!n) { if (box._id) { box._id = null; box.innerHTML = ''; } return; }
+        var key = n.id + '|' + A.sx + '|' + A.sy;
+        if (box._id === key) return;
+        box._id = key;
+        advMeasure(n);
+        var sx = Math.floor(A.sx), sy = Math.floor(A.sy);
+        var ox = A.wx + 9, oy = A.wy + 18, x = sx + n.x, l = sy + n.y, w = n.w, nl = n.lines.length;
+        var right = A.wx + x + w + 26 >= RT.gw, low = 113 - sy - n.y - 26 <= 6 + nl * 9;
+        var i1 = right ? x - w + 26 + 6 : x, j1 = 32 + nl * 9, half = w >> 1, t = n.done ? 'o' : 'u';
+        var html = '';
+        if (nl) html += '<i class="mc-advdesc" style="' + iwAt(ox + i1, oy + (low ? l + 26 - j1 : l), w, j1) + '"></i>';
+        html += '<i class="mc-advbar" style="' + iwAt(ox + i1, oy + l, half, 26) + ';background-image:var(--spr-adv_bar_' + t + ')"></i>' +
+            '<i class="mc-advbar" style="' + iwAt(ox + i1 + half, oy + l, w - half, 26) + ';background-image:var(--spr-adv_bar_' + t + ');background-position:right 0 top 0"></i>' +
+            '<i class="mc-advf" style="' + pAt(ox + x + 3, oy + l) + ';background-image:var(--spr-adv_' + n.kind + '_' + t + ')"></i>' +
+            '<i class="mc-advi" style="' + pAt(ox + x + 8, oy + l + 5) + ';background-image:url(' + iconURL(n.a.ic || achIcon(n.a)) + ')"></i>' +
+            iwText(n.a.t, right ? ox + i1 + 5 : ox + x + 32, oy + l + 9, '#ffffff');
+        var dc = n.kind === 'challenge' ? '#aa00aa' : '#55ff55';
+        n.lines.forEach(function (s, k) { html += iwText(s, ox + i1 + 5, oy + (low ? l + 26 - j1 + 7 + k * 9 : l + 9 + 17 + k * 9), dc, 'ns'); });
+        box.innerHTML = html;
+    }
+    IW_SCR.adv = {
+        host: 'pause', layer: 'mc-advs',
+        html: function (W, H, iw) {
+            var A = iw.adv = iw.adv || {}, T = A.T = advTree();
+            A.wx = (W - 252) >> 1; A.wy = (H - 140) >> 1;
+            if (A.sx == null) { A.sx = Math.floor(117 - (T.b.x1 + T.b.x0) / 2); A.sy = Math.floor(56 - (T.b.y1 + T.b.y0) / 2); A.fade = 0; }
+            var view = T.empty
+                ? '<div class="mc-advview empty" style="' + iwAt(A.wx + 9, A.wy + 18, 234, 113) + '"></div>' +
+                  iwCenter("There doesn't seem to be anything here...", 2 * (A.wx + 9 + 117), A.wy + 18 + 56 - 4) + iwCenter(':(', 2 * (A.wx + 9 + 117), A.wy + 18 + 113 - 9)
+                : '<div class="mc-advview" style="' + iwAt(A.wx + 9, A.wy + 18, 234, 113) + '"><div class="mc-advc">' + advContent(T) + '</div><i class="mc-advfade"></i></div>';
+            return iwCenter('Advancements', W, 12) + view +
+                '<i class="mc-advwin" style="' + iwAt(A.wx, A.wy, 252, 140) + '"></i>' +
+                iwText(T.empty ? 'Advancements' : 'Minecraft', A.wx + 8, A.wy + 6, '#404040', 'ns') +
+                '<div class="mc-advhov"></div>' +
+                iwBtn('mc-advdone', 'done', (W >> 1) - 100, H - 27, 200, 'Done');
+        },
+        wire: function (layer, iw) {
+            var view = layer.querySelector('.mc-advview'), A = iw.adv;
+            if (!view || A.T.empty) return;
+            var drag = null;
+            view.style.backgroundImage = 'url(' + advStone() + ')';
+            function scrollBy(dx, dy) {
+                var T = A.T;
+                if (T.b.x1 - T.b.x0 > 234) A.sx = Math.max(-(T.b.x1 - 234), Math.min(0, A.sx + dx));
+                if (T.b.y1 - T.b.y0 > 113) A.sy = Math.max(-(T.b.y1 - 113), Math.min(0, A.sy + dy));
+                IW_SCR.adv.place(layer, iw);
+            }
+            view.addEventListener('mousedown', function (e) { if (e.button === 0) drag = { x: e.clientX, y: e.clientY }; });
+            if (layer._mv) window.removeEventListener('mousemove', layer._mv);
+            window.addEventListener('mousemove', layer._mv = function mv(e) {
+                if (!RT || !RT.iw || RT.iw !== iw) { window.removeEventListener('mousemove', mv); layer._mv = null; return; }
+                if (drag && (e.buttons & 1)) { scrollBy((e.clientX - drag.x) / RT.gs, (e.clientY - drag.y) / RT.gs); drag = { x: e.clientX, y: e.clientY }; }
+                else drag = null;
+                var r = RT.el.getBoundingClientRect(), mx = (e.clientX - r.left) / RT.gs - A.wx - 9, my = (e.clientY - r.top) / RT.gs - A.wy - 18, hit = null;
+                if (mx > 0 && mx < 234 && my > 0 && my < 113 && !drag) A.T.nodes.forEach(function (n) {
+                    var nx = Math.floor(A.sx) + n.x, ny = Math.floor(A.sy) + n.y;
+                    if (mx >= nx && mx <= nx + 26 && my >= ny && my <= ny + 26) hit = n;
+                });
+                A.hover = hit;
+                advHover(A, hit);
+            });
+            view.addEventListener('wheel', function (e) { scrollBy(-e.deltaX / 100 * 16, -e.deltaY / 100 * 16); e.preventDefault(); }, { passive: false });
+            IW_SCR.adv.place(layer, iw);
+        },
+        place: function (layer, iw) {
+            var c = layer.querySelector('.mc-advc'), view = layer.querySelector('.mc-advview'), A = iw.adv;
+            if (!c) return;
+            var x = Math.floor(A.sx), y = Math.floor(A.sy);
+            c.style.transform = 'translate(calc(var(--px) * ' + x + '), calc(var(--px) * ' + y + '))';
+            view.style.backgroundPosition = 'calc(var(--px) * ' + (x % 16) + ') calc(var(--px) * ' + (y % 16) + ')';
+            if (A.hover) { var box = layer.querySelector('.mc-advhov'); if (box) box._id = null; advHover(A, A.hover); }
+        },
+        frame: function (iw) {   // the view darkens toward 0.3 while a node is hovered and clears twice as fast
+            var A = iw.adv, f = RT.el.querySelector('.mc-advs .mc-advfade');
+            if (!A || !f) return;
+            A.fade = Math.max(0, Math.min(0.3, (A.fade || 0) + (A.hover ? 0.02 : -0.04)));
+            var op = A.fade.toFixed(3);
+            if (f._op !== op) { f._op = op; f.style.opacity = op; }
+        },
+        act: function (a) { if (a === 'done') IW_SCR.adv.esc(); },
+        esc: function () { if (RT.iw && RT.iw.d.fromKey) { hidePause(); lockCursor(); } else iwShow('pause'); }
+    };
+    var ADV_STONE = null;
+    function advStone() {   // the tab's background, the stone texture at a pixel a texel
+        if (ADV_STONE) return ADV_STONE;
+        var cv = document.createElement('canvas'), t = TILE.stone;
+        cv.width = cv.height = 16;
+        cv.getContext('2d').drawImage(ATLAS, (t % 16) * 16, ((t / 16) | 0) * 16, 16, 16, 0, 0, 16, 16);
+        return (ADV_STONE = cv.toDataURL());
+    }
+    /* ── Statistics ───────────────────────────────────────────────
+       The counters behind the Statistics screen, kept in the save the way the
+       game keeps stats/<uuid>.json: custom stats by name (distances in
+       centimetres, damage in tenths, times in ticks), and per item how often
+       it was mined, broken, crafted, used, picked up and dropped, per mob how
+       often you killed it and it killed you. */
+    function stat(cat, key, n) {
+        if (!S) return;
+        var st = S.stats || (S.stats = {}), c = st[cat] || (st[cat] = {});
+        c[key] = (c[key] || 0) + (n == null ? 1 : n);
+    }
+    function statGet(cat, key) { return (S.stats && S.stats[cat] && S.stats[cat][key]) || 0; }
+    /* Player.checkMovementStatistics: a frame's movement into the right bucket */
+    function statMove(dt) {
+        var lp = RT.statPos, ticks = dt * 20;
+        RT.statPos = [S.px, S.py, S.pz];
+        stat('c', 'play_time', ticks); stat('c', 'total_world_time', ticks); stat('c', 'time_since_death', ticks); stat('c', 'time_since_rest', ticks);
+        if (RT.keys && RT.keys.shift && RT.ground && !RT.fly) stat('c', 'sneak_time', ticks);
+        if (!lp) return;
+        var dx = S.px - lp[0], dy = S.py - lp[1], dz = S.pz - lp[2];
+        var h = Math.round(Math.sqrt(dx * dx + dz * dz) * 100), d3 = Math.round(Math.sqrt(dx * dx + dy * dy + dz * dz) * 100);
+        if (h > 1000 || d3 > 1000 || !d3) return;   // a teleport is not a walk
+        var headW = getB(Math.floor(S.px), Math.floor(S.py + EYE), Math.floor(S.pz)) === WATER, feetW = inFluid(WATER);
+        if (headW && RT.sprint) stat('c', 'swim_one_cm', d3);
+        else if (headW) stat('c', 'walk_under_water_one_cm', d3);
+        else if (feetW) stat('c', 'walk_on_water_one_cm', h);
+        else if (onLadder()) { if (dy > 0) stat('c', 'climb_one_cm', Math.round(dy * 100)); }
+        else if (RT.ground) stat('c', RT.sprint ? 'sprint_one_cm' : RT.keys && RT.keys.shift ? 'crouch_one_cm' : 'walk_one_cm', h);
+        else stat('c', 'fly_one_cm', h);
+    }
+    // the General list: every custom stat the game counts, by its name, and how it is written
+    var STAT_CUSTOM = [
+        ['animals_bred', 'Animals Bred'], ['clean_armor', 'Armor Pieces Cleaned'], ['clean_banner', 'Banners Cleaned'], ['open_barrel', 'Barrels Opened'],
+        ['bell_ring', 'Bells Rung'], ['eat_cake_slice', 'Cake Slices Eaten'], ['fill_cauldron', 'Cauldrons Filled'], ['open_chest', 'Chests Opened'],
+        ['damage_absorbed', 'Damage Absorbed', 't'], ['damage_blocked_by_shield', 'Damage Blocked by Shield', 't'], ['damage_dealt', 'Damage Dealt', 't'],
+        ['damage_dealt_absorbed', 'Damage Dealt (Absorbed)', 't'], ['damage_dealt_resisted', 'Damage Dealt (Resisted)', 't'], ['damage_resisted', 'Damage Resisted', 't'],
+        ['damage_taken', 'Damage Taken', 't'], ['inspect_dispenser', 'Dispensers Searched'], ['boat_one_cm', 'Distance by Boat', 'd'], ['aviate_one_cm', 'Distance by Elytra', 'd'],
+        ['horse_one_cm', 'Distance by Horse', 'd'], ['minecart_one_cm', 'Distance by Minecart', 'd'], ['pig_one_cm', 'Distance by Pig', 'd'], ['strider_one_cm', 'Distance by Strider', 'd'],
+        ['climb_one_cm', 'Distance Climbed', 'd'], ['crouch_one_cm', 'Distance Crouched', 'd'], ['fall_one_cm', 'Distance Fallen', 'd'], ['fly_one_cm', 'Distance Flown', 'd'],
+        ['sprint_one_cm', 'Distance Sprinted', 'd'], ['swim_one_cm', 'Distance Swum', 'd'], ['walk_one_cm', 'Distance Walked', 'd'], ['walk_on_water_one_cm', 'Distance Walked on Water', 'd'],
+        ['walk_under_water_one_cm', 'Distance Walked under Water', 'd'], ['inspect_dropper', 'Droppers Searched'], ['open_enderchest', 'Ender Chests Opened'], ['fish_caught', 'Fish Caught'],
+        ['leave_game', 'Games Quit'], ['inspect_hopper', 'Hoppers Searched'], ['interact_with_anvil', 'Interactions with Anvil'], ['interact_with_beacon', 'Interactions with Beacon'],
+        ['interact_with_blast_furnace', 'Interactions with Blast Furnace'], ['interact_with_brewingstand', 'Interactions with Brewing Stand'], ['interact_with_campfire', 'Interactions with Campfire'],
+        ['interact_with_cartography_table', 'Interactions with Cartography Table'], ['interact_with_crafting_table', 'Interactions with Crafting Table'], ['interact_with_furnace', 'Interactions with Furnace'],
+        ['interact_with_grindstone', 'Interactions with Grindstone'], ['interact_with_lectern', 'Interactions with Lectern'], ['interact_with_loom', 'Interactions with Loom'],
+        ['interact_with_smithing_table', 'Interactions with Smithing Table'], ['interact_with_smoker', 'Interactions with Smoker'], ['interact_with_stonecutter', 'Interactions with Stonecutter'],
+        ['drop', 'Items Dropped'], ['enchant_item', 'Items Enchanted'], ['jump', 'Jumps'], ['mob_kills', 'Mob Kills'], ['play_record', 'Music Discs Played'], ['play_noteblock', 'Note Blocks Played'],
+        ['tune_noteblock', 'Note Blocks Tuned'], ['deaths', 'Number of Deaths'], ['pot_flower', 'Plants Potted'], ['player_kills', 'Player Kills'], ['raid_trigger', 'Raids Triggered'],
+        ['raid_win', 'Raids Won'], ['clean_shulker_box', 'Shulker Boxes Cleaned'], ['open_shulker_box', 'Shulker Boxes Opened'], ['sneak_time', 'Sneak Time', 'time'],
+        ['talked_to_villager', 'Talked to Villagers'], ['target_hit', 'Targets Hit'], ['play_time', 'Time Played', 'time'], ['time_since_death', 'Time Since Last Death', 'time'],
+        ['time_since_rest', 'Time Since Last Rest', 'time'], ['sleep_in_bed', 'Times Slept in a Bed'], ['total_world_time', 'Total World Time', 'time'],
+        ['traded_with_villager', 'Traded with Villagers'], ['trigger_trapped_chest', 'Trapped Chests Triggered'], ['use_cauldron', 'Water Taken from Cauldron']
+    ];
+    // StatFormatter: two decimals always; distance steps cm to m to km past a half, time s to min to h to d to y
+    function statDec(v) { return (Math.round(v * 100) / 100).toFixed(2); }
+    function statFmt(v, kind) {
+        v = Math.floor(v);
+        if (kind === 'd') { var m = v / 100, km = m / 1000; return km > 0.5 ? statDec(km) + ' km' : m > 0.5 ? statDec(m) + ' m' : v + ' cm'; }
+        if (kind === 'time') {
+            var s = v / 20, mi = s / 60, h = mi / 60, d = h / 24, y = d / 365;
+            return y > 0.5 ? statDec(y) + ' y' : d > 0.5 ? statDec(d) + ' d' : h > 0.5 ? statDec(h) + ' h' : mi > 0.5 ? statDec(mi) + ' min' : statDec(s) + ' s';
+        }
+        if (kind === 't') return statDec(v * 0.1);
+        return String(v).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    }
+    /* StatsScreen: "Statistics" in the 33-pixel header, the list between it and
+       a 58-pixel footer on the in-world list background with its separators,
+       General, Items and Mobs (120 wide, 5 apart) over Done. General rows are
+       14 tall, the name on the left and the value on the right, white and grey
+       by turns; Items rows 20 tall with six columns 40 apart from 75; Mobs rows
+       36 tall with what you did to each and what it did to you. */
+    var STAT_COLS = [['m', 'Times Mined', 'st_mined'], ['b', 'Times Broken', 'st_broken'], ['cr', 'Times Crafted', 'st_crafted'],
+        ['u', 'Times Used', 'st_used'], ['p', 'Times Picked Up', 'st_picked'], ['d', 'Times Dropped', 'st_dropped']];
+    function statRows(tab) {
+        if (tab === 'general') return STAT_CUSTOM.map(function (r) { return { t: r[1], v: statFmt(statGet('c', r[0]), r[2]) }; });
+        var st = S.stats || {}, ids = {}, k;
+        if (tab === 'items') {
+            STAT_COLS.forEach(function (c) { for (k in (st[c[0]] || {})) if (I[k]) ids[k] = 1; });
+            return Object.keys(ids).sort(function (a, b) { return I[a].t < I[b].t ? -1 : 1; }).map(function (id) { return { id: id }; });
+        }
+        for (k in (st.k || {})) ids[k] = 1;
+        for (k in (st.kb || {})) ids[k] = 1;
+        return Object.keys(ids).sort().map(function (m) { return { m: m }; });
+    }
+    function statsBody(W, H, iw) {
+        var tab = iw.d.tab || 'general', rows = statRows(tab), top = 33, bot = H - 58, lh = bot - top;
+        var rh = tab === 'general' ? 14 : tab === 'items' ? 20 : 36, rw = tab === 'items' ? 280 : 220, left = (W >> 1) - (rw >> 1) + 2;
+        var head = tab === 'items' ? 20 : 0, total = rows.length * rh + head + 4, max = Math.max(0, total - lh);
+        var sc = iw.d.scroll = Math.max(0, Math.min(max, iw.d.scroll || 0)), html = '';
+        if (tab === 'items') STAT_COLS.forEach(function (c, i) {
+            html += '<i class="mc-sthead" data-tip="' + c[1] + '" style="' + iwAt(left + 75 + 40 * i - 18, top + 5 - sc, 18, 18) + ';background-image:var(--spr-' + c[2] + ')"></i>';
+        });
+        rows.forEach(function (r, i) {
+            var y = top + 4 - sc + head + i * rh, col = i % 2 === 0 ? '#ffffff' : (tab === 'general' ? '#bababa' : '#909090');
+            if (y + rh < top || y > bot) return;
+            if (tab === 'general') {
+                var ty = y + (rh >> 1) - 4;
+                html += iwText(r.t, left + 2, ty, col) + iwText(r.v, left + rw - 8 - (mfWidth(r.v) + 1), ty, col);
+            } else if (tab === 'items') {
+                html += '<i class="mc-stslot" style="' + iwAt(left, y, 18, 18) + '"><b style="background-image:url(' + iconURL(r.id) + ')"></b></i>';
+                STAT_COLS.forEach(function (c, ci) {
+                    var n = statGet(c[0], r.id), s = n ? statFmt(n) : '-';
+                    html += iwText(s, left + 75 + 40 * ci - (mfWidth(s) + 1), y + 5, col);
+                });
+            } else {
+                var nm = r.m.charAt(0).toUpperCase() + r.m.slice(1), kl = statGet('k', r.m), kb = statGet('kb', r.m);
+                html += iwText(nm, left + 2, y + 1, '#ffffff') +
+                    iwText(kl ? 'You killed ' + kl + ' ' + nm : 'You have never killed ' + nm, left + 12, y + 10, kl ? '#909090' : '#606060') +
+                    iwText(kb ? nm + ' killed you ' + kb + ' time(s)' : 'You have never been killed by ' + nm, left + 12, y + 19, kb ? '#909090' : '#606060');
+            }
+        });
+        if (max > 0) {   // the scroller: 6 wide at the list's right, as tall as the view is of the content
+            var sx = left + rw + 4, th = Math.max(32, Math.min(lh - 8, Math.floor(lh * lh / total))), ty2 = top + Math.floor((lh - th) * sc / max);
+            html += '<i class="mc-stbar" style="' + iwAt(sx, top, 6, lh) + '"></i><i class="mc-stthumb" style="' + iwAt(sx, ty2, 6, th) + '"></i>';
+        }
+        return html;
+    }
+    IW_SCR.stats = {
+        host: 'pause', layer: 'mc-stats',
+        html: function (W, H, iw) {
+            var cx = W >> 1, noItems = !statRows('items').length, noMobs = !statRows('mobs').length;
+            return '<i class="mc-stlist" style="' + iwAt(0, 33, W, H - 91) + '"></i><i class="mc-sep top" style="' + iwAt(0, 31, W, 2) + '"></i>' +
+                '<i class="mc-sep bot" style="' + iwAt(0, H - 58, W, 2) + '"></i>' +
+                '<div class="mc-stclip" style="' + iwAt(0, 33, W, H - 91) + '"><div class="mc-stbody" style="top:calc(var(--px) * -33)">' + statsBody(W, H, iw) + '</div></div>' +
+                iwCenter('Statistics', W, 12) +
+                iwBtn('mc-stgen', 'general', cx - 185, H - 52, 120, 'General') + iwBtn('mc-stitems', 'items', cx - 60, H - 52, 120, 'Items', noItems) +
+                iwBtn('mc-stmobs', 'mobs', cx + 65, H - 52, 120, 'Mobs', noMobs) + iwBtn('mc-stdone', 'done', cx - 100, H - 27, 200, 'Done');
+        },
+        wire: function (layer, iw) {
+            var clip = layer.querySelector('.mc-stclip');
+            clip.addEventListener('wheel', function (e) {
+                iw.d.scroll = (iw.d.scroll || 0) + (e.deltaY > 0 ? 1 : -1) * (iw.d.tab === 'mobs' ? 18 : 10);
+                IW_SCR.stats.redraw(layer, iw); e.preventDefault();
+            }, { passive: false });
+        },
+        redraw: function (layer, iw) { var b = layer && layer.querySelector('.mc-stbody'); if (b) b.innerHTML = statsBody(RT.gw, RT.gh, iw); },
+        act: function (a) {
+            if (a === 'done') { IW_SCR.stats.esc(); return; }
+            RT.iw.d.tab = a; RT.iw.d.scroll = 0;
+            IW_SCR.stats.redraw(RT.el.querySelector('.mc-pause .mc-stats'), RT.iw);
+        },
+        esc: function () { iwShow('pause'); }
+    };
+    /* the Game Menu's Options... is the title screen's options tree, drawn over
+       the paused world instead of the panorama */
+    function iwOptions() {
+        var host = RT.el.querySelector('.mc-pause');
+        if (host) host.style.display = 'none';
+        RT.iw = null;
+        mnOpen('options', false, true);
+    }
+    /* Player.sleepCounter and Gui's sleep overlay: the counter climbs a tick at a
+       time to 100 (five seconds) while the screen fades to 0x101020 at alpha
+       220; at 100 the night is skipped and the player wakes, the counter runs on
+       to 110 and the overlay fades back out over that half second. */
     function sleepTick(dt) {
         if (!RT.sleep) return;
         RT.sleep += dt;
         var ov = RT.el.querySelector('.mc-sleepov');
         ov.style.display = '';
-        ov.style.opacity = Math.min(1, RT.sleep / 1.2);
-        if (RT.sleep > 1.6) {
-            S.t = DAY_MS * 0.02;   // sunrise
-            RT.sleep = 0;
-            ov.style.display = 'none';
-            toast('Rise and shine');
-        }
+        var c = Math.min(100, RT.sleep * 20);
+        if (!RT.woke && RT.sleep >= 5) { S.t = DAY_MS * 0.02; RT.woke = RT.sleep; bedLayout(); }   // sunrise
+        if (RT.woke) c = 100 + (RT.sleep - RT.woke) * 20;
+        var a = c <= 100 ? 220 * c / 100 : 220 * (1 - (c - 100) / 10);
+        ov.style.opacity = Math.max(0, a / 255).toFixed(3);
+        if (c >= 110) { RT.sleep = 0; RT.woke = 0; ov.style.display = 'none'; }
     }
 
     /* ── F3 ─────────────────────────────────────────────────── */
+    /* F3, laid out the way DebugScreenOverlay lays it out: a column down each
+       side from two pixels in, nine to a line, every line on its own grey
+       backdrop (0x90505050) a pixel wider than the text all round, the text in
+       0xE0E0E0 with no shadow, and the right column right-aligned. Blank lines
+       carry no backdrop. The numbers are this engine's own. */
+    var DBG_DIR = [['south', 'positive Z'], ['west', 'negative X'], ['north', 'negative Z'], ['east', 'positive X']];
+    function pad2(n) { n = Math.abs(n); return (n < 10 ? '0' : '') + n; }
+    /* F3 as 1.21.9 and later draw it by default: the entries of the default
+       profile only (no light levels, no biome, no targeted block; those are for
+       F3 + F6), fps and the version heading the two columns, then the memory,
+       position and system groups. Rendered the way DebugScreenOverlay renders
+       every line: two pixels in, nine apart, each on its own 0x90505050 backdrop
+       a pixel wider than the text, 0xE0E0E0 and no shadow. */
+    function dbgLines() {
+        var bx = Math.floor(S.px), by = Math.floor(S.py), bz = Math.floor(S.pz), cx = bx >> 4, cy = by >> 4, cz = bz >> 4;
+        var yawD = ((S.yaw * 180 / Math.PI) % 360 + 540) % 360 - 180, pitD = S.pitch * 180 / Math.PI;
+        var dir = DBG_DIR[((Math.round(S.yaw / (Math.PI / 2)) % 4) + 4) % 4];
+        var o = optLoad(), mem = performance && performance.memory, cores = navigator.hardwareConcurrency || 4;
+        var used = mem ? Math.round(mem.usedJSHeapSize / 1048576) : 256, tot = mem ? Math.round(mem.jsHeapSizeLimit / 1048576) : 2048;
+        var alloc = ('00' + Math.max(1, Math.round((RT.parts.length + RT.foes.length) / 8))).slice(-3);
+        var gpu = RT.dbgGpu || ['WebGL', 'WebGL'], dpr = window.devicePixelRatio || 1;
+        var L = [
+            RT.fps + ' fps T: ' + (o.vsync ? '60 (fifo)' : 'inf (immediate)') + ' @60Hz',
+            '',
+            (o.clouds ? (o.fancy ? 'fancy-clouds ' : 'fast-clouds ') : '') + 'B: 2',
+            'Filtering: RGSS',
+            '',
+            'Mem: ' + Math.round(used / tot * 100) + '% ' + used + '/' + tot + 'MiB',
+            'Allocation rate: ' + alloc + 'MiB/s',
+            'Allocated: ' + Math.round(used / tot * 100) + '% ' + used + 'MiB',
+            '',
+            'XYZ: ' + S.px.toFixed(3) + ' / ' + S.py.toFixed(5) + ' / ' + S.pz.toFixed(3),
+            'Block: ' + bx + ' ' + by + ' ' + bz,
+            'Chunk: ' + cx + ' ' + cy + ' ' + cz + ' [' + (cx & 31) + ' ' + (cz & 31) + ' in r.' + (cx >> 5) + '.' + (cz >> 5) + '.mca]',
+            'Facing: ' + dir[0] + ' (Towards ' + dir[1] + ') (' + yawD.toFixed(1) + ' / ' + pitD.toFixed(1) + ')',
+            'minecraft:overworld FC: 0',
+            'Section-relative: ' + pad2(bx & 15) + ' ' + pad2(by & 15) + ' ' + pad2(bz & 15),
+            '',
+            '',
+            'Debug charts: [F3+1] Profiler hidden; [F3+2] fps + tps hidden;',
+            '[F3+3] Ping hidden; [F3+4] Lightmap hidden',
+            'To edit: press [F3+F6]'
+        ];
+        var R = [
+            'Minecraft ' + RT.ver + ' (' + RT.ver + '/vanilla)',
+            '',
+            'Terrain Rendering: naive',
+            'Integrated server @ ' + (1000 / Math.max(1, RT.fps)).toFixed(1) + '/50.0 ms, 0 tx, 0 rx',
+            '',
+            'Java: 21.0.7',
+            'CPU: ' + cores + 'x ' + (navigator.platform || 'CPU'),
+            'Display: ' + screen.width + 'x' + screen.height + ' (' + gpu[0] + ')',
+            'Window: ' + RT.el.clientWidth + 'x' + RT.el.clientHeight + ' (' + dpr.toFixed(2) + 'x pixel density)',
+            gpu[1] + ' (dGPU)',
+            'WebGL ' + (RT.G && RT.G.gl && RT.G.gl.getParameter ? RT.G.gl.getParameter(RT.G.gl.VERSION) : '1.0'),
+            ''
+        ];
+        return { L: L, R: R };
+    }
+    var BLOCK_KEY = null;
+    function blockKey(id) {   // the item that places a block names it: "Grass Block" → grass_block
+        if (!BLOCK_KEY) {
+            BLOCK_KEY = {};
+            for (var k in I) if (I[k].place != null && BLOCK_KEY[I[k].place] == null) BLOCK_KEY[I[k].place] = String(I[k].t || k).toLowerCase().replace(/[^a-z0-9]+/g, '_');
+        }
+        return BLOCK_KEY[id] || 'block_' + id;
+    }
     function paintDebug() {
         var d = RT.el.querySelector('.mc-debug');
         if (!RT.f3) { d.style.display = 'none'; return; }
         d.style.display = '';
-        var bx = Math.floor(S.px), by = Math.floor(S.py), bz = Math.floor(S.pz);
-        var dirs = ['south +Z', 'west -X', 'north -Z', 'east +X'];
-        var dir = dirs[((Math.round(S.yaw / (Math.PI / 2)) % 4) + 4) % 4];
-        d.innerHTML = 'Minecraft (comp/urecraft)<br>' +
-            RT.fps + ' fps, ' + RT.ckeys.length + ' chunks, ' + (RT.foes.length + RT.drops.length) + ' entities<br>' +
-            'XYZ: ' + S.px.toFixed(2) + ' / ' + S.py.toFixed(2) + ' / ' + S.pz.toFixed(2) + '<br>' +
-            'Block: ' + bx + ' ' + by + ' ' + bz + '  Facing: ' + dir + '<br>' +
-            'Light: ' + getSky(bx, by, bz) + ' sky, ' + getBlk(bx, by, bz) + ' block<br>' +
-            'Biome: ' + ['Plains', 'Forest', 'Desert', 'Mountains'][biomeAt(bx, bz)] + '  Seed: ' + S.seed;
+        if (!RT.dbgGpu && RT.G && RT.G.gl) {   // the renderer's own name, where the browser will say
+            try {
+                var ext = RT.G.gl.getExtension('WEBGL_debug_renderer_info');
+                RT.dbgGpu = ext ? [RT.G.gl.getParameter(ext.UNMASKED_VENDOR_WEBGL), RT.G.gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)] : [RT.G.gl.getParameter(RT.G.gl.VENDOR), RT.G.gl.getParameter(RT.G.gl.RENDERER)];
+                // the game names the card, not the browser's translation layer: "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 (0x…) Direct3D11 …)" → the middle
+                var ang = /^ANGLE \(([^,]+),\s*(.+?)(?:\s*\(0x[0-9a-f]+\))?(?:\s+Direct3D.*|,\s*[^,]*)?\)$/i.exec(RT.dbgGpu[1] || '');
+                if (ang) RT.dbgGpu = [ang[1].replace(/^Google$/, 'Google Inc.'), ang[2]];
+            } catch (e) { RT.dbgGpu = ['WebGL', 'WebGL']; }
+        }
+        var ln = dbgLines(), all = [], s;
+        ln.L.forEach(function (t, i) { all.push([t, 0, i]); });
+        ln.R.forEach(function (t, i) { all.push([t, 1, i]); });
+        var kids = hudIcons(d, all.length);
+        for (var i = 0; i < all.length; i++) {
+            var e = kids[i], txt = all[i][0];
+            if (!e.firstChild) e.innerHTML = '<span class="mt ns"></span>';
+            e.className = txt ? 'mc-dl' : 'mc-dl blank';
+            mtSet(e.firstChild, txt, '#e0e0e0');
+            var w = txt ? mfWidth(txt) + 1 : 0;
+            hudPlace(e, (all[i][1] ? RT.gw - 2 - w : 2) - 1, 2 + all[i][2] * 9 - 1);
+            e.style.width = 'calc(var(--px) * ' + (w + 2) + ')';
+        }
     }
 
     /* ── tile entities: furnaces + chests ───────────────────── */
@@ -4642,11 +6240,17 @@
         var shelves = pos ? bookshelvesNear({ x: pos[0] | 0, y: pos[1] | 0, z: pos[2] | 0 }) : 0;
         if (!RT.enchSeed) RT.enchSeed = (Math.random() * 1e9) | 0;
         var rng = mulb(RT.enchSeed ^ (it.id.length * 7));
-        function base() { return 1 + (rng() * 8 | 0) + Math.floor(shelves / 2) + (rng() * (shelves + 1) | 0); }
-        var b = base();
-        var lv = [Math.max(1, Math.floor(b / 3)), Math.floor(b * 2 / 3) + 1, Math.max(b, shelves * 2)];
+        /* EnchantmentHelper.getEnchantmentCost, rolled afresh for each row:
+           j = 1 + rand(8) + shelves/2 + rand(shelves + 1), then j/3 (at least 1),
+           2j/3 + 1 and max(j, 2 x shelves); a row cheaper than its number is empty */
+        function cost(n) {
+            var j = 1 + (rng() * 8 | 0) + (shelves >> 1) + (rng() * (shelves + 1) | 0);
+            return n === 0 ? Math.max((j / 3) | 0, 1) : n === 1 ? ((j * 2 / 3) | 0) + 1 : Math.max(j, shelves * 2);
+        }
+        var lv = [cost(0), cost(1), cost(2)];
         RT.enchOpts = [];
         for (var i = 0; i < 3; i++) {
+            if (lv[i] < i + 1) { RT.enchOpts.push({ level: 0, lapis: i + 1, ench: null, label: '' }); continue; }
             var er = rollEnchants(it, lv[i], rng);
             var main = er ? Object.keys(er)[0] : null;
             RT.enchOpts.push({ level: lv[i], lapis: i + 1, ench: er, label: main ? ENCH_NAME[main] + ' ' + (ROMAN[er[main]] || er[main]) + (Object.keys(er).length > 1 ? ' …' : '') : '—' });
@@ -4656,15 +6260,18 @@
         var o = RT.enchOpts && RT.enchOpts[i]; if (!o || !o.ench) return;
         var it = RT.enchItem, lap = RT.enchLapis;
         if (!enchantable(it)) return;
-        if (S.xpl < o.level) { toast('Not a high enough level'); return; }
-        if (!lap || lap.c < o.lapis) { toast('Not enough Lapis Lazuli'); return; }
-        if (S.xpl < o.lapis) { toast('Not enough experience'); return; }   // the slot number is the real level charge
-        takeXpLevels(o.lapis);                       // enchanting costs levels
-        lap.c -= o.lapis; if (!lap.c) RT.enchLapis = null;
+        // an option you cannot afford is a dead button, not a message; creative pays nothing
+        if (!instaBuild()) {
+            if (S.xpl < o.level) return;
+            if (!lap || lap.c < o.lapis) return;
+            if (S.xpl < o.lapis) return;   // the slot number is the real level charge
+            takeXpLevels(o.lapis);                       // enchanting costs levels
+            lap.c -= o.lapis; if (!lap.c) RT.enchLapis = null;
+        }
         if (it.id === 'book') it.id = 'ench_book';
         it.ench = o.ench;
         RT.enchSeed = (Math.random() * 1e9) | 0; RT.enchOpts = null;
-        snd('enchant'); unlock('enchant');
+        snd('enchant'); unlock('enchant'); stat('c', 'enchant_item');
         paintPanel();
     }
     function enchCostStr(e) { var s = []; for (var k in e) s.push(ENCH_NAME[k] + ' ' + (ROMAN[e[k]] || e[k])); return s.join(', '); }
@@ -4675,7 +6282,12 @@
         // silently threw away the rename you had already paid a level for
         var out = { id: a.id, c: a.c, dur: a.dur, ench: a.ench ? JSON.parse(JSON.stringify(a.ench)) : null, name: a.name };
         var cost = 0, did = false, usedB = false;
-        if (RT.anvilName && RT.anvilName !== (a.name || '')) { out.name = RT.anvilName; cost += 1; did = true; }
+        /* AnvilMenu.createResult: a name that differs from what the item is called
+           renames it, and a box cleared on a renamed item takes the name off; each
+           costs a level */
+        var nm = RT.anvilName || '';
+        if (nm.trim()) { if (nm !== itemName(a)) { out.name = nm; cost += 1; did = true; } }
+        else if (a.name) { delete out.name; cost += 1; did = true; }
         if (b) {
             var da = I[a.id], db = I[b.id];
             // repair with matching material or a second identical tool
@@ -4693,7 +6305,8 @@
         cost += enchLevelCost(out.ench) - enchLevelCost(a.ench);
         // usedB tells applyAnvil whether slot B was actually consumed — a rename-only result
         // must leave B alone instead of deleting whatever is sitting in it
-        return { out: out, cost: Math.max(1, cost), usedB: usedB };
+        cost = Math.max(1, cost);
+        return { out: out, cost: cost, usedB: usedB, tooExp: cost >= 40 && !instaBuild() };   // from 40 levels, "Too Expensive!" and no result
     }
     function mergeEnch(x, y) {
         var r = {}; var k;
@@ -4704,20 +6317,23 @@
         return Object.keys(r).length ? r : null;
     }
     function enchLevelCost(e) { var c = 0; if (e) for (var k in e) c += e[k]; return c; }
-    function applyAnvil() {
-        var res = anvilResult(); if (!res) return;
-        if (S.xpl < res.cost) { toast('Not enough experience'); return; }
-        takeXpLevels(res.cost);
-        var out = res.out; if (RT.anvilName) out.name = RT.anvilName;
-        RT.anvilA = null;
+    function applyAnvil(shift) {
+        var res = anvilResult(); if (!res || res.tooExp) return;
+        if (!shift && RT.cur) return;   // a click takes the result onto an empty cursor only
+        if (!instaBuild() && S.xpl < res.cost) return;
+        if (!instaBuild()) takeXpLevels(res.cost);
+        var out = res.out;
+        RT.anvilA = null; RT.anvilKey = null;
         if (res.usedB) RT.anvilB = null;   // a rename-only apply must not eat slot B
         RT.anvilName = '';
         // clear the visible name box too, or it keeps showing the old text while RT.anvilName is
         // empty and the next rename silently produces nothing until the player retypes
         var nameIn = RT.el && RT.el.querySelector('.mc-anvin');
         if (nameIn) nameIn.value = '';
-        var left = invGive(out.id, out.c, out.dur, out.ench, out.name);   // hand back the whole stack, enchant + name intact
-        if (left > 0) dropItem(S.px, S.py + 1, S.pz, out.id, left, out.dur, false, out.ench, out.name);
+        if (shift) {   // shift-click: backwards into the inventory, the hotbar's right-hand end first, enchant and name intact
+            var left = moveStackTo(out, invOrder(0, 36), true);
+            if (left > 0) dropItem(S.px, S.py + 1, S.pz, out.id, left, out.dur, false, out.ench, out.name);
+        } else RT.cur = out;   // a plain click puts the result on the cursor
         snd('anvil'); unlock('anvil2');
         paintPanel(); paintHotbar();
     }
@@ -4730,45 +6346,55 @@
        dropped onto it is destroyed, which is exactly how the real one behaves
        and is why it can't reuse the ordinary slot plumbing. */
     var CCOLS = 9, CROWS = 5, CGRID = CCOLS * CROWS;
+    /* The tabs the game has had since 1.19.3, each where CreativeModeTabs puts
+       it: row 0 above the panel, row 1 below, columns 0-4 from the left at 27
+       pixels a column and 5-6 flush right. Search stays 7 and Survival
+       Inventory 8 so the old indices still land where they used to. */
     var CTABS = [
-        { id: 'build',  t: 'Building Blocks',    ic: 'stonebrick' },
-        { id: 'deco',   t: 'Decorations',        ic: 'poppy' },
-        { id: 'tools',  t: 'Tools',              ic: 'iron_pick' },
-        { id: 'combat', t: 'Combat',             ic: 'iron_sword' },
-        { id: 'food',   t: 'Foodstuffs',         ic: 'apple' },
-        { id: 'mat',    t: 'Materials',          ic: 'iron' },
-        { id: 'misc',   t: 'Miscellaneous',      ic: 'lava_bucket' },
-        { id: 'search', t: 'Search Items',       ic: 'table' },
-        { id: 'inv',    t: 'Survival Inventory', ic: 'chest' }
+        { id: 'build',    t: 'Building Blocks',    ic: 'bricks',        row: 0, col: 0 },
+        { id: 'color',    t: 'Colored Blocks',     ic: 'wool',          row: 0, col: 1 },
+        { id: 'natural',  t: 'Natural Blocks',     ic: 'grass_block',   row: 0, col: 2 },
+        { id: 'func',     t: 'Functional Blocks',  ic: 'oak_sign',      row: 0, col: 3 },
+        { id: 'redstone', t: 'Redstone Blocks',    ic: 'redstone',      row: 0, col: 4 },
+        { id: 'tools',    t: 'Tools & Utilities',  ic: 'diamond_pick',  row: 1, col: 0 },
+        { id: 'combat',   t: 'Combat',             ic: 'diamond_sword', row: 1, col: 1 },
+        { id: 'search',   t: 'Search Items',       ic: 'compass',       row: 0, col: 6 },
+        { id: 'inv',      t: 'Survival Inventory', ic: 'chest',         row: 1, col: 6 },
+        { id: 'food',     t: 'Food & Drinks',      ic: 'golden_apple',  row: 1, col: 2 },
+        { id: 'ingr',     t: 'Ingredients',        ic: 'iron',          row: 1, col: 3 },
+        { id: 'eggs',     t: 'Spawn Eggs',         ic: 'egg_pig',       row: 1, col: 4 },
+        { id: 'hotbar',   t: 'Saved Hotbars',      ic: 'bookshelf',     row: 0, col: 5 }
     ];
     var CLIST = null;
     function creativeTables() {
         if (CLIST) return CLIST;
-        var i, k;
-        var tools = [], combat = [], misc = ['bucket', 'water_bucket', 'lava_bucket', 'flint_steel', 'ench_book', 'egg'];
-        for (k = 0; k < 4; k++) for (i = 1; i <= 5; i++) tools.push(TIER_N[i] + '_' + ['pick', 'axe', 'shovel', 'hoe'][k]);
-        tools.push('bucket', 'flint_steel');
+        var i, k, tools = [], combat = [];
+        // each tier's shovel, pickaxe, axe and hoe together, wood to diamond, as the real tab lists them
+        for (i = 1; i <= 5; i++) for (k = 0; k < 4; k++) tools.push(TIER_N[i] + '_' + ['shovel', 'pick', 'axe', 'hoe'][k]);
+        tools.push('bucket', 'water_bucket', 'lava_bucket', 'milk_bucket', 'flint_steel', 'bonemeal', 'ender_pearl');
         for (i = 1; i <= 5; i++) combat.push(TIER_N[i] + '_sword');
+        for (i = 1; i <= 5; i++) combat.push(TIER_N[i] + '_axe');
         for (i = 0; i < ARM_TIERS.length; i++) for (k = 0; k < 4; k++) combat.push(ARM_TIERS[i] + '_' + ['helm', 'chest', 'legs', 'boots'][k]);
-        combat.push('bow', 'arrow');
-        for (k in EGG_COL) misc.push('egg_' + k);
+        combat.push('egg', 'bow', 'arrow');
         CLIST = {
-            build: ['stone', 'cobble', 'stonebrick', 'bricks', 'sandstone', 'grass_block', 'grass_snow', 'dirt', 'sand',
-                    'gravel', 'clay', 'log', 'planks', 'leaves', 'glass', 'wool', 'obsidian', 'bedrock',
-                    'ore_coal', 'ore_iron', 'ore_gold', 'ore_diamond', 'ore_redstone', 'ore_lapis', 'ore_emerald'],
-            deco: ['torch', 'rlamp', 'ladder', 'table', 'furnace', 'chest', 'bookshelf', 'etable', 'anvil', 'bed',
-                   'cake', 'tnt', 'dandelion', 'poppy', 'tallgrass', 'mushroom', 'mushroom_r', 'cactus',
-                   'sugarcane', 'pumpkin', 'melon'],
+            build: ['log', 'planks', 'stone', 'cobble', 'stonebrick', 'bricks', 'sandstone'],
+            color: ['wool', 'glass', 'bed'],
+            natural: ['grass_block', 'grass_snow', 'dirt', 'clay', 'gravel', 'sand', 'sandstone', 'stone', 'obsidian',
+                      'ore_coal', 'ore_iron', 'ore_gold', 'ore_redstone', 'ore_emerald', 'ore_lapis', 'ore_diamond',
+                      'log', 'leaves', 'tallgrass', 'dandelion', 'poppy', 'mushroom', 'mushroom_r', 'sugarcane', 'cactus',
+                      'seeds', 'seeds_pumpkin', 'seeds_melon', 'pumpkin', 'melon', 'bedrock'],
+            func: ['torch', 'table', 'furnace', 'anvil', 'etable', 'ladder', 'bookshelf', 'chest', 'bed'],
+            redstone: ['redstone', 'rlamp', 'tnt'],
             tools: tools,
             combat: combat,
-            food: ['apple', 'bread', 'cookie', 'melon_slice', 'pumpkin_pie', 'mushroom_stew', 'carrot', 'golden_carrot',
-                   'potato', 'baked_potato', 'golden_apple', 'pork_raw', 'pork', 'beef_raw', 'beef', 'mutton_raw',
-                   'mutton', 'chicken_raw', 'chicken', 'flesh', 'milk_bucket'],
-            mat: ['stick', 'coal', 'charcoal', 'iron', 'gold', 'diamond', 'emerald', 'redstone', 'lapis', 'flint',
-                  'feather', 'leather', 'string', 'gunpowder', 'bone', 'bonemeal', 'paper', 'book', 'sugar',
-                  'slimeball', 'ink_sac', 'ender_pearl', 'clay_ball', 'brick', 'wheat', 'seeds', 'seeds_pumpkin',
-                  'seeds_melon', 'bowl'],
-            misc: misc
+            food: ['apple', 'golden_apple', 'melon_slice', 'carrot', 'golden_carrot', 'potato', 'baked_potato',
+                   'beef_raw', 'beef', 'pork_raw', 'pork', 'mutton_raw', 'mutton', 'chicken_raw', 'chicken',
+                   'bread', 'cookie', 'cake', 'pumpkin_pie', 'flesh', 'mushroom_stew', 'milk_bucket'],
+            ingr: ['coal', 'charcoal', 'emerald', 'lapis', 'diamond', 'iron', 'gold', 'stick', 'flint', 'wheat', 'bone', 'bonemeal',
+                   'string', 'feather', 'egg', 'leather', 'ink_sac', 'slimeball', 'clay_ball', 'ender_pearl', 'bowl', 'brick',
+                   'paper', 'book', 'redstone', 'gunpowder', 'sugar', 'golden_carrot', 'ench_book'],
+            // spawn eggs in alphabetical order, as the game sorts them
+            eggs: Object.keys(EGG_COL).sort().map(function (m) { return 'egg_' + m; })
         };
         // a rename anywhere in I{} must leave a shorter list, never a hole in the grid
         for (k in CLIST) CLIST[k] = CLIST[k].filter(function (id) { return !!I[id]; });
@@ -4776,18 +6402,59 @@
     }
     function creativeItems() {
         var tab = CTABS[RT.cTab] || CTABS[0];
+        if (tab.id === 'hotbar') return savedHotbarEntries();
         if (tab.id !== 'search') return creativeTables()[tab.id] || [];
-        var q = String(RT.cSearch || '').trim().toLowerCase(), all = Object.keys(I);
+        // Search is every category tab in order, each item once
+        var tabs = creativeTables(), seen = {}, all = [];
+        CTABS.forEach(function (T) { (tabs[T.id] || []).forEach(function (id) { if (!seen[id]) { seen[id] = 1; all.push(id); } }); });
+        Object.keys(I).forEach(function (id) { if (!seen[id]) { seen[id] = 1; all.push(id); } });
+        var q = String(RT.cSearch || '').trim().toLowerCase();
         if (!q) return all;
         return all.filter(function (id) {   // matches the label a player reads and the id a command takes
             return id.indexOf(q) >= 0 || String(I[id].t || '').toLowerCase().indexOf(q) >= 0;
         });
     }
-    function creativeStack(id) {
-        if (!id || !I[id]) return null;
-        var st = { id: id, c: stkMax(id) }, md = itemMaxDur(id);
+    /* a catalogue entry as a stack: an item id is a full stack of it, a saved
+       hotbar's entry is the stack that was saved (or the placeholder paper) */
+    function creativeStack(e) {
+        if (!e) return null;
+        if (typeof e === 'object') return JSON.parse(JSON.stringify(e));
+        if (!I[e]) return null;
+        var st = { id: e, c: stkMax(e) }, md = itemMaxDur(e);
         if (md != null) st.dur = md;
         return st;
+    }
+    /* ── saved hotbars ──
+       In creative, C and a number save the hotbar under that number and X and
+       the number put it back, in every world: the game keeps them beside the
+       options, in hotbar.nbt, not in the save. The Saved Hotbars tab shows all
+       nine, a row each; an empty one is a sheet of paper under its own number
+       that says which keys fill it. */
+    var HB_KEY = 'comp_mc_hotbars';
+    function hbLoad() {
+        try { var v = JSON.parse(localStorage.getItem(HB_KEY) || 'null'); if (v && v.length === 9) return v; } catch (e) {}
+        return [[], [], [], [], [], [], [], [], []];
+    }
+    function savedHotbarEntries() {
+        var hb = hbLoad(), out = [];
+        for (var r = 0; r < 9; r++) {
+            var row = hb[r] || [], empty = !row.some(Boolean);
+            for (var c = 0; c < 9; c++) out.push(empty ? (c === r ? { id: 'paper', c: 1, lock: 1, tname: 'Save hotbar with C+' + (r + 1) } : null) : (row[c] || null));
+        }
+        return out;
+    }
+    function hotbarLoadOrSave(i, load) {
+        var hb = hbLoad(), k;
+        if (load) {   // every slot comes back, the empty ones too
+            var row = hb[i] || [];
+            for (k = 0; k < 9; k++) S.inv[k] = row[k] ? JSON.parse(JSON.stringify(row[k])) : null;
+            paintHotbar();
+            return;
+        }
+        hb[i] = [];
+        for (k = 0; k < 9; k++) hb[i].push(S.inv[k] ? JSON.parse(JSON.stringify(S.inv[k])) : null);
+        try { localStorage.setItem(HB_KEY, JSON.stringify(hb)); } catch (e) {}
+        actionBar('Item hotbar saved (restore with X+' + (i + 1) + ')');
     }
     function creativeRows() { return Math.max(CROWS, Math.ceil(((RT.cList || []).length) / CCOLS)); }
     function creativeMaxScroll() { return Math.max(0, creativeRows() - CROWS); }
@@ -4799,14 +6466,19 @@
         if (!RT.panel || RT.panel.kind !== 'creative') return;
         var was = RT.cScroll;
         RT.cScroll = Math.max(0, Math.min(creativeMaxScroll(), RT.cScroll + d));
+        RT.cScrollF = null;   // a wheel notch lands the scroller on the row
         if (RT.cScroll !== was) paintPanel();
     }
+    /* CreativeModeInventoryScreen.mouseDragged: the scroller follows the pointer,
+       t = (y - top - 18 - 7.5) / (112 - 15), and the rows follow t rounded */
     function creativeBarTo(bar, clientY) {
         var max = creativeMaxScroll();
-        if (max <= 0) return;
-        var r = bar.getBoundingClientRect();
-        var v = Math.max(0, Math.min(max, Math.round((clientY - r.top) / Math.max(1, r.height) * max)));
-        if (v !== RT.cScroll) { RT.cScroll = v; paintPanel(); }
+        if (max <= 0 || !RT.panel || !RT.gs) return;
+        var r = RT.el.getBoundingClientRect(), my = (clientY - r.top) / RT.gs - RT.panel.ly;
+        var t = Math.max(0, Math.min(1, (my - 18 - 7.5) / 97));
+        RT.cScrollF = t;
+        RT.cScroll = Math.max(0, Math.min(max, Math.round(t * max)));
+        paintPanel();
     }
     function creativeTab(i) {
         i = Math.max(0, Math.min(CTABS.length - 1, i | 0));
@@ -4814,6 +6486,7 @@
         RT.cTab = i;
         RT.cScroll = 0;
         if (CTABS[i].id === 'search') RT.cSearch = '';   // the real one opens the box empty
+        RT.cScrollF = null;
         creativeRefresh();
         creativeRender();
         snd('click');
@@ -4823,10 +6496,12 @@
         if (!wrap) return;
         RT.qc = null;   // the slots a sweep was over are about to be replaced
         RT.hover = null;
-        wrap.innerHTML = '<div class="mc-panel mc-cpanel">' + panelHTML('creative') + '</div><div class="mc-cur"></div><div class="mc-ptip" style="display:none"></div>';
+        wrap.innerHTML = panelMarkup('creative');
+        RT.hovEl = null;
+        panelLayout();
         wirePanelFields(wrap);
         avatarAttach();
-        paintPanel();   // re-places the carried ghost from RT.curXY
+        paintPanel();   // re-places the carried ghost from RT.curXY, and re-finds what is under the pointer
         /* The innerHTML swap above destroys whatever had focus. Switching AWAY from
            the search tab therefore dropped focus onto <body>, and since the key
            handlers live on .mc the whole game went keyboard-dead — E, Esc and WASD
@@ -4842,16 +6517,20 @@
        left button and shrinks by one on the right — even over a gap in the last
        row. Middle-click is the clone: a full stack, only onto an empty cursor. */
     function creativeClick(idx, right, shift) {
-        var id = (RT.cList || [])[RT.cScroll * CCOLS + idx], cur = RT.cur;
-        var fresh = id ? creativeStack(id) : null;
-        var same = !!(cur && fresh && cur.id === id && !cur.ench && !cur.name && (cur.dur == null || cur.dur === fresh.dur));   // a damaged tool is a different item
+        var e = (RT.cList || [])[RT.cScroll * CCOLS + idx], cur = RT.cur;
+        var fresh = creativeStack(e);
+        if (fresh && fresh.lock) return;   // the Saved Hotbars placeholder is instructions, not an item
+        var saved = !!e && typeof e === 'object';
+        // a damaged tool, an enchanted or a renamed one is a different item
+        var same = !!(cur && fresh && cur.id === fresh.id && JSON.stringify(cur.ench || null) === JSON.stringify(fresh.ench || null) &&
+            (cur.name || '') === (fresh.name || '') && (cur.dur == null || cur.dur === fresh.dur));
         if (same) {
             if (!right) { if (shift) cur.c = stkMax(cur.id); else if (cur.c < stkMax(cur.id)) cur.c++; }
             else { cur.c--; if (!cur.c) RT.cur = null; }
-        } else if (!cur && id) {
-            var st = creativeStack(id);
-            if (!shift) st.c = 1;
-            RT.cur = st;
+        } else if (!cur && fresh) {
+            // one of a catalogue entry, or all of a saved stack; shift makes either a full stack
+            if (shift) fresh.c = stkMax(fresh.id); else if (!saved) fresh.c = 1;
+            RT.cur = fresh;
         } else if (cur) {
             if (!right) RT.cur = null;
             else { cur.c--; if (!cur.c) RT.cur = null; }
@@ -5195,18 +6874,21 @@
         c.setTransform(1, 0, 0, 1, 0, 0);
         c.clearRect(0, 0, W, H);
         c.imageSmoothingEnabled = false;
-        // the real box is 49×70 GUI px with the feet at (25, 67) and the pointer
-        // measured from (25, 17) — the height of the head
-        var kg = r.height / 70;                                   // CSS px per GUI px
-        var refX = r.left + kg * 25, refY = r.top + kg * 17;
+        /* renderEntityInInventoryFollowsMouse since 1.20.2: the pointer is measured
+           from the middle of the box, and the figure stands with half its height
+           plus a sixteenth of a block above that middle, at the screen's scale (30
+           in the survival screen's 49x70 box, 20 in creative's 32x43) */
+        var bw = +cv.getAttribute('data-w') || 49, bh = +cv.getAttribute('data-h') || 70, sc = +cv.getAttribute('data-s') || 30;
+        var kg = r.height / bh;                                   // CSS px per GUI px
+        var refX = r.left + kg * bw / 2, refY = r.top + kg * bh / 2;
         var mx = av.mx != null ? av.mx : refX, my = av.my != null ? av.my : refY;
         var f = Math.atan((refX - mx) / (kg * 40)), g = Math.atan((my - refY) / (kg * 40));
         var bodyYaw = f * 20 * D2R, tilt = g * 20 * D2R;
         var pose = AV_POSE, age = performance.now() / 50;
         pose.headYaw = f * 20 * D2R; pose.headPitch = g * 20 * D2R;
         pose.swZ = Math.cos(age * 0.09) * 0.05 + 0.05; pose.swX = Math.sin(age * 0.067) * 0.05; pose.item = !!av.item;
-        var s = kg * 1.875 * (W / r.width);                        // canvas px per skin px
-        var feetX = W * (25 / 49), feetY = H * (67 / 70);
+        var s = kg * (sc / 16) * (W / r.width);                    // canvas px per skin px
+        var feetX = W / 2, feetY = H / 2 + s * 15.4;              // (0.9 + 0.0625) blocks below the middle
         rotMat(AV_M_A, 0, bodyYaw, 0); rotMat(AV_M_B, tilt, 0, 0); mul3(AV_M_ROOT, AV_M_B, AV_M_A);
         var root = AV_M_ROOT, quads = [], i, armV = null;
         for (i = 0; i < av.parts.length; i++) {
@@ -5231,6 +6913,953 @@
         c.setTransform(1, 0, 0, 1, 0, 0);
     }
 
+    /* ── the container sprites ─────────────────────────────────
+       Every screen's background is painted the way the game's container
+       textures are drawn: the shared frame (a black outline with its corners
+       cut 3 and 6 pixels, a 2-pixel white bevel top-left and a 2-pixel #555555
+       one bottom-right), #C6C6C6 fill, and every slot a 1-pixel inset bevel
+       round a #8B8B8B well at an 18-pixel pitch, so neighbouring frames touch.
+       Geometry and colours follow the game's screens pixel for pixel; the
+       pictures (the flame, the hammer, the orbs, the silhouettes) are ours. */
+    /* ── widget sprites ──────────────────────────────────────────
+       The 20-pixel button in its three states, as the current game's
+       widget/button sprites have it: a 1-pixel frame (black, or white while
+       hovered or focused), a #AAAAAA highlight along the top and down the left,
+       two rows of #565656 along the bottom and a #555555 column down the right,
+       round a face of stone-grey noise averaging #6F6F6F; the disabled one a
+       dark flat face. Drawn at 200x20 and nine-sliced with a 3-pixel border,
+       like the originals. Then the text field, the in-world menu background,
+       and the pause menu's four icons. */
+    function sprWidgets(mk) {
+        var rnd = mulb(0x5EED1);
+        function face(cx, x, y, w, h, base, spread) {
+            for (var yy = 0; yy < h; yy++) for (var xx = 0; xx < w; xx++) {
+                var v = Math.max(0, Math.min(255, base + Math.round((rnd() + rnd() - 1) * spread)));
+                cx.fillStyle = 'rgb(' + v + ',' + v + ',' + v + ')'; cx.fillRect(x + xx, y + yy, 1, 1);
+            }
+        }
+        function button(frame, base, spread, hi, lo, lo2) {
+            return function (cx) {
+                sprRect(cx, 0, 0, 200, 20, frame);
+                face(cx, 1, 1, 198, 18, base, spread);
+                if (hi) {
+                    sprRect(cx, 1, 1, 197, 1, hi); sprRect(cx, 1, 1, 1, 16, hi);
+                    sprRect(cx, 2, 17, 196, 2, lo); sprRect(cx, 198, 2, 1, 17, lo2);
+                }
+            };
+        }
+        mk('btn', 200, 20, button('#000000', 0x6f, 11, '#aaaaaa', '#565656', '#555555'));
+        mk('btn_h', 200, 20, button('#ffffff', 0x77, 11, '#b4b4b4', '#5c5c5c', '#5a5a5a'));
+        mk('btn_d', 200, 20, button('#000000', 0x31, 3, null));
+        // EditBox's widget/text_field: #A0A0A0 round black, white round black when focused
+        mk('field', 200, 20, function (cx) { sprRect(cx, 0, 0, 200, 20, '#a0a0a0'); sprRect(cx, 1, 1, 198, 18, '#000000'); });
+        mk('field_h', 200, 20, function (cx) { sprRect(cx, 0, 0, 200, 20, '#ffffff'); sprRect(cx, 1, 1, 198, 18, '#000000'); });
+        // inworld_menu_background: black at about half alpha with a faint grain, tiled every 32 GUI pixels
+        mk('iwbg', 32, 32, function (cx) {
+            for (var y = 0; y < 32; y++) for (var x = 0; x < 32; x++) {
+                cx.fillStyle = 'rgba(0,0,0,' + (0.47 + (rnd() - 0.5) * 0.07).toFixed(3) + ')'; cx.fillRect(x, y, 1, 1);
+            }
+        });
+        var IC = {
+            ic_bug: ['...............', '.....#...#.....', '......#.#......', '....#######....', '...##.###.##...', '..#.#######.#..', '....#######....',
+                     '..#.#######.#..', '....#######....', '..#.#######.#..', '.....#####.....', '......###......', '...............', '...............', '...............'],
+            ic_feedback: ['...............', '..###########..', '.#...........#.', '.#.#########.#.', '.#...........#.', '.#.#######...#.', '.#...........#.',
+                          '.#.#########.#.', '.#...........#.', '..####..######.', '.....#.#.......', '.....##........', '.....#.........', '...............', '...............'],
+            ic_friends: ['...............', '....###........', '...#####..###..', '...#####.#####.', '...#####.#####.', '....###..#####.', '..........###..',
+                         '..#######......', '.#########.###.', '.#########.####', '.#########.####', '.#########.####', '...............', '...............', '...............'],
+            ic_report: ['...............', '..#............', '..##########...', '..#########....', '..########.....', '..#########....', '..##########...',
+                        '..#............', '..#............', '..#............', '..#............', '..#............', '..#............', '...............', '...............']
+        };
+        for (var ik in IC) (function (rows) { mk(ik, 15, 15, function (cx) { sprMap(cx, rows, { '#': '#ffffff' }); }); })(IC[ik]);
+    }
+    /* ── the advancement screen's sprites ─────────────────────────
+       The 252x140 window with the hole its 234x113 view shows through, the
+       26x26 frames (a square task, a rounded goal, a spiked challenge) in gold
+       once done and in grey before, the 200x26 title bars the hover draws
+       (gold for done, blue for not), and the dark box the description sits in.
+       The game's sizes, our pictures. */
+    function sprAdv(mk) {
+        var K = '#000000', L = '#ffffff', D = '#555555', F = '#c6c6c6', SD = '#373737';
+        function px(cx, x, y, c) { cx.fillStyle = c; cx.fillRect(x, y, 1, 1); }
+        mk('adv_win', 252, 140, function (cx) {
+            var W = 252, H = 140;
+            sprRect(cx, 1, 1, W - 2, H - 2, F);
+            sprRect(cx, 2, 1, W - 5, 1, L); sprRect(cx, 1, 2, W - 4, 1, L); sprRect(cx, 1, 3, 2, H - 6, L); px(cx, 3, 3, L);
+            sprRect(cx, W - 3, 3, 2, H - 5, D); sprRect(cx, 3, H - 3, W - 6, 1, D); sprRect(cx, 3, H - 2, W - 5, 1, D); px(cx, W - 4, H - 4, D);
+            sprRect(cx, 2, 0, W - 5, 1, K); sprRect(cx, 3, H - 1, W - 5, 1, K); sprRect(cx, 0, 2, 1, H - 5, K); sprRect(cx, W - 1, 3, 1, H - 5, K);
+            px(cx, 1, 1, K); px(cx, W - 3, 1, K); px(cx, W - 2, 2, K); px(cx, 1, H - 3, K); px(cx, 2, H - 2, K); px(cx, W - 2, H - 2, K);
+            cx.clearRect(W - 2, 1, 1, 1); cx.clearRect(1, H - 2, 1, 1);
+            // the view's recess: dark above and left, white below and right, and the hole itself
+            sprRect(cx, 8, 17, 236, 1, SD); sprRect(cx, 8, 17, 1, 115, SD);
+            sprRect(cx, 9, 131, 235, 1, L); sprRect(cx, 243, 18, 1, 114, L);
+            cx.clearRect(9, 18, 234, 113);
+        });
+        function inside(kind, x, y) {
+            if (kind === 'task') return x >= 1 && x <= 24 && y >= 1 && y <= 24 && !((x === 1 || x === 24) && (y === 1 || y === 24));
+            if (kind === 'goal') { var dx = Math.max(0, Math.abs(x - 12.5) - 5.5), dy = Math.max(0, Math.abs(y - 12.5) - 5.5); return dx * dx + dy * dy <= 42; }
+            // the challenge frame: a square with a spike at each corner and each edge's middle
+            var ax = Math.abs(x - 12.5), ay = Math.abs(y - 12.5);
+            if (ax <= 9.5 && ay <= 9.5) return true;
+            if (ax + ay >= 20 && ax <= 12.5 && ay <= 12.5 && Math.abs(ax - ay) <= 1.5) return true;
+            return (ax <= 1.5 && ay <= 12.5) || (ay <= 1.5 && ax <= 12.5);
+        }
+        function frame(kind, done) {
+            var body = done ? '#e0ac2f' : '#b4b4b4', lite = done ? '#fff08c' : '#ececec', dark = done ? '#9d6311' : '#727272', well = done ? '#c78f1c' : '#949494';
+            return function (cx) {
+                for (var y = 0; y < 26; y++) for (var x = 0; x < 26; x++) {
+                    if (inside(kind, x, y)) {
+                        var edgeTL = !inside(kind, x - 1, y) || !inside(kind, x, y - 1) || !inside(kind, x - 2, y) || !inside(kind, x, y - 2);
+                        var edgeBR = !inside(kind, x + 1, y) || !inside(kind, x, y + 1) || !inside(kind, x + 2, y) || !inside(kind, x, y + 2);
+                        var c = edgeTL && !edgeBR ? lite : edgeBR ? dark : body;
+                        if (x >= 5 && x <= 20 && y >= 5 && y <= 20) c = well;   // where the item sits
+                        px(cx, x, y, c);
+                    } else if (inside(kind, x + 1, y) || inside(kind, x - 1, y) || inside(kind, x, y + 1) || inside(kind, x, y - 1)) px(cx, x, y, K);
+                }
+            };
+        }
+        ['task', 'goal', 'challenge'].forEach(function (k) { mk('adv_' + k + '_o', 26, 26, frame(k, true)); mk('adv_' + k + '_u', 26, 26, frame(k, false)); });
+        function bar(face, lite, dark) {
+            return function (cx) {
+                sprRect(cx, 0, 0, 200, 26, K);
+                sprRect(cx, 1, 1, 198, 24, face);
+                sprRect(cx, 1, 1, 198, 2, lite); sprRect(cx, 1, 1, 2, 24, lite);
+                sprRect(cx, 1, 23, 198, 2, dark); sprRect(cx, 197, 1, 2, 24, dark);
+            };
+        }
+        mk('adv_bar_o', 200, 26, bar('#c9972a', '#f2d06a', '#7d5a13'));
+        mk('adv_bar_u', 200, 26, bar('#1f59a6', '#4e8ad6', '#0d2d5c'));
+        mk('adv_desc', 16, 16, function (cx) {   // the description's box, nine-sliced with a 2-pixel border
+            sprRect(cx, 0, 0, 16, 16, K); sprRect(cx, 1, 1, 14, 14, '#555555'); sprRect(cx, 2, 2, 12, 12, '#212121');
+        });
+    }
+    /* the Statistics screen's column headers, an 18x18 raised box with the
+       column's picture, and the items' slot; our own little drawings */
+    function sprStats(mk) {
+        var W = '#ffffff';
+        function box(cx) { sprRect(cx, 0, 0, 18, 18, '#8b8b8b'); sprRect(cx, 0, 0, 17, 1, W); sprRect(cx, 0, 0, 1, 17, W); sprRect(cx, 1, 17, 17, 1, '#373737'); sprRect(cx, 17, 1, 1, 17, '#373737'); }
+        mk('st_slot', 18, 18, function (cx) { sprRect(cx, 0, 0, 18, 18, '#8b8b8b'); sprRect(cx, 0, 0, 17, 1, '#373737'); sprRect(cx, 0, 0, 1, 17, '#373737'); sprRect(cx, 1, 17, 17, 1, W); sprRect(cx, 17, 1, 1, 17, W); });
+        var PIC = {
+            st_mined: ['..........', '.####.....', '.#..#.....', '.####.....', '....#.....', '.....#....', '......#...', '.......#..', '..........', '..........'],
+            st_broken: ['..........', '.####.....', '.#..#.....', '.###......', '....#.#...', '......#...', '.....#.#..', '.......#..', '..........', '..........'],
+            st_crafted: ['..........', '.########.', '.#..#..#..', '.########.', '.#..#..#..', '.########.', '.#......#.', '.#......#.', '..........', '..........'],
+            st_used: ['..........', '...##.....', '...##.....', '...####...', '..######..', '..######..', '...####...', '...###....', '..........', '..........'],
+            st_picked: ['..........', '....#.....', '...###....', '..#####...', '....#.....', '....#.....', '....#.....', '..#####...', '..........', '..........'],
+            st_dropped: ['..........', '..#####...', '....#.....', '....#.....', '....#.....', '..#####...', '...###....', '....#.....', '..........', '..........']
+        };
+        for (var k in PIC) (function (rows) { mk(k, 18, 18, function (cx) { box(cx); sprMap(cx, rows, { '#': '#202020' }, 4, 4); }); })(PIC[k]);
+    }
+    /* ── the menus' sprites ─────────────────────────────────────────
+       What the title screen's menus are drawn over and with since 1.20.5: the
+       menu background (black at about a third, a faint grain, tiled every 32
+       GUI pixels) over the blurred panorama, the darker list background, the
+       slider's track, the Create New World tabs, and the two icon buttons'
+       pictures. The game's sizes and borders, our pixels. */
+    function sprMenu(mk) {
+        var rnd = mulb(0x3E7B6);
+        function grain(a0, spread) {
+            return function (cx) {
+                for (var y = 0; y < 32; y++) for (var x = 0; x < 32; x++) {
+                    cx.fillStyle = 'rgba(0,0,0,' + (a0 + (rnd() - 0.5) * spread).toFixed(3) + ')'; cx.fillRect(x, y, 1, 1);
+                }
+            };
+        }
+        mk('mbg', 32, 32, grain(0.32, 0.06));
+        mk('mlbg', 32, 32, grain(0.52, 0.06));
+        function track(frame) {
+            return function (cx) {
+                sprRect(cx, 0, 0, 200, 20, frame);
+                for (var y = 1; y < 19; y++) for (var x = 1; x < 199; x++) {
+                    var v = 0x2e + Math.round((rnd() - 0.5) * 5);
+                    cx.fillStyle = 'rgb(' + v + ',' + v + ',' + v + ')'; cx.fillRect(x, y, 1, 1);
+                }
+            };
+        }
+        mk('slider', 200, 20, track('#000000'));
+        mk('slider_h', 200, 20, track('#ffffff'));
+        // MenuTabBar's tabs: nine-sliced with a 2-pixel border on the top and sides and none below, so they open onto the page
+        function tab(outer, inner, fill) {
+            return function (cx) {
+                if (fill) sprRect(cx, 2, 2, 126, 22, fill);
+                sprRect(cx, 0, 0, 130, 1, outer); sprRect(cx, 0, 0, 1, 24, outer); sprRect(cx, 129, 0, 1, 24, outer);
+                sprRect(cx, 1, 1, 128, 1, inner); sprRect(cx, 1, 1, 1, 23, inner); sprRect(cx, 128, 1, 1, 23, inner);
+            };
+        }
+        mk('tab', 130, 24, tab('#000000', '#4f4f4f', 'rgba(0,0,0,0.45)'));
+        mk('tab_h', 130, 24, tab('#ffffff', '#8f8f8f', 'rgba(0,0,0,0.45)'));
+        mk('tab_s', 130, 24, tab('#000000', '#a0a0a0', null));
+        mk('tab_sh', 130, 24, tab('#ffffff', '#d0d0d0', null));
+        var IC = {
+            ic_lang: ['...............', '.....#####.....', '...##.#.#.##...', '..#..#...#..#..', '.#...#...#...#.', '.#############.', '#....#...#....#',
+                      '#....#...#....#', '#....#...#....#', '.#############.', '.#...#...#...#.', '..#..#...#..#..', '...##.#.#.##...', '.....#####.....', '...............'],
+            ic_acc: ['......###......', '......###......', '......###......', '...............', '.#############.', '......###......', '......###......',
+                     '......###......', '......###......', '.....#...#.....', '.....#...#.....', '....#.....#....', '....#.....#....', '...#.......#...', '...............']
+        };
+        for (var ik in IC) (function (rows) { mk(ik, 15, 15, function (cx) { sprMap(cx, rows, { '#': '#ffffff' }); }); })(IC[ik]);
+    }
+    function sprPanels(mk) {
+        var K = '#000000', L = '#ffffff', D = '#555555', F = '#c6c6c6', W8 = '#8b8b8b', SD = '#373737';
+        function px(cx, x, y, c) { cx.fillStyle = c; cx.fillRect(x, y, 1, 1); }
+        function frame(cx, W, H, fill) {
+            sprRect(cx, 1, 1, W - 2, H - 2, fill || F);
+            sprRect(cx, 2, 1, W - 5, 1, L); sprRect(cx, 1, 2, W - 4, 1, L); sprRect(cx, 1, 3, 2, H - 6, L); px(cx, 3, 3, L);
+            sprRect(cx, W - 3, 3, 2, H - 5, D); sprRect(cx, 3, H - 3, W - 6, 1, D); sprRect(cx, 3, H - 2, W - 5, 1, D); px(cx, W - 4, H - 4, D);
+            sprRect(cx, 2, 0, W - 5, 1, K); sprRect(cx, 3, H - 1, W - 5, 1, K);
+            sprRect(cx, 0, 2, 1, H - 5, K); sprRect(cx, W - 1, 3, 1, H - 5, K);
+            px(cx, 1, 1, K); px(cx, W - 3, 1, K); px(cx, W - 2, 2, K); px(cx, 1, H - 3, K); px(cx, 2, H - 2, K); px(cx, W - 2, H - 2, K);
+            [[W - 2, 1], [1, H - 2]].forEach(function (p) { cx.clearRect(p[0], p[1], 1, 1); });
+        }
+        // a sunken box: dark top and left, white bottom and right, the two odd corners #8B8B8B
+        function slot(cx, x, y, w, h, inner, dark) {
+            w = w || 18; h = h || 18;
+            sprRect(cx, x, y, w, h, inner || W8);
+            sprRect(cx, x, y, w - 1, 1, dark || SD); sprRect(cx, x, y, 1, h - 1, dark || SD);
+            sprRect(cx, x + 1, y + h - 1, w - 1, 1, L); sprRect(cx, x + w - 1, y + 1, 1, h - 1, L);
+            px(cx, x + w - 1, y, W8); px(cx, x, y + h - 1, W8);
+        }
+        function slots(cx, ix, iy, cols, rows) { for (var r = 0; r < rows; r++) for (var c = 0; c < cols; c++) slot(cx, ix - 1 + 18 * c, iy - 1 + 18 * r); }
+        function arrow(cx, x, y, shaft, head, col) {
+            sprRect(cx, x, y + (head >> 1) - 1, shaft, 3, col);
+            for (var i = 0; i <= head >> 1; i++) sprRect(cx, x + shaft + i, y + i, 1, head - 2 * i, col);
+        }
+        function inv(cx, ix, iy, hy) { slots(cx, ix, iy, 9, 3); slots(cx, ix, hy, 9, 1); }
+        // the flame's outline, for the unlit furnace
+        var FLAME = ['......r.......', '.....ro.......', '.r...oy.....r.', '.ro..oy....ro.', '.oy.ryyo...oy.', '.oyyowyor.ryo.', '.oywwwyyoooyo.',
+                     'ryywwwwyyyyyor', 'oywwwwwwwwyyyo', 'oywwwwwwwwwyyo', 'oyywwwwwwwwyyo', '.oyywwwwwwyyo.', '..ooyyyyyyoo..', '...oooooooo...'];
+        function flameEdge(cx, ox, oy, col) {
+            for (var y = 0; y < 14; y++) for (var x = 0; x < 14; x++) {
+                if (FLAME[y].charAt(x) === '.') continue;
+                var edge = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(function (d) { var yy = y + d[1], xx = x + d[0]; return yy < 0 || yy > 13 || xx < 0 || xx > 13 || FLAME[yy].charAt(xx) === '.'; });
+                if (edge) px(cx, ox + x, oy + y, col);
+            }
+        }
+        // empty-slot silhouettes: a 1-pixel #555555 outline, nothing inside
+        var EMPTY = {
+            helmet: ['', '', '', '....oooooooo....', '...o........o...', '...o........o...', '...o..oooo..o...', '...o..o..o..o...', '...o..o..o..o...', '...oooo..oooo...'],
+            chest: ['', '', '.ooo........ooo.', '.o..oo....oo..o.', '.o...oooooo...o.', '.o............o.', '.oo..........oo.', '..o..........o..', '..o..........o..',
+                    '..o..........o..', '..o..........o..', '..o..........o..', '..o..........o..', '..o..........o..', '..oooooooooooo..'],
+            legs: ['', '', '...oooooooooo...', '...o........o...', '...o........o...', '...o...oo...o...', '...o..o..o..o...', '...o..o..o..o...', '...o..o..o..o...',
+                   '...o..o..o..o...', '...o..o..o..o...', '...o..o..o..o...', '...oooo..oooo...'],
+            boots: ['', '', '', '', '', '', '', '..oooo....oooo..', '..o..o....o..o..', '..o..o....o..o..', '..o..o....o..o..', '.o...o....o...o.', 'o....o....o....o', 'oooooo....oooooo'],
+            shield: ['', '.oooooooooooooo.', '.o............o.', '.o............o.', '.o............o.', '.o............o.', '.o............o.', '.o............o.',
+                     '..o..........o..', '..o..........o..', '...o........o...', '....o......o....', '.....o....o.....', '......oooo......'],
+            lapis: ['', '', '......oooo......', '....oo....oo....', '...o........o...', '..o..........o..', '..o..........o..', '.o............o.', '..o..........o..',
+                    '..o..........o..', '...o........o...', '....oo....oo....', '......oooo......']
+        };
+        for (var ek in EMPTY) (function (rows) { mk('e_' + ek, 16, 16, function (cx) { sprMap(cx, rows, { o: D }); }); })(EMPTY[ek]);
+
+        // the survival inventory, 176x166
+        mk('p_inv', 176, 166, function (cx) {
+            frame(cx, 176, 166);
+            for (var i = 0; i < 4; i++) slot(cx, 7, 7 + 18 * i);
+            slot(cx, 25, 7, 51, 72, K);                // the player's box: a black well in the same bevel
+            slot(cx, 76, 61);                          // off hand
+            slots(cx, 98, 18, 2, 2);
+            arrow(cx, 135, 29, 9, 13, W8);
+            slot(cx, 153, 27);
+            inv(cx, 8, 84, 142);
+        });
+        mk('p_table', 176, 166, function (cx) {
+            frame(cx, 176, 166);
+            slots(cx, 30, 17, 3, 3);
+            arrow(cx, 90, 35, 14, 15, W8);
+            slot(cx, 119, 30, 26, 26);
+            inv(cx, 8, 84, 142);
+        });
+        mk('p_furn', 176, 166, function (cx) {
+            frame(cx, 176, 166);
+            slot(cx, 55, 16); slot(cx, 55, 52);
+            flameEdge(cx, 56, 36, W8);
+            arrow(cx, 80, 35, 14, 15, W8);
+            slot(cx, 111, 30, 26, 26);
+            inv(cx, 8, 84, 142);
+        });
+        mk('p_chest', 176, 167, function (cx) {   // 168 tall as a screen; the texture stops a row short
+            frame(cx, 176, 167);
+            slots(cx, 8, 18, 9, 3);
+            inv(cx, 8, 85, 143);
+        });
+        mk('p_ench', 176, 166, function (cx) {
+            frame(cx, 176, 166);
+            slot(cx, 14, 46); slot(cx, 34, 46);
+            // the recess the three options sit in: dark top, white right and bottom, and no left edge at all
+            sprRect(cx, 59, 13, 109, 1, SD); sprRect(cx, 168, 14, 1, 58, L); sprRect(cx, 60, 71, 109, 1, L);
+            for (var o = 0; o < 3; o++) { sprRect(cx, 59, 14 + 19 * o, 1, 18, '#6b614c'); sprRect(cx, 59, 32 + 19 * o, 1, 1, '#544c3b'); }
+            inv(cx, 8, 84, 142);
+        });
+        mk('p_anvil', 176, 166, function (cx) {
+            frame(cx, 176, 166);
+            // the hammer, drawn at 2x like the game's: steel head top right, the handle running off bottom left
+            var HAM = ['..........HH...', '.........HhhH..', '........HhhhhH.', '.......HhhhhhhH', '......Hsshhhh.H', '.....HHsssshH..', '....HwwHsssH...',
+                       '...HwwH.HsH....', '..HwwH...H.....', '.HwwH..........', 'HwwH...........', 'HwH............', 'HH.............'];
+            var HP = { H: '#181818', h: '#ffffff', s: '#c1c1c1', w: '#896727' };
+            for (var y = 0; y < HAM.length; y++) for (var x = 0; x < 15; x++) { var c = HP[HAM[y].charAt(x)]; if (c) sprRect(cx, 17 + x * 2, 7 + (y + 1) * 2, 2, 2, c); }
+            slot(cx, 26, 46); slot(cx, 75, 46);
+            sprRect(cx, 58, 49, 3, 13, W8); sprRect(cx, 53, 54, 13, 3, W8);   // the plus
+            arrow(cx, 102, 48, 14, 15, W8);
+            slot(cx, 133, 46);
+            inv(cx, 8, 84, 142);
+        });
+        function crPanel(extra) {
+            return function (cx) {
+                frame(cx, 195, 136);
+                slots(cx, 9, 18, 9, 5); slots(cx, 9, 112, 9, 1);
+                slot(cx, 174, 17, 14, 112);            // the scroll track
+                if (extra) extra(cx);
+            };
+        }
+        mk('p_cr_items', 195, 136, crPanel());
+        mk('p_cr_search', 195, 136, crPanel(function (cx) { slot(cx, 80, 4, 90, 12, W8, D); }));
+        mk('p_cr_inv', 195, 136, function (cx) {
+            frame(cx, 195, 136);
+            slot(cx, 53, 5); slot(cx, 53, 32); slot(cx, 107, 5); slot(cx, 107, 32);
+            slot(cx, 34, 19);
+            slot(cx, 72, 5, 34, 45, K);
+            slots(cx, 9, 54, 9, 3); slots(cx, 9, 112, 9, 1);
+            slot(cx, 172, 111, 18, 18, '#ab7f7f');     // Destroy Item: the rose well with a dark X
+            for (var d = 0; d < 11; d++) { sprRect(cx, 175 + d, 114 + d, 2, 1, '#1f1f1f'); sprRect(cx, 185 - d, 114 + d, 2, 1, '#1f1f1f'); }
+        });
+
+        // the furnace's lit flame, 14x14 on the panel's grey, and its progress arrow, 24x16
+        mk('flame', 14, 14, function (cx) {
+            sprRect(cx, 0, 0, 14, 14, F);
+            sprMap(cx, FLAME, { r: '#d84c45', o: '#ffb600', y: '#ffff1f', w: '#ffffff' });
+            for (var y = 0; y < 14; y++) for (var x = 13; x >= 0; x--) if (FLAME[y].charAt(x) !== '.') { px(cx, x, y, W8); break; }   // the shade down each right side
+        });
+        // drawn over the panel's grey arrow at (79, 34), so its own arrow sits one row and column in
+        mk('burn', 24, 16, function (cx) {
+            sprRect(cx, 0, 0, 24, 16, F);
+            arrow(cx, 1, 1, 14, 15, '#ffffff');
+            sprRect(cx, 1, 9, 14, 1, '#d8d8d8');
+            for (var i = 0; i < 8; i++) px(cx, 15 + i, 15 - i, '#d8d8d8');
+        });
+        /* the hotbar's off-hand cell: one 22-pixel cell of the bar's own frame, a row
+           down in a 29x24 sprite drawn at (W/2 - 120, H - 23) */
+        mk('hotbar_off', 29, 24, function (cx) {
+            var hb = GSPR.hotbar && GSPR.hotbar.cv;
+            if (hb) { cx.drawImage(hb, 0, 0, 21, 22, 0, 1, 21, 22); cx.drawImage(hb, 181, 0, 1, 22, 21, 1, 1, 22); }
+        });
+        // the enchanting table's three option plates
+        function plate(face, lite, dark, dis) {
+            return function (cx) {
+                sprRect(cx, 0, 0, 108, 19, face);
+                if (dis) { sprRect(cx, 0, 0, 107, 1, lite); sprRect(cx, 0, 0, 1, 18, lite); sprRect(cx, 0, 18, 108, 1, dark); sprRect(cx, 107, 0, 1, 19, dark); }
+                else { sprRect(cx, 0, 0, 107, 1, lite); sprRect(cx, 0, 0, 1, 18, lite); sprRect(cx, 1, 18, 107, 1, dark); sprRect(cx, 107, 1, 1, 18, dark); }
+            };
+        }
+        mk('ench_n', 108, 19, plate('#a09172', '#e0ca9f', '#544c3b'));
+        mk('ench_h', 108, 19, plate('#b688ae', '#fab9ef', '#654c61'));
+        mk('ench_d', 108, 19, plate('#51493a', '#211d17', '#332e24', true));
+        // the lapis cost orbs, 1 2 3, bright and dull
+        function orb(n, dull) {
+            return function (cx) {
+                var rim = dull ? '#8a8a6a' : '#d8e45a', hi = dull ? '#b4b49a' : '#f5ff8f', body = dull ? '#5e6a4a' : '#6fb02a', swirl = dull ? '#7a8a60' : '#a4e04a';
+                var ol = dull ? '#47352f' : '#2d2102';
+                for (var y = 0; y < 16; y++) for (var x = 0; x < 16; x++) {
+                    var dx = x - 7.5, dy = y - 7, r = Math.sqrt(dx * dx + dy * dy);
+                    if (r > 6.4) continue;
+                    px(cx, x, y, r > 5.5 ? ol : r > 4.6 ? (dx + dy < 0 ? hi : rim) : (dx < -1 && (x + y) % 3 === 0 ? swirl : body));
+                }
+                var g = mfBuild().g[String(n)], dig = dull ? '#8c605d' : '#c8ff8f';
+                for (var gy = 0; gy < 7; gy++) for (var gx = 0; gx < g.w; gx++) if ((g.rows[gy] || '').charAt(gx) === '#') { px(cx, 8 + gx - 1, 4 + gy, ol); }
+                for (gy = 0; gy < 7; gy++) for (gx = 0; gx < g.w; gx++) if ((g.rows[gy] || '').charAt(gx) === '#') px(cx, 7 + gx - 1, 3 + gy, dig);
+            };
+        }
+        for (var ln = 1; ln <= 3; ln++) { mk('lvl_' + ln, 16, 16, orb(ln, false)); mk('lvl_' + ln + 'd', 16, 16, orb(ln, true)); }
+        // the anvil's name plate: a slot-style inset round a raised tan field
+        function field(face, lite, dark) {
+            return function (cx) {
+                slot(cx, 0, 0, 110, 16, face);
+                px(cx, 109, 0, F); px(cx, 0, 15, F);
+                sprRect(cx, 1, 1, 107, 1, lite); sprRect(cx, 1, 1, 1, 13, lite);
+                sprRect(cx, 2, 14, 107, 1, dark); sprRect(cx, 108, 2, 1, 13, dark);
+            };
+        }
+        mk('anvil_tf', 110, 16, field('#a09172', '#e0ca9f', '#544c3b'));
+        mk('anvil_tfd', 110, 16, field('#4e4737', '#6d634d', '#29251c'));
+        mk('anvil_err', 28, 21, function (cx) {
+            sprRect(cx, 0, 0, 28, 21, F);
+            arrow(cx, 3, 3, 14, 15, W8);
+            for (var i = 0; i < 15; i++) {
+                sprRect(cx, 6 + i, 3 + i, 1, 1, '#962300'); sprRect(cx, 7 + i, 3 + i, 1, 1, '#ba370f'); sprRect(cx, 8 + i, 3 + i, 1, 1, '#962300');
+                sprRect(cx, 20 - i, 3 + i, 1, 1, '#962300'); sprRect(cx, 19 - i, 3 + i, 1, 1, '#ba370f'); sprRect(cx, 18 - i, 3 + i, 1, 1, '#962300');
+            }
+        });
+        // creative tabs, 26x32: the unselected ones stand 26 above (or 24 below) the panel in #8B8B8B;
+        // the selected one is panel-coloured and runs four rows into the panel to merge with it
+        function tabBody(cx, y0, rows, fill) {
+            sprRect(cx, 2, y0, 21, 1, K);
+            px(cx, 1, y0 + 1, K); sprRect(cx, 2, y0 + 1, 21, 1, L); px(cx, 23, y0 + 1, K);
+            px(cx, 0, y0 + 2, K); sprRect(cx, 1, y0 + 2, 22, 1, L); px(cx, 23, y0 + 2, fill); px(cx, 24, y0 + 2, K);
+            for (var y = y0 + 3; y < y0 + rows; y++) {
+                px(cx, 0, y, K); sprRect(cx, 1, y, 2, 1, L); sprRect(cx, 3, y, 20, 1, fill); sprRect(cx, 23, y, 2, 1, D); px(cx, 25, y, K);
+            }
+            px(cx, 3, y0 + 3, L);
+        }
+        mk('tab_t_un', 26, 32, function (cx) { tabBody(cx, 2, 30, W8); });
+        function tabTopSel(variant) {
+            return function (cx) {
+                tabBody(cx, 0, 29, F);
+                var r29, r30, r31;
+                if (variant === 1) { r29 = 'KLLFD'; }
+                // rows 29-31, where the tab meets the panel: left edge, right edge
+                for (var y = 29; y < 32; y++) {
+                    sprRect(cx, 3, y, 20, 1, F);
+                    if (variant === 1) { px(cx, 0, y, K); sprRect(cx, 1, y, 2, 1, L); }
+                    else sprRect(cx, 0, y, 3, 1, y < 31 ? L : F);
+                    if (variant === 7) { sprRect(cx, 23, y, 2, 1, D); px(cx, 25, y, K); }
+                    else if (y === 29) { sprRect(cx, 23, y, 2, 1, D); px(cx, 25, y, L); }
+                    else if (y === 30) { px(cx, 23, y, D); sprRect(cx, 24, y, 2, 1, L); }
+                    else sprRect(cx, 23, y, 3, 1, F);
+                }
+                if (variant === 1) { px(cx, 0, 31, K); sprRect(cx, 1, 31, 2, 1, L); }
+            };
+        }
+        mk('tab_t_s1', 26, 32, tabTopSel(1)); mk('tab_t_sm', 26, 32, tabTopSel(2)); mk('tab_t_s7', 26, 32, tabTopSel(7));
+        function tabBottom(cx, rows, fill, y0) {   // rows of body starting at y0, then the rounded foot
+            for (var y = y0; y < y0 + rows; y++) {
+                px(cx, 0, y, K); sprRect(cx, 1, y, 2, 1, L); sprRect(cx, 3, y, 20, 1, fill); sprRect(cx, 23, y, 2, 1, D); px(cx, 25, y, K);
+            }
+            var f = y0 + rows;
+            px(cx, 1, f, K); px(cx, 2, f, fill); sprRect(cx, 3, f, 22, 1, D); px(cx, 25, f, K);
+            px(cx, 2, f + 1, K); sprRect(cx, 3, f + 1, 21, 1, D); px(cx, 24, f + 1, K);
+            sprRect(cx, 3, f + 2, 21, 1, K);
+        }
+        mk('tab_b_un', 26, 32, function (cx) { tabBottom(cx, 25, W8, 0); });
+        function tabBotSel(variant) {
+            return function (cx) {
+                tabBottom(cx, 29, F, 0);
+                if (variant === 1) { sprRect(cx, 3, 0, 23, 1, F); sprRect(cx, 23, 1, 3, 2, D); }
+                else if (variant === 7) { sprRect(cx, 0, 0, 23, 1, F); sprRect(cx, 0, 1, 2, 1, D); px(cx, 2, 1, L); px(cx, 0, 2, D); }
+                else { sprRect(cx, 0, 0, 26, 1, F); sprRect(cx, 0, 1, 2, 1, D); px(cx, 2, 1, L); px(cx, 0, 2, D); sprRect(cx, 23, 1, 3, 2, D); }
+            };
+        }
+        mk('tab_b_s1', 26, 32, tabBotSel(1)); mk('tab_b_sm', 26, 32, tabBotSel(2)); mk('tab_b_s7', 26, 32, tabBotSel(7));
+        function scroller(fill, grip) {
+            return function (cx) {
+                sprRect(cx, 0, 0, 12, 15, fill);
+                sprRect(cx, 0, 0, 11, 1, L); sprRect(cx, 0, 1, 1, 13, L); px(cx, 11, 0, W8);
+                sprRect(cx, 11, 1, 1, 14, D); sprRect(cx, 1, 14, 11, 1, D); px(cx, 0, 14, W8);
+                for (var g = 2; g <= 12; g += 2) sprRect(cx, 2, g, 8, 1, grip);
+            };
+        }
+        mk('scroller', 12, 15, scroller(F, W8));
+        mk('scroller_d', 12, 15, scroller(W8, D));
+        // the recipe-book button: a small raised panel with a green book on it, blue-grey when hovered
+        function rbook(edge, face, shade) {
+            return function (cx) {
+                sprRect(cx, 1, 1, 18, 16, face);
+                sprRect(cx, 2, 0, 16, 1, edge); sprRect(cx, 2, 17, 16, 1, edge); sprRect(cx, 0, 2, 1, 14, edge); sprRect(cx, 19, 2, 1, 14, edge);
+                [[1, 1], [18, 1], [1, 16], [18, 16]].forEach(function (p) { px(cx, p[0], p[1], edge); });
+                sprRect(cx, 2, 1, 16, 1, L); sprRect(cx, 1, 2, 1, 14, L);
+                sprRect(cx, 18, 2, 1, 14, shade); sprRect(cx, 2, 16, 16, 1, shade);
+                var BOOK = ['......gggg..', '....ggGGGGg.', '..ggGGGGGGGg', 'ggGGGGGGGGgp', 'gGGGGGGGGgpp', 'gGGGGGGGgppd', 'gGGGGGGgppd.', '.gGGGGgppd..', '..gGGgppd...', '...ggppd....', '....dd......'];
+                sprMap(cx, BOOK, { g: '#1b361b', G: '#478e47', p: '#d6d6d6', d: '#999999' }, 4, 3);
+            };
+        }
+        mk('rbook', 20, 18, rbook(K, F, D));
+        mk('rbook_h', 20, 18, rbook('#00073e', '#8892c9', '#343e75'));
+        /* the recipe book: its page is the panel's own frame at 147x166; the tabs
+           down its left side are the creative tabs turned on their side, #8B8B8B
+           and stopping at the book's edge, or panel grey and running into it when
+           selected; 25x25 recipe buttons, grey for what you can make and red for
+           what you cannot; the 26x16 switch, pressed in with its picture lit while
+           it shows only what you can make; the 12x17 page arrows */
+        mk('rb_bg', 147, 166, function (cx) { frame(cx, 147, 166); });
+        function rbTab(sel) {
+            return function (cx) {
+                var end = sel ? 35 : 30, fill = sel ? F : W8;
+                sprRect(cx, 1, 1, end - 1, 25, fill);
+                sprRect(cx, 2, 0, end - 2, 1, K); sprRect(cx, 2, 26, end - 2, 1, K); sprRect(cx, 0, 2, 1, 23, K);
+                px(cx, 1, 1, K); px(cx, 1, 25, K);
+                sprRect(cx, 2, 1, end - 2, 2, L); sprRect(cx, 1, 2, 2, 22, L);
+                sprRect(cx, 3, 24, end - 3, 2, D); px(cx, 2, 25, D);
+                if (sel) {   // where it opens into the book: the book's white edge turns along the tab's
+                    sprRect(cx, 32, 3, 3, 21, F);
+                    sprRect(cx, 33, 0, 2, 3, L); sprRect(cx, 33, 24, 2, 3, L);
+                }
+            };
+        }
+        mk('rb_tab', 35, 27, rbTab(false)); mk('rb_tab_s', 35, 27, rbTab(true));
+        function rbSlot(face, lite, dark) {
+            return function (cx) {
+                sprRect(cx, 1, 1, 23, 23, face);
+                sprRect(cx, 1, 0, 23, 1, K); sprRect(cx, 1, 24, 23, 1, K); sprRect(cx, 0, 1, 1, 23, K); sprRect(cx, 24, 1, 1, 23, K);
+                sprRect(cx, 1, 1, 22, 1, lite); sprRect(cx, 1, 2, 1, 21, lite);
+                sprRect(cx, 2, 23, 22, 1, dark); sprRect(cx, 23, 2, 1, 21, dark);
+            };
+        }
+        mk('rb_ok', 25, 25, rbSlot('#9d9d9d', '#d8d8d8', '#5b5b5b'));
+        mk('rb_no', 25, 25, rbSlot('#b26363', '#e59a9a', '#6b2c2c'));
+        var RB_FLAME = ['...o....', '..oy....', '..oyo.o.', '.oyyo.oy', '.oyyyoyy', 'oyywyyyo', 'oywwwyyo', '.oyyyyo.'];
+        function rbFilter(on, hi, fur) {
+            return function (cx) {
+                var e = hi ? L : K;
+                sprRect(cx, 1, 0, 24, 1, e); sprRect(cx, 1, 15, 24, 1, e); sprRect(cx, 0, 1, 1, 14, e); sprRect(cx, 25, 1, 1, 14, e);
+                sprRect(cx, 1, 1, 24, 14, on ? '#7c7c7c' : W8);
+                sprRect(cx, 1, 1, 24, 1, on ? D : L); sprRect(cx, 1, 2, 1, 13, on ? D : L);
+                sprRect(cx, 2, 14, 23, 1, on ? L : D); sprRect(cx, 24, 2, 1, 12, on ? L : D);
+                if (fur) sprMap(cx, RB_FLAME, on ? { o: '#c43c00', y: '#ff9a00', w: '#fff27a' } : { o: '#4a4a4a', y: '#6e6e6e', w: '#a0a0a0' }, 9, 4);
+                else for (var gy = 0; gy < 3; gy++) for (var gx = 0; gx < 3; gx++) sprRect(cx, 8 + gx * 4, 2 + gy * 4, 3, 3, on ? '#46b446' : '#6e6e6e');
+            };
+        }
+        [['rb_f', false], ['rb_ff', true]].forEach(function (v) {
+            mk(v[0] + '0', 26, 16, rbFilter(false, false, v[1])); mk(v[0] + '0h', 26, 16, rbFilter(false, true, v[1]));
+            mk(v[0] + '1', 26, 16, rbFilter(true, false, v[1])); mk(v[0] + '1h', 26, 16, rbFilter(true, true, v[1]));
+        });
+        function rbArrow(right, c) {
+            return function (cx) {
+                for (var i = 0; i < 9; i++) {
+                    var h = 17 - 2 * i, x = right ? 1 + i : 10 - i;
+                    sprRect(cx, x, i, 1, h, SD);
+                    if (h > 2) sprRect(cx, x, i + 1, 1, h - 2, c);
+                }
+                sprRect(cx, right ? 0 : 11, 0, 1, 17, SD);
+            };
+        }
+        mk('rb_next', 12, 17, rbArrow(true, '#c6c6c6')); mk('rb_nexth', 12, 17, rbArrow(true, '#ffffff'));
+        mk('rb_prev', 12, 17, rbArrow(false, '#c6c6c6')); mk('rb_prevh', 12, 17, rbArrow(false, '#ffffff'));
+        // the recipe toast's white card
+        mk('toast_rc', 160, 32, function (cx) {
+            sprRect(cx, 2, 0, 156, 1, K); sprRect(cx, 2, 31, 156, 1, K); sprRect(cx, 0, 2, 1, 28, K); sprRect(cx, 159, 2, 1, 28, K);
+            px(cx, 1, 1, K); px(cx, 158, 1, K); px(cx, 1, 30, K); px(cx, 158, 30, K);
+            sprRect(cx, 2, 1, 156, 30, '#f2f2f2'); sprRect(cx, 1, 2, 158, 28, '#f2f2f2');
+            sprRect(cx, 2, 1, 156, 1, L); sprRect(cx, 1, 2, 1, 28, L);
+            sprRect(cx, 2, 30, 156, 1, '#b4b4b4'); sprRect(cx, 158, 2, 1, 28, '#b4b4b4');
+        });
+    }
+    /* ── the recipe book ─────────────────────────────────────────
+       RecipeBookComponent, beside the inventory, the crafting table and the
+       furnace. The green book opens a 147x166 page at ((W - 147) / 2 - 86,
+       (H - 166) / 2) and the container slides right to 177 + (W - w - 200) / 2
+       to make room; on a screen under 379 wide the page is centred and the
+       container hidden until a recipe is picked or Esc closes the book.
+       On the page: the search box at (25, 13), the switch at (110, 12) that
+       shows only what you can make, the category tabs down the left edge
+       (35x27, 27 apart, only those holding a recipe you know), and twenty
+       recipes a page, five across from (11, 31) at 25 apart, with arrows and
+       "1/3" under them. A recipe you can make fills the grid (shift for as
+       many as you have for, a second click for one more each); one you cannot
+       is laid out as a ghost. Recipes are learned the way the game's recipe
+       advancements teach them, from an ingredient in your inventory, and a
+       toast says so; each new one pops once, with its tab, the first time the
+       book shows it. Open or shut, and the switch, are the world's: one pair
+       for crafting, one for the furnace. */
+    var RB_TABS = {
+        craft: [{ id: 'search', ic: ['compass'] }, { id: 'equip', ic: ['iron_axe', 'gold_sword'] }, { id: 'build', ic: ['bricks'] },
+                { id: 'misc', ic: ['lava_bucket', 'apple'] }, { id: 'red', ic: ['redstone'] }],
+        furnace: [{ id: 'search', ic: ['compass'] }, { id: 'food', ic: ['pork_raw'] }, { id: 'blocks', ic: ['stone'] }, { id: 'misc', ic: ['lava_bucket', 'emerald'] }]
+    };
+    var RB_SEARCH = { craft: ['equip', 'build', 'misc', 'red'], furnace: ['food', 'blocks', 'misc'] };   // SearchRecipeBookCategory's order
+    // each recipe's category as its recipe file files it; tools and armour are equipment, the rest misc
+    var RB_CAT = { planks: 'build', wool: 'build', stonebrick: 'build', sandstone: 'build', bricks: 'build', bookshelf: 'build', melon: 'build',
+                   tnt: 'red', rlamp: 'red', arrow: 'equip', bow: 'equip', flint_steel: 'equip' };
+    var RB_ALL = null;
+    function rbAll() {
+        if (RB_ALL) return RB_ALL;
+        var list = [];
+        RECIPES.forEach(function (r) {
+            // one recipe with a choice in it, the way the game writes the torch: coal or charcoal in the same cell
+            for (var k = 0; k < list.length; k++) {
+                var q = list[k], same = q.out === r.out && q.n === r.n && q.shape && r.shape && q.shape.length === r.shape.length && q.shape[0].length === r.shape[0].length;
+                if (same) r.shape.forEach(function (row, y) { row.forEach(function (id, x) { if (!id !== !q.shape[y][x]) same = false; }); });
+                if (!same) continue;
+                r.shape.forEach(function (row, y) {
+                    row.forEach(function (id, x) { var c = rbAlts(q.shape[y][x]); if (id && c.indexOf(id) < 0) q.shape[y][x] = c.concat([id]); });
+                });
+                return;
+            }
+            var d = I[r.out] || {};
+            list.push({ key: 'c:' + r.out, book: 'craft', out: r.out, n: r.n, less: r.less ? r.less.slice() : null,
+                shape: r.shape ? r.shape.map(function (row) { return row.slice(); }) : null, cat: RB_CAT[r.out] || (d.tool || d.armor ? 'equip' : 'misc') });
+        });
+        for (var inp in SMELTS) {
+            var o = SMELTS[inp], od = I[o] || {};
+            list.push({ key: 's:' + inp, book: 'furnace', out: o, n: 1, inp: inp, cat: od.food ? 'food' : od.place != null ? 'blocks' : 'misc' });
+        }
+        list.forEach(function (r) {   // what teaches it: any of its ingredients (the chest waits for ten filled slots, as its advancement does)
+            var t = {};
+            rbCellsOf(r, 3).forEach(function (c) { rbAlts(c[1]).forEach(function (id) { t[id] = 1; }); });
+            r.trig = r.out === 'chest' ? null : Object.keys(t);
+        });
+        return (RB_ALL = list);
+    }
+    function rbAlts(c) { return Array.isArray(c) ? c : [c]; }
+    function rbId(r) { return r.inp ? r.out + '_from_smelting_' + r.inp : r.out; }   // what /recipe calls it
+    function rbKind() { var k = RT && RT.panel && RT.panel.kind; return k === 'inv' || k === 'table' ? 'craft' : k === 'furnace' ? 'furnace' : null; }
+    function rbState() {
+        var k = rbKind();
+        if (!k) return null;
+        S.rb = S.rb || {};
+        return S.rb[k] || (S.rb[k] = { open: false, filter: false });
+    }
+    function rbShown() { var st = rbState(); return !!(st && st.open && RT.el.querySelector('.mc-panelwrap .mc-rb')); }
+    function rbNarrow() { return RT.gw < 379; }
+    function rbKnown() {
+        var m = RT.rbKnown;
+        if (!m || m.src !== S.rbk) { m = RT.rbKnown = { src: S.rbk }; S.rbk.forEach(function (k) { m[k] = 1; }); }
+        return m;
+    }
+    // a stack the book will use: not renamed, enchanted or worn (Inventory.isUsableForCrafting)
+    function rbPlain(st) {
+        var m = st ? itemMaxDur(st.id) : null;
+        return !!st && !st.name && !(st.ench && Object.keys(st.ench).length) && !(st.dur != null && m != null && st.dur < m);
+    }
+    /* StackedItemContents: what it could be made from, the inventory's plain
+       stacks and what the grid (or the furnace's input and output) holds already */
+    function rbHave(id) {
+        var n = 0, i, k = rbKind();
+        for (i = 0; i < 36; i++) if (S.inv[i] && S.inv[i].id === id && rbPlain(S.inv[i])) n += S.inv[i].c;
+        if (k === 'craft') for (i = 0; i < 9; i++) if (RT.craft[i] && RT.craft[i].id === id && rbPlain(RT.craft[i])) n += RT.craft[i].c;
+        if (k === 'furnace') { var t = S.tents[RT.panel.key]; if (t) [t.fin, t.out].forEach(function (s) { if (s && s.id === id && rbPlain(s)) n += s.c; }); }
+        return n;
+    }
+    function rbTake(id, n) {   // out of the inventory in slot order, the off hand last
+        for (var i = 0; i <= 36 && n > 0; i++) {
+            var st = i < 36 ? S.inv[i] : S.off;
+            if (!st || st.id !== id || !rbPlain(st)) continue;
+            var k = Math.min(n, st.c);
+            st.c -= k; n -= k;
+            if (!st.c) { if (i < 36) S.inv[i] = null; else S.off = null; }
+        }
+    }
+    // PlaceRecipeHelper: a recipe under half the grid's width or height is centred on that axis
+    function rbCellsOf(r, w) {
+        if (r.inp) return [[0, r.inp]];
+        var out = [];
+        if (r.less) { r.less.forEach(function (id, k) { out.push([k, id]); }); return out; }
+        var rh = r.shape.length, rw = r.shape[0].length;
+        var ox = rw < w / 2 ? Math.floor(w / 2 - rw / 2) : 0, oy = rh < w / 2 ? Math.floor(w / 2 - rh / 2) : 0;
+        r.shape.forEach(function (row, y) { row.forEach(function (id, x) { if (id) out.push([(y + oy) * w + x + ox, id]); }); });
+        return out;
+    }
+    function rbPick(r) {   // an item for every cell; of a choice, the one there is most of
+        return rbCellsOf(r, r.inp ? 1 : RT.craftW).map(function (c) {
+            var alts = rbAlts(c[1]), best = alts[0];
+            alts.forEach(function (id) { if (rbHave(id) > rbHave(best)) best = id; });
+            return [c[0], best];
+        });
+    }
+    function rbMost(r) {   // getBiggestCraftableStack, clamped to the ingredients' stack size
+        var need = {}, most = 64, k;
+        rbPick(r).forEach(function (c) { need[c[1]] = (need[c[1]] || 0) + 1; });
+        for (k in need) most = Math.min(most, Math.floor(rbHave(k) / need[k]), stkMax(k));
+        return most;
+    }
+    function rbFits(r) { var w = RT.craftW; return !!r.inp || (r.less ? r.less.length <= w * w : r.shape.length <= w && r.shape[0].length <= w); }
+    /* what the page lists: the tab's categories in the game's order, the recipes
+       known and fitting this grid, matched against the search, and only the
+       makeable ones while the switch is on */
+    function rbList() {
+        var kind = rbKind(), st = rbState(), v = RT.rbv, tab = RB_TABS[kind][v.tab].id, q = (v.q || '').trim().toLowerCase(), known = rbKnown(), out = [];
+        (tab === 'search' ? RB_SEARCH[kind] : [tab]).forEach(function (cat) {
+            rbAll().forEach(function (r) {
+                if (r.book !== kind || r.cat !== cat || !known[r.key] || !rbFits(r)) return;
+                if (q && itemName({ id: r.out, c: 1 }).toLowerCase().indexOf(q) < 0) return;
+                var ok = rbMost(r) > 0;
+                if (!st.filter || ok) out.push({ r: r, ok: ok });
+            });
+        });
+        return out;
+    }
+    function rbTabsOn() {   // the search tab, then each category holding a recipe you know that fits
+        var kind = rbKind(), known = rbKnown(), on = [];
+        RB_TABS[kind].forEach(function (T, k) {
+            if (!k || rbAll().some(function (r) { return r.book === kind && r.cat === T.id && known[r.key] && rbFits(r); })) on.push(k);
+        });
+        return on;
+    }
+    function rbTabsPop() {   // RecipeBookTabButton.startAnimation: a category with a recipe you have not been shown yet
+        var kind = rbKind(), st = rbState(), now = performance.now();
+        if (!S.rbNew) return;
+        RT.rbPopT = RT.rbPopT || {};
+        RB_TABS[kind].forEach(function (T, k) {
+            if (k && rbAll().some(function (r) { return r.book === kind && r.cat === T.id && S.rbNew[r.key] && rbFits(r) && (!st.filter || rbMost(r) > 0); })) RT.rbPopT['t:' + T.id] = now;
+        });
+    }
+    function rbPaint() {
+        var el = RT.el.querySelector('.mc-panelwrap .mc-rb');
+        if (!el || !RT.rbv) return;
+        var kind = rbKind(), st = rbState(), v = RT.rbv, on = rbTabsOn(), now = performance.now(), pops = RT.rbPopT = RT.rbPopT || {};
+        if (on.indexOf(v.tab) < 0) { v.tab = 0; v.page = 0; }
+        function pop(id) { return pops[id] && now - pops[id] < 750 ? ' data-pop="' + pops[id] + '"' : ''; }
+        var tabs = '';
+        on.forEach(function (k, n) {
+            var T = RB_TABS[kind][k], sel = k === v.tab;   // the selected tab is drawn two pixels further out
+            tabs += '<button class="mc-rbtab' + (sel ? ' on' : '') + '" type="button" data-rbt="' + k + '"' + pop('t:' + T.id) + ' style="' + iwAt(sel ? -32 : -30, 3 + 27 * n, 35, 27) + '">' +
+                T.ic.map(function (ic, j) { return '<i style="' + pAt(T.ic.length === 1 ? 9 : j ? 14 : 3, 5) + ';background-image:url(' + iconURL(ic) + ')"></i>'; }).join('') + '</button>';
+        });
+        var list = RT.rbList = rbList(), pages = Math.ceil(list.length / 20), html = '';
+        if (v.page >= pages) v.page = 0;   // RecipeBookPage.updateCollections: past the end is back to the start
+        for (var k = 0; k < 20; k++) {
+            var c = list[v.page * 20 + k];
+            if (!c) break;
+            if (S.rbNew && S.rbNew[c.r.key]) { delete S.rbNew[c.r.key]; pops['r:' + c.r.key] = now; }   // shown, so no longer new: it pops the once
+            html += '<button class="mc-rbr" type="button" data-rbr="' + (v.page * 20 + k) + '"' + pop('r:' + c.r.key) + ' style="' + iwAt(11 + 25 * (k % 5), 31 + 25 * ((k / 5) | 0), 25, 25) +
+                ';background-image:var(--spr-rb_' + (c.ok ? 'ok' : 'no') + ')"><i style="background-image:url(' + iconURL(c.r.out) + ')"></i></button>';
+        }
+        if (pages > 1) {
+            if (v.page < pages - 1) html += '<button class="mc-rbarr next" type="button" data-rb="next" style="' + iwAt(93, 137, 12, 17) + '"></button>';
+            if (v.page > 0) html += '<button class="mc-rbarr prev" type="button" data-rb="prev" style="' + iwAt(38, 137, 12, 17) + '"></button>';
+            var pg = (v.page + 1) + '/' + pages;   // white, no shadow, centred on x 73
+            html += iwText(pg, 73 - ((mfWidth(pg) + 1) >> 1), 141, '#ffffff', 'ns');
+        }
+        var te = el.querySelector('.mc-rbtabs'), pe = el.querySelector('.mc-rbpage'), fb = el.querySelector('.mc-rbfilter');
+        if (te._html !== tabs) { te._html = tabs; te.innerHTML = tabs; }
+        if (pe._html !== html) { pe._html = html; pe.innerHTML = html; }
+        fb.classList.toggle('on', !!st.filter);
+        fb.classList.toggle('fur', kind === 'furnace');
+    }
+    // open, shut, or brought up to date: the book lives beside the panel, not in it
+    function rbSync() {
+        var wrap = RT.el.querySelector('.mc-panelwrap'), st = rbState(), el = wrap && wrap.querySelector('.mc-rb');
+        if (!wrap) return;
+        if (!st || !st.open) { if (el) el.parentNode.removeChild(el); tipRender(null); return; }
+        RT.rbv = RT.rbv || { tab: 0, page: 0, q: '' };
+        if (!el) {
+            el = document.createElement('div');
+            el.className = 'mc-rb';
+            el.innerHTML = '<i class="mc-rbbg"></i><div class="mc-rbtabs"></div>' +
+                '<div class="mc-rbq" style="' + iwAt(25, 13, 81, 14) + '"><input class="mc-rbqin" maxlength="50" spellcheck="false" autocomplete="off" aria-label="Search">' +
+                '<div class="mc-rbqmir mc-fmir"></div></div>' +
+                '<button class="mc-rbfilter" type="button" data-rb="filter" style="' + iwAt(110, 12, 26, 16) + '"></button><div class="mc-rbpage"></div>';
+            wrap.insertBefore(el, wrap.querySelector('.mc-cur'));
+            var qi = el.querySelector('.mc-rbqin');
+            qi.value = RT.rbv.q;
+            qi.addEventListener('input', function () { RT.rbv.q = qi.value; rbPaint(); panelHoverRefresh(); });
+            qi.addEventListener('keydown', function (e) {
+                e.stopPropagation();   // the box owns the keyboard while it has it; Esc still gets you out
+                if (e.key === 'Escape') { e.preventDefault(); qi.blur(); RT.el.focus(); rbEscape(); }
+            });
+            qi.addEventListener('keyup', function (e) { e.stopPropagation(); });
+            qi.addEventListener('mousedown', function (e) { e.stopPropagation(); });
+            qi.addEventListener('focus', function () { qi._ft = performance.now(); });
+            rbTabsPop();
+        }
+        rbPaint();
+    }
+    function rbEscape() {   // RecipeBookComponent.keyPressed: Esc shuts a book that covers the screen, otherwise the screen
+        if (rbShown() && rbNarrow()) rbToggle(false); else closePanel();
+    }
+    function rbToggle(on) {
+        rbState().open = on;
+        rbSync();
+        RT.panel.gs = 0;   // the container moves: lay it out and paint it again
+        panelLayout();
+    }
+    // every part of the book is a widget, so every press clicks; the left button only, the right as well on a recipe
+    function rbAct(el, btn, shift) {
+        var st = rbState(), v = RT.rbv;
+        snd('click');
+        if (el.classList.contains('mc-rbook')) { rbToggle(!st.open); return; }
+        if (el.hasAttribute('data-rbr')) { if (btn === 0) rbClick(+el.getAttribute('data-rbr'), shift); return; }   // the right button lists a recipe's others; ours have none
+        if (el.hasAttribute('data-rbt')) {
+            var k = +el.getAttribute('data-rbt');
+            if (k !== v.tab) { v.tab = k; v.page = 0; }
+        } else {
+            var a = el.getAttribute('data-rb');
+            if (a === 'filter') st.filter = !st.filter;
+            else if (a === 'next') v.page++;
+            else if (a === 'prev') v.page = Math.max(0, v.page - 1);
+        }
+        rbPaint();
+        panelHoverRefresh();
+    }
+    function rbTip(el) {
+        if (el.classList.contains('mc-rbfilter')) return [{ t: rbState().filter ? (rbKind() === 'furnace' ? 'Showing Smeltable' : 'Showing Craftable') : 'Showing All' }];
+        var c = RT.rbList && RT.rbList[+el.getAttribute('data-rbr')];
+        return c ? itemTipLines({ id: c.r.out, c: c.r.n }, 'rb') : null;
+    }
+    /* ServerPlaceRecipe.clearGrid and the test before it: the grid goes back into
+       the inventory, and in survival nothing happens if it would not all fit;
+       creative drops what does not */
+    function rbClearGrid(slots) {
+        var snap = { inv: S.inv.map(function (s) { return s && Object.assign({}, s); }), off: S.off && Object.assign({}, S.off) }, lost = [];
+        slots.forEach(function (sl) {
+            var st = sl.get();
+            if (!st) return;
+            var left = invGive(st.id, st.c, st.dur, st.ench, st.name);
+            if (left) lost.push({ id: st.id, c: left, dur: st.dur, ench: st.ench, name: st.name });
+        });
+        if (lost.length && !instaBuild()) { S.inv = snap.inv; S.off = snap.off; return false; }
+        slots.forEach(function (sl) { sl.set(null); });
+        lost.forEach(function (st) { dropItem(S.px, S.py + 1, S.pz, st.id, st.c, st.dur, false, st.ench, st.name); });
+        return true;
+    }
+    function rbGridHolds(r) {   // the grid's stacks, if what is in it already makes this
+        var m = matchRecipe(RT.craft, RT.craftW), out = [];
+        if (!m || m.out !== r.out || m.n !== r.n) return null;
+        for (var i = 0; i < 9; i++) if (RT.craft[i]) out.push(RT.craft[i]);
+        return out;
+    }
+    /* a recipe clicked: RecipeBookComponent.tryPlaceRecipe and ServerPlaceRecipe.
+       One of each, or with shift as many as you have for, up to a stack; a click
+       on the recipe the grid already holds adds one more to every stack, if each
+       has room. What you cannot make is laid out as a ghost. On a screen too
+       narrow for both, the book then closes to show the grid. */
+    function rbClick(idx, shift) {
+        var c = RT.rbList && RT.rbList[idx];
+        if (!c) return;
+        var r = c.r, most = rbMost(r), t = r.inp ? S.tents[RT.panel.key] : null, grid = [], i;
+        if (most < 1 && RT.rbGhost === r) return;   // already showing where it goes
+        if (r.inp && !t) return;
+        rbGhostSet(null);
+        if (r.inp) grid = [{ get: function () { return t.fin; }, set: function (v) { t.fin = v; } }, { get: function () { return t.out; }, set: function (v) { t.out = v; } }];
+        else for (i = 0; i < 9; i++) (function (i) { grid.push({ get: function () { return RT.craft[i]; }, set: function (v) { RT.craft[i] = v; } }); })(i);
+        if (most < 1) { if (rbClearGrid(grid)) rbGhostSet(r); }
+        else {
+            var n = 1, inGrid = r.inp ? (t.fin && t.fin.id === r.inp ? [t.fin] : null) : rbGridHolds(r), full = false;
+            if (shift) n = most;
+            else if (inGrid) {
+                n = 64;
+                inGrid.forEach(function (s) { n = Math.min(n, s.c); if (Math.min(most, stkMax(s.id)) < s.c + 1) full = true; });
+                n++;
+            }
+            var cells = rbPick(r);   // chosen while the grid still counts
+            if (!full && rbClearGrid(grid)) cells.forEach(function (cl) {
+                rbTake(cl[1], n);
+                if (r.inp) t.fin = { id: cl[1], c: n }; else RT.craft[cl[0]] = { id: cl[1], c: n };
+            });
+        }
+        paintPanel(); paintHotbar();
+        if (rbNarrow()) rbToggle(false);
+    }
+    /* GhostSlots: each slot of the recipe washed out over 0x30FF0000 (24x24
+       round a big result slot) with 0x30FFFFFF over the item's own pixels; a
+       choice of ingredient, and the fuel, take turns every 30 ticks (held
+       while Ctrl is down); the result shows its count. It stays until a
+       crafting slot is clicked, even with the book shut. */
+    function rbGhostSet(r) {
+        RT.rbGhost = r;
+        var wrap = RT.el.querySelector('.mc-panelwrap');
+        if (wrap) rbGhostPaint(wrap);
+    }
+    function rbGhostHit(g) {
+        if (RT.rbGhost && (g === 'craft' || g === 'cout' || g === 'fin' || g === 'ffuel' || g === 'fout')) rbGhostSet(null);
+    }
+    function rbFuels() { return RT.rbFuels || (RT.rbFuels = Object.keys(I).filter(function (id) { return I[id].fuel > 0; })); }
+    function rbCycle() { return Math.floor((RT.rbTime || 0) / 30); }
+    function rbGhostPaint(wrap) {
+        var old = wrap.querySelectorAll('.mc-slot.ghost'), i;
+        for (i = 0; i < old.length; i++) {
+            old[i].classList.remove('ghost', 'gbig');
+            var gi = old[i].querySelectorAll('.mc-ghost, .mc-gct');
+            for (var j = 0; j < gi.length; j++) gi[j].parentNode.removeChild(gi[j]);
+        }
+        RT.rbGhostAt = {};
+        var gh = RT.rbGhost;
+        if (!gh || !RT.panel) return;
+        var ix = rbCycle(), list;
+        if (gh.inp) {
+            var t = S.tents[RT.panel.key], fu = rbFuels();
+            list = [['fin', 0, gh.inp], ['fout', 0, gh.out, gh.n]];
+            if (t && !t.fuel && fu.length) list.push(['ffuel', 0, fu[ix % fu.length]]);
+        } else {
+            list = rbCellsOf(gh, RT.craftW).map(function (c) { var a = rbAlts(c[1]); return ['craft', c[0], a[ix % a.length]]; });
+            list.push(['cout', 0, gh.out, gh.n]);
+        }
+        list.forEach(function (c) {
+            var el = wrap.querySelector('.mc-slot[data-g="' + c[0] + '"][data-i="' + c[1] + '"]');
+            if (!el) return;
+            RT.rbGhostAt[c[0] + ':' + c[1]] = c[2];
+            el.classList.add('ghost');
+            if ((c[0] === 'cout' && RT.panel.kind === 'table') || c[0] === 'fout') el.classList.add('gbig');
+            el.insertAdjacentHTML('beforeend', '<i class="mc-it mc-ghost" style="--ic:url(' + iconURL(c[2]) + ')"></i>' + (c[3] > 1 ? mtHTML(String(c[3]), null, 'mc-ct mc-gct') : ''));
+        });
+    }
+    // per frame: the search box, the ghost's turns, and the pops
+    function rbFrameTick(dt) {
+        if (!rbKind()) return;
+        var was = rbCycle(), wrap = RT.el.querySelector('.mc-panelwrap');
+        if (!(RT.keys && RT.keys.control)) RT.rbTime = (RT.rbTime || 0) + dt * 20;
+        if (RT.rbGhost && rbCycle() !== was && wrap) { rbGhostPaint(wrap); panelHoverRefresh(); }
+        var el = wrap && wrap.querySelector('.mc-rb');
+        if (!el) return;
+        var qi = el.querySelector('.mc-rbqin');
+        paintFieldMirror(qi, el.querySelector('.mc-rbqmir'), '#ffffff', 73, { t: 'Search...', c: '#aaaaaa', cls: 'it' });
+        el.querySelector('.mc-rbq').classList.toggle('on', document.activeElement === qi);
+        // a pop is 1 + 0.1 sin(pi t / 15) over fifteen ticks, a button all over, a tab only up and down
+        var pops = el.querySelectorAll('[data-pop]'), now = performance.now();
+        for (var i = 0; i < pops.length; i++) {
+            var a = (now - +pops[i].getAttribute('data-pop')) / 750, f = a >= 1 ? 1 : 1 + 0.1 * Math.sin(Math.PI * (1 - Math.max(0, a)));
+            var tf = f === 1 ? '' : pops[i].classList.contains('mc-rbtab') ? 'scaleY(' + f.toFixed(4) + ')' : 'scale(' + f.toFixed(4) + ')';
+            if (pops[i].style.transform !== tf) pops[i].style.transform = tf;
+        }
+    }
+    /* Learning: a recipe is yours once one of its ingredients is in your
+       inventory (the chest once ten slots are filled), when you make it, or by
+       /recipe. RecipeToast says so, one card for the lot. */
+    function rbLearn(keys, quiet) {
+        if (!S || !S.rbk || !keys.length) return 0;
+        var fresh = keys.filter(function (k, n) { return S.rbk.indexOf(k) < 0 && keys.indexOf(k) === n; });
+        if (!fresh.length) return 0;
+        fresh.forEach(function (k) { S.rbk.push(k); });
+        RT.rbKnown = null;
+        if (quiet) return fresh.length;
+        S.rbNew = S.rbNew || {};
+        var all = rbAll();
+        fresh.forEach(function (k) {
+            S.rbNew[k] = 1;
+            for (var i = 0; i < all.length; i++) if (all[i].key === k) { recipeToast(all[i].book === 'furnace' ? 'furnace' : 'table', all[i].out); break; }
+        });
+        if (RT.panel && rbShown()) { rbTabsPop(); rbPaint(); }
+        return fresh.length;
+    }
+    function rbScan() {
+        if (!S || !S.rbk || !RT || !RT.ready || RT.menu) return;
+        var have = {}, used = 0;
+        [].concat(S.inv.slice(0, 36), S.armor || [], [S.off]).forEach(function (st) { if (st) { have[st.id] = 1; used++; } });
+        var sig = Object.keys(have).sort().join() + (used >= 10 ? '+' : '');
+        if (sig === RT.rbSig) return;
+        RT.rbSig = sig;
+        var learn = [];
+        rbAll().forEach(function (r) { if (r.trig ? r.trig.some(function (id) { return have[id]; }) : used >= 10) learn.push(r.key); });
+        var quiet = !!S.rbQuiet;
+        delete S.rbQuiet;
+        rbLearn(learn, quiet);
+    }
+    /* RecipeToast.addOrUpdate: a recipe toast still up takes the new one and
+       starts its five seconds over; otherwise a new card */
+    function recipeToast(cat, out) {
+        var all = (RT.toasts || []).concat(RT.toastQ || []);
+        for (var i = 0; i < all.length; i++) {
+            var t = all[i];
+            if (t.kind !== 'recipe' || t.age > TOAST_SLIDE + TOAST_HOLD) continue;
+            t.items.push([cat, out]);
+            if (t.age > TOAST_SLIDE) t.age = TOAST_SLIDE;
+            return;
+        }
+        toastPush({ kind: 'recipe', items: [[cat, out]] });
+    }
+
+    /* Where a screen goes: centred on the scaled screen with the game's integer
+       arithmetic, leftPos = (W - imageWidth) div 2, topPos = (H - imageHeight) div 2.
+       Positions inside it are the game's own slot and label coordinates. */
+    var PANEL_DIM = { inv: [176, 166], table: [176, 166], furnace: [176, 166], chest: [176, 168], ench: [176, 166], anvil: [176, 166], creative: [195, 136] };
+    function panelLayout() {
+        if (!RT || !RT.panel || !RT.gs) return;
+        var wrap = RT.el.querySelector('.mc-panelwrap'), p = wrap && wrap.querySelector('.mc-panel');
+        if (!p) return;
+        var d = PANEL_DIM[RT.panel.kind] || [176, 166], rb = wrap.querySelector('.mc-rb'), narrow = rbNarrow();
+        /* RecipeBookComponent.updateScreenPosition: with the book open the screen
+           moves right to 177 + (W - w - 200) / 2 and the book sits at
+           (W - 147) / 2 - 86; too narrow for both, the book is centred and the
+           screen behind it hidden */
+        RT.panel.lx = rb && !narrow ? 177 + ((RT.gw - d[0] - 200) >> 1) : (RT.gw - d[0]) >> 1;
+        RT.panel.ly = (RT.gh - d[1]) >> 1;
+        hudPlace(p, RT.panel.lx, RT.panel.ly);
+        p.style.display = rb && narrow ? 'none' : '';
+        if (rb) hudPlace(rb, ((RT.gw - 147) >> 1) - (narrow ? 0 : 86), (RT.gh - 166) >> 1);
+        // a new GUI scale means new icons (they are baked per scale) and a new box for the figure
+        if (RT.panel.gs !== RT.gs) { RT.panel.gs = RT.gs; if (RT.av) avatarAttach(); paintPanel(); }
+        panelCurTo();
+    }
+    /* the markup a screen opens with: the panel at its real size, the carried stack, the tooltip */
+    function panelMarkup(kind) {
+        var d = PANEL_DIM[kind] || [176, 166];
+        return '<div class="mc-panel' + (kind === 'creative' ? ' mc-cpanel' : '') + '" data-k="' + kind + '" style="width:calc(var(--px) * ' + d[0] + ');height:calc(var(--px) * ' + d[1] + ')">' +
+            panelHTML(kind) + '</div><div class="mc-cur"></div><div class="mc-ptip"></div>';
+    }
+
     /* ── panels ─────────────────────────────────────────────── */
     function slotGroup(g) {
         var t;
@@ -5242,10 +7871,11 @@
         // award lives here — it used to hang off right-clicking armour in the world
         // only, and stayed silent for shift-click, drag and right-click-place
         if (g === 'armor') return { get: function (i) { return S.armor[i]; }, set: function (i, v) { S.armor[i] = v; if (v) unlock('armor'); } };
+        if (g === 'off') return { get: function () { return S.off || null; }, set: function (i, v) { S.off = v || null; } };
         if (g === 'craft') return { get: function (i) { return RT.craft[i]; }, set: function (i, v) { RT.craft[i] = v; } };
         if (g === 'ein') return { get: function () { return RT.enchItem; }, set: function (i, v) { RT.enchItem = v; genEnchOptions(); } };
         if (g === 'elapis') return { get: function () { return RT.enchLapis; }, set: function (i, v) { RT.enchLapis = v; } };
-        if (g === 'anvA') return { get: function () { return RT.anvilA; }, set: function (i, v) { RT.anvilA = v; } };
+        if (g === 'anvA') return { get: function () { return RT.anvilA; }, set: function (i, v) { RT.anvilA = v; anvilNameSync(); } };
         if (g === 'anvB') return { get: function () { return RT.anvilB; }, set: function (i, v) { RT.anvilB = v; } };
         if (g === 'chest') { t = S.tents[RT.panel.key]; return { get: function (i) { return t.inv[i]; }, set: function (i, v) { t.inv[i] = v; } }; }
         t = S.tents[RT.panel.key];
@@ -5259,59 +7889,108 @@
         for (var i = from; i < from + n; i++) out += '<div class="mc-slot ' + (cls || '') + '" data-g="' + g + '" data-i="' + i + '"></div>';
         return out;
     }
+    function pAt(x, y) { return 'left:calc(var(--px) * ' + x + ');top:calc(var(--px) * ' + y + ')'; }
+    /* a slot element is the game's 18x18 hover box: the frame's own rectangle, one
+       pixel up and left of where the item is drawn */
+    function pSlot(g, i, ix, iy, cls, ei) {
+        return '<div class="mc-slot' + (cls ? ' ' + cls : '') + '" data-g="' + g + '" data-i="' + i + '"' + (ei ? ' data-ei="' + ei + '"' : '') + ' style="' + pAt(ix - 1, iy - 1) + '"></div>';
+    }
+    function pSlots(g, from, ix, iy, cols, rows) {
+        var out = '';
+        for (var r = 0; r < rows; r++) for (var c = 0; c < cols; c++) out += pSlot(g, from + r * cols + c, ix + 18 * c, iy + 18 * r);
+        return out;
+    }
+    function pLabel(text, x, y, cls) { return '<span class="mc-plab ' + (cls || 'mc-plabel') + '" style="' + pAt(x, y) + '">' + mtHTML(text, '#404040', 'ns') + '</span>'; }
+    function pInv(iy, hy) { return pSlots('inv', 9, 8, iy, 9, 3) + pSlots('inv', 0, 8, hy, 9, 1); }
+    var ARM_EI = ['e_helmet', 'e_chest', 'e_legs', 'e_boots'];
+    /* the figure's box: InventoryScreen.renderEntityInInventoryFollowsMouse's rectangle and scale */
+    function pAvatar(x, y, w, h, scale) {
+        return '<div class="mc-avbox" style="' + pAt(x, y) + ';width:calc(var(--px) * ' + w + ');height:calc(var(--px) * ' + h + ')"><canvas class="mc-av" data-s="' + scale + '"></canvas></div>';
+    }
     function panelHTML(kind) {
-        var head = '<div class="mc-phead">', inv =
-            '<div class="mc-plabel">Inventory</div><div class="mc-pgrid g9">' + slotsHTML('inv', 9, 27) + '</div>' +
-            '<div class="mc-pgrid g9 hb">' + slotsHTML('inv', 0, 9) + '</div>';
-        var armorCol = '<div class="mc-armcol">' + slotsHTML('armor', 0, 4, 'armslot') + '</div>';
-        /* the survival screen's top half in the real order: the armour slots,
-           you in your box, then the 2×2 grid under its own "Crafting" label */
-        var invTop = '<div class="mc-craftrow inv">' + armorCol + '<div class="mc-avbox"><canvas class="mc-av"></canvas></div>' +
-            '<div class="mc-craftcol">' + head + 'Crafting</div><div class="mc-craft2"><div class="mc-pgrid g2">' + slotsHTML('craft', 0, 4) + '</div>' +
-            '<span class="mc-arrow">➜</span><div class="mc-slot big" data-g="cout" data-i="0"></div></div></div></div>';
-        var invTopNoCraft = '<div class="mc-craftrow inv">' + armorCol + '<div class="mc-avbox"><canvas class="mc-av"></canvas></div></div>';
-        if (kind === 'inv') return invTop + inv;
-        if (kind === 'table') return head + 'Crafting</div><div class="mc-craftrow"><div class="mc-pgrid g3">' + slotsHTML('craft', 0, 9) + '</div><span class="mc-arrow">➜</span><div class="mc-slot big" data-g="cout" data-i="0"></div></div>' + inv;
-        if (kind === 'furnace') return head + 'Furnace</div><div class="mc-craftrow furn"><div class="mc-fcol"><div class="mc-slot" data-g="fin" data-i="0"></div><div class="mc-flame"><i></i></div><div class="mc-slot" data-g="ffuel" data-i="0"></div></div><div class="mc-farrow"><i></i></div><div class="mc-slot big" data-g="fout" data-i="0"></div></div>' + inv;
-        if (kind === 'ench') return head + 'Enchant</div><div class="mc-enchrow"><div class="mc-fcol"><div class="mc-slot" data-g="ein" data-i="0"></div><div class="mc-slot small" data-g="elapis" data-i="0"></div></div><div class="mc-enchopts">' +
-            '<button class="mc-enchopt" data-o="0"></button><button class="mc-enchopt" data-o="1"></button><button class="mc-enchopt" data-o="2"></button></div></div>' + inv;
-        if (kind === 'anvil') return head + 'Repair &amp; Name</div><div class="mc-craftrow"><div class="mc-slot" data-g="anvA" data-i="0"></div><div class="mc-slot" data-g="anvB" data-i="0"></div><span class="mc-arrow">➜</span><div class="mc-slot big anvOut" data-g="anvOut" data-i="0"></div></div>' +
-            '<div class="mc-anvname"><input class="mc-anvin" maxlength="24" placeholder="Item name"><span class="mc-anvcost"></span></div>' + inv;
-        if (kind === 'creative') {
-            var tab = CTABS[RT.cTab] || CTABS[0], ti, tabs = '';
-            for (ti = 0; ti < CTABS.length; ti++)
-                tabs += '<button class="mc-ctab' + (ti === RT.cTab ? ' on' : '') + '" data-ct="' + ti + '"' +
-                        ' title="' + escHtml(CTABS[ti].t) + '" style="background-image:url(' + iconURL(CTABS[ti].ic) + ')"></button>';
-            tabs = '<div class="mc-ctabs">' + tabs + '</div>';
-            // the survival tab is the ordinary inventory plus a bin, which the real
-            // screen keeps at the bottom right beside the hotbar
-            if (tab.id === 'inv') return tabs + invTopNoCraft +
-                '<div class="mc-plabel">Inventory</div><div class="mc-pgrid g9">' + slotsHTML('inv', 9, 27) + '</div>' +
-                '<div class="mc-hbrow"><div class="mc-pgrid g9 hb">' + slotsHTML('inv', 0, 9) + '</div>' +
-                '<div class="mc-slot big ctrash" data-g="ctrash" data-i="0" title="Destroy item"></div></div>';
-            return tabs + head + escHtml(tab.t) + '</div>' +
-                (tab.id === 'search' ? '<input class="mc-csearchin" maxlength="32" spellcheck="false" autocomplete="off" placeholder="Search" value="' + escHtml(RT.cSearch || '') + '">' : '') +
-                '<div class="mc-crow"><div class="mc-pgrid g9">' + slotsHTML('creat', 0, CGRID) + '</div>' +
-                '<div class="mc-cbar"><i></i></div></div>' +
-                '<div class="mc-plabel">Inventory</div><div class="mc-pgrid g9 hb">' + slotsHTML('inv', 0, 9) + '</div>';
+        var bg = function (name) {
+            var sp = guiSprites()[name];
+            return '<i class="mc-pbg" style="width:calc(var(--px) * ' + sp.w + ');height:calc(var(--px) * ' + sp.h + ');background-image:var(--spr-' + name + ')"></i>';
+        };
+        var rb = function (x, y) { return '<button class="mc-rbook" type="button" aria-label="Recipe Book" style="' + pAt(x, y) + '"></button>'; };
+        var i, out;
+        if (kind === 'inv') {
+            out = bg('p_inv') + pLabel('Crafting', 97, 6, 'mc-phead');
+            for (i = 0; i < 4; i++) out += pSlot('armor', i, 8, 8 + 18 * i, '', ARM_EI[i]);
+            out += pAvatar(26, 8, 49, 70, 30);
+            out += pSlot('off', 0, 77, 62, '', 'e_shield');
+            for (i = 0; i < 4; i++) out += pSlot('craft', i, 98 + 18 * (i % 2), 18 + 18 * (i >> 1));
+            return out + pSlot('cout', 0, 154, 28) + rb(104, 61) + pInv(84, 142);
         }
-        return head + 'Chest</div><div class="mc-pgrid g9">' + slotsHTML('chest', 0, 27) + '</div>' + inv;
+        if (kind === 'table') {
+            out = bg('p_table') + pLabel('Crafting', 29, 6, 'mc-phead') + pLabel('Inventory', 8, 72);
+            for (i = 0; i < 9; i++) out += pSlot('craft', i, 30 + 18 * (i % 3), 17 + 18 * ((i / 3) | 0));
+            return out + pSlot('cout', 0, 124, 35) + rb(5, 34) + pInv(84, 142);
+        }
+        if (kind === 'furnace') {
+            return bg('p_furn') + pLabel('Furnace', (176 - (mfWidth('Furnace') + 1)) >> 1, 6, 'mc-phead') + pLabel('Inventory', 8, 72) +
+                pSlot('fin', 0, 56, 17) + pSlot('ffuel', 0, 56, 53) + pSlot('fout', 0, 116, 35) +
+                '<i class="mc-flame" style="' + pAt(56, 36) + '"></i><i class="mc-farrow" style="' + pAt(79, 34) + '"></i>' + rb(20, 34) + pInv(84, 142);
+        }
+        if (kind === 'ench') {
+            out = bg('p_ench') + '<canvas class="mc-ebook"></canvas>' + pLabel('Enchant', 8, 6, 'mc-phead') + pLabel('Inventory', 8, 72) +
+                pSlot('ein', 0, 15, 47) + pSlot('elapis', 0, 35, 47, '', 'e_lapis');
+            for (i = 0; i < 3; i++) out += '<button class="mc-enchopt" type="button" data-o="' + i + '" style="' + pAt(60, 14 + 19 * i) + '">' +
+                '<i class="eo-ic"></i><span class="eo-rune"></span><span class="eo-lvl"></span></button>';
+            return out + pInv(84, 142);
+        }
+        if (kind === 'anvil') {
+            return bg('p_anvil') + pLabel('Repair & Name', 60, 6, 'mc-phead') + pLabel('Inventory', 8, 72) +
+                '<i class="mc-anvtf" style="' + pAt(59, 20) + '"></i>' +
+                '<input class="mc-anvin" maxlength="50" spellcheck="false" autocomplete="off" style="' + pAt(62, 24) + '"><div class="mc-anvmir mc-fmir" style="' + pAt(62, 24) + '"></div>' +
+                pSlot('anvA', 0, 27, 47) + pSlot('anvB', 0, 76, 47) + pSlot('anvOut', 0, 134, 47, 'anvOut') +
+                '<i class="mc-anverr" style="' + pAt(99, 45) + ';display:none"></i><div class="mc-anvcost" style="display:none"></div>' + pInv(84, 142);
+        }
+        if (kind === 'creative') {
+            var tab = CTABS[RT.cTab] || CTABS[0], tabs = '', sel = '';
+            for (var ti = 0; ti < CTABS.length; ti++) {
+                var T = CTABS[ti], on = ti === RT.cTab, x = T.col < 5 ? 27 * T.col : 195 - 27 * (7 - T.col) + 1, y = T.row ? 132 : -28;
+                var spr = 'tab_' + (T.row ? 'b' : 't') + '_' + (on ? (T.col === 0 ? 's1' : T.col === 6 ? 's7' : 'sm') : 'un');
+                var html = '<button class="mc-ctab' + (on ? ' on' : '') + '" type="button" data-ct="' + ti + '" aria-label="' + escHtml(T.t) + '" style="' + pAt(x, y) +
+                    ';background-image:var(--spr-' + spr + ')"><b class="mc-ctic" style="' + pAt(5, T.row ? 7 : 9) + ';background-image:url(' + iconURL(T.ic) + ')"></b></button>';
+                if (on) sel = html; else tabs += html;
+            }
+            out = tabs + bg(tab.id === 'inv' ? 'p_cr_inv' : tab.id === 'search' ? 'p_cr_search' : 'p_cr_items') + sel;
+            if (tab.id === 'inv') {   // the Survival Inventory tab carries no title
+                var ap = [[54, 6], [54, 33], [108, 6], [108, 33]];
+                for (i = 0; i < 4; i++) out += pSlot('armor', i, ap[i][0], ap[i][1], '', ARM_EI[i]);
+                out += pSlot('off', 0, 35, 20, '', 'e_shield');
+                out += pAvatar(73, 6, 32, 43, 20);
+                return out + pSlots('inv', 9, 9, 54, 9, 3) + pSlots('inv', 0, 9, 112, 9, 1) + pSlot('ctrash', 0, 173, 112, 'ctrash');
+            }
+            out += pLabel(tab.t, 8, 6, 'mc-phead');
+            if (tab.id === 'search') out += '<input class="mc-csearchin" maxlength="50" spellcheck="false" autocomplete="off" value="' + escHtml(RT.cSearch || '') + '" style="' + pAt(82, 6) + '">' +
+                '<div class="mc-csmir mc-fmir" style="' + pAt(82, 6) + '"></div>';
+            return out + pSlots('creat', 0, 9, 18, 9, 5) + '<div class="mc-cbar" style="' + pAt(175, 18) + '"><i></i></div>' + pSlots('inv', 0, 9, 112, 9, 1);
+        }
+        return bg('p_chest') + pLabel('Chest', 8, 6, 'mc-phead') + pLabel('Inventory', 8, 74) + pSlots('chest', 0, 8, 18, 9, 3) + pInv(85, 143);
     }
     function openPanel(kind, t) {
         closePanel(true);
         RT.panel = { kind: kind, key: t ? tentKey(t.x, t.y, t.z) : null, at: t ? [t.x + 0.5, t.y + 0.5, t.z + 0.5] : null };
+        var ist = { table: 'interact_with_crafting_table', furnace: 'interact_with_furnace', chest: 'open_chest', anvil: 'interact_with_anvil' }[kind];
+        if (ist) stat('c', ist);
         if (kind === 'furnace') tentAt(t.x, t.y, t.z, 'furnace');
         if (kind === 'chest') tentAt(t.x, t.y, t.z, 'chest');
         RT.craftW = kind === 'table' ? 3 : 2;
         RT.craft = [null, null, null, null, null, null, null, null, null];
         RT.hover = null;   // nothing is under the pointer in a screen that has not been drawn yet
-        if (kind === 'ench') { RT.enchItem = null; RT.enchLapis = null; RT.enchOpts = null; RT.enchSeed = (Math.random() * 1e9) | 0; }
+        if (kind === 'ench') { RT.enchItem = null; RT.enchLapis = null; RT.enchOpts = null; RT.enchSeed = (Math.random() * 1e9) | 0; RT.ebook = null; }
         if (kind === 'anvil') { RT.anvilA = null; RT.anvilB = null; RT.anvilName = ''; }
         // the catalogue has to exist before panelHTML asks it how many rows it has
         if (kind === 'creative') { if (RT.cTab == null) RT.cTab = 0; RT.cScroll = 0; creativeRefresh(); }
         var wrap = RT.el.querySelector('.mc-panelwrap');
-        wrap.innerHTML = '<div class="mc-panel' + (kind === 'creative' ? ' mc-cpanel' : '') + '">' + panelHTML(kind) + '</div><div class="mc-cur"></div><div class="mc-ptip" style="display:none"></div>';
+        wrap.innerHTML = panelMarkup(kind);
         wrap.style.display = '';
+        RT.hovEl = null;
+        RT.rbv = null; RT.rbGhost = null; RT.rbGhostAt = {}; RT.rbPopT = {};   // a new screen, a new book: the first tab, no search, no ghost
+        rbSync();
+        panelLayout();
         unlockCursor();
         // .mc-panelwrap is a PERSISTENT node — only its innerHTML is replaced per open. Re-running
         // wirePanel on it stacked another set of delegated listeners every time, so after N opens a
@@ -5334,7 +8013,8 @@
         if (!RT.panel) return;
         RT.qc = null;   // a sweep in progress ends with the screen
         RT.av = null;   // and so does the figure in the box
-        RT.hover = null; RT.lastClk = null;
+        RT.hover = null; RT.lastClk = null; RT.hovEl = null; RT.cDrag = 0;
+        RT.rbGhost = null; RT.rbGhostAt = {}; RT.rbv = null;
         var i, give = [RT.cur, RT.enchItem, RT.enchLapis, RT.anvilA, RT.anvilB];
         for (i = 0; i < 9; i++) { give.push(RT.craft[i]); RT.craft[i] = null; }
         RT.cur = null; RT.enchItem = null; RT.enchLapis = null; RT.anvilA = null; RT.anvilB = null; RT.enchOpts = null;
@@ -5358,13 +8038,16 @@
         var cells = wrap.querySelectorAll('.mc-slot');
         var washed = wrap.querySelectorAll('.mc-slot.qc');   // the sweep wash belongs to a live sweep only
         for (var wq = 0; wq < washed.length; wq++) washed[wq].classList.remove('qc');
-        var anv = RT.panel.kind === 'anvil' ? anvilResult() : null;
+        var kind = RT.panel.kind, anv = kind === 'anvil' ? anvilResult() : null;
         for (var i = 0; i < cells.length; i++) {
             var g = cells[i].getAttribute('data-g'), idx = cells[i].getAttribute('data-i') | 0;
             if (g === 'cout') { var r = matchRecipe(RT.craft, RT.craftW); paintSlot(cells[i], r ? { id: r.out, c: r.n } : null); }
-            else if (g === 'anvOut') paintSlot(cells[i], anv ? anv.out : null);
-            else if (g === 'creat') { var cst = slotGroup('creat').get(idx); paintSlot(cells[i], cst ? { id: cst.id, c: 1, dur: cst.dur } : null); }   // the catalogue shows items, not stacks
-            else paintSlot(cells[i], slotGroup(g).get(idx));
+            else if (g === 'anvOut') paintSlot(cells[i], anv && !anv.tooExp ? anv.out : null);
+            else if (g === 'creat') {   // the catalogue shows items, not stacks; a saved hotbar shows what was saved
+                var ce = (RT.cList || [])[RT.cScroll * CCOLS + idx], cst = creativeStack(ce);
+                paintSlot(cells[i], cst ? (typeof ce === 'object' ? cst : { id: cst.id, c: 1, dur: cst.dur }) : null);
+            }
+            else if (g !== 'ctrash') paintSlot(cells[i], slotGroup(g).get(idx));
         }
         var cur = wrap.querySelector('.mc-cur');
         if (cur) {
@@ -5372,55 +8055,354 @@
                back to the stylesheet, which declares .mc-cur{display:none} — so
                for as long as this screen has existed, the stack you picked up
                vanished off the screen while RT.cur really was holding it. */
-            if (RT.cur) {
-                cur.style.display = 'block';
-                cur.style.backgroundImage = 'url(' + iconURL(RT.cur.id) + ')';
-                cur.innerHTML = RT.cur.c > 1 ? '<span class="mc-ct">' + RT.cur.c + '</span>' : '';
-                // place it before it is ever shown: .mc-panelwrap centres its
-                // children, so an unpositioned ghost would appear over the panel
-                panelCurTo();
-            } else cur.style.display = 'none';
+            if (RT.cur) { cur.style.display = 'block'; paintSlot(cur, RT.cur); panelCurTo(); }
+            else cur.style.display = 'none';
         }
-        if (RT.panel.kind === 'furnace') paintFurnaceBits(S.tents[RT.panel.key]);
-        if (RT.panel.kind === 'ench') {
-            var opts = wrap.querySelectorAll('.mc-enchopt');
-            for (var o = 0; o < opts.length; o++) {
-                var op = RT.enchOpts && RT.enchOpts[o];
-                if (!op || !op.ench) { opts[o].style.display = 'none'; continue; }
-                opts[o].style.display = '';
-                /* enchantable() also demands a single item, so two books in the slot
-                   left all three options lit and clicking them did nothing at all —
-                   no sound, no message, no explanation */
-                var single = RT.enchItem && RT.enchItem.c === 1;
-                var afford = single && S.xpl >= op.level && RT.enchLapis && RT.enchLapis.c >= op.lapis;
-                opts[o].className = 'mc-enchopt' + (afford ? '' : ' dim');
-                opts[o].innerHTML = '<span class="eo-lap">' + op.lapis + '</span><span class="eo-txt">' + esc(op.label) + '</span><span class="eo-lvl">' + op.level + '</span>';
-            }
-        }
-        if (RT.panel.kind === 'anvil') {
-            var cs = wrap.querySelector('.mc-anvcost');
-            if (cs) cs.textContent = anv ? ('Cost: ' + anv.cost + (S.xpl >= anv.cost ? '' : ' (need level ' + anv.cost + ')')) : '';
-        }
-        if (RT.panel.kind === 'creative') {
-            var bar = wrap.querySelector('.mc-cbar'), th = bar && bar.querySelector('i');
-            if (th) {
-                var rows = creativeRows(), mx = creativeMaxScroll();
-                var hp = Math.max(14, CROWS / rows * 100);
-                th.style.height = hp + '%';
-                th.style.top = (mx ? (RT.cScroll / mx) * (100 - hp) : 0) + '%';
-                bar.classList.toggle('off', mx === 0);   // greyed out when there is nothing to scroll
-            }
-        }
+        if (kind === 'furnace') paintFurnaceBits(S.tents[RT.panel.key]);
+        if (kind === 'ench') paintEnchOpts(wrap);
+        if (kind === 'anvil') paintAnvil(wrap, anv);
+        if (kind === 'creative') paintCreativeBar(wrap);
         if (RT.qc) qcPaint();   // a repaint mid-sweep (a furnace ticking behind the screen) keeps the preview
         if (RT.av) avatarSync();   // armour on or off, a different item in hand: the figure follows the slots
+        if (rbKind()) rbPaint();   // the book redraws what you can make as the inventory changes
+        rbGhostPaint(wrap);
+        panelHoverRefresh();       // the same pointer may be over something new now
     }
-    function esc(s) { return String(s).replace(/[<>&]/g, function (c) { return { '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]; }); }
+    /* AbstractFurnaceScreen: the lit flame shows its bottom ceil(13p) + 1 rows,
+       so it burns down from the top; the arrow fills ceil(24p) columns from the left */
     function paintFurnaceBits(t) {
         var wrap = RT.el.querySelector('.mc-panelwrap');
-        if (!wrap) return;
-        var fl = wrap.querySelector('.mc-flame i'), ar = wrap.querySelector('.mc-farrow i');
-        if (fl) fl.style.height = (t.burnMax > 0 ? Math.max(0, t.burn / t.burnMax) * 100 : 0) + '%';
-        if (ar) ar.style.width = (t.prog / SMELT_S * 100) + '%';
+        if (!wrap || !t) return;
+        var fl = wrap.querySelector('.mc-flame'), ar = wrap.querySelector('.mc-farrow');
+        var lit = t.burn > 0 && t.burnMax > 0, h = lit ? Math.ceil(Math.max(0, Math.min(1, t.burn / t.burnMax)) * 13) + 1 : 0;
+        if (fl) { fl.style.display = h ? '' : 'none'; fl.style.top = 'calc(var(--px) * ' + (36 + 14 - h) + ')'; fl.style.height = 'calc(var(--px) * ' + h + ')'; }
+        var w = Math.ceil(Math.max(0, Math.min(1, t.prog / SMELT_S)) * 24);
+        if (ar) { ar.style.display = w ? '' : 'none'; ar.style.width = 'calc(var(--px) * ' + w + ')'; }
+    }
+    /* The enchanting table's three plates: tan when you can take the option,
+       mauve under the pointer, dark olive when you cannot (and nothing but the
+       plate when the row has no enchantment at all). The runes are one line of
+       the Standard Galactic alphabet in the plate's dark ink, the level
+       requirement right-aligned at x 166 in green, or a darker green when out
+       of reach, and the orb says how much lapis it takes. */
+    var RUNE_WORDS = ['ember', 'hollow', 'lantern', 'moss', 'marrow', 'brine', 'thorn', 'echo', 'spindle', 'gale', 'cinder', 'frost', 'whisper', 'deep', 'bright',
+        'weave', 'sunder', 'bind', 'mend', 'kindle', 'quell', 'ward', 'seek', 'veil', 'quartz', 'drift', 'root', 'bloom', 'vex', 'lumen', 'umbra', 'sable',
+        'aurum', 'fern', 'shale', 'glint', 'hush', 'rime', 'wake', 'tide', 'spark', 'loam', 'crest', 'hearth', 'vale', 'wisp', 'rust', 'gleam'];
+    function enchRunes(seed, row, maxW) {
+        var rng = mulb((seed | 0) ^ (row * 0x9E3779B9)), n = 3 + ((rng() * 2) | 0), words = [];
+        for (var k = 0; k < n; k++) words.push(RUNE_WORDS[(rng() * RUNE_WORDS.length) | 0]);
+        var s = words.join(' ');
+        while (s.length && sgaWidth(s) > maxW) s = s.slice(0, -1);
+        return s;
+    }
+    function enchAffordable(op) {
+        return !!(op && op.ench && RT.enchItem && RT.enchItem.c === 1 &&
+            (instaBuild() || (S.xpl >= op.level && RT.enchLapis && RT.enchLapis.c >= op.lapis)));
+    }
+    function paintEnchOpts(wrap) {
+        var opts = wrap.querySelectorAll('.mc-enchopt');
+        for (var o = 0; o < opts.length; o++) {
+            var op = RT.enchOpts && RT.enchOpts[o], btn = opts[o], has = !!(op && op.ench), aff = enchAffordable(op);
+            btn.className = 'mc-enchopt ' + (!has ? 'none' : aff ? 'ok' : 'dis');
+            btn.disabled = !has;
+            var ic = btn.querySelector('.eo-ic'), rune = btn.querySelector('.eo-rune'), lvl = btn.querySelector('.eo-lvl');
+            if (!has) { ic.style.backgroundImage = ''; rune.innerHTML = ''; lvl.innerHTML = ''; continue; }
+            ic.style.backgroundImage = 'var(--spr-lvl_' + op.lapis + (aff ? '' : 'd') + ')';
+            var cost = String(op.level), cw = mfWidth(cost) + 1;
+            rune.innerHTML = mtHTML(enchRunes(RT.enchSeed, o, 86 - cw), aff ? '#685e4a' : '#342f25', 'ns sga');
+            lvl.innerHTML = mtHTML(cost, aff ? '#80ff20' : '#407f10');
+            lvl.style.left = 'calc(var(--px) * ' + (106 - cw) + ')';
+        }
+        enchBookTarget();
+    }
+    /* The anvil: the name plate lights up once there is something in the left
+       slot to name; the red X covers the arrow while the inputs make nothing;
+       the cost sits right-aligned at y 69 on a faint black box, green when you
+       can pay it and #FF6060 when you cannot, or "Too Expensive!" from 40. */
+    function paintAnvil(wrap, anv) {
+        var tf = wrap.querySelector('.mc-anvtf'), inp = wrap.querySelector('.mc-anvin');
+        if (tf) tf.style.backgroundImage = 'var(--spr-' + (RT.anvilA ? 'anvil_tf' : 'anvil_tfd') + ')';
+        if (inp) {
+            var had = document.activeElement === inp;
+            inp.disabled = !RT.anvilA;
+            if (had && inp.disabled) RT.el.focus();   // a disabled box drops focus onto nothing; the keys belong to the game
+            if (document.activeElement !== inp && inp.value !== (RT.anvilName || '')) inp.value = RT.anvilName || '';
+        }
+        var err = wrap.querySelector('.mc-anverr');
+        if (err) err.style.display = (RT.anvilA || RT.anvilB) && (!anv || anv.tooExp) ? '' : 'none';
+        var box = wrap.querySelector('.mc-anvcost');
+        if (box) {
+            var txt = '', col = '#80ff20';
+            if (anv && anv.cost > 0) {
+                if (anv.cost >= 40 && !instaBuild()) { txt = 'Too Expensive!'; col = '#ff6060'; }
+                else { txt = 'Enchantment Cost: ' + anv.cost; if (!instaBuild() && S.xpl < anv.cost) col = '#ff6060'; }
+            }
+            box.style.display = txt ? '' : 'none';
+            if (txt) {
+                var k = 166 - (mfWidth(txt) + 1);
+                box.innerHTML = mtHTML(txt, col);
+                hudPlaceRel(box, k - 2, 67);
+                box.style.width = 'calc(var(--px) * ' + (168 - (k - 2)) + ')';
+            }
+        }
+        paintFieldMirror(inp, wrap.querySelector('.mc-anvmir'), '#ffffff', 103);
+    }
+    /* the creative scroller: 12x15 at x 175, y = 18 + floor(95 t); greyed when the tab fits in
+       five rows. t is the continuous scroll a drag leaves, the row a wheel notch lands on */
+    function paintCreativeBar(wrap) {
+        var bar = wrap.querySelector('.mc-cbar'), th = bar && bar.querySelector('i');
+        if (th) {
+            var mx = creativeMaxScroll(), t = mx ? (RT.cScrollF != null ? RT.cScrollF : RT.cScroll / mx) : 0;
+            th.style.top = 'calc(var(--px) * ' + Math.floor(95 * Math.max(0, Math.min(1, t))) + ')';
+            bar.classList.toggle('off', mx === 0);
+        }
+        paintFieldMirror(wrap.querySelector('.mc-csearchin'), wrap.querySelector('.mc-csmir'), '#ffffff', 80);
+    }
+    /* A real <input> keeps the caret, the selection and the keyboard, invisibly;
+       what shows is this mirror, drawn the way EditBox.renderWidget draws: the
+       visible run of the value in the game's font with its shadow; the cursor
+       blinking 300 ms on and 300 ms off from the moment of focus, an underscore
+       where the text ends (two pixels past the last glyph, since drawString
+       hands back the x after the shadow) or a bar on the first column of the
+       next glyph inside it; and a selection as the game's OR_REVERSE
+       highlight, which inverts red and green and fills blue. */
+    function paintFieldMirror(inp, mir, col, room, hint) {
+        if (!inp || !mir) return;
+        var v = inp.value || '', caret = inp.selectionStart == null ? v.length : inp.selectionStart, skip = 0;
+        var s0 = inp.selectionStart == null ? caret : inp.selectionStart, s1 = inp.selectionEnd == null ? caret : inp.selectionEnd;
+        if (inp.selectionDirection === 'backward') caret = s0; else caret = s1;
+        while (skip < caret && mfWidth(v.slice(skip, caret)) > room - 6) skip++;
+        var show = v.slice(skip), html = show ? mtHTML(show, inp.disabled ? '#707070' : col) : '';
+        var focused = document.activeElement === inp && !inp.disabled;
+        if (!v && hint && !focused) html = typeof hint === 'string' ? mtHTML(hint, '#555555') : mtHTML(hint.t, hint.c, hint.cls);   // the hint, dark grey, only while the box is empty and idle
+        function xAt(k) { return k > skip ? mfWidth(v.slice(skip, k)) + 1 : 0; }
+        var cx = xAt(caret);
+        if (focused && (((performance.now() - (inp._ft || 0)) / 300) | 0) % 2 === 0) {
+            html += caret < v.length ? '<i class="mc-fbar" style="left:calc(var(--px) * ' + cx + ');background:' + col + '"></i>'
+                                     : '<span class="mc-fcur" style="left:calc(var(--px) * ' + (caret > skip ? cx + 1 : 0) + ')">' + mtHTML('_', col) + '</span>';
+        }
+        if (focused && s1 > s0) {
+            var other = caret === s1 ? s0 : s1, ox = xAt(Math.max(skip, other)), a = Math.min(cx, ox), b = Math.max(cx, ox) - 1;
+            // two layers: a difference with yellow inverts red and green, a lighten with blue fills blue
+            var sel = 'left:calc(var(--px) * ' + a + ');width:calc(var(--px) * ' + (b - a) + ')';
+            if (b > a) html += '<i class="mc-fsel a" style="' + sel + '"></i><i class="mc-fsel b" style="' + sel + '"></i>';
+        }
+        if (mir._html !== html) { mir._html = html; mir.innerHTML = html; }
+    }
+    function hudPlaceRel(e, x, y) { e.style.left = 'calc(var(--px) * ' + x + ')'; e.style.top = 'calc(var(--px) * ' + y + ')'; }
+    function esc(s) { return String(s).replace(/[<>&]/g, function (c) { return { '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]; }); }
+    /* AnvilScreen.slotChanged: whatever lands in the left slot resets the name
+       box to what that item is called, and hands the box the keyboard */
+    function anvilNameSync() {
+        RT.anvilName = RT.anvilA ? itemName(RT.anvilA) : '';
+        var inp = RT.el && RT.el.querySelector('.mc-anvin');
+        if (!inp) return;
+        var had = document.activeElement === inp;
+        inp.value = RT.anvilName;
+        inp.disabled = !RT.anvilA;
+        if (RT.anvilA) { if (!had) { inp.focus(); inp._ft = performance.now(); } inp.setSelectionRange(inp.value.length, inp.value.length); }
+        else if (had) RT.el.focus();
+    }
+    /* The Standard Galactic Alphabet, a to z, as the enchanting table writes
+       it: the game's "alt" font. Seven rows like the capitals, drawn from the
+       alphabet's shapes in our own pixels. Anything that is not a letter keeps
+       the ordinary font's place. */
+    var SGA_FAMILY = 'MCSGA', SGA = null;
+    var SGA_ROWS = {
+        a: ['####', '...#', '...#', '####', '#...', '#...', '#...'],
+        b: ['###.', '...#', '...#', '..#.', '.#..', '.#..', '.#..'],
+        c: ['#...', '#...', '####', '...#', '...#', '####', '....'],
+        d: ['####', '##..', '#.#.', '#..#', '#...', '#...', '#...'],
+        e: ['#..#', '#..#', '#..#', '#..#', '####', '.#..', '.#..'],
+        f: ['####', '....', '#.##', '....', '....', '....', '....'],
+        g: ['..#', '..#', '..#', '###', '..#', '..#', '..#'],
+        h: ['#####', '.....', '..#..', '..#..', '..#..', '#####', '.....'],
+        i: ['#', '#', '.', '#', '#', '.', '#'],
+        j: ['#', '.', '.', '#', '.', '.', '#'],
+        k: ['#..#', '#.#.', '##..', '#.#.', '#..#', '#..#', '....'],
+        l: ['#...', '#...', '#...', '#.#.', '#.#.', '####', '....'],
+        m: ['#...', '#...', '#..#', '#..#', '#..#', '####', '....'],
+        n: ['#..#', '#..#', '#..#', '...#', '...#', '..#.', '##..'],
+        o: ['####', '...#', '...#', '...#', '#..#', '.##.', '....'],
+        p: ['#.#', '#..', '#.#', '#.#', '#.#', '..#', '#.#'],
+        q: ['####', '#..#', '#..#', '.#.#', '...#', '...#', '....'],
+        r: ['...', '#.#', '...', '#.#', '...', '...', '...'],
+        s: ['####', '#..#', '#..#', '....', '.#..', '....', '....'],
+        t: ['####', '...#', '...#', '...#', '...#', '...#', '....'],
+        u: ['##.#', '....', '####', '....', '....', '....', '....'],
+        v: ['..#..', '..#..', '..#..', '#####', '.....', '#####', '.....'],
+        w: ['.....', '.....', '..#..', '.....', '#...#', '.....', '.....'],
+        x: ['#..#', '..#.', '.#..', '#...', '....', '....', '....'],
+        y: ['#.#', '#.#', '#.#', '#.#', '#.#', '#.#', '#.#'],
+        z: ['#####', '#...#', '#...#', '#...#', '#...#', '#...#', '.....']
+    };
+    function sgaGlyphs() {
+        if (SGA) return SGA;
+        SGA = { ' ': { w: 3, rows: [] } };
+        for (var ch in SGA_ROWS) {
+            var rows = SGA_ROWS[ch].slice();
+            while (rows.length < MF_ROWS) rows.push('');
+            SGA[ch] = { w: SGA_ROWS[ch][0].length, rows: rows };
+        }
+        return SGA;
+    }
+    function sgaWidth(t) {
+        var g = sgaGlyphs(), w = 0;
+        for (var i = 0; i < t.length; i++) { var gl = g[t.charAt(i)]; w += gl ? gl.w + 1 : mfAdvance(t.charAt(i)); }
+        return w ? w - 1 : 0;
+    }
+    /* ── the enchanting table's book ─────────────────────────────
+       EnchantmentScreen.renderBook: BookModel drawn at (33, 31) in the screen,
+       40 GUI pixels to the block, tipped 25 degrees towards you. tickBook
+       opens it by 0.2 a tick while the table offers anything and shuts it
+       while it offers nothing, and any change to what is on the table sends
+       the pages flipping to a new random spot, easing there at 0.4 of the way
+       a tick, never faster than 0.2. The boxes, pivots and texture layout are
+       BookModel's; the texture is ours. Drawn like the inventory figure: every
+       face an affine image of its patch of the texture, far to near, the ones
+       turned away skipped. */
+    var EB_TEX = null, EB_SHADE = [];
+    function ebTexture() {
+        if (EB_TEX) return EB_TEX;
+        var cv = document.createElement('canvas'), c;
+        cv.width = 64; cv.height = 32; c = cv.getContext('2d');
+        function r(x, y, w, h, col) { c.fillStyle = col; c.fillRect(x, y, w, h); }
+        // the covers, outside and in: brown leather with a darker rim and a worn, lighter top edge
+        [[0, 0], [6, 0], [16, 0], [22, 0]].forEach(function (o) {
+            r(o[0], o[1], 6, 10, '#6c4527'); r(o[0], o[1], 6, 1, '#8b5d35'); r(o[0], o[1] + 9, 6, 1, '#4a2d17');
+            r(o[0] + 1, o[1] + 3, 4, 1, '#7d5230'); r(o[0] + 1, o[1] + 6, 4, 1, '#5c3a20');
+        });
+        r(12, 0, 4, 10, '#4f311a'); r(12, 0, 4, 1, '#6c4527'); r(13, 2, 2, 6, '#5d3a1f');   // the spine
+        // the two blocks of pages: cream faces with lines of writing, the edges striped
+        [0, 12].forEach(function (u) {
+            r(u, 10, 12, 9, '#d9d0b4');
+            for (var y = 11; y < 19; y += 2) r(u, y, 12, 1, '#c7bd9e');
+            [u + 1, u + 7].forEach(function (x) {
+                r(x, 11, 5, 8, '#f1ead3');
+                for (var ly = 12; ly < 18; ly += 2) r(x + 1, ly, (ly * 7 + x) % 3 ? 3 : 2, 1, '#b5aa91');
+            });
+        });
+        [24, 29].forEach(function (x) {   // the loose pages, a side each
+            r(x, 10, 5, 8, '#f4eed9');
+            for (var ly = 11; ly < 17; ly += 2) r(x + 1, ly, (ly + x) % 3 ? 3 : 2, 1, '#b5aa91');
+        });
+        EB_TEX = cv;
+        return cv;
+    }
+    function ebShaded(k) {   // the texture at brightness k/16, baked once per level
+        if (EB_SHADE[k]) return EB_SHADE[k];
+        var src = ebTexture(), cv = document.createElement('canvas'), c;
+        cv.width = 64; cv.height = 32; c = cv.getContext('2d');
+        c.drawImage(src, 0, 0);
+        c.globalCompositeOperation = 'source-atop'; c.fillStyle = 'rgba(0,0,0,' + (1 - k / 16).toFixed(3) + ')'; c.fillRect(0, 0, 64, 32);
+        EB_SHADE[k] = cv;
+        return cv;
+    }
+    // BookModel.createBodyLayer: texOffs, box origin and size, pivot, fixed rotation
+    var EB_PARTS = [
+        { k: 'llid', t: [0, 0], b: [-6, -5, -0.005, 6, 10, 0.005], p: [0, 0, -1] },
+        { k: 'rlid', t: [16, 0], b: [0, -5, -0.005, 6, 10, 0.005], p: [0, 0, 1] },
+        { k: 'seam', t: [12, 0], b: [-1, -5, 0, 2, 10, 0.005], p: [0, 0, 0], ry: Math.PI / 2 },
+        { k: 'lpages', t: [0, 10], b: [0, -4, -0.99, 5, 8, 1], p: [0, 0, 0] },
+        { k: 'rpages', t: [12, 10], b: [0, -4, -0.01, 5, 8, 1], p: [0, 0, 0] },
+        { k: 'flip1', t: [24, 10], b: [0, -4, 0, 5, 8, 0.005], p: [0, 0, 0] },
+        { k: 'flip2', t: [24, 10], b: [0, -4, 0, 5, 8, 0.005], p: [0, 0, 0] }
+    ];
+    // 3x4 affine matrices, row-major
+    function emMul(A, B) {
+        var o = new Array(12);
+        for (var r = 0; r < 3; r++) {
+            for (var c = 0; c < 3; c++) o[r * 4 + c] = A[r * 4] * B[c] + A[r * 4 + 1] * B[4 + c] + A[r * 4 + 2] * B[8 + c];
+            o[r * 4 + 3] = A[r * 4] * B[3] + A[r * 4 + 1] * B[7] + A[r * 4 + 2] * B[11] + A[r * 4 + 3];
+        }
+        return o;
+    }
+    function emT(x, y, z) { return [1, 0, 0, x, 0, 1, 0, y, 0, 0, 1, z]; }
+    function emS(x, y, z) { return [x, 0, 0, 0, 0, y, 0, 0, 0, 0, z, 0]; }
+    function emRx(a) { var c = Math.cos(a), s = Math.sin(a); return [1, 0, 0, 0, 0, c, -s, 0, 0, s, c, 0]; }
+    function emRy(a) { var c = Math.cos(a), s = Math.sin(a); return [c, 0, s, 0, 0, 1, 0, 0, -s, 0, c, 0]; }
+    function emAt(M, x, y, z) { return [M[0] * x + M[1] * y + M[2] * z + M[3], M[4] * x + M[5] * y + M[6] * z + M[7], M[8] * x + M[9] * y + M[10] * z + M[11]]; }
+    function ebTick(B) {
+        // ItemStack.matches: the same item, count and components, or the pages flip
+        var it = RT.enchItem, key = it ? JSON.stringify(it) : '';
+        if (key !== B.last) {
+            B.last = key;
+            do { B.flipT += ((Math.random() * 4) | 0) - ((Math.random() * 4) | 0); } while (B.flip <= B.flipT + 1 && B.flip >= B.flipT - 1);
+        }
+        B.oFlip = B.flip; B.oOpen = B.open;
+        var any = !!(RT.enchOpts && RT.enchOpts.some(function (o) { return o && o.ench; }));   // menu.costs[i] != 0
+        B.open = Math.max(0, Math.min(1, B.open + (any ? 0.2 : -0.2)));
+        var f1 = Math.max(-0.2, Math.min(0.2, (B.flipT - B.flip) * 0.4));
+        B.flipA += (f1 - B.flipA) * 0.9;
+        B.flip += B.flipA;
+    }
+    function ebFrac(v) { return v - Math.floor(v); }
+    var EB_BOX = [0, 2, 66, 60];   // the canvas's rectangle in the screen, round the book at (33, 31)
+    function ebDraw(cv, B, pt) {
+        var s = RT.gs || 2, bw = EB_BOX[2], bh = EB_BOX[3];
+        if (cv.width !== bw * s || cv.height !== bh * s) {
+            cv.width = bw * s; cv.height = bh * s;
+            cv.style.left = 'calc(var(--px) * ' + EB_BOX[0] + ')'; cv.style.top = 'calc(var(--px) * ' + EB_BOX[1] + ')';
+            cv.style.width = 'calc(var(--px) * ' + bw + ')'; cv.style.height = 'calc(var(--px) * ' + bh + ')';
+        }
+        var c = cv.getContext('2d');
+        c.setTransform(1, 0, 0, 1, 0, 0);
+        c.clearRect(0, 0, cv.width, cv.height);
+        c.imageSmoothingEnabled = false;
+        var open = B.oOpen + (B.open - B.oOpen) * pt, flip = B.oFlip + (B.flip - B.oFlip) * pt;
+        var D = Math.PI / 180, io = 1 - open;
+        var M = emT((33 - EB_BOX[0]) * s, (31 - EB_BOX[1]) * s, 100);
+        M = emMul(M, emS(-40 * s, 40 * s, 40 * s));
+        M = emMul(M, emRx(25 * D));
+        M = emMul(M, emT(io * 0.2, io * 0.1, io * 0.25));
+        M = emMul(M, emRy((-io * 90 - 90) * D));
+        M = emMul(M, emRx(180 * D));
+        // BookModel.setupAnim(0, right flip, left flip, open)
+        var rf = Math.max(0, Math.min(1, ebFrac(flip + 0.25) * 1.6 - 0.3)), lf = Math.max(0, Math.min(1, ebFrac(flip + 0.75) * 1.6 - 0.3));
+        var f = 1.25 * open, sf = Math.sin(f);
+        var pose = { llid: [0, Math.PI + f], rlid: [0, -f], seam: [0, Math.PI / 2], lpages: [sf, f], rpages: [sf, -f], flip1: [sf, f - f * 2 * rf], flip2: [sf, f - f * 2 * lf] };
+        var quads = [];
+        EB_PARTS.forEach(function (P) {
+            var ps = pose[P.k], Mp = emMul(M, emT((P.p[0] + ps[0]) / 16, P.p[1] / 16, P.p[2] / 16));
+            Mp = emMul(Mp, emRy(ps[1]));
+            Mp = emMul(Mp, emS(1 / 16, 1 / 16, 1 / 16));
+            var x0 = P.b[0], y0 = P.b[1], z0 = P.b[2], x1 = x0 + P.b[3], y1 = y0 + P.b[4], z1 = z0 + P.b[5];
+            var dx = P.b[3], dy = P.b[4], dz = P.b[5], u = P.t[0], v = P.t[1];
+            var V = [[x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0], [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]].map(function (p) { return emAt(Mp, p[0], p[1], p[2]); });
+            var u1 = u + dz, u2 = u1 + dx, u3 = u2 + dx, u4 = u2 + dz, u5 = u4 + dx, v1 = v + dz, v2 = v1 + dy;
+            // ModelPart.Cube's six polygons: vertices, texture rectangle, normal
+            [[[5, 4, 0, 1], u1, v, u2, v1, [0, -1, 0]], [[2, 3, 7, 6], u2, v1, u3, v, [0, 1, 0]], [[0, 4, 7, 3], u, v1, u1, v2, [-1, 0, 0]],
+             [[1, 0, 3, 2], u1, v1, u2, v2, [0, 0, -1]], [[5, 1, 2, 6], u2, v1, u4, v2, [1, 0, 0]], [[4, 5, 6, 7], u4, v1, u5, v2, [0, 0, 1]]].forEach(function (F) {
+                var tw = F[3] - F[1], th = F[4] - F[2];
+                if (Math.abs(tw) < 0.5 || Math.abs(th) < 0.5) return;   // the paper-thin sides of a cover or a page
+                var n = F[5], nz = Mp[8] * n[0] + Mp[9] * n[1] + Mp[10] * n[2];
+                if (nz <= 0) return;   // turned away
+                var nx = Mp[0] * n[0] + Mp[1] * n[1] + Mp[2] * n[2], ny = Mp[4] * n[0] + Mp[5] * n[1] + Mp[6] * n[2], nl = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
+                // the inventory's two lights, from above and in front
+                var l = Math.max(0, (-0.25 * nx - 0.6 * ny + 0.76 * nz) / nl) + Math.max(0, (0.25 * nx - 0.2 * ny + 0.95 * nz) / nl) * 0.35;
+                var k = Math.max(6, Math.min(16, Math.round(16 * (0.4 + 0.6 * Math.min(1, l)))));
+                var q = F[0], a = V[q[1]], b = V[q[0]], d = V[q[2]];   // vertex 1 holds (u1, v1), 0 holds (u2, v1), 2 holds (u1, v2)
+                quads.push({ z: (V[q[0]][2] + V[q[1]][2] + V[q[2]][2] + V[q[3]][2]) / 4, o: a, ux: b[0] - a[0], uy: b[1] - a[1], vx: d[0] - a[0], vy: d[1] - a[1],
+                             su: Math.min(F[1], F[3]), sv: Math.min(F[2], F[4]), tw: tw, th: th, k: k });
+            });
+        });
+        quads.sort(function (p, q) { return p.z - q.z; });
+        quads.forEach(function (Q) {
+            var aw = Math.abs(Q.tw), ah = Math.abs(Q.th);
+            c.setTransform(Q.ux / Q.tw, Q.uy / Q.tw, Q.vx / Q.th, Q.vy / Q.th, Q.o[0], Q.o[1]);
+            // the rectangle is read from its (u1, v1) corner, whichever way round the face has it
+            c.drawImage(ebShaded(Q.k), Q.su, Q.sv, aw, ah, Q.tw < 0 ? -aw : 0, Q.th < 0 ? -ah : 0, aw, ah);
+        });
+        c.setTransform(1, 0, 0, 1, 0, 0);
+    }
+    function enchBookTarget() {}   // tickBook notices the change on its own next tick
+    function enchBookFrame(dt) {
+        var cv = RT.el.querySelector('.mc-panelwrap .mc-ebook');
+        if (!cv) return;
+        var B = RT.ebook || (RT.ebook = { open: 0, oOpen: 0, flip: 0, oFlip: 0, flipT: 0, flipA: 0, last: '', acc: 0 });
+        B.acc += Math.min(0.25, dt || 0);
+        while (B.acc >= HUD_TICK) { B.acc -= HUD_TICK; ebTick(B); }
+        ebDraw(cv, B, B.acc / HUD_TICK);
     }
     function takeCraft(shiftAll) {
         var guard = 0;
@@ -5429,7 +8411,8 @@
             if (!r) return;
             if (shiftAll) {
                 if (invFree(r.out) < r.n) return;   // must fit fully, or we'd deposit output without consuming ingredients
-                invGive(r.out, r.n);
+                var rmd = itemMaxDur(r.out);   // the result slot shift-clicks in backwards: the hotbar's right-hand end first
+                moveStackTo({ id: r.out, c: r.n, dur: rmd != null ? rmd : undefined }, invOrder(0, 36), true);
             } else {
                 if (RT.cur && (RT.cur.id !== r.out || RT.cur.c + r.n > stkMax(r.out))) return;
                 if (RT.cur) RT.cur.c += r.n;
@@ -5444,54 +8427,89 @@
                 }
             }
             for (var i = 0; i < 9; i++) if (RT.craft[i]) { RT.craft[i].c--; if (!RT.craft[i].c) RT.craft[i] = null; }
+            stat('cr', r.out, r.n);
             craftHooks(r.out);
+            rbLearn(['c:' + r.out]);   // making it teaches it
             snd('click');
         } while (shiftAll && guard++ < 64);
+    }
+    /* ── shift-click: each menu's own quickMoveStack ────────────
+       Where a shift-clicked stack goes is the menu's rule, and the player's
+       slots are always walked in the order a menu lists them, the backpack
+       (9-35) then the hotbar (0-8), by moveItemStackTo: one pass topping up
+       matching stacks, then the first empty slot that takes it, both run
+       backwards when the menu says so. That is why a crafting result or a
+       chest's stack lands at the right-hand end of the hotbar first. */
+    var INV_ORDER = [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 0, 1, 2, 3, 4, 5, 6, 7, 8];
+    function invOrder(a, b) { return INV_ORDER.slice(a, b); }
+    function slotRef(x) {
+        var g = typeof x === 'number' ? 'inv' : x[0], i = typeof x === 'number' ? x : x[1], grp = slotGroup(g);
+        return { get: function () { return grp.get(i); }, set: function (v) { grp.set(i, v); },
+                 max: function (st) { return slotMaxFor(g, st.id); }, accepts: function (st) { return slotAccepts(g, i, st); } };
+    }
+    function moveStackTo(st, slots, reverse) {   // returns what is left over
+        var list = reverse ? slots.slice().reverse() : slots, k, ref, it, max = stkMax(st.id);
+        var left = { id: st.id, c: st.c, dur: st.dur, ench: st.ench, name: st.name };
+        if (max > 1) for (k = 0; k < list.length && left.c > 0; k++) {
+            ref = slotRef(list[k]); it = ref.get();
+            if (it && sameStack(it, left)) { var room = Math.min(max, ref.max(left)) - it.c; if (room > 0) { var a = Math.min(room, left.c); it.c += a; left.c -= a; } }
+        }
+        if (left.c > 0) for (k = 0; k < list.length; k++) {
+            ref = slotRef(list[k]);
+            if (!ref.get() && ref.accepts(left)) {
+                var put = Math.min(left.c, ref.max(left));
+                ref.set({ id: left.id, c: put, dur: left.dur, ench: left.ench, name: left.name });
+                left.c -= put;
+                break;
+            }
+        }
+        return left.c;
     }
     function quickMove(g, idx) {
         var grp = slotGroup(g), st = grp.get(idx);
         if (!st) return;
+        var kind = RT.panel.kind, left = st.c, def = I[st.id], q;
         // shift-clicking your own stack while the catalogue is up throws it away.
         // There is nowhere for it to go, and the real screen deletes it too.
-        if (RT.panel.kind === 'creative' && (CTABS[RT.cTab] || CTABS[0]).id !== 'inv') {
+        if (kind === 'creative' && (CTABS[RT.cTab] || CTABS[0]).id !== 'inv') {
             grp.set(idx, null); snd('click'); paintPanel();
             return;
         }
-        var left;
         if (g === 'inv') {
-            /* shift-click armour → equip it, but ONLY from a screen that shows the
-               armour column. Everywhere else this fired first and swallowed the
-               piece: shift-click a chestplate at a chest expecting it to go IN the
-               chest and it vanished from the grid onto your body, off screen. */
-            var adef = I[st.id] && I[st.id].armor;
-            var hasArmorCol = RT.panel.kind === 'inv' || RT.panel.kind === 'creative';
-            if (adef && hasArmorCol && !S.armor[adef.slot]) {
-                slotGroup('armor').set(adef.slot, st);   // via the setter, so "Suit Up" fires
-                grp.set(idx, null); paintVitals(); paintPanel();
-                return;
-            }
-            if (RT.panel.kind === 'chest') {
-                var t = S.tents[RT.panel.key];
-                left = giveInto(t.inv, 27, st);
-            } else if (RT.panel.kind === 'furnace') {
-                var tf = S.tents[RT.panel.key];
-                if (I[st.id] && I[st.id].fuel && !SMELTS[st.id]) { left = mergeSlot(tf, 'fuel', st); }
-                else if (SMELTS[st.id]) { left = mergeSlot(tf, 'fin', st); }
-                else left = st.c;
-            } else {
-                // hotbar ↔ backpack
-                var src = st;
-                grp.set(idx, null);
-                var range = idx < 9 ? [9, 36] : [0, 9];
-                var l2 = invGiveRange(src.id, src.c, src.dur, range[0], range[1], src.ench, src.name);
-                if (l2) { grp.set(idx, { id: src.id, c: l2, dur: src.dur, ench: src.ench, name: src.name }); }
-                paintPanel();
-                return;
+            var other = idx >= 9 ? invOrder(27, 36) : invOrder(0, 27);   // the backpack to the hotbar and back
+            if (kind === 'inv' || kind === 'creative') {
+                // InventoryMenu: a piece of armour goes on if its slot is free
+                var adef = def && def.armor;
+                if (adef && !S.armor[adef.slot]) {
+                    slotGroup('armor').set(adef.slot, st);   // via the setter, so "Suit Up" fires
+                    grp.set(idx, null); paintVitals(); paintPanel();
+                    return;
+                }
+                left = moveStackTo(st, other, false);
+            } else if (kind === 'table') {   // CraftingMenu: into the grid first
+                var grid = []; for (q = 0; q < 9; q++) grid.push(['craft', q]);
+                left = moveStackTo(st, grid, false);
+                if (left === st.c) left = moveStackTo(st, other, false);
+            } else if (kind === 'chest') {
+                var box = []; for (q = 0; q < 27; q++) box.push(['chest', q]);
+                left = moveStackTo(st, box, false);
+            } else if (kind === 'furnace') {   // what smelts to the top, what burns to the fuel, and no further
+                if (SMELTS[st.id]) left = moveStackTo(st, [['fin', 0]], false);
+                else if (def && def.fuel) left = moveStackTo(st, [['ffuel', 0]], false);
+                else left = moveStackTo(st, other, false);
+            } else if (kind === 'ench') {   // lapis to its slot; anything else, one of it onto the table if it is free
+                if (st.id === 'lapis') left = moveStackTo(st, [['elapis', 0]], true);
+                else if (!RT.enchItem) { slotGroup('ein').set(0, { id: st.id, c: 1, dur: st.dur, ench: st.ench, name: st.name }); left = st.c - 1; }
+            } else if (kind === 'anvil') {
+                left = moveStackTo(st, [['anvA', 0], ['anvB', 0]], false);
+                if (left === st.c) left = moveStackTo(st, other, false);
             }
         } else {
-            if (g === 'fout' && st) { if (st.id === 'iron') unlock('iron'); }
-            left = invGive(st.id, st.c, st.dur, st.ench, st.name);
+            if (g === 'fout' && st.id === 'iron') unlock('iron');
+            // a container's own slots and the furnace's output go in backwards; the grid, armour and off hand forwards
+            left = moveStackTo(st, invOrder(0, 36), g === 'chest' || g === 'fout' || g === 'ein' || g === 'elapis');
         }
+        if (left === st.c) return;   // nowhere for it to go: nothing moves
         if (left > 0) st.c = left; else grp.set(idx, null);
         if (g === 'armor') paintVitals();   // shift-clicking a piece OFF changes the bar too
         paintPanel();
@@ -5526,8 +8544,9 @@
         return true;
     }
     function slotClick(g, idx, right, shift) {
+        rbGhostHit(g);
         if (g === 'cout') { takeCraft(shift); paintPanel(); paintHotbar(); return; }
-        if (g === 'anvOut') { applyAnvil(); return; }
+        if (g === 'anvOut') { applyAnvil(shift); return; }
         if (g === 'creat') { creativeClick(idx, right, shift); return; }
         if (g === 'ctrash') {
             // shift-clicking the bin empties everything you own, the way the real
@@ -5549,7 +8568,7 @@
         if (RT.cur && !slotAccepts(g, idx, RT.cur)) return;   // wrong item for this special slot
         if (g === 'fout') {   // output: take only
             if (!st) return;
-            if (!RT.cur) { RT.cur = st; grp.set(idx, null); if (st.id === 'iron') unlock('iron'); }
+            if (!RT.cur) { RT.cur = st; grp.set(idx, null); stat('cr', st.id, st.c); if (st.id === 'iron') unlock('iron'); }
             else if (RT.cur.id === st.id && RT.cur.c + st.c <= stkMax(st.id)) { RT.cur.c += st.c; grp.set(idx, null); if (st.id === 'iron') unlock('iron'); }
             snd('click');   // taking a crafted item clicks; taking a smelted one was silent
             paintPanel(); return;
@@ -5580,28 +8599,160 @@
         if (g === 'armor') paintVitals();
         paintPanel(); paintHotbar();
     }
-    /* Park the carried-item ghost and the tooltip at the pointer. The last
-       position is kept on RT so a repaint, a tab switch or a panel that opens
-       under a stationary mouse all place them correctly rather than letting
-       .mc-panelwrap's flex centring drop them over the middle of the screen. */
+    /* The carried stack is drawn with its top-left at (mouse - 8, mouse - 8) in
+       whole GUI pixels, so it sits centred on the pointer's hot spot and moves
+       a GUI pixel at a time, as the game's does. */
     function panelCurTo(clientX, clientY) {
         if (!RT || !RT.el) return;
         if (clientX != null) RT.curXY = [clientX, clientY];
         if (RT.av && clientX != null) { RT.av.mx = clientX; RT.av.my = clientY; }   // the figure watches the pointer
         var xy = RT.curXY;
-        if (!xy) return;
+        if (!xy || !RT.gs) return;
         var wrap = RT.el.querySelector('.mc-panelwrap');
         if (!wrap) return;
-        var r = wrap.getBoundingClientRect(), x = xy[0] - r.left, y = xy[1] - r.top;
+        var r = RT.el.getBoundingClientRect(), s = RT.gs;
         var cur = wrap.querySelector('.mc-cur');
-        if (cur) { cur.style.left = (x + 6) + 'px'; cur.style.top = (y + 6) + 'px'; }
-        var tip = wrap.querySelector('.mc-ptip');
-        if (tip && tip.style.display !== 'none') {
-            // keep the label on screen when the pointer is near the right edge
-            var tw = tip.offsetWidth || 90;
-            tip.style.left = Math.max(0, Math.min(r.width - tw, x + 14)) + 'px';
-            tip.style.top = (y - 8) + 'px';
+        if (cur) { cur.style.left = ((Math.floor((xy[0] - r.left) / s) - 8) * s) + 'px'; cur.style.top = ((Math.floor((xy[1] - r.top) / s) - 8) * s) + 'px'; }
+    }
+    /* ── tooltips ─────────────────────────────────────────────
+       What an item says about itself, the 1.21 way: the name in its rarity's
+       colour (italic when renamed), its enchantments in grey, and for a tool,
+       weapon or piece of armour a blank line, the slot it works from, and what
+       it adds: attack damage and speed as the totals in dark green with a
+       leading space, armour as +N in blue. In the creative catalogue the tabs
+       an item appears on follow its name, in blue. */
+    function fmt2(v) { return String(Math.round(v * 100) / 100); }
+    function itemTipLines(st, g) {
+        var def = I[st.id] || {}, L = [{ t: st.tname || itemName(st), c: RARITY_COL[itemRarity(st)], it: !!st.name }];
+        if (st.lock) return L;   // the Saved Hotbars placeholder is only its instructions
+        /* the creative screen names every category tab an item is on, right under its
+           name: everywhere except a category tab's own catalogue */
+        var tid = RT.panel && RT.panel.kind === 'creative' ? (CTABS[RT.cTab] || {}).id : null;
+        if (tid && !(tid !== 'search' && tid !== 'inv' && tid !== 'hotbar' && g === 'creat')) {
+            var tabs = creativeTables();
+            CTABS.forEach(function (T) { if (tabs[T.id] && tabs[T.id].indexOf(st.id) >= 0) L.push({ t: T.t, c: '#5555ff' }); });
         }
+        if (st.ench) for (var k in st.ench) L.push({ t: (ENCH_NAME[k] || k) + ((ENCH_MAX[k] || 1) > 1 || st.ench[k] > 1 ? ' ' + (ROMAN[st.ench[k]] || st.ench[k]) : ''), c: '#aaaaaa' });
+        var tl = def.tool, ar = def.armor;
+        if (tl) {
+            L.push({ t: '' }, { t: 'When in Main Hand:', c: '#aaaaaa' },
+                { t: ' ' + fmt2(tl.dmg + (ench(st, 'sharp') > 0 ? 0.5 * ench(st, 'sharp') + 0.5 : 0)) + ' Attack Damage', c: '#00aa00' },
+                { t: ' ' + fmt2(attackSpeed(st.id)) + ' Attack Speed', c: '#00aa00' });
+        } else if (ar) {
+            L.push({ t: '' }, { t: ['When on Head:', 'When on Chest:', 'When on Legs:', 'When on Feet:'][ar.slot], c: '#aaaaaa' },
+                { t: '+' + fmt2(ar.def || 0) + ' Armor', c: '#5555ff' });
+            if (ar.tough) L.push({ t: '+' + fmt2(ar.tough) + ' Armor Toughness', c: '#5555ff' });
+        }
+        return L;
+    }
+    /* The enchanting table's clue: the enchantment's name in grey and " . . . ?"
+       in white; in survival a blank line and then either the level it needs, in
+       red, or the lapis and the levels it will take. */
+    function enchTipLines(o) {
+        var op = RT.enchOpts && RT.enchOpts[o];
+        if (!op || !op.ench) return null;
+        var main = Object.keys(op.ench)[0], lv = op.ench[main];
+        var L = [{ segs: [{ t: (ENCH_NAME[main] || main) + ((ENCH_MAX[main] || 1) > 1 ? ' ' + (ROMAN[lv] || lv) : ''), c: '#aaaaaa' }, { t: ' . . . ?', c: '#ffffff' }] }];
+        if (instaBuild()) return L;
+        L.push({ t: '' });
+        if (S.xpl < op.level) L.push({ t: 'Level Requirement: ' + op.level, c: '#ff5555' });
+        else {
+            var lap = RT.enchLapis ? RT.enchLapis.c : 0;
+            L.push({ t: op.lapis === 1 ? '1 Lapis Lazuli' : op.lapis + ' Lapis Lazuli', c: lap < op.lapis ? '#ff5555' : '#aaaaaa' });
+            L.push({ t: op.lapis === 1 ? '1 Enchantment Level' : op.lapis + ' Enchantment Levels', c: '#aaaaaa' });
+        }
+        return L;
+    }
+    /* Drawn the way the game draws one: the text starts 12 right of and 12
+       above the pointer (flipping left of it at the screen's edge), each line
+       with its shadow, a 2-pixel gap after the first; round it a #100010
+       background at alpha 240 reaching 4 pixels out with its corners cut, and
+       inside that a 1-pixel ring 3 out running from #5000FF at the top to
+       #290080 at the bottom, both at alpha 80. */
+    function tipRender(lines, clientX, clientY, tipEl) {
+        var wrap = RT.el.querySelector('.mc-panelwrap'), tip = tipEl || (wrap && wrap.querySelector('.mc-ptip'));
+        if (!tip) return;
+        if (!lines || !lines.length) { tip.style.display = 'none'; tip._sig = ''; return; }
+        var r = RT.el.getBoundingClientRect(), s = RT.gs, mx = Math.floor((clientX - r.left) / s), my = Math.floor((clientY - r.top) / s);
+        var w = 0, sig = '';
+        lines.forEach(function (l) {
+            var segs = l.segs || [{ t: l.t, c: l.c, it: l.it }], lw = 0;
+            segs.forEach(function (sg) { lw += sg.t ? mfWidth(sg.t) + 1 : 0; sig += sg.t + '|' + sg.c + '|'; });
+            w = Math.max(w, lw);
+        });
+        var h = lines.length === 1 ? 8 : 10 * lines.length;
+        var tx = mx + 12, ty = my - 12;
+        if (tx + w > RT.gw) tx = Math.max(mx - 12 - w, 4);
+        if (ty + h + 3 > RT.gh) ty = RT.gh - h - 3;
+        if (tip._sig !== sig) {
+            tip._sig = sig;
+            var html = '<i class="mc-tipf"></i>';
+            lines.forEach(function (l, k) {
+                var y = 4 + (k ? 2 + 10 * k : 0), x = 4;
+                (l.segs || [{ t: l.t, c: l.c, it: l.it }]).forEach(function (sg) {
+                    if (sg.t) html += '<span class="mc-tipl" style="' + pAt(x, y) + '">' + mtHTML(sg.t, sg.c || '#ffffff', sg.it ? 'it' : '') + '</span>';
+                    x += sg.t ? mfWidth(sg.t) + 1 : 0;
+                });
+            });
+            tip.innerHTML = html;
+            tip.style.width = 'calc(var(--px) * ' + (w + 8) + ')';
+            tip.style.height = 'calc(var(--px) * ' + (h + 8) + ')';
+        }
+        tip.style.display = 'block';
+        tip.style.left = ((tx - 4) * s) + 'px';
+        tip.style.top = ((ty - 4) * s) + 'px';
+    }
+    /* ── what the pointer is over ─────────────────────────────
+       AbstractContainerScreen keeps one hovered slot, found by the 18x18 frame
+       test, and draws 1.21.2's highlight in two halves: white at alpha 96
+       behind the item and 32 over it and its count. The tooltip is what that
+       slot holds (nothing while a stack is carried), or a creative tab's name,
+       an enchanting option's clue, the bin's "Destroy Item". */
+    function panelHover(target, clientX, clientY) {
+        var wrap = RT.el.querySelector('.mc-panelwrap');
+        if (!wrap || !RT.panel) return;
+        var under = slotAt(target, wrap), el = target && target.closest ? target : null;
+        var tabEl = el && el.closest('.mc-ctab'), eo = el && el.closest('.mc-enchopt'), rbEl = el && el.closest('.mc-rbr, .mc-rbfilter');
+        var hovEl = under ? under.el : null;
+        if (RT.hovEl !== hovEl) {
+            if (RT.hovEl) RT.hovEl.classList.remove('hov');
+            if (hovEl) hovEl.classList.add('hov');
+            RT.hovEl = hovEl;
+        }
+        RT.hover = under ? { g: under.g, i: under.i } : null;   // the slot under the pointer, for the number keys, F and Q
+        var lines = null;
+        if (tabEl) { var td = CTABS[tabEl.getAttribute('data-ct') | 0]; if (td) lines = [{ t: td.t }]; }
+        else if (eo) lines = enchTipLines(eo.getAttribute('data-o') | 0);
+        else if (rbEl) lines = rbTip(rbEl);
+        // GhostSlots.renderTooltip: over a ghost, with the book open, the ghost's item
+        else if (under && RT.rbGhostAt && RT.rbGhostAt[under.g + ':' + under.i] && rbShown()) lines = itemTipLines({ id: RT.rbGhostAt[under.g + ':' + under.i], c: 1 }, under.g);
+        else if (under && under.g === 'ctrash') lines = [{ t: 'Destroy Item' }];
+        else if (under && !RT.cur) { var st = slotStackAt(under.g, under.i); if (st) lines = itemTipLines(st, under.g); }
+        tipRender(lines, clientX, clientY);
+    }
+    function slotStackAt(g, i) {   // what a slot shows, the outputs included
+        if (g === 'cout') { var rr = matchRecipe(RT.craft, RT.craftW); return rr ? { id: rr.out, c: rr.n } : null; }
+        if (g === 'anvOut') { var ar = anvilResult(); return ar && !ar.tooExp ? ar.out : null; }
+        if (g === 'ctrash') return null;
+        var gp = slotGroup(g);
+        return gp ? gp.get(i) : null;
+    }
+    /* the game redraws every frame, so a slot that changes under a still pointer
+       changes its tooltip at once; this is that, after any repaint */
+    function panelHoverRefresh() {
+        var xy = RT.curXY;
+        if (!xy || !RT.panel) return;
+        panelHover(document.elementFromPoint(xy[0], xy[1]), xy[0], xy[1]);
+    }
+    /* per frame while a screen is up: the text boxes' blinking cursors, and the enchanting table's book */
+    function panelFrame(dt) {
+        var wrap = RT.el.querySelector('.mc-panelwrap');
+        if (!wrap || !RT.panel) return;
+        var a = wrap.querySelector('.mc-anvin'), sb = wrap.querySelector('.mc-csearchin');
+        if (a) paintFieldMirror(a, wrap.querySelector('.mc-anvmir'), '#ffffff', 103);
+        if (sb) paintFieldMirror(sb, wrap.querySelector('.mc-csmir'), '#ffffff', 80);
+        if (RT.panel.kind === 'ench') enchBookFrame(dt || 0);
+        rbFrameTick(dt || 0);
     }
     /* ── drag-splitting — the real game's "quick craft" ──────────
        With a stack on the cursor, pressing a mouse button over a slot is NOT
@@ -5626,7 +8777,7 @@
        on the cursor gathers every matching stack on screen into it, and a
        click on the dark outside the panel throws the cursor stack into the
        world — the whole stack on the left button, one on the right. */
-    var QC_TARGETS = { inv: 1, chest: 1, craft: 1, armor: 1, fin: 1, ffuel: 1, ein: 1, elapis: 1, anvA: 1, anvB: 1 };
+    var QC_TARGETS = { inv: 1, chest: 1, craft: 1, armor: 1, off: 1, fin: 1, ffuel: 1, ein: 1, elapis: 1, anvA: 1, anvB: 1 };
     var QC_BTN_MASK = [1, 4, 2];   // e.buttons bit for e.button 0 / 1 / 2
     function sameStack(a, b) {
         return !!a && !!b && a.id === b.id && a.dur == null && b.dur == null && !a.ench && !b.ench && (a.name || '') === (b.name || '');
@@ -5674,6 +8825,7 @@
         if (!qcAccepts(g, i, RT.cur)) return;
         if (q.type !== 2 && RT.cur.c <= q.slots.length) return;   // never more slots than items
         q.slots.push({ g: g, i: i });
+        rbGhostHit(g);   // a sweep across the grid is a click on it
         qcPaint();
     }
     function qcCancel() {
@@ -5681,16 +8833,17 @@
         RT.qc = null;
         if (RT.panel) paintPanel();
     }
-    /* the live preview: each swept slot shows the stack it would get, tinted so
-       it reads as "not yet", the count in yellow where the slot's limit clipped
-       it; the cursor shows what it would keep, a yellow 0 when nothing */
+    /* the live preview, AbstractContainerScreen's quick-craft rendering: each
+       swept slot shows the stack it would end up with over a 0x80FFFFFF wash,
+       its count in yellow where the slot's limit clipped it; the cursor shows
+       what it would keep, and nothing at all when that is nothing */
     function qcPaint() {
         var q = RT.qc, wrap = RT.el && RT.el.querySelector('.mc-panelwrap');
         if (!q || !RT.cur || !wrap) return;
         var cells = wrap.querySelectorAll('.mc-slot.qc');
         for (var c = 0; c < cells.length; c++) cells[c].classList.remove('qc');
         var cur = wrap.querySelector('.mc-cur');
-        if (q.slots.length < 2) { if (cur && RT.cur) cur.innerHTML = RT.cur.c > 1 ? '<span class="mc-ct">' + RT.cur.c + '</span>' : ''; return; }
+        if (q.slots.length < 2) { if (cur) paintSlot(cur, RT.cur); return; }
         var plan = qcPlan(q);
         for (var k = 0; k < q.slots.length; k++) {
             var s = q.slots[k], cnt = plan.counts[k];
@@ -5699,13 +8852,12 @@
             if (!el) continue;
             paintSlot(el, { id: RT.cur.id, c: cnt, dur: RT.cur.dur, ench: RT.cur.ench });
             if (plan.over[k]) {   // clipped by the slot's limit: the count goes yellow, even a 1
-                var ct = el.querySelector('.mc-ct');
-                if (!ct) { ct = document.createElement('span'); ct.className = 'mc-ct'; ct.textContent = cnt; el.appendChild(ct); }
-                ct.style.color = '#ffff55';
+                var ct = el.querySelector('.mc-ct'), html = mtHTML(String(cnt), '#ffff55', 'mc-ct');
+                if (ct) ct.outerHTML = html; else el.insertAdjacentHTML('beforeend', html);
             }
             el.classList.add('qc');
         }
-        if (cur) cur.innerHTML = plan.left > 1 ? '<span class="mc-ct">' + plan.left + '</span>' : plan.left < 1 ? '<span class="mc-ct" style="color:#ffff55">0</span>' : '';
+        if (cur) paintSlot(cur, plan.left > 0 ? { id: RT.cur.id, c: plan.left, dur: RT.cur.dur, ench: RT.cur.ench } : null);
     }
     /* the button came up: two or more slots swept is a split, one is the click
        it would have been, none is the click on wherever the pointer is now */
@@ -5767,8 +8919,10 @@
         if (k === 'ench') groups.push(['ein', 0], ['elapis', 0]);
         if (k === 'anvil') groups.push(['anvA', 0], ['anvB', 0]);
         if (k === 'inv' || k === 'table') for (i = 0; i < RT.craftW * RT.craftW; i++) groups.push(['craft', i]);
+        if (k === 'inv' || (k === 'creative' && !catalogueTab)) { for (i = 0; i < 4; i++) groups.push(['armor', i]); }
         if (!catalogueTab) for (i = 9; i < 36; i++) groups.push(['inv', i]);   // a catalogue tab shows only the hotbar
         for (i = 0; i < 9; i++) groups.push(['inv', i]);
+        if (k === 'inv' || (k === 'creative' && !catalogueTab)) groups.push(['off', 0]);
         for (var pass = 0; pass < 2 && cur.c < max; pass++) {
             for (var g = 0; g < groups.length && cur.c < max; g++) {
                 var grp = slotGroup(groups[g][0]), st = grp.get(groups[g][1]);
@@ -5783,25 +8937,31 @@
         snd('click');
         paintPanel(); paintHotbar();
     }
-    /* SWAP: a number key over a slot trades what is there with that hotbar slot,
-       both ways round, honouring what the slot will take; over a catalogue entry
-       it is a full stack straight into the hotbar, over an output slot it takes
-       the result if the hotbar slot is free. (AbstractContainerMenu.doClick SWAP,
-       and the creative screen's own SWAP branch.) */
+    /* SWAP: a number key over a slot trades what is there with that hotbar
+       slot, both ways round, honouring what the slot will take, and F (the
+       menu's button 40) does the same with the off hand; over a catalogue
+       entry it is a full stack straight into that slot, over an output slot
+       it takes the result if the slot is free. (AbstractContainerMenu.doClick
+       SWAP, and the creative screen's own SWAP branch.) */
     function hoverSwap(n) {
-        var h = RT.hover, hb = S.inv[n];
+        var h = RT.hover;
         if (!h || h.g === 'ctrash') return;   // the bin only ever clears the cursor
+        rbGhostHit(h.g);
+        var hbGet = function () { return n === 40 ? S.off || null : S.inv[n]; };
+        var hbSet = function (v) { if (n === 40) S.off = v || null; else S.inv[n] = v || null; };
+        var hb = hbGet();
         if (h.g === 'creat') {
-            var id = (RT.cList || [])[RT.cScroll * CCOLS + h.i];
-            if (!id) return;
-            S.inv[n] = creativeStack(id);
+            var cst = slotGroup('creat').get(h.i);
+            if (!cst || cst.lock) return;
+            cst.c = stkMax(cst.id);
+            hbSet(cst);
         } else if (h.g === 'cout' || h.g === 'fout' || h.g === 'anvOut') {
             if (hb) return;   // an output slot cannot take the hotbar's stack
-            if (h.g === 'cout') { takeCraft(false); S.inv[n] = RT.cur; RT.cur = null; }   // the cursor is empty here, so the result lands on it
-            else if (h.g === 'fout') { var t = S.tents[RT.panel.key]; if (!t || !t.out) return; S.inv[n] = t.out; t.out = null; if (S.inv[n].id === 'iron') unlock('iron'); }
+            if (h.g === 'cout') { takeCraft(false); hbSet(RT.cur); RT.cur = null; }   // the cursor is empty here, so the result lands on it
+            else if (h.g === 'fout') { var t = S.tents[RT.panel.key]; if (!t || !t.out) return; hbSet(t.out); t.out = null; if (hbGet().id === 'iron') unlock('iron'); }
             else return;
         } else {
-            if (h.g === 'inv' && h.i === n) return;
+            if ((h.g === 'inv' && h.i === n) || (h.g === 'off' && n === 40)) return;
             var grp = slotGroup(h.g);
             if (!grp) return;
             var st = grp.get(h.i);
@@ -5813,7 +8973,7 @@
             } else {
                 if (hb && slotMaxFor(h.g, hb.id) < hb.c) return;
                 grp.set(h.i, hb || null);
-                S.inv[n] = st || null;
+                hbSet(st || null);
             }
             if (h.g === 'armor') paintVitals();
         }
@@ -5825,11 +8985,11 @@
     function hoverThrow(all) {
         var h = RT.hover;
         if (!h || h.g === 'fout' || h.g === 'anvOut' || h.g === 'ctrash') return;
+        rbGhostHit(h.g);
         if (h.g === 'creat') {   // the catalogue hands one out to throw, a stack with Ctrl
-            var cid = (RT.cList || [])[RT.cScroll * CCOLS + h.i];
-            if (!cid) return;
-            var cst = creativeStack(cid);
-            tossItem(cst, all ? cst.c : 1);
+            var cst = slotGroup('creat').get(h.i);
+            if (!cst || cst.lock) return;
+            tossItem(cst, all ? stkMax(cst.id) : 1);
             paintPanel(); return;
         }
         if (h.g === 'cout') {    // the result slot crafts once and throws what it made — Ctrl too, as the real THROW takes the slot's count
@@ -5851,6 +9011,7 @@
     /* the Q key and a click on the dark outside a panel both throw an item the way
        you are looking, on the real game's arc */
     function tossItem(st, n) {
+        stat('c', 'drop'); stat('d', st.id, n);   // Player.drop: one drop, and that many of the item
         var d = look();
         RT.drops.push({ x: S.px + d[0], y: S.py + EYE - 0.3, z: S.pz + d[2], vx: d[0] * 6, vy: d[1] * 6 + 2, vz: d[2] * 6,
             it: st.id, c: n, dur: st.dur, ench: st.ench || null, iname: st.name || null, age: -0.8, hw: 0.12, h: 0.24 });
@@ -5881,7 +9042,7 @@
             if (g === 'ctrash' || g === 'anvOut') return;
             var grp = slotGroup(g);
             var st = grp ? grp.get(i) : null;
-            if (!st) return;
+            if (!st || st.lock) return;
             RT.cur = creativeStack(st.id);
             snd('click'); paintPanel();
         }
@@ -5890,9 +9051,20 @@
         wrap.addEventListener('mousedown', function (e) {
             panelCurTo(e.clientX, e.clientY);
             if (e.button > 2 || RT.qc) return;
+            /* the recipe book takes its clicks first; a click anywhere but its
+               search box or a recipe takes the keyboard back from the box */
+            var rbq = wrap.querySelector('.mc-rbqin'), rbHit = e.target && e.target.closest ? e.target.closest('.mc-rbook, .mc-rb') : null;
+            if (rbq && document.activeElement === rbq && !(rbHit && e.target.closest('.mc-rbr, .mc-rbarr'))) { rbq.blur(); RT.el.focus(); }
+            if (rbHit) {
+                var rbEl = e.target.closest('.mc-rbook, .mc-rbtab, .mc-rbr, .mc-rbfilter, .mc-rbarr');
+                if (rbEl && (e.button === 0 || (e.button === 2 && rbEl.classList.contains('mc-rbr')))) rbAct(rbEl, e.button, e.shiftKey);
+                e.preventDefault(); e.stopPropagation();
+                return;
+            }
             if (e.button === 0) {
                 var bar = barAt(e.target);
-                if (bar) { RT.cDrag = 1; creativeBarTo(bar, e.clientY); e.preventDefault(); e.stopPropagation(); return; }
+                // the press only grabs the scroller; it is dragging that moves it, as the real one does
+                if (bar) { if (!bar.classList.contains('off')) RT.cDrag = 1; e.preventDefault(); e.stopPropagation(); return; }
             }
             var el = ctlAt(e.target);
             if (!el) {
@@ -5934,36 +9106,11 @@
                 else { var sw = slotAt(e.target, wrap); if (sw) qcAdd(sw.g, sw.i); }
             }
             panelCurTo(e.clientX, e.clientY);
-            var cur = wrap.querySelector('.mc-cur');
-            if (!cur) return;
-            /* name whatever is under the pointer. The real game does this in every
-               screen, and the catalogue needs it badly: at 32px, stone, cobblestone
-               and stone bricks are three grey squares. */
-            var tip = wrap.querySelector('.mc-ptip');
-            if (!tip) return;
-            var st = null, under = slotAt(e.target, wrap), tabEl = e.target && e.target.closest ? e.target.closest('.mc-ctab') : null;
-            RT.hover = null;   // the slot under the pointer, for the number keys and Q
-            if (under) {
-                var g = under.g, i = under.i, rr;
-                RT.hover = { g: g, i: i };
-                if (g === 'cout') { rr = matchRecipe(RT.craft, RT.craftW); st = rr ? { id: rr.out, c: rr.n } : null; }
-                else if (g === 'anvOut') { rr = anvilResult(); st = rr ? rr.out : null; }
-                else { var gp = slotGroup(g); st = gp ? gp.get(i) : null; }
-            }
-            if (tabEl && !RT.cur) {   // a tab names itself on hover, as the real strip does
-                var td = CTABS[tabEl.getAttribute('data-ct') | 0];
-                tip.textContent = td ? td.t : '';
-                tip.style.display = 'block';
-                panelCurTo(e.clientX, e.clientY);
-            } else if (st && !RT.cur) {
-                tip.textContent = st.name || (I[st.id] ? I[st.id].t : st.id);
-                tip.style.display = 'block';
-                panelCurTo(e.clientX, e.clientY);   // re-place now that it has width
-            } else tip.style.display = 'none';
+            panelHover(e.target, e.clientX, e.clientY);
         });
         wrap.addEventListener('mouseleave', function () {
-            var tip = wrap.querySelector('.mc-ptip');
-            if (tip) tip.style.display = 'none';
+            tipRender(null);
+            if (RT.hovEl) { RT.hovEl.classList.remove('hov'); RT.hovEl = null; }
             RT.hover = null;
         });
     }
@@ -5972,7 +9119,7 @@
         if (srch) {
             srch.addEventListener('input', function () {
                 RT.cSearch = srch.value;
-                RT.cScroll = 0;
+                RT.cScroll = 0; RT.cScrollF = null;
                 creativeRefresh();
                 paintPanel();
             });
@@ -5989,6 +9136,7 @@
         }
         var nameIn = wrap.querySelector('.mc-anvin');
         if (nameIn) {
+            nameIn.disabled = !RT.anvilA;
             nameIn.addEventListener('input', function () { RT.anvilName = nameIn.value; paintPanel(); });
             // typing must not drive the game — but Esc still has to close the panel, or the
             // name box swallows the only key that gets you out
@@ -5996,8 +9144,18 @@
                 e.stopPropagation();
                 if (e.key === 'Escape') { e.preventDefault(); nameIn.blur(); closePanel(); return; }
             });
+            nameIn.addEventListener('keyup', function (e) { e.stopPropagation(); });
             nameIn.addEventListener('mousedown', function (e) { e.stopPropagation(); });
         }
+        /* EditBox's cursor blinks from the moment the box takes focus; anything
+           that moves the caret or the selection redraws the mirror at once */
+        [srch, nameIn].forEach(function (f) {
+            if (!f) return;
+            f._ft = performance.now();
+            f.addEventListener('focus', function () { f._ft = performance.now(); panelFrame(0); });
+            ['blur', 'select', 'input', 'keyup', 'mouseup'].forEach(function (ev) { f.addEventListener(ev, function () { if (RT && RT.panel) panelFrame(0); }); });
+            f.addEventListener('keydown', function () { setTimeout(function () { if (RT && RT.panel) panelFrame(0); }, 0); });
+        });
     }
 
     /* ── audio ───────────────────────────────────────────────
@@ -6704,45 +9862,6 @@
         musStart('menu', MUSIC.menu);
     }
 
-    /* ── the options sliders ─────────────────────────────────
-       The real options screen has draggable sliders, not toggles, and OFF is
-       just the left end of one. Old saves hold booleans, which read as 0 and 1
-       through sVol()/mVol(), so nothing has to be migrated. */
-    function paintOpts() {
-        if (!RT || !RT.el) return;
-        var rows = RT.el.querySelectorAll('.mc-slider');
-        for (var i = 0; i < rows.length; i++) {
-            var el = rows[i], k = el.getAttribute('data-vk');
-            var v = k === 'snd' ? sVol() : mVol();
-            var pct = Math.round(v * 100);
-            el.querySelector('span').textContent = (k === 'snd' ? 'Sound: ' : 'Music: ') + (pct ? pct + '%' : 'OFF');
-            el.querySelector('i').style.left = (v * 100) + '%';
-        }
-    }
-    function wireSliders(root) {
-        var rows = root.querySelectorAll('.mc-slider');
-        for (var i = 0; i < rows.length; i++) (function (el) {
-            var k = el.getAttribute('data-vk'), dragging = false;
-            function setFrom(e) {
-                var r = el.getBoundingClientRect();
-                // the knob is 10px wide and centred, so the usable track is inset by half of it
-                var v = (e.clientX - r.left - 5) / Math.max(1, r.width - 10);
-                v = Math.max(0, Math.min(1, v));
-                if (v < 0.03) v = 0;                       // a real dead zone at the left end
-                v = Math.round(v * 20) / 20;               // 5% notches, like the game's
-                if (k === 'snd') S.snd = v; else S.mus = v;
-                applyVolumes();
-                paintOpts();
-            }
-            el.addEventListener('mousedown', function (e) { dragging = true; setFrom(e); e.preventDefault(); e.stopPropagation(); });
-            el.addEventListener('mousemove', function (e) { if (dragging) setFrom(e); });
-            el.addEventListener('mouseup', function () { dragging = false; });
-            el.addEventListener('mouseleave', function () { dragging = false; });
-            // a click that lands on the label still has to move the knob
-            el.addEventListener('click', function (e) { e.stopPropagation(); });
-        })(rows[i]);
-    }
-
     /* ── chunk streaming ────────────────────────────────────── */
     function ensureChunks() {
         var pcx = Math.floor(S.px / CW), pcz = Math.floor(S.pz / CW), k;
@@ -6870,7 +9989,7 @@
             /* A lock request already in flight when a screen opens still resolves,
                and used to be accepted — leaving the inventory up with the pointer
                captured and the camera spinning behind it. Hand it straight back. */
-            if (RT.panel || RT.dead || RT.chat) { unlockCursor(); return; }
+            if (RT.panel || RT.dead || RT.chat || (RT.sleep && !RT.woke)) { unlockCursor(); return; }
             if (RT.paused) hidePause();
             RT.el.focus();
         }
@@ -6898,8 +10017,9 @@
            screen), so it gets a step of the ladder and then the frame. */
         if (RT.menu) {
             if (!RT.built) bootStep();
-            mnFrame(RT.menu, dt);
-            menuMusic(dt);
+            var mm0 = RT.menu;
+            mnFrame(mm0, dt);
+            if (!mm0.inworld) menuMusic(dt);   // the world's music carries on under its own options
             return;
         }
         if (!RT.built) { bootStep(); return; }
@@ -6923,13 +10043,17 @@
             // Watching the held id (not S.sel) catches every route into a swap:
             // the number keys, the wheel, pick block, and the inventory screen.
             var heldNow = (held() || {}).id || null;
-            if (heldNow !== RT.equipId) { RT.equipId = heldNow; RT.equip = 1; }
+            if (heldNow !== RT.equipId) {
+                RT.equipId = heldNow; RT.equip = 1;
+                RT.atkCd = RT.atkCdMax = attackCooldown(heldNow);   // a new item in hand starts its swing from empty
+            }
             RT.equip = Math.max(0, RT.equip - dt / EQUIP_T);
-            RT.flash = Math.max(0, RT.flash - dt);
-            RT.shake = Math.max(0, RT.shake - dt);
             RT.lightning = Math.max(0, (RT.lightning || 0) - dt);
             RT.target = raycast();
             stepPlayer(dt);
+            statMove(dt);
+            camFrame(dt);
+            if ((RT.rbScanT = (RT.rbScanT || 0) + dt) >= 0.25) { RT.rbScanT = 0; rbScan(); }   // inventory_changed, for the recipe advancements
             fovTick(dt);
             digTick(dt);
             useTick(dt);
@@ -6967,10 +10091,13 @@
             furnaceTick(dt);
             genStep();
             meshStep(2);
+            // the HUD's animations run on the game's own 20 Hz tick, and pause with it
+            RT.hudTickT = (RT.hudTickT || 0) + dt;
+            while (RT.hudTickT >= HUD_TICK) { RT.hudTickT -= HUD_TICK; hudTick(false); }
             RT.hudT += dt;
             if (RT.hudT > 0.2) {
                 RT.hudT = 0;
-                paintVitals(); paintXp(); paintDebug(); tipFade(dt); paintChat(); paintEffects();
+                paintXp(); paintDebug(); paintChat(); paintEffects();
                 /* An open panel is only ever repainted by its own click handlers, so
                    anything the SIM changed behind it stayed invisible: a furnace's
                    output, items you walked over, a helmet that shattered mid-fight,
@@ -6985,23 +10112,53 @@
         entGeo();
         var vig = RT.el.querySelector('.mc-vig');
         var headB = getB(Math.floor(S.px), Math.floor(S.py + EYE), Math.floor(S.pz));
-        vig.style.background = RT.lightning > 0 ? 'rgba(255,255,255,' + (RT.lightning * 2.2) + ')'
-            : RT.flash > 0 ? 'rgba(200,20,20,' + (RT.flash * 0.9) + ')'
-            : headB === WATER ? 'rgba(20,50,180,0.22)' : headB === LAVA ? 'rgba(220,80,10,0.5)' : 'transparent';
-        if (RT.shake > 0) {
-            var sh = RT.shake * 6;
-            RT.cv.style.transform = 'translate(' + ((Math.random() - 0.5) * sh) + 'px,' + ((Math.random() - 0.5) * sh) + 'px)';
-        } else RT.cv.style.transform = '';
+        /* Java has no red flash when you are hurt and no shake for an explosion:
+           the camera's tilt is the hurt, and lava is its fog. Under water the game
+           lays its faint underwater texture over the view; a lightning strike
+           lights the sky, a little of which reaches the whole scene. */
+        vig.style.background = RT.lightning > 0 ? 'rgba(255,255,255,' + Math.min(0.12, RT.lightning * 0.7) + ')'
+            : headB === WATER ? 'rgba(18,40,120,0.12)' : 'transparent';
+        var vgn = RT.el.querySelector('.mc-vign');   // Gui.renderVignette: stronger the darker it is where you stand
+        if (vgn && CAM) { var vo = (CAM.vigO + (CAM.vig - CAM.vigO) * camPt()).toFixed(3); if (vgn._o !== vo) { vgn._o = vo; vgn.style.opacity = vo; } }
         drawFrame();
+        hudFrame(dt);
         if (RT.av) avatarDraw();   // the figure in the inventory box, turning with the pointer and swaying
     }
-    function tipFade() {
-        if (RT.tipT > 0) { RT.tipT -= 0.2; if (RT.tipT <= 0) RT.el.querySelector('.mc-tip').className = 'mc-tip'; }
+    /* ── the world's loading screen ──
+       LevelLoadingScreen as 1.21.9 draws it: over the blurred panorama and the
+       menu background, "Loading terrain..." in white, a 200x2 bar twelve pixels
+       under it filling in green on black, and in singleplayer the chunk map:
+       every chunk the world is waiting on as a 2x2 cell in its generation
+       status's colour, centred on the screen, the text 26 pixels above it. */
+    var LOAD_COL = { none: '#000000', queued: '#545454', terrain: '#21c600', light: '#ffe0a0', full: '#ffffff' };
+    function loadShow(on) {
+        var ld = RT.el.querySelector('.mc-load');
+        if (!ld) return;
+        ld.style.display = on ? '' : 'none';
+        RT.el.classList.toggle('mc-loading', !!on);
+        RT.el.classList.toggle('mc-mblur', !!on);
+        if (on) { RT.loadF = 0; RT.el.style.setProperty('--mblur', (5.5 / (window.devicePixelRatio || 1)).toFixed(2) + 'px'); loadPaint(0); }
     }
-    function bootBar(f) {
-        var b = RT.el.querySelector('.mc-bar i');
-        if (b) b.style.width = Math.round(f * 100) + '%';
+    function loadPaint(f) {
+        var ld = RT.el.querySelector('.mc-load');
+        if (!ld || ld.style.display === 'none' || !RT.gs) return;
+        RT.loadF = (RT.loadF || 0) + (f - (RT.loadF || 0)) * 0.2;
+        var W = RT.gw, H = RT.gh, r = VIEW, n = 2 * r + 1, cy = H >> 1, ty = cy - 2 * r - 27;
+        var t = ld.querySelector('.mc-ltext'), bar = ld.querySelector('.mc-lbar'), map = ld.querySelector('.mc-lmap');
+        mtSet(t.firstChild, 'Loading terrain...', '#ffffff');
+        hudPlace(t, (W >> 1) - ((mfWidth('Loading terrain...') + 1) >> 1), ty);
+        hudPlace(bar, (W >> 1) - 100, ty + 12);
+        bar.firstChild.style.width = 'calc(var(--px) * ' + Math.round(200 * Math.max(0, Math.min(1, RT.loadF))) + ')';
+        if (map.width !== n) { map.width = map.height = n; map.style.width = map.style.height = 'calc(var(--px) * ' + 2 * n + ')'; }
+        hudPlace(map, (W >> 1) - n, cy - n);
+        var c = map.getContext('2d'), pcx = Math.floor(S.px / CW), pcz = Math.floor(S.pz / CW);
+        for (var dz = -r; dz <= r; dz++) for (var dx = -r; dx <= r; dx++) {
+            var k = ckey(pcx + dx, pcz + dz), ch = RT.chunks[k];
+            c.fillStyle = LOAD_COL[ch ? (ch.mesh ? 'full' : RT.lit ? 'light' : 'terrain') : RT.genQ.indexOf(k) >= 0 ? 'queued' : 'none'];
+            c.fillRect(dx + r, dz + r, 1, 1);
+        }
     }
+    function bootBar(f) { loadPaint(f); }
     /* The boot ladder — generate, light, mesh — pulled out of frame() so that
        both things that wait on it can drive their own progress bar: the menu's,
        while the panorama world stands up behind the title screen, and the
@@ -7048,7 +10205,7 @@
         var guard = 0;
         while (boxHits(S.px, S.py, S.pz) && S.py < CH - 2 && guard++ < CH) S.py += 1;
         RT.fallY = S.py; RT.vy = 0;
-        RT.el.querySelector('.mc-load').style.display = 'none';
+        loadShow(false);
         restoreEnts();
         if (S.bonusPending) bonusChest();
         paintHotbar(); paintVitals(); paintHudMode();
@@ -7072,7 +10229,7 @@
         /* The panorama renders at 85°; leaving that set would hand the world
            the title screen's field of view. fovM is the sprint stretch and
            belongs to the world that was just thrown away. */
-        RT.fov = 0; RT.fovM = 1; RT.fly = false;
+        RT.fov = 0; RT.fovM = 1; RT.fly = false; CAM = null;
         chunkCacheDrop();
     }
     function mnFreshWorld(w) {
@@ -7130,23 +10287,22 @@
         // flight belongs to the world that granted it, not to the session
         RT.fly = !!S.fly && (S.gm === 1 || S.gm === 3);
         RT.vy = 0; RT.sprint = false; RT.swing = 0; RT.sleep = 0;
-        var ld = RT.el.querySelector('.mc-load');
-        ld.querySelector('h3').textContent = 'Building terrain…';
-        ld.style.display = '';
-        bootBar(0);
+        loadShow(true);
         ensureChunks();
         wsTouch(id, { played: Date.now(), ver: (RT && RT.ver) || '26.2' });
     }
     /* Vanilla's "Save and Quit to Title": the world is written out, the world
        is thrown away, and the panorama is generated fresh behind the menu. */
     function mnToTitle() {
+        stat('c', 'leave_game');
         sSave();
         if (S && S.wid) wsTouch(S.wid, { played: Date.now(), hrs: S.hrs || 0 });
         unlockCursor();
         if (RT.paused) hidePause();
+        iwHide(); leaveBed();
         RT.lan = null; RT.lanUI = null;   // cheats from Open to LAN end with the session, as the real ones do
         if (RT.panel) closePanel(true);
-        RT.el.querySelector('.mc-load').style.display = 'none';
+        loadShow(false);
         // the debug overlay belongs to the world; it would sit frozen over the menu
         RT.f3 = false;
         RT.el.querySelector('.mc-debug').style.display = 'none';
@@ -7470,6 +10626,198 @@
         return lines.length ? lines : [''];
     }
 
+    /* — the same face as a web font —
+       The menus draw through mfText, but the in-game GUI is DOM: the HUD, the
+       containers, chat, tooltips and the text boxes. So the glyph table above
+       is compiled into a real TrueType font at boot and handed to the browser
+       as a FontFace. Every lit pixel becomes part of a rectangle contour, runs
+       merged across rows, at 128 units to the pixel and 1024 to the em: at a
+       font-size of 8 × the GUI scale, one font pixel is exactly one GUI pixel
+       and every edge falls on a device pixel. Ascent 7 plus descent 2 is the
+       9-pixel line, so a CSS line box of 9 GUI pixels has no half-leading and
+       the baseline never lands between two pixels. */
+    var MF_FAMILY = 'MCUI', MF_FACE = null;
+    function mfRects(gl) {
+        var open = {}, out = [], r, k;
+        for (r = 0; r <= MF_ROWS; r++) {
+            var row = r < MF_ROWS ? (gl.rows[r] || '') : '', runs = {}, x = 0;
+            while (x < row.length) {
+                if (row.charAt(x) !== '#') { x++; continue; }
+                var x0 = x;
+                while (x < row.length && row.charAt(x) === '#') x++;
+                runs[x0 + ',' + x] = [x0, x];
+            }
+            for (k in open) if (!runs[k]) { out.push(open[k]); delete open[k]; }   // the run ended above this row
+            for (k in runs) if (open[k]) open[k].r1 = r; else open[k] = { x0: runs[k][0], x1: runs[k][1], r0: r, r1: r };
+        }
+        return out;
+    }
+    function mfFontBytes(tbl, fam) {
+        tbl = tbl || mfBuild().g; fam = fam || MF_FAMILY;
+        var P = 128, UPM = 1024, ASC = 7 * P, DSC = 2 * P, i;
+        var chars = Object.keys(tbl).filter(function (c) { return c.length === 1; })
+            .sort(function (a, b) { return a.charCodeAt(0) - b.charCodeAt(0); });
+        var glyphs = [{ adv: 6 * P, rects: [] }];   // .notdef: the unknown glyph's room, no ink
+        var codes = [];
+        chars.forEach(function (ch) {
+            glyphs.push({ adv: (tbl[ch].w + 1) * P, rects: mfRects(tbl[ch]) });
+            codes.push([ch.charCodeAt(0), glyphs.length - 1]);
+        });
+        function Buf() { this.b = []; }
+        Buf.prototype = {
+            u8: function (v) { this.b.push(v & 255); return this; },
+            u16: function (v) { this.b.push((v >> 8) & 255, v & 255); return this; },
+            u32: function (v) { this.b.push((v >>> 24) & 255, (v >>> 16) & 255, (v >>> 8) & 255, v & 255); return this; },
+            pad: function () { while (this.b.length % 4) this.b.push(0); return this; }
+        };
+        // glyf + loca, and the metrics they imply
+        var glyf = new Buf(), loca = [], fx0 = 0, fy0 = 0, fx1 = 0, fy1 = 0, maxPts = 0, maxCtr = 0;
+        var advMax = 0, minLsb = 1e9, minRsb = 1e9, xMaxExt = 0, advSum = 0, advN = 0;
+        for (i = 0; i < glyphs.length; i++) {
+            var g = glyphs[i];
+            loca.push(glyf.b.length);
+            advMax = Math.max(advMax, g.adv);
+            if (g.adv) { advSum += g.adv; advN++; }
+            g.lsb = 0;
+            if (!g.rects.length) continue;
+            var pts = [], x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+            g.rects.forEach(function (rc) {
+                var a = rc.x0 * P, b = rc.x1 * P, top = (7 - rc.r0) * P, bot = (6 - rc.r1) * P;
+                pts.push([a, bot], [a, top], [b, top], [b, bot]);   // clockwise with y up: an outer contour
+                x0 = Math.min(x0, a); x1 = Math.max(x1, b); y0 = Math.min(y0, bot); y1 = Math.max(y1, top);
+            });
+            g.lsb = x0;
+            fx0 = Math.min(fx0, x0); fy0 = Math.min(fy0, y0); fx1 = Math.max(fx1, x1); fy1 = Math.max(fy1, y1);
+            maxPts = Math.max(maxPts, pts.length); maxCtr = Math.max(maxCtr, g.rects.length);
+            minLsb = Math.min(minLsb, x0); minRsb = Math.min(minRsb, g.adv - x1); xMaxExt = Math.max(xMaxExt, x1);
+            glyf.u16(g.rects.length).u16(x0).u16(y0).u16(x1).u16(y1);
+            for (var c = 0; c < g.rects.length; c++) glyf.u16(c * 4 + 3);
+            glyf.u16(0);                                     // no hinting instructions
+            for (var p = 0; p < pts.length; p++) glyf.u8(1); // every point on-curve, both coordinates as int16 deltas
+            var px = 0, py = 0;
+            for (p = 0; p < pts.length; p++) { glyf.u16(pts[p][0] - px); px = pts[p][0]; }
+            for (p = 0; p < pts.length; p++) { glyf.u16(pts[p][1] - py); py = pts[p][1]; }
+            glyf.pad();
+        }
+        loca.push(glyf.b.length);
+        var T = {};
+        var head = new Buf();
+        head.u32(0x00010000).u32(0x00010000).u32(0).u32(0x5F0F3CF5).u16(0x000B).u16(UPM)
+            .u32(0).u32(0).u32(0).u32(0).u16(fx0).u16(fy0).u16(fx1).u16(fy1)
+            .u16(0).u16(8).u16(2).u16(1).u16(0);
+        T.head = head;
+        var hhea = new Buf();
+        hhea.u32(0x00010000).u16(ASC).u16(-DSC).u16(0).u16(advMax).u16(minLsb).u16(minRsb).u16(xMaxExt)
+            .u16(1).u16(0).u16(0).u16(0).u16(0).u16(0).u16(0).u16(0).u16(glyphs.length);
+        T.hhea = hhea;
+        var hmtx = new Buf();
+        glyphs.forEach(function (gg) { hmtx.u16(gg.adv).u16(gg.lsb); });
+        T.hmtx = hmtx;
+        var maxp = new Buf();
+        maxp.u32(0x00010000).u16(glyphs.length).u16(maxPts).u16(maxCtr).u16(0).u16(0).u16(2)
+            .u16(0).u16(0).u16(0).u16(0).u16(0).u16(0).u16(0).u16(0);
+        T.maxp = maxp;
+        var lc = new Buf();
+        loca.forEach(function (o) { lc.u32(o); });
+        T.loca = lc;
+        T.glyf = glyf;
+        var lo = codes[0][0], hi = codes[codes.length - 1][0];
+        var os2 = new Buf();
+        os2.u16(4).u16(Math.round(advSum / advN)).u16(400).u16(5).u16(0)
+            .u16(4 * P).u16(4 * P).u16(0).u16(P).u16(4 * P).u16(4 * P).u16(0).u16(4 * P)
+            .u16(P).u16(3 * P).u16(0);
+        for (i = 0; i < 10; i++) os2.u8(0);                  // panose: no classification
+        os2.u32(0x00000003).u32(0x00000020).u32(0).u32(0);   // Basic Latin, Latin-1, Arrows
+        os2.u8(78).u8(79).u8(78).u8(69);                     // vendor 'NONE'
+        os2.u16(0x00C0).u16(lo).u16(Math.min(hi, 0xFFFF)).u16(ASC).u16(-DSC).u16(0).u16(ASC).u16(DSC)
+            .u32(1).u32(0).u16(5 * P).u16(7 * P).u16(0).u16(32).u16(1);
+        T['OS/2'] = os2;
+        // cmap: one (3,1) format 4 table, a segment per run of consecutive code points
+        var segs = [];
+        codes.forEach(function (cg) {
+            var s = segs[segs.length - 1];
+            if (s && cg[0] === s.end + 1 && cg[1] === s.gid + (cg[0] - s.start)) s.end = cg[0];
+            else segs.push({ start: cg[0], end: cg[0], gid: cg[1] });
+        });
+        segs.push({ start: 0xFFFF, end: 0xFFFF, gid: 0, last: true });
+        var sc = segs.length, lg = Math.floor(Math.log(sc) / Math.LN2), sr = 2 * Math.pow(2, lg);
+        var sub = new Buf();
+        sub.u16(4).u16(16 + sc * 8).u16(0).u16(sc * 2).u16(sr).u16(lg).u16(sc * 2 - sr);
+        segs.forEach(function (s) { sub.u16(s.end); });
+        sub.u16(0);
+        segs.forEach(function (s) { sub.u16(s.start); });
+        segs.forEach(function (s) { sub.u16(s.last ? 1 : (s.gid - s.start) & 0xFFFF); });
+        segs.forEach(function () { sub.u16(0); });
+        var cmap = new Buf();
+        cmap.u16(0).u16(1).u16(3).u16(1).u32(12);
+        cmap.b = cmap.b.concat(sub.b);
+        T.cmap = cmap;
+        var names = [[1, fam], [2, 'Regular'], [3, fam + ' Regular 1.0'], [4, fam + ' Regular'], [5, 'Version 1.0'], [6, fam + '-Regular']];
+        var name = new Buf(), store = new Buf();
+        name.u16(0).u16(names.length).u16(6 + 12 * names.length);
+        names.forEach(function (nm) {
+            name.u16(3).u16(1).u16(0x0409).u16(nm[0]).u16(nm[1].length * 2).u16(store.b.length);
+            for (var j = 0; j < nm[1].length; j++) store.u16(nm[1].charCodeAt(j));
+        });
+        name.b = name.b.concat(store.b);
+        T.name = name;
+        var post = new Buf();
+        post.u32(0x00030000).u32(0).u16(-P).u16(P).u32(0).u32(0).u32(0).u32(0).u32(0);
+        T.post = post;
+        // the sfnt wrapper: a table directory sorted by tag, every table 4-aligned
+        var tags = Object.keys(T).sort(), nt = tags.length, el = Math.floor(Math.log(nt) / Math.LN2);
+        var out = new Buf();
+        out.u32(0x00010000).u16(nt).u16(16 * Math.pow(2, el)).u16(el).u16(nt * 16 - 16 * Math.pow(2, el));
+        function sum(b) { var s = 0; for (var q = 0; q < b.length; q += 4) s = (s + ((b[q] << 24) | ((b[q + 1] || 0) << 16) | ((b[q + 2] || 0) << 8) | (b[q + 3] || 0))) >>> 0; return s; }
+        var off = 12 + nt * 16, body = [], headAt = 0;
+        tags.forEach(function (t) {
+            var b = T[t].b;
+            out.u8(t.charCodeAt(0)).u8(t.charCodeAt(1)).u8(t.charCodeAt(2)).u8(t.charCodeAt(3));
+            out.u32(sum(b)).u32(off).u32(b.length);
+            if (t === 'head') headAt = off;
+            body = body.concat(b);
+            while (body.length % 4) body.push(0);
+            off = 12 + nt * 16 + body.length;
+        });
+        var all = out.b.concat(body), adj = (0xB1B0AFBA - sum(all)) >>> 0;
+        all[headAt + 8] = adj >>> 24; all[headAt + 9] = (adj >>> 16) & 255; all[headAt + 10] = (adj >>> 8) & 255; all[headAt + 11] = adj & 255;
+        return new Uint8Array(all);
+    }
+    /* Registered once per page. The returned promise settles when the face is
+       usable; text drawn before then falls back for a frame and snaps over. */
+    function mfWebFont() {
+        if (MF_FACE) return MF_FACE;
+        try {
+            var face = new FontFace(MF_FAMILY, mfFontBytes().buffer);
+            document.fonts.add(face);
+            // the enchanting table's runes: the game's "alt" font, the Standard Galactic Alphabet on a to z
+            var sga = new FontFace(SGA_FAMILY, mfFontBytes(sgaGlyphs(), SGA_FAMILY).buffer);
+            document.fonts.add(sga);
+            sga.load().catch(function () {});
+            MF_FACE = face.load().then(function () { return face; }, function () { return null; });
+        } catch (e) { MF_FACE = Promise.resolve(null); }
+        return MF_FACE;
+    }
+    /* DOM text that looks like mfText. An .mt element keeps its real text (for
+       screen readers, selection and anything that reads textContent) but paints
+       it transparent; its ::after paints the same string in --c and its
+       ::before the shadow in --sc, one GUI pixel down and right. Two separate
+       layers, each through #mccrisp on its own: thresholding them together
+       left the anti-aliased seam where the text overlaps its own shadow as a
+       grey that is neither colour. .ns drops the shadow, for the container
+       labels vanilla draws without one. */
+    function mtSet(el, text, color) {
+        if (!el) return;
+        text = String(text == null ? '' : text);
+        if (el.getAttribute('data-t') !== text) { el.textContent = text; el.setAttribute('data-t', text); }
+        if (color && el._mtc !== color) { el._mtc = color; el.style.setProperty('--c', color); el.style.setProperty('--sc', mfShadow(color)); }
+    }
+    function mtHTML(text, color, cls, attrs) {
+        text = String(text == null ? '' : text);
+        return '<span class="mt' + (cls ? ' ' + cls : '') + '" data-t="' + escHtml(text) + '"' +
+            (color ? ' style="--c:' + color + ';--sc:' + mfShadow(color) + '"' : '') + (attrs || '') + '>' + escHtml(text) + '</span>';
+    }
+
     /* ── GUI scale and the drawing surface ───────────────────
        Vanilla lays the whole interface out on a small virtual screen and
        blits it at an integer multiple, picking the largest multiple that
@@ -7481,6 +10829,21 @@
         var s = 1;
         while (s < GUI_MAXS && (!want || s < want) && w / (s + 1) >= GUI_MINW && h / (s + 1) >= GUI_MINH) s++;
         return s;
+    }
+    /* The in-game GUI is DOM, laid out in the same GUI pixels as the menus: --gs
+       on the root is the scale and the stylesheet sizes everything as a multiple
+       of it. RT.gw × RT.gh is the scaled screen vanilla does its HUD arithmetic
+       on (W/2 - 91, H - 22 ...); hudLayout() turns that into whole device
+       pixels, so nothing ever lands between two of them. */
+    function guiResize() {
+        if (!RT || !RT.el) return;
+        var w = RT.el.clientWidth || 960, h = RT.el.clientHeight || 560;
+        var s = guiScale(w, h, optLoad().guiScale), gw = Math.floor(w / s), gh = Math.floor(h / s);
+        if (s === RT.gs && gw === RT.gw && gh === RT.gh) return;
+        RT.gs = s; RT.gw = gw; RT.gh = gh;
+        RT.el.style.setProperty('--gs', String(s));
+        hudLayout();
+        if (RT.panel) panelLayout();
     }
 
     /* ── the menu ────────────────────────────────────────────
@@ -7589,78 +10952,60 @@
         mnRect(cx, x, y, w, 1, lite); mnRect(cx, x, y, 1, h, lite);
         mnRect(cx, x, y + h - 1, w, 1, dark); mnRect(cx, x + w - 1, y, 1, h, dark);
     }
-    /* The widget in its three states. Vanilla nine-slices these out of
-       widgets.png at v=46 disabled, v=66 idle, v=86 hovered, and the label is
-       0xFFFFFF whenever the button is active and 0xA0A0A0 when it is not —
-       hovering does NOT recolour the text, however strongly everyone
-       remembers that it does. */
+    /* A sprite nine-sliced onto the menu canvas: corners as they are, edges and
+       middle tiled from their top-left, as the game's GuiSprites scaling does */
+    function mnNine(cx, sp, x, y, w, h, b) {
+        var cv = sp.cv, sw = sp.w, sh = sp.h, cw = sw - 2 * b, ch = sh - 2 * b;
+        function tile(sx, sy, sW, sH, dx, dy, dW, dH) {
+            if (dW <= 0 || dH <= 0) return;
+            for (var yy = 0; yy < dH; yy += sH) for (var xx = 0; xx < dW; xx += sW) {
+                var ww = Math.min(sW, dW - xx), hh = Math.min(sH, dH - yy);
+                cx.drawImage(cv, sx, sy, ww, hh, dx + xx, dy + yy, ww, hh);
+            }
+        }
+        var bx = Math.min(b, w >> 1), by = Math.min(b, h >> 1);
+        tile(0, 0, bx, by, x, y, bx, by); tile(sw - bx, 0, bx, by, x + w - bx, y, bx, by);
+        tile(0, sh - by, bx, by, x, y + h - by, bx, by); tile(sw - bx, sh - by, bx, by, x + w - bx, y + h - by, bx, by);
+        tile(b, 0, cw, by, x + bx, y, w - 2 * bx, by); tile(b, sh - by, cw, by, x + bx, y + h - by, w - 2 * bx, by);
+        tile(0, b, bx, ch, x, y + by, bx, h - 2 * by); tile(sw - bx, b, bx, ch, x + w - bx, y + by, bx, h - 2 * by);
+        tile(b, b, cw, ch, x + bx, y + by, w - 2 * bx, h - 2 * by);
+    }
+    /* AbstractWidget.renderScrollingString: centred between the margins when it
+       fits; wider, it eases from one end to the other and back inside a clip,
+       lingering at each, a full cycle every max(overflow / 2, 3) seconds */
+    function mnLabel(cx, text, x0, y0, x1, y1, col) {
+        var tw = mfWidth(text) + 1, ty = ((y0 + y1 - 9) >> 1) + 1, room = x1 - x0;
+        if (tw <= room) { mfText(cx, text, ((x0 + x1) >> 1) - (tw >> 1), ty, col); return; }
+        var over = tw - room, period = Math.max(over * 0.5, 3), sec = performance.now() / 1000;
+        var a = Math.sin(Math.PI / 2 * Math.cos(2 * Math.PI * sec / period)) / 2 + 0.5;
+        cx.save(); cx.beginPath(); cx.rect(x0, y0, room, y1 - y0); cx.clip();
+        mfText(cx, text, x0 - Math.floor(a * over), ty, col);
+        cx.restore();
+        if (RT && RT.menu) RT.menu.anim = true;   // it moves on its own, so the screen keeps repainting
+    }
+    /* The widget in its three states, the current game's sprites: widget/button,
+       button_highlighted (hovered or focused: the white frame) and
+       button_disabled; the label white, or 0xA0A0A0 on a dead button. */
     function mnButton(cx, b, state) {
-        var top = state === 2 ? '#4a4a4a' : state === 1 ? '#8f8fae' : '#7a7a7a';
-        var bot = state === 2 ? '#2e2e2e' : state === 1 ? '#5f5f80' : '#565656';
-        var lite = state === 2 ? '#5e5e5e' : state === 1 ? '#c2c2d8' : '#9e9e9e';
-        // a hard black frame first: it is what separates a widget from the dirt
-        mnRect(cx, b.x, b.y, b.w, b.h, '#000000');
-        var g = cx.createLinearGradient(0, b.y + 1, 0, b.y + b.h - 1);
-        g.addColorStop(0, top); g.addColorStop(1, bot);
-        cx.fillStyle = g;
-        cx.fillRect(b.x + 1, b.y + 1, b.w - 2, b.h - 2);
-        mnRect(cx, b.x + 1, b.y + 1, b.w - 2, 1, lite);
-        mnRect(cx, b.x + 1, b.y + 1, 1, b.h - 2, lite);
-        mnRect(cx, b.x + 1, b.y + b.h - 2, b.w - 2, 1, '#242424');
-        mnRect(cx, b.x + b.w - 2, b.y + 1, 1, b.h - 2, '#242424');
-        var ty = b.y + ((b.h - 7) >> 1);
+        mnNine(cx, guiSprites()[state === 2 ? 'btn_d' : state === 1 ? 'btn_h' : 'btn'], b.x, b.y, b.w, b.h, 3);
         var lbl = b.label == null ? '' : b.label;
-        if (lbl === '') return;
-        var col = state === 2 ? '#a0a0a0' : MC_WHITE;
-        /* A label wider than its widget is clipped to it — vanilla scrolls it,
-           but either way it must not spill onto the dirt, which is what made
-           "Direct Connection" read as a different kind of button. */
-        if (mfWidth(lbl) > b.w - 4) {
-            cx.save();
-            cx.beginPath(); cx.rect(b.x + 2, b.y, b.w - 4, b.h); cx.clip();
-            mfCenter(cx, lbl, b.x + b.w / 2, ty, col);
-            cx.restore();
-        } else mfCenter(cx, lbl, b.x + b.w / 2, ty, col);
+        if (lbl !== '') mnLabel(cx, lbl, b.x + 2, b.y, b.x + b.w - 2, b.y + b.h, state === 2 ? MC_GREY : MC_WHITE);
     }
-    /* The dirt background behind every screen that has no panorama: the game
-       tiles its dirt texture at 32 GUI pixels and darkens it hard. We already
-       have a dirt tile in the atlas, so use the real one. */
-    var MN_DIRT = null;
-    function mnDirtTile() {
-        if (MN_DIRT) return MN_DIRT;
-        var t = TILE.dirt, sx = (t % 16) * 16, sy = ((t / 16) | 0) * 16;
-        var cv = document.createElement('canvas');
-        cv.width = 32; cv.height = 32;
-        var cx = cv.getContext('2d');
-        cx.imageSmoothingEnabled = false;
-        cx.drawImage(ATLAS, sx, sy, 16, 16, 0, 0, 32, 32);
-        cx.fillStyle = 'rgba(0, 0, 0, 0.75)';   // vanilla multiplies the tile by 0x404040
-        cx.fillRect(0, 0, 32, 32);
-        MN_DIRT = cv;
-        return cv;
-    }
-    function mnDirt(cx, x, y, w, h) {
-        var p = cx.createPattern(mnDirtTile(), 'repeat');
-        cx.fillStyle = p;
-        cx.fillRect(x, y, w, h);
+    function mnMenuBg(cx, W, H, list) {   // the menu background, or the darker list one
+        cx.fillStyle = cx.createPattern(guiSprites()[list ? 'mlbg' : 'mbg'].cv, 'repeat');
+        cx.fillRect(0, 0, W, H);
     }
     /* A scrolling list's frame: dirt inside, and the two shadow gradients the
        game bleeds over the top and bottom edges so entries fade out rather
        than getting guillotined. */
-    function mnListFrame(cx, x, y, w, h) {
+    function mnListFrame(cx, x, y, w, h) {   // menu_list_background over the list's rectangle
         cx.save();
         cx.beginPath(); cx.rect(x, y, w, h); cx.clip();
-        mnDirt(cx, x, y, w, h);
+        if (RT.menu && RT.menu.inworld) { cx.fillStyle = 'rgba(0, 0, 0, 0.3)'; cx.fillRect(x, y, w, h); }
+        else mnMenuBg(cx, x + w, y + h, true);
         cx.restore();
     }
-    function mnListEdges(cx, x, y, w, h) {
-        var g = cx.createLinearGradient(0, y, 0, y + 4);
-        g.addColorStop(0, 'rgba(0, 0, 0, 1)'); g.addColorStop(1, 'rgba(0, 0, 0, 0)');
-        cx.fillStyle = g; cx.fillRect(x, y, w, 4);
-        g = cx.createLinearGradient(0, y + h - 4, 0, y + h);
-        g.addColorStop(0, 'rgba(0, 0, 0, 0)'); g.addColorStop(1, 'rgba(0, 0, 0, 1)');
-        cx.fillStyle = g; cx.fillRect(x, y + h - 4, w, 4);
-    }
+    function mnListEdges(cx, x, y, w, h) { mnSep(cx, x, y - 2, w, true); mnSep(cx, x, y + h, w, false); }   // the header and footer separators
 
     /* — the wordmark —
        The real logo is a texture; this one is built at boot from a bold
@@ -7840,7 +11185,7 @@
         snd: true, mus: true,                       // Music & Sounds
         fancy: true, vsync: true, bob: true, clouds: true,   // Video Settings
         autoJump: false, sens: 100, invert: false,  // Controls and Mouse Settings
-        panoStill: false, noShake: false,           // Accessibility
+        panoStill: false, tilt: 1,           // Accessibility
         chat: 0, sug: true,                         // Chat Settings
         mpwarn: true                                // the third-party-play warning is shown until it is dismissed
     };
@@ -7862,7 +11207,7 @@
        the frame. Screens never touch the canvas transform or the DOM. */
     var MN_SCR = {};   // filled in below, one entry per screen
 
-    function mnOpen(scr, fade) {
+    function mnOpen(scr, fade, inworld) {
         var m = {
             scr: scr || 'title', prev: [], t: 0, spin: 0, fadeT: 0, fading: false, wantFade: fade !== false,
             splash: optLoad().splash ? mnPickSplash() : null,
@@ -7872,8 +11217,10 @@
         m.cv = RT.el.querySelector('.mc-mcv');
         m.cx = m.cv.getContext('2d');
         m.ui = RT.el.querySelector('.mc-mui');
+        m.inworld = !!inworld;   // the Game Menu's Options...: the paused world, blurred, behind it
         RT.menu = m;
-        RT.el.classList.add('mc-menuon');
+        RT.el.classList.add(m.inworld ? 'mc-menuworld' : 'mc-menuon');
+        if (m.inworld) RT.el.classList.add('mc-blur');
         m.cv.style.display = ''; m.ui.style.display = '';
         mnWire(m);
         mnSize(m);
@@ -7884,6 +11231,8 @@
         var m = RT.menu;
         RT.menu = null;
         RT.el.classList.remove('mc-menuon');
+        RT.el.classList.remove('mc-menuworld');
+        RT.el.classList.remove('mc-mblur');
         if (m) {
             m.cv.style.display = 'none';
             m.ui.style.display = 'none';
@@ -7915,7 +11264,9 @@
        Select World with the same world still highlighted. Only a descent
        through mnGo builds a fresh screen. */
     function mnBack(m) {
-        var to = m.prev.pop() || 'title';
+        var to = m.prev.pop();
+        if (!to && m.inworld) { mnCloseUI(); if (RT.paused) iwShow('pause'); return; }   // out of Options, back to the Game Menu
+        to = to || 'title';
         m.scr = to; m.hover = -1; m.focus = -1; m.msg = null; m.sig = ''; m.dirty = true;
     }
     function mnSize(m) {
@@ -7925,6 +11276,7 @@
         m.W = Math.floor(cw / m.scale);
         m.H = Math.floor(ch / m.scale);
         m.dirty = true;
+        guiResize();
     }
 
     /* — the DOM shadow layer —
@@ -8042,6 +11394,7 @@
         });
         ui.addEventListener('focusin', function (ev) {
             var mm = RT && RT.menu; if (!mm) return;
+            if (ev.target && ev.target.tagName === 'INPUT') ev.target._ft = performance.now();   // the cursor's blink starts at focus
             mm.focus = idx(ev); mm.dirty = true;
         });
         ui.addEventListener('focusout', function () {
@@ -8116,7 +11469,14 @@
             scr.tick(m, dt);
             scr = MN_SCR[m.scr] || MN_SCR.title;
         }
-        if (scr.bg !== 'dirt' && scr.bg !== 'flat') { RT.fov = MN_FOV; mnPanoCam(m, dt); drawFrame(); }
+        /* the panorama turns behind every screen now; only the title screen shows it
+           sharp, every other one blurs it under the menu background */
+        if (!m.inworld && scr.bg !== 'flat') { RT.fov = MN_FOV; mnPanoCam(m, dt); drawFrame(); }
+        var blur = !m.inworld && scr.bg === 'dirt';
+        if (RT.el.classList.contains('mc-mblur') !== blur) {
+            RT.el.classList.toggle('mc-mblur', blur);
+            RT.el.style.setProperty('--mblur', (5.5 / (window.devicePixelRatio || 1)).toFixed(2) + 'px');
+        }
         /* While the widgets are still invisible they are not interactive at
            all. pointer-events alone is not enough: a button with no pointer
            events is still in the tab order, so Tab-then-Enter could start a
@@ -8125,7 +11485,7 @@
         m.inert = a < 0.02;
         m.ui.style.pointerEvents = m.inert ? 'none' : '';
         // repaint when something changed, or when the screen animates on its own
-        if (m.dirty || scr.live) mnPaint(m, scr);
+        if (m.dirty || scr.live || m.anim) mnPaint(m, scr);
     }
     function mnPaint(m, scr) {
         var cx = m.cx, s = m.scale;
@@ -8133,8 +11493,10 @@
         cx.clearRect(0, 0, m.cv.width, m.cv.height);
         cx.imageSmoothingEnabled = false;
         cx.setTransform(s, 0, 0, s, 0, 0);
+        m.anim = false;
         var W = m.W, H = m.H;
-        if (scr.bg === 'dirt') mnDirt(cx, 0, 0, W, H);
+        if (m.inworld) { cx.fillStyle = cx.createPattern(guiSprites().iwbg.cv, 'repeat'); cx.fillRect(0, 0, W, H); }   // over the blurred world
+        else if (scr.bg === 'dirt') mnMenuBg(cx, W, H);
         else if (scr.bg === 'scrim') { cx.fillStyle = 'rgba(0, 0, 0, 0.62)'; cx.fillRect(0, 0, W, H); }
         var ga = 1;
         if (scr.bg === 'pano') {
@@ -8154,12 +11516,10 @@
             if (b.k === 'btn' || b.k === 'icon') {
                 var st = b.enabled === false ? 2 : (i === m.hover || i === m.focus) ? 1 : 0;
                 b.st = st;
-                mnButton(cx, b, st);
-                if (b.k === 'icon' && b.draw) b.draw(cx, b, st);
-                if (i === m.focus) {   // vanilla outlines the keyboard-focused widget
-                    cx.fillStyle = MC_WHITE;
-                    cx.fillRect(b.x - 1, b.y - 1, b.w + 2, 1); cx.fillRect(b.x - 1, b.y + b.h, b.w + 2, 1);
-                    cx.fillRect(b.x - 1, b.y, 1, b.h); cx.fillRect(b.x + b.w, b.y, 1, b.h);
+                mnButton(cx, b, st);   // focus is the highlighted sprite's white frame, as in the game
+                if (b.k === 'icon') {   // SpriteIconButton: the 15x15 picture at (3, 3)
+                    if (b.icon) cx.drawImage(guiSprites()[b.icon].cv, b.x + 3, b.y + 3);
+                    else if (b.draw) b.draw(cx, b, st);
                 }
             } else if (b.k === 'input') mnInput(cx, m, b, i);
             else if (b.k === 'draw' && b.draw) {
@@ -8182,26 +11542,43 @@
         m.dirty = false;
         mnSync(m);
     }
-    /* A text field: sunken bevel, the value painted in the bitmap font, a
-       caret that blinks on the game's half-second, and the DOM selection
-       mirrored as a highlight so dragging a seed looks like it works. */
+    /* EditBox, the current game's: the text_field sprite inside the widget's
+       bounds (#A0A0A0 round black, white while focused), the text at (4, 6) in
+       0xE0E0E0, scrolled to keep the cursor in view; the cursor blinks 300 ms
+       from focus, an underscore where the text ends and a bar in the text's own
+       colour inside it; a selection is the game's OR_REVERSE highlight; an empty
+       box shows its hint in dark grey, a search box's in grey italics. */
     function mnInput(cx, m, b, i) {
         var el = m.ui.children[i], focus = el && document.activeElement === el;
-        mnRect(cx, b.x - 1, b.y - 1, b.w + 2, b.h + 2, focus ? '#ffffff' : '#a0a0a0');
-        mnRect(cx, b.x, b.y, b.w, b.h, '#000000');
-        var v = b.value || '', tx = b.x + 4, ty = b.y + ((b.h - 7) >> 1);
-        if (!v && b.hint) { mfText(cx, b.hint, tx, ty, '#707070'); }
-        else {
-            if (focus && el.selectionStart !== el.selectionEnd) {
-                var a = mfWidth(v.slice(0, el.selectionStart)), z = mfWidth(v.slice(0, el.selectionEnd));
-                mnRect(cx, tx + a, ty - 1, Math.max(1, z - a), 10, '#3030c0');
+        mnNine(cx, guiSprites()[focus ? 'field_h' : 'field'], b.x, b.y, b.w, b.h, 1);
+        var v = b.value || '', tx = b.x + 4, ty = b.y + ((b.h - 8) >> 1), col = b.enabled === false ? '#707070' : '#e0e0e0';
+        var room = b.w - 8, s0 = el && el.selectionStart != null ? el.selectionStart : v.length, s1 = el && el.selectionEnd != null ? el.selectionEnd : s0;
+        var caret = el && el.selectionDirection === 'backward' ? s0 : s1, skip = 0;
+        while (skip < caret && mfWidth(v.slice(skip, caret)) > room - 6) skip++;
+        var show = v.slice(skip), end = show.length;
+        while (end > 0 && mfWidth(show.slice(0, end)) > room) end--;
+        show = show.slice(0, end);
+        cx.save(); cx.beginPath(); cx.rect(b.x + 1, b.y + 1, b.w - 2, b.h - 2); cx.clip();
+        if (!v && b.hint && !focus) {
+            if (b.search) { cx.save(); cx.transform(1, 0, -0.25, 1, 1 + 0.25 * ty, 0); mfText(cx, b.hint, tx, ty, '#aaaaaa'); cx.restore(); }
+            else mfText(cx, b.hint, tx, ty, '#555555');
+        } else mfText(cx, show, tx, ty, col);
+        function xAt(k) { return k > skip ? mfWidth(v.slice(skip, k)) + 1 : 0; }
+        if (focus && (((performance.now() - (el._ft || 0)) / 300) | 0) % 2 === 0) {
+            var cxp = xAt(caret);
+            if (caret < v.length) mnRect(cx, tx + cxp, ty - 1, 1, 11, col);
+            else mfText(cx, '_', tx + (caret > skip ? cxp + 1 : 0), ty, col);
+        }
+        if (focus && s1 > s0) {
+            var xa = xAt(Math.max(skip, s0)), xb = xAt(Math.max(skip, s1)) - 1;
+            if (xb > xa) {
+                cx.globalCompositeOperation = 'difference'; mnRect(cx, tx + xa, ty - 1, xb - xa, 11, '#ffff00');
+                cx.globalCompositeOperation = 'lighten'; mnRect(cx, tx + xa, ty - 1, xb - xa, 11, '#0000ff');
+                cx.globalCompositeOperation = 'source-over';
             }
-            mfText(cx, v, tx, ty, b.enabled === false ? '#707070' : '#e0e0e0');
         }
-        if (focus && (Date.now() % 1000) < 500) {
-            var cpos = el ? el.selectionStart : v.length;
-            mnRect(cx, tx + mfWidth(v.slice(0, cpos)), ty - 1, 1, 10, '#d0d0d0');
-        }
+        cx.restore();
+        if (focus && m) m.anim = true;   // the cursor blinks on its own
         if (b.title) mfText(cx, b.title, b.x, b.y - 12, MC_GREY);
     }
 
@@ -8373,11 +11750,11 @@
             }));
             w.push(mnBtn('realms', x, j + 48, MN_BW, MN_BH, 'Minecraft Realms', function (mm) { mnGo(mm, 'realms'); }));
             w.push(mnBtn('lang', (W / 2 | 0) - 124, r, 20, 20, '', function (mm) { mnGo(mm, 'lang'); },
-                { k: 'icon', aria: 'Language', draw: mnIconGlobe }));
+                { k: 'icon', aria: 'Language', icon: 'ic_lang' }));
             w.push(mnBtn('opt', x, r, 98, 20, 'Options...', function (mm) { mnGo(mm, 'options'); }));
             w.push(mnBtn('quit', (W / 2 | 0) + 2, r, 98, 20, 'Quit Game', function () { mnQuit(); }));
             w.push(mnBtn('acc', (W / 2 | 0) + 104, r, 20, 20, '', function (mm) { mnGo(mm, 'access'); },
-                { k: 'icon', aria: 'Accessibility Settings', draw: mnIconAcc }));
+                { k: 'icon', aria: 'Accessibility Settings', icon: 'ic_acc' }));
             /* The copyright line is a real button in the game — it opens the
                credits, and underlines itself on hover. So is this one. */
             var note = MN_COPY, nw = mfWidth(note);
@@ -8397,26 +11774,6 @@
         }
     };
     var MN_COPY = 'A fan recreation. Not Mojang, not affiliated.';
-    /* The two icon buttons carry small glyphs rather than labels. Drawn, not
-       blitted, because the originals are a texture we do not have. */
-    function mnIconGlobe(cx, b) {
-        var x = b.x + 4, y = b.y + 4;
-        cx.fillStyle = '#e0e0e0';
-        cx.fillRect(x + 3, y, 6, 1); cx.fillRect(x + 3, y + 11, 6, 1);
-        cx.fillRect(x, y + 3, 1, 6); cx.fillRect(x + 11, y + 3, 1, 6);
-        cx.fillRect(x + 1, y + 1, 2, 2); cx.fillRect(x + 9, y + 1, 2, 2);
-        cx.fillRect(x + 1, y + 9, 2, 2); cx.fillRect(x + 9, y + 9, 2, 2);
-        cx.fillRect(x + 5, y + 1, 2, 10); cx.fillRect(x + 1, y + 5, 10, 2);
-    }
-    function mnIconAcc(cx, b) {
-        var x = b.x + 5, y = b.y + 3;
-        cx.fillStyle = '#e0e0e0';
-        cx.fillRect(x + 4, y, 2, 2);                       // head
-        cx.fillRect(x, y + 3, 10, 2);                      // arms
-        cx.fillRect(x + 4, y + 3, 2, 5);                   // body
-        cx.fillRect(x + 1, y + 8, 2, 5); cx.fillRect(x + 7, y + 8, 2, 5);   // legs
-    }
-
     /* ── screen: Select World ────────────────────────────────
        Vanilla: title at y=8, search at y=22, the list from 48 to height-64 at
        36px an entry, two rows of buttons pinned to the bottom. Play / Edit /
@@ -8437,7 +11794,7 @@
         layout: function (m, W, H) {
             var w = [], cxp = W / 2 | 0;
             w.push({ k: 'input', id: 'q', x: cxp - 100, y: 22, w: 200, h: 20, value: m.d.q || '',
-                hint: 'Search…', enabled: true, aria: 'search for worlds',
+                hint: 'Search…', search: true, enabled: true, aria: 'search for worlds',
                 set: function (mm, v) { mm.d.q = v; mm.d.scroll = 0; } });
             var top = 48, bot = H - 64, rows = MN_SCR.world.rows(m);
             var maxScroll = Math.max(0, rows.length * MN_ROWH - (bot - top) + 8);
@@ -8509,7 +11866,8 @@
     function mnWorldRow(cx, b, hover) {
         var m = RT.menu, w = b.world, sel = m.d.sel === w.id;
         if (sel) {
-            mnRect(cx, b.x - 2, b.y - 2, b.w + 4, b.h + 4, '#ffffff');
+            var lf = m.widgets[m.focus] && m.widgets[m.focus].world;
+            mnRect(cx, b.x - 2, b.y - 2, b.w + 4, b.h + 4, lf ? '#ffffff' : '#808080');
             mnRect(cx, b.x - 1, b.y - 1, b.w + 2, b.h + 2, '#000000');
         }
         mnWorldIcon(cx, w, b.x, b.y);
@@ -8570,43 +11928,61 @@
                 set(mm, f);
             },
             draw: function (cx, b, hover, focus) {
-                /* Vanilla draws the track from the widget sheet's DISABLED row
-                   and the handle from the normal one, which is the only reason
-                   the handle is visible at all — matched grey on grey is just a
-                   pair of bevel lines. */
-                mnButton(cx, { x: b.x, y: b.y, w: b.w, h: b.h, label: '' }, 2);
-                var kx = b.x + 1 + Math.round((b.w - 2 - 8) * Math.max(0, Math.min(1, frac)));
-                mnButton(cx, { x: kx, y: b.y, w: 8, h: b.h, label: '' }, hover || focus ? 1 : 0);
-                mfCenter(cx, b.label, b.x + b.w / 2, b.y + ((b.h - 7) >> 1), MC_WHITE);
-                if (focus) {
-                    cx.fillStyle = MC_WHITE;
-                    cx.fillRect(b.x - 1, b.y - 1, b.w + 2, 1); cx.fillRect(b.x - 1, b.y + b.h, b.w + 2, 1);
-                    cx.fillRect(b.x - 1, b.y, 1, b.h); cx.fillRect(b.x + b.w, b.y, 1, b.h);
-                }
+                /* AbstractSliderButton: the widget/slider track across the widget
+                   (its frame white while focused) and the 8-wide handle at
+                   x + value x (w - 8), a little button, white-framed under the
+                   pointer; the label over both */
+                mnNine(cx, guiSprites()[focus ? 'slider_h' : 'slider'], b.x, b.y, b.w, b.h, 1);
+                var kx = b.x + Math.floor(Math.max(0, Math.min(1, frac)) * (b.w - 8));
+                mnNine(cx, guiSprites()[hover || focus ? 'btn_h' : 'btn'], kx, b.y, 8, b.h, 3);
+                mnLabel(cx, b.label, b.x + 2, b.y, b.x + b.w - 2, b.y + b.h, MC_WHITE);
             } };
     }
     function mnOnOff(v) { return v ? 'ON' : 'OFF'; }
-    /* Screens that are a titled column of buttons over dirt — most of the
-       options tree is exactly this, so build them from one description. */
+    /* OptionsSubScreen, the way the options tree has been laid out since
+       1.20.5: the title in a 33-pixel header, the options as a list of rows 25
+       apart from y 37 on the list background between the header and footer
+       separators, two 150-wide buttons a row at W/2 - 155 and W/2 + 5, and
+       Done in the footer. The list scrolls when the rows outgrow it. */
     function mnGrid(title, rows, done) {
         return {
-            bg: 'dirt',
+            bg: 'dirt', list: true,
+            wheel: function (m, dy) { m.d.gscroll = Math.max(0, Math.min(m.d.gmax || 0, (m.d.gscroll || 0) + (dy > 0 ? 25 : -25))); },
             layout: function (m, W, H) {
-                var w = [], cxp = W / 2 | 0, y0 = ((H / 6) | 0) - 12, list = rows(m, W, H), i;
+                var w = [], cxp = W / 2 | 0, list = rows(m, W, H), i, n = 0, sc = m.d.gscroll || 0;
+                var top = 33, bot = H - 33, nrow = Math.ceil(list.length / 2);
+                m.d.gmax = Math.max(0, nrow * 25 + 4 - (bot - top));
+                if (sc > m.d.gmax) sc = m.d.gscroll = m.d.gmax;
                 for (i = 0; i < list.length; i++) {
                     var r = list[i];
                     if (!r) continue;
                     r.x = cxp + (i % 2 ? 5 : -155);
-                    r.y = y0 + ((i / 2) | 0) * 24;
+                    r.y = top + 4 + ((i / 2) | 0) * 25 - sc;
                     if (!r.w) { r.w = 150; r.h = 20; }
-                    w.push(r);
+                    if (r.y + r.h < top || r.y > bot) continue;
+                    r.clip = [0, top, W, bot - top];
+                    w.push(r); n++;
                 }
-                var last = y0 + Math.ceil(list.length / 2) * 24 + 6;
-                w.push(mnBtn('done', cxp - 100, Math.min(H - 27, last), 200, 20, done || 'Done', function (mm) { mnBack(mm); }));
+                w.push(mnBtn('done', cxp - 100, H - 27, 200, 20, done || 'Done', function (mm) { mnBack(mm); }));
                 return w;
             },
-            paint: function (cx, m, W) { mfCenter(cx, title, W / 2, 15, MC_WHITE); }
+            paint: function (cx, m, W, H) {
+                mnListBg(cx, m, 0, 33, W, H - 66);
+                mfCenter(cx, title, W / 2, 12, MC_WHITE);
+            }
         };
+    }
+    /* the list background between the header and footer separators */
+    function mnListBg(cx, m, x, y, w, h) {
+        cx.save(); cx.beginPath(); cx.rect(x, y, w, h); cx.clip();
+        if (m && m.inworld) { cx.fillStyle = 'rgba(0, 0, 0, 0.3)'; cx.fillRect(x, y, w, h); }
+        else mnMenuBg(cx, x + w, y + h, true);
+        cx.restore();
+        mnSep(cx, x, y - 2, w, true); mnSep(cx, x, y + h, w, false);
+    }
+    function mnSep(cx, x, y, w, head) {   // header_separator: light over dark; footer_separator: dark over light
+        mnRect(cx, x, y, w, 1, head ? 'rgba(255, 255, 255, 0.25)' : 'rgba(0, 0, 0, 0.55)');
+        mnRect(cx, x, y + 1, w, 1, head ? 'rgba(0, 0, 0, 0.55)' : 'rgba(255, 255, 255, 0.25)');
     }
     /* A screen that is a title, some wrapped prose and one button back. Used
        by everything the game shows as an informational panel. */
@@ -8658,9 +12034,9 @@
         layout: function (m, W, H) {
             var c = m.d.cw || (m.d.cw = mnCreateDefaults());
             var w = [], cxp = W / 2 | 0, i;
-            var tabs = ['Game', 'World', 'More'], tw = Math.min(120, (W - 8) / 3 | 0);
+            var tabs = ['Game', 'World', 'More'], tw = mnTabW(W), tx0 = (W - 3 * tw) >> 1;
             for (i = 0; i < 3; i++) {
-                w.push({ k: 'draw', id: 'tab' + i, x: Math.round(cxp - tw * 1.5 + i * tw), y: 4, w: tw, h: 20,
+                w.push({ k: 'draw', id: 'tab' + i, x: tx0 + i * tw, y: 0, w: tw, h: 24,
                     enabled: true, aria: tabs[i], label: tabs[i], ti: i,
                     on: (function (n) { return function (mm) { mm.d.cw.tab = n; mm.sig = ''; }; })(i),
                     draw: mnTab });
@@ -8684,7 +12060,7 @@
                     function (mm, n) { mm.d.cw.diff = n; }, { enabled: !c.hardcore }));
                 y += 28;
                 // untouched, the switch follows the mode (ON for Creative); once you set it, it stays set
-                w.push(mnCycle('ch', cxp - 105, y, 210, 20, 'Allow Cheats', ['OFF', 'ON'], eff.cheats ? 1 : 0,
+                w.push(mnCycle('ch', cxp - 105, y, 210, 20, 'Allow Commands', ['OFF', 'ON'], eff.cheats ? 1 : 0,
                     function (mm, n) { mm.d.cw.cheats = !!n; }, { enabled: !c.hardcore }));
             } else if (c.tab === 1) {
                 w.push(mnCycle('wt', cxp - 155, y, 150, 20, 'World Type', MN_WTYPE, c.type,
@@ -8715,18 +12091,27 @@
            the way it has been since the flat "More World Options..." screen was
            replaced. The name still reaches a screen reader through the widgets. */
         paint: function (cx, m, W, H) {
-            mnRect(cx, 0, 0, W, 28, 'rgba(0, 0, 0, 0.45)');
-            mnRect(cx, 0, 28, W, 1, '#000000');
-            mnRect(cx, 0, H - 36, W, 1, '#000000');
+            var tw = mnTabW(W), tx0 = (W - 3 * tw) >> 1;
+            mnSep(cx, 0, 22, tx0, true); mnSep(cx, tx0 + 3 * tw, 22, W - tx0 - 3 * tw, true);   // out from either end of the tab row
+            mnSep(cx, 0, H - 38, W, false);   // over the footer
             var c = m.d.cw;
             // the grey line under Game Mode that says what the mode is, as the real screen has it
             if (c && c.tab === 0) mfText(cx, MN_GM_INFO[c.hardcore ? 1 : c.gm === 1 ? 2 : 0], (W / 2 | 0) - 105, 42 + 44 + 24, MC_GREY);
         }
     };
+    /* MenuTabBar: tabs as wide as roundUpToEven((min(400, W) - 28) / 3), the row
+       centred along the top, 24 tall; the selected one open onto the page with
+       its label 2 higher and underlined, the others darker; the header's
+       separator runs out from either end of the row at y 22 */
+    function mnTabW(W) { var t = Math.ceil((Math.min(400, W) - 28) / 3); return t + (t & 1); }
     function mnTab(cx, b, hover, focus) {
-        var on = RT.menu.d.cw && RT.menu.d.cw.tab === b.ti;
-        mnButton(cx, { x: b.x, y: b.y, w: b.w, h: b.h, label: b.label }, on || hover || focus ? 1 : 0);
-        if (on) mnRect(cx, b.x + 1, b.y + b.h - 2, b.w - 2, 1, MC_WHITE);   // the selected tab is underlined
+        var on = RT.menu.d.cw && RT.menu.d.cw.tab === b.ti, hi = hover || focus;
+        mnNine(cx, guiSprites()[on ? (hi ? 'tab_sh' : 'tab_s') : (hi ? 'tab_h' : 'tab')], b.x, b.y, b.w, b.h, 2);
+        var tw = mfWidth(b.label) + 1, lx = b.x + (b.w >> 1) - (tw >> 1), ly = b.y + (on ? 8 : 10);
+        cx.save(); cx.beginPath(); cx.rect(b.x + 1, b.y, b.w - 2, b.h); cx.clip();
+        mfText(cx, b.label, lx, ly, MC_WHITE);
+        cx.restore();
+        if (on) { var uw = Math.min(tw - 1, b.w - 4); mnRect(cx, b.x + (b.w >> 1) - (uw >> 1), b.y + 22, uw, 1, MC_WHITE); }
     }
     function mnCreate(m) {
         var c = m.d.cw, seed;
@@ -9035,24 +12420,41 @@
        The grid is vanilla's, in vanilla's order. Every entry that this game
        can honour is wired to the thing it names; the ones it cannot are
        screens that say so rather than switches that lie. */
-    MN_SCR.options = mnGrid('Options', function (m, W, H) {
-        var o = optLoad();
-        return [
-            mnSlider('fov', 0, 0, 150, 20, 'FOV: ' + (o.fov === 70 ? 'Normal' : o.fov >= 110 ? 'Quake Pro' : o.fov),
-                (o.fov - 30) / 80, function (mm, f) { o.fov = Math.round(30 + f * 80); optSave(); }),
-            mnBtn('online', 0, 0, 150, 20, 'Online...', function (mm) { mnGo(mm, 'online'); }),
-            mnBtn('skin', 0, 0, 150, 20, 'Skin Customization...', function (mm) { mnGo(mm, 'skin'); }),
-            mnBtn('snd', 0, 0, 150, 20, 'Music & Sounds...', function (mm) { mnGo(mm, 'sound'); }),
-            mnBtn('vid', 0, 0, 150, 20, 'Video Settings...', function (mm) { mnGo(mm, 'video'); }),
-            mnBtn('ctrl', 0, 0, 150, 20, 'Controls...', function (mm) { mnGo(mm, 'controls'); }),
-            mnBtn('lang', 0, 0, 150, 20, 'Language...', function (mm) { mnGo(mm, 'lang'); }),
-            mnBtn('chat', 0, 0, 150, 20, 'Chat Settings...', function (mm) { mnGo(mm, 'chat'); }),
-            mnBtn('rp', 0, 0, 150, 20, 'Resource Packs...', function (mm) { mnGo(mm, 'packs'); }),
-            mnBtn('acc', 0, 0, 150, 20, 'Accessibility Settings...', function (mm) { mnGo(mm, 'access'); }),
-            mnBtn('tel', 0, 0, 150, 20, 'Telemetry Data...', function (mm) { mnGo(mm, 'telemetry'); }),
-            mnBtn('cred', 0, 0, 150, 20, 'Credits & Attribution...', function (mm) { mnGo(mm, 'credits'); })
-        ];
-    });
+    /* OptionsScreen: a 61-pixel header holding the title and the FOV slider and
+       Online... side by side, 8 apart; the ten screens in a two-column grid of
+       150-wide buttons, 158 to a column and 24 to a row, centred in what is left;
+       Done in the footer. */
+    MN_SCR.options = {
+        bg: 'dirt',
+        rows: function () {
+            var o = optLoad();
+            return [
+                mnSlider('fov', 0, 0, 150, 20, 'FOV: ' + (o.fov === 70 ? 'Normal' : o.fov >= 110 ? 'Quake Pro' : o.fov),
+                    (o.fov - 30) / 80, function (mm, f) { o.fov = Math.round(30 + f * 80); optSave(); }),
+                mnBtn('online', 0, 0, 150, 20, 'Online...', function (mm) { mnGo(mm, 'online'); }),
+                mnBtn('skin', 0, 0, 150, 20, 'Skin Customization...', function (mm) { mnGo(mm, 'skin'); }),
+                mnBtn('snd', 0, 0, 150, 20, 'Music & Sounds...', function (mm) { mnGo(mm, 'sound'); }),
+                mnBtn('vid', 0, 0, 150, 20, 'Video Settings...', function (mm) { mnGo(mm, 'video'); }),
+                mnBtn('ctrl', 0, 0, 150, 20, 'Controls...', function (mm) { mnGo(mm, 'controls'); }),
+                mnBtn('lang', 0, 0, 150, 20, 'Language...', function (mm) { mnGo(mm, 'lang'); }),
+                mnBtn('chat', 0, 0, 150, 20, 'Chat Settings...', function (mm) { mnGo(mm, 'chat'); }),
+                mnBtn('rp', 0, 0, 150, 20, 'Resource Packs...', function (mm) { mnGo(mm, 'packs'); }),
+                mnBtn('acc', 0, 0, 150, 20, 'Accessibility Settings...', function (mm) { mnGo(mm, 'access'); }),
+                mnBtn('tel', 0, 0, 150, 20, 'Telemetry Data...', function (mm) { mnGo(mm, 'telemetry'); }),
+                mnBtn('cred', 0, 0, 150, 20, 'Credits & Attribution...', function (mm) { mnGo(mm, 'credits'); })
+            ];
+        },
+        layout: function (m, W, H) {
+            var cxp = W / 2 | 0, l = MN_SCR.options.rows(), w = [], i;
+            l[0].x = cxp - 154; l[0].y = 29; l[1].x = cxp + 4; l[1].y = 29;
+            w.push(l[0], l[1]);
+            var gy = 61 + (((H - 94) - 120) >> 1);
+            for (i = 2; i < l.length; i++) { var k = i - 2; l[i].x = cxp + (k % 2 ? 4 : -154); l[i].y = gy + ((k / 2) | 0) * 24; w.push(l[i]); }
+            w.push(mnBtn('done', cxp - 100, H - 27, 200, 20, 'Done', function (mm) { mnBack(mm); }));
+            return w;
+        },
+        paint: function (cx, m, W) { mfCenter(cx, 'Options', W / 2, 12, MC_WHITE); }
+    };
     MN_SCR.video = mnGrid('Video Settings', function (m) {
         var o = optLoad();
         return [
@@ -9104,8 +12506,8 @@
                 function (mm, n) { o.splash = !n; optSave(); mm.splash = o.splash ? (mm.splash || mnPickSplash()) : null; }),
             mnCycle('pano', 0, 0, 150, 20, 'Panorama Motion', ['OFF', 'ON'], o.panoStill ? 0 : 1,
                 function (mm, n) { o.panoStill = !n; optSave(); }),
-            mnCycle('shake', 0, 0, 150, 20, 'Screen Shake', ['OFF', 'ON'], o.noShake ? 0 : 1,
-                function (mm, n) { o.noShake = !n; optSave(); }),
+            mnSlider('tilt', 0, 0, 150, 20, 'Damage Tilt: ' + Math.round((o.tilt == null ? 1 : o.tilt) * 100) + '%', o.tilt == null ? 1 : o.tilt,
+                function (mm, f) { o.tilt = Math.round(f * 100) / 100; optSave(); }),
             mnCycle('big', 0, 0, 150, 20, 'Larger GUI', ['OFF', 'ON'], o.guiScale >= 3 ? 1 : 0,
                 function (mm, n) { o.guiScale = n ? 3 : 0; optSave(); mnSize(mm); })
         ];
@@ -9198,57 +12600,46 @@
     /* ── skeleton + wiring ──────────────────────────────────── */
     function render() {
         return '<div class="mc" tabindex="0">' +
+            /* The DOM half of the GUI sets its text in the MCUI web font, and the
+               browser anti-aliases every glyph edge — on Windows it smears each one
+               across two pixels at 242 and 93. Rounding the alpha back to 0 or 1
+               recovers the bitmap exactly, so every .mt layer runs through this. */
+            '<svg class="mc-defs" width="0" height="0" aria-hidden="true" focusable="false"><filter id="mccrisp" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">' +
+            '<feComponentTransfer><feFuncA type="discrete" tableValues="0 1"/></feComponentTransfer></filter></svg>' +
             '<canvas class="mc-cv"></canvas>' +
-            '<div class="mc-vig"></div>' +
+            '<div class="mc-vig"></div><div class="mc-vign"></div>' +
             /* The crosshair lives OUTSIDE .mc-hud. Inside it, .mc-hud's z-index made
                a stacking context and mix-blend-mode:difference had nothing but
                transparent pixels to blend against — so the crosshair was a flat #ddd
                cross, invisible over snow, sand and bright sky. */
-            '<div class="mc-cross"><i></i><i class="v"></i></div>' +
+            '<i class="mc-cross"></i><i class="mc-atk"><b></b></i><canvas class="mc-cross3d" width="48" height="48"></canvas>' +
             '<div class="mc-hud">' +
-            '<div class="mc-armor"></div>' +
-            '<div class="mc-vitals"><div class="mc-hearts"></div><div class="mc-food"></div></div>' +
-            '<div class="mc-air"></div>' +
-            '<div class="mc-tip"></div>' +
-            '<div class="mc-xpbar"><i class="mc-xpfill"></i><span class="mc-xplvl"></span></div>' +
+            '<div class="mc-armor"></div><div class="mc-hearts"></div><div class="mc-food"></div><div class="mc-air"></div>' +
+            '<i class="mc-hbbar"></i>' +
             '<div class="mc-hotbar">' + slotsHTML('inv', 0, 9, 'mc-hb') + '</div>' +
+            '<i class="mc-hbsel"></i>' +
+            '<i class="mc-hboff" style="display:none"></i><div class="mc-slot mc-offslot" style="display:none"></div>' +
+            '<div class="mc-xpbar"><i class="mc-xpfill"></i></div><i class="mc-xplvl"></i>' +
+            '<span class="mc-tip mt"></span><span class="mc-actbar mt"></span>' +
             '</div>' +
             '<div class="mc-effects" style="display:none"></div>' +
             '<div class="mc-chat"><div class="mc-chatlog"></div>' +
-              '<div class="mc-sug" style="display:none"><div class="mc-sugu"></div><div class="mc-sugl"></div></div>' +
+              '<div class="mc-sug" style="display:none"><div class="mc-sugu"><span class="mt"></span></div><div class="mc-sugl"></div></div>' +
+              '<i class="mc-chatbar"></i>' +
               '<input class="mc-chatin" maxlength="256" spellcheck="false" autocomplete="off">' +
+              '<div class="mc-chatmir"></div>' +
               '<div class="mc-chattab"></div></div>' +
             '<div class="mc-toasts"></div>' +
             '<div class="mc-panelwrap" style="display:none"></div>' +
             '<div class="mc-debug" style="display:none"></div>' +
-            '<div class="mc-sleepov" style="display:none">Sleeping…</div>' +
-            '<div class="mc-pause" style="display:none"><div class="mc-menu mc-pmain">' +
-            '<h3>Game Menu</h3>' +
-            '<button class="mc-btn mc-resume">Back to Game</button>' +
-            '<button class="mc-btn mc-achbtn">Achievements</button>' +
-            '<button class="mc-btn mc-lanbtn">Open to LAN</button>' +
-            '<button class="mc-btn mc-totitle">Save and Quit to Title</button>' +
-            '<div class="mc-optrow">' +
-            '<div class="mc-slider mc-snd" data-vk="snd"><i></i><span>Sound: 100%</span></div>' +
-            '<div class="mc-slider mc-mus" data-vk="mus"><i></i><span>Music: 100%</span></div>' +
-            '</div>' +
-            '<p class="mc-hint">WASD move · Space jump · double-tap W sprints · Shift sneak<br>LMB mine · RMB place/use · MMB pick block · E inventory · Q drop · F3 debug<br>T chat · /gamemode creative (needs cheats: Allow Cheats, or Open to LAN) · double-tap Space to fly</p>' +
-            '<div class="mc-achs" style="display:none"><div class="mc-achn"></div><div class="mc-achrows"></div></div>' +
-            '</div>' +
-            /* the real pause menu's way into a world that was made without cheats:
-               Open to LAN, Allow Cheats: ON, Start LAN World — commands for the
-               rest of the session, and a chat line naming the port */
-            '<div class="mc-menu mc-lan" style="display:none">' +
-            '<h3>LAN World</h3>' +
-            '<div class="mc-lansub">Settings for Other Players</div>' +
-            '<div class="mc-optrow"><button class="mc-btn half mc-langm">Game Mode: Survival</button><button class="mc-btn half mc-lanch">Allow Cheats: OFF</button></div>' +
-            '<label class="mc-lanportrow"><span>Port Number</span><input class="mc-lanport" maxlength="5" inputmode="numeric" spellcheck="false" autocomplete="off"></label>' +
-            '<div class="mc-lanmsg"></div>' +
-            '<div class="mc-optrow"><button class="mc-btn half mc-lanstart">Start LAN World</button><button class="mc-btn half mc-lancancel">Cancel</button></div>' +
-            '</div></div>' +
-            '<div class="mc-death" style="display:none"><div class="mc-menu"><h3>You died!</h3><div class="mc-dscore"></div>' +
-            '<button class="mc-btn mc-respawn">Respawn</button></div></div>' +
-            '<div class="mc-load" style="display:none"><div class="mc-menu"><h3>Building terrain…</h3><div class="mc-bar"><i></i></div></div></div>' +
+            '<div class="mc-sleepov" style="display:none"></div>' +
+            '<div class="mc-pause" style="display:none"><i class="mc-iwbg"></i>' +
+              '<div class="mc-iwl mc-pmain"></div><div class="mc-iwl mc-lan" style="display:none"></div><div class="mc-iwl mc-plink" style="display:none"></div>' +
+              '<div class="mc-iwl mc-advs" style="display:none"></div><div class="mc-iwl mc-stats" style="display:none"></div>' +
+              '<div class="mc-ptip mc-iwtip"></div></div>' +
+            '<div class="mc-death" style="display:none"><div class="mc-iwl mc-dmain"></div><div class="mc-iwl mc-dquit" style="display:none"></div><div class="mc-ptip mc-iwtip"></div></div>' +
+            '<div class="mc-bed" style="display:none"></div>' +
+            '<div class="mc-load" style="display:none"><span class="mc-ltext"><span class="mt"></span></span><i class="mc-lbar"><b></b></i><canvas class="mc-lmap"></canvas></div>' +
             /* the menu draws itself on its own canvas, with a transparent layer
                of real controls over it for focus, typing and screen readers */
             '<canvas class="mc-mcv" style="display:none"></canvas>' +
@@ -9612,6 +13003,32 @@
         chatSay('Gave ' + n + ' [' + (I[item].t || item) + '] to Steve' + (left ? ' (' + left + ' would not fit)' : ''));
     }, function (a) { return a === 0 ? ['@s', '@p'] : a === 1 ? itemNames() : []; });
 
+    cmd('recipe', '/recipe <give|take> <targets> <*|recipe>', 'Gives or takes player recipes', function (rd, raw) {
+        var sub = rd.word().toLowerCase();
+        if (sub !== 'give' && sub !== 'take') return usageErr('recipe', raw, rd.i);
+        var selAt = rd.i, sel = rd.selectorTok();
+        if (!sel) return usageErr('recipe', raw, rd.i);
+        var tg = resolveTargets(sel);
+        if (tg === null) return chatSyntax('Invalid entity selector', raw, selAt);
+        if (!playerTargeted(tg)) return chatErr('No player was found');
+        var rAt = rd.i, w = stripNs(rd.word());
+        if (!w) return usageErr('recipe', raw, rd.i);
+        var list = w === '*' ? rbAll() : rbAll().filter(function (r) { return rbId(r) === w; });
+        if (!list.length) return chatSyntax('Unknown recipe: minecraft:' + w, raw, rAt + 1);
+        var keys = list.map(function (r) { return r.key; });
+        if (sub === 'give') {
+            var n = rbLearn(keys);
+            return n ? chatSay('Unlocked ' + n + ' recipes for Steve') : chatErr('No new recipes were learned');
+        }
+        var had = keys.filter(function (k) { return S.rbk.indexOf(k) >= 0; });
+        if (!had.length) return chatErr('No recipes could be forgotten');
+        S.rbk = S.rbk.filter(function (k) { return keys.indexOf(k) < 0; });
+        had.forEach(function (k) { if (S.rbNew) delete S.rbNew[k]; });
+        RT.rbKnown = null;
+        if (RT.panel && rbShown()) rbPaint();
+        chatSay('Took ' + had.length + ' recipes from Steve');
+    }, function (a) { return a === 0 ? ['give', 'take'] : a === 1 ? ['@s', '@p'] : a === 2 ? ['*'].concat(rbAll().map(rbId)) : []; });
+
     cmd('clear', '/clear [target] [item]', 'Clears items from inventory', function (rd, raw) {
         var selAt = rd.i, sel = rd.selectorTok();
         // the target is optional, so "/clear diamond" names an item, not a player
@@ -9631,6 +13048,7 @@
             n += s.c; S.inv[i] = null;
         }
         if (!item) for (i = 0; i < 4; i++) if (S.armor[i]) { n++; S.armor[i] = null; }
+        if (S.off && (!item || S.off.id === item)) { n += S.off.c; S.off = null; }
         paintHotbar(); paintArmorBar();
         chatSay(n ? 'Removed ' + n + ' items from player Steve' : 'No items were found on player Steve');
     }, function (a) { return a === 0 ? ['@s'] : a === 1 ? itemNames() : []; });
@@ -9909,7 +13327,7 @@
         RT.vy = 0; RT.fallY = y;
         ensureChunks();
     }
-    function hurtBypass(n) { S.hp = 0; RT.dead = false; die(); }
+    function hurtBypass(n) { S.hp = 0; RT.dead = false; RT.lastSrc = { m: 'kill' }; die(); }
     function killFoe(f) {
         var i = RT.foes.indexOf(f);
         if (i >= 0) RT.foes.splice(i, 1);
@@ -9933,7 +13351,7 @@
         var d = EFFECTS[id];
         if (d.instant) {   // instant health/damage resolve immediately and are never stored
             if (id === 'instant_health') { S.hp = Math.min(20, S.hp + 4 * (amp + 1)); paintVitals(); }
-            else hurt(3 * (amp + 1), null, true, true);
+            else hurt(3 * (amp + 1), null, true, true, null, { m: 'magic' });
             return;
         }
         S.eff[id] = { amp: amp, t: secs >= 1000000 ? 1e9 : secs };
@@ -9950,26 +13368,135 @@
         }
     }
 
-    /* ── the chat overlay ────────────────────────────────── */
+    /* ── the chat overlay ────────────────────────────────────
+       ChatComponent, measured. Lines are nine GUI pixels; the newest sits with
+       its bottom at H - 40 and its text four pixels in; each carries a black
+       backdrop 332 wide at half the text's alpha (the default text background
+       opacity). Closed, the last ten lines show, each fully opaque for nine
+       seconds and fading over the tenth on a squared curve; open, the last
+       twenty show at full strength and the wheel scrolls back through the rest.
+       Messages wrap at 320. */
+    var CHAT_W = 320;
+    function chatSegs(m) {   // a message as coloured runs: the syntax-error context line is three
+        if (m.u == null) return [{ t: m.t, c: m.c === 'err' ? '#ff5555' : m.c === 'dim' || m.c === 'mc-ctx' ? '#aaaaaa' : '#ffffff' }];   // eslint-disable-line
+        return [{ t: m.t, c: '#aaaaaa' }, { t: m.u, c: '#ff5555', ul: 1 }, { t: '<--[HERE]', c: '#ff5555', it: 1 }];
+    }
+    function chatWrapped() {   // every message, split to the chat's width, oldest first
+        var log = RT.chatLog || [], out = [];
+        for (var i = 0; i < log.length; i++) {
+            var m = log[i], segs = chatSegs(m);
+            if (segs.length === 1) {
+                var parts = mfWrap(segs[0].t, CHAT_W);
+                for (var p = 0; p < parts.length; p++) out.push({ m: m, segs: [{ t: parts[p], c: segs[0].c }], key: i + ':' + p });
+            } else out.push({ m: m, segs: segs, key: i + ':0' });
+        }
+        return out;
+    }
+    function chatFade(age) {   // ChatComponent.getTimeFactor, in seconds
+        var d = (1 - age / CHAT_FADE) * 10;
+        d = Math.max(0, Math.min(1, d));
+        return d * d;
+    }
     function paintChat() {
-        if (!RT || !RT.el) return;
+        if (!RT || !RT.el || !RT.gs) return;
         var wrap = RT.el.querySelector('.mc-chat');
         if (!wrap) return;
-        var log = RT.chatLog || [];
-        var open = !!RT.chat;
-        // closed chat shows only the recent lines, and fades them out
-        var now = RT.now || 0;
-        var vis = open ? log.slice(-18) : log.filter(function (m) { return now - m.at < CHAT_FADE; }).slice(-10);
-        wrap.querySelector('.mc-chatlog').innerHTML = vis.map(function (m) {
-            var age = now - m.at;
-            var op = (!open && age > CHAT_FADE - 1.5) ? (CHAT_FADE - age) / 1.5 : 1;
-            return '<div class="mc-cline' + (m.c ? ' ' + m.c : '') + '"' +
-                   (op < 1 ? ' style="opacity:' + op.toFixed(2) + '"' : '') + '>' + escHtml(m.t) +
-                   (m.u != null ? '<span class="mc-cu">' + escHtml(m.u) + '</span><span class="mc-chere">&lt;--[HERE]</span>' : '') + '</div>';
-        }).join('');
+        var open = !!RT.chat, now = RT.now || 0, lines = chatWrapped(), max = open ? 20 : 10;
+        if (!open) RT.chatScroll = 0;
+        var scroll = Math.max(0, Math.min(RT.chatScroll || 0, Math.max(0, lines.length - max)));
+        RT.chatScroll = scroll;
+        var vis = [];
+        for (var j = 0; j < max; j++) {
+            var L = lines[lines.length - 1 - scroll - j];
+            if (!L) break;
+            if (!open && now - L.m.at >= CHAT_FADE) break;
+            vis.push(L);
+        }
+        var log = wrap.querySelector('.mc-chatlog'), sig = open + '|' + RT.gh + '|' + vis.map(function (l) { return l.key; }).join(',');
+        if (log._sig !== sig) {
+            log._sig = sig;
+            log.innerHTML = vis.map(function (L, j) { return [L, j]; }).reverse().map(function (Lj) {
+                var L = Lj[0], j = Lj[1];
+                var html = '', x = 4;
+                L.segs.forEach(function (s) {
+                    html += '<span class="mc-cseg' + (s.ul ? ' mc-cu' : s.it ? ' mc-chere' : '') + '" style="left:calc(var(--px) * ' + x + ')">' + mtHTML(s.t, s.c, (s.ul ? 'ul' : '') + (s.it ? ' it' : '')) + '</span>';
+                    x += mfWidth(s.t) + 1;
+                });
+                // a system message (anything a player did not type) carries the grey tag bar down its left edge
+                var tag = String(L.m.t).charAt(0) === '<' ? '' : '<i class="mc-ctag"></i>';
+                return '<div class="mc-cline' + (L.m.c ? ' ' + L.m.c : '') + '" data-k="' + L.key + '" style="top:calc(var(--px) * ' + (RT.gh - 40 - (j + 1) * 9) + ')">' + tag + html + '</div>';
+            }).join('');
+        }
         wrap.classList.toggle('open', open);
-        var lg = wrap.querySelector('.mc-chatlog');
-        lg.scrollTop = lg.scrollHeight;
+        chatAlpha();
+    }
+    function chatAlpha() {   // per frame: only lines in their last second actually change
+        var log = RT.el.querySelector('.mc-chatlog'), open = !!RT.chat, now = RT.now || 0;
+        if (!log || !log.children.length) return;
+        var byKey = {}, lines = chatWrapped();
+        for (var i = 0; i < lines.length; i++) byKey[lines[i].key] = lines[i];
+        for (var k = 0; k < log.children.length; k++) {
+            var el = log.children[k], L = byKey[el.getAttribute('data-k')];
+            var d = open || !L ? 1 : chatFade(now - L.m.at), a = Math.floor(255 * d);
+            var op = a > 3 ? (a / 255).toFixed(3) : '0';
+            if (el._op !== op) { el._op = op; el.style.setProperty('--ca', op); }
+        }
+    }
+    /* The open chat line: a black bar at half alpha across the bottom, the text
+       at (4, H - 10) in 0xE0E0E0 with commands coloured the way
+       CommandSuggestions formats them — the command name and literals grey,
+       arguments cycling aqua, yellow, green, light purple, gold, anything that
+       does not parse red — and the EditBox cursor blinking every 300 ms: an
+       underscore at the end of the text, a bar inside it. */
+    var CMD_ARGC = ['#55ffff', '#ffff55', '#55ff55', '#ff55ff', '#ffaa00'];
+    function chatInputSegs(v) {
+        if (v.charAt(0) !== '/') return [{ t: v, c: '#e0e0e0' }];
+        var out = [{ t: '/', c: '#aaaaaa' }], toks = v.slice(1).split(/( )/), cmd = null, ai = 0, lits = {};
+        for (var i = 0; i < toks.length; i++) {
+            var t = toks[i];
+            if (t === ' ' || t === '') { if (t) out.push({ t: t, c: '#aaaaaa' }); continue; }
+            if (!cmd) {
+                cmd = CMDS[stripNs(t).toLowerCase()];
+                var known = cmd && cmdAllowed(cmd);
+                if (known && cmd.usage) String(cmd.usage).replace(/[<\[][^>\]]*[>\]]/g, ' ').split(/\s+/).forEach(function (w) { if (w && w.charAt(0) !== '/') lits[w] = 1; });
+                out.push({ t: t, c: known ? '#aaaaaa' : '#ff5555' });
+                if (!known) { out.push({ t: toks.slice(i + 1).join(''), c: '#ff5555' }); break; }
+                continue;
+            }
+            if (lits[t]) out.push({ t: t, c: '#aaaaaa' });
+            else { out.push({ t: t, c: CMD_ARGC[ai % CMD_ARGC.length] }); ai++; }
+        }
+        return out;
+    }
+    function paintChatInput() {
+        var mir = RT.el.querySelector('.mc-chatmir'), inp = RT.el.querySelector('.mc-chatin');
+        if (!mir || !inp || !RT.chat) return;
+        var v = inp.value, segs = chatInputSegs(v), room = RT.gw - 8;
+        // like the EditBox, keep the cursor in view: past the box's width, show the tail
+        var caret = inp.selectionStart == null ? v.length : inp.selectionStart, skip = 0;
+        while (skip < caret && mfWidth(v.slice(skip, caret)) > room - 6) skip++;
+        var html = '', x = 0, at = 0;
+        segs.forEach(function (s) {
+            var t = s.t, a0 = at, a1 = at + t.length;
+            at = a1;
+            if (a1 <= skip) return;
+            if (a0 < skip) t = t.slice(skip - a0);
+            html += '<span class="mc-cseg" style="left:calc(var(--px) * ' + x + ')">' + mtHTML(t, s.c) + '</span>';
+            x += mfWidth(t) + 1;
+        });
+        /* drawString hands back the x after the shadow, so the underscore sits two
+           columns past the last glyph and the bar on the next glyph's first column */
+        var cx = caret > skip ? mfWidth(v.slice(skip, caret)) + 1 : 0, blinkOn = (((performance.now() - (RT.chat.focusT || 0)) / 300) | 0) % 2 === 0;
+        if (blinkOn) html += caret < v.length ? '<i class="mc-cbar" style="left:calc(var(--px) * ' + cx + ')"></i>'
+                                            : '<span class="mc-cseg" style="left:calc(var(--px) * ' + (caret > skip ? cx + 1 : 0) + ')">' + mtHTML('_', '#e0e0e0') + '</span>';
+        if (mir._html !== html) { mir._html = html; mir.innerHTML = html; }
+    }
+    function chatLayout() {
+        var el = RT.el, W = RT.gw, H = RT.gh;
+        var bar = el.querySelector('.mc-chatbar'), inp = el.querySelector('.mc-chatin'), mir = el.querySelector('.mc-chatmir');
+        if (bar) { hudPlace(bar, 2, H - 14); bar.style.width = 'calc(var(--px) * ' + (W - 4) + ')'; }
+        if (inp) { hudPlace(inp, 4, H - 12); inp.style.width = 'calc(var(--px) * ' + (W - 8) + ')'; }
+        if (mir) hudPlace(mir, 4, H - 12);
     }
     function escHtml(s) {
         return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -9981,6 +13508,7 @@
         RT.chat = { hist: RT.chatHist || [], hi: -1, draft: '', relock: !!document.pointerLockElement,
                     hits: [], si: -1, sstart: 0, usage: '', applied: false };
         RT.chatHist = RT.chat.hist;
+        RT.chat.focusT = performance.now();
         RT.keys = {};                      // a held W must not keep walking while you type
         if (RT.mouse) RT.mouse.l = RT.mouse.r = false;   // nor a held button keep mining
         RT.digT = 0;
@@ -9996,6 +13524,7 @@
         inp.focus();
         inp.setSelectionRange(inp.value.length, inp.value.length);
         refreshSug(false);          // typing "/" should already be offering commands
+        chatLayout(); paintChatInput();
     }
     function closeChat(relock) {
         if (!RT || !RT.chat) return;
@@ -10092,36 +13621,45 @@
         if (!keepSel || RT.chat.si >= RT.chat.hits.length) RT.chat.si = RT.chat.hits.length ? 0 : -1;
         paintSug();
     }
+    /* CommandSuggestions: the list sits right above the input, its bottom three
+       pixels over it, starting under the token being completed. Rows are 12
+       pixels on 0xD0000000; the text starts a pixel in, yellow for the
+       selected entry and 0xAAAAAA for the rest; at most ten show, with a dotted
+       edge when there are more. With nothing to offer it shows the command's
+       usage instead, one line on the same black. */
+    var SUG_ROWS = 10;
     function paintSug() {
         var box = RT.el.querySelector('.mc-sug');
         if (!box) return;
-        var c = RT.chat;
-        if (!c || (!c.hits.length && !c.usage)) { box.style.display = 'none'; box.querySelector('.mc-sugl').innerHTML = ''; return; }
-        var inp = RT.el.querySelector('.mc-chatin');
+        var c = RT.chat, usage = box.querySelector('.mc-sugu'), list = box.querySelector('.mc-sugl');
+        if (!c || (!c.hits.length && !c.usage)) { box.style.display = 'none'; list.innerHTML = ''; mtSet(usage.firstChild, ''); return; }
         box.style.display = '';
-        box.querySelector('.mc-sugu').textContent = c.usage || '';
-        // keep the highlighted entry inside the window when the list is long
-        var MAXS = 12, off = 0;
-        if (c.si >= MAXS) off = c.si - MAXS + 1;
-        if (off > c.hits.length - MAXS) off = Math.max(0, c.hits.length - MAXS);
-        box.querySelector('.mc-sugl').innerHTML = c.hits.slice(off, off + MAXS).map(function (h, i) {
-            var idx = off + i;
-            return '<div class="mc-sugi' + (idx === c.si ? ' on' : '') + '" data-si="' + idx + '">' + escHtml(h) + '</div>';
-        }).join('');
-        // line the box up with the token it is completing, but never off the left
-        var pad = parseFloat(getComputedStyle(inp).paddingLeft) || 0;
-        var x = pad + textWidth(inp.value.slice(0, c.sstart), inp);
-        box.style.left = Math.max(0, Math.round(x) - 4) + 'px';
-        // The list scrolls, and replacing its innerHTML above just reset scrollTop
-        // to 0. Walk the highlight back into view or Tab runs off the bottom of a
-        // box that still looks like it is showing the first entry.
-        var onRow = box.querySelector('.mc-sugi.on');
-        if (onRow) {
-            var list = box.querySelector('.mc-sugl');
-            var top = onRow.offsetTop, bot = top + onRow.offsetHeight;
-            if (bot > list.clientHeight) list.scrollTop = bot - list.clientHeight;
-            else if (top < list.scrollTop) list.scrollTop = top;
+        var inp = RT.el.querySelector('.mc-chatin'), pre = inp.value.slice(0, c.sstart);
+        var x = 4 + (pre ? mfWidth(pre) + 1 : 0), H = RT.gh;
+        mtSet(usage.firstChild, c.usage || '', '#aaaaaa');
+        usage.style.display = c.hits.length ? 'none' : '';
+        if (!c.hits.length) {
+            var uw = mfWidth(c.usage || '') + 1;
+            hudPlace(usage, x - 1, H - 27);
+            usage.style.width = 'calc(var(--px) * ' + (uw + 2) + ')';
+            list.innerHTML = '';
+            return;
         }
+        var off = 0;
+        if (c.si >= SUG_ROWS) off = c.si - SUG_ROWS + 1;
+        if (off > c.hits.length - SUG_ROWS) off = Math.max(0, c.hits.length - SUG_ROWS);
+        var rows = c.hits.slice(off, off + SUG_ROWS), wmax = 0;
+        rows.forEach(function (h) { wmax = Math.max(wmax, mfWidth(h) + 1); });
+        var y = H - 15 - rows.length * 12;
+        list.innerHTML = rows.map(function (h, i) {
+            var idx = off + i;
+            return '<div class="mc-sugi' + (idx === c.si ? ' on' : '') + '" data-si="' + idx + '" style="top:calc(var(--px) * ' + (i * 12) + ')">' +
+                mtHTML(h, idx === c.si ? '#ffff00' : '#aaaaaa') + '</div>';
+        }).join('') + (off > 0 ? '<i class="mc-sugdots" style="top:0"></i>' : '') +
+            (off + SUG_ROWS < c.hits.length ? '<i class="mc-sugdots" style="top:calc(var(--px) * ' + (rows.length * 12 - 1) + ')"></i>' : '');
+        hudPlace(list, x - 1, y);
+        list.style.width = 'calc(var(--px) * ' + (wmax + 1) + ')';
+        list.style.height = 'calc(var(--px) * ' + (rows.length * 12) + ')';
     }
     /* Write candidate `i` over the token being completed.
        `freeze` keeps the candidate list exactly as it stands. That matters while
@@ -10194,20 +13732,35 @@
         }
         return p.length >= from ? p : list[0].slice(0, from);
     }
-    /* ── active-effect HUD ───────────────────────────────── */
+    /* ── active-effect HUD ─────────────────────────────────
+       Gui.renderEffects: a 24×24 frame per effect in the top-right corner,
+       beneficial ones along the top (y = 1) and harmful ones on a row below
+       (y = 27), each 25 pixels left of the last. The 18×18 icon sits three in
+       and, in the last ten seconds, pulses on the game's formula. Names and
+       times are not on the HUD at all; they are the inventory screen's. */
+    var EFF_BAD = { slowness: 1, mining_fatigue: 1, instant_damage: 1, weakness: 1, poison: 1, wither: 1, hunger: 1, nausea: 1, blindness: 1, levitation: 1, darkness: 1 };
     function paintEffects() {
-        if (!RT || !RT.el) return;
+        if (!RT || !RT.el || !RT.gs) return;
         var box = RT.el.querySelector('.mc-effects');
         if (!box) return;
-        var ids = Object.keys(S.eff || {});
-        box.innerHTML = ids.map(function (id) {
-            var e = S.eff[id], d = EFFECTS[id];
-            if (!d) return '';
-            var t = e.t >= 1e8 ? '∞' : fmtTimeLeft(e.t);
-            return '<div class="mc-eff"><i style="background:' + d.c + '"></i>' +
-                   '<b>' + escHtml(d.t) + (e.amp ? ' ' + roman(e.amp + 1) : '') + '</b><span>' + t + '</span></div>';
-        }).join('');
-        box.style.display = ids.length ? '' : 'none';
+        var ids = Object.keys(S.eff || {}).filter(function (id) { return EFFECTS[id] && !EFFECTS[id].instant; });
+        box.style.display = ids.length && !RT.panel ? '' : 'none';
+        var kids = hudIcons(box, ids.length), good = 0, bad = 0;
+        ids.sort().reverse();
+        for (var i = 0; i < ids.length; i++) {
+            var id = ids[i], e = S.eff[id], neg = !!EFF_BAD[id], n = neg ? ++bad : ++good;
+            var el = kids[i];
+            if (!el.firstChild) el.innerHTML = '<b></b>';
+            el.className = 'mc-eff' + (e.amb ? ' amb' : '');
+            el.firstChild.style.backgroundImage = 'var(--spr-eff_' + id + ')';
+            hudPlace(el, RT.gw - 25 * n, neg ? 27 : 1);
+            var f = 1, tk = e.t * 20;
+            if (!e.amb && tk <= 200 && e.t < 1e8) {
+                var j1 = 10 - tk / 20;
+                f = Math.max(0, Math.min(0.5, tk / 10 / 5 * 0.5)) + Math.cos(tk * Math.PI / 5) * Math.max(0, Math.min(0.25, j1 / 10 * 0.25));
+            }
+            el.firstChild.style.opacity = f.toFixed(3);
+        }
     }
     function fmtTimeLeft(s) {
         s = Math.max(0, Math.ceil(s));
@@ -10238,6 +13791,8 @@
         normalizeCmdState();
         buildAtlas();
         texInit();
+        mfWebFont();
+        guiSprites();
         if (!document.getElementById('mc-atlas-css')) {   // HUD icons sample the atlas via CSS
             var st = document.createElement('style');
             st.id = 'mc-atlas-css';
@@ -10263,7 +13818,8 @@
             hover: null,                                                             // the panel slot under the pointer
             paused: false, dead: S.hp <= 0, ready: false, lit: false, expectUnlock: false,
             worldMs: 0, playT: 0, baseHrs: S.hrs || 0, lastT: 0, secT: 0, hudT: 0, saveT: 0,
-            fps: 0, fpsN: 0, fpsT: 0, f3: false, musT: 25, tipT: 0, tipId: null, devFree: !!devModes, raf: 0, timers: [],
+            fps: 0, fpsN: 0, fpsT: 0, f3: false, musT: 25, tipTk: 0, tipKey: null, devFree: !!devModes, raf: 0, timers: [],
+            gs: 0, gw: 0, gh: 0, hudTk: 0, hudTickT: 0, pops: [0, 0, 0, 0, 0, 0, 0, 0, 0],
             built: false, ver: launched || '26.2', inst: (opts && opts.installation) || null
         };
         buildSkyGeo(G);
@@ -10282,9 +13838,7 @@
             wsIndex();                       // adopts a pre-world-list save before anything else reads one
             wsSyncFS();
             S = mnPanoSave();
-        } else {
-            RT.el.querySelector('.mc-load').style.display = '';
-        }
+        } else loadShow(true);
         // fresh world: starting position + a bootstrapping run of chunks
         if (!S.wspawn) {
             S.wspawn = findSpawn();
@@ -10292,7 +13846,8 @@
         }
         ensureChunks();
         sizeCanvas();
-        RT.ro = new ResizeObserver(function () { sizeCanvas(); if (RT && RT.menu) mnSize(RT.menu); });
+        guiResize();
+        RT.ro = new ResizeObserver(function () { sizeCanvas(); guiResize(); if (RT && RT.menu) mnSize(RT.menu); });
         RT.ro.observe(root);
         if (!devModes) mnOpen('loading');
         wireInput(root, cv);
@@ -10391,8 +13946,10 @@
             var k = e.key.toLowerCase();
             if (e.key === 'Escape') {
                 if (RT.chat) { closeChat(true); e.stopPropagation(); e.preventDefault(); }
-                else if (RT.panel) { closePanel(); e.stopPropagation(); }
-                else if (RT.lanUI) { lanClose(); e.stopPropagation(); e.preventDefault(); }   // the LAN screen backs out to the menu, not the world
+                else if (RT.panel) { rbEscape(); e.stopPropagation(); }
+                else if (RT.sleep && !RT.woke && !RT.paused && !RT.dead) { leaveBed(); e.stopPropagation(); e.preventDefault(); }
+                // a screen behind the Game Menu backs out to it, not to the world; the death screens ignore Escape
+                else if (RT.iw && RT.iw.scr !== 'pause') { var iwd = IW_SCR[RT.iw.scr]; if (iwd.esc) iwd.esc(); e.stopPropagation(); e.preventDefault(); }
                 else if (RT.paused && RT.ready) {
                     // don't hide the menu on hope: Chrome refuses relocks for ~1.3s after an Esc exit.
                     // onLockChange dismisses the menu when the lock actually lands; a rejection keeps it up.
@@ -10416,6 +13973,11 @@
                 if (ci && document.activeElement !== ci) ci.focus();
                 e.stopPropagation();
                 return;
+            }
+            // with the recipe book open the chat key goes to its search box (RecipeBookComponent.keyPressed)
+            if (k === 't' && RT.panel && rbShown()) {
+                var rbq = RT.el.querySelector('.mc-rbqin');
+                if (rbq && document.activeElement !== rbq) { rbq.focus(); rbq._ft = performance.now(); e.preventDefault(); e.stopPropagation(); return; }
             }
             // over the catalogue the chat key does what the real screen's does: it goes to Search
             if ((k === 't' || k === '/') && RT.panel && RT.panel.kind === 'creative' && (CTABS[RT.cTab] || CTABS[0]).id !== 'search') {
@@ -10449,20 +14011,37 @@
                 e.preventDefault();
                 if (RT.panel) closePanel(); else openPanel(isCreative() ? 'creative' : 'inv');
             }
-            if (k === 'q' && RT.panel && RT.hover && !RT.cur && !RT.paused && !RT.dead) { hoverThrow(!!e.ctrlKey); e.preventDefault(); }   // Q over a slot throws from it; Ctrl-Q the whole stack — never while carrying
+            if (k === 'q' && RT.panel && RT.hover && !RT.cur && !RT.paused && !RT.dead) { hoverThrow(!!e.ctrlKey); e.preventDefault(); }
+            // F: over a slot it trades that slot with the off hand; in the world it swaps your hands
+            if (k === 'f' && RT.panel && RT.hover && !RT.cur && !RT.paused && !RT.dead) { hoverSwap(40); e.preventDefault(); }
+            else if (k === 'f' && RT.ready && !RT.panel && !RT.paused && !RT.dead && !isSpectator()) {
+                var mh = S.inv[S.sel] || null;
+                S.inv[S.sel] = S.off || null; S.off = mh;
+                paintHotbar();
+            }   // Q over a slot throws from it; Ctrl-Q the whole stack — never while carrying
             if (k === 'q' && !RT.panel && !RT.paused && !RT.dead) {
                 var h = held();
                 if (h) {
+                    swingArm(true);   // dropping swings the arm
                     tossItem(h, 1);   // the enchantments and the name go with it, as they should
                     h.c--; if (!h.c) S.inv[S.sel] = null;
                     paintHotbar();
                 }
             }
             if (e.key === 'F3') { RT.f3 = !RT.f3; paintDebug(); e.preventDefault(); }
+            if (k === 'l' && RT.ready && !RT.dead && !RT.panel && !RT.paused && !RT.chat) {
+                RT.paused = true; unlockCursor(); sSave();
+                iwShow('adv', { fromKey: true });
+                e.preventDefault();
+            }
             var n = parseInt(e.key, 10);
             // ungated, these silently changed what you were holding from behind a
             // chest, the pause menu, the death screen and the loading screen
-            if (n >= 1 && n <= 9 && RT.ready && !RT.panel && !RT.paused && !RT.dead) { S.sel = n - 1; paintHotbar(); }
+            if (n >= 1 && n <= 9 && RT.ready && !RT.panel && !RT.paused && !RT.dead) {
+                // creative's C or X held with a number saves the hotbar there or loads it back
+                if (isCreative() && (RT.keys.x || RT.keys.c)) hotbarLoadOrSave(n - 1, !!RT.keys.x);
+                else { S.sel = n - 1; paintHotbar(); }
+            }
             if (n >= 1 && n <= 9 && RT.panel && RT.hover && !RT.cur && !RT.paused && !RT.dead) { hoverSwap(n - 1); e.preventDefault(); }   // a number over a slot swaps it into that hotbar slot, cursor empty
             e.stopPropagation();
         });
@@ -10480,7 +14059,7 @@
             root.focus();
             if (!RT.ready || RT.dead) return;
             if (!document.pointerLockElement && !RT.devFree) {
-                if (!RT.panel && !RT.paused) lockCursor();
+                if (!RT.panel && !RT.paused && !(RT.sleep && !RT.woke)) lockCursor();
                 return;
             }
             if (e.button === 0) { RT.mouse.l = true; attack(); creativeInstaBreak(); }
@@ -10524,36 +14103,19 @@
         root.addEventListener('wheel', function (e) {
             // over the creative catalogue the wheel scrolls the list, not the hotbar
             if (RT.panel && RT.panel.kind === 'creative') { creativeScroll(e.deltaY > 0 ? 1 : -1); e.preventDefault(); return; }
-            if (RT.panel || RT.paused || RT.chat) return;
+            // open chat: the wheel walks back through what scrolled off, a line a notch
+            if (RT.chat) { RT.chatScroll = Math.max(0, (RT.chatScroll || 0) + (e.deltaY < 0 ? 1 : -1)); paintChat(); e.preventDefault(); return; }
+            if (RT.panel || RT.paused) return;
             S.sel = ((S.sel + (e.deltaY > 0 ? 1 : -1)) % 9 + 9) % 9;
             paintHotbar();
             e.preventDefault();
         }, { passive: false });
-        // menu buttons
-        root.querySelector('.mc-resume').addEventListener('click', function () { audioInit(); hidePause(); lockCursor(); });
-        root.querySelector('.mc-totitle').addEventListener('click', function () { audioInit(); mnToTitle(); });
-        root.querySelector('.mc-achbtn').addEventListener('click', function () {
-            var a = root.querySelector('.mc-achs');
-            a.style.display = a.style.display === 'none' ? '' : 'none';
-        });
-        root.querySelector('.mc-lanbtn').addEventListener('click', function () { audioInit(); lanOpen(); });
-        root.querySelector('.mc-langm').addEventListener('click', function () { if (RT.lanUI) { RT.lanUI.gm = (RT.lanUI.gm + 1) % 4; snd('click'); lanPaint(); } });
-        root.querySelector('.mc-lanch').addEventListener('click', function () { if (RT.lanUI) { RT.lanUI.cheats = !RT.lanUI.cheats; snd('click'); lanPaint(); } });
-        root.querySelector('.mc-lanstart').addEventListener('click', function () { lanStart(); });
-        root.querySelector('.mc-lancancel').addEventListener('click', function () { snd('click'); lanClose(); });
-        var portIn = root.querySelector('.mc-lanport');
-        portIn.addEventListener('mousedown', function (e) { e.stopPropagation(); });
-        portIn.addEventListener('keydown', function (e) {
-            // the box owns its keys, or a digit would pick a hotbar slot; Enter
-            // starts, Esc backs out to the menu
-            e.stopPropagation();
-            if (e.key === 'Enter') { e.preventDefault(); lanStart(); }
-            else if (e.key === 'Escape') { e.preventDefault(); lanClose(); }
-        });
-        portIn.addEventListener('keyup', function (e) { e.stopPropagation(); });
-        portIn.addEventListener('input', function () { if (RT.lanUI) { RT.lanUI.port = portIn.value; lanPaint(false); } });
-        wireSliders(root);
-        root.querySelector('.mc-respawn').addEventListener('click', function () { respawn(); lockCursor(); });
+        // the in-world screens' widgets, and the bed's one button
+        iwWire(root.querySelector('.mc-pause'));
+        iwWire(root.querySelector('.mc-death'));
+        var bedEl = root.querySelector('.mc-bed');
+        bedEl.addEventListener('mousedown', function (e) { if (e.target.closest && e.target.closest('.mc-wb')) { audioInit(); snd('click'); } e.preventDefault(); e.stopPropagation(); });
+        bedEl.addEventListener('click', function (e) { if (e.target.closest && e.target.closest('.mc-wb')) { if (!e.detail) snd('click'); leaveBed(); e.stopPropagation(); } });
         setTimeout(function () { root.focus(); }, 30);
     }
 
@@ -10791,7 +14353,7 @@
             flying: function () { return !!RT.fly; },
             openPanel: function (k, t) { openPanel(k, t); },
             place: function (id) { var t = RT.target; if (t) { S.inv[S.sel] = { id: id, c: 1 }; tryUse(); } },
-            setB: setB, getB: getB, explode: explode, unlockAll: function () { for (var i = 0; i < ACH.length; i++) unlock(ACH[i].id); },
+            setB: setB, getB: getB, explode: explode, unlock: unlock, unlockAll: function () { for (var i = 0; i < ACH.length; i++) unlock(ACH[i].id); },
             chunkDbg: function (cx, cz) { var c = RT.chunks[cx + ',' + cz]; return c ? { op: c.dbgOp || null, cut: c.dbgCut || null } : null; },
             remesh: function (cx, cz) { var c = RT.chunks[cx + ',' + cz]; if (c) meshChunk(c); },
             lightAt: function (x, y, z) { return [getSky(x, y, z), getBlk(x, y, z)]; },
@@ -10800,7 +14362,16 @@
             craftGrid: function (arr) { RT.craftW = 3; for (var i = 0; i < 9; i++) RT.craft[i] = arr[i] ? { id: arr[i][0], c: arr[i][1] } : null; },
             shiftCraft: function () { takeCraft(true); },
             invSnap: function () { var o = {}; for (var i = 0; i < 36; i++) { var s = S.inv[i]; if (s) o[s.id] = (o[s.id] || 0) + s.c; } return o; },
-            invFree: invFree, craftSnap: function () { return RT.craft.map(function (s) { return s ? s.id + ':' + s.c : null; }); }
+            invFree: invFree, craftSnap: function () { return RT.craft.map(function (s) { return s ? s.id + ':' + s.c : null; }); },
+            rb: function () {
+                var st = rbState();
+                return { known: S.rbk.slice(), open: !!(st && st.open), shown: rbShown(), filter: !!(st && st.filter), tab: RT.rbv ? RT.rbv.tab : null,
+                    page: RT.rbv ? RT.rbv.page : null, list: (RT.rbList || []).map(function (c) { return rbId(c.r) + (c.ok ? '' : '!'); }),
+                    ghost: RT.rbGhost ? rbId(RT.rbGhost) : null, lx: RT.panel ? RT.panel.lx : null, fresh: Object.keys(S.rbNew || {}) };
+            },
+            rbLearnAll: function () { return rbLearn(rbAll().map(function (r) { return r.key; })); },
+            orbs: function () { return RT.orbs.map(function (o) { return [Math.round(o.x * 10) / 10, Math.round(o.y * 10) / 10, Math.round(o.z * 10) / 10, o.v]; }).concat([[S.px, S.py, S.pz]]); },
+            spawnXp: function (dx, dz, v) { var gy = Math.floor(S.py) + 1; while (gy > 0 && !getB(Math.floor(S.px + dx), gy - 1, Math.floor(S.pz + dz))) gy--; spawnXp(S.px + dx, gy + 0.1, S.pz + dz, v || 3); }
         };
         if (has('mobs')) setTimeout(function () {
             var list = ['zombie', 'skeleton', 'creeper', 'spider', 'enderman', 'slime', 'pig', 'cow', 'sheep', 'chicken'];
@@ -10872,7 +14443,7 @@
         // the font specimen in .claude/comp-tools/mc-menu.html measures these
         // read-only introspection for .claude/comp-tools: the harnesses DRIVE the
         // real controls and only ever use this to see what happened afterwards
-        __proof: { text: mfText, adv: mfAdvance, width: mfWidth, logo: mnLogo,
+        __proof: { text: mfText, adv: mfAdvance, width: mfWidth, logo: mnLogo, webfont: mfWebFont, ttf: mfFontBytes, family: MF_FAMILY,
             probe: function (x, y, z) { return getB(x, y, z); },
             save: function () { return S ? { seed: S.seed, wtype: S.wtype, py: S.py, gm: S.gm, diff: S.diff, wid: S.wid, cheats: S.cheats } : null; },
             menu: function () {
