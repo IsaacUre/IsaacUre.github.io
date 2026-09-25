@@ -84,6 +84,7 @@
         if (!mayFly()) S.fly = false;
         if (S.diff == null) S.diff = 2;
         if (!S.eff || typeof S.eff !== 'object' || S.eff instanceof Array) S.eff = {};
+        if (S.off === undefined) S.off = null;   // the off hand, from before it existed
         if (!S.rules || typeof S.rules !== 'object' || S.rules instanceof Array) S.rules = {};
         for (var k in GR_DEF) if (S.rules[k] === undefined) S.rules[k] = GR_DEF[k];
     }
@@ -389,6 +390,16 @@
             }
         }
     })();
+    /* the game's own numbers for the tool classes, per tier (wood, stone, iron,
+       gold, diamond): what a hit does and how many full-strength hits a second */
+    var TOOL_DMG = { pick: [0, 2, 3, 4, 2, 5], axe: [0, 7, 9, 9, 7, 9], shovel: [0, 2.5, 3.5, 4.5, 2.5, 5.5], hoe: [0, 1, 1, 1, 1, 1] };
+    var TOOL_SPD = { sword: [0, 1.6, 1.6, 1.6, 1.6, 1.6], pick: [0, 1.2, 1.2, 1.2, 1.2, 1.2], shovel: [0, 1, 1, 1, 1, 1],
+                     axe: [0, 0.8, 0.8, 0.9, 1, 1], hoe: [0, 1, 2, 3, 1, 4] };
+    function attackSpeed(id) {
+        var t = id && I[id] && I[id].tool;
+        return t && TOOL_SPD[t.k] ? TOOL_SPD[t.k][t.tier] || 4 : 4;
+    }
+    function attackCooldown(id) { return 1 / attackSpeed(id); }   // seconds to a full-strength swing: 20 / speed ticks
     var SWORD_DMG = [0, 4, 5, 6, 4, 7];
     (function () {   // 5 tools × 5 tiers, generated
         var kinds = { pick: 'Pickaxe', axe: 'Axe', shovel: 'Shovel', sword: 'Sword', hoe: 'Hoe' };
@@ -396,7 +407,7 @@
             var cap = TIER_N[tier].charAt(0).toUpperCase() + TIER_N[tier].slice(1);
             I[TIER_N[tier] + '_' + k] = {
                 t: cap + (tier === 4 ? 'en' : '') + ' ' + kinds[k], stk: 1,
-                tool: { k: k, tier: tier, mult: TIER_MULT[tier], dmg: k === 'sword' ? SWORD_DMG[tier] : 1 + tier, dur: TIER_DUR[tier] },
+                tool: { k: k, tier: tier, mult: TIER_MULT[tier], dmg: k === 'sword' ? SWORD_DMG[tier] : TOOL_DMG[k][tier], dur: TIER_DUR[tier] },
                 fuel: tier === 1 ? 10 : 0
             };
         }
@@ -2004,10 +2015,14 @@
     /* ── inventory data ─────────────────────────────────────── */
     function itemMaxDur(id) { var d = I[id]; return d ? (d.tool ? d.tool.dur : d.armor ? d.armor.dur : d.dur) : null; }
     function invGive(id, n, dur, enchObj, name) {   // returns the count that didn't fit
-        var max = stkMax(id), i, s;
-        if (max > 1 && !enchObj) for (i = 0; i < 36 && n > 0; i++) {
-            s = S.inv[i];
-            if (s && s.id === id && s.c < max && !s.ench) { var add = Math.min(max - s.c, n); s.c += add; n -= add; }
+        /* Inventory.add: a matching stack with room is topped up in the selected
+           slot first, then the off hand, then the rest in order; what is left
+           goes into the first empty slot, the hotbar before the backpack */
+        var max = stkMax(id), i, s, order = [S.sel, -1];
+        for (i = 0; i < 36; i++) if (i !== S.sel) order.push(i);
+        if (max > 1 && !enchObj) for (var k = 0; k < order.length && n > 0; k++) {
+            s = order[k] < 0 ? S.off : S.inv[order[k]];
+            if (s && s.id === id && s.c < max && !s.ench && (s.name || '') === (name || '')) { var add = Math.min(max - s.c, n); s.c += add; n -= add; }
         }
         for (i = 0; i < 36 && n > 0; i++) {
             if (!S.inv[i]) {
@@ -2487,6 +2502,7 @@
             if (a) dropItem(S.px, S.py + 1, S.pz, a.id, a.c, a.dur, true, a.ench, a.name);
             S.armor[i] = null;
         }
+        if (S.off && !keep) { dropItem(S.px, S.py + 1, S.pz, S.off.id, S.off.c, S.off.dur, true, S.off.ench, S.off.name); S.off = null; }
         // experience spills out, capped the way the real game caps it
         var spill = keep ? 0 : Math.min(100, 7 * S.xpl);
         if (!keep) { S.xpl = 0; S.xp = 0; }
@@ -3463,15 +3479,19 @@
         swingArm(true);
         var f = entRay();
         var h = held(), tool = h && I[h.id] && I[h.id].tool;
-        var charged = RT.atkCd <= 0.02;   // full attack-cooldown → full-strength hit
-        RT.atkCd = RT.atkCdMax = tool && tool.k === 'sword' ? 0.5 : tool ? 0.55 : 0.35;
+        /* Player.attack: the swing's strength is how far the weapon has recharged
+           (20 / attack speed ticks from the last swing), and it scales the hit by
+           0.2 + 0.8 f squared and the Sharpness bonus by f; above 0.9 it counts as
+           charged, which a critical needs. Every swing, hit or miss, starts over. */
+        var cdMax = RT.atkCdMax || attackCooldown(h && h.id);
+        var fch = RT.atkCd > 0 ? Math.max(0, Math.min(1, 1 - RT.atkCd / cdMax)) : 1, charged = fch > 0.9;
+        RT.atkCd = RT.atkCdMax = attackCooldown(h && h.id);
         if (!f) return;
         if (f.ifr > 0.6) return;
-        var dmg = tool ? tool.dmg : 1;
-        if (!charged) dmg *= 0.45;                          // hasty spam-click does less
-        dmg += ench(h, 'sharp') > 0 ? 0.5 * ench(h, 'sharp') + 0.5 : 0;
-        // critical: mid-fall, charged, not in fluid / on a ladder
-        var crit = charged && RT.vy < -0.1 && !RT.ground && !inFluid(WATER) && !onLadder();
+        var dmg = (tool ? tool.dmg : 1) * (0.2 + fch * fch * 0.8);
+        dmg += (ench(h, 'sharp') > 0 ? 0.5 * ench(h, 'sharp') + 0.5 : 0) * fch;
+        // critical: mid-fall, charged, not sprinting, not in fluid or on a ladder
+        var crit = charged && RT.vy < -0.1 && !RT.ground && !RT.sprint && !inFluid(WATER) && !onLadder();
         if (crit) { dmg *= 1.5; critParticles(f); }
         f.hp -= dmg;
         f.ifr = 0.5; f.hurtF = 0.3;
@@ -3647,10 +3667,12 @@
         if (dist < 0.6) {
             var before = [];
             for (var hb = 0; hb < 9; hb++) before.push(S.inv[hb] ? S.inv[hb].id + ':' + S.inv[hb].c : '');
+            before.push(S.off ? S.off.id + ':' + S.off.c : '');
             var left = invGive(d.it, d.c, d.dur, d.ench, d.iname);
             if (left === d.c) return false;         // no room at all: it stays
             snd('pop');
             for (hb = 0; hb < 9; hb++) if ((S.inv[hb] ? S.inv[hb].id + ':' + S.inv[hb].c : '') !== before[hb]) RT.pops[hb] = 5 * HUD_TICK;
+            if ((S.off ? S.off.id + ':' + S.off.c : '') !== before[9]) RT.pops[9] = 5 * HUD_TICK;   // the off hand pops too
             paintHotbar();
             RT.panelDirty = 1;   // an open screen shows the same slots; keep it honest
             if (d.it === 'leather') unlock('cow');
@@ -4192,6 +4214,45 @@
        the same square at the screen's real resolution. So icons are built at
        16 × (device pixels per GUI pixel): flat items as exact squares of
        texels, blocks drawn at device resolution. One cache per scale. */
+    /* Two creative-tab icons for things this world has no item for: the
+       compass on Search Items and the oak sign on Functional Blocks. Our own
+       drawings, sixteen pixels square like every item. */
+    var ICON_ART = {
+        compass: { pal: { k: '#1f1f1f', a: '#c8c8c8', A: '#8a8a8a', f: '#3c3c3c', r: '#e02b2b', R: '#9c1616', w: '#d8d8d8' }, rows: [
+            '................',
+            '.....kkkkkk.....',
+            '...kkaaaaaakk...',
+            '..kaaffffffAAk..',
+            '..kaffffffffAk..',
+            '.kaffffffffrfAk.',
+            '.kaffffffffRfAk.',
+            '.kafffffffrffAk.',
+            '.kaffffffRfffAk.',
+            '.kafffffwffffAk.',
+            '.kaffffwfffffAk.',
+            '..kafffffffffk..',
+            '..kAAffffffAAk..',
+            '...kkAAAAAAkk...',
+            '.....kkkkkk.....',
+            '................'] },
+        oak_sign: { pal: { k: '#3b2a15', p: '#b8945f', P: '#9d7a47', q: '#a8864f', s: '#6b4f2a', S: '#4f3a1e' }, rows: [
+            '................',
+            '................',
+            'kkkkkkkkkkkkkkkk',
+            'kppppppppppppppk',
+            'kpPPPPppqPPPPppk',
+            'kppppppppppppppk',
+            'kpqPPPPPppPPPqpk',
+            'kppppppppppppppk',
+            'kPPPPPPPPPPPPPPk',
+            'kkkkkkksSkkkkkkk',
+            '.......sSk......',
+            '......ksSk......',
+            '......ksSk......',
+            '......ksSk......',
+            '......ksSk......',
+            '......kkkk......'] }
+    };
     var ICON = {};
     function iconURL(id) {
         var r = Math.max(2, (RT && RT.gs) || 2), key = id + '@' + r;
@@ -4232,6 +4293,10 @@
             }
             c.fillStyle = 'rgba(255,255,255,0.28)';
             c.fillRect(12, 7, 3, 4);
+        } else if (!def && ICON_ART[id]) {
+            c.setTransform(r, 0, 0, r, 0, 0);
+            sprMap(c, ICON_ART[id].rows, ICON_ART[id].pal);
+            c.setTransform(1, 0, 0, 1, 0, 0);
         } else {
             var tid = def && def.tile != null ? def.tile : (def && def.place != null ? texTop(TEX[def.place]) : TILE.i_stick);
             var s = tsrc(tid);
@@ -4449,7 +4514,12 @@
        durability bar under it */
     function paintSlot(el, st) {
         if (!st) {
-            if (el._st !== null) { el._st = null; el.style.backgroundImage = ''; el.style.removeProperty('--ic'); el.innerHTML = ''; }
+            if (el._st !== null) {
+                el._st = null; el.style.backgroundImage = ''; el.style.removeProperty('--ic');
+                // an armour, off-hand or lapis slot shows its #555555 outline where the item would be
+                var ei = el.getAttribute && el.getAttribute('data-ei');
+                el.innerHTML = ei ? '<i class="mc-it mc-ei" style="--ic:var(--spr-' + ei + ')"></i>' : '';
+            }
             el.className = el.className.replace(/ has| glint/g, '');
             return;
         }
@@ -4505,6 +4575,16 @@
             paintSlot(cells[i], S.inv[i]);
         }
         hudPlace(RT.el.querySelector('.mc-hbsel'), (RT.gw >> 1) - 91 - 1 + S.sel * 20, RT.gh - 23);
+        /* Gui.renderItemHotbar: with something in the off hand, its cell (29x24) at
+           (W/2 - 120, H - 23) on the side of the off hand, the item at (W/2 - 117, H - 19) */
+        var off = RT.el.querySelector('.mc-offslot'), ofr = RT.el.querySelector('.mc-hboff');
+        if (off && ofr) {
+            var shw = S.off ? '' : 'none';
+            if (off.style.display !== shw) { off.style.display = shw; ofr.style.display = shw; }
+            paintSlot(off, S.off || null);
+            hudPlace(ofr, (RT.gw >> 1) - 120, RT.gh - 23);
+            hudPlace(off, (RT.gw >> 1) - 117, RT.gh - 19);
+        }
         hudTipTick(false);
     }
     /* Gui.renderSelectedItemName: switching to a different item (or a differently
@@ -4731,12 +4811,13 @@
         toastFrame(dt);
         cross3d();
         if (RT.chat) paintChatInput(); else chatAlpha();
+        if (RT.panel) panelFrame(dt);
         if (!RT.pops || RT.paused) return;
         var bar = RT.el.querySelector('.mc-hotbar');
         if (!bar) return;
-        for (var i = 0; i < 9; i++) {
-            var cell = bar.children[i], p = RT.pops[i];
-            if (!(p > 0) && !cell._pop) continue;
+        for (var i = 0; i < 10; i++) {
+            var cell = i < 9 ? bar.children[i] : RT.el.querySelector('.mc-offslot'), p = RT.pops[i];
+            if (!cell || (!(p > 0) && !cell._pop)) continue;
             p = Math.max(0, p - dt); RT.pops[i] = p;
             var f = p / HUD_TICK, it = cell.querySelector('.mc-it');
             if (it) it.style.transform = f > 0 ? 'scale(' + (1 / (1 + f / 5)).toFixed(4) + ',' + ((2 + f / 5) / 2).toFixed(4) + ')' : '';
@@ -5240,11 +5321,17 @@
         var shelves = pos ? bookshelvesNear({ x: pos[0] | 0, y: pos[1] | 0, z: pos[2] | 0 }) : 0;
         if (!RT.enchSeed) RT.enchSeed = (Math.random() * 1e9) | 0;
         var rng = mulb(RT.enchSeed ^ (it.id.length * 7));
-        function base() { return 1 + (rng() * 8 | 0) + Math.floor(shelves / 2) + (rng() * (shelves + 1) | 0); }
-        var b = base();
-        var lv = [Math.max(1, Math.floor(b / 3)), Math.floor(b * 2 / 3) + 1, Math.max(b, shelves * 2)];
+        /* EnchantmentHelper.getEnchantmentCost, rolled afresh for each row:
+           j = 1 + rand(8) + shelves/2 + rand(shelves + 1), then j/3 (at least 1),
+           2j/3 + 1 and max(j, 2 x shelves); a row cheaper than its number is empty */
+        function cost(n) {
+            var j = 1 + (rng() * 8 | 0) + (shelves >> 1) + (rng() * (shelves + 1) | 0);
+            return n === 0 ? Math.max((j / 3) | 0, 1) : n === 1 ? ((j * 2 / 3) | 0) + 1 : Math.max(j, shelves * 2);
+        }
+        var lv = [cost(0), cost(1), cost(2)];
         RT.enchOpts = [];
         for (var i = 0; i < 3; i++) {
+            if (lv[i] < i + 1) { RT.enchOpts.push({ level: 0, lapis: i + 1, ench: null, label: '' }); continue; }
             var er = rollEnchants(it, lv[i], rng);
             var main = er ? Object.keys(er)[0] : null;
             RT.enchOpts.push({ level: lv[i], lapis: i + 1, ench: er, label: main ? ENCH_NAME[main] + ' ' + (ROMAN[er[main]] || er[main]) + (Object.keys(er).length > 1 ? ' …' : '') : '—' });
@@ -5254,12 +5341,14 @@
         var o = RT.enchOpts && RT.enchOpts[i]; if (!o || !o.ench) return;
         var it = RT.enchItem, lap = RT.enchLapis;
         if (!enchantable(it)) return;
-        // an option you cannot afford is a dead button, not a message
-        if (S.xpl < o.level) return;
-        if (!lap || lap.c < o.lapis) return;
-        if (S.xpl < o.lapis) return;   // the slot number is the real level charge
-        takeXpLevels(o.lapis);                       // enchanting costs levels
-        lap.c -= o.lapis; if (!lap.c) RT.enchLapis = null;
+        // an option you cannot afford is a dead button, not a message; creative pays nothing
+        if (!instaBuild()) {
+            if (S.xpl < o.level) return;
+            if (!lap || lap.c < o.lapis) return;
+            if (S.xpl < o.lapis) return;   // the slot number is the real level charge
+            takeXpLevels(o.lapis);                       // enchanting costs levels
+            lap.c -= o.lapis; if (!lap.c) RT.enchLapis = null;
+        }
         if (it.id === 'book') it.id = 'ench_book';
         it.ench = o.ench;
         RT.enchSeed = (Math.random() * 1e9) | 0; RT.enchOpts = null;
@@ -5274,7 +5363,12 @@
         // silently threw away the rename you had already paid a level for
         var out = { id: a.id, c: a.c, dur: a.dur, ench: a.ench ? JSON.parse(JSON.stringify(a.ench)) : null, name: a.name };
         var cost = 0, did = false, usedB = false;
-        if (RT.anvilName && RT.anvilName !== (a.name || '')) { out.name = RT.anvilName; cost += 1; did = true; }
+        /* AnvilMenu.createResult: a name that differs from what the item is called
+           renames it, and a box cleared on a renamed item takes the name off; each
+           costs a level */
+        var nm = RT.anvilName || '';
+        if (nm.trim()) { if (nm !== itemName(a)) { out.name = nm; cost += 1; did = true; } }
+        else if (a.name) { delete out.name; cost += 1; did = true; }
         if (b) {
             var da = I[a.id], db = I[b.id];
             // repair with matching material or a second identical tool
@@ -5292,7 +5386,8 @@
         cost += enchLevelCost(out.ench) - enchLevelCost(a.ench);
         // usedB tells applyAnvil whether slot B was actually consumed — a rename-only result
         // must leave B alone instead of deleting whatever is sitting in it
-        return { out: out, cost: Math.max(1, cost), usedB: usedB };
+        cost = Math.max(1, cost);
+        return { out: out, cost: cost, usedB: usedB, tooExp: cost >= 40 && !instaBuild() };   // from 40 levels, "Too Expensive!" and no result
     }
     function mergeEnch(x, y) {
         var r = {}; var k;
@@ -5303,20 +5398,23 @@
         return Object.keys(r).length ? r : null;
     }
     function enchLevelCost(e) { var c = 0; if (e) for (var k in e) c += e[k]; return c; }
-    function applyAnvil() {
-        var res = anvilResult(); if (!res) return;
-        if (S.xpl < res.cost) return;
-        takeXpLevels(res.cost);
-        var out = res.out; if (RT.anvilName) out.name = RT.anvilName;
-        RT.anvilA = null;
+    function applyAnvil(shift) {
+        var res = anvilResult(); if (!res || res.tooExp) return;
+        if (!shift && RT.cur) return;   // a click takes the result onto an empty cursor only
+        if (!instaBuild() && S.xpl < res.cost) return;
+        if (!instaBuild()) takeXpLevels(res.cost);
+        var out = res.out;
+        RT.anvilA = null; RT.anvilKey = null;
         if (res.usedB) RT.anvilB = null;   // a rename-only apply must not eat slot B
         RT.anvilName = '';
         // clear the visible name box too, or it keeps showing the old text while RT.anvilName is
         // empty and the next rename silently produces nothing until the player retypes
         var nameIn = RT.el && RT.el.querySelector('.mc-anvin');
         if (nameIn) nameIn.value = '';
-        var left = invGive(out.id, out.c, out.dur, out.ench, out.name);   // hand back the whole stack, enchant + name intact
-        if (left > 0) dropItem(S.px, S.py + 1, S.pz, out.id, left, out.dur, false, out.ench, out.name);
+        if (shift) {   // shift-click: backwards into the inventory, the hotbar's right-hand end first, enchant and name intact
+            var left = moveStackTo(out, invOrder(0, 36), true);
+            if (left > 0) dropItem(S.px, S.py + 1, S.pz, out.id, left, out.dur, false, out.ench, out.name);
+        } else RT.cur = out;   // a plain click puts the result on the cursor
         snd('anvil'); unlock('anvil2');
         paintPanel(); paintHotbar();
     }
@@ -5329,45 +5427,55 @@
        dropped onto it is destroyed, which is exactly how the real one behaves
        and is why it can't reuse the ordinary slot plumbing. */
     var CCOLS = 9, CROWS = 5, CGRID = CCOLS * CROWS;
+    /* The tabs the game has had since 1.19.3, each where CreativeModeTabs puts
+       it: row 0 above the panel, row 1 below, columns 0-4 from the left at 27
+       pixels a column and 5-6 flush right. Search stays 7 and Survival
+       Inventory 8 so the old indices still land where they used to. */
     var CTABS = [
-        { id: 'build',  t: 'Building Blocks',    ic: 'stonebrick' },
-        { id: 'deco',   t: 'Decorations',        ic: 'poppy' },
-        { id: 'tools',  t: 'Tools',              ic: 'iron_pick' },
-        { id: 'combat', t: 'Combat',             ic: 'iron_sword' },
-        { id: 'food',   t: 'Foodstuffs',         ic: 'apple' },
-        { id: 'mat',    t: 'Materials',          ic: 'iron' },
-        { id: 'misc',   t: 'Miscellaneous',      ic: 'lava_bucket' },
-        { id: 'search', t: 'Search Items',       ic: 'table' },
-        { id: 'inv',    t: 'Survival Inventory', ic: 'chest' }
+        { id: 'build',    t: 'Building Blocks',    ic: 'bricks',        row: 0, col: 0 },
+        { id: 'color',    t: 'Colored Blocks',     ic: 'wool',          row: 0, col: 1 },
+        { id: 'natural',  t: 'Natural Blocks',     ic: 'grass_block',   row: 0, col: 2 },
+        { id: 'func',     t: 'Functional Blocks',  ic: 'oak_sign',      row: 0, col: 3 },
+        { id: 'redstone', t: 'Redstone Blocks',    ic: 'redstone',      row: 0, col: 4 },
+        { id: 'tools',    t: 'Tools & Utilities',  ic: 'diamond_pick',  row: 1, col: 0 },
+        { id: 'combat',   t: 'Combat',             ic: 'diamond_sword', row: 1, col: 1 },
+        { id: 'search',   t: 'Search Items',       ic: 'compass',       row: 0, col: 6 },
+        { id: 'inv',      t: 'Survival Inventory', ic: 'chest',         row: 1, col: 6 },
+        { id: 'food',     t: 'Food & Drinks',      ic: 'golden_apple',  row: 1, col: 2 },
+        { id: 'ingr',     t: 'Ingredients',        ic: 'iron',          row: 1, col: 3 },
+        { id: 'eggs',     t: 'Spawn Eggs',         ic: 'egg_pig',       row: 1, col: 4 },
+        { id: 'hotbar',   t: 'Saved Hotbars',      ic: 'bookshelf',     row: 0, col: 5 }
     ];
     var CLIST = null;
     function creativeTables() {
         if (CLIST) return CLIST;
-        var i, k;
-        var tools = [], combat = [], misc = ['bucket', 'water_bucket', 'lava_bucket', 'flint_steel', 'ench_book', 'egg'];
-        for (k = 0; k < 4; k++) for (i = 1; i <= 5; i++) tools.push(TIER_N[i] + '_' + ['pick', 'axe', 'shovel', 'hoe'][k]);
-        tools.push('bucket', 'flint_steel');
+        var i, k, tools = [], combat = [];
+        // each tier's shovel, pickaxe, axe and hoe together, wood to diamond, as the real tab lists them
+        for (i = 1; i <= 5; i++) for (k = 0; k < 4; k++) tools.push(TIER_N[i] + '_' + ['shovel', 'pick', 'axe', 'hoe'][k]);
+        tools.push('bucket', 'water_bucket', 'lava_bucket', 'milk_bucket', 'flint_steel', 'bonemeal', 'ender_pearl');
         for (i = 1; i <= 5; i++) combat.push(TIER_N[i] + '_sword');
+        for (i = 1; i <= 5; i++) combat.push(TIER_N[i] + '_axe');
         for (i = 0; i < ARM_TIERS.length; i++) for (k = 0; k < 4; k++) combat.push(ARM_TIERS[i] + '_' + ['helm', 'chest', 'legs', 'boots'][k]);
-        combat.push('bow', 'arrow');
-        for (k in EGG_COL) misc.push('egg_' + k);
+        combat.push('egg', 'bow', 'arrow');
         CLIST = {
-            build: ['stone', 'cobble', 'stonebrick', 'bricks', 'sandstone', 'grass_block', 'grass_snow', 'dirt', 'sand',
-                    'gravel', 'clay', 'log', 'planks', 'leaves', 'glass', 'wool', 'obsidian', 'bedrock',
-                    'ore_coal', 'ore_iron', 'ore_gold', 'ore_diamond', 'ore_redstone', 'ore_lapis', 'ore_emerald'],
-            deco: ['torch', 'rlamp', 'ladder', 'table', 'furnace', 'chest', 'bookshelf', 'etable', 'anvil', 'bed',
-                   'cake', 'tnt', 'dandelion', 'poppy', 'tallgrass', 'mushroom', 'mushroom_r', 'cactus',
-                   'sugarcane', 'pumpkin', 'melon'],
+            build: ['log', 'planks', 'stone', 'cobble', 'stonebrick', 'bricks', 'sandstone'],
+            color: ['wool', 'glass', 'bed'],
+            natural: ['grass_block', 'grass_snow', 'dirt', 'clay', 'gravel', 'sand', 'sandstone', 'stone', 'obsidian',
+                      'ore_coal', 'ore_iron', 'ore_gold', 'ore_redstone', 'ore_emerald', 'ore_lapis', 'ore_diamond',
+                      'log', 'leaves', 'tallgrass', 'dandelion', 'poppy', 'mushroom', 'mushroom_r', 'sugarcane', 'cactus',
+                      'seeds', 'seeds_pumpkin', 'seeds_melon', 'pumpkin', 'melon', 'bedrock'],
+            func: ['torch', 'table', 'furnace', 'anvil', 'etable', 'ladder', 'bookshelf', 'chest', 'bed'],
+            redstone: ['redstone', 'rlamp', 'tnt'],
             tools: tools,
             combat: combat,
-            food: ['apple', 'bread', 'cookie', 'melon_slice', 'pumpkin_pie', 'mushroom_stew', 'carrot', 'golden_carrot',
-                   'potato', 'baked_potato', 'golden_apple', 'pork_raw', 'pork', 'beef_raw', 'beef', 'mutton_raw',
-                   'mutton', 'chicken_raw', 'chicken', 'flesh', 'milk_bucket'],
-            mat: ['stick', 'coal', 'charcoal', 'iron', 'gold', 'diamond', 'emerald', 'redstone', 'lapis', 'flint',
-                  'feather', 'leather', 'string', 'gunpowder', 'bone', 'bonemeal', 'paper', 'book', 'sugar',
-                  'slimeball', 'ink_sac', 'ender_pearl', 'clay_ball', 'brick', 'wheat', 'seeds', 'seeds_pumpkin',
-                  'seeds_melon', 'bowl'],
-            misc: misc
+            food: ['apple', 'golden_apple', 'melon_slice', 'carrot', 'golden_carrot', 'potato', 'baked_potato',
+                   'beef_raw', 'beef', 'pork_raw', 'pork', 'mutton_raw', 'mutton', 'chicken_raw', 'chicken',
+                   'bread', 'cookie', 'cake', 'pumpkin_pie', 'flesh', 'mushroom_stew', 'milk_bucket'],
+            ingr: ['coal', 'charcoal', 'emerald', 'lapis', 'diamond', 'iron', 'gold', 'stick', 'flint', 'wheat', 'bone', 'bonemeal',
+                   'string', 'feather', 'egg', 'leather', 'ink_sac', 'slimeball', 'clay_ball', 'ender_pearl', 'bowl', 'brick',
+                   'paper', 'book', 'redstone', 'gunpowder', 'sugar', 'golden_carrot', 'ench_book'],
+            // spawn eggs in alphabetical order, as the game sorts them
+            eggs: Object.keys(EGG_COL).sort().map(function (m) { return 'egg_' + m; })
         };
         // a rename anywhere in I{} must leave a shorter list, never a hole in the grid
         for (k in CLIST) CLIST[k] = CLIST[k].filter(function (id) { return !!I[id]; });
@@ -5375,18 +5483,59 @@
     }
     function creativeItems() {
         var tab = CTABS[RT.cTab] || CTABS[0];
+        if (tab.id === 'hotbar') return savedHotbarEntries();
         if (tab.id !== 'search') return creativeTables()[tab.id] || [];
-        var q = String(RT.cSearch || '').trim().toLowerCase(), all = Object.keys(I);
+        // Search is every category tab in order, each item once
+        var tabs = creativeTables(), seen = {}, all = [];
+        CTABS.forEach(function (T) { (tabs[T.id] || []).forEach(function (id) { if (!seen[id]) { seen[id] = 1; all.push(id); } }); });
+        Object.keys(I).forEach(function (id) { if (!seen[id]) { seen[id] = 1; all.push(id); } });
+        var q = String(RT.cSearch || '').trim().toLowerCase();
         if (!q) return all;
         return all.filter(function (id) {   // matches the label a player reads and the id a command takes
             return id.indexOf(q) >= 0 || String(I[id].t || '').toLowerCase().indexOf(q) >= 0;
         });
     }
-    function creativeStack(id) {
-        if (!id || !I[id]) return null;
-        var st = { id: id, c: stkMax(id) }, md = itemMaxDur(id);
+    /* a catalogue entry as a stack: an item id is a full stack of it, a saved
+       hotbar's entry is the stack that was saved (or the placeholder paper) */
+    function creativeStack(e) {
+        if (!e) return null;
+        if (typeof e === 'object') return JSON.parse(JSON.stringify(e));
+        if (!I[e]) return null;
+        var st = { id: e, c: stkMax(e) }, md = itemMaxDur(e);
         if (md != null) st.dur = md;
         return st;
+    }
+    /* ── saved hotbars ──
+       In creative, C and a number save the hotbar under that number and X and
+       the number put it back, in every world: the game keeps them beside the
+       options, in hotbar.nbt, not in the save. The Saved Hotbars tab shows all
+       nine, a row each; an empty one is a sheet of paper under its own number
+       that says which keys fill it. */
+    var HB_KEY = 'comp_mc_hotbars';
+    function hbLoad() {
+        try { var v = JSON.parse(localStorage.getItem(HB_KEY) || 'null'); if (v && v.length === 9) return v; } catch (e) {}
+        return [[], [], [], [], [], [], [], [], []];
+    }
+    function savedHotbarEntries() {
+        var hb = hbLoad(), out = [];
+        for (var r = 0; r < 9; r++) {
+            var row = hb[r] || [], empty = !row.some(Boolean);
+            for (var c = 0; c < 9; c++) out.push(empty ? (c === r ? { id: 'paper', c: 1, lock: 1, tname: 'Save hotbar with C+' + (r + 1) } : null) : (row[c] || null));
+        }
+        return out;
+    }
+    function hotbarLoadOrSave(i, load) {
+        var hb = hbLoad(), k;
+        if (load) {   // every slot comes back, the empty ones too
+            var row = hb[i] || [];
+            for (k = 0; k < 9; k++) S.inv[k] = row[k] ? JSON.parse(JSON.stringify(row[k])) : null;
+            paintHotbar();
+            return;
+        }
+        hb[i] = [];
+        for (k = 0; k < 9; k++) hb[i].push(S.inv[k] ? JSON.parse(JSON.stringify(S.inv[k])) : null);
+        try { localStorage.setItem(HB_KEY, JSON.stringify(hb)); } catch (e) {}
+        actionBar('Item hotbar saved (restore with X+' + (i + 1) + ')');
     }
     function creativeRows() { return Math.max(CROWS, Math.ceil(((RT.cList || []).length) / CCOLS)); }
     function creativeMaxScroll() { return Math.max(0, creativeRows() - CROWS); }
@@ -5398,14 +5547,19 @@
         if (!RT.panel || RT.panel.kind !== 'creative') return;
         var was = RT.cScroll;
         RT.cScroll = Math.max(0, Math.min(creativeMaxScroll(), RT.cScroll + d));
+        RT.cScrollF = null;   // a wheel notch lands the scroller on the row
         if (RT.cScroll !== was) paintPanel();
     }
+    /* CreativeModeInventoryScreen.mouseDragged: the scroller follows the pointer,
+       t = (y - top - 18 - 7.5) / (112 - 15), and the rows follow t rounded */
     function creativeBarTo(bar, clientY) {
         var max = creativeMaxScroll();
-        if (max <= 0) return;
-        var r = bar.getBoundingClientRect();
-        var v = Math.max(0, Math.min(max, Math.round((clientY - r.top) / Math.max(1, r.height) * max)));
-        if (v !== RT.cScroll) { RT.cScroll = v; paintPanel(); }
+        if (max <= 0 || !RT.panel || !RT.gs) return;
+        var r = RT.el.getBoundingClientRect(), my = (clientY - r.top) / RT.gs - RT.panel.ly;
+        var t = Math.max(0, Math.min(1, (my - 18 - 7.5) / 97));
+        RT.cScrollF = t;
+        RT.cScroll = Math.max(0, Math.min(max, Math.round(t * max)));
+        paintPanel();
     }
     function creativeTab(i) {
         i = Math.max(0, Math.min(CTABS.length - 1, i | 0));
@@ -5413,6 +5567,7 @@
         RT.cTab = i;
         RT.cScroll = 0;
         if (CTABS[i].id === 'search') RT.cSearch = '';   // the real one opens the box empty
+        RT.cScrollF = null;
         creativeRefresh();
         creativeRender();
         snd('click');
@@ -5422,10 +5577,12 @@
         if (!wrap) return;
         RT.qc = null;   // the slots a sweep was over are about to be replaced
         RT.hover = null;
-        wrap.innerHTML = '<div class="mc-panel mc-cpanel">' + panelHTML('creative') + '</div><div class="mc-cur"></div><div class="mc-ptip" style="display:none"></div>';
+        wrap.innerHTML = panelMarkup('creative');
+        RT.hovEl = null;
+        panelLayout();
         wirePanelFields(wrap);
         avatarAttach();
-        paintPanel();   // re-places the carried ghost from RT.curXY
+        paintPanel();   // re-places the carried ghost from RT.curXY, and re-finds what is under the pointer
         /* The innerHTML swap above destroys whatever had focus. Switching AWAY from
            the search tab therefore dropped focus onto <body>, and since the key
            handlers live on .mc the whole game went keyboard-dead — E, Esc and WASD
@@ -5441,16 +5598,20 @@
        left button and shrinks by one on the right — even over a gap in the last
        row. Middle-click is the clone: a full stack, only onto an empty cursor. */
     function creativeClick(idx, right, shift) {
-        var id = (RT.cList || [])[RT.cScroll * CCOLS + idx], cur = RT.cur;
-        var fresh = id ? creativeStack(id) : null;
-        var same = !!(cur && fresh && cur.id === id && !cur.ench && !cur.name && (cur.dur == null || cur.dur === fresh.dur));   // a damaged tool is a different item
+        var e = (RT.cList || [])[RT.cScroll * CCOLS + idx], cur = RT.cur;
+        var fresh = creativeStack(e);
+        if (fresh && fresh.lock) return;   // the Saved Hotbars placeholder is instructions, not an item
+        var saved = !!e && typeof e === 'object';
+        // a damaged tool, an enchanted or a renamed one is a different item
+        var same = !!(cur && fresh && cur.id === fresh.id && JSON.stringify(cur.ench || null) === JSON.stringify(fresh.ench || null) &&
+            (cur.name || '') === (fresh.name || '') && (cur.dur == null || cur.dur === fresh.dur));
         if (same) {
             if (!right) { if (shift) cur.c = stkMax(cur.id); else if (cur.c < stkMax(cur.id)) cur.c++; }
             else { cur.c--; if (!cur.c) RT.cur = null; }
-        } else if (!cur && id) {
-            var st = creativeStack(id);
-            if (!shift) st.c = 1;
-            RT.cur = st;
+        } else if (!cur && fresh) {
+            // one of a catalogue entry, or all of a saved stack; shift makes either a full stack
+            if (shift) fresh.c = stkMax(fresh.id); else if (!saved) fresh.c = 1;
+            RT.cur = fresh;
         } else if (cur) {
             if (!right) RT.cur = null;
             else { cur.c--; if (!cur.c) RT.cur = null; }
@@ -5794,18 +5955,21 @@
         c.setTransform(1, 0, 0, 1, 0, 0);
         c.clearRect(0, 0, W, H);
         c.imageSmoothingEnabled = false;
-        // the real box is 49×70 GUI px with the feet at (25, 67) and the pointer
-        // measured from (25, 17) — the height of the head
-        var kg = r.height / 70;                                   // CSS px per GUI px
-        var refX = r.left + kg * 25, refY = r.top + kg * 17;
+        /* renderEntityInInventoryFollowsMouse since 1.20.2: the pointer is measured
+           from the middle of the box, and the figure stands with half its height
+           plus a sixteenth of a block above that middle, at the screen's scale (30
+           in the survival screen's 49x70 box, 20 in creative's 32x43) */
+        var bw = +cv.getAttribute('data-w') || 49, bh = +cv.getAttribute('data-h') || 70, sc = +cv.getAttribute('data-s') || 30;
+        var kg = r.height / bh;                                   // CSS px per GUI px
+        var refX = r.left + kg * bw / 2, refY = r.top + kg * bh / 2;
         var mx = av.mx != null ? av.mx : refX, my = av.my != null ? av.my : refY;
         var f = Math.atan((refX - mx) / (kg * 40)), g = Math.atan((my - refY) / (kg * 40));
         var bodyYaw = f * 20 * D2R, tilt = g * 20 * D2R;
         var pose = AV_POSE, age = performance.now() / 50;
         pose.headYaw = f * 20 * D2R; pose.headPitch = g * 20 * D2R;
         pose.swZ = Math.cos(age * 0.09) * 0.05 + 0.05; pose.swX = Math.sin(age * 0.067) * 0.05; pose.item = !!av.item;
-        var s = kg * 1.875 * (W / r.width);                        // canvas px per skin px
-        var feetX = W * (25 / 49), feetY = H * (67 / 70);
+        var s = kg * (sc / 16) * (W / r.width);                    // canvas px per skin px
+        var feetX = W / 2, feetY = H / 2 + s * 15.4;              // (0.9 + 0.0625) blocks below the middle
         rotMat(AV_M_A, 0, bodyYaw, 0); rotMat(AV_M_B, tilt, 0, 0); mul3(AV_M_ROOT, AV_M_B, AV_M_A);
         var root = AV_M_ROOT, quads = [], i, armV = null;
         for (i = 0; i < av.parts.length; i++) {
@@ -5830,8 +5994,298 @@
         c.setTransform(1, 0, 0, 1, 0, 0);
     }
 
-    function sprPanels(mk) {}
-    function panelLayout() {}
+    /* ── the container sprites ─────────────────────────────────
+       Every screen's background is painted the way the game's container
+       textures are drawn: the shared frame (a black outline with its corners
+       cut 3 and 6 pixels, a 2-pixel white bevel top-left and a 2-pixel #555555
+       one bottom-right), #C6C6C6 fill, and every slot a 1-pixel inset bevel
+       round a #8B8B8B well at an 18-pixel pitch, so neighbouring frames touch.
+       Geometry and colours follow the game's screens pixel for pixel; the
+       pictures (the flame, the hammer, the orbs, the silhouettes) are ours. */
+    function sprPanels(mk) {
+        var K = '#000000', L = '#ffffff', D = '#555555', F = '#c6c6c6', W8 = '#8b8b8b', SD = '#373737';
+        function px(cx, x, y, c) { cx.fillStyle = c; cx.fillRect(x, y, 1, 1); }
+        function frame(cx, W, H, fill) {
+            sprRect(cx, 1, 1, W - 2, H - 2, fill || F);
+            sprRect(cx, 2, 1, W - 5, 1, L); sprRect(cx, 1, 2, W - 4, 1, L); sprRect(cx, 1, 3, 2, H - 6, L); px(cx, 3, 3, L);
+            sprRect(cx, W - 3, 3, 2, H - 5, D); sprRect(cx, 3, H - 3, W - 6, 1, D); sprRect(cx, 3, H - 2, W - 5, 1, D); px(cx, W - 4, H - 4, D);
+            sprRect(cx, 2, 0, W - 5, 1, K); sprRect(cx, 3, H - 1, W - 5, 1, K);
+            sprRect(cx, 0, 2, 1, H - 5, K); sprRect(cx, W - 1, 3, 1, H - 5, K);
+            px(cx, 1, 1, K); px(cx, W - 3, 1, K); px(cx, W - 2, 2, K); px(cx, 1, H - 3, K); px(cx, 2, H - 2, K); px(cx, W - 2, H - 2, K);
+            [[W - 2, 1], [1, H - 2]].forEach(function (p) { cx.clearRect(p[0], p[1], 1, 1); });
+        }
+        // a sunken box: dark top and left, white bottom and right, the two odd corners #8B8B8B
+        function slot(cx, x, y, w, h, inner, dark) {
+            w = w || 18; h = h || 18;
+            sprRect(cx, x, y, w, h, inner || W8);
+            sprRect(cx, x, y, w - 1, 1, dark || SD); sprRect(cx, x, y, 1, h - 1, dark || SD);
+            sprRect(cx, x + 1, y + h - 1, w - 1, 1, L); sprRect(cx, x + w - 1, y + 1, 1, h - 1, L);
+            px(cx, x + w - 1, y, W8); px(cx, x, y + h - 1, W8);
+        }
+        function slots(cx, ix, iy, cols, rows) { for (var r = 0; r < rows; r++) for (var c = 0; c < cols; c++) slot(cx, ix - 1 + 18 * c, iy - 1 + 18 * r); }
+        function arrow(cx, x, y, shaft, head, col) {
+            sprRect(cx, x, y + (head >> 1) - 1, shaft, 3, col);
+            for (var i = 0; i <= head >> 1; i++) sprRect(cx, x + shaft + i, y + i, 1, head - 2 * i, col);
+        }
+        function inv(cx, ix, iy, hy) { slots(cx, ix, iy, 9, 3); slots(cx, ix, hy, 9, 1); }
+        // the flame's outline, for the unlit furnace
+        var FLAME = ['......r.......', '.....ro.......', '.r...oy.....r.', '.ro..oy....ro.', '.oy.ryyo...oy.', '.oyyowyor.ryo.', '.oywwwyyoooyo.',
+                     'ryywwwwyyyyyor', 'oywwwwwwwwyyyo', 'oywwwwwwwwwyyo', 'oyywwwwwwwwyyo', '.oyywwwwwwyyo.', '..ooyyyyyyoo..', '...oooooooo...'];
+        function flameEdge(cx, ox, oy, col) {
+            for (var y = 0; y < 14; y++) for (var x = 0; x < 14; x++) {
+                if (FLAME[y].charAt(x) === '.') continue;
+                var edge = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(function (d) { var yy = y + d[1], xx = x + d[0]; return yy < 0 || yy > 13 || xx < 0 || xx > 13 || FLAME[yy].charAt(xx) === '.'; });
+                if (edge) px(cx, ox + x, oy + y, col);
+            }
+        }
+        // empty-slot silhouettes: a 1-pixel #555555 outline, nothing inside
+        var EMPTY = {
+            helmet: ['', '', '', '....oooooooo....', '...o........o...', '...o........o...', '...o..oooo..o...', '...o..o..o..o...', '...o..o..o..o...', '...oooo..oooo...'],
+            chest: ['', '', '.ooo........ooo.', '.o..oo....oo..o.', '.o...oooooo...o.', '.o............o.', '.oo..........oo.', '..o..........o..', '..o..........o..',
+                    '..o..........o..', '..o..........o..', '..o..........o..', '..o..........o..', '..o..........o..', '..oooooooooooo..'],
+            legs: ['', '', '...oooooooooo...', '...o........o...', '...o........o...', '...o...oo...o...', '...o..o..o..o...', '...o..o..o..o...', '...o..o..o..o...',
+                   '...o..o..o..o...', '...o..o..o..o...', '...o..o..o..o...', '...oooo..oooo...'],
+            boots: ['', '', '', '', '', '', '', '..oooo....oooo..', '..o..o....o..o..', '..o..o....o..o..', '..o..o....o..o..', '.o...o....o...o.', 'o....o....o....o', 'oooooo....oooooo'],
+            shield: ['', '.oooooooooooooo.', '.o............o.', '.o............o.', '.o............o.', '.o............o.', '.o............o.', '.o............o.',
+                     '..o..........o..', '..o..........o..', '...o........o...', '....o......o....', '.....o....o.....', '......oooo......'],
+            lapis: ['', '', '......oooo......', '....oo....oo....', '...o........o...', '..o..........o..', '..o..........o..', '.o............o.', '..o..........o..',
+                    '..o..........o..', '...o........o...', '....oo....oo....', '......oooo......']
+        };
+        for (var ek in EMPTY) (function (rows) { mk('e_' + ek, 16, 16, function (cx) { sprMap(cx, rows, { o: D }); }); })(EMPTY[ek]);
+
+        // the survival inventory, 176x166
+        mk('p_inv', 176, 166, function (cx) {
+            frame(cx, 176, 166);
+            for (var i = 0; i < 4; i++) slot(cx, 7, 7 + 18 * i);
+            slot(cx, 25, 7, 51, 72, K);                // the player's box: a black well in the same bevel
+            slot(cx, 76, 61);                          // off hand
+            slots(cx, 98, 18, 2, 2);
+            arrow(cx, 135, 29, 9, 13, W8);
+            slot(cx, 153, 27);
+            inv(cx, 8, 84, 142);
+        });
+        mk('p_table', 176, 166, function (cx) {
+            frame(cx, 176, 166);
+            slots(cx, 30, 17, 3, 3);
+            arrow(cx, 90, 35, 14, 15, W8);
+            slot(cx, 119, 30, 26, 26);
+            inv(cx, 8, 84, 142);
+        });
+        mk('p_furn', 176, 166, function (cx) {
+            frame(cx, 176, 166);
+            slot(cx, 55, 16); slot(cx, 55, 52);
+            flameEdge(cx, 56, 36, W8);
+            arrow(cx, 80, 35, 14, 15, W8);
+            slot(cx, 111, 30, 26, 26);
+            inv(cx, 8, 84, 142);
+        });
+        mk('p_chest', 176, 167, function (cx) {   // 168 tall as a screen; the texture stops a row short
+            frame(cx, 176, 167);
+            slots(cx, 8, 18, 9, 3);
+            inv(cx, 8, 85, 143);
+        });
+        mk('p_ench', 176, 166, function (cx) {
+            frame(cx, 176, 166);
+            slot(cx, 14, 46); slot(cx, 34, 46);
+            // the recess the three options sit in: dark top, white right and bottom, and no left edge at all
+            sprRect(cx, 59, 13, 109, 1, SD); sprRect(cx, 168, 14, 1, 58, L); sprRect(cx, 60, 71, 109, 1, L);
+            for (var o = 0; o < 3; o++) { sprRect(cx, 59, 14 + 19 * o, 1, 18, '#6b614c'); sprRect(cx, 59, 32 + 19 * o, 1, 1, '#544c3b'); }
+            inv(cx, 8, 84, 142);
+        });
+        mk('p_anvil', 176, 166, function (cx) {
+            frame(cx, 176, 166);
+            // the hammer, drawn at 2x like the game's: steel head top right, the handle running off bottom left
+            var HAM = ['..........HH...', '.........HhhH..', '........HhhhhH.', '.......HhhhhhhH', '......Hsshhhh.H', '.....HHsssshH..', '....HwwHsssH...',
+                       '...HwwH.HsH....', '..HwwH...H.....', '.HwwH..........', 'HwwH...........', 'HwH............', 'HH.............'];
+            var HP = { H: '#181818', h: '#ffffff', s: '#c1c1c1', w: '#896727' };
+            for (var y = 0; y < HAM.length; y++) for (var x = 0; x < 15; x++) { var c = HP[HAM[y].charAt(x)]; if (c) sprRect(cx, 17 + x * 2, 7 + (y + 1) * 2, 2, 2, c); }
+            slot(cx, 26, 46); slot(cx, 75, 46);
+            sprRect(cx, 58, 49, 3, 13, W8); sprRect(cx, 53, 54, 13, 3, W8);   // the plus
+            arrow(cx, 102, 48, 14, 15, W8);
+            slot(cx, 133, 46);
+            inv(cx, 8, 84, 142);
+        });
+        function crPanel(extra) {
+            return function (cx) {
+                frame(cx, 195, 136);
+                slots(cx, 9, 18, 9, 5); slots(cx, 9, 112, 9, 1);
+                slot(cx, 174, 17, 14, 112);            // the scroll track
+                if (extra) extra(cx);
+            };
+        }
+        mk('p_cr_items', 195, 136, crPanel());
+        mk('p_cr_search', 195, 136, crPanel(function (cx) { slot(cx, 80, 4, 90, 12, W8, D); }));
+        mk('p_cr_inv', 195, 136, function (cx) {
+            frame(cx, 195, 136);
+            slot(cx, 53, 5); slot(cx, 53, 32); slot(cx, 107, 5); slot(cx, 107, 32);
+            slot(cx, 34, 19);
+            slot(cx, 72, 5, 34, 45, K);
+            slots(cx, 9, 54, 9, 3); slots(cx, 9, 112, 9, 1);
+            slot(cx, 172, 111, 18, 18, '#ab7f7f');     // Destroy Item: the rose well with a dark X
+            for (var d = 0; d < 11; d++) { sprRect(cx, 175 + d, 114 + d, 2, 1, '#1f1f1f'); sprRect(cx, 185 - d, 114 + d, 2, 1, '#1f1f1f'); }
+        });
+
+        // the furnace's lit flame, 14x14 on the panel's grey, and its progress arrow, 24x16
+        mk('flame', 14, 14, function (cx) {
+            sprRect(cx, 0, 0, 14, 14, F);
+            sprMap(cx, FLAME, { r: '#d84c45', o: '#ffb600', y: '#ffff1f', w: '#ffffff' });
+            for (var y = 0; y < 14; y++) for (var x = 13; x >= 0; x--) if (FLAME[y].charAt(x) !== '.') { px(cx, x, y, W8); break; }   // the shade down each right side
+        });
+        // drawn over the panel's grey arrow at (79, 34), so its own arrow sits one row and column in
+        mk('burn', 24, 16, function (cx) {
+            sprRect(cx, 0, 0, 24, 16, F);
+            arrow(cx, 1, 1, 14, 15, '#ffffff');
+            sprRect(cx, 1, 9, 14, 1, '#d8d8d8');
+            for (var i = 0; i < 8; i++) px(cx, 15 + i, 15 - i, '#d8d8d8');
+        });
+        /* the hotbar's off-hand cell: one 22-pixel cell of the bar's own frame, a row
+           down in a 29x24 sprite drawn at (W/2 - 120, H - 23) */
+        mk('hotbar_off', 29, 24, function (cx) {
+            var hb = GSPR.hotbar && GSPR.hotbar.cv;
+            if (hb) { cx.drawImage(hb, 0, 0, 21, 22, 0, 1, 21, 22); cx.drawImage(hb, 181, 0, 1, 22, 21, 1, 1, 22); }
+        });
+        // the enchanting table's three option plates
+        function plate(face, lite, dark, dis) {
+            return function (cx) {
+                sprRect(cx, 0, 0, 108, 19, face);
+                if (dis) { sprRect(cx, 0, 0, 107, 1, lite); sprRect(cx, 0, 0, 1, 18, lite); sprRect(cx, 0, 18, 108, 1, dark); sprRect(cx, 107, 0, 1, 19, dark); }
+                else { sprRect(cx, 0, 0, 107, 1, lite); sprRect(cx, 0, 0, 1, 18, lite); sprRect(cx, 1, 18, 107, 1, dark); sprRect(cx, 107, 1, 1, 18, dark); }
+            };
+        }
+        mk('ench_n', 108, 19, plate('#a09172', '#e0ca9f', '#544c3b'));
+        mk('ench_h', 108, 19, plate('#b688ae', '#fab9ef', '#654c61'));
+        mk('ench_d', 108, 19, plate('#51493a', '#211d17', '#332e24', true));
+        // the lapis cost orbs, 1 2 3, bright and dull
+        function orb(n, dull) {
+            return function (cx) {
+                var rim = dull ? '#8a8a6a' : '#d8e45a', hi = dull ? '#b4b49a' : '#f5ff8f', body = dull ? '#5e6a4a' : '#6fb02a', swirl = dull ? '#7a8a60' : '#a4e04a';
+                var ol = dull ? '#47352f' : '#2d2102';
+                for (var y = 0; y < 16; y++) for (var x = 0; x < 16; x++) {
+                    var dx = x - 7.5, dy = y - 7, r = Math.sqrt(dx * dx + dy * dy);
+                    if (r > 6.4) continue;
+                    px(cx, x, y, r > 5.5 ? ol : r > 4.6 ? (dx + dy < 0 ? hi : rim) : (dx < -1 && (x + y) % 3 === 0 ? swirl : body));
+                }
+                var g = mfBuild().g[String(n)], dig = dull ? '#8c605d' : '#c8ff8f';
+                for (var gy = 0; gy < 7; gy++) for (var gx = 0; gx < g.w; gx++) if ((g.rows[gy] || '').charAt(gx) === '#') { px(cx, 8 + gx - 1, 4 + gy, ol); }
+                for (gy = 0; gy < 7; gy++) for (gx = 0; gx < g.w; gx++) if ((g.rows[gy] || '').charAt(gx) === '#') px(cx, 7 + gx - 1, 3 + gy, dig);
+            };
+        }
+        for (var ln = 1; ln <= 3; ln++) { mk('lvl_' + ln, 16, 16, orb(ln, false)); mk('lvl_' + ln + 'd', 16, 16, orb(ln, true)); }
+        // the anvil's name plate: a slot-style inset round a raised tan field
+        function field(face, lite, dark) {
+            return function (cx) {
+                slot(cx, 0, 0, 110, 16, face);
+                px(cx, 109, 0, F); px(cx, 0, 15, F);
+                sprRect(cx, 1, 1, 107, 1, lite); sprRect(cx, 1, 1, 1, 13, lite);
+                sprRect(cx, 2, 14, 107, 1, dark); sprRect(cx, 108, 2, 1, 13, dark);
+            };
+        }
+        mk('anvil_tf', 110, 16, field('#a09172', '#e0ca9f', '#544c3b'));
+        mk('anvil_tfd', 110, 16, field('#4e4737', '#6d634d', '#29251c'));
+        mk('anvil_err', 28, 21, function (cx) {
+            sprRect(cx, 0, 0, 28, 21, F);
+            arrow(cx, 3, 3, 14, 15, W8);
+            for (var i = 0; i < 15; i++) {
+                sprRect(cx, 6 + i, 3 + i, 1, 1, '#962300'); sprRect(cx, 7 + i, 3 + i, 1, 1, '#ba370f'); sprRect(cx, 8 + i, 3 + i, 1, 1, '#962300');
+                sprRect(cx, 20 - i, 3 + i, 1, 1, '#962300'); sprRect(cx, 19 - i, 3 + i, 1, 1, '#ba370f'); sprRect(cx, 18 - i, 3 + i, 1, 1, '#962300');
+            }
+        });
+        // creative tabs, 26x32: the unselected ones stand 26 above (or 24 below) the panel in #8B8B8B;
+        // the selected one is panel-coloured and runs four rows into the panel to merge with it
+        function tabBody(cx, y0, rows, fill) {
+            sprRect(cx, 2, y0, 21, 1, K);
+            px(cx, 1, y0 + 1, K); sprRect(cx, 2, y0 + 1, 21, 1, L); px(cx, 23, y0 + 1, K);
+            px(cx, 0, y0 + 2, K); sprRect(cx, 1, y0 + 2, 22, 1, L); px(cx, 23, y0 + 2, fill); px(cx, 24, y0 + 2, K);
+            for (var y = y0 + 3; y < y0 + rows; y++) {
+                px(cx, 0, y, K); sprRect(cx, 1, y, 2, 1, L); sprRect(cx, 3, y, 20, 1, fill); sprRect(cx, 23, y, 2, 1, D); px(cx, 25, y, K);
+            }
+            px(cx, 3, y0 + 3, L);
+        }
+        mk('tab_t_un', 26, 32, function (cx) { tabBody(cx, 2, 30, W8); });
+        function tabTopSel(variant) {
+            return function (cx) {
+                tabBody(cx, 0, 29, F);
+                var r29, r30, r31;
+                if (variant === 1) { r29 = 'KLLFD'; }
+                // rows 29-31, where the tab meets the panel: left edge, right edge
+                for (var y = 29; y < 32; y++) {
+                    sprRect(cx, 3, y, 20, 1, F);
+                    if (variant === 1) { px(cx, 0, y, K); sprRect(cx, 1, y, 2, 1, L); }
+                    else sprRect(cx, 0, y, 3, 1, y < 31 ? L : F);
+                    if (variant === 7) { sprRect(cx, 23, y, 2, 1, D); px(cx, 25, y, K); }
+                    else if (y === 29) { sprRect(cx, 23, y, 2, 1, D); px(cx, 25, y, L); }
+                    else if (y === 30) { px(cx, 23, y, D); sprRect(cx, 24, y, 2, 1, L); }
+                    else sprRect(cx, 23, y, 3, 1, F);
+                }
+                if (variant === 1) { px(cx, 0, 31, K); sprRect(cx, 1, 31, 2, 1, L); }
+            };
+        }
+        mk('tab_t_s1', 26, 32, tabTopSel(1)); mk('tab_t_sm', 26, 32, tabTopSel(2)); mk('tab_t_s7', 26, 32, tabTopSel(7));
+        function tabBottom(cx, rows, fill, y0) {   // rows of body starting at y0, then the rounded foot
+            for (var y = y0; y < y0 + rows; y++) {
+                px(cx, 0, y, K); sprRect(cx, 1, y, 2, 1, L); sprRect(cx, 3, y, 20, 1, fill); sprRect(cx, 23, y, 2, 1, D); px(cx, 25, y, K);
+            }
+            var f = y0 + rows;
+            px(cx, 1, f, K); px(cx, 2, f, fill); sprRect(cx, 3, f, 22, 1, D); px(cx, 25, f, K);
+            px(cx, 2, f + 1, K); sprRect(cx, 3, f + 1, 21, 1, D); px(cx, 24, f + 1, K);
+            sprRect(cx, 3, f + 2, 21, 1, K);
+        }
+        mk('tab_b_un', 26, 32, function (cx) { tabBottom(cx, 25, W8, 0); });
+        function tabBotSel(variant) {
+            return function (cx) {
+                tabBottom(cx, 29, F, 0);
+                if (variant === 1) { sprRect(cx, 3, 0, 23, 1, F); sprRect(cx, 23, 1, 3, 2, D); }
+                else if (variant === 7) { sprRect(cx, 0, 0, 23, 1, F); sprRect(cx, 0, 1, 2, 1, D); px(cx, 2, 1, L); px(cx, 0, 2, D); }
+                else { sprRect(cx, 0, 0, 26, 1, F); sprRect(cx, 0, 1, 2, 1, D); px(cx, 2, 1, L); px(cx, 0, 2, D); sprRect(cx, 23, 1, 3, 2, D); }
+            };
+        }
+        mk('tab_b_s1', 26, 32, tabBotSel(1)); mk('tab_b_sm', 26, 32, tabBotSel(2)); mk('tab_b_s7', 26, 32, tabBotSel(7));
+        function scroller(fill, grip) {
+            return function (cx) {
+                sprRect(cx, 0, 0, 12, 15, fill);
+                sprRect(cx, 0, 0, 11, 1, L); sprRect(cx, 0, 1, 1, 13, L); px(cx, 11, 0, W8);
+                sprRect(cx, 11, 1, 1, 14, D); sprRect(cx, 1, 14, 11, 1, D); px(cx, 0, 14, W8);
+                for (var g = 2; g <= 12; g += 2) sprRect(cx, 2, g, 8, 1, grip);
+            };
+        }
+        mk('scroller', 12, 15, scroller(F, W8));
+        mk('scroller_d', 12, 15, scroller(W8, D));
+        // the recipe-book button: a small raised panel with a green book on it, blue-grey when hovered
+        function rbook(edge, face, shade) {
+            return function (cx) {
+                sprRect(cx, 1, 1, 18, 16, face);
+                sprRect(cx, 2, 0, 16, 1, edge); sprRect(cx, 2, 17, 16, 1, edge); sprRect(cx, 0, 2, 1, 14, edge); sprRect(cx, 19, 2, 1, 14, edge);
+                [[1, 1], [18, 1], [1, 16], [18, 16]].forEach(function (p) { px(cx, p[0], p[1], edge); });
+                sprRect(cx, 2, 1, 16, 1, L); sprRect(cx, 1, 2, 1, 14, L);
+                sprRect(cx, 18, 2, 1, 14, shade); sprRect(cx, 2, 16, 16, 1, shade);
+                var BOOK = ['......gggg..', '....ggGGGGg.', '..ggGGGGGGGg', 'ggGGGGGGGGgp', 'gGGGGGGGGgpp', 'gGGGGGGGgppd', 'gGGGGGGgppd.', '.gGGGGgppd..', '..gGGgppd...', '...ggppd....', '....dd......'];
+                sprMap(cx, BOOK, { g: '#1b361b', G: '#478e47', p: '#d6d6d6', d: '#999999' }, 4, 3);
+            };
+        }
+        mk('rbook', 20, 18, rbook(K, F, D));
+        mk('rbook_h', 20, 18, rbook('#00073e', '#8892c9', '#343e75'));
+    }
+    /* Where a screen goes: centred on the scaled screen with the game's integer
+       arithmetic, leftPos = (W - imageWidth) div 2, topPos = (H - imageHeight) div 2.
+       Positions inside it are the game's own slot and label coordinates. */
+    var PANEL_DIM = { inv: [176, 166], table: [176, 166], furnace: [176, 166], chest: [176, 168], ench: [176, 166], anvil: [176, 166], creative: [195, 136] };
+    function panelLayout() {
+        if (!RT || !RT.panel || !RT.gs) return;
+        var wrap = RT.el.querySelector('.mc-panelwrap'), p = wrap && wrap.querySelector('.mc-panel');
+        if (!p) return;
+        var d = PANEL_DIM[RT.panel.kind] || [176, 166];
+        RT.panel.lx = (RT.gw - d[0]) >> 1; RT.panel.ly = (RT.gh - d[1]) >> 1;
+        hudPlace(p, RT.panel.lx, RT.panel.ly);
+        // a new GUI scale means new icons (they are baked per scale) and a new box for the figure
+        if (RT.panel.gs !== RT.gs) { RT.panel.gs = RT.gs; if (RT.av) avatarAttach(); paintPanel(); }
+        panelCurTo();
+    }
+    /* the markup a screen opens with: the panel at its real size, the carried stack, the tooltip */
+    function panelMarkup(kind) {
+        var d = PANEL_DIM[kind] || [176, 166];
+        return '<div class="mc-panel' + (kind === 'creative' ? ' mc-cpanel' : '') + '" data-k="' + kind + '" style="width:calc(var(--px) * ' + d[0] + ');height:calc(var(--px) * ' + d[1] + ')">' +
+            panelHTML(kind) + '</div><div class="mc-cur"></div><div class="mc-ptip"></div>';
+    }
 
     /* ── panels ─────────────────────────────────────────────── */
     function slotGroup(g) {
@@ -5844,10 +6298,11 @@
         // award lives here — it used to hang off right-clicking armour in the world
         // only, and stayed silent for shift-click, drag and right-click-place
         if (g === 'armor') return { get: function (i) { return S.armor[i]; }, set: function (i, v) { S.armor[i] = v; if (v) unlock('armor'); } };
+        if (g === 'off') return { get: function () { return S.off || null; }, set: function (i, v) { S.off = v || null; } };
         if (g === 'craft') return { get: function (i) { return RT.craft[i]; }, set: function (i, v) { RT.craft[i] = v; } };
         if (g === 'ein') return { get: function () { return RT.enchItem; }, set: function (i, v) { RT.enchItem = v; genEnchOptions(); } };
         if (g === 'elapis') return { get: function () { return RT.enchLapis; }, set: function (i, v) { RT.enchLapis = v; } };
-        if (g === 'anvA') return { get: function () { return RT.anvilA; }, set: function (i, v) { RT.anvilA = v; } };
+        if (g === 'anvA') return { get: function () { return RT.anvilA; }, set: function (i, v) { RT.anvilA = v; anvilNameSync(); } };
         if (g === 'anvB') return { get: function () { return RT.anvilB; }, set: function (i, v) { RT.anvilB = v; } };
         if (g === 'chest') { t = S.tents[RT.panel.key]; return { get: function (i) { return t.inv[i]; }, set: function (i, v) { t.inv[i] = v; } }; }
         t = S.tents[RT.panel.key];
@@ -5861,43 +6316,86 @@
         for (var i = from; i < from + n; i++) out += '<div class="mc-slot ' + (cls || '') + '" data-g="' + g + '" data-i="' + i + '"></div>';
         return out;
     }
+    function pAt(x, y) { return 'left:calc(var(--px) * ' + x + ');top:calc(var(--px) * ' + y + ')'; }
+    /* a slot element is the game's 18x18 hover box: the frame's own rectangle, one
+       pixel up and left of where the item is drawn */
+    function pSlot(g, i, ix, iy, cls, ei) {
+        return '<div class="mc-slot' + (cls ? ' ' + cls : '') + '" data-g="' + g + '" data-i="' + i + '"' + (ei ? ' data-ei="' + ei + '"' : '') + ' style="' + pAt(ix - 1, iy - 1) + '"></div>';
+    }
+    function pSlots(g, from, ix, iy, cols, rows) {
+        var out = '';
+        for (var r = 0; r < rows; r++) for (var c = 0; c < cols; c++) out += pSlot(g, from + r * cols + c, ix + 18 * c, iy + 18 * r);
+        return out;
+    }
+    function pLabel(text, x, y, cls) { return '<span class="mc-plab ' + (cls || 'mc-plabel') + '" style="' + pAt(x, y) + '">' + mtHTML(text, '#404040', 'ns') + '</span>'; }
+    function pInv(iy, hy) { return pSlots('inv', 9, 8, iy, 9, 3) + pSlots('inv', 0, 8, hy, 9, 1); }
+    var ARM_EI = ['e_helmet', 'e_chest', 'e_legs', 'e_boots'];
+    /* the figure's box: InventoryScreen.renderEntityInInventoryFollowsMouse's rectangle and scale */
+    function pAvatar(x, y, w, h, scale) {
+        return '<div class="mc-avbox" style="' + pAt(x, y) + ';width:calc(var(--px) * ' + w + ');height:calc(var(--px) * ' + h + ')"><canvas class="mc-av" data-s="' + scale + '"></canvas></div>';
+    }
     function panelHTML(kind) {
-        var head = '<div class="mc-phead">', inv =
-            '<div class="mc-plabel">Inventory</div><div class="mc-pgrid g9">' + slotsHTML('inv', 9, 27) + '</div>' +
-            '<div class="mc-pgrid g9 hb">' + slotsHTML('inv', 0, 9) + '</div>';
-        var armorCol = '<div class="mc-armcol">' + slotsHTML('armor', 0, 4, 'armslot') + '</div>';
-        /* the survival screen's top half in the real order: the armour slots,
-           you in your box, then the 2×2 grid under its own "Crafting" label */
-        var invTop = '<div class="mc-craftrow inv">' + armorCol + '<div class="mc-avbox"><canvas class="mc-av"></canvas></div>' +
-            '<div class="mc-craftcol">' + head + 'Crafting</div><div class="mc-craft2"><div class="mc-pgrid g2">' + slotsHTML('craft', 0, 4) + '</div>' +
-            '<span class="mc-arrow">➜</span><div class="mc-slot big" data-g="cout" data-i="0"></div></div></div></div>';
-        var invTopNoCraft = '<div class="mc-craftrow inv">' + armorCol + '<div class="mc-avbox"><canvas class="mc-av"></canvas></div></div>';
-        if (kind === 'inv') return invTop + inv;
-        if (kind === 'table') return head + 'Crafting</div><div class="mc-craftrow"><div class="mc-pgrid g3">' + slotsHTML('craft', 0, 9) + '</div><span class="mc-arrow">➜</span><div class="mc-slot big" data-g="cout" data-i="0"></div></div>' + inv;
-        if (kind === 'furnace') return head + 'Furnace</div><div class="mc-craftrow furn"><div class="mc-fcol"><div class="mc-slot" data-g="fin" data-i="0"></div><div class="mc-flame"><i></i></div><div class="mc-slot" data-g="ffuel" data-i="0"></div></div><div class="mc-farrow"><i></i></div><div class="mc-slot big" data-g="fout" data-i="0"></div></div>' + inv;
-        if (kind === 'ench') return head + 'Enchant</div><div class="mc-enchrow"><div class="mc-fcol"><div class="mc-slot" data-g="ein" data-i="0"></div><div class="mc-slot small" data-g="elapis" data-i="0"></div></div><div class="mc-enchopts">' +
-            '<button class="mc-enchopt" data-o="0"></button><button class="mc-enchopt" data-o="1"></button><button class="mc-enchopt" data-o="2"></button></div></div>' + inv;
-        if (kind === 'anvil') return head + 'Repair &amp; Name</div><div class="mc-craftrow"><div class="mc-slot" data-g="anvA" data-i="0"></div><div class="mc-slot" data-g="anvB" data-i="0"></div><span class="mc-arrow">➜</span><div class="mc-slot big anvOut" data-g="anvOut" data-i="0"></div></div>' +
-            '<div class="mc-anvname"><input class="mc-anvin" maxlength="24" placeholder="Item name"><span class="mc-anvcost"></span></div>' + inv;
-        if (kind === 'creative') {
-            var tab = CTABS[RT.cTab] || CTABS[0], ti, tabs = '';
-            for (ti = 0; ti < CTABS.length; ti++)
-                tabs += '<button class="mc-ctab' + (ti === RT.cTab ? ' on' : '') + '" data-ct="' + ti + '"' +
-                        ' title="' + escHtml(CTABS[ti].t) + '" style="background-image:url(' + iconURL(CTABS[ti].ic) + ')"></button>';
-            tabs = '<div class="mc-ctabs">' + tabs + '</div>';
-            // the survival tab is the ordinary inventory plus a bin, which the real
-            // screen keeps at the bottom right beside the hotbar
-            if (tab.id === 'inv') return tabs + invTopNoCraft +
-                '<div class="mc-plabel">Inventory</div><div class="mc-pgrid g9">' + slotsHTML('inv', 9, 27) + '</div>' +
-                '<div class="mc-hbrow"><div class="mc-pgrid g9 hb">' + slotsHTML('inv', 0, 9) + '</div>' +
-                '<div class="mc-slot big ctrash" data-g="ctrash" data-i="0" title="Destroy item"></div></div>';
-            return tabs + head + escHtml(tab.t) + '</div>' +
-                (tab.id === 'search' ? '<input class="mc-csearchin" maxlength="32" spellcheck="false" autocomplete="off" placeholder="Search" value="' + escHtml(RT.cSearch || '') + '">' : '') +
-                '<div class="mc-crow"><div class="mc-pgrid g9">' + slotsHTML('creat', 0, CGRID) + '</div>' +
-                '<div class="mc-cbar"><i></i></div></div>' +
-                '<div class="mc-plabel">Inventory</div><div class="mc-pgrid g9 hb">' + slotsHTML('inv', 0, 9) + '</div>';
+        var bg = function (name) {
+            var sp = guiSprites()[name];
+            return '<i class="mc-pbg" style="width:calc(var(--px) * ' + sp.w + ');height:calc(var(--px) * ' + sp.h + ');background-image:var(--spr-' + name + ')"></i>';
+        };
+        var rb = function (x, y) { return '<button class="mc-rbook" type="button" aria-label="Recipe Book" style="' + pAt(x, y) + '"></button>'; };
+        var i, out;
+        if (kind === 'inv') {
+            out = bg('p_inv') + pLabel('Crafting', 97, 6, 'mc-phead');
+            for (i = 0; i < 4; i++) out += pSlot('armor', i, 8, 8 + 18 * i, '', ARM_EI[i]);
+            out += pAvatar(26, 8, 49, 70, 30);
+            out += pSlot('off', 0, 77, 62, '', 'e_shield');
+            for (i = 0; i < 4; i++) out += pSlot('craft', i, 98 + 18 * (i % 2), 18 + 18 * (i >> 1));
+            return out + pSlot('cout', 0, 154, 28) + rb(104, 61) + pInv(84, 142);
         }
-        return head + 'Chest</div><div class="mc-pgrid g9">' + slotsHTML('chest', 0, 27) + '</div>' + inv;
+        if (kind === 'table') {
+            out = bg('p_table') + pLabel('Crafting', 29, 6, 'mc-phead') + pLabel('Inventory', 8, 72);
+            for (i = 0; i < 9; i++) out += pSlot('craft', i, 30 + 18 * (i % 3), 17 + 18 * ((i / 3) | 0));
+            return out + pSlot('cout', 0, 124, 35) + rb(5, 34) + pInv(84, 142);
+        }
+        if (kind === 'furnace') {
+            return bg('p_furn') + pLabel('Furnace', (176 - (mfWidth('Furnace') + 1)) >> 1, 6, 'mc-phead') + pLabel('Inventory', 8, 72) +
+                pSlot('fin', 0, 56, 17) + pSlot('ffuel', 0, 56, 53) + pSlot('fout', 0, 116, 35) +
+                '<i class="mc-flame" style="' + pAt(56, 36) + '"></i><i class="mc-farrow" style="' + pAt(79, 34) + '"></i>' + rb(20, 34) + pInv(84, 142);
+        }
+        if (kind === 'ench') {
+            out = bg('p_ench') + '<canvas class="mc-ebook"></canvas>' + pLabel('Enchant', 8, 6, 'mc-phead') + pLabel('Inventory', 8, 72) +
+                pSlot('ein', 0, 15, 47) + pSlot('elapis', 0, 35, 47, '', 'e_lapis');
+            for (i = 0; i < 3; i++) out += '<button class="mc-enchopt" type="button" data-o="' + i + '" style="' + pAt(60, 14 + 19 * i) + '">' +
+                '<i class="eo-ic"></i><span class="eo-rune"></span><span class="eo-lvl"></span></button>';
+            return out + pInv(84, 142);
+        }
+        if (kind === 'anvil') {
+            return bg('p_anvil') + pLabel('Repair & Name', 60, 6, 'mc-phead') + pLabel('Inventory', 8, 72) +
+                '<i class="mc-anvtf" style="' + pAt(59, 20) + '"></i>' +
+                '<input class="mc-anvin" maxlength="50" spellcheck="false" autocomplete="off" style="' + pAt(62, 24) + '"><div class="mc-anvmir mc-fmir" style="' + pAt(62, 24) + '"></div>' +
+                pSlot('anvA', 0, 27, 47) + pSlot('anvB', 0, 76, 47) + pSlot('anvOut', 0, 134, 47, 'anvOut') +
+                '<i class="mc-anverr" style="' + pAt(99, 45) + ';display:none"></i><div class="mc-anvcost" style="display:none"></div>' + pInv(84, 142);
+        }
+        if (kind === 'creative') {
+            var tab = CTABS[RT.cTab] || CTABS[0], tabs = '', sel = '';
+            for (var ti = 0; ti < CTABS.length; ti++) {
+                var T = CTABS[ti], on = ti === RT.cTab, x = T.col < 5 ? 27 * T.col : 195 - 27 * (7 - T.col) + 1, y = T.row ? 132 : -28;
+                var spr = 'tab_' + (T.row ? 'b' : 't') + '_' + (on ? (T.col === 0 ? 's1' : T.col === 6 ? 's7' : 'sm') : 'un');
+                var html = '<button class="mc-ctab' + (on ? ' on' : '') + '" type="button" data-ct="' + ti + '" aria-label="' + escHtml(T.t) + '" style="' + pAt(x, y) +
+                    ';background-image:var(--spr-' + spr + ')"><b class="mc-ctic" style="' + pAt(5, T.row ? 7 : 9) + ';background-image:url(' + iconURL(T.ic) + ')"></b></button>';
+                if (on) sel = html; else tabs += html;
+            }
+            out = tabs + bg(tab.id === 'inv' ? 'p_cr_inv' : tab.id === 'search' ? 'p_cr_search' : 'p_cr_items') + sel;
+            if (tab.id === 'inv') {   // the Survival Inventory tab carries no title
+                var ap = [[54, 6], [54, 33], [108, 6], [108, 33]];
+                for (i = 0; i < 4; i++) out += pSlot('armor', i, ap[i][0], ap[i][1], '', ARM_EI[i]);
+                out += pSlot('off', 0, 35, 20, '', 'e_shield');
+                out += pAvatar(73, 6, 32, 43, 20);
+                return out + pSlots('inv', 9, 9, 54, 9, 3) + pSlots('inv', 0, 9, 112, 9, 1) + pSlot('ctrash', 0, 173, 112, 'ctrash');
+            }
+            out += pLabel(tab.t, 8, 6, 'mc-phead');
+            if (tab.id === 'search') out += '<input class="mc-csearchin" maxlength="50" spellcheck="false" autocomplete="off" value="' + escHtml(RT.cSearch || '') + '" style="' + pAt(82, 6) + '">' +
+                '<div class="mc-csmir mc-fmir" style="' + pAt(82, 6) + '"></div>';
+            return out + pSlots('creat', 0, 9, 18, 9, 5) + '<div class="mc-cbar" style="' + pAt(175, 18) + '"><i></i></div>' + pSlots('inv', 0, 9, 112, 9, 1);
+        }
+        return bg('p_chest') + pLabel('Chest', 8, 6, 'mc-phead') + pLabel('Inventory', 8, 74) + pSlots('chest', 0, 8, 18, 9, 3) + pInv(85, 143);
     }
     function openPanel(kind, t) {
         closePanel(true);
@@ -5907,13 +6405,15 @@
         RT.craftW = kind === 'table' ? 3 : 2;
         RT.craft = [null, null, null, null, null, null, null, null, null];
         RT.hover = null;   // nothing is under the pointer in a screen that has not been drawn yet
-        if (kind === 'ench') { RT.enchItem = null; RT.enchLapis = null; RT.enchOpts = null; RT.enchSeed = (Math.random() * 1e9) | 0; }
+        if (kind === 'ench') { RT.enchItem = null; RT.enchLapis = null; RT.enchOpts = null; RT.enchSeed = (Math.random() * 1e9) | 0; RT.ebook = null; }
         if (kind === 'anvil') { RT.anvilA = null; RT.anvilB = null; RT.anvilName = ''; }
         // the catalogue has to exist before panelHTML asks it how many rows it has
         if (kind === 'creative') { if (RT.cTab == null) RT.cTab = 0; RT.cScroll = 0; creativeRefresh(); }
         var wrap = RT.el.querySelector('.mc-panelwrap');
-        wrap.innerHTML = '<div class="mc-panel' + (kind === 'creative' ? ' mc-cpanel' : '') + '">' + panelHTML(kind) + '</div><div class="mc-cur"></div><div class="mc-ptip" style="display:none"></div>';
+        wrap.innerHTML = panelMarkup(kind);
         wrap.style.display = '';
+        RT.hovEl = null;
+        panelLayout();
         unlockCursor();
         // .mc-panelwrap is a PERSISTENT node — only its innerHTML is replaced per open. Re-running
         // wirePanel on it stacked another set of delegated listeners every time, so after N opens a
@@ -5936,7 +6436,7 @@
         if (!RT.panel) return;
         RT.qc = null;   // a sweep in progress ends with the screen
         RT.av = null;   // and so does the figure in the box
-        RT.hover = null; RT.lastClk = null;
+        RT.hover = null; RT.lastClk = null; RT.hovEl = null; RT.cDrag = 0;
         var i, give = [RT.cur, RT.enchItem, RT.enchLapis, RT.anvilA, RT.anvilB];
         for (i = 0; i < 9; i++) { give.push(RT.craft[i]); RT.craft[i] = null; }
         RT.cur = null; RT.enchItem = null; RT.enchLapis = null; RT.anvilA = null; RT.anvilB = null; RT.enchOpts = null;
@@ -5960,13 +6460,16 @@
         var cells = wrap.querySelectorAll('.mc-slot');
         var washed = wrap.querySelectorAll('.mc-slot.qc');   // the sweep wash belongs to a live sweep only
         for (var wq = 0; wq < washed.length; wq++) washed[wq].classList.remove('qc');
-        var anv = RT.panel.kind === 'anvil' ? anvilResult() : null;
+        var kind = RT.panel.kind, anv = kind === 'anvil' ? anvilResult() : null;
         for (var i = 0; i < cells.length; i++) {
             var g = cells[i].getAttribute('data-g'), idx = cells[i].getAttribute('data-i') | 0;
             if (g === 'cout') { var r = matchRecipe(RT.craft, RT.craftW); paintSlot(cells[i], r ? { id: r.out, c: r.n } : null); }
-            else if (g === 'anvOut') paintSlot(cells[i], anv ? anv.out : null);
-            else if (g === 'creat') { var cst = slotGroup('creat').get(idx); paintSlot(cells[i], cst ? { id: cst.id, c: 1, dur: cst.dur } : null); }   // the catalogue shows items, not stacks
-            else paintSlot(cells[i], slotGroup(g).get(idx));
+            else if (g === 'anvOut') paintSlot(cells[i], anv && !anv.tooExp ? anv.out : null);
+            else if (g === 'creat') {   // the catalogue shows items, not stacks; a saved hotbar shows what was saved
+                var ce = (RT.cList || [])[RT.cScroll * CCOLS + idx], cst = creativeStack(ce);
+                paintSlot(cells[i], cst ? (typeof ce === 'object' ? cst : { id: cst.id, c: 1, dur: cst.dur }) : null);
+            }
+            else if (g !== 'ctrash') paintSlot(cells[i], slotGroup(g).get(idx));
         }
         var cur = wrap.querySelector('.mc-cur');
         if (cur) {
@@ -5974,55 +6477,351 @@
                back to the stylesheet, which declares .mc-cur{display:none} — so
                for as long as this screen has existed, the stack you picked up
                vanished off the screen while RT.cur really was holding it. */
-            if (RT.cur) {
-                cur.style.display = 'block';
-                cur.style.backgroundImage = 'url(' + iconURL(RT.cur.id) + ')';
-                cur.innerHTML = RT.cur.c > 1 ? '<span class="mc-ct">' + RT.cur.c + '</span>' : '';
-                // place it before it is ever shown: .mc-panelwrap centres its
-                // children, so an unpositioned ghost would appear over the panel
-                panelCurTo();
-            } else cur.style.display = 'none';
+            if (RT.cur) { cur.style.display = 'block'; paintSlot(cur, RT.cur); panelCurTo(); }
+            else cur.style.display = 'none';
         }
-        if (RT.panel.kind === 'furnace') paintFurnaceBits(S.tents[RT.panel.key]);
-        if (RT.panel.kind === 'ench') {
-            var opts = wrap.querySelectorAll('.mc-enchopt');
-            for (var o = 0; o < opts.length; o++) {
-                var op = RT.enchOpts && RT.enchOpts[o];
-                if (!op || !op.ench) { opts[o].style.display = 'none'; continue; }
-                opts[o].style.display = '';
-                /* enchantable() also demands a single item, so two books in the slot
-                   left all three options lit and clicking them did nothing at all —
-                   no sound, no message, no explanation */
-                var single = RT.enchItem && RT.enchItem.c === 1;
-                var afford = single && S.xpl >= op.level && RT.enchLapis && RT.enchLapis.c >= op.lapis;
-                opts[o].className = 'mc-enchopt' + (afford ? '' : ' dim');
-                opts[o].innerHTML = '<span class="eo-lap">' + op.lapis + '</span><span class="eo-txt">' + esc(op.label) + '</span><span class="eo-lvl">' + op.level + '</span>';
-            }
-        }
-        if (RT.panel.kind === 'anvil') {
-            var cs = wrap.querySelector('.mc-anvcost');
-            if (cs) cs.textContent = anv ? ('Cost: ' + anv.cost + (S.xpl >= anv.cost ? '' : ' (need level ' + anv.cost + ')')) : '';
-        }
-        if (RT.panel.kind === 'creative') {
-            var bar = wrap.querySelector('.mc-cbar'), th = bar && bar.querySelector('i');
-            if (th) {
-                var rows = creativeRows(), mx = creativeMaxScroll();
-                var hp = Math.max(14, CROWS / rows * 100);
-                th.style.height = hp + '%';
-                th.style.top = (mx ? (RT.cScroll / mx) * (100 - hp) : 0) + '%';
-                bar.classList.toggle('off', mx === 0);   // greyed out when there is nothing to scroll
-            }
-        }
+        if (kind === 'furnace') paintFurnaceBits(S.tents[RT.panel.key]);
+        if (kind === 'ench') paintEnchOpts(wrap);
+        if (kind === 'anvil') paintAnvil(wrap, anv);
+        if (kind === 'creative') paintCreativeBar(wrap);
         if (RT.qc) qcPaint();   // a repaint mid-sweep (a furnace ticking behind the screen) keeps the preview
         if (RT.av) avatarSync();   // armour on or off, a different item in hand: the figure follows the slots
+        panelHoverRefresh();       // the same pointer may be over something new now
     }
-    function esc(s) { return String(s).replace(/[<>&]/g, function (c) { return { '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]; }); }
+    /* AbstractFurnaceScreen: the lit flame shows its bottom ceil(13p) + 1 rows,
+       so it burns down from the top; the arrow fills ceil(24p) columns from the left */
     function paintFurnaceBits(t) {
         var wrap = RT.el.querySelector('.mc-panelwrap');
-        if (!wrap) return;
-        var fl = wrap.querySelector('.mc-flame i'), ar = wrap.querySelector('.mc-farrow i');
-        if (fl) fl.style.height = (t.burnMax > 0 ? Math.max(0, t.burn / t.burnMax) * 100 : 0) + '%';
-        if (ar) ar.style.width = (t.prog / SMELT_S * 100) + '%';
+        if (!wrap || !t) return;
+        var fl = wrap.querySelector('.mc-flame'), ar = wrap.querySelector('.mc-farrow');
+        var lit = t.burn > 0 && t.burnMax > 0, h = lit ? Math.ceil(Math.max(0, Math.min(1, t.burn / t.burnMax)) * 13) + 1 : 0;
+        if (fl) { fl.style.display = h ? '' : 'none'; fl.style.top = 'calc(var(--px) * ' + (36 + 14 - h) + ')'; fl.style.height = 'calc(var(--px) * ' + h + ')'; }
+        var w = Math.ceil(Math.max(0, Math.min(1, t.prog / SMELT_S)) * 24);
+        if (ar) { ar.style.display = w ? '' : 'none'; ar.style.width = 'calc(var(--px) * ' + w + ')'; }
+    }
+    /* The enchanting table's three plates: tan when you can take the option,
+       mauve under the pointer, dark olive when you cannot (and nothing but the
+       plate when the row has no enchantment at all). The runes are one line of
+       the Standard Galactic alphabet in the plate's dark ink, the level
+       requirement right-aligned at x 166 in green, or a darker green when out
+       of reach, and the orb says how much lapis it takes. */
+    var RUNE_WORDS = ['ember', 'hollow', 'lantern', 'moss', 'marrow', 'brine', 'thorn', 'echo', 'spindle', 'gale', 'cinder', 'frost', 'whisper', 'deep', 'bright',
+        'weave', 'sunder', 'bind', 'mend', 'kindle', 'quell', 'ward', 'seek', 'veil', 'quartz', 'drift', 'root', 'bloom', 'vex', 'lumen', 'umbra', 'sable',
+        'aurum', 'fern', 'shale', 'glint', 'hush', 'rime', 'wake', 'tide', 'spark', 'loam', 'crest', 'hearth', 'vale', 'wisp', 'rust', 'gleam'];
+    function enchRunes(seed, row, maxW) {
+        var rng = mulb((seed | 0) ^ (row * 0x9E3779B9)), n = 3 + ((rng() * 2) | 0), words = [];
+        for (var k = 0; k < n; k++) words.push(RUNE_WORDS[(rng() * RUNE_WORDS.length) | 0]);
+        var s = words.join(' ');
+        while (s.length && sgaWidth(s) > maxW) s = s.slice(0, -1);
+        return s;
+    }
+    function enchAffordable(op) {
+        return !!(op && op.ench && RT.enchItem && RT.enchItem.c === 1 &&
+            (instaBuild() || (S.xpl >= op.level && RT.enchLapis && RT.enchLapis.c >= op.lapis)));
+    }
+    function paintEnchOpts(wrap) {
+        var opts = wrap.querySelectorAll('.mc-enchopt');
+        for (var o = 0; o < opts.length; o++) {
+            var op = RT.enchOpts && RT.enchOpts[o], btn = opts[o], has = !!(op && op.ench), aff = enchAffordable(op);
+            btn.className = 'mc-enchopt ' + (!has ? 'none' : aff ? 'ok' : 'dis');
+            btn.disabled = !has;
+            var ic = btn.querySelector('.eo-ic'), rune = btn.querySelector('.eo-rune'), lvl = btn.querySelector('.eo-lvl');
+            if (!has) { ic.style.backgroundImage = ''; rune.innerHTML = ''; lvl.innerHTML = ''; continue; }
+            ic.style.backgroundImage = 'var(--spr-lvl_' + op.lapis + (aff ? '' : 'd') + ')';
+            var cost = String(op.level), cw = mfWidth(cost) + 1;
+            rune.innerHTML = mtHTML(enchRunes(RT.enchSeed, o, 86 - cw), aff ? '#685e4a' : '#342f25', 'ns sga');
+            lvl.innerHTML = mtHTML(cost, aff ? '#80ff20' : '#407f10');
+            lvl.style.left = 'calc(var(--px) * ' + (106 - cw) + ')';
+        }
+        enchBookTarget();
+    }
+    /* The anvil: the name plate lights up once there is something in the left
+       slot to name; the red X covers the arrow while the inputs make nothing;
+       the cost sits right-aligned at y 69 on a faint black box, green when you
+       can pay it and #FF6060 when you cannot, or "Too Expensive!" from 40. */
+    function paintAnvil(wrap, anv) {
+        var tf = wrap.querySelector('.mc-anvtf'), inp = wrap.querySelector('.mc-anvin');
+        if (tf) tf.style.backgroundImage = 'var(--spr-' + (RT.anvilA ? 'anvil_tf' : 'anvil_tfd') + ')';
+        if (inp) {
+            var had = document.activeElement === inp;
+            inp.disabled = !RT.anvilA;
+            if (had && inp.disabled) RT.el.focus();   // a disabled box drops focus onto nothing; the keys belong to the game
+            if (document.activeElement !== inp && inp.value !== (RT.anvilName || '')) inp.value = RT.anvilName || '';
+        }
+        var err = wrap.querySelector('.mc-anverr');
+        if (err) err.style.display = (RT.anvilA || RT.anvilB) && (!anv || anv.tooExp) ? '' : 'none';
+        var box = wrap.querySelector('.mc-anvcost');
+        if (box) {
+            var txt = '', col = '#80ff20';
+            if (anv && anv.cost > 0) {
+                if (anv.cost >= 40 && !instaBuild()) { txt = 'Too Expensive!'; col = '#ff6060'; }
+                else { txt = 'Enchantment Cost: ' + anv.cost; if (!instaBuild() && S.xpl < anv.cost) col = '#ff6060'; }
+            }
+            box.style.display = txt ? '' : 'none';
+            if (txt) {
+                var k = 166 - (mfWidth(txt) + 1);
+                box.innerHTML = mtHTML(txt, col);
+                hudPlaceRel(box, k - 2, 67);
+                box.style.width = 'calc(var(--px) * ' + (168 - (k - 2)) + ')';
+            }
+        }
+        paintFieldMirror(inp, wrap.querySelector('.mc-anvmir'), '#ffffff', 103);
+    }
+    /* the creative scroller: 12x15 at x 175, y = 18 + floor(95 t); greyed when the tab fits in
+       five rows. t is the continuous scroll a drag leaves, the row a wheel notch lands on */
+    function paintCreativeBar(wrap) {
+        var bar = wrap.querySelector('.mc-cbar'), th = bar && bar.querySelector('i');
+        if (th) {
+            var mx = creativeMaxScroll(), t = mx ? (RT.cScrollF != null ? RT.cScrollF : RT.cScroll / mx) : 0;
+            th.style.top = 'calc(var(--px) * ' + Math.floor(95 * Math.max(0, Math.min(1, t))) + ')';
+            bar.classList.toggle('off', mx === 0);
+        }
+        paintFieldMirror(wrap.querySelector('.mc-csearchin'), wrap.querySelector('.mc-csmir'), '#ffffff', 80);
+    }
+    /* A real <input> keeps the caret, the selection and the keyboard, invisibly;
+       what shows is this mirror, drawn the way EditBox.renderWidget draws: the
+       visible run of the value in the game's font with its shadow; the cursor
+       blinking 300 ms on and 300 ms off from the moment of focus, an underscore
+       where the text ends (two pixels past the last glyph, since drawString
+       hands back the x after the shadow) or a bar on the first column of the
+       next glyph inside it; and a selection as the game's OR_REVERSE
+       highlight, which inverts red and green and fills blue. */
+    function paintFieldMirror(inp, mir, col, room) {
+        if (!inp || !mir) return;
+        var v = inp.value || '', caret = inp.selectionStart == null ? v.length : inp.selectionStart, skip = 0;
+        var s0 = inp.selectionStart == null ? caret : inp.selectionStart, s1 = inp.selectionEnd == null ? caret : inp.selectionEnd;
+        if (inp.selectionDirection === 'backward') caret = s0; else caret = s1;
+        while (skip < caret && mfWidth(v.slice(skip, caret)) > room - 6) skip++;
+        var show = v.slice(skip), html = show ? mtHTML(show, inp.disabled ? '#707070' : col) : '';
+        var focused = document.activeElement === inp && !inp.disabled;
+        function xAt(k) { return k > skip ? mfWidth(v.slice(skip, k)) + 1 : 0; }
+        var cx = xAt(caret);
+        if (focused && (((performance.now() - (inp._ft || 0)) / 300) | 0) % 2 === 0) {
+            html += caret < v.length ? '<i class="mc-fbar" style="left:calc(var(--px) * ' + cx + ')"></i>'
+                                     : '<span class="mc-fcur" style="left:calc(var(--px) * ' + (caret > skip ? cx + 1 : 0) + ')">' + mtHTML('_', col) + '</span>';
+        }
+        if (focused && s1 > s0) {
+            var other = caret === s1 ? s0 : s1, ox = xAt(Math.max(skip, other)), a = Math.min(cx, ox), b = Math.max(cx, ox) - 1;
+            // two layers: a difference with yellow inverts red and green, a lighten with blue fills blue
+            var sel = 'left:calc(var(--px) * ' + a + ');width:calc(var(--px) * ' + (b - a) + ')';
+            if (b > a) html += '<i class="mc-fsel a" style="' + sel + '"></i><i class="mc-fsel b" style="' + sel + '"></i>';
+        }
+        if (mir._html !== html) { mir._html = html; mir.innerHTML = html; }
+    }
+    function hudPlaceRel(e, x, y) { e.style.left = 'calc(var(--px) * ' + x + ')'; e.style.top = 'calc(var(--px) * ' + y + ')'; }
+    function esc(s) { return String(s).replace(/[<>&]/g, function (c) { return { '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]; }); }
+    /* AnvilScreen.slotChanged: whatever lands in the left slot resets the name
+       box to what that item is called, and hands the box the keyboard */
+    function anvilNameSync() {
+        RT.anvilName = RT.anvilA ? itemName(RT.anvilA) : '';
+        var inp = RT.el && RT.el.querySelector('.mc-anvin');
+        if (!inp) return;
+        var had = document.activeElement === inp;
+        inp.value = RT.anvilName;
+        inp.disabled = !RT.anvilA;
+        if (RT.anvilA) { if (!had) { inp.focus(); inp._ft = performance.now(); } inp.setSelectionRange(inp.value.length, inp.value.length); }
+        else if (had) RT.el.focus();
+    }
+    /* The Standard Galactic Alphabet, a to z, as the enchanting table writes
+       it: the game's "alt" font. Seven rows like the capitals, drawn from the
+       alphabet's shapes in our own pixels. Anything that is not a letter keeps
+       the ordinary font's place. */
+    var SGA_FAMILY = 'MCSGA', SGA = null;
+    var SGA_ROWS = {
+        a: ['####', '...#', '...#', '####', '#...', '#...', '#...'],
+        b: ['###.', '...#', '...#', '..#.', '.#..', '.#..', '.#..'],
+        c: ['#...', '#...', '####', '...#', '...#', '####', '....'],
+        d: ['####', '##..', '#.#.', '#..#', '#...', '#...', '#...'],
+        e: ['#..#', '#..#', '#..#', '#..#', '####', '.#..', '.#..'],
+        f: ['####', '....', '#.##', '....', '....', '....', '....'],
+        g: ['..#', '..#', '..#', '###', '..#', '..#', '..#'],
+        h: ['#####', '.....', '..#..', '..#..', '..#..', '#####', '.....'],
+        i: ['#', '#', '.', '#', '#', '.', '#'],
+        j: ['#', '.', '.', '#', '.', '.', '#'],
+        k: ['#..#', '#.#.', '##..', '#.#.', '#..#', '#..#', '....'],
+        l: ['#...', '#...', '#...', '#.#.', '#.#.', '####', '....'],
+        m: ['#...', '#...', '#..#', '#..#', '#..#', '####', '....'],
+        n: ['#..#', '#..#', '#..#', '...#', '...#', '..#.', '##..'],
+        o: ['####', '...#', '...#', '...#', '#..#', '.##.', '....'],
+        p: ['#.#', '#..', '#.#', '#.#', '#.#', '..#', '#.#'],
+        q: ['####', '#..#', '#..#', '.#.#', '...#', '...#', '....'],
+        r: ['...', '#.#', '...', '#.#', '...', '...', '...'],
+        s: ['####', '#..#', '#..#', '....', '.#..', '....', '....'],
+        t: ['####', '...#', '...#', '...#', '...#', '...#', '....'],
+        u: ['##.#', '....', '####', '....', '....', '....', '....'],
+        v: ['..#..', '..#..', '..#..', '#####', '.....', '#####', '.....'],
+        w: ['.....', '.....', '..#..', '.....', '#...#', '.....', '.....'],
+        x: ['#..#', '..#.', '.#..', '#...', '....', '....', '....'],
+        y: ['#.#', '#.#', '#.#', '#.#', '#.#', '#.#', '#.#'],
+        z: ['#####', '#...#', '#...#', '#...#', '#...#', '#...#', '.....']
+    };
+    function sgaGlyphs() {
+        if (SGA) return SGA;
+        SGA = { ' ': { w: 3, rows: [] } };
+        for (var ch in SGA_ROWS) {
+            var rows = SGA_ROWS[ch].slice();
+            while (rows.length < MF_ROWS) rows.push('');
+            SGA[ch] = { w: SGA_ROWS[ch][0].length, rows: rows };
+        }
+        return SGA;
+    }
+    function sgaWidth(t) {
+        var g = sgaGlyphs(), w = 0;
+        for (var i = 0; i < t.length; i++) { var gl = g[t.charAt(i)]; w += gl ? gl.w + 1 : mfAdvance(t.charAt(i)); }
+        return w ? w - 1 : 0;
+    }
+    /* ── the enchanting table's book ─────────────────────────────
+       EnchantmentScreen.renderBook: BookModel drawn at (33, 31) in the screen,
+       40 GUI pixels to the block, tipped 25 degrees towards you. tickBook
+       opens it by 0.2 a tick while the table offers anything and shuts it
+       while it offers nothing, and any change to what is on the table sends
+       the pages flipping to a new random spot, easing there at 0.4 of the way
+       a tick, never faster than 0.2. The boxes, pivots and texture layout are
+       BookModel's; the texture is ours. Drawn like the inventory figure: every
+       face an affine image of its patch of the texture, far to near, the ones
+       turned away skipped. */
+    var EB_TEX = null, EB_SHADE = [];
+    function ebTexture() {
+        if (EB_TEX) return EB_TEX;
+        var cv = document.createElement('canvas'), c;
+        cv.width = 64; cv.height = 32; c = cv.getContext('2d');
+        function r(x, y, w, h, col) { c.fillStyle = col; c.fillRect(x, y, w, h); }
+        // the covers, outside and in: brown leather with a darker rim and a worn, lighter top edge
+        [[0, 0], [6, 0], [16, 0], [22, 0]].forEach(function (o) {
+            r(o[0], o[1], 6, 10, '#6c4527'); r(o[0], o[1], 6, 1, '#8b5d35'); r(o[0], o[1] + 9, 6, 1, '#4a2d17');
+            r(o[0] + 1, o[1] + 3, 4, 1, '#7d5230'); r(o[0] + 1, o[1] + 6, 4, 1, '#5c3a20');
+        });
+        r(12, 0, 4, 10, '#4f311a'); r(12, 0, 4, 1, '#6c4527'); r(13, 2, 2, 6, '#5d3a1f');   // the spine
+        // the two blocks of pages: cream faces with lines of writing, the edges striped
+        [0, 12].forEach(function (u) {
+            r(u, 10, 12, 9, '#d9d0b4');
+            for (var y = 11; y < 19; y += 2) r(u, y, 12, 1, '#c7bd9e');
+            [u + 1, u + 7].forEach(function (x) {
+                r(x, 11, 5, 8, '#f1ead3');
+                for (var ly = 12; ly < 18; ly += 2) r(x + 1, ly, (ly * 7 + x) % 3 ? 3 : 2, 1, '#b5aa91');
+            });
+        });
+        [24, 29].forEach(function (x) {   // the loose pages, a side each
+            r(x, 10, 5, 8, '#f4eed9');
+            for (var ly = 11; ly < 17; ly += 2) r(x + 1, ly, (ly + x) % 3 ? 3 : 2, 1, '#b5aa91');
+        });
+        EB_TEX = cv;
+        return cv;
+    }
+    function ebShaded(k) {   // the texture at brightness k/16, baked once per level
+        if (EB_SHADE[k]) return EB_SHADE[k];
+        var src = ebTexture(), cv = document.createElement('canvas'), c;
+        cv.width = 64; cv.height = 32; c = cv.getContext('2d');
+        c.drawImage(src, 0, 0);
+        c.globalCompositeOperation = 'source-atop'; c.fillStyle = 'rgba(0,0,0,' + (1 - k / 16).toFixed(3) + ')'; c.fillRect(0, 0, 64, 32);
+        EB_SHADE[k] = cv;
+        return cv;
+    }
+    // BookModel.createBodyLayer: texOffs, box origin and size, pivot, fixed rotation
+    var EB_PARTS = [
+        { k: 'llid', t: [0, 0], b: [-6, -5, -0.005, 6, 10, 0.005], p: [0, 0, -1] },
+        { k: 'rlid', t: [16, 0], b: [0, -5, -0.005, 6, 10, 0.005], p: [0, 0, 1] },
+        { k: 'seam', t: [12, 0], b: [-1, -5, 0, 2, 10, 0.005], p: [0, 0, 0], ry: Math.PI / 2 },
+        { k: 'lpages', t: [0, 10], b: [0, -4, -0.99, 5, 8, 1], p: [0, 0, 0] },
+        { k: 'rpages', t: [12, 10], b: [0, -4, -0.01, 5, 8, 1], p: [0, 0, 0] },
+        { k: 'flip1', t: [24, 10], b: [0, -4, 0, 5, 8, 0.005], p: [0, 0, 0] },
+        { k: 'flip2', t: [24, 10], b: [0, -4, 0, 5, 8, 0.005], p: [0, 0, 0] }
+    ];
+    // 3x4 affine matrices, row-major
+    function emMul(A, B) {
+        var o = new Array(12);
+        for (var r = 0; r < 3; r++) {
+            for (var c = 0; c < 3; c++) o[r * 4 + c] = A[r * 4] * B[c] + A[r * 4 + 1] * B[4 + c] + A[r * 4 + 2] * B[8 + c];
+            o[r * 4 + 3] = A[r * 4] * B[3] + A[r * 4 + 1] * B[7] + A[r * 4 + 2] * B[11] + A[r * 4 + 3];
+        }
+        return o;
+    }
+    function emT(x, y, z) { return [1, 0, 0, x, 0, 1, 0, y, 0, 0, 1, z]; }
+    function emS(x, y, z) { return [x, 0, 0, 0, 0, y, 0, 0, 0, 0, z, 0]; }
+    function emRx(a) { var c = Math.cos(a), s = Math.sin(a); return [1, 0, 0, 0, 0, c, -s, 0, 0, s, c, 0]; }
+    function emRy(a) { var c = Math.cos(a), s = Math.sin(a); return [c, 0, s, 0, 0, 1, 0, 0, -s, 0, c, 0]; }
+    function emAt(M, x, y, z) { return [M[0] * x + M[1] * y + M[2] * z + M[3], M[4] * x + M[5] * y + M[6] * z + M[7], M[8] * x + M[9] * y + M[10] * z + M[11]]; }
+    function ebTick(B) {
+        // ItemStack.matches: the same item, count and components, or the pages flip
+        var it = RT.enchItem, key = it ? JSON.stringify(it) : '';
+        if (key !== B.last) {
+            B.last = key;
+            do { B.flipT += ((Math.random() * 4) | 0) - ((Math.random() * 4) | 0); } while (B.flip <= B.flipT + 1 && B.flip >= B.flipT - 1);
+        }
+        B.oFlip = B.flip; B.oOpen = B.open;
+        var any = !!(RT.enchOpts && RT.enchOpts.some(function (o) { return o && o.ench; }));   // menu.costs[i] != 0
+        B.open = Math.max(0, Math.min(1, B.open + (any ? 0.2 : -0.2)));
+        var f1 = Math.max(-0.2, Math.min(0.2, (B.flipT - B.flip) * 0.4));
+        B.flipA += (f1 - B.flipA) * 0.9;
+        B.flip += B.flipA;
+    }
+    function ebFrac(v) { return v - Math.floor(v); }
+    var EB_BOX = [0, 2, 66, 60];   // the canvas's rectangle in the screen, round the book at (33, 31)
+    function ebDraw(cv, B, pt) {
+        var s = RT.gs || 2, bw = EB_BOX[2], bh = EB_BOX[3];
+        if (cv.width !== bw * s || cv.height !== bh * s) {
+            cv.width = bw * s; cv.height = bh * s;
+            cv.style.left = 'calc(var(--px) * ' + EB_BOX[0] + ')'; cv.style.top = 'calc(var(--px) * ' + EB_BOX[1] + ')';
+            cv.style.width = 'calc(var(--px) * ' + bw + ')'; cv.style.height = 'calc(var(--px) * ' + bh + ')';
+        }
+        var c = cv.getContext('2d');
+        c.setTransform(1, 0, 0, 1, 0, 0);
+        c.clearRect(0, 0, cv.width, cv.height);
+        c.imageSmoothingEnabled = false;
+        var open = B.oOpen + (B.open - B.oOpen) * pt, flip = B.oFlip + (B.flip - B.oFlip) * pt;
+        var D = Math.PI / 180, io = 1 - open;
+        var M = emT((33 - EB_BOX[0]) * s, (31 - EB_BOX[1]) * s, 100);
+        M = emMul(M, emS(-40 * s, 40 * s, 40 * s));
+        M = emMul(M, emRx(25 * D));
+        M = emMul(M, emT(io * 0.2, io * 0.1, io * 0.25));
+        M = emMul(M, emRy((-io * 90 - 90) * D));
+        M = emMul(M, emRx(180 * D));
+        // BookModel.setupAnim(0, right flip, left flip, open)
+        var rf = Math.max(0, Math.min(1, ebFrac(flip + 0.25) * 1.6 - 0.3)), lf = Math.max(0, Math.min(1, ebFrac(flip + 0.75) * 1.6 - 0.3));
+        var f = 1.25 * open, sf = Math.sin(f);
+        var pose = { llid: [0, Math.PI + f], rlid: [0, -f], seam: [0, Math.PI / 2], lpages: [sf, f], rpages: [sf, -f], flip1: [sf, f - f * 2 * rf], flip2: [sf, f - f * 2 * lf] };
+        var quads = [];
+        EB_PARTS.forEach(function (P) {
+            var ps = pose[P.k], Mp = emMul(M, emT((P.p[0] + ps[0]) / 16, P.p[1] / 16, P.p[2] / 16));
+            Mp = emMul(Mp, emRy(ps[1]));
+            Mp = emMul(Mp, emS(1 / 16, 1 / 16, 1 / 16));
+            var x0 = P.b[0], y0 = P.b[1], z0 = P.b[2], x1 = x0 + P.b[3], y1 = y0 + P.b[4], z1 = z0 + P.b[5];
+            var dx = P.b[3], dy = P.b[4], dz = P.b[5], u = P.t[0], v = P.t[1];
+            var V = [[x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0], [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]].map(function (p) { return emAt(Mp, p[0], p[1], p[2]); });
+            var u1 = u + dz, u2 = u1 + dx, u3 = u2 + dx, u4 = u2 + dz, u5 = u4 + dx, v1 = v + dz, v2 = v1 + dy;
+            // ModelPart.Cube's six polygons: vertices, texture rectangle, normal
+            [[[5, 4, 0, 1], u1, v, u2, v1, [0, -1, 0]], [[2, 3, 7, 6], u2, v1, u3, v, [0, 1, 0]], [[0, 4, 7, 3], u, v1, u1, v2, [-1, 0, 0]],
+             [[1, 0, 3, 2], u1, v1, u2, v2, [0, 0, -1]], [[5, 1, 2, 6], u2, v1, u4, v2, [1, 0, 0]], [[4, 5, 6, 7], u4, v1, u5, v2, [0, 0, 1]]].forEach(function (F) {
+                var tw = F[3] - F[1], th = F[4] - F[2];
+                if (Math.abs(tw) < 0.5 || Math.abs(th) < 0.5) return;   // the paper-thin sides of a cover or a page
+                var n = F[5], nz = Mp[8] * n[0] + Mp[9] * n[1] + Mp[10] * n[2];
+                if (nz <= 0) return;   // turned away
+                var nx = Mp[0] * n[0] + Mp[1] * n[1] + Mp[2] * n[2], ny = Mp[4] * n[0] + Mp[5] * n[1] + Mp[6] * n[2], nl = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
+                // the inventory's two lights, from above and in front
+                var l = Math.max(0, (-0.25 * nx - 0.6 * ny + 0.76 * nz) / nl) + Math.max(0, (0.25 * nx - 0.2 * ny + 0.95 * nz) / nl) * 0.35;
+                var k = Math.max(6, Math.min(16, Math.round(16 * (0.4 + 0.6 * Math.min(1, l)))));
+                var q = F[0], a = V[q[1]], b = V[q[0]], d = V[q[2]];   // vertex 1 holds (u1, v1), 0 holds (u2, v1), 2 holds (u1, v2)
+                quads.push({ z: (V[q[0]][2] + V[q[1]][2] + V[q[2]][2] + V[q[3]][2]) / 4, o: a, ux: b[0] - a[0], uy: b[1] - a[1], vx: d[0] - a[0], vy: d[1] - a[1],
+                             su: Math.min(F[1], F[3]), sv: Math.min(F[2], F[4]), tw: tw, th: th, k: k });
+            });
+        });
+        quads.sort(function (p, q) { return p.z - q.z; });
+        quads.forEach(function (Q) {
+            var aw = Math.abs(Q.tw), ah = Math.abs(Q.th);
+            c.setTransform(Q.ux / Q.tw, Q.uy / Q.tw, Q.vx / Q.th, Q.vy / Q.th, Q.o[0], Q.o[1]);
+            // the rectangle is read from its (u1, v1) corner, whichever way round the face has it
+            c.drawImage(ebShaded(Q.k), Q.su, Q.sv, aw, ah, Q.tw < 0 ? -aw : 0, Q.th < 0 ? -ah : 0, aw, ah);
+        });
+        c.setTransform(1, 0, 0, 1, 0, 0);
+    }
+    function enchBookTarget() {}   // tickBook notices the change on its own next tick
+    function enchBookFrame(dt) {
+        var cv = RT.el.querySelector('.mc-panelwrap .mc-ebook');
+        if (!cv) return;
+        var B = RT.ebook || (RT.ebook = { open: 0, oOpen: 0, flip: 0, oFlip: 0, flipT: 0, flipA: 0, last: '', acc: 0 });
+        B.acc += Math.min(0.25, dt || 0);
+        while (B.acc >= HUD_TICK) { B.acc -= HUD_TICK; ebTick(B); }
+        ebDraw(cv, B, B.acc / HUD_TICK);
     }
     function takeCraft(shiftAll) {
         var guard = 0;
@@ -6031,7 +6830,8 @@
             if (!r) return;
             if (shiftAll) {
                 if (invFree(r.out) < r.n) return;   // must fit fully, or we'd deposit output without consuming ingredients
-                invGive(r.out, r.n);
+                var rmd = itemMaxDur(r.out);   // the result slot shift-clicks in backwards: the hotbar's right-hand end first
+                moveStackTo({ id: r.out, c: r.n, dur: rmd != null ? rmd : undefined }, invOrder(0, 36), true);
             } else {
                 if (RT.cur && (RT.cur.id !== r.out || RT.cur.c + r.n > stkMax(r.out))) return;
                 if (RT.cur) RT.cur.c += r.n;
@@ -6050,50 +6850,83 @@
             snd('click');
         } while (shiftAll && guard++ < 64);
     }
+    /* ── shift-click: each menu's own quickMoveStack ────────────
+       Where a shift-clicked stack goes is the menu's rule, and the player's
+       slots are always walked in the order a menu lists them, the backpack
+       (9-35) then the hotbar (0-8), by moveItemStackTo: one pass topping up
+       matching stacks, then the first empty slot that takes it, both run
+       backwards when the menu says so. That is why a crafting result or a
+       chest's stack lands at the right-hand end of the hotbar first. */
+    var INV_ORDER = [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 0, 1, 2, 3, 4, 5, 6, 7, 8];
+    function invOrder(a, b) { return INV_ORDER.slice(a, b); }
+    function slotRef(x) {
+        var g = typeof x === 'number' ? 'inv' : x[0], i = typeof x === 'number' ? x : x[1], grp = slotGroup(g);
+        return { get: function () { return grp.get(i); }, set: function (v) { grp.set(i, v); },
+                 max: function (st) { return slotMaxFor(g, st.id); }, accepts: function (st) { return slotAccepts(g, i, st); } };
+    }
+    function moveStackTo(st, slots, reverse) {   // returns what is left over
+        var list = reverse ? slots.slice().reverse() : slots, k, ref, it, max = stkMax(st.id);
+        var left = { id: st.id, c: st.c, dur: st.dur, ench: st.ench, name: st.name };
+        if (max > 1) for (k = 0; k < list.length && left.c > 0; k++) {
+            ref = slotRef(list[k]); it = ref.get();
+            if (it && sameStack(it, left)) { var room = Math.min(max, ref.max(left)) - it.c; if (room > 0) { var a = Math.min(room, left.c); it.c += a; left.c -= a; } }
+        }
+        if (left.c > 0) for (k = 0; k < list.length; k++) {
+            ref = slotRef(list[k]);
+            if (!ref.get() && ref.accepts(left)) {
+                var put = Math.min(left.c, ref.max(left));
+                ref.set({ id: left.id, c: put, dur: left.dur, ench: left.ench, name: left.name });
+                left.c -= put;
+                break;
+            }
+        }
+        return left.c;
+    }
     function quickMove(g, idx) {
         var grp = slotGroup(g), st = grp.get(idx);
         if (!st) return;
+        var kind = RT.panel.kind, left = st.c, def = I[st.id], q;
         // shift-clicking your own stack while the catalogue is up throws it away.
         // There is nowhere for it to go, and the real screen deletes it too.
-        if (RT.panel.kind === 'creative' && (CTABS[RT.cTab] || CTABS[0]).id !== 'inv') {
+        if (kind === 'creative' && (CTABS[RT.cTab] || CTABS[0]).id !== 'inv') {
             grp.set(idx, null); snd('click'); paintPanel();
             return;
         }
-        var left;
         if (g === 'inv') {
-            /* shift-click armour → equip it, but ONLY from a screen that shows the
-               armour column. Everywhere else this fired first and swallowed the
-               piece: shift-click a chestplate at a chest expecting it to go IN the
-               chest and it vanished from the grid onto your body, off screen. */
-            var adef = I[st.id] && I[st.id].armor;
-            var hasArmorCol = RT.panel.kind === 'inv' || RT.panel.kind === 'creative';
-            if (adef && hasArmorCol && !S.armor[adef.slot]) {
-                slotGroup('armor').set(adef.slot, st);   // via the setter, so "Suit Up" fires
-                grp.set(idx, null); paintVitals(); paintPanel();
-                return;
-            }
-            if (RT.panel.kind === 'chest') {
-                var t = S.tents[RT.panel.key];
-                left = giveInto(t.inv, 27, st);
-            } else if (RT.panel.kind === 'furnace') {
-                var tf = S.tents[RT.panel.key];
-                if (I[st.id] && I[st.id].fuel && !SMELTS[st.id]) { left = mergeSlot(tf, 'fuel', st); }
-                else if (SMELTS[st.id]) { left = mergeSlot(tf, 'fin', st); }
-                else left = st.c;
-            } else {
-                // hotbar ↔ backpack
-                var src = st;
-                grp.set(idx, null);
-                var range = idx < 9 ? [9, 36] : [0, 9];
-                var l2 = invGiveRange(src.id, src.c, src.dur, range[0], range[1], src.ench, src.name);
-                if (l2) { grp.set(idx, { id: src.id, c: l2, dur: src.dur, ench: src.ench, name: src.name }); }
-                paintPanel();
-                return;
+            var other = idx >= 9 ? invOrder(27, 36) : invOrder(0, 27);   // the backpack to the hotbar and back
+            if (kind === 'inv' || kind === 'creative') {
+                // InventoryMenu: a piece of armour goes on if its slot is free
+                var adef = def && def.armor;
+                if (adef && !S.armor[adef.slot]) {
+                    slotGroup('armor').set(adef.slot, st);   // via the setter, so "Suit Up" fires
+                    grp.set(idx, null); paintVitals(); paintPanel();
+                    return;
+                }
+                left = moveStackTo(st, other, false);
+            } else if (kind === 'table') {   // CraftingMenu: into the grid first
+                var grid = []; for (q = 0; q < 9; q++) grid.push(['craft', q]);
+                left = moveStackTo(st, grid, false);
+                if (left === st.c) left = moveStackTo(st, other, false);
+            } else if (kind === 'chest') {
+                var box = []; for (q = 0; q < 27; q++) box.push(['chest', q]);
+                left = moveStackTo(st, box, false);
+            } else if (kind === 'furnace') {   // what smelts to the top, what burns to the fuel, and no further
+                if (SMELTS[st.id]) left = moveStackTo(st, [['fin', 0]], false);
+                else if (def && def.fuel) left = moveStackTo(st, [['ffuel', 0]], false);
+                else left = moveStackTo(st, other, false);
+            } else if (kind === 'ench') {   // lapis to its slot; anything else, one of it onto the table if it is free
+                if (st.id === 'lapis') left = moveStackTo(st, [['elapis', 0]], true);
+                else if (!RT.enchItem) { slotGroup('ein').set(0, { id: st.id, c: 1, dur: st.dur, ench: st.ench, name: st.name }); left = st.c - 1; }
+            } else if (kind === 'anvil') {
+                left = moveStackTo(st, [['anvA', 0], ['anvB', 0]], false);
+                if (left === st.c) left = moveStackTo(st, other, false);
             }
         } else {
-            if (g === 'fout' && st) { if (st.id === 'iron') unlock('iron'); }
-            left = invGive(st.id, st.c, st.dur, st.ench, st.name);
+            if (g === 'fout' && st.id === 'iron') unlock('iron');
+            // a container's own slots and the furnace's output go in backwards; the grid, armour and off hand forwards
+            left = moveStackTo(st, invOrder(0, 36), g === 'chest' || g === 'fout' || g === 'ein' || g === 'elapis');
         }
+        if (left === st.c) return;   // nowhere for it to go: nothing moves
         if (left > 0) st.c = left; else grp.set(idx, null);
         if (g === 'armor') paintVitals();   // shift-clicking a piece OFF changes the bar too
         paintPanel();
@@ -6129,7 +6962,7 @@
     }
     function slotClick(g, idx, right, shift) {
         if (g === 'cout') { takeCraft(shift); paintPanel(); paintHotbar(); return; }
-        if (g === 'anvOut') { applyAnvil(); return; }
+        if (g === 'anvOut') { applyAnvil(shift); return; }
         if (g === 'creat') { creativeClick(idx, right, shift); return; }
         if (g === 'ctrash') {
             // shift-clicking the bin empties everything you own, the way the real
@@ -6182,28 +7015,156 @@
         if (g === 'armor') paintVitals();
         paintPanel(); paintHotbar();
     }
-    /* Park the carried-item ghost and the tooltip at the pointer. The last
-       position is kept on RT so a repaint, a tab switch or a panel that opens
-       under a stationary mouse all place them correctly rather than letting
-       .mc-panelwrap's flex centring drop them over the middle of the screen. */
+    /* The carried stack is drawn with its top-left at (mouse - 8, mouse - 8) in
+       whole GUI pixels, so it sits centred on the pointer's hot spot and moves
+       a GUI pixel at a time, as the game's does. */
     function panelCurTo(clientX, clientY) {
         if (!RT || !RT.el) return;
         if (clientX != null) RT.curXY = [clientX, clientY];
         if (RT.av && clientX != null) { RT.av.mx = clientX; RT.av.my = clientY; }   // the figure watches the pointer
         var xy = RT.curXY;
-        if (!xy) return;
+        if (!xy || !RT.gs) return;
         var wrap = RT.el.querySelector('.mc-panelwrap');
         if (!wrap) return;
-        var r = wrap.getBoundingClientRect(), x = xy[0] - r.left, y = xy[1] - r.top;
+        var r = RT.el.getBoundingClientRect(), s = RT.gs;
         var cur = wrap.querySelector('.mc-cur');
-        if (cur) { cur.style.left = (x + 6) + 'px'; cur.style.top = (y + 6) + 'px'; }
-        var tip = wrap.querySelector('.mc-ptip');
-        if (tip && tip.style.display !== 'none') {
-            // keep the label on screen when the pointer is near the right edge
-            var tw = tip.offsetWidth || 90;
-            tip.style.left = Math.max(0, Math.min(r.width - tw, x + 14)) + 'px';
-            tip.style.top = (y - 8) + 'px';
+        if (cur) { cur.style.left = ((Math.floor((xy[0] - r.left) / s) - 8) * s) + 'px'; cur.style.top = ((Math.floor((xy[1] - r.top) / s) - 8) * s) + 'px'; }
+    }
+    /* ── tooltips ─────────────────────────────────────────────
+       What an item says about itself, the 1.21 way: the name in its rarity's
+       colour (italic when renamed), its enchantments in grey, and for a tool,
+       weapon or piece of armour a blank line, the slot it works from, and what
+       it adds: attack damage and speed as the totals in dark green with a
+       leading space, armour as +N in blue. In the creative catalogue the tabs
+       an item appears on follow its name, in blue. */
+    function fmt2(v) { return String(Math.round(v * 100) / 100); }
+    function itemTipLines(st, g) {
+        var def = I[st.id] || {}, L = [{ t: st.tname || itemName(st), c: RARITY_COL[itemRarity(st)], it: !!st.name }];
+        if (st.lock) return L;   // the Saved Hotbars placeholder is only its instructions
+        /* the creative screen names every category tab an item is on, right under its
+           name: everywhere except a category tab's own catalogue */
+        var tid = RT.panel && RT.panel.kind === 'creative' ? (CTABS[RT.cTab] || {}).id : null;
+        if (tid && !(tid !== 'search' && tid !== 'inv' && tid !== 'hotbar' && g === 'creat')) {
+            var tabs = creativeTables();
+            CTABS.forEach(function (T) { if (tabs[T.id] && tabs[T.id].indexOf(st.id) >= 0) L.push({ t: T.t, c: '#5555ff' }); });
         }
+        if (st.ench) for (var k in st.ench) L.push({ t: (ENCH_NAME[k] || k) + ((ENCH_MAX[k] || 1) > 1 || st.ench[k] > 1 ? ' ' + (ROMAN[st.ench[k]] || st.ench[k]) : ''), c: '#aaaaaa' });
+        var tl = def.tool, ar = def.armor;
+        if (tl) {
+            L.push({ t: '' }, { t: 'When in Main Hand:', c: '#aaaaaa' },
+                { t: ' ' + fmt2(tl.dmg + (ench(st, 'sharp') > 0 ? 0.5 * ench(st, 'sharp') + 0.5 : 0)) + ' Attack Damage', c: '#00aa00' },
+                { t: ' ' + fmt2(attackSpeed(st.id)) + ' Attack Speed', c: '#00aa00' });
+        } else if (ar) {
+            L.push({ t: '' }, { t: ['When on Head:', 'When on Chest:', 'When on Legs:', 'When on Feet:'][ar.slot], c: '#aaaaaa' },
+                { t: '+' + fmt2(ar.def || 0) + ' Armor', c: '#5555ff' });
+            if (ar.tough) L.push({ t: '+' + fmt2(ar.tough) + ' Armor Toughness', c: '#5555ff' });
+        }
+        return L;
+    }
+    /* The enchanting table's clue: the enchantment's name in grey and " . . . ?"
+       in white; in survival a blank line and then either the level it needs, in
+       red, or the lapis and the levels it will take. */
+    function enchTipLines(o) {
+        var op = RT.enchOpts && RT.enchOpts[o];
+        if (!op || !op.ench) return null;
+        var main = Object.keys(op.ench)[0], lv = op.ench[main];
+        var L = [{ segs: [{ t: (ENCH_NAME[main] || main) + ((ENCH_MAX[main] || 1) > 1 ? ' ' + (ROMAN[lv] || lv) : ''), c: '#aaaaaa' }, { t: ' . . . ?', c: '#ffffff' }] }];
+        if (instaBuild()) return L;
+        L.push({ t: '' });
+        if (S.xpl < op.level) L.push({ t: 'Level Requirement: ' + op.level, c: '#ff5555' });
+        else {
+            var lap = RT.enchLapis ? RT.enchLapis.c : 0;
+            L.push({ t: op.lapis === 1 ? '1 Lapis Lazuli' : op.lapis + ' Lapis Lazuli', c: lap < op.lapis ? '#ff5555' : '#aaaaaa' });
+            L.push({ t: op.lapis === 1 ? '1 Enchantment Level' : op.lapis + ' Enchantment Levels', c: '#aaaaaa' });
+        }
+        return L;
+    }
+    /* Drawn the way the game draws one: the text starts 12 right of and 12
+       above the pointer (flipping left of it at the screen's edge), each line
+       with its shadow, a 2-pixel gap after the first; round it a #100010
+       background at alpha 240 reaching 4 pixels out with its corners cut, and
+       inside that a 1-pixel ring 3 out running from #5000FF at the top to
+       #290080 at the bottom, both at alpha 80. */
+    function tipRender(lines, clientX, clientY) {
+        var wrap = RT.el.querySelector('.mc-panelwrap'), tip = wrap && wrap.querySelector('.mc-ptip');
+        if (!tip) return;
+        if (!lines || !lines.length) { tip.style.display = 'none'; tip._sig = ''; return; }
+        var r = RT.el.getBoundingClientRect(), s = RT.gs, mx = Math.floor((clientX - r.left) / s), my = Math.floor((clientY - r.top) / s);
+        var w = 0, sig = '';
+        lines.forEach(function (l) {
+            var segs = l.segs || [{ t: l.t, c: l.c, it: l.it }], lw = 0;
+            segs.forEach(function (sg) { lw += sg.t ? mfWidth(sg.t) + 1 : 0; sig += sg.t + '|' + sg.c + '|'; });
+            w = Math.max(w, lw);
+        });
+        var h = lines.length === 1 ? 8 : 10 * lines.length;
+        var tx = mx + 12, ty = my - 12;
+        if (tx + w > RT.gw) tx = Math.max(mx - 12 - w, 4);
+        if (ty + h + 3 > RT.gh) ty = RT.gh - h - 3;
+        if (tip._sig !== sig) {
+            tip._sig = sig;
+            var html = '<i class="mc-tipf"></i>';
+            lines.forEach(function (l, k) {
+                var y = 4 + (k ? 2 + 10 * k : 0), x = 4;
+                (l.segs || [{ t: l.t, c: l.c, it: l.it }]).forEach(function (sg) {
+                    if (sg.t) html += '<span class="mc-tipl" style="' + pAt(x, y) + '">' + mtHTML(sg.t, sg.c || '#ffffff', sg.it ? 'it' : '') + '</span>';
+                    x += sg.t ? mfWidth(sg.t) + 1 : 0;
+                });
+            });
+            tip.innerHTML = html;
+            tip.style.width = 'calc(var(--px) * ' + (w + 8) + ')';
+            tip.style.height = 'calc(var(--px) * ' + (h + 8) + ')';
+        }
+        tip.style.display = 'block';
+        tip.style.left = ((tx - 4) * s) + 'px';
+        tip.style.top = ((ty - 4) * s) + 'px';
+    }
+    /* ── what the pointer is over ─────────────────────────────
+       AbstractContainerScreen keeps one hovered slot, found by the 18x18 frame
+       test, and draws 1.21.2's highlight in two halves: white at alpha 96
+       behind the item and 32 over it and its count. The tooltip is what that
+       slot holds (nothing while a stack is carried), or a creative tab's name,
+       an enchanting option's clue, the bin's "Destroy Item". */
+    function panelHover(target, clientX, clientY) {
+        var wrap = RT.el.querySelector('.mc-panelwrap');
+        if (!wrap || !RT.panel) return;
+        var under = slotAt(target, wrap), el = target && target.closest ? target : null;
+        var tabEl = el && el.closest('.mc-ctab'), eo = el && el.closest('.mc-enchopt');
+        var hovEl = under ? under.el : null;
+        if (RT.hovEl !== hovEl) {
+            if (RT.hovEl) RT.hovEl.classList.remove('hov');
+            if (hovEl) hovEl.classList.add('hov');
+            RT.hovEl = hovEl;
+        }
+        RT.hover = under ? { g: under.g, i: under.i } : null;   // the slot under the pointer, for the number keys, F and Q
+        var lines = null;
+        if (tabEl) { var td = CTABS[tabEl.getAttribute('data-ct') | 0]; if (td) lines = [{ t: td.t }]; }
+        else if (eo) lines = enchTipLines(eo.getAttribute('data-o') | 0);
+        else if (under && under.g === 'ctrash') lines = [{ t: 'Destroy Item' }];
+        else if (under && !RT.cur) { var st = slotStackAt(under.g, under.i); if (st) lines = itemTipLines(st, under.g); }
+        tipRender(lines, clientX, clientY);
+    }
+    function slotStackAt(g, i) {   // what a slot shows, the outputs included
+        if (g === 'cout') { var rr = matchRecipe(RT.craft, RT.craftW); return rr ? { id: rr.out, c: rr.n } : null; }
+        if (g === 'anvOut') { var ar = anvilResult(); return ar && !ar.tooExp ? ar.out : null; }
+        if (g === 'ctrash') return null;
+        var gp = slotGroup(g);
+        return gp ? gp.get(i) : null;
+    }
+    /* the game redraws every frame, so a slot that changes under a still pointer
+       changes its tooltip at once; this is that, after any repaint */
+    function panelHoverRefresh() {
+        var xy = RT.curXY;
+        if (!xy || !RT.panel) return;
+        panelHover(document.elementFromPoint(xy[0], xy[1]), xy[0], xy[1]);
+    }
+    /* per frame while a screen is up: the text boxes' blinking cursors, and the enchanting table's book */
+    function panelFrame(dt) {
+        var wrap = RT.el.querySelector('.mc-panelwrap');
+        if (!wrap || !RT.panel) return;
+        var a = wrap.querySelector('.mc-anvin'), sb = wrap.querySelector('.mc-csearchin');
+        if (a) paintFieldMirror(a, wrap.querySelector('.mc-anvmir'), '#ffffff', 103);
+        if (sb) paintFieldMirror(sb, wrap.querySelector('.mc-csmir'), '#ffffff', 80);
+        if (RT.panel.kind === 'ench') enchBookFrame(dt || 0);
     }
     /* ── drag-splitting — the real game's "quick craft" ──────────
        With a stack on the cursor, pressing a mouse button over a slot is NOT
@@ -6228,7 +7189,7 @@
        on the cursor gathers every matching stack on screen into it, and a
        click on the dark outside the panel throws the cursor stack into the
        world — the whole stack on the left button, one on the right. */
-    var QC_TARGETS = { inv: 1, chest: 1, craft: 1, armor: 1, fin: 1, ffuel: 1, ein: 1, elapis: 1, anvA: 1, anvB: 1 };
+    var QC_TARGETS = { inv: 1, chest: 1, craft: 1, armor: 1, off: 1, fin: 1, ffuel: 1, ein: 1, elapis: 1, anvA: 1, anvB: 1 };
     var QC_BTN_MASK = [1, 4, 2];   // e.buttons bit for e.button 0 / 1 / 2
     function sameStack(a, b) {
         return !!a && !!b && a.id === b.id && a.dur == null && b.dur == null && !a.ench && !b.ench && (a.name || '') === (b.name || '');
@@ -6283,16 +7244,17 @@
         RT.qc = null;
         if (RT.panel) paintPanel();
     }
-    /* the live preview: each swept slot shows the stack it would get, tinted so
-       it reads as "not yet", the count in yellow where the slot's limit clipped
-       it; the cursor shows what it would keep, a yellow 0 when nothing */
+    /* the live preview, AbstractContainerScreen's quick-craft rendering: each
+       swept slot shows the stack it would end up with over a 0x80FFFFFF wash,
+       its count in yellow where the slot's limit clipped it; the cursor shows
+       what it would keep, and nothing at all when that is nothing */
     function qcPaint() {
         var q = RT.qc, wrap = RT.el && RT.el.querySelector('.mc-panelwrap');
         if (!q || !RT.cur || !wrap) return;
         var cells = wrap.querySelectorAll('.mc-slot.qc');
         for (var c = 0; c < cells.length; c++) cells[c].classList.remove('qc');
         var cur = wrap.querySelector('.mc-cur');
-        if (q.slots.length < 2) { if (cur && RT.cur) cur.innerHTML = RT.cur.c > 1 ? '<span class="mc-ct">' + RT.cur.c + '</span>' : ''; return; }
+        if (q.slots.length < 2) { if (cur) paintSlot(cur, RT.cur); return; }
         var plan = qcPlan(q);
         for (var k = 0; k < q.slots.length; k++) {
             var s = q.slots[k], cnt = plan.counts[k];
@@ -6301,13 +7263,12 @@
             if (!el) continue;
             paintSlot(el, { id: RT.cur.id, c: cnt, dur: RT.cur.dur, ench: RT.cur.ench });
             if (plan.over[k]) {   // clipped by the slot's limit: the count goes yellow, even a 1
-                var ct = el.querySelector('.mc-ct');
-                if (!ct) { ct = document.createElement('span'); ct.className = 'mc-ct'; ct.textContent = cnt; el.appendChild(ct); }
-                ct.style.color = '#ffff55';
+                var ct = el.querySelector('.mc-ct'), html = mtHTML(String(cnt), '#ffff55', 'mc-ct');
+                if (ct) ct.outerHTML = html; else el.insertAdjacentHTML('beforeend', html);
             }
             el.classList.add('qc');
         }
-        if (cur) cur.innerHTML = plan.left > 1 ? '<span class="mc-ct">' + plan.left + '</span>' : plan.left < 1 ? '<span class="mc-ct" style="color:#ffff55">0</span>' : '';
+        if (cur) paintSlot(cur, plan.left > 0 ? { id: RT.cur.id, c: plan.left, dur: RT.cur.dur, ench: RT.cur.ench } : null);
     }
     /* the button came up: two or more slots swept is a split, one is the click
        it would have been, none is the click on wherever the pointer is now */
@@ -6369,8 +7330,10 @@
         if (k === 'ench') groups.push(['ein', 0], ['elapis', 0]);
         if (k === 'anvil') groups.push(['anvA', 0], ['anvB', 0]);
         if (k === 'inv' || k === 'table') for (i = 0; i < RT.craftW * RT.craftW; i++) groups.push(['craft', i]);
+        if (k === 'inv' || (k === 'creative' && !catalogueTab)) { for (i = 0; i < 4; i++) groups.push(['armor', i]); }
         if (!catalogueTab) for (i = 9; i < 36; i++) groups.push(['inv', i]);   // a catalogue tab shows only the hotbar
         for (i = 0; i < 9; i++) groups.push(['inv', i]);
+        if (k === 'inv' || (k === 'creative' && !catalogueTab)) groups.push(['off', 0]);
         for (var pass = 0; pass < 2 && cur.c < max; pass++) {
             for (var g = 0; g < groups.length && cur.c < max; g++) {
                 var grp = slotGroup(groups[g][0]), st = grp.get(groups[g][1]);
@@ -6385,25 +7348,30 @@
         snd('click');
         paintPanel(); paintHotbar();
     }
-    /* SWAP: a number key over a slot trades what is there with that hotbar slot,
-       both ways round, honouring what the slot will take; over a catalogue entry
-       it is a full stack straight into the hotbar, over an output slot it takes
-       the result if the hotbar slot is free. (AbstractContainerMenu.doClick SWAP,
-       and the creative screen's own SWAP branch.) */
+    /* SWAP: a number key over a slot trades what is there with that hotbar
+       slot, both ways round, honouring what the slot will take, and F (the
+       menu's button 40) does the same with the off hand; over a catalogue
+       entry it is a full stack straight into that slot, over an output slot
+       it takes the result if the slot is free. (AbstractContainerMenu.doClick
+       SWAP, and the creative screen's own SWAP branch.) */
     function hoverSwap(n) {
-        var h = RT.hover, hb = S.inv[n];
+        var h = RT.hover;
         if (!h || h.g === 'ctrash') return;   // the bin only ever clears the cursor
+        var hbGet = function () { return n === 40 ? S.off || null : S.inv[n]; };
+        var hbSet = function (v) { if (n === 40) S.off = v || null; else S.inv[n] = v || null; };
+        var hb = hbGet();
         if (h.g === 'creat') {
-            var id = (RT.cList || [])[RT.cScroll * CCOLS + h.i];
-            if (!id) return;
-            S.inv[n] = creativeStack(id);
+            var cst = slotGroup('creat').get(h.i);
+            if (!cst || cst.lock) return;
+            cst.c = stkMax(cst.id);
+            hbSet(cst);
         } else if (h.g === 'cout' || h.g === 'fout' || h.g === 'anvOut') {
             if (hb) return;   // an output slot cannot take the hotbar's stack
-            if (h.g === 'cout') { takeCraft(false); S.inv[n] = RT.cur; RT.cur = null; }   // the cursor is empty here, so the result lands on it
-            else if (h.g === 'fout') { var t = S.tents[RT.panel.key]; if (!t || !t.out) return; S.inv[n] = t.out; t.out = null; if (S.inv[n].id === 'iron') unlock('iron'); }
+            if (h.g === 'cout') { takeCraft(false); hbSet(RT.cur); RT.cur = null; }   // the cursor is empty here, so the result lands on it
+            else if (h.g === 'fout') { var t = S.tents[RT.panel.key]; if (!t || !t.out) return; hbSet(t.out); t.out = null; if (hbGet().id === 'iron') unlock('iron'); }
             else return;
         } else {
-            if (h.g === 'inv' && h.i === n) return;
+            if ((h.g === 'inv' && h.i === n) || (h.g === 'off' && n === 40)) return;
             var grp = slotGroup(h.g);
             if (!grp) return;
             var st = grp.get(h.i);
@@ -6415,7 +7383,7 @@
             } else {
                 if (hb && slotMaxFor(h.g, hb.id) < hb.c) return;
                 grp.set(h.i, hb || null);
-                S.inv[n] = st || null;
+                hbSet(st || null);
             }
             if (h.g === 'armor') paintVitals();
         }
@@ -6428,10 +7396,9 @@
         var h = RT.hover;
         if (!h || h.g === 'fout' || h.g === 'anvOut' || h.g === 'ctrash') return;
         if (h.g === 'creat') {   // the catalogue hands one out to throw, a stack with Ctrl
-            var cid = (RT.cList || [])[RT.cScroll * CCOLS + h.i];
-            if (!cid) return;
-            var cst = creativeStack(cid);
-            tossItem(cst, all ? cst.c : 1);
+            var cst = slotGroup('creat').get(h.i);
+            if (!cst || cst.lock) return;
+            tossItem(cst, all ? stkMax(cst.id) : 1);
             paintPanel(); return;
         }
         if (h.g === 'cout') {    // the result slot crafts once and throws what it made — Ctrl too, as the real THROW takes the slot's count
@@ -6483,7 +7450,7 @@
             if (g === 'ctrash' || g === 'anvOut') return;
             var grp = slotGroup(g);
             var st = grp ? grp.get(i) : null;
-            if (!st) return;
+            if (!st || st.lock) return;
             RT.cur = creativeStack(st.id);
             snd('click'); paintPanel();
         }
@@ -6494,7 +7461,8 @@
             if (e.button > 2 || RT.qc) return;
             if (e.button === 0) {
                 var bar = barAt(e.target);
-                if (bar) { RT.cDrag = 1; creativeBarTo(bar, e.clientY); e.preventDefault(); e.stopPropagation(); return; }
+                // the press only grabs the scroller; it is dragging that moves it, as the real one does
+                if (bar) { if (!bar.classList.contains('off')) RT.cDrag = 1; e.preventDefault(); e.stopPropagation(); return; }
             }
             var el = ctlAt(e.target);
             if (!el) {
@@ -6536,36 +7504,11 @@
                 else { var sw = slotAt(e.target, wrap); if (sw) qcAdd(sw.g, sw.i); }
             }
             panelCurTo(e.clientX, e.clientY);
-            var cur = wrap.querySelector('.mc-cur');
-            if (!cur) return;
-            /* name whatever is under the pointer. The real game does this in every
-               screen, and the catalogue needs it badly: at 32px, stone, cobblestone
-               and stone bricks are three grey squares. */
-            var tip = wrap.querySelector('.mc-ptip');
-            if (!tip) return;
-            var st = null, under = slotAt(e.target, wrap), tabEl = e.target && e.target.closest ? e.target.closest('.mc-ctab') : null;
-            RT.hover = null;   // the slot under the pointer, for the number keys and Q
-            if (under) {
-                var g = under.g, i = under.i, rr;
-                RT.hover = { g: g, i: i };
-                if (g === 'cout') { rr = matchRecipe(RT.craft, RT.craftW); st = rr ? { id: rr.out, c: rr.n } : null; }
-                else if (g === 'anvOut') { rr = anvilResult(); st = rr ? rr.out : null; }
-                else { var gp = slotGroup(g); st = gp ? gp.get(i) : null; }
-            }
-            if (tabEl && !RT.cur) {   // a tab names itself on hover, as the real strip does
-                var td = CTABS[tabEl.getAttribute('data-ct') | 0];
-                tip.textContent = td ? td.t : '';
-                tip.style.display = 'block';
-                panelCurTo(e.clientX, e.clientY);
-            } else if (st && !RT.cur) {
-                tip.textContent = st.name || (I[st.id] ? I[st.id].t : st.id);
-                tip.style.display = 'block';
-                panelCurTo(e.clientX, e.clientY);   // re-place now that it has width
-            } else tip.style.display = 'none';
+            panelHover(e.target, e.clientX, e.clientY);
         });
         wrap.addEventListener('mouseleave', function () {
-            var tip = wrap.querySelector('.mc-ptip');
-            if (tip) tip.style.display = 'none';
+            tipRender(null);
+            if (RT.hovEl) { RT.hovEl.classList.remove('hov'); RT.hovEl = null; }
             RT.hover = null;
         });
     }
@@ -6574,7 +7517,7 @@
         if (srch) {
             srch.addEventListener('input', function () {
                 RT.cSearch = srch.value;
-                RT.cScroll = 0;
+                RT.cScroll = 0; RT.cScrollF = null;
                 creativeRefresh();
                 paintPanel();
             });
@@ -6591,6 +7534,7 @@
         }
         var nameIn = wrap.querySelector('.mc-anvin');
         if (nameIn) {
+            nameIn.disabled = !RT.anvilA;
             nameIn.addEventListener('input', function () { RT.anvilName = nameIn.value; paintPanel(); });
             // typing must not drive the game — but Esc still has to close the panel, or the
             // name box swallows the only key that gets you out
@@ -6598,8 +7542,18 @@
                 e.stopPropagation();
                 if (e.key === 'Escape') { e.preventDefault(); nameIn.blur(); closePanel(); return; }
             });
+            nameIn.addEventListener('keyup', function (e) { e.stopPropagation(); });
             nameIn.addEventListener('mousedown', function (e) { e.stopPropagation(); });
         }
+        /* EditBox's cursor blinks from the moment the box takes focus; anything
+           that moves the caret or the selection redraws the mirror at once */
+        [srch, nameIn].forEach(function (f) {
+            if (!f) return;
+            f._ft = performance.now();
+            f.addEventListener('focus', function () { f._ft = performance.now(); panelFrame(0); });
+            ['blur', 'select', 'input', 'keyup', 'mouseup'].forEach(function (ev) { f.addEventListener(ev, function () { if (RT && RT.panel) panelFrame(0); }); });
+            f.addEventListener('keydown', function () { setTimeout(function () { if (RT && RT.panel) panelFrame(0); }, 0); });
+        });
     }
 
     /* ── audio ───────────────────────────────────────────────
@@ -7527,8 +8481,7 @@
             var heldNow = (held() || {}).id || null;
             if (heldNow !== RT.equipId) {
                 RT.equipId = heldNow; RT.equip = 1;
-                var eqT = heldNow && I[heldNow] && I[heldNow].tool;
-                RT.atkCd = RT.atkCdMax = eqT && eqT.k === 'sword' ? 0.5 : eqT ? 0.55 : 0.35;
+                RT.atkCd = RT.atkCdMax = attackCooldown(heldNow);   // a new item in hand starts its swing from empty
             }
             RT.equip = Math.max(0, RT.equip - dt / EQUIP_T);
             RT.flash = Math.max(0, RT.flash - dt);
@@ -8103,14 +9056,15 @@
         }
         return out;
     }
-    function mfFontBytes() {
-        var f = mfBuild(), P = 128, UPM = 1024, ASC = 7 * P, DSC = 2 * P, i;
-        var chars = Object.keys(f.g).filter(function (c) { return c.length === 1; })
+    function mfFontBytes(tbl, fam) {
+        tbl = tbl || mfBuild().g; fam = fam || MF_FAMILY;
+        var P = 128, UPM = 1024, ASC = 7 * P, DSC = 2 * P, i;
+        var chars = Object.keys(tbl).filter(function (c) { return c.length === 1; })
             .sort(function (a, b) { return a.charCodeAt(0) - b.charCodeAt(0); });
         var glyphs = [{ adv: 6 * P, rects: [] }];   // .notdef: the unknown glyph's room, no ink
         var codes = [];
         chars.forEach(function (ch) {
-            glyphs.push({ adv: (f.g[ch].w + 1) * P, rects: mfRects(f.g[ch]) });
+            glyphs.push({ adv: (tbl[ch].w + 1) * P, rects: mfRects(tbl[ch]) });
             codes.push([ch.charCodeAt(0), glyphs.length - 1]);
         });
         function Buf() { this.b = []; }
@@ -8202,7 +9156,7 @@
         cmap.u16(0).u16(1).u16(3).u16(1).u32(12);
         cmap.b = cmap.b.concat(sub.b);
         T.cmap = cmap;
-        var names = [[1, MF_FAMILY], [2, 'Regular'], [3, MF_FAMILY + ' Regular 1.0'], [4, MF_FAMILY + ' Regular'], [5, 'Version 1.0'], [6, MF_FAMILY + '-Regular']];
+        var names = [[1, fam], [2, 'Regular'], [3, fam + ' Regular 1.0'], [4, fam + ' Regular'], [5, 'Version 1.0'], [6, fam + '-Regular']];
         var name = new Buf(), store = new Buf();
         name.u16(0).u16(names.length).u16(6 + 12 * names.length);
         names.forEach(function (nm) {
@@ -8240,6 +9194,10 @@
         try {
             var face = new FontFace(MF_FAMILY, mfFontBytes().buffer);
             document.fonts.add(face);
+            // the enchanting table's runes: the game's "alt" font, the Standard Galactic Alphabet on a to z
+            var sga = new FontFace(SGA_FAMILY, mfFontBytes(sgaGlyphs(), SGA_FAMILY).buffer);
+            document.fonts.add(sga);
+            sga.load().catch(function () {});
             MF_FACE = face.load().then(function () { return face; }, function () { return null; });
         } catch (e) { MF_FACE = Promise.resolve(null); }
         return MF_FACE;
@@ -10026,6 +10984,7 @@
             '<i class="mc-hbbar"></i>' +
             '<div class="mc-hotbar">' + slotsHTML('inv', 0, 9, 'mc-hb') + '</div>' +
             '<i class="mc-hbsel"></i>' +
+            '<i class="mc-hboff" style="display:none"></i><div class="mc-slot mc-offslot" style="display:none"></div>' +
             '<div class="mc-xpbar"><i class="mc-xpfill"></i></div><i class="mc-xplvl"></i>' +
             '<span class="mc-tip mt"></span><span class="mc-actbar mt"></span>' +
             '</div>' +
@@ -10449,6 +11408,7 @@
             n += s.c; S.inv[i] = null;
         }
         if (!item) for (i = 0; i < 4; i++) if (S.armor[i]) { n++; S.armor[i] = null; }
+        if (S.off && (!item || S.off.id === item)) { n += S.off.c; S.off = null; }
         paintHotbar(); paintArmorBar();
         chatSay(n ? 'Removed ' + n + ' items from player Steve' : 'No items were found on player Steve');
     }, function (a) { return a === 0 ? ['@s'] : a === 1 ? itemNames() : []; });
@@ -10884,9 +11844,11 @@
             html += '<span class="mc-cseg" style="left:calc(var(--px) * ' + x + ')">' + mtHTML(t, s.c) + '</span>';
             x += mfWidth(t) + 1;
         });
+        /* drawString hands back the x after the shadow, so the underscore sits two
+           columns past the last glyph and the bar on the next glyph's first column */
         var cx = caret > skip ? mfWidth(v.slice(skip, caret)) + 1 : 0, blinkOn = (((performance.now() - (RT.chat.focusT || 0)) / 300) | 0) % 2 === 0;
-        if (blinkOn) html += caret < v.length ? '<i class="mc-cbar" style="left:calc(var(--px) * ' + (cx - 1) + ')"></i>'
-                                            : '<span class="mc-cseg" style="left:calc(var(--px) * ' + cx + ')">' + mtHTML('_', '#e0e0e0') + '</span>';
+        if (blinkOn) html += caret < v.length ? '<i class="mc-cbar" style="left:calc(var(--px) * ' + cx + ')"></i>'
+                                            : '<span class="mc-cseg" style="left:calc(var(--px) * ' + (caret > skip ? cx + 1 : 0) + ')">' + mtHTML('_', '#e0e0e0') + '</span>';
         if (mir._html !== html) { mir._html = html; mir.innerHTML = html; }
     }
     function chatLayout() {
@@ -11404,7 +12366,14 @@
                 e.preventDefault();
                 if (RT.panel) closePanel(); else openPanel(isCreative() ? 'creative' : 'inv');
             }
-            if (k === 'q' && RT.panel && RT.hover && !RT.cur && !RT.paused && !RT.dead) { hoverThrow(!!e.ctrlKey); e.preventDefault(); }   // Q over a slot throws from it; Ctrl-Q the whole stack — never while carrying
+            if (k === 'q' && RT.panel && RT.hover && !RT.cur && !RT.paused && !RT.dead) { hoverThrow(!!e.ctrlKey); e.preventDefault(); }
+            // F: over a slot it trades that slot with the off hand; in the world it swaps your hands
+            if (k === 'f' && RT.panel && RT.hover && !RT.cur && !RT.paused && !RT.dead) { hoverSwap(40); e.preventDefault(); }
+            else if (k === 'f' && RT.ready && !RT.panel && !RT.paused && !RT.dead && !isSpectator()) {
+                var mh = S.inv[S.sel] || null;
+                S.inv[S.sel] = S.off || null; S.off = mh;
+                paintHotbar();
+            }   // Q over a slot throws from it; Ctrl-Q the whole stack — never while carrying
             if (k === 'q' && !RT.panel && !RT.paused && !RT.dead) {
                 var h = held();
                 if (h) {
@@ -11417,7 +12386,11 @@
             var n = parseInt(e.key, 10);
             // ungated, these silently changed what you were holding from behind a
             // chest, the pause menu, the death screen and the loading screen
-            if (n >= 1 && n <= 9 && RT.ready && !RT.panel && !RT.paused && !RT.dead) { S.sel = n - 1; paintHotbar(); }
+            if (n >= 1 && n <= 9 && RT.ready && !RT.panel && !RT.paused && !RT.dead) {
+                // creative's C or X held with a number saves the hotbar there or loads it back
+                if (isCreative() && (RT.keys.x || RT.keys.c)) hotbarLoadOrSave(n - 1, !!RT.keys.x);
+                else { S.sel = n - 1; paintHotbar(); }
+            }
             if (n >= 1 && n <= 9 && RT.panel && RT.hover && !RT.cur && !RT.paused && !RT.dead) { hoverSwap(n - 1); e.preventDefault(); }   // a number over a slot swaps it into that hotbar slot, cursor empty
             e.stopPropagation();
         });

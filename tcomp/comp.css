@@ -2661,6 +2661,8 @@ button.cr-iu-skip { position: absolute; right: 1rem; bottom: 1rem; z-index: 11; 
 .mc .mt::after { color: var(--c); }
 .mc .mt.ns::before { content: none; }
 .mc .mt.it::before, .mc .mt.it::after { font-style: italic; }
+/* the enchanting table's runes, in the alphabet the game's "alt" font draws */
+.mc .mt.sga { font-family: MCSGA, MCUI, monospace; }
 .mc-defs { position: absolute; left: 0; top: 0; width: 0; height: 0; overflow: hidden; }
 .mc-cv { display: block; width: 100%; height: 100%; image-rendering: pixelated; image-rendering: crisp-edges; }
 .mc-vig { position: absolute; inset: 0; pointer-events: none; z-index: 2; transition: background 80ms linear; }
@@ -2677,6 +2679,8 @@ button.cr-iu-skip { position: absolute; right: 1rem; bottom: 1rem; z-index: 11; 
 .mc-hbbar { width: calc(var(--px) * 182); height: calc(var(--px) * 22); background: var(--spr-hotbar) 0 0 / 100% 100% no-repeat; }
 .mc-hotbar { width: calc(var(--px) * 182); height: calc(var(--px) * 22); }
 .mc-hbsel { width: calc(var(--px) * 24); height: calc(var(--px) * 23); background: var(--spr-hotbar_sel) 0 0 / 100% 100% no-repeat; }
+.mc-hboff { width: calc(var(--px) * 29); height: calc(var(--px) * 24); background: var(--spr-hotbar_off) 0 0 / 100% 100% no-repeat; }
+.mc-hud .mc-offslot { width: calc(var(--px) * 16); height: calc(var(--px) * 16); }
 .mc-xpbar { width: calc(var(--px) * 182); height: calc(var(--px) * 5); background: var(--spr-xp_bg) 0 0 / 100% 100% no-repeat; image-rendering: pixelated; }
 .mc-xpfill { position: absolute; left: 0; top: 0; height: 100%; width: 0; background: var(--spr-xp_fg) 0 0 / calc(var(--px) * 182) 100% no-repeat; }
 .mc-xplvl { background-size: 100% 100%; background-repeat: no-repeat; color: transparent; overflow: hidden; font-size: 0; }
@@ -2686,11 +2690,22 @@ button.cr-iu-skip { position: absolute; right: 1rem; bottom: 1rem; z-index: 11; 
    records the icon (tests and the drag code read it); .mc-it draws it, so the
    pick-up pop can squash the item without squashing its count. Offsets are from
    the item's 16x16 origin, where vanilla's renderItemDecorations measures them. */
-.mc-slot { position: absolute; box-sizing: border-box; background-size: 0 0 !important; background-repeat: no-repeat; }
-.mc-slot .mc-it { position: absolute; left: 0; top: 0; width: calc(var(--px) * 16); height: calc(var(--px) * 16); background: var(--ic) 0 0 / 100% 100% no-repeat; image-rendering: pixelated; transform-origin: 50% 75%; pointer-events: none; }
-.mc-slot .mc-ct { position: absolute; right: calc(var(--px) * -1); top: calc(var(--px) * 9); pointer-events: none; }
-.mc-slot .mc-dur { position: absolute; left: calc(var(--px) * 2); top: calc(var(--px) * 13); width: calc(var(--px) * 13); height: calc(var(--px) * 2); background: #000; pointer-events: none; }
-.mc-slot .mc-dur i { display: block; height: var(--px); }
+.mc-slot { position: absolute; box-sizing: border-box; background-size: 0 0 !important; background-repeat: no-repeat; --o: 0px; }
+/* --o is where the 16x16 item sits in the element: the hotbar's slots are the item box
+   itself, a container's are the 18x18 hover frame one pixel up and left of it */
+.mc-slot .mc-it, .mc-cur .mc-it { position: absolute; left: var(--o); top: var(--o); width: calc(var(--px) * 16); height: calc(var(--px) * 16);
+    background: var(--ic) 0 0 / 100% 100% no-repeat; image-rendering: pixelated; transform-origin: 50% 75%; pointer-events: none; isolation: isolate; }
+.mc-slot .mc-ct, .mc-cur .mc-ct { position: absolute; right: calc(var(--o) - var(--px)); top: calc(var(--o) + var(--px) * 9); pointer-events: none; }
+.mc-slot .mc-dur, .mc-cur .mc-dur { position: absolute; left: calc(var(--o) + var(--px) * 2); top: calc(var(--o) + var(--px) * 13); width: calc(var(--px) * 13); height: calc(var(--px) * 2); background: #000; pointer-events: none; }
+.mc-slot .mc-dur i, .mc-cur .mc-dur i { display: block; height: var(--px); }
+/* the enchantment glint: a purple sheen added over the icon's own pixels, drifting
+   down it about an item a second the way the game scrolls its glint texture */
+.mc-slot.glint .mc-it::after, .mc-cur.glint .mc-it::after { content: ''; position: absolute; inset: 0; pointer-events: none;
+    -webkit-mask: var(--ic) 0 0 / 100% 100% no-repeat; mask: var(--ic) 0 0 / 100% 100% no-repeat; mix-blend-mode: plus-lighter;
+    background: linear-gradient(180deg, rgba(128, 64, 204, 0.16) 0%, rgba(165, 100, 255, 0.58) 11%, rgba(128, 64, 204, 0.22) 25%, rgba(96, 48, 180, 0.1) 39%,
+        rgba(150, 90, 240, 0.46) 54%, rgba(128, 64, 204, 0.16) 68%, rgba(175, 115, 255, 0.62) 83%, rgba(128, 64, 204, 0.16) 100%) 0 0 / 100% calc(var(--px) * 128) repeat-y;
+    animation: mcGlint 7.5s linear infinite; }
+@keyframes mcGlint { from { background-position: 0 0; } to { background-position: 0 calc(var(--px) * 128); } }
 .mc-hotbar .mc-slot { top: calc(var(--px) * 3); width: calc(var(--px) * 16); height: calc(var(--px) * 16); }
 .mc-hotbar .mc-slot:nth-child(1) { left: calc(var(--px) * 3); }   .mc-hotbar .mc-slot:nth-child(2) { left: calc(var(--px) * 23); }
 .mc-hotbar .mc-slot:nth-child(3) { left: calc(var(--px) * 43); }  .mc-hotbar .mc-slot:nth-child(4) { left: calc(var(--px) * 63); }
@@ -2714,59 +2729,76 @@ button.cr-iu-skip { position: absolute; right: 1rem; bottom: 1rem; z-index: 11; 
 .mc-atk.full b { display: none; }
 .mc-cross3d { position: absolute; left: 0; top: 0; z-index: 4; pointer-events: none; }
 .mc.mc-f3 .mc-cross { display: none; }
-.mc-panelwrap { position: absolute; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.45); }
-.mc-panel { position: relative; background: #c6c6c6; border: 3px solid; border-color: #ffffff #555555 #555555 #ffffff; padding: 12px 14px; color: #3f3f3f; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5); }
-.mc-phead, .mc-plabel { font-size: 12px; margin: 2px 0 6px; color: #3f3f3f; }
-.mc-pgrid { display: grid; gap: 2px; margin-bottom: 8px; }
-.mc-pgrid.g9 { grid-template-columns: repeat(9, 42px); }
-.mc-pgrid.g3 { grid-template-columns: repeat(3, 42px); }
-.mc-pgrid.g2 { grid-template-columns: repeat(2, 42px); }
-.mc-pgrid.hb { margin-top: 4px; }
-.mc-panel .mc-slot { background-color: #8b8b8b; border-color: #373737 #ffffff #ffffff #373737; }
-.mc-craftrow { display: flex; align-items: center; gap: 14px; margin-bottom: 10px; }
-.mc-arrow { font-size: 22px; color: #6a6a6a; }
-.mc-slot.big { width: 50px; height: 50px; }
-.mc-fcol { display: flex; flex-direction: column; align-items: center; gap: 4px; }
-.mc-flame { width: 22px; height: 22px; background: #77776f; position: relative; overflow: hidden; }
-.mc-flame i { position: absolute; left: 0; right: 0; bottom: 0; background: linear-gradient(#ffd75e, #e6721a); height: 0; }
-.mc-farrow { width: 46px; height: 10px; background: #8b8b8b; border: 1px solid #555; position: relative; }
-.mc-farrow i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: #fff; }
-.mc-cur { position: absolute; width: 34px; height: 34px; background-size: contain; background-repeat: no-repeat; pointer-events: none; z-index: 12; image-rendering: pixelated; display: none; }
-.mc-cur .mc-ct { right: -3px; bottom: -4px; }
-.mc-armcol { display: flex; flex-direction: column; gap: 2px; margin-left: 14px; }
-.mc-armcol .armslot { background-color: #7d7d7d; }
-/* the survival screen's top half in the real order: armour, you in your black
-   box, the 2×2 grid. The box is the real 49×70 at the panel's scale. */
-.mc-craftrow.inv { gap: 12px; align-items: flex-start; }
-.mc-craftrow.inv .mc-armcol { margin-left: 0; }
-.mc-avbox { width: 122px; height: 174px; box-sizing: border-box; flex: none; overflow: hidden; background: #000; border: 2px solid; border-color: #373737 #ffffff #ffffff #373737; }
-.mc-av { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
-.mc-craftcol { display: flex; flex-direction: column; align-self: stretch; }
-.mc-craftcol .mc-phead { margin: 2px 0 8px; }
-.mc-craft2 { display: flex; align-items: center; gap: 14px; }
-.mc-craft2 .mc-pgrid { margin-bottom: 0; }
-/* the creative survival tab keeps its bin beside the hotbar, bottom right */
-.mc-hbrow { display: flex; align-items: center; gap: 14px; margin-top: 4px; }
-.mc-hbrow .mc-pgrid { margin: 0; }
-.mc-hbrow .mc-slot.ctrash { margin-left: 0; }
-.mc-enchrow { display: flex; align-items: stretch; gap: 12px; margin-bottom: 10px; }
-.mc-slot.small { width: 30px; height: 30px; background-size: 22px 22px; }
-.mc-enchopts { display: flex; flex-direction: column; gap: 3px; flex: 1 1 auto; min-width: 210px; }
-.mc-enchopt { display: flex; align-items: center; gap: 8px; height: 22px; padding: 0 8px; background: #7a6a3a; border: 2px solid; border-color: #cbbf7a #3f3720 #3f3720 #cbbf7a; color: #f0e8c0; font-family: inherit; font-size: 11px; text-align: left; cursor: pointer; }
-.mc-enchopt:hover { background: #9a8848; }
-.mc-enchopt.dim { filter: grayscale(0.7) brightness(0.7); cursor: default; }
-.mc-enchopt .eo-lap { color: #6fa8ff; font-size: 10px; width: 10px; }
-.mc-enchopt .eo-txt { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mc-enchopt .eo-lvl { color: #80ff20; font-size: 13px; text-shadow: 1px 1px 0 #1a3a08; }
-.mc-anvname { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-.mc-anvin { flex: 1 1 auto; height: 24px; background: #8b8b8b; border: 2px solid; border-color: #373737 #fff #fff #373737; color: #26261e; font: inherit; font-size: 12px; padding: 0 8px; outline: none; }
-.mc-anvcost { font-size: 11px; color: #3f6a1e; }
-.mc-slot.anvOut.has, .mc-slot.big.anvOut { background-color: #9a9a8b; }
-.mc-slot.glint { box-shadow: inset 0 0 8px rgba(170, 90, 255, 0.7); }
-.mc-slot.glint::after { content: ''; position: absolute; inset: 2px; background: linear-gradient(120deg, transparent 30%, rgba(200, 130, 255, 0.5) 50%, transparent 70%); background-size: 220% 220%; animation: mcGlint 2.4s linear infinite; pointer-events: none; }
-/* a slot inside a drag-split sweep: the stack it would get, under the real screen's white wash */
-.mc-panel .mc-slot.qc::before { content: ''; position: absolute; inset: 0; background: rgba(255, 255, 255, 0.45); pointer-events: none; }
-@keyframes mcGlint { from { background-position: 130% 0; } to { background-position: -130% 0; } }
+/* ── Minecraft: containers ──
+   Each screen is its panel sprite at the game's own size, placed by
+   panelLayout() at ((W - w) / 2, (H - h) / 2) in GUI pixels, and everything
+   in it sits at the game's coordinates from there. The world behind is dimmed
+   with the game's gradient, 0xC0101010 at the top to 0xD0101010 at the bottom,
+   and nothing is blurred. */
+.mc-panelwrap { position: absolute; inset: 0; z-index: 5; background: linear-gradient(rgba(16, 16, 16, 0.753), rgba(16, 16, 16, 0.816)); }
+.mc-panel { position: absolute; left: 0; top: 0; }
+.mc-panel > * { position: absolute; }
+.mc-pbg { left: 0; top: 0; background: 0 0 / 100% 100% no-repeat; image-rendering: pixelated; pointer-events: none; }
+.mc-plab { pointer-events: none; }
+.mc-panel .mc-slot { width: calc(var(--px) * 18); height: calc(var(--px) * 18); --o: var(--px); }
+/* the hovered slot, 1.21.2's two halves: white at alpha 96 behind the item, 32 over it and its count */
+.mc-panel .mc-slot::before, .mc-panel .mc-slot::after { position: absolute; left: var(--px); top: var(--px); width: calc(var(--px) * 16); height: calc(var(--px) * 16); pointer-events: none; }
+.mc-panel .mc-slot.hov::before { content: ''; background: rgba(255, 255, 255, 0.376); }
+.mc-panel .mc-slot.hov::after { content: ''; background: rgba(255, 255, 255, 0.125); }
+/* a slot inside a drag-split sweep: 0x80FFFFFF behind the stack it would get */
+.mc-panel .mc-slot.qc::before { content: ''; background: rgba(255, 255, 255, 0.502); }
+.mc-panel .mc-slot.qc.hov::before { background: rgba(255, 255, 255, 0.689); }
+.mc-cur { position: absolute; left: 0; top: 0; width: calc(var(--px) * 16); height: calc(var(--px) * 16); z-index: 12; pointer-events: none; display: none; --o: 0px; }
+.mc-avbox { overflow: hidden; }
+.mc-av { display: block; width: 100%; height: 100%; }
+.mc-rbook { width: calc(var(--px) * 20); height: calc(var(--px) * 18); padding: 0; margin: 0; border: 0; background: var(--spr-rbook) 0 0 / 100% 100% no-repeat; image-rendering: pixelated; cursor: default; outline: none; }
+.mc-rbook:hover, .mc-rbook.hov { background-image: var(--spr-rbook_h); }
+/* the furnace: the flame shows its bottom rows and burns down from the top; the arrow fills from the left */
+.mc-flame { width: calc(var(--px) * 14); height: 0; background: var(--spr-flame) 0 100% / calc(var(--px) * 14) calc(var(--px) * 14) no-repeat; image-rendering: pixelated; pointer-events: none; }
+.mc-farrow { width: 0; height: calc(var(--px) * 16); background: var(--spr-burn) 0 0 / calc(var(--px) * 24) calc(var(--px) * 16) no-repeat; image-rendering: pixelated; pointer-events: none; }
+/* the enchanting table */
+.mc-ebook { pointer-events: none; image-rendering: pixelated; }
+.mc-enchopt { width: calc(var(--px) * 108); height: calc(var(--px) * 19); padding: 0; margin: 0; border: 0; background: var(--spr-ench_d) 0 0 / 100% 100% no-repeat;
+    image-rendering: pixelated; cursor: default; outline: none; font: inherit; }
+.mc-enchopt.ok { background-image: var(--spr-ench_n); }
+.mc-enchopt.ok:hover, .mc-enchopt.ok.hov { background-image: var(--spr-ench_h); }
+.mc-enchopt.ok:hover .eo-rune .mt, .mc-enchopt.ok.hov .eo-rune .mt { --c: #ffff80 !important; }
+.mc-enchopt > * { position: absolute; pointer-events: none; }
+.mc-enchopt .eo-ic { left: var(--px); top: var(--px); width: calc(var(--px) * 16); height: calc(var(--px) * 16); background: 0 0 / 100% 100% no-repeat; image-rendering: pixelated; }
+.mc-enchopt .eo-rune { left: calc(var(--px) * 20); top: calc(var(--px) * 2); }
+.mc-enchopt .eo-lvl { top: calc(var(--px) * 9); }
+/* the anvil */
+.mc-anvtf { width: calc(var(--px) * 110); height: calc(var(--px) * 16); background: var(--spr-anvil_tfd) 0 0 / 100% 100% no-repeat; image-rendering: pixelated; pointer-events: none; }
+.mc-anverr { width: calc(var(--px) * 28); height: calc(var(--px) * 21); background: var(--spr-anvil_err) 0 0 / 100% 100% no-repeat; image-rendering: pixelated; pointer-events: none; }
+.mc-anvcost { top: calc(var(--px) * 67); height: calc(var(--px) * 12); background: rgba(0, 0, 0, 0.31); pointer-events: none; }
+.mc-anvcost .mt { position: absolute; left: calc(var(--px) * 2); top: calc(var(--px) * 2); }
+/* a text box: a real input, invisible, keeps the caret, the selection and the keys; the mirror draws them */
+.mc-anvin, .mc-csearchin { margin: 0; padding: 0; border: 0; outline: none; background: transparent; color: transparent; caret-color: transparent; font: inherit; opacity: 0; }
+.mc-anvin::selection, .mc-csearchin::selection { background: transparent; }
+.mc-anvin { width: calc(var(--px) * 103); height: calc(var(--px) * 12); }
+.mc-csearchin { width: calc(var(--px) * 80); height: calc(var(--px) * 9); }
+.mc-fmir { height: calc(var(--px) * 9); pointer-events: none; }
+.mc-fmir > .mt { position: absolute; left: 0; top: 0; }
+.mc-fmir .mc-fbar { position: absolute; top: calc(var(--px) * -1); width: var(--px); height: calc(var(--px) * 11); background: #d0d0d0; }
+.mc-fmir .mc-fcur { position: absolute; top: 0; }
+.mc-fmir .mc-fsel { position: absolute; top: calc(var(--px) * -1); height: calc(var(--px) * 11); }
+.mc-fmir .mc-fsel.a { background: #ffff00; mix-blend-mode: difference; }
+.mc-fmir .mc-fsel.b { background: #0000ff; mix-blend-mode: lighten; }
+/* the creative screen: 26x32 tabs, the 12x15 scroller in its 14x112 track */
+.mc-ctab { width: calc(var(--px) * 26); height: calc(var(--px) * 32); padding: 0; margin: 0; border: 0; background: 0 0 / 100% 100% no-repeat; image-rendering: pixelated; cursor: default; outline: none; }
+.mc-ctab .mc-ctic { position: absolute; width: calc(var(--px) * 16); height: calc(var(--px) * 16); background: 0 0 / 100% 100% no-repeat; image-rendering: pixelated; pointer-events: none; }
+.mc-cbar { width: calc(var(--px) * 14); height: calc(var(--px) * 112); }
+.mc-cbar i { position: absolute; left: 0; top: 0; width: calc(var(--px) * 12); height: calc(var(--px) * 15); background: var(--spr-scroller) 0 0 / 100% 100% no-repeat; image-rendering: pixelated; pointer-events: none; }
+.mc-cbar.off i { background-image: var(--spr-scroller_d); }
+/* the tooltip: #100010 at alpha 240 reaching four pixels round the text with its
+   corners cut, and a ring inside it running #5000FF to #28007F at alpha 80 */
+.mc-ptip { position: absolute; left: 0; top: 0; z-index: 14; display: none; pointer-events: none; background: rgba(16, 0, 16, 0.941);
+    clip-path: polygon(var(--px) 0, calc(100% - var(--px)) 0, calc(100% - var(--px)) var(--px), 100% var(--px), 100% calc(100% - var(--px)),
+        calc(100% - var(--px)) calc(100% - var(--px)), calc(100% - var(--px)) 100%, var(--px) 100%, var(--px) calc(100% - var(--px)),
+        0 calc(100% - var(--px)), 0 var(--px), var(--px) var(--px)); }
+.mc-ptip .mc-tipf { position: absolute; left: var(--px); top: var(--px); right: var(--px); bottom: var(--px); box-sizing: border-box;
+    border: var(--px) solid transparent; border-image: linear-gradient(rgba(80, 0, 255, 0.314), rgba(40, 0, 127, 0.314)) 1; }
+.mc-ptip .mc-tipl { position: absolute; }
 .mc-pause, .mc-death, .mc-load { position: absolute; inset: 0; z-index: 7; display: flex; align-items: center; justify-content: center; }
 .mc-pause { background: rgba(8, 8, 12, 0.55); }
 .mc-death { background: rgba(140, 10, 10, 0.45); z-index: 8; }
@@ -2817,37 +2849,9 @@ button.cr-iu-skip { position: absolute; right: 1rem; bottom: 1rem; z-index: 11; 
 .mc.mc-nohud .mc-air,
 .mc.mc-nohud .mc-xpbar,
 .mc.mc-nohud .mc-xplvl { display: none !important; }
-.mc.mc-spect .mc-hotbar, .mc.mc-spect .mc-hbbar, .mc.mc-spect .mc-hbsel, .mc.mc-spect .mc-cross, .mc.mc-spect .mc-tip { display: none !important; }
-/* the creative screen: tab strip, catalogue, scrollbar */
-.mc-cpanel { padding-top: 34px; }
-.mc-ctabs { position: absolute; left: -3px; top: -30px; display: flex; gap: 2px; }
-.mc-ctab { width: 40px; height: 30px; padding: 0; background-color: #9a9a9a; background-size: 24px 24px; background-position: center 5px; background-repeat: no-repeat; image-rendering: pixelated;
-    border: 3px solid; border-color: #ffffff #555555 transparent #ffffff; cursor: pointer; }
-.mc-ctab:hover { background-color: #b4b4b4; }
-.mc-ctab.on { background-color: #c6c6c6; height: 33px; margin-top: -3px; }
-.mc-crow { display: flex; align-items: stretch; gap: 6px; }
-.mc-cbar { width: 14px; background: #3f3f3f; border: 2px solid; border-color: #373737 #ffffff #ffffff #373737; position: relative; margin-bottom: 8px; cursor: pointer; }
-.mc-cbar i { position: absolute; left: 0; right: 0; top: 0; height: 20%; background: #c6c6c6; border: 2px solid; border-color: #ffffff #555555 #555555 #ffffff; box-sizing: border-box; }
-.mc-cbar.off { cursor: default; }
-.mc-cbar.off i { background: #8b8b8b; border-color: #a0a0a0 #6a6a6a #6a6a6a #a0a0a0; }
-.mc-csearchin { width: 100%; box-sizing: border-box; height: 24px; margin-bottom: 6px; background: #8b8b8b; border: 2px solid; border-color: #373737 #fff #fff #373737; color: #26261e; font: inherit; font-size: 12px; padding: 0 8px; outline: none; }
-/* the destroy-item slot, drawn rather than set in an emoji nobody is guaranteed to have */
-.mc-slot.ctrash { background-color: #7d5a5a; border-color: #4a2f2f #d8a8a8 #d8a8a8 #4a2f2f; margin-left: 14px; position: relative; }
-.mc-slot.ctrash::before { content: ''; position: absolute; left: 50%; top: 12px; width: 22px; height: 4px; margin-left: -11px; background: #f0e4e4; box-shadow: 0 -4px 0 -1px #f0e4e4; }
-.mc-slot.ctrash::after { content: ''; position: absolute; left: 50%; top: 18px; width: 18px; height: 20px; margin-left: -9px; background: #e8d4d4;
-    border-left: 3px solid #b08c8c; border-right: 3px solid #b08c8c; box-sizing: border-box; }
-/* hovering any slot names what is in it */
-.mc-ptip { position: absolute; z-index: 14; pointer-events: none; background: rgba(16, 4, 24, 0.94); border: 2px solid #2b0f45;
-    color: #f0e8ff; font-size: 12px; padding: 3px 7px; white-space: nowrap; }
+.mc.mc-spect .mc-hotbar, .mc.mc-spect .mc-hbbar, .mc.mc-spect .mc-hbsel, .mc.mc-spect .mc-cross, .mc.mc-spect .mc-tip,
+.mc.mc-spect .mc-hboff, .mc.mc-spect .mc-offslot { display: none !important; }
 
-@media (max-width: 900px) {
-    .mc-pgrid.g9 { grid-template-columns: repeat(9, 34px); }
-    .mc-panel .mc-slot { width: 34px; height: 34px; background-size: 26px 26px; }
-    .mc-ctab { width: 34px; height: 26px; background-size: 20px 20px; }
-    .mc-ctabs { top: -26px; }
-    .mc-cpanel { padding-top: 30px; }
-    .mc-avbox { width: 100px; height: 142px; }
-}
 
 /* ── Minecraft: the title screen ──
    The menu draws itself on .mc-mcv at an integer GUI scale, so almost nothing
