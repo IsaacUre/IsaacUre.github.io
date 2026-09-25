@@ -977,7 +977,37 @@
         /* weather particles + xp orb */
         tile('rain', function () { trect(7, 0, 2, 16, '#7fb0e8'); tpx(7, 2, '#a8d0f5'); });
         tile('snow', function () { trect(6, 6, 4, 4, '#ffffff'); tpx(5, 7, '#e8f4ff'); tpx(10, 8, '#e8f4ff'); });
-        tile('xporb', function () { trect(5, 5, 6, 6, '#a6e22e'); trect(6, 4, 4, 8, '#a6e22e'); trect(4, 6, 8, 4, '#a6e22e'); tpx(6, 6, '#e8ff8a'); tpx(9, 9, '#6a9a1e'); });
+        /* the XP orb: a round lime ball, dark at the rim and pale at the heart, for
+           the renderer to tint (ExperienceOrbRenderer multiplies it by a colour that
+           pulses from green to yellow) */
+        tile('xporb', function () {
+            trect(5, 4, 6, 8, '#6f8f10'); trect(4, 5, 8, 6, '#6f8f10');
+            trect(5, 5, 6, 6, '#d8f850'); trect(6, 4, 4, 1, '#b8dc30'); trect(6, 11, 4, 1, '#88aa18');
+            trect(6, 6, 3, 3, '#f4ffa8'); tpx(6, 6, '#ffffe0'); tpx(10, 10, '#a0c028'); tpx(9, 10, '#a0c028');
+        });
+        /* fire_0 and fire_1, for anything that burns: three licks of flame a tile,
+           each from a pale yellow root through orange to ragged dark red tips,
+           low and broken between them, so what burns shows through */
+        function paintFire(ph) {
+            for (var x = 0; x < 16; x++) {
+                var lick = Math.pow(0.5 + 0.5 * Math.sin(x * 1.25 + ph + trnd() * 0.6), 1.6);
+                var hgt = Math.round(2 + lick * 12 + trnd() * 2);
+                for (var y = 0; y < hgt; y++) {
+                    var t = y / hgt;
+                    if ((t > 0.5 && trnd() < 0.5 * t) || (y < 4 && lick < 0.25 && trnd() < 0.45)) continue;
+                    tpx(x, 15 - y, t < 0.3 ? (lick > 0.6 ? '#ffe68a' : '#ffc933') : t < 0.6 ? '#ffa31c' : t < 0.85 ? '#ee640e' : '#bc360a');
+                }
+            }
+        }
+        tile('fire0', function () { paintFire(0); });
+        tile('fire1', function () { paintFire(2.1); });
+        /* the poof a mob leaves: generic_7, the biggest of the eight smoke puffs,
+           a pale ring round a paler heart; the particle shrinks through the rest */
+        tile('puff', function () {
+            trect(5, 2, 6, 12, '#b4b4b4'); trect(2, 5, 12, 6, '#b4b4b4'); trect(3, 3, 10, 10, '#b4b4b4');
+            trect(5, 3, 6, 10, '#dedede'); trect(3, 5, 10, 6, '#dedede'); trect(4, 4, 8, 8, '#dedede');
+            trect(6, 5, 3, 3, '#f4f4f4');
+        });
         /* armor icons: silhouette per slot × tier colour */
         (function () {
             var TC = { leather: ['#8a4f28', '#6e3f1e'], iron: ['#d0d0d0', '#a8a8a8'], gold: ['#f5cf3a', '#c9a01e'], diamond: ['#63e0e0', '#3bb8c9'] };
@@ -1714,7 +1744,8 @@
         'uniform vec2 uFogR;uniform float uAlpha;varying vec2 vUv;varying vec2 vLt;varying float vAo;varying float vWh;varying float vD;' +
         'void main(){vec4 c=texture2D(uTex,vUv);if(c.a<0.5)discard;' +
         'float l=max(vLt.x*uDay,vLt.y);float b=l/(4.0-3.0*l);b=mix(0.045,1.0,b);' +
-        'vec3 rgb=(vWh<0.0?mix(c.rgb,vec3(1.0,0.0,0.0),-vWh):mix(c.rgb,vec3(1.0),vWh))*b*vAo;' +
+        'vec3 rgb=(vWh>1.5?c.rgb*vec3(sin(vWh*6.2831853)*0.5+0.5,1.0,(sin(vWh*6.2831853+4.1887903)+1.0)*0.1)' +
+        ':vWh<0.0?mix(c.rgb,vec3(1.0,0.0,0.0),-vWh):mix(c.rgb,vec3(1.0),vWh))*b*vAo;' +
         'float f=smoothstep(uFogR.x,uFogR.y,vD);rgb=mix(rgb,uFogC,f);' +
         'gl_FragColor=vec4(rgb,c.a*uAlpha);}';
     var VS_FLAT = 'attribute vec3 aPos;uniform mat4 uMvp;void main(){gl_Position=uMvp*vec4(aPos,1.0);gl_PointSize=2.0;}';
@@ -3231,7 +3262,9 @@
         f.ifr = Math.max(0, f.ifr - dt); f.hurtF = Math.max(0, f.hurtF - dt);
         var px = S.px - f.x, pz = S.pz - f.z, py = (S.py + 0.9) - (f.y + f.h * 0.6);
         var dist = Math.sqrt(px * px + pz * pz + py * py);
-        // set-on-fire (fire aspect / lava): damage over time
+        // set-on-fire (fire aspect / lava / the sun): damage over time, until water or rain puts it out
+        if (f.fire > 0 && (getB(Math.floor(f.x), Math.floor(f.y + 0.2), Math.floor(f.z)) === WATER ||
+            (S.weather > 0 && getSky(Math.floor(f.x), Math.floor(f.y + f.h), Math.floor(f.z)) >= 15))) f.fire = 0;
         if (f.fire > 0) {
             f.fire -= dt; f.fireT = (f.fireT || 0) + dt;
             if (f.fireT > 0.5) { f.fireT = 0; f.hp -= 1; f.hurtF = 0.2; fireParticles(f); if (f.hp <= 0) { foeDie(f); return true; } }
@@ -3269,8 +3302,7 @@
         if (d.burns) {
             var st = skyState();
             if (st.day && st.sunE > 0.08 && getSky(Math.floor(f.x), Math.floor(f.y + f.h), Math.floor(f.z)) >= 14) {
-                f.burnT += dt;
-                if (f.burnT > 1) { f.burnT = 0; f.hp -= 2; f.hurtF = 0.25; fireParticles(f); }
+                f.fire = Math.max(f.fire || 0, 8);   // Mob.isSunBurnTick: igniteForSeconds(8)
             }
         }
         // intent
@@ -3844,12 +3876,19 @@
             RT.parts.push({ x: f.x + (Math.random() - 0.5) * 0.6, y: f.y + Math.random() * f.h, z: f.z + (Math.random() - 0.5) * 0.6,
                 vx: 0, vy: 1.5, vz: 0, life: 0.4, u: uv0[0] + Math.random() * TS16 * 0.8, v: uv0[1] + Math.random() * TS16 * 0.8, s: 0.09 });
     }
+    /* LivingEntity.makePoofParticles and ExplodeParticle: twenty puffs spread
+       through the body, drifting out on a little random push, slowed by 0.9 a
+       tick and rising faintly, grey to white, a tenth of a block times 1 to 7
+       (mostly small), living 18 to 82 ticks and shrinking through eight sizes */
     function poofParticles(f) {
-        var uv0 = tileUV(TILE.wool);
-        for (var i = 0; i < 12; i++)
-            RT.parts.push({ x: f.x + (Math.random() - 0.5) * 0.7, y: f.y + Math.random() * f.h, z: f.z + (Math.random() - 0.5) * 0.7,
-                vx: (Math.random() - 0.5) * 1.5, vy: 0.8 + Math.random() * 1.4, vz: (Math.random() - 0.5) * 1.5,
-                life: 0.5, u: uv0[0] + 4 * TS16 / 16, v: uv0[1] + 4 * TS16 / 16, s: 0.11 });
+        var uv0 = tileUV(TILE.puff), hw = f.hw || 0.3;
+        for (var i = 0; i < 20; i++) {
+            var g = function () { return (Math.random() + Math.random() + Math.random() - 1.5) * 0.02 * 20 + (Math.random() * 2 - 1) * 0.05 * 20; };
+            var life = (Math.floor(16 / (Math.random() * 0.8 + 0.2)) + 2) / 20;
+            RT.parts.push({ x: f.x + (Math.random() * 2 - 1) * hw, y: f.y + Math.random() * f.h, z: f.z + (Math.random() * 2 - 1) * hw,
+                vx: g(), vy: g(), vz: g(), life: life, life0: life, puff: 1, u: uv0[0] + INSET, v: uv0[1] + INSET, us: TS16 - 2 * INSET,
+                s: 0.1 * (Math.random() * Math.random() * 6 + 1), dim: Math.random() * 0.3 + 0.7 });
+        }
     }
     function critParticles(f) {
         var uv0 = tileUV(TILE.rlamp);   // warm little sparks around the hit
@@ -3870,6 +3909,12 @@
     function partUpdate(p, dt) {
         p.life -= dt;
         if (p.life <= 0) return true;
+        if (p.puff) {   // no weight to speak of: friction 0.9 a tick, gravity -0.1
+            var fr = Math.pow(0.9, dt * 20);
+            p.vx *= fr; p.vz *= fr; p.vy = p.vy * fr + 0.04 * 0.1 * 20 * dt * 20;
+            p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
+            return false;
+        }
         p.vy -= 10 * dt;
         p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
         if (solidAt(Math.floor(p.x), Math.floor(p.y), Math.floor(p.z))) { p.vy = 0; p.vx = 0; p.vz = 0; p.y = Math.ceil(p.y); }
@@ -4154,6 +4199,28 @@
                 sk, bl, ao === undefined ? 1 : ao, wh);
         }
     }
+    /* EntityRenderDispatcher.renderFlame: a burning mob wears fire_0 and fire_1
+       in turn, square quads 1.4 times its width stacked up its height 0.45
+       apart, each 0.9 the width of the one below and set a little further back,
+       turned to face you and pushed toward you, full bright. The game animates
+       the two textures; here they trade places and mirror every tick or two. */
+    function pushFlame(v, f) {
+        var w = (f.hw || 0.3) * 2 * 1.4, h = f.h / w, x1 = 0.5, y0 = 0, z = 0, k = 0, tk = Math.floor(RT.worldMs / 50);
+        var tx = S.px - f.x, tz = S.pz - f.z, tl = Math.sqrt(tx * tx + tz * tz) || 1;
+        tx /= tl; tz /= tl;
+        var rx = tz, rz = -tx, push = (0.3 - Math.floor(h) * 0.02) * w;
+        var bx = f.x + tx * push, bz = f.z + tz * push;
+        while (h > 0) {
+            var uv = tileUV((k + tk) % 2 ? TILE.fire1 : TILE.fire0), u0 = uv[0] + INSET, u1 = uv[0] + TS16 - INSET, va = uv[1] + INSET, vb = uv[1] + TS16 - INSET;
+            if (((k >> 1) + (tk >> 1)) % 2 === 0) { var sw = u0; u0 = u1; u1 = sw; }
+            var cx = bx + tx * z * w, cz = bz + tz * z * w, ya = f.y + y0 * w, yb = f.y + (y0 + 1.4) * w, hx = rx * x1 * w, hz = rz * x1 * w;
+            v.push(cx - hx, ya, cz - hz, u0, vb, 1, 1, 1, 0);
+            v.push(cx + hx, ya, cz + hz, u1, vb, 1, 1, 1, 0);
+            v.push(cx + hx, yb, cz + hz, u1, va, 1, 1, 1, 0);
+            v.push(cx - hx, yb, cz - hz, u0, va, 1, 1, 1, 0);
+            h -= 0.45; y0 += 0.45; x1 *= 0.9; z -= 0.03; k++;
+        }
+    }
     function cellLight(x, y, z) {
         return [Math.max(getSky(Math.floor(x), Math.floor(y), Math.floor(z)), 0) / 15,
                 Math.max(getBlk(Math.floor(x), Math.floor(y), Math.floor(z)), 0) / 15];
@@ -4166,6 +4233,8 @@
         RT.camU = [sy * sp, cp, -cy * sp];
         for (i = 0; i < RT.foes.length; i++) pushMob(v, RT.foes[i]);
         for (i = 0; i < RT.dying.length; i++) pushMob(v, RT.dying[i]);   // bodies still falling over
+        for (i = 0; i < RT.foes.length; i++) if (RT.foes[i].fire > 0) pushFlame(v, RT.foes[i]);
+        for (i = 0; i < RT.dying.length; i++) if (RT.dying[i].fire > 0) pushFlame(v, RT.dying[i]);
         for (i = 0; i < RT.tnts.length; i++) {
             var t = RT.tnts[i];
             var TL = cellLight(t.x, t.y + 0.5, t.z);
@@ -4209,17 +4278,21 @@
             pushBox(v, ar.x, ar.y, ar.z, 0.03, 0.03, 0.28, Math.cos(ayaw), Math.sin(ayaw), -apitch, 0,
                 function () { return TILE.arrow; }, AL[0], AL[1], 0);
         }
+        /* ExperienceOrbRenderer: 0.1 up, facing you, full bright, its colour
+           (sin(t) + 1) / 2 red, full green and (sin(t + 4.19) + 1) / 10 blue at
+           t = age / 2 in ticks, so it throbs green to yellow a couple of times a
+           second; the shader reads the phase out of the overlay value */
         for (i = 0; i < RT.orbs.length; i++) {
-            var o = RT.orbs[i], ou = tileUV(TILE.xporb);
-            var obob = Math.sin(RT.worldMs / 220 + i) * 0.03;
-            pushBillboard(v, o.x, o.y + 0.12 + obob, o.z, o.v >= 7 ? 0.16 : 0.11, ou[0] + INSET, ou[1] + INSET, ou[0] + TS16 - INSET, ou[1] + TS16 - INSET, 1, 0.4, 0);
+            var o = RT.orbs[i], ou = tileUV(TILE.xporb), oph = ((o.age * 10) % 6.2831853) / 6.2831853;
+            pushBillboard(v, o.x, o.y + 0.1, o.z, o.v >= 7 ? 0.16 : 0.11, ou[0] + INSET, ou[1] + INSET, ou[0] + TS16 - INSET, ou[1] + TS16 - INSET, 1, 1, 2 + oph);
         }
         for (i = 0; i < RT.parts.length; i++) {
             var pp = RT.parts[i];
             var PL = cellLight(pp.x, pp.y, pp.z);
             // dim: a flat tint on the mote, the way the real game darkens block
             // dust to 0.6 — without it, sand kicked off sand is invisible
-            pushBillboard(v, pp.x, pp.y, pp.z, pp.s, pp.u, pp.v, pp.u + TS16 / 10, pp.v + TS16 / 10, Math.max(0.25, PL[0]), PL[1], 0, pp.dim || 1);
+            var ps = pp.puff ? pp.s * (8 - Math.min(7, Math.floor((1 - pp.life / pp.life0) * 8))) / 8 : pp.s, pus = pp.us || TS16 / 10;
+            pushBillboard(v, pp.x, pp.y, pp.z, ps, pp.u, pp.v, pp.u + pus, pp.v + pus, Math.max(0.25, PL[0]), PL[1], 0, pp.dim || 1);
         }
         if (RT.sleep) {   // fade handled by overlay; nothing extra here
         }
@@ -14296,7 +14369,9 @@
                     page: RT.rbv ? RT.rbv.page : null, list: (RT.rbList || []).map(function (c) { return rbId(c.r) + (c.ok ? '' : '!'); }),
                     ghost: RT.rbGhost ? rbId(RT.rbGhost) : null, lx: RT.panel ? RT.panel.lx : null, fresh: Object.keys(S.rbNew || {}) };
             },
-            rbLearnAll: function () { return rbLearn(rbAll().map(function (r) { return r.key; })); }
+            rbLearnAll: function () { return rbLearn(rbAll().map(function (r) { return r.key; })); },
+            orbs: function () { return RT.orbs.map(function (o) { return [Math.round(o.x * 10) / 10, Math.round(o.y * 10) / 10, Math.round(o.z * 10) / 10, o.v]; }).concat([[S.px, S.py, S.pz]]); },
+            spawnXp: function (dx, dz, v) { var gy = Math.floor(S.py) + 1; while (gy > 0 && !getB(Math.floor(S.px + dx), gy - 1, Math.floor(S.pz + dz))) gy--; spawnXp(S.px + dx, gy + 0.1, S.pz + dz, v || 3); }
         };
         if (has('mobs')) setTimeout(function () {
             var list = ['zombie', 'skeleton', 'creeper', 'spider', 'enderman', 'slime', 'pig', 'cow', 'sheep', 'chicken'];
