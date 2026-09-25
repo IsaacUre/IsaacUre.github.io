@@ -232,15 +232,26 @@ function state(page) {
         await sleep(450); await p.screenshot({ path: path.join(OUT, 't12-mid.png') });
         await sleep(900); await p.screenshot({ path: path.join(OUT, 't12-done.png') });
         await c.close();
-        // T13: nothing loops forever once the page has settled
+        // T13: after the power-on, only the holding page's loops keep going: the screen's eye
+        // blinking twice every 8s and the cursors waiting. under reduced motion nothing loops
+        var loops = function () { return document.getAnimations().filter(function (a) { var t = a.effect && a.effect.getComputedTiming(); return t && t.iterations === Infinity && a.playState === 'running'; }).map(function (a) { var g = a.effect.target, cl = g && (g.className.baseVal !== undefined ? g.className.baseVal : g.className); return (a.animationName || 'waapi') + '@' + cl + (g && g.closest && g.closest('.eye') ? '(eye)' : ''); }).sort(); };
+        var OK_TOP = ['idleHalf@bf bf-half(eye)', 'idleShut@bf bf-shut(eye)', 'idleSlit@bf bf-slit(eye)', 'termBlink@term-block'];
         c = await ctxWith(browser, { viewport: { width: 1280, height: 800 } });
         p = await c.newPage();
         await p.goto(URL, { waitUntil: 'load' }); await p.keyboard.press('x'); await sleep(8000);
-        var inf = await p.evaluate(function () { return document.getAnimations().filter(function (a) { var t = a.effect && a.effect.getComputedTiming(); return t && t.iterations === Infinity && a.playState === 'running'; }).map(function (a) { return (a.animationName || 'waapi') + '@' + (a.effect.target && (a.effect.target.className.baseVal || a.effect.target.className)); }); });
-        rec('T13 no infinite animations after 8s (first visit)', inf.length === 0, inf);
+        var inf = await p.evaluate(loops);
+        rec('T13 after 8s only the eye loop and the cursor run (first visit)', JSON.stringify(inf) === JSON.stringify(OK_TOP), inf);
         await p.evaluate(function () { scrollTo(0, document.documentElement.scrollHeight); }); await sleep(7000);
-        inf = await p.evaluate(function () { return document.getAnimations().filter(function (a) { var t = a.effect && a.effect.getComputedTiming(); return t && t.iterations === Infinity && a.playState === 'running'; }).length; });
-        rec('T13b none at the foot either', inf === 0, inf);
+        inf = await p.evaluate(loops);
+        rec('T13b at the foot, the waiting cursor joins them, nothing else', JSON.stringify(inf) === JSON.stringify(OK_TOP.concat(['termBlink@tc']).sort()), inf);
+        await c.close();
+        c = await ctxWith(browser, { viewport: { width: 1280, height: 800 }, reducedMotion: 'reduce' });
+        p = await c.newPage();
+        await p.goto(URL, { waitUntil: 'load' }); await sleep(2000);
+        var infR = await p.evaluate(loops);
+        await p.evaluate(function () { scrollTo(0, document.documentElement.scrollHeight); }); await sleep(1500);
+        infR = infR.concat(await p.evaluate(loops));
+        rec('T13c reduced motion: nothing loops, top or foot', infR.length === 0, infR);
         await c.close();
 
         // T14: cold deep link to #log at 390 with a late face and the page's own smooth scrolling

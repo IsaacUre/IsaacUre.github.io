@@ -308,19 +308,38 @@
         }
         /* the blink: three frames (see the SVG), shown one at a time with steps(). the shut
            frame holds longest and the eye opens a little slower than it closed, like a real
-           one. once as the name finishes printing; after that, once each time you come back
-           to it (the script plays the same frames). the holding page blinks on a loop, but
-           it is one screen; nothing on a page people read should blink forever */
+           one. once as the name finishes printing, then, as on the holding page, twice every
+           8s at uneven spacing, so it doesn't tick like a clock: the screen is alive for as
+           long as you're here (reduced motion stops it) */
         .lid-skin { fill: var(--screen-bg); }
         .lid-edge { fill: currentColor; }
         .bf { opacity: 0; }
-        .eye .bf-half { animation: bootHalf .3s steps(1, end) 1.4s; }
-        .eye .bf-slit { animation: bootSlit .3s steps(1, end) 1.4s; }
-        .eye .bf-shut { animation: bootShut .3s steps(1, end) 1.4s; }
+        .eye .bf-half { animation: bootHalf .3s steps(1, end) 1.4s, idleHalf 8s steps(1, end) 3.4s infinite; }
+        .eye .bf-slit { animation: bootSlit .3s steps(1, end) 1.4s, idleSlit 8s steps(1, end) 3.4s infinite; }
+        .eye .bf-shut { animation: bootShut .3s steps(1, end) 1.4s, idleShut 8s steps(1, end) 3.4s infinite; }
         /* one blink, 300ms: half 45 · slit 40 · shut 90 · slit 55 · half 70 */
         @keyframes bootHalf { 0% { opacity: 1; } 15% { opacity: 0; } 76.667% { opacity: 1; } 100% { opacity: 0; } }
         @keyframes bootSlit { 0% { opacity: 0; } 15% { opacity: 1; } 28.333% { opacity: 0; } 58.333% { opacity: 1; } 76.667% { opacity: 0; } 100% { opacity: 0; } }
         @keyframes bootShut { 0% { opacity: 0; } 28.333% { opacity: 1; } 58.333% { opacity: 0; } 100% { opacity: 0; } }
+        /* the same blink at 3.28s and 7.04s of every 8s */
+        @keyframes idleHalf {
+            0% { opacity: 0; }
+            41% { opacity: 1; } 41.5625% { opacity: 0; } 43.875% { opacity: 1; } 44.75% { opacity: 0; }
+            88% { opacity: 1; } 88.5625% { opacity: 0; } 90.875% { opacity: 1; } 91.75% { opacity: 0; }
+            100% { opacity: 0; }
+        }
+        @keyframes idleSlit {
+            0% { opacity: 0; }
+            41.5625% { opacity: 1; } 42.0625% { opacity: 0; } 43.1875% { opacity: 1; } 43.875% { opacity: 0; }
+            88.5625% { opacity: 1; } 89.0625% { opacity: 0; } 90.1875% { opacity: 1; } 90.875% { opacity: 0; }
+            100% { opacity: 0; }
+        }
+        @keyframes idleShut {
+            0% { opacity: 0; }
+            42.0625% { opacity: 1; } 43.1875% { opacity: 0; }
+            89.0625% { opacity: 1; } 90.1875% { opacity: 0; }
+            100% { opacity: 0; }
+        }
 
         /* the name. it types, one glyph a step (the first on the beat, the rest 45ms
            apart). 24px is three times the bitmap, so each glyph is exactly 24 whole pixels
@@ -339,14 +358,18 @@
         .holding-word b { font-weight: normal; color: var(--screen-accent); }
         .holding-word .nm {
             display: inline-block;
-            animation: typeOut .405s steps(9, start) .7s backwards;
+            animation: typeOut .405s steps(9, end) .655s backwards;
             will-change: transform;    /* its own layer: greyscale edges, not the colour fringe subpixel smoothing (Windows, some Linux) gives it */
         }
         .holding-word .vh { -webkit-user-select: none; user-select: none; }   /* a copy of the name copies it once */
         /* exactly 9 cells while it types (the inner text box rounds up by 1/64px because of
            the <b>, and 9 steps of that would drift a hair into the next glyph), and only
            then: filled backwards, it waits hidden through the delay and the boot, and once
-           typed it lets go, so a reader's own letter spacing can widen the name, not clip it */
+           typed it lets go, so a reader's own letter spacing can widen the name, not clip it.
+           an end step, not a start one: filled backwards, a start step is hidden through the
+           wait only where the browser keeps the easing spec's "before flag", and elsewhere it
+           shows the I for the whole wait and then types it again. so the delay is one step
+           short of .7s, and the I still lands on the beat */
         @keyframes typeOut {
             from { width: 9ch; -webkit-clip-path: inset(0 100% 0 0); clip-path: inset(0 100% 0 0); }
             to   { width: 9ch; -webkit-clip-path: inset(0 0 0 0);    clip-path: inset(0 0 0 0); }
@@ -389,7 +412,7 @@
         .term-block {
             display: inline-block; width: .55em; height: .95em; margin-top: .1em; flex: none;
             background: var(--screen-ink); align-self: center;
-            animation: termBlink 1.06s steps(1) 1.75s 3;    /* solid while typing, a few blinks, then it waits, solid */
+            animation: termBlink 1.06s steps(1) 1.75s infinite;    /* solid while typing, then it blinks as a waiting prompt does */
         }
         @keyframes termBlink { 50% { opacity: 0; } }
 
@@ -598,7 +621,7 @@
         .cmdl .cmd-a { display: inline-block; padding: .45em 0; }
         .go .cmd-a, .cmdl .cmd-a { white-space: normal; overflow-wrap: anywhere; }   /* a narrow screen, or a wider stand-in face, wraps them */
         .wait { margin-top: .3em; }
-        .wait .tc { animation: termBlink 1.06s steps(1) .53s 4; }
+        .wait .tc { animation: termBlink 1.06s steps(1) .53s infinite; }
         .pend .wait .tc { animation-name: none; }         /* its blinks start when contact prints */
 
         /* ── the foot ── */
@@ -611,8 +634,8 @@
            half a second, and its check lands last. only the script sets .pend, so without
            it, in print and under reduced motion nothing is held back ── */
         .js .pend .pl, .js .pend .chk .res { opacity: 0; }
-        .prn .pl { animation: printIn 1ms steps(1, start) both; animation-delay: calc(var(--i, 0) * var(--step, 30ms)); }
-        .prn .chk .res { animation: printIn 1ms steps(1, start) both; animation-delay: var(--done, 300ms); }
+        .prn .pl { animation: printIn 1ms linear both; animation-delay: calc(var(--i, 0) * var(--step, 30ms)); }
+        .prn .chk .res { animation: printIn 1ms linear both; animation-delay: var(--done, 300ms); }   /* linear: see typeOut on start steps */
         @keyframes printIn { from { opacity: 0; } to { opacity: 1; } }
 
         /* ── small screens ── */
@@ -912,7 +935,9 @@
         var secs = [], links = [], shot = null, developed = false, queued = false,
             barH = 0, heroSeen = true, footSeen = false, hold = false;
         /* the blink, the same frames and timings as the CSS one (half 45 · slit 40 · shut 90 ·
-           slit 55 · half 70), played once on an eye that has just come back into view */
+           slit 55 · half 70), played once on an eye that has just come back into view. the
+           screen's eye has its own loop, so this is the foot's: blink() leaves any eye that
+           is already animating alone */
         var S = 'steps(1, end)', LIDS = {
             'bf-half': [{ opacity: 1, easing: S }, { opacity: 0, offset: .15, easing: S }, { opacity: 1, offset: .76667, easing: S }, { opacity: 0 }],
             'bf-slit': [{ opacity: 0, easing: S }, { opacity: 1, offset: .15, easing: S }, { opacity: 0, offset: .28333, easing: S }, { opacity: 1, offset: .58333, easing: S }, { opacity: 0, offset: .76667, easing: S }, { opacity: 0 }],
@@ -978,7 +1003,7 @@
                 var seen = Math.min(r.bottom, vh) - Math.max(r.top, 0);
                 if (seen >= r.height * .6 || seen >= vh * .7) develop();
             }
-            /* the eyes: once each time you come back to one, never on a timer */
+            /* the foot's eye: once each time you come back to it (the screen's loops) */
             heroSeen = lids(eye, heroSeen, vh);
             footSeen = lids(footEye, footSeen, vh);
             if (!bar) return;
