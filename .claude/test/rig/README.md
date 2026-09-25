@@ -7,6 +7,7 @@ mouse and touch events. Nothing here is published (it's a dotfolder).
     node serve.js 8650 &                                     # the repo at /, so /test/ is test/
     node probe.js  http://127.0.0.1:8650/test/ /tmp/probe     # 89 checks
     node probe2.js http://127.0.0.1:8650/test/ /tmp/probe2    # 67 checks
+    node probe3.js http://127.0.0.1:8650/test/ /tmp/probe3    # 13 checks: the About pictures
     node audit.js  http://127.0.0.1:8650/test/                # axe, WCAG 2.x A/AA, 1280 and 375 wide
     npx html-validate -c htmlvalidate.json ../../../test/index.html
     node shoot.js  http://127.0.0.1:8650/test/ /tmp/shots     # screenshots and a report
@@ -28,6 +29,13 @@ mouse and touch events. Nothing here is published (it's a dotfolder).
   from the pinned commands, the power-on settled inside 5s with only the
   loops going on, the name hidden through its wait, and a first visit
   printing the first screen's part of the page after the commands.
+
+- probe3.js: the About pictures' little moves. On a warm scroll each plays
+  once, in order, a turn apart. A fling plays nothing. Coming back within
+  20s doesn't replay them; right off the screen and back after 20s (a jump
+  included) does. Hover and tap replay one (not twice, not while the page
+  scrolls under a still pointer). Reduced motion stops them, even mid-play.
+  A tall first visit finishes all five inside 5s. Without JS, no frame shows.
 
 T0 in probe2.js checks its own instrumentation first. If T0 fails, don't
 trust any other result in that run.
