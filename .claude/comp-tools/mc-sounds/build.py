@@ -19,6 +19,8 @@ import os, sys, wave, json, struct, math, subprocess, tempfile, shutil
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, '..', '..', '..'))
 OUT = os.path.join(REPO, 'tcomp', 'mc-sounds')
+# The WAV library this was first built from was deleted from Isaac's PC on 2026-09-24 to save
+# space; README.md says where to get it again (and what is already pre-encoded on GitHub).
 LIB = os.environ.get('MC_SOUND_LIB', r'C:\Users\isaac\code\site-assets\Minecraft sounds')
 PAD = 0.064          # 3 AAC frames at 48 kHz
 CAL_AT = 0.074       # the calibration pulse's centre, 10 ms after the pad
@@ -130,6 +132,9 @@ def faststart(path):
     open(path, 'wb').write(res)
 
 def main(prefixes):
+    if not os.path.isdir(LIB):
+        sys.exit(f'no sound library at {LIB}: download the WAVs from the original archive (README.md) '
+                 'and set MC_SOUND_LIB to that folder. Sounds in the mc-sounds-archive release need no build.')
     tmp = tempfile.mkdtemp(prefix='mc-sounds-')   # the padded WAVs: tens of megabytes, gone when the build is
     try:
         build(prefixes, tmp)
