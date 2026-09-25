@@ -2699,10 +2699,21 @@ button.cr-iu-skip { position: absolute; right: 1rem; bottom: 1rem; z-index: 11; 
 .mc-hotbar .mc-slot:nth-child(9) { left: calc(var(--px) * 163); }
 /* toasts: 160x32 in the top-right corner, slid by toastFrame() */
 .mc-toasts { position: absolute; inset: 0; z-index: 6; pointer-events: none; overflow: hidden; }
-.mc-toast { position: absolute; left: 0; top: 0; width: calc(var(--px) * 160); height: calc(var(--px) * 32); background: var(--spr-toast) 0 0 / 100% 100% no-repeat; image-rendering: pixelated; }
+.mc-toast { position: absolute; left: 0; top: 0; width: calc(var(--px) * 160); height: calc(var(--px) * 32); }
+/* the frame nine-sliced off the sprite, so a system toast wider than 160 keeps its corners */
+.mc-toast::before { content: ''; position: absolute; inset: 0; box-sizing: border-box; border: calc(var(--px) * 4) solid transparent;
+    border-image: var(--spr-toast) 4 fill / calc(var(--px) * 4) stretch; image-rendering: pixelated; }
 .mc-toast .mc-tic { position: absolute; left: calc(var(--px) * 8); top: calc(var(--px) * 8); width: calc(var(--px) * 16); height: calc(var(--px) * 16); background-size: 100% 100%; image-rendering: pixelated; }
 .mc-toast .mc-tl { position: absolute; }
 .mc-actbar { opacity: 0; }
+/* the attack indicator and F3's 3D crosshair sit beside .mc-cross, outside .mc-hud, for the same inverting blend */
+.mc-atk { position: absolute; left: 0; top: 0; z-index: 4; display: none; pointer-events: none; mix-blend-mode: difference; image-rendering: pixelated; }
+.mc-atk.bar { display: block; width: calc(var(--px) * 16); height: calc(var(--px) * 4); background: var(--spr-atk_bg) 0 0 / 100% 100% no-repeat; }
+.mc-atk.bar b { display: block; width: 0; height: 100%; background: var(--spr-atk_fg) 0 0 / calc(var(--px) * 16) 100% no-repeat; }
+.mc-atk.full { display: block; width: calc(var(--px) * 16); height: calc(var(--px) * 16); background: var(--spr-atk_full) 0 0 / 100% 100% no-repeat; }
+.mc-atk.full b { display: none; }
+.mc-cross3d { position: absolute; left: 0; top: 0; z-index: 4; pointer-events: none; }
+.mc.mc-f3 .mc-cross { display: none; }
 .mc-panelwrap { position: absolute; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.45); }
 .mc-panel { position: relative; background: #c6c6c6; border: 3px solid; border-color: #ffffff #555555 #555555 #ffffff; padding: 12px 14px; color: #3f3f3f; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5); }
 .mc-phead, .mc-plabel { font-size: 12px; margin: 2px 0 6px; color: #3f3f3f; }
@@ -2788,11 +2799,11 @@ button.cr-iu-skip { position: absolute; right: 1rem; bottom: 1rem; z-index: 11; 
 .mc-achrow.got b { color: #8ae08a; }
 .mc-achrow span { color: #9a9aa8; font-size: 11px; }
 /* F3: each line on its own 0x90505050 backdrop, a GUI pixel wider than its text all round */
-.mc-debug { position: absolute; inset: 0; z-index: 4; pointer-events: none; }
+.mc-debug { position: absolute; inset: 0; z-index: 7; pointer-events: none; }   /* 26.x draws F3 over the toasts */
 .mc-debug .mc-dl { position: absolute; left: 0; top: 0; display: block; height: calc(var(--px) * 9); background: rgba(80, 80, 80, 0.565); }
 .mc-debug .mc-dl.blank { background: none; }
 .mc-debug .mc-dl .mt { position: absolute; left: var(--px); top: var(--px); }
-.mc-sleepov { position: absolute; inset: 0; z-index: 8; pointer-events: none; background: #000; opacity: 0; display: flex; align-items: center; justify-content: center; color: #cfd6e6; font-size: 14px; transition: opacity 300ms; }
+.mc-sleepov { position: absolute; inset: 0; z-index: 3; pointer-events: none; background: #101020; opacity: 0; }
 .mc-bar { width: 260px; height: 12px; border: 2px solid #8b8b8b; background: #26201a; }
 .mc-bar i { display: block; height: 100%; width: 0; background: #4be04b; transition: width 120ms linear; }
 .mc-load h3 { color: #d8d0c4; }
@@ -3651,6 +3662,7 @@ button.nn-drow:hover { background: rgba(30,60,48,.5); }
 .mc-chatlog { position: absolute; inset: 0; }
 .mc-cline { position: absolute; left: 0; width: calc(var(--px) * 332); height: calc(var(--px) * 9); --ca: 1; background: rgba(0, 0, 0, calc(var(--ca) * 0.5)); }
 .mc-cline .mc-cseg { position: absolute; top: var(--px); opacity: var(--ca); }
+.mc-cline .mc-ctag { position: absolute; left: 0; top: 0; width: calc(var(--px) * 2); height: 100%; background: #d0d0d0; opacity: var(--ca); }
 .mc-cseg { position: absolute; top: 0; }
 .mc .mt.ul::after, .mc .mt.ul::before { text-decoration: underline; text-decoration-thickness: var(--px); text-underline-offset: var(--px); }
 .mc-chatbar { position: absolute; display: none; height: calc(var(--px) * 12); background: rgba(0, 0, 0, 0.502); }

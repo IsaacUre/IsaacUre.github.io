@@ -4704,9 +4704,32 @@
        item squashed to 1/(1 + t/5) of its width and (2 + t/5)/2 of its height
        about the point (8, 12), easing back as t runs down. Done per frame with
        the fractional tick, like the game's partialTick. */
+    /* With F3 up the crosshair is the three world axes as seen from the camera:
+       X red, Y green, Z blue, ten GUI pixels long from the centre of the screen. */
+    function cross3d() {
+        var cv = RT.el.querySelector('.mc-cross3d');
+        if (!cv) return;
+        var on = !!RT.f3 && !isSpectator() && !RT.panel && !RT.menu;
+        cv.style.display = on ? '' : 'none';
+        RT.el.classList.toggle('mc-f3', !!RT.f3);
+        if (!on) return;
+        var s = RT.gs, n = 32 * s;
+        if (cv.width !== n) { cv.width = cv.height = n; cv.style.width = cv.style.height = n + 'px'; }
+        hudPlace(cv, (RT.gw >> 1) - 16, (RT.gh >> 1) - 16);
+        var c = cv.getContext('2d'), yaw = S.yaw, p = S.pitch;
+        c.clearRect(0, 0, n, n);
+        // camera right and up, in world axes: yaw 0 faces +Z (south), positive pitch looks down
+        var rgt = [-Math.cos(yaw), 0, -Math.sin(yaw)], up = [-Math.sin(yaw) * Math.sin(p), Math.cos(p), Math.cos(yaw) * Math.sin(p)];
+        [[[1, 0, 0], '#ff0000'], [[0, 1, 0], '#00ff00'], [[0, 0, 1], '#0000ff']].forEach(function (ax) {
+            var d = ax[0], sx = d[0] * rgt[0] + d[1] * rgt[1] + d[2] * rgt[2], sy = d[0] * up[0] + d[1] * up[1] + d[2] * up[2];
+            c.strokeStyle = ax[1]; c.lineWidth = s; c.lineCap = 'butt';
+            c.beginPath(); c.moveTo(n / 2, n / 2); c.lineTo(n / 2 + sx * 10 * s, n / 2 - sy * 10 * s); c.stroke();
+        });
+    }
     function hudFrame(dt) {
         if (!RT || !RT.el) return;
         toastFrame(dt);
+        cross3d();
         if (RT.chat) paintChatInput(); else chatAlpha();
         if (!RT.pops || RT.paused) return;
         var bar = RT.el.querySelector('.mc-hotbar');
@@ -4933,17 +4956,21 @@
         d.style.display = '';
     }
     function hideDeath() { RT.el.querySelector('.mc-death').style.display = 'none'; RT.el.focus(); }
+    /* Player.sleepCounter and Gui's sleep overlay: the counter climbs a tick at a
+       time to 100 (five seconds) while the screen fades to 0x101020 at alpha
+       220; at 100 the night is skipped and the player wakes, the counter runs on
+       to 110 and the overlay fades back out over that half second. */
     function sleepTick(dt) {
         if (!RT.sleep) return;
         RT.sleep += dt;
         var ov = RT.el.querySelector('.mc-sleepov');
         ov.style.display = '';
-        ov.style.opacity = Math.min(1, RT.sleep / 1.2);
-        if (RT.sleep > 1.6) {
-            S.t = DAY_MS * 0.02;   // sunrise
-            RT.sleep = 0;
-            ov.style.display = 'none';
-        }
+        var c = Math.min(100, RT.sleep * 20);
+        if (!RT.woke && RT.sleep >= 5) { S.t = DAY_MS * 0.02; RT.woke = RT.sleep; }   // sunrise
+        if (RT.woke) c = 100 + (RT.sleep - RT.woke) * 20;
+        var a = c <= 100 ? 220 * c / 100 : 220 * (1 - (c - 100) / 10);
+        ov.style.opacity = Math.max(0, a / 255).toFixed(3);
+        if (c >= 110) { RT.sleep = 0; RT.woke = 0; ov.style.display = 'none'; }
     }
 
     /* ── F3 ─────────────────────────────────────────────────── */
@@ -5022,6 +5049,9 @@
             try {
                 var ext = RT.G.gl.getExtension('WEBGL_debug_renderer_info');
                 RT.dbgGpu = ext ? [RT.G.gl.getParameter(ext.UNMASKED_VENDOR_WEBGL), RT.G.gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)] : [RT.G.gl.getParameter(RT.G.gl.VENDOR), RT.G.gl.getParameter(RT.G.gl.RENDERER)];
+                // the game names the card, not the browser's translation layer: "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 (0x…) Direct3D11 …)" → the middle
+                var ang = /^ANGLE \(([^,]+),\s*(.+?)(?:\s*\(0x[0-9a-f]+\))?(?:\s+Direct3D.*|,\s*[^,]*)?\)$/i.exec(RT.dbgGpu[1] || '');
+                if (ang) RT.dbgGpu = [ang[1].replace(/^Google$/, 'Google Inc.'), ang[2]];
             } catch (e) { RT.dbgGpu = ['WebGL', 'WebGL']; }
         }
         var ln = dbgLines(), all = [], s;
