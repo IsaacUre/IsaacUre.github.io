@@ -66,12 +66,12 @@ to try things on before they move to `/comp/`.
   from beside its own script, so a copy of the game in `/comp/` would need
   its own `mc-sounds/` beside it.
 
-## new
+## test
 
-`/new/` is the face of the site being built: a "who is this guy" page in the
+`/test/` is the face of the site being built: a "who is this guy" page in the
 holding page's look (the same boot terminal, and the same LCD, which now types
-the name and `whoami`). It lives at isaacure.com/new until Isaac moves it to
-the root.
+the name and `whoami`). It lives at isaacure.com/test until Isaac moves it to
+the root. (It was at `/new/` at first; that path is gone, not redirected.)
 
 - It stays unlisted until he says otherwise: `noindex, nofollow`, no
   canonical or `og:url`, and no link to it from anywhere on the site. Drop
@@ -87,5 +87,5 @@ the root.
   moving it to the root is a copy.
 - There is no section for the rest of the site yet. Isaac took the "This
   site" one out and will add one when `comp/` and `1p/` are ready to link.
-- `.claude/new/rig/` has its checks (154 of them, plus axe and
+- `.claude/test/rig/` has its checks (154 of them, plus axe and
   html-validate). Run them after any change; its README says how.

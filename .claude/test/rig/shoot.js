@@ -1,4 +1,4 @@
-/* Screenshot + sanity harness for /new.
+/* Screenshot + sanity harness for /test.
    Usage: node shoot.js <url> <outDir> [bootWaitMs=7000]
    Writes PNGs and report.json into outDir. Google Fonts (Press Start 2P, VT323)
    come from rig/fonts; the browser gets no other network. */

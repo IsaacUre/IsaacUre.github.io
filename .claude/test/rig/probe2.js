@@ -1,4 +1,4 @@
-/* Regression-fix probe for /new. Usage: node probe2.js <baseUrl> <outDir> */
+/* Regression-fix probe for /test. Usage: node probe2.js <baseUrl> <outDir> */
 var pw = require('/opt/node22/lib/node_modules/playwright');
 var fs = require('fs'), path = require('path');
 var BASE = process.argv[2], OUT = path.resolve(process.argv[3] || 'probe2');
@@ -199,9 +199,11 @@ function animCount(p, which) { return p.evaluate(function (w) { return window.__
                 var ro = await p.evaluate(function () {
                     var dts = Array.prototype.map.call(document.querySelectorAll('.ro dt'), function (d) { return Math.round(d.getBoundingClientRect().width); });
                     var dds = Array.prototype.map.call(document.querySelectorAll('.ro dd'), function (d) { return Math.round(d.getBoundingClientRect().width); });
-                    return { dtMax: Math.max.apply(null, dts), ddMin: Math.min.apply(null, dds), n: dts.length, sw: document.documentElement.scrollWidth, iw: innerWidth };
+                    var pr = document.createElement('span'); pr.style.cssText = 'position:absolute;visibility:hidden;white-space:pre'; pr.textContent = '0000000000'; document.querySelector('.ro dt').appendChild(pr); var ch = pr.getBoundingClientRect().width / 10; pr.remove();
+                    return { dtMax: Math.max.apply(null, dts), ch: Math.round(ch * 100) / 100, ddMin: Math.min.apply(null, dds), n: dts.length, sw: document.documentElement.scrollWidth, iw: innerWidth };
                 });
-                rec('T21 readout ' + mode + ' at ' + RW + ': keys narrow, values wide, no overflow', ro.dtMax <= 170 && ro.ddMin >= 60 && ro.sw <= ro.iw, ro);
+                // keys hold to their 19-column design (+1 for rounding); without contain an old engine balloons them past 1000px
+                rec('T21 readout ' + mode + ' at ' + RW + ': keys narrow, values wide, no overflow', ro.dtMax <= 20 * ro.ch && ro.ddMin >= 60 && ro.sw <= ro.iw, ro);
                 await c.close();
             }
         }

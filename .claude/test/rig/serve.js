@@ -1,10 +1,10 @@
-/* Static server for testing /new.
+/* Static server for testing /test.
    Usage: node serve.js <port> [candidateDir]
-   Serves the repo root at /, so /new/ is the repo's new/. Given candidateDir, it
-   serves that at /new/ instead (/new/index.html from the candidate, /images/...
+   Serves the repo root at /, so /test/ is the repo's test/. Given candidateDir, it
+   serves that at /test/ instead (/test/index.html from the candidate, /images/...
    still from the repo). */
 var http = require('http'), fs = require('fs'), path = require('path');
-var REPO = path.resolve(__dirname, '..', '..', '..');   // the repo root: .claude/new/rig is three down
+var REPO = path.resolve(__dirname, '..', '..', '..');   // the repo root: .claude/test/rig is three down
 var PORT = +(process.argv[2] || 8600);
 var CAND = process.argv[3] ? path.resolve(process.argv[3]) : null;
 var TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css',
@@ -12,10 +12,10 @@ var TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.c
               '.woff2': 'font/woff2', '.ico': 'image/x-icon', '.txt': 'text/plain' };
 http.createServer(function (req, res) {
     var p = decodeURIComponent(req.url.split('?')[0].split('#')[0]);
-    if (p === '/new') { res.writeHead(301, { Location: '/new/' }); return res.end(); }
+    if (p === '/test') { res.writeHead(301, { Location: '/test/' }); return res.end(); }
     if (p.slice(-1) === '/') p += 'index.html';
     var root = REPO;
-    if (CAND && p.indexOf('/new/') === 0) { root = CAND; p = p.slice(4); }
+    if (CAND && p.indexOf('/test/') === 0) { root = CAND; p = p.slice(5); }
     var f = path.resolve(path.join(root, p));
     if (f.indexOf(root) !== 0) { res.writeHead(403); return res.end('no'); }
     fs.readFile(f, function (e, b) {
