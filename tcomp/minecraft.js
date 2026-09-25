@@ -2089,14 +2089,14 @@
         if (S.food >= 20 && !invulnerable()) return;   // a full stomach just refuses; creative bites regardless
         var t = tentAt(x, y, z, 'cake');
         S.food = Math.min(20, S.food + 2); S.sat = Math.min(S.food, S.sat + 0.4);
-        t.bites = (t.bites || 0) + 1; snd('eat'); paintVitals();
+        t.bites = (t.bites || 0) + 1; snd('eat'); paintVitals(); stat('c', 'eat_cake_slice');
         if (t.bites >= 7) { setB(x, y, z, AIR); }
     }
     function wearHeld(n) {
         var h = held();
         if (!h || h.dur == null) return;
         wearItem(h, n);
-        if (h.dur <= 0) { S.inv[S.sel] = null; snd('break'); }
+        if (h.dur <= 0) { stat('b', h.id); S.inv[S.sel] = null; snd('break'); }
         paintHotbar();
     }
     function wearItem(st, n) {   // unbreaking gives each point a chance to not count
@@ -2251,6 +2251,7 @@
             if (k[' '] && RT.ground) {
                 RT.vy = JUMP * (1 + 0.18 * effLvl('jump_boost'));
                 RT.ground = false;
+                stat('c', 'jump');
                 addExh(RT.sprint ? 0.2 : 0.05);
             }
         }
@@ -2280,12 +2281,13 @@
                 }
                 RT.ground = true;
                 var fall = RT.fallY - S.py;
+                if (fall >= 2 && !RT.fly) stat('c', 'fall_one_cm', Math.round(fall * 100));   // Player.causeFallDamage counts two blocks and up
                 // re-sample fluid at the landing box: a fast fall can plunge through a shallow
                 // pond in one frame, so the frame-start `water` misses it
                 if (fall > 3.5 && !water && !inFluid(WATER) && rule('fallDamage') && !RT.fly) {
                     var ff = S.armor[3] ? ench(S.armor[3], 'feather') : 0;   // feather falling boots soften the landing
                     var fdmg = Math.floor((fall - 3) * (1 - ff * 0.12));
-                    if (fdmg > 0) { hurt(fdmg, null, false, true); snd('fall', fdmg); }
+                    if (fdmg > 0) { hurt(fdmg, null, false, true, null, { m: fall > 5 ? 'fallhigh' : 'fall' }); snd('fall', fdmg); }
                 }
                 // touching down ends creative flight, exactly like the real game.
                 // Spectators never land, so they keep theirs.
@@ -2314,7 +2316,7 @@
         else RT.lavaT = 0;
         // cactus: touching one hurts
         var fx2 = Math.floor(S.px), fz2 = Math.floor(S.pz), fy2 = Math.floor(S.py + 0.5);
-        if (getB(fx2, fy2, fz2) === CACTUS || cactusTouch()) { RT.cactT = (RT.cactT || 0) + dt; if (RT.cactT > 0.5) { RT.cactT = 0; hurt(1, null, false, true); } }
+        if (getB(fx2, fy2, fz2) === CACTUS || cactusTouch()) { RT.cactT = (RT.cactT || 0) + dt; if (RT.cactT > 0.5) { RT.cactT = 0; hurt(1, null, false, true, null, { m: 'cactus' }); } }
         else RT.cactT = 0;
         /* Footsteps. Entity.moveDist accumulates the horizontal distance at 0.6×
            and fires a step when it passes the next whole number, so the real
@@ -2423,7 +2425,7 @@
         } else RT.regenT = 0;
         if (S.food <= 0) {
             RT.starveT += dt;
-            if (RT.starveT >= 4) { RT.starveT = 0; if (S.hp > 1) { hurt(1, null, true); } }
+            if (RT.starveT >= 4) { RT.starveT = 0; if (S.hp > 1) { hurt(1, null, true, false, null, { m: 'starve' }); } }
         } else RT.starveT = 0;
     }
     function weatherTick(dt) {
@@ -2456,10 +2458,22 @@
             var f = RT.foes[i];
             if (Math.abs(f.x - lx - 0.5) < 3 && Math.abs(f.z - lz - 0.5) < 3) { f.hp -= 8; f.hurtF = 0.3; f.fire = Math.max(f.fire || 0, 5); if (f.hp <= 0) { foeDie(f); RT.foes.splice(i, 1); } }
         }
-        if (Math.abs(S.px - lx - 0.5) < 3 && Math.abs(S.pz - lz - 0.5) < 3) hurt(5, null, false, true);
+        if (Math.abs(S.px - lx - 0.5) < 3 && Math.abs(S.pz - lz - 0.5) < 3) hurt(5, null, false, true, null, { m: 'lightning' });
     }
     // kind: 'drown' or 'fire' for the two damage sources with a cry of their own
-    function hurt(n, dir, quiet, bypassArmor, kind) {
+    /* The death message, CombatTracker's line for whatever dealt the last hit,
+       printed in chat and on the death screen */
+    var DEATH_MSG = { generic: '%1 died', fall: '%1 hit the ground too hard', fallhigh: '%1 fell from a high place', drown: '%1 drowned',
+        lava: '%1 tried to swim in lava', fire: '%1 burned to death', cactus: '%1 was pricked to death', starve: '%1 starved to death',
+        lightning: '%1 was struck by lightning', explosion: '%1 blew up', magic: '%1 was killed by magic', kill: '%1 was killed',
+        void: '%1 fell out of the world', wall: '%1 suffocated in a wall', mob: '%1 was slain by %2', arrow: '%1 was shot by %2',
+        creeper: '%1 was blown up by %2' };
+    function deathMsg() {
+        var s = RT.lastSrc || { m: 'generic' };
+        return (DEATH_MSG[s.m] || DEATH_MSG.generic).replace('%1', 'Steve').replace('%2', s.by || '');
+    }
+    // src: what dealt it, for the death message ({ m: kind of death, by: who })
+    function hurt(n, dir, quiet, bypassArmor, kind, src) {
         if (RT.dead || !(n > 0)) return;   // !(n>0) also rejects NaN
         if (invulnerable()) return;                        // creative and spectator take nothing
         var resist = effLvl('resistance');
@@ -2479,6 +2493,8 @@
         }
         if (dir) { RT.vy = Math.max(RT.vy, 4.5); axisMove(dir[0] * 0.35, 0, dir[1] * 0.35); }   // knockback fires even on a fully-absorbed hit
         if (n <= 0) return;
+        RT.lastSrc = src || { m: kind === 'drown' ? 'drown' : kind === 'fire' ? 'lava' : 'generic' };
+        stat('c', 'damage_taken', n * 10);
         S.hp -= n;
         RT.flash = 0.35;
         if (!quiet) snd(kind === 'drown' ? 'hurtdrown' : kind === 'fire' ? 'hurtfire' : 'hurt');
@@ -2515,14 +2531,17 @@
         // typed into a box you could not see
         closeChat(false);
         unlockCursor();
+        if (rule('showDeathMessages') !== false) chatSay(deathMsg());
+        stat('c', 'deaths'); S.stats.c.time_since_death = 0;
+        if (RT.lastSrc && RT.lastSrc.by) stat('kb', RT.lastSrc.by.toLowerCase());
         showDeath();
         snd('die');
     }
     function respawn() {
         var sp = S.spawn || S.wspawn;
         S.px = sp[0]; S.py = sp[1]; S.pz = sp[2];
-        S.hp = 20; S.food = 20; S.sat = 5; S.air = 10;
-        RT.vy = 0; RT.fallY = S.py; RT.dead = false; RT.exh = 0;
+        S.hp = 20; S.food = 20; S.sat = 5; S.air = 10; S.score = 0;
+        RT.vy = 0; RT.fallY = S.py; RT.dead = false; RT.exh = 0; RT.statPos = null;
         hideDeath();
         ensureChunks(true);
         paintVitals(); paintHotbar();
@@ -2615,6 +2634,11 @@
         snd('dig', b, x + 0.5, y + 0.5, z + 0.5);
         blockParticles(x, y, z, b);
         setB(x, y, z, AIR);
+        if (!creative) {   // Block.playerDestroy counts the block; ItemStack.mineBlock counts the tool
+            var mid = PLACE2ITEM[b];
+            if (mid && I[mid]) stat('m', mid);
+            if (h && I[h.id] && I[h.id].tool) stat('u', h.id);
+        }
         if (harvest) {
             var ds = dropFor(b, fortune, silk);
             for (var i = 0; i < ds.length; i++) dropItem(x + 0.5, y + 0.3, z + 0.5, ds[i][0], ds[i][1]);
@@ -2768,7 +2792,7 @@
         }
         // carrots & potatoes are both food and crop: plant on farmland when aimed there, else fall through to eating
         if (def.crop && def.place != null && t && getB(t.px, t.py, t.pz) === AIR && getB(t.px, t.py - 1, t.pz) === FARMLAND) {
-            setB(t.px, t.py, t.pz, def.place); useOne(); paintHotbar(); snd('place', def.place, t.px + 0.5, t.py + 0.5, t.pz + 0.5); return;
+            setB(t.px, t.py, t.pz, def.place); stat('u', held().id); useOne(); paintHotbar(); snd('place', def.place, t.px + 0.5, t.py + 0.5, t.pz + 0.5); return;
         }
         // spawn eggs drop a mob onto the face you clicked
         if (def.egg && t) {
@@ -2865,6 +2889,7 @@
                 S.sat = Math.min(S.food, S.sat + def.food.sat);
                 if (def.heal) S.hp = Math.min(20, S.hp + def.heal);   // golden apple heals
                 var wasId = h.id, wasBowl = def.bowl;
+                stat('u', wasId);
                 if (!instaBuild()) { h.c--; if (!h.c) S.inv[S.sel] = null; }
                 if (wasBowl && !instaBuild()) invGive('bowl', 1);       // stew leaves the bowl
                 RT.eatT = 0; snd('burp');
@@ -2907,8 +2932,14 @@
             }
         }
         var t = RT.target;
+        var sp0 = S.spawn;
         S.spawn = [t.x + 0.5, t.y + 1.01, t.z + 0.5];
+        if (!sp0 || sp0[0] !== S.spawn[0] || sp0[1] !== S.spawn[1] || sp0[2] !== S.spawn[2]) chatSay('Respawn point set');
         RT.sleep = 0.01;   // lying down makes no sound in the real game either
+        RT.woke = 0;
+        stat('c', 'sleep_in_bed'); S.stats.c.time_since_rest = 0;
+        unlockCursor();    // InBedChatScreen frees the pointer for Leave Bed
+        bedLayout();
         unlock('sleep');
     }
 
@@ -3193,7 +3224,7 @@
                     var baby = mkFoe(f.k, (f.x + m.x) / 2, f.y, (f.z + m.z) / 2); baby.baby = 20;
                     if (RT.foes.length < 60) RT.foes.push(baby);
                     spawnXp(f.x, f.y + 0.4, f.z, 1 + ((Math.random() * 7) | 0));
-                    unlock('breed');
+                    unlock('breed'); stat('c', 'animals_bred');
                     break;
                 }
             }
@@ -3243,7 +3274,7 @@
                 if (dist < 3) { if (!f.fuse) snd('fuse', 0, f.x, f.y + f.h * 0.6, f.z); f.fuse += dt; want = null; sp = 0; }
                 else if (f.fuse > 0 && dist > 7) f.fuse = Math.max(0, f.fuse - dt * 2);
                 else if (f.fuse > 0) f.fuse += dt * 0.4;   // committed once lit unless you really run
-                if (f.fuse >= 1.5) { killFoe(f); explode(f.x, f.y + f.h / 2, f.z, 3, 22); return false; }
+                if (f.fuse >= 1.5) { killFoe(f); explode(f.x, f.y + f.h / 2, f.z, 3, 22, 'Creeper'); return false; }
             }
         } else {
             f.wt -= dt;
@@ -3292,7 +3323,7 @@
             S.py < f.y + f.h && S.py + PH > f.y) {
             f.ifr = 1; f.atk = ATK_T;   // and it visibly takes a swing at you
             var kl = Math.sqrt(px * px + pz * pz) || 1;
-            hurt(cdmg, [px / kl, pz / kl]);
+            hurt(cdmg, [px / kl, pz / kl], false, false, null, { m: 'mob', by: targetName(f) });
             if (f.k === 'slime') snd('mob:slime:attack', f, f.x, f.y + f.h * 0.5, f.z);   // a slime's hit is a sound of its own
         }
         // idle voice
@@ -3388,7 +3419,7 @@
         if (hy.y) { if (f.vy < 0) f.ground = true; f.vy = 0; } else if (Math.abs(f.vy) > 1) f.ground = false;
         if (f.hp <= 0) { foeDie(f); return true; }
         if (f.aggro > 0 && f.ifr <= 0 && !RT.dead && Math.abs(f.x - S.px) < f.hw + HW + 0.15 && Math.abs(f.z - S.pz) < f.hw + HW + 0.15 && S.py < f.y + f.h && S.py + PH > f.y) {
-            f.ifr = 1; f.atk = ATK_T; var kl = Math.sqrt(px * px + pz * pz) || 1; hurt(4, [px / kl, pz / kl]);
+            f.ifr = 1; f.atk = ATK_T; var kl = Math.sqrt(px * px + pz * pz) || 1; hurt(4, [px / kl, pz / kl], false, false, null, { m: 'mob', by: 'Enderman' });
         }
         // a calm one mutters; a provoked one screams
         f.voice -= dt; if (f.voice <= 0) { f.voice = 8 + Math.random() * 16; snd('mob:enderman:' + (f.aggro > 0 ? 'scream' : 'idle'), f, f.x, f.y + 2.4, f.z); }
@@ -3494,6 +3525,7 @@
         var crit = charged && RT.vy < -0.1 && !RT.ground && !RT.sprint && !inFluid(WATER) && !onLadder();
         if (crit) { dmg *= 1.5; critParticles(f); }
         f.hp -= dmg;
+        stat('c', 'damage_dealt', Math.round(Math.min(dmg, f.hp + dmg) * 10));
         f.ifr = 0.5; f.hurtF = 0.3;
         // fire aspect
         if (ench(h, 'fire') > 0) f.fire = Math.max(f.fire || 0, 4);
@@ -3507,7 +3539,7 @@
         addExh(0.1);
         snd(crit ? 'crit' : 'hit', 0, f.x, f.y + f.h * 0.6, f.z);
         if (f.hp > 0) snd('mob:' + f.k + ':hurt', f, f.x, f.y + f.h * 0.7, f.z);
-        if (f.hp <= 0) { foeDie(f, ench(h, 'looting')); killFoe(f); }
+        if (f.hp <= 0) { stat('c', 'mob_kills'); stat('k', f.k); foeDie(f, ench(h, 'looting')); killFoe(f); }
     }
 
     /* ── spawning ───────────────────────────────────────────── */
@@ -3598,6 +3630,7 @@
     function addXp(amt) {
         if (amt <= 0) return;
         S.xp += amt;
+        S.score = (S.score || 0) + amt;   // Player.increaseScore: the death screen's score is the experience you gathered
         var leveled = false;
         while (S.xp >= xpForLevel(S.xpl)) { S.xp -= xpForLevel(S.xpl); S.xpl++; leveled = true; }
         if (leveled) snd(S.xpl % 5 === 0 ? 'levelbig' : 'level', S.xpl);
@@ -3670,6 +3703,7 @@
             before.push(S.off ? S.off.id + ':' + S.off.c : '');
             var left = invGive(d.it, d.c, d.dur, d.ench, d.iname);
             if (left === d.c) return false;         // no room at all: it stays
+            stat('p', d.it, d.c - left);
             snd('pop');
             for (hb = 0; hb < 9; hb++) if ((S.inv[hb] ? S.inv[hb].id + ':' + S.inv[hb].c : '') !== before[hb]) RT.pops[hb] = 5 * HUD_TICK;
             if ((S.off ? S.off.id + ':' + S.off.c : '') !== before[9]) RT.pops[9] = 5 * HUD_TICK;   // the off hand pops too
@@ -3713,7 +3747,7 @@
         } else if (!RT.dead &&
             a.x > S.px - HW && a.x < S.px + HW && a.y > S.py && a.y < S.py + PH && a.z > S.pz - HW && a.z < S.pz + HW) {
             var l = Math.sqrt(a.vx * a.vx + a.vz * a.vz) || 1;
-            hurt(a.dmg, [a.vx / l, a.vz / l]);
+            hurt(a.dmg, [a.vx / l, a.vz / l], false, false, null, { m: 'arrow', by: 'Skeleton' });
             return true;
         }
         return false;
@@ -3733,7 +3767,7 @@
         if (t.fuse <= 0) { explode(t.x, t.y + 0.5, t.z, 4, 26); return true; }
         return false;
     }
-    function explode(ex, ey, ez, r, maxDmg) {
+    function explode(ex, ey, ez, r, maxDmg, by) {
         var bx = Math.round(ex), by = Math.round(ey), bz = Math.round(ez), i;
         for (var dx = -r; dx <= r; dx++) for (var dy = -r; dy <= r; dy++) for (var dz = -r; dz <= r; dz++) {
             if (dx * dx + dy * dy + dz * dz > r * r + 0.5) continue;
@@ -3758,7 +3792,7 @@
         var pd = Math.sqrt((S.px - ex) * (S.px - ex) + (S.py + 0.9 - ey) * (S.py + 0.9 - ey) + (S.pz - ez) * (S.pz - ez));
         if (pd < r * 2) {
             var l = Math.sqrt((S.px - ex) * (S.px - ex) + (S.pz - ez) * (S.pz - ez)) || 1;
-            hurt(Math.round(maxDmg * (1 - pd / (r * 2))), [(S.px - ex) / l, (S.pz - ez) / l]);
+            hurt(Math.round(maxDmg * (1 - pd / (r * 2))), [(S.px - ex) / l, (S.pz - ez) / l], false, false, null, by ? { m: 'creeper', by: by } : { m: 'explosion' });
         }
         for (i = RT.foes.length - 1; i >= 0; i--) {
             var fo = RT.foes[i];
@@ -4334,6 +4368,10 @@
         }
         sprHud(mk);
         sprPanels(mk);
+        sprWidgets(mk);
+        sprAdv(mk);
+        sprStats(mk);
+        sprMenu(mk);
         var css = '.mc{';
         for (var k in GSPR) css += '--spr-' + k + ':url(' + GSPR[k].url + ');';
         css += '}';
@@ -4564,6 +4602,8 @@
         paintHotbar(); paintXp(); hudTick(true);
         chatLayout(); paintChat(); paintEffects(); toastFrame(0);
         if (RT.f3) paintDebug();
+        if (RT.iw) iwRender(false);
+        bedLayout();
     }
     function paintHotbar() {
         var bar = RT.el.querySelector('.mc-hotbar');
@@ -4812,6 +4852,7 @@
         cross3d();
         if (RT.chat) paintChatInput(); else chatAlpha();
         if (RT.panel) panelFrame(dt);
+        iwFrame();
         if (!RT.pops || RT.paused) return;
         var bar = RT.el.querySelector('.mc-hotbar');
         if (!bar) return;
@@ -4959,84 +5000,662 @@
            the sim does. It sits above the menu and eats clicks, so Back to Game,
            Achievements and both toggles all became dead buttons. Waking on pause is
            what the real game does anyway. */
-        if (RT.sleep) { RT.sleep = 0; RT.el.querySelector('.mc-sleepov').style.display = 'none'; }
+        if (RT.sleep) leaveBed();
         closeChat(false);   // a half-typed command must not float over the menu
         sSave();
-        var p = RT.el.querySelector('.mc-pause');
-        paintOpts();
-        p.style.display = '';
-        paintAchList();
+        iwShow('pause');
     }
     /* ── Open to LAN ────────────────────────────────────────
-       The screen behind the pause menu's button: a game mode for players who
-       would join, an Allow Cheats switch, a port, Start LAN World. There is
-       nobody on this LAN, but the switch is the real game's only way to turn
-       commands on in a world created without them, so it does exactly that —
-       for the rest of the session, the way the real one does, and the button
-       greys once the world is out. */
+       The LAN World screen: a game mode for players who would join, an Allow
+       Commands switch, a port, Start LAN World. There is nobody on this LAN,
+       but the switch is the real game's only way to turn commands on in a
+       world created without them, so it does exactly that, for the rest of the
+       session, the way the real one does, and the button greys once the world
+       is out. */
     function lanOpen() {
         if (!RT || !RT.paused || RT.lan) return;
         RT.lanUI = { gm: S.gm, cheats: cheatsOn(), port: '', pick: String(1024 + ((Math.random() * (65535 - 1024)) | 0)) };   // an empty box takes the picked port
-        RT.el.querySelector('.mc-pmain').style.display = 'none';
-        RT.el.querySelector('.mc-achs').style.display = 'none';
-        var lan = RT.el.querySelector('.mc-lan');
-        lan.style.display = '';
-        lanPaint(true);
-        snd('click');
-    }
-    function lanPaint(setPort) {
-        var u = RT.lanUI;
-        if (!u) return;
-        RT.el.querySelector('.mc-langm').textContent = 'Game Mode: ' + GM_NAME[u.gm];
-        RT.el.querySelector('.mc-lanch').textContent = 'Allow Cheats: ' + (u.cheats ? 'ON' : 'OFF');
-        var pin = RT.el.querySelector('.mc-lanport');
-        if (setPort) { pin.value = u.port; pin.placeholder = u.pick; }
-        var ok = lanPortOk(u.port);
-        RT.el.querySelector('.mc-lanmsg').textContent = ok ? '' : 'Not a valid port. Leave the edit box empty or enter a number between 1024 and 65535.';
-        RT.el.querySelector('.mc-lanstart').disabled = !ok;
+        iwShow('lan');
     }
     function lanPortOk(p) { p = String(p).trim(); return p === '' || (/^\d{4,5}$/.test(p) && +p >= 1024 && +p <= 65535); }
     function lanClose() {
         if (!RT || !RT.el) return;
         RT.lanUI = null;
-        RT.el.querySelector('.mc-lan').style.display = 'none';
-        RT.el.querySelector('.mc-pmain').style.display = '';
+        if (RT.paused) iwShow('pause');
         RT.el.focus();
     }
     function lanStart() {
         var u = RT && RT.lanUI;
-        if (!u || !lanPortOk(u.port)) { if (u) lanPaint(false); return; }
+        if (!u || !lanPortOk(u.port)) { if (u) iwRender(false); return; }
         RT.lan = { gm: u.gm, cheats: !!u.cheats, port: +(String(u.port).trim() || u.pick) };
-        lanClose();
-        RT.el.querySelector('.mc-lanbtn').disabled = true;   // the world is out; the real button greys the same way
+        RT.lanUI = null;
         chatSay('Local game hosted on port ' + RT.lan.port);
-        snd('click');
         hidePause();
         lockCursor();
     }
     function hidePause() {
         RT.paused = false;
-        if (RT.lanUI) lanClose();
-        RT.el.querySelector('.mc-pause').style.display = 'none';
-        RT.el.querySelector('.mc-achs').style.display = 'none';
+        RT.lanUI = null;
+        iwHide();
         RT.lastT = 0;   // don't count paused time as a frame
         RT.el.focus();  // the clicked button just vanished with the menu — keys must land on the game root
     }
-    function paintAchList() {
-        var el = RT.el.querySelector('.mc-achs .mc-achrows'), out = '';
-        for (var i = 0; i < ACH.length; i++) {
-            var got = !!S.ach[ACH[i].id];
-            out += '<div class="mc-achrow' + (got ? ' got' : '') + '"><b>' + ACH[i].t + '</b><span>' + ACH[i].d + '</span></div>';
-        }
-        el.innerHTML = out;
-        RT.el.querySelector('.mc-achn').textContent = S.achN + ' / ' + ACH.length;
-    }
     function showDeath() {
-        var d = RT.el.querySelector('.mc-death');
-        d.querySelector('.mc-dscore').textContent = 'Score: ' + (S.achN * 100 + ((S.hrs * 60) | 0));
-        d.style.display = '';
+        unlockCursor();
+        iwShow('death', { msg: deathMsg(), score: S.score || 0 });
     }
-    function hideDeath() { RT.el.querySelector('.mc-death').style.display = 'none'; RT.el.focus(); }
+    function hideDeath() { iwHide(); RT.el.focus(); }
+    /* InBedChatScreen: in bed the pointer is free and "Leave Bed" waits at
+       (W/2 - 100, H - 40); taking it, or Escape, gets you up with the night
+       still dark, and the overlay goes with you */
+    function leaveBed() {
+        RT.sleep = 0; RT.woke = 0;
+        var ov = RT.el.querySelector('.mc-sleepov'); if (ov) ov.style.display = 'none';
+        var b = RT.el.querySelector('.mc-bed'); if (b) b.style.display = 'none';
+        RT.el.focus();
+    }
+    function bedLayout() {
+        var b = RT.el.querySelector('.mc-bed');
+        if (!b) return;
+        var on = !!RT.sleep && !RT.woke && !RT.paused && !RT.dead;
+        if (on && b.style.display === 'none') {
+            b.innerHTML = iwBtn('mc-leavebed', 'leave', (RT.gw >> 1) - 100, RT.gh - 40, 200, 'Leave Bed');
+            b._W = RT.gw; b._H = RT.gh;
+        } else if (on && (b._W !== RT.gw || b._H !== RT.gh)) {
+            b.innerHTML = iwBtn('mc-leavebed', 'leave', (RT.gw >> 1) - 100, RT.gh - 40, 200, 'Leave Bed');
+            b._W = RT.gw; b._H = RT.gh;
+        }
+        b.style.display = on ? '' : 'none';
+    }
+    /* ── in-world screens ────────────────────────────────────────
+       The Game Menu, the screens behind its buttons, the death screen and its
+       confirmation: Screens over the world, laid out on the GUI grid where the
+       game lays them out, their widgets the game's 20-pixel buttons. Each is a
+       real <button> wearing the widget sprite, so Tab, Enter, Space and screen
+       readers work the way the game's keyboard navigation does. Under the Game
+       Menu and its sub-screens the world and the HUD are blurred, the game's
+       Menu Background Blur of 5 (three box passes of radius 5, about a
+       5.5-pixel Gaussian on the screen), beneath the in-world menu background;
+       the death screens keep the world sharp under their red gradient. */
+    var IW_SCR = {};
+    function iwAt(x, y, w, h) { return pAt(x, y) + (w ? ';width:calc(var(--px) * ' + w + ')' : '') + (h ? ';height:calc(var(--px) * ' + h + ')' : ''); }
+    function iwText(t, x, y, col, mcls) { return '<span class="mc-iwt" style="' + pAt(x, y) + '">' + mtHTML(t, col || '#ffffff', mcls) + '</span>'; }
+    // drawCenteredString: x = W/2 - width/2, both whole pixels
+    function iwCenter(t, W, y, col) { return iwText(t, (W >> 1) - ((mfWidth(t) + 1) >> 1), y, col); }
+    function iwLabel(label, w, off) {
+        var tw = mfWidth(label) + 1;
+        return '<span class="mc-wbl" style="left:calc(var(--px) * ' + ((w >> 1) - (tw >> 1)) + ')">' + mtHTML(label, off ? '#a0a0a0' : '#ffffff') + '</span>';
+    }
+    function iwBtn(cls, act, x, y, w, label, off) {
+        return '<button type="button" class="mc-wb' + (cls ? ' ' + cls : '') + '" data-act="' + act + '" data-w="' + w + '"' + (off ? ' disabled' : '') +
+            ' style="' + iwAt(x, y, w) + '">' + iwLabel(label, w, off) + '</button>';
+    }
+    function iwIcon(cls, act, x, y, icon, name, off) {
+        return '<button type="button" class="mc-wb mc-wbi' + (cls ? ' ' + cls : '') + '" data-act="' + act + '" data-tip="' + escHtml(name) + '" aria-label="' + escHtml(name) + '"' +
+            (off ? ' disabled' : '') + ' style="' + iwAt(x, y, 20) + '"><i style="background-image:var(--spr-' + icon + ')"></i></button>';
+    }
+    function iwSetBtn(b, label, off) {   // a button whose label or state changed, updated in place so it keeps focus
+        if (!b) return;
+        var w = +b.getAttribute('data-w') || 200, html = iwLabel(label, w, off);
+        if (b._html !== html) { b._html = html; b.innerHTML = html; }
+        if (b.disabled !== !!off) {
+            var had = document.activeElement === b;
+            b.disabled = !!off;
+            if (had && off) RT.el.focus();
+        }
+    }
+    function iwShow(scr, d) {
+        if (!IW_SCR[scr]) return;
+        RT.iw = { scr: scr, t0: RT.now || 0, live: false, d: d || {} };
+        iwRender(true);
+    }
+    function iwHide() {
+        RT.iw = null;
+        ['.mc-pause', '.mc-death'].forEach(function (q) { var h = RT.el.querySelector(q); if (h) h.style.display = 'none'; });
+        RT.el.classList.remove('mc-blur');
+    }
+    function iwRender(full) {
+        var iw = RT.iw;
+        if (!iw || !RT.gs) return;
+        var def = IW_SCR[iw.scr], host = RT.el.querySelector(def.host === 'death' ? '.mc-death' : '.mc-pause');
+        var other = RT.el.querySelector(def.host === 'death' ? '.mc-pause' : '.mc-death');
+        if (other) other.style.display = 'none';
+        host.style.display = '';
+        RT.el.classList.toggle('mc-blur', def.host !== 'death');
+        RT.el.style.setProperty('--mblur', (5.5 / (window.devicePixelRatio || 1)).toFixed(2) + 'px');
+        var layers = host.querySelectorAll('.mc-iwl'), layer = null;
+        for (var i = 0; i < layers.length; i++) {
+            var mine = layers[i].classList.contains(def.layer);
+            layers[i].style.display = mine ? '' : 'none';
+            if (mine) layer = layers[i];
+        }
+        if (full || layer._scr !== iw.scr || layer._W !== RT.gw || layer._H !== RT.gh) {
+            var act = document.activeElement, keep = act && layer.contains(act) ? act.getAttribute('data-act') : null;
+            layer._scr = iw.scr; layer._W = RT.gw; layer._H = RT.gh;
+            layer.innerHTML = def.html(RT.gw, RT.gh, iw);
+            if (def.wire) def.wire(layer, iw);
+            if (keep) { var back = layer.querySelector('[data-act="' + keep + '"]'); if (back && !back.disabled) back.focus(); }
+            tipRender(null, 0, 0, host.querySelector('.mc-iwtip'));
+        }
+        if (def.update) def.update(layer, iw);
+    }
+    /* per frame: the death screens' one-second lock, the text boxes' cursors */
+    function iwFrame() {
+        var iw = RT.iw;
+        if (!iw) return;
+        var def = IW_SCR[iw.scr];
+        if (def.delay && !iw.live && (RT.now || 0) - iw.t0 >= 1) { iw.live = true; iwRender(false); }   // 20 ticks
+        if (def.frame) def.frame(iw);
+    }
+    /* the widgets' shared plumbing, wired once on each host: a press plays the
+       click (never on a greyed widget), a click acts, a hovered icon button names
+       itself in a tooltip, and Escape is the screen's own */
+    function iwWire(host) {
+        host.addEventListener('mousedown', function (e) {
+            var b = e.target.closest && e.target.closest('.mc-wb');
+            if (b && !b.disabled && e.button === 0) { audioInit(); snd('click'); }
+            if (!(e.target.closest && e.target.closest('input'))) e.preventDefault();   // a press must not park focus on the button
+            e.stopPropagation();
+        });
+        host.addEventListener('click', function (e) {
+            var b = e.target.closest && e.target.closest('.mc-wb');
+            if (!b || b.disabled || !RT.iw) return;
+            if (!e.detail) { audioInit(); snd('click'); }   // Enter or Space: no press came first
+            var def = IW_SCR[RT.iw.scr];
+            if (def.act) def.act(b.getAttribute('data-act'), b);
+            e.stopPropagation();
+        });
+        host.addEventListener('mousemove', function (e) {
+            var b = e.target.closest && e.target.closest('[data-tip]'), tip = host.querySelector('.mc-iwtip');
+            var lines = null;
+            if (b) lines = b.getAttribute('data-tip').split('\n').map(function (t) { return { t: t }; });
+            tipRender(lines, e.clientX, e.clientY, tip);
+        });
+        host.addEventListener('mouseleave', function () { tipRender(null, 0, 0, host.querySelector('.mc-iwtip')); });
+        host.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') {
+                e.preventDefault(); e.stopPropagation();
+                var def = RT.iw && IW_SCR[RT.iw.scr];
+                if (def && def.esc) def.esc();
+                return;
+            }
+            e.stopPropagation();   // Tab, Enter, Space and typing belong to the focused widget
+        });
+        host.addEventListener('keyup', function (e) { e.stopPropagation(); });
+    }
+
+    /* ── the Game Menu ──
+       PauseScreen as 26.2 builds it: a 212x166 grid at ((W - 212) / 2,
+       (H - 166) / 4) of 204-wide rows and 98-wide halves with 8 between them,
+       its first row 50 down; the title 40 from the top. Report Bugs and Give
+       Feedback open their links; this world's only other players would come
+       over LAN, so Friends is where the LAN World screen lives; Player
+       Reporting is greyed with nobody else here. */
+    IW_SCR.pause = {
+        host: 'pause', layer: 'mc-pmain',
+        html: function (W, H) {
+            var x0 = ((W - 212) * 0.5) | 0, y0 = ((H - 166) * 0.25) | 0;
+            return iwCenter('Game Menu', W, 40) +
+                iwBtn('mc-resume', 'resume', x0 + 4, y0 + 50, 204, 'Back to Game') +
+                iwBtn('mc-advbtn', 'adv', x0 + 4, y0 + 74, 98, 'Advancements') +
+                iwBtn('mc-statbtn', 'stats', x0 + 110, y0 + 74, 98, 'Statistics') +
+                iwIcon('mc-bugbtn', 'bugs', x0 + 60, y0 + 98, 'ic_bug', 'Report Bugs') +
+                iwIcon('mc-fbbtn', 'feedback', x0 + 84, y0 + 98, 'ic_feedback', 'Give Feedback') +
+                iwIcon('mc-lanbtn', 'lan', x0 + 108, y0 + 98, 'ic_friends', 'Friends', !!RT.lan) +
+                iwIcon('mc-repbtn', 'report', x0 + 132, y0 + 98, 'ic_report', 'Player Reporting', true) +
+                iwBtn('mc-optbtn', 'options', x0 + 4, y0 + 122, 204, 'Options...') +
+                iwBtn('mc-totitle', 'quit', x0 + 4, y0 + 146, 204, 'Save and Quit to Title');
+        },
+        update: function (layer) { var b = layer.querySelector('.mc-lanbtn'); if (b) b.disabled = !!RT.lan; },
+        act: function (a) {
+            if (a === 'resume') { hidePause(); lockCursor(); }
+            else if (a === 'quit') mnToTitle();
+            else if (a === 'lan') lanOpen();
+            else if (a === 'options') iwOptions();
+            else if (a === 'bugs') iwShow('link', { url: 'https://aka.ms/snapshotbugs?ref=game' });
+            else if (a === 'feedback') iwShow('link', { url: 'https://aka.ms/javafeedback?ref=game' });
+            else if (a === 'adv' || a === 'stats') iwShow(a);
+        },
+        esc: function () { hidePause(); lockCursor(); }
+    };
+    /* ConfirmLinkScreen for a trusted link: the question, the address under it,
+       and Open in Browser, Copy to Clipboard and Cancel, 100 wide and 5 apart */
+    IW_SCR.link = {
+        host: 'pause', layer: 'mc-plink',
+        html: function (W, H, iw) {
+            var tt = Math.max(10, Math.min(80, ((H - 9) >> 1) - 29)), by = Math.max(((H / 6) | 0) + 96, Math.min(H - 24, tt + 20 + 9 + 20)), cx = W >> 1;
+            return iwCenter('Do you want to open this link or copy it to your clipboard?', W, tt) + iwCenter(iw.d.url, W, tt + 20) +
+                iwBtn('', 'open', cx - 155, by, 100, 'Open in Browser') + iwBtn('', 'copy', cx - 50, by, 100, 'Copy to Clipboard') + iwBtn('', 'cancel', cx + 55, by, 100, 'Cancel');
+        },
+        act: function (a) {
+            var url = RT.iw.d.url;
+            if (a === 'open') { try { window.open(url, '_blank', 'noopener'); } catch (e) {} }
+            if (a === 'copy') { try { navigator.clipboard.writeText(url); } catch (e) {} }
+            iwShow('pause');
+        },
+        esc: function () { iwShow('pause'); }
+    };
+    /* ShareToLanScreen: the title at 50, "Settings for Other Players" at 82,
+       Game Mode and Allow Commands side by side at 100, "Port Number" at 142 over
+       a 150-wide box at 160 whose hint is the port it picked, and Start LAN World
+       and Cancel along the bottom. A bad port turns the box's text red, puts the
+       reason in its tooltip and greys Start. */
+    var LAN_GM = [0, 3, 1, 2];   // the cycle's order: Survival, Spectator, Creative, Adventure
+    var LAN_BAD = 'Not a valid port.\nLeave the edit box empty or enter a number between 1024 and 65535.';
+    IW_SCR.lan = {
+        host: 'pause', layer: 'mc-lan',
+        html: function (W, H) {
+            var u = RT.lanUI, cx = W >> 1;
+            return iwCenter('LAN World', W, 50) + iwCenter('Settings for Other Players', W, 82) +
+                iwBtn('mc-langm', 'gm', cx - 155, 100, 150, 'Game Mode: ' + GM_NAME[u.gm]) +
+                iwBtn('mc-lanch', 'ch', cx + 5, 100, 150, 'Allow Commands: ' + (u.cheats ? 'ON' : 'OFF')) +
+                iwCenter('Port Number', W, 142) +
+                '<div class="mc-iwfield" style="' + iwAt(cx - 75, 160, 150, 20) + '"><input class="mc-lanport" maxlength="5" inputmode="numeric" spellcheck="false" autocomplete="off" aria-label="Port Number">' +
+                '<div class="mc-iwmir mc-fmir"></div></div><span class="mc-lanmsg" hidden></span>' +
+                iwBtn('mc-lanstart', 'start', cx - 155, H - 28, 150, 'Start LAN World') +
+                iwBtn('mc-lancancel', 'cancel', cx + 5, H - 28, 150, 'Cancel');
+        },
+        wire: function (layer) {
+            var pin = layer.querySelector('.mc-lanport'), u = RT.lanUI;
+            pin.value = u.port; pin.placeholder = u.pick;
+            pin.addEventListener('input', function () { if (RT.lanUI) { RT.lanUI.port = pin.value; iwRender(false); } });
+            pin.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); lanStart(); } });
+            pin.addEventListener('focus', function () { pin._ft = performance.now(); });
+        },
+        update: function (layer) {
+            var u = RT.lanUI, ok = lanPortOk(u.port), box = layer.querySelector('.mc-iwfield');
+            iwSetBtn(layer.querySelector('.mc-langm'), 'Game Mode: ' + GM_NAME[u.gm]);
+            iwSetBtn(layer.querySelector('.mc-lanch'), 'Allow Commands: ' + (u.cheats ? 'ON' : 'OFF'));
+            iwSetBtn(layer.querySelector('.mc-lanstart'), 'Start LAN World', !ok);
+            layer.querySelector('.mc-lanmsg').textContent = ok ? '' : LAN_BAD;
+            if (ok) box.removeAttribute('data-tip'); else box.setAttribute('data-tip', LAN_BAD);
+            IW_SCR.lan.frame(RT.iw);
+        },
+        frame: function () {
+            var layer = RT.el.querySelector('.mc-pause .mc-lan'), pin = layer && layer.querySelector('.mc-lanport');
+            if (!pin || !RT.lanUI) return;
+            layer.querySelector('.mc-iwfield').classList.toggle('on', document.activeElement === pin);
+            paintFieldMirror(pin, layer.querySelector('.mc-iwmir'), lanPortOk(RT.lanUI.port) ? '#e0e0e0' : '#df5050', 142, RT.lanUI.pick);
+        },
+        act: function (a) {
+            var u = RT.lanUI;
+            if (a === 'gm') { u.gm = LAN_GM[(LAN_GM.indexOf(u.gm) + 1) % 4]; iwRender(false); }
+            else if (a === 'ch') { u.cheats = !u.cheats; iwRender(false); }
+            else if (a === 'start') lanStart();
+            else if (a === 'cancel') lanClose();
+        },
+        esc: function () { lanClose(); }
+    };
+    /* ── the death screen ──
+       DeathScreen: the world stays sharp behind a gradient from 0x60500000 at
+       the top to 0xA0803030 at the bottom; "You Died!" at twice the size, centred
+       at y 60; the cause at 85; "Score: " and the score in yellow at 100; Respawn
+       and Title Screen at H/4 + 72 and + 96, both dead for the first twenty ticks.
+       Escape does nothing. */
+    IW_SCR.death = {
+        host: 'death', layer: 'mc-dmain', delay: true,
+        html: function (W, H, iw) {
+            var t = 'You Died!', x2 = ((W >> 1) >> 1) - ((mfWidth(t) + 1) >> 1);
+            var sc = 'Score: ', n = String(iw.d.score || 0), sw = mfWidth(sc + n) + 1, sx = (W >> 1) - (sw >> 1);
+            return iwText(t, x2 * 2, 60, '#ffffff', 'x2') + iwCenter(iw.d.msg || '', W, 85) +
+                '<span class="mc-dscore">' + iwText(sc, sx, 100, '#ffffff') + iwText(n, sx + mfWidth(sc) + 1, 100, '#ffff55') + '</span>' +
+                iwBtn('mc-respawn', 'respawn', (W >> 1) - 100, (H >> 2) + 72, 200, 'Respawn', true) +
+                iwBtn('mc-dtitle', 'title', (W >> 1) - 100, (H >> 2) + 96, 200, 'Title Screen', true);
+        },
+        update: function (layer, iw) {
+            iwSetBtn(layer.querySelector('.mc-respawn'), 'Respawn', !iw.live);
+            iwSetBtn(layer.querySelector('.mc-dtitle'), 'Title Screen', !iw.live);
+        },
+        act: function (a) {
+            if (a === 'respawn') { respawn(); lockCursor(); }
+            else if (a === 'title') iwShow('dquit', RT.iw.d);
+        }
+    };
+    /* its ConfirmScreen, on the same red: "Are you sure you want to quit?" with
+       Title Screen and Respawn, and the same twenty-tick lock */
+    IW_SCR.dquit = {
+        host: 'death', layer: 'mc-dquit', delay: true,
+        html: function (W, H) {
+            var tt = Math.max(10, Math.min(80, (H >> 1) - 29)), by = Math.max(((H / 6) | 0) + 96, Math.min(H - 24, tt + 40));
+            return iwCenter('Are you sure you want to quit?', W, tt) +
+                iwBtn('mc-dqtitle', 'title', (W >> 1) - 155, by, 150, 'Title Screen', true) +
+                iwBtn('mc-dqrespawn', 'respawn', (W >> 1) + 5, by, 150, 'Respawn', true);
+        },
+        update: function (layer, iw) {
+            iwSetBtn(layer.querySelector('.mc-dqtitle'), 'Title Screen', !iw.live);
+            iwSetBtn(layer.querySelector('.mc-dqrespawn'), 'Respawn', !iw.live);
+        },
+        act: function (a) {
+            if (a === 'respawn') { respawn(); lockCursor(); }
+            else if (a === 'title') mnToTitle();
+        }
+    };
+    /* ── Advancements ──────────────────────────────────────────────
+       AdvancementsScreen: "Advancements" over a 252x140 window at
+       ((W - 252) / 2, (H - 140) / 2), a single tab, so no tab strip and the
+       window titled with the tab's root, "Minecraft". Its 234x113 view shows
+       the tree on tiled stone: every node 28 across and 27 down a step, joined
+       by the game's white lines on black, a gold frame once earned and grey
+       before; a node shows once it is done, or its parent or grandparent is,
+       and so does everything on the way to it. Drag or scroll to move about.
+       Hovering darkens the view and draws the node's bar, blue or gold, with
+       its title and, under it, the description in the frame's colour. */
+    var ADV_PARENT = { inventory: 'root', wood: 'inventory', table: 'wood', pick: 'table', upgrade: 'pick', furnace: 'upgrade', iron: 'furnace',
+        diamonds: 'iron', enchant: 'diamonds', xp30: 'enchant', armor: 'iron', anvil2: 'iron', moar: 'pick', farm: 'table', bread: 'farm',
+        gapple: 'bread', sword: 'table', hunter: 'sword', sniper: 'hunter', ender: 'hunter', cow: 'sword', breed: 'cow', sleep: 'root' };
+    var ADV_KIND = { sniper: 'challenge', diamonds: 'goal', xp30: 'goal' };
+    var ADV_ROOT = { id: 'root', t: 'Minecraft', d: 'The heart and story of the game', ic: 'grass_block' };
+    function advTree() {
+        var all = [ADV_ROOT].concat(ACH), by = {}, kids = {};
+        all.forEach(function (a) { by[a.id] = a; if (a.id !== 'root') (kids[ADV_PARENT[a.id] || 'root'] = kids[ADV_PARENT[a.id] || 'root'] || []).push(a.id); });
+        function done(id) { return id === 'root' ? S.achN > 0 : !!S.ach[id]; }
+        // positions for the whole tree: a leaf a row, a parent midway down its children
+        var pos = {}, row = 0;
+        (function place(id, d) {
+            var ch = kids[id] || [];
+            if (!ch.length) { pos[id] = { x: d * 28, y: row++ * 27 }; return; }
+            ch.forEach(function (c) { place(c, d + 1); });
+            pos[id] = { x: d * 28, y: Math.floor((pos[ch[0]].y + pos[ch[ch.length - 1]].y) / 2) };
+        })('root', 0);
+        // AdvancementVisibilityEvaluator: done, or a done parent or grandparent, or a visible descendant
+        var vis = {};
+        (function visit(id, p1, p2) {
+            var any = false;
+            (kids[id] || []).forEach(function (c) { if (visit(c, done(id), p1)) any = true; });
+            return (vis[id] = done(id) || p1 || p2 || any);
+        })('root', false, false);
+        var nodes = [], b = { x0: 1e9, x1: -1e9, y0: 1e9, y1: -1e9 };
+        all.forEach(function (a) {
+            if (!vis[a.id]) return;
+            var p = pos[a.id], n = { id: a.id, a: a, x: p.x, y: p.y, done: done(a.id), kind: ADV_KIND[a.id] || 'task', parent: a.id === 'root' ? null : ADV_PARENT[a.id] || 'root' };
+            nodes.push(n);
+            b.x0 = Math.min(b.x0, n.x); b.x1 = Math.max(b.x1, n.x + 28); b.y0 = Math.min(b.y0, n.y); b.y1 = Math.max(b.y1, n.y + 27);
+        });
+        return { nodes: nodes, by: nodes.reduce(function (m, n) { m[n.id] = n; return m; }, {}), b: b, empty: S.achN === 0 };
+    }
+    function advLine(x0, x1, y, col) {   // hLine, both ends included
+        var a = Math.min(x0, x1), w = Math.abs(x1 - x0) + 1;
+        return '<i style="left:calc(var(--px) * ' + a + ');top:calc(var(--px) * ' + y + ');width:calc(var(--px) * ' + w + ');height:var(--px);background:' + col + '"></i>';
+    }
+    function advVLine(x, y0, y1, col) {   // vLine: both ends left out
+        var a = Math.min(y0, y1) + 1, h = Math.abs(y1 - y0) - 1;
+        return h > 0 ? '<i style="left:calc(var(--px) * ' + x + ');top:calc(var(--px) * ' + a + ');width:var(--px);height:calc(var(--px) * ' + h + ');background:' + col + '"></i>' : '';
+    }
+    function advContent(T) {
+        var html = '', pass;
+        // AdvancementWidget.drawConnectivity: the black shadow pass under the white one
+        for (pass = 0; pass < 2; pass++) T.nodes.forEach(function (n) {
+            var P = n.parent && T.by[n.parent];
+            if (!P) return;
+            var i = P.x + 13, j = P.x + 30, k = P.y + 13, l = n.x + 13, i1 = n.y + 13;
+            if (!pass) {
+                html += advLine(j, i, k - 1, '#000') + advLine(j + 1, i, k, '#000') + advLine(j, i, k + 1, '#000') +
+                    advLine(l, j - 1, i1 - 1, '#000') + advLine(l, j - 1, i1, '#000') + advLine(l, j - 1, i1 + 1, '#000') +
+                    advVLine(j - 1, i1, k, '#000') + advVLine(j + 1, i1, k, '#000');
+            } else html += advLine(j, i, k, '#fff') + advLine(l, j, i1, '#fff') + advVLine(j, i1, k, '#fff');
+        });
+        T.nodes.forEach(function (n) {
+            html += '<i class="mc-advf" style="' + pAt(n.x + 3, n.y) + ';background-image:var(--spr-adv_' + n.kind + (n.done ? '_o' : '_u') + ')"></i>' +
+                '<i class="mc-advi" style="' + pAt(n.x + 8, n.y + 5) + ';background-image:url(' + iconURL(n.a.ic || achIcon(n.a)) + ')"></i>';
+        });
+        return html;
+    }
+    // AdvancementWidget's width and description lines: the title plus 29, the description split to fit round that
+    function advMeasure(n) {
+        if (n.w) return;
+        var base = 29 + mfWidth(n.a.t) + 1, best = null, bd = 1e9;
+        [0, 10, -10, 25, -25].some(function (o) {
+            var ls = mfWrap(n.a.d, base - o), mw = ls.reduce(function (m, s) { return Math.max(m, mfWidth(s) + 1); }, 0), dd = Math.abs(mw - base);
+            if (dd < bd) { bd = dd; best = ls; }
+            return dd <= 10;
+        });
+        n.lines = best;
+        n.w = best.reduce(function (m, s) { return Math.max(m, mfWidth(s) + 1); }, base) + 3 + 5;
+    }
+    function advHover(A, n) {
+        var box = RT.el.querySelector('.mc-advs .mc-advhov');
+        if (!box) return;
+        if (!n) { if (box._id) { box._id = null; box.innerHTML = ''; } return; }
+        var key = n.id + '|' + A.sx + '|' + A.sy;
+        if (box._id === key) return;
+        box._id = key;
+        advMeasure(n);
+        var sx = Math.floor(A.sx), sy = Math.floor(A.sy);
+        var ox = A.wx + 9, oy = A.wy + 18, x = sx + n.x, l = sy + n.y, w = n.w, nl = n.lines.length;
+        var right = A.wx + x + w + 26 >= RT.gw, low = 113 - sy - n.y - 26 <= 6 + nl * 9;
+        var i1 = right ? x - w + 26 + 6 : x, j1 = 32 + nl * 9, half = w >> 1, t = n.done ? 'o' : 'u';
+        var html = '';
+        if (nl) html += '<i class="mc-advdesc" style="' + iwAt(ox + i1, oy + (low ? l + 26 - j1 : l), w, j1) + '"></i>';
+        html += '<i class="mc-advbar" style="' + iwAt(ox + i1, oy + l, half, 26) + ';background-image:var(--spr-adv_bar_' + t + ')"></i>' +
+            '<i class="mc-advbar" style="' + iwAt(ox + i1 + half, oy + l, w - half, 26) + ';background-image:var(--spr-adv_bar_' + t + ');background-position:right 0 top 0"></i>' +
+            '<i class="mc-advf" style="' + pAt(ox + x + 3, oy + l) + ';background-image:var(--spr-adv_' + n.kind + '_' + t + ')"></i>' +
+            '<i class="mc-advi" style="' + pAt(ox + x + 8, oy + l + 5) + ';background-image:url(' + iconURL(n.a.ic || achIcon(n.a)) + ')"></i>' +
+            iwText(n.a.t, right ? ox + i1 + 5 : ox + x + 32, oy + l + 9, '#ffffff');
+        var dc = n.kind === 'challenge' ? '#aa00aa' : '#55ff55';
+        n.lines.forEach(function (s, k) { html += iwText(s, ox + i1 + 5, oy + (low ? l + 26 - j1 + 7 + k * 9 : l + 9 + 17 + k * 9), dc, 'ns'); });
+        box.innerHTML = html;
+    }
+    IW_SCR.adv = {
+        host: 'pause', layer: 'mc-advs',
+        html: function (W, H, iw) {
+            var A = iw.adv = iw.adv || {}, T = A.T = advTree();
+            A.wx = (W - 252) >> 1; A.wy = (H - 140) >> 1;
+            if (A.sx == null) { A.sx = Math.floor(117 - (T.b.x1 + T.b.x0) / 2); A.sy = Math.floor(56 - (T.b.y1 + T.b.y0) / 2); A.fade = 0; }
+            var view = T.empty
+                ? '<div class="mc-advview empty" style="' + iwAt(A.wx + 9, A.wy + 18, 234, 113) + '"></div>' +
+                  iwCenter("There doesn't seem to be anything here...", 2 * (A.wx + 9 + 117), A.wy + 18 + 56 - 4) + iwCenter(':(', 2 * (A.wx + 9 + 117), A.wy + 18 + 113 - 9)
+                : '<div class="mc-advview" style="' + iwAt(A.wx + 9, A.wy + 18, 234, 113) + '"><div class="mc-advc">' + advContent(T) + '</div><i class="mc-advfade"></i></div>';
+            return iwCenter('Advancements', W, 12) + view +
+                '<i class="mc-advwin" style="' + iwAt(A.wx, A.wy, 252, 140) + '"></i>' +
+                iwText(T.empty ? 'Advancements' : 'Minecraft', A.wx + 8, A.wy + 6, '#404040', 'ns') +
+                '<div class="mc-advhov"></div>' +
+                iwBtn('mc-advdone', 'done', (W >> 1) - 100, H - 27, 200, 'Done');
+        },
+        wire: function (layer, iw) {
+            var view = layer.querySelector('.mc-advview'), A = iw.adv;
+            if (!view || A.T.empty) return;
+            var drag = null;
+            view.style.backgroundImage = 'url(' + advStone() + ')';
+            function scrollBy(dx, dy) {
+                var T = A.T;
+                if (T.b.x1 - T.b.x0 > 234) A.sx = Math.max(-(T.b.x1 - 234), Math.min(0, A.sx + dx));
+                if (T.b.y1 - T.b.y0 > 113) A.sy = Math.max(-(T.b.y1 - 113), Math.min(0, A.sy + dy));
+                IW_SCR.adv.place(layer, iw);
+            }
+            view.addEventListener('mousedown', function (e) { if (e.button === 0) drag = { x: e.clientX, y: e.clientY }; });
+            if (layer._mv) window.removeEventListener('mousemove', layer._mv);
+            window.addEventListener('mousemove', layer._mv = function mv(e) {
+                if (!RT || !RT.iw || RT.iw !== iw) { window.removeEventListener('mousemove', mv); layer._mv = null; return; }
+                if (drag && (e.buttons & 1)) { scrollBy((e.clientX - drag.x) / RT.gs, (e.clientY - drag.y) / RT.gs); drag = { x: e.clientX, y: e.clientY }; }
+                else drag = null;
+                var r = RT.el.getBoundingClientRect(), mx = (e.clientX - r.left) / RT.gs - A.wx - 9, my = (e.clientY - r.top) / RT.gs - A.wy - 18, hit = null;
+                if (mx > 0 && mx < 234 && my > 0 && my < 113 && !drag) A.T.nodes.forEach(function (n) {
+                    var nx = Math.floor(A.sx) + n.x, ny = Math.floor(A.sy) + n.y;
+                    if (mx >= nx && mx <= nx + 26 && my >= ny && my <= ny + 26) hit = n;
+                });
+                A.hover = hit;
+                advHover(A, hit);
+            });
+            view.addEventListener('wheel', function (e) { scrollBy(-e.deltaX / 100 * 16, -e.deltaY / 100 * 16); e.preventDefault(); }, { passive: false });
+            IW_SCR.adv.place(layer, iw);
+        },
+        place: function (layer, iw) {
+            var c = layer.querySelector('.mc-advc'), view = layer.querySelector('.mc-advview'), A = iw.adv;
+            if (!c) return;
+            var x = Math.floor(A.sx), y = Math.floor(A.sy);
+            c.style.transform = 'translate(calc(var(--px) * ' + x + '), calc(var(--px) * ' + y + '))';
+            view.style.backgroundPosition = 'calc(var(--px) * ' + (x % 16) + ') calc(var(--px) * ' + (y % 16) + ')';
+            if (A.hover) { var box = layer.querySelector('.mc-advhov'); if (box) box._id = null; advHover(A, A.hover); }
+        },
+        frame: function (iw) {   // the view darkens toward 0.3 while a node is hovered and clears twice as fast
+            var A = iw.adv, f = RT.el.querySelector('.mc-advs .mc-advfade');
+            if (!A || !f) return;
+            A.fade = Math.max(0, Math.min(0.3, (A.fade || 0) + (A.hover ? 0.02 : -0.04)));
+            var op = A.fade.toFixed(3);
+            if (f._op !== op) { f._op = op; f.style.opacity = op; }
+        },
+        act: function (a) { if (a === 'done') IW_SCR.adv.esc(); },
+        esc: function () { if (RT.iw && RT.iw.d.fromKey) { hidePause(); lockCursor(); } else iwShow('pause'); }
+    };
+    var ADV_STONE = null;
+    function advStone() {   // the tab's background, the stone texture at a pixel a texel
+        if (ADV_STONE) return ADV_STONE;
+        var cv = document.createElement('canvas'), t = TILE.stone;
+        cv.width = cv.height = 16;
+        cv.getContext('2d').drawImage(ATLAS, (t % 16) * 16, ((t / 16) | 0) * 16, 16, 16, 0, 0, 16, 16);
+        return (ADV_STONE = cv.toDataURL());
+    }
+    /* ── Statistics ───────────────────────────────────────────────
+       The counters behind the Statistics screen, kept in the save the way the
+       game keeps stats/<uuid>.json: custom stats by name (distances in
+       centimetres, damage in tenths, times in ticks), and per item how often
+       it was mined, broken, crafted, used, picked up and dropped, per mob how
+       often you killed it and it killed you. */
+    function stat(cat, key, n) {
+        if (!S) return;
+        var st = S.stats || (S.stats = {}), c = st[cat] || (st[cat] = {});
+        c[key] = (c[key] || 0) + (n == null ? 1 : n);
+    }
+    function statGet(cat, key) { return (S.stats && S.stats[cat] && S.stats[cat][key]) || 0; }
+    /* Player.checkMovementStatistics: a frame's movement into the right bucket */
+    function statMove(dt) {
+        var lp = RT.statPos, ticks = dt * 20;
+        RT.statPos = [S.px, S.py, S.pz];
+        stat('c', 'play_time', ticks); stat('c', 'total_world_time', ticks); stat('c', 'time_since_death', ticks); stat('c', 'time_since_rest', ticks);
+        if (RT.keys && RT.keys.shift && RT.ground && !RT.fly) stat('c', 'sneak_time', ticks);
+        if (!lp) return;
+        var dx = S.px - lp[0], dy = S.py - lp[1], dz = S.pz - lp[2];
+        var h = Math.round(Math.sqrt(dx * dx + dz * dz) * 100), d3 = Math.round(Math.sqrt(dx * dx + dy * dy + dz * dz) * 100);
+        if (h > 1000 || d3 > 1000 || !d3) return;   // a teleport is not a walk
+        var headW = getB(Math.floor(S.px), Math.floor(S.py + EYE), Math.floor(S.pz)) === WATER, feetW = inFluid(WATER);
+        if (headW && RT.sprint) stat('c', 'swim_one_cm', d3);
+        else if (headW) stat('c', 'walk_under_water_one_cm', d3);
+        else if (feetW) stat('c', 'walk_on_water_one_cm', h);
+        else if (onLadder()) { if (dy > 0) stat('c', 'climb_one_cm', Math.round(dy * 100)); }
+        else if (RT.ground) stat('c', RT.sprint ? 'sprint_one_cm' : RT.keys && RT.keys.shift ? 'crouch_one_cm' : 'walk_one_cm', h);
+        else stat('c', 'fly_one_cm', h);
+    }
+    // the General list: every custom stat the game counts, by its name, and how it is written
+    var STAT_CUSTOM = [
+        ['animals_bred', 'Animals Bred'], ['clean_armor', 'Armor Pieces Cleaned'], ['clean_banner', 'Banners Cleaned'], ['open_barrel', 'Barrels Opened'],
+        ['bell_ring', 'Bells Rung'], ['eat_cake_slice', 'Cake Slices Eaten'], ['fill_cauldron', 'Cauldrons Filled'], ['open_chest', 'Chests Opened'],
+        ['damage_absorbed', 'Damage Absorbed', 't'], ['damage_blocked_by_shield', 'Damage Blocked by Shield', 't'], ['damage_dealt', 'Damage Dealt', 't'],
+        ['damage_dealt_absorbed', 'Damage Dealt (Absorbed)', 't'], ['damage_dealt_resisted', 'Damage Dealt (Resisted)', 't'], ['damage_resisted', 'Damage Resisted', 't'],
+        ['damage_taken', 'Damage Taken', 't'], ['inspect_dispenser', 'Dispensers Searched'], ['boat_one_cm', 'Distance by Boat', 'd'], ['aviate_one_cm', 'Distance by Elytra', 'd'],
+        ['horse_one_cm', 'Distance by Horse', 'd'], ['minecart_one_cm', 'Distance by Minecart', 'd'], ['pig_one_cm', 'Distance by Pig', 'd'], ['strider_one_cm', 'Distance by Strider', 'd'],
+        ['climb_one_cm', 'Distance Climbed', 'd'], ['crouch_one_cm', 'Distance Crouched', 'd'], ['fall_one_cm', 'Distance Fallen', 'd'], ['fly_one_cm', 'Distance Flown', 'd'],
+        ['sprint_one_cm', 'Distance Sprinted', 'd'], ['swim_one_cm', 'Distance Swum', 'd'], ['walk_one_cm', 'Distance Walked', 'd'], ['walk_on_water_one_cm', 'Distance Walked on Water', 'd'],
+        ['walk_under_water_one_cm', 'Distance Walked under Water', 'd'], ['inspect_dropper', 'Droppers Searched'], ['open_enderchest', 'Ender Chests Opened'], ['fish_caught', 'Fish Caught'],
+        ['leave_game', 'Games Quit'], ['inspect_hopper', 'Hoppers Searched'], ['interact_with_anvil', 'Interactions with Anvil'], ['interact_with_beacon', 'Interactions with Beacon'],
+        ['interact_with_blast_furnace', 'Interactions with Blast Furnace'], ['interact_with_brewingstand', 'Interactions with Brewing Stand'], ['interact_with_campfire', 'Interactions with Campfire'],
+        ['interact_with_cartography_table', 'Interactions with Cartography Table'], ['interact_with_crafting_table', 'Interactions with Crafting Table'], ['interact_with_furnace', 'Interactions with Furnace'],
+        ['interact_with_grindstone', 'Interactions with Grindstone'], ['interact_with_lectern', 'Interactions with Lectern'], ['interact_with_loom', 'Interactions with Loom'],
+        ['interact_with_smithing_table', 'Interactions with Smithing Table'], ['interact_with_smoker', 'Interactions with Smoker'], ['interact_with_stonecutter', 'Interactions with Stonecutter'],
+        ['drop', 'Items Dropped'], ['enchant_item', 'Items Enchanted'], ['jump', 'Jumps'], ['mob_kills', 'Mob Kills'], ['play_record', 'Music Discs Played'], ['play_noteblock', 'Note Blocks Played'],
+        ['tune_noteblock', 'Note Blocks Tuned'], ['deaths', 'Number of Deaths'], ['pot_flower', 'Plants Potted'], ['player_kills', 'Player Kills'], ['raid_trigger', 'Raids Triggered'],
+        ['raid_win', 'Raids Won'], ['clean_shulker_box', 'Shulker Boxes Cleaned'], ['open_shulker_box', 'Shulker Boxes Opened'], ['sneak_time', 'Sneak Time', 'time'],
+        ['talked_to_villager', 'Talked to Villagers'], ['target_hit', 'Targets Hit'], ['play_time', 'Time Played', 'time'], ['time_since_death', 'Time Since Last Death', 'time'],
+        ['time_since_rest', 'Time Since Last Rest', 'time'], ['sleep_in_bed', 'Times Slept in a Bed'], ['total_world_time', 'Total World Time', 'time'],
+        ['traded_with_villager', 'Traded with Villagers'], ['trigger_trapped_chest', 'Trapped Chests Triggered'], ['use_cauldron', 'Water Taken from Cauldron']
+    ];
+    // StatFormatter: two decimals always; distance steps cm to m to km past a half, time s to min to h to d to y
+    function statDec(v) { return (Math.round(v * 100) / 100).toFixed(2); }
+    function statFmt(v, kind) {
+        v = Math.floor(v);
+        if (kind === 'd') { var m = v / 100, km = m / 1000; return km > 0.5 ? statDec(km) + ' km' : m > 0.5 ? statDec(m) + ' m' : v + ' cm'; }
+        if (kind === 'time') {
+            var s = v / 20, mi = s / 60, h = mi / 60, d = h / 24, y = d / 365;
+            return y > 0.5 ? statDec(y) + ' y' : d > 0.5 ? statDec(d) + ' d' : h > 0.5 ? statDec(h) + ' h' : mi > 0.5 ? statDec(mi) + ' min' : statDec(s) + ' s';
+        }
+        if (kind === 't') return statDec(v * 0.1);
+        return String(v).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    }
+    /* StatsScreen: "Statistics" in the 33-pixel header, the list between it and
+       a 58-pixel footer on the in-world list background with its separators,
+       General, Items and Mobs (120 wide, 5 apart) over Done. General rows are
+       14 tall, the name on the left and the value on the right, white and grey
+       by turns; Items rows 20 tall with six columns 40 apart from 75; Mobs rows
+       36 tall with what you did to each and what it did to you. */
+    var STAT_COLS = [['m', 'Times Mined', 'st_mined'], ['b', 'Times Broken', 'st_broken'], ['cr', 'Times Crafted', 'st_crafted'],
+        ['u', 'Times Used', 'st_used'], ['p', 'Times Picked Up', 'st_picked'], ['d', 'Times Dropped', 'st_dropped']];
+    function statRows(tab) {
+        if (tab === 'general') return STAT_CUSTOM.map(function (r) { return { t: r[1], v: statFmt(statGet('c', r[0]), r[2]) }; });
+        var st = S.stats || {}, ids = {}, k;
+        if (tab === 'items') {
+            STAT_COLS.forEach(function (c) { for (k in (st[c[0]] || {})) if (I[k]) ids[k] = 1; });
+            return Object.keys(ids).sort(function (a, b) { return I[a].t < I[b].t ? -1 : 1; }).map(function (id) { return { id: id }; });
+        }
+        for (k in (st.k || {})) ids[k] = 1;
+        for (k in (st.kb || {})) ids[k] = 1;
+        return Object.keys(ids).sort().map(function (m) { return { m: m }; });
+    }
+    function statsBody(W, H, iw) {
+        var tab = iw.d.tab || 'general', rows = statRows(tab), top = 33, bot = H - 58, lh = bot - top;
+        var rh = tab === 'general' ? 14 : tab === 'items' ? 20 : 36, rw = tab === 'items' ? 280 : 220, left = (W >> 1) - (rw >> 1) + 2;
+        var head = tab === 'items' ? 20 : 0, total = rows.length * rh + head + 4, max = Math.max(0, total - lh);
+        var sc = iw.d.scroll = Math.max(0, Math.min(max, iw.d.scroll || 0)), html = '';
+        if (tab === 'items') STAT_COLS.forEach(function (c, i) {
+            html += '<i class="mc-sthead" data-tip="' + c[1] + '" style="' + iwAt(left + 75 + 40 * i - 18, top + 5 - sc, 18, 18) + ';background-image:var(--spr-' + c[2] + ')"></i>';
+        });
+        rows.forEach(function (r, i) {
+            var y = top + 4 - sc + head + i * rh, col = i % 2 === 0 ? '#ffffff' : (tab === 'general' ? '#bababa' : '#909090');
+            if (y + rh < top || y > bot) return;
+            if (tab === 'general') {
+                var ty = y + (rh >> 1) - 4;
+                html += iwText(r.t, left + 2, ty, col) + iwText(r.v, left + rw - 8 - (mfWidth(r.v) + 1), ty, col);
+            } else if (tab === 'items') {
+                html += '<i class="mc-stslot" style="' + iwAt(left, y, 18, 18) + '"><b style="background-image:url(' + iconURL(r.id) + ')"></b></i>';
+                STAT_COLS.forEach(function (c, ci) {
+                    var n = statGet(c[0], r.id), s = n ? statFmt(n) : '-';
+                    html += iwText(s, left + 75 + 40 * ci - (mfWidth(s) + 1), y + 5, col);
+                });
+            } else {
+                var nm = r.m.charAt(0).toUpperCase() + r.m.slice(1), kl = statGet('k', r.m), kb = statGet('kb', r.m);
+                html += iwText(nm, left + 2, y + 1, '#ffffff') +
+                    iwText(kl ? 'You killed ' + kl + ' ' + nm : 'You have never killed ' + nm, left + 12, y + 10, kl ? '#909090' : '#606060') +
+                    iwText(kb ? nm + ' killed you ' + kb + ' time(s)' : 'You have never been killed by ' + nm, left + 12, y + 19, kb ? '#909090' : '#606060');
+            }
+        });
+        if (max > 0) {   // the scroller: 6 wide at the list's right, as tall as the view is of the content
+            var sx = left + rw + 4, th = Math.max(32, Math.min(lh - 8, Math.floor(lh * lh / total))), ty2 = top + Math.floor((lh - th) * sc / max);
+            html += '<i class="mc-stbar" style="' + iwAt(sx, top, 6, lh) + '"></i><i class="mc-stthumb" style="' + iwAt(sx, ty2, 6, th) + '"></i>';
+        }
+        return html;
+    }
+    IW_SCR.stats = {
+        host: 'pause', layer: 'mc-stats',
+        html: function (W, H, iw) {
+            var cx = W >> 1, noItems = !statRows('items').length, noMobs = !statRows('mobs').length;
+            return '<i class="mc-stlist" style="' + iwAt(0, 33, W, H - 91) + '"></i><i class="mc-sep top" style="' + iwAt(0, 31, W, 2) + '"></i>' +
+                '<i class="mc-sep bot" style="' + iwAt(0, H - 58, W, 2) + '"></i>' +
+                '<div class="mc-stclip" style="' + iwAt(0, 33, W, H - 91) + '"><div class="mc-stbody" style="top:calc(var(--px) * -33)">' + statsBody(W, H, iw) + '</div></div>' +
+                iwCenter('Statistics', W, 12) +
+                iwBtn('mc-stgen', 'general', cx - 185, H - 52, 120, 'General') + iwBtn('mc-stitems', 'items', cx - 60, H - 52, 120, 'Items', noItems) +
+                iwBtn('mc-stmobs', 'mobs', cx + 65, H - 52, 120, 'Mobs', noMobs) + iwBtn('mc-stdone', 'done', cx - 100, H - 27, 200, 'Done');
+        },
+        wire: function (layer, iw) {
+            var clip = layer.querySelector('.mc-stclip');
+            clip.addEventListener('wheel', function (e) {
+                iw.d.scroll = (iw.d.scroll || 0) + (e.deltaY > 0 ? 1 : -1) * (iw.d.tab === 'mobs' ? 18 : 10);
+                IW_SCR.stats.redraw(layer, iw); e.preventDefault();
+            }, { passive: false });
+        },
+        redraw: function (layer, iw) { var b = layer && layer.querySelector('.mc-stbody'); if (b) b.innerHTML = statsBody(RT.gw, RT.gh, iw); },
+        act: function (a) {
+            if (a === 'done') { IW_SCR.stats.esc(); return; }
+            RT.iw.d.tab = a; RT.iw.d.scroll = 0;
+            IW_SCR.stats.redraw(RT.el.querySelector('.mc-pause .mc-stats'), RT.iw);
+        },
+        esc: function () { iwShow('pause'); }
+    };
+    /* the Game Menu's Options... is the title screen's options tree, drawn over
+       the paused world instead of the panorama */
+    function iwOptions() {
+        var host = RT.el.querySelector('.mc-pause');
+        if (host) host.style.display = 'none';
+        RT.iw = null;
+        mnOpen('options', false, true);
+    }
     /* Player.sleepCounter and Gui's sleep overlay: the counter climbs a tick at a
        time to 100 (five seconds) while the screen fades to 0x101020 at alpha
        220; at 100 the night is skipped and the player wakes, the counter runs on
@@ -5047,7 +5666,7 @@
         var ov = RT.el.querySelector('.mc-sleepov');
         ov.style.display = '';
         var c = Math.min(100, RT.sleep * 20);
-        if (!RT.woke && RT.sleep >= 5) { S.t = DAY_MS * 0.02; RT.woke = RT.sleep; }   // sunrise
+        if (!RT.woke && RT.sleep >= 5) { S.t = DAY_MS * 0.02; RT.woke = RT.sleep; bedLayout(); }   // sunrise
         if (RT.woke) c = 100 + (RT.sleep - RT.woke) * 20;
         var a = c <= 100 ? 220 * c / 100 : 220 * (1 - (c - 100) / 10);
         ov.style.opacity = Math.max(0, a / 255).toFixed(3);
@@ -5352,7 +5971,7 @@
         if (it.id === 'book') it.id = 'ench_book';
         it.ench = o.ench;
         RT.enchSeed = (Math.random() * 1e9) | 0; RT.enchOpts = null;
-        snd('enchant'); unlock('enchant');
+        snd('enchant'); unlock('enchant'); stat('c', 'enchant_item');
         paintPanel();
     }
     function enchCostStr(e) { var s = []; for (var k in e) s.push(ENCH_NAME[k] + ' ' + (ROMAN[e[k]] || e[k])); return s.join(', '); }
@@ -6002,6 +6621,181 @@
        round a #8B8B8B well at an 18-pixel pitch, so neighbouring frames touch.
        Geometry and colours follow the game's screens pixel for pixel; the
        pictures (the flame, the hammer, the orbs, the silhouettes) are ours. */
+    /* ── widget sprites ──────────────────────────────────────────
+       The 20-pixel button in its three states, as the current game's
+       widget/button sprites have it: a 1-pixel frame (black, or white while
+       hovered or focused), a #AAAAAA highlight along the top and down the left,
+       two rows of #565656 along the bottom and a #555555 column down the right,
+       round a face of stone-grey noise averaging #6F6F6F; the disabled one a
+       dark flat face. Drawn at 200x20 and nine-sliced with a 3-pixel border,
+       like the originals. Then the text field, the in-world menu background,
+       and the pause menu's four icons. */
+    function sprWidgets(mk) {
+        var rnd = mulb(0x5EED1);
+        function face(cx, x, y, w, h, base, spread) {
+            for (var yy = 0; yy < h; yy++) for (var xx = 0; xx < w; xx++) {
+                var v = Math.max(0, Math.min(255, base + Math.round((rnd() + rnd() - 1) * spread)));
+                cx.fillStyle = 'rgb(' + v + ',' + v + ',' + v + ')'; cx.fillRect(x + xx, y + yy, 1, 1);
+            }
+        }
+        function button(frame, base, spread, hi, lo, lo2) {
+            return function (cx) {
+                sprRect(cx, 0, 0, 200, 20, frame);
+                face(cx, 1, 1, 198, 18, base, spread);
+                if (hi) {
+                    sprRect(cx, 1, 1, 197, 1, hi); sprRect(cx, 1, 1, 1, 16, hi);
+                    sprRect(cx, 2, 17, 196, 2, lo); sprRect(cx, 198, 2, 1, 17, lo2);
+                }
+            };
+        }
+        mk('btn', 200, 20, button('#000000', 0x6f, 11, '#aaaaaa', '#565656', '#555555'));
+        mk('btn_h', 200, 20, button('#ffffff', 0x77, 11, '#b4b4b4', '#5c5c5c', '#5a5a5a'));
+        mk('btn_d', 200, 20, button('#000000', 0x31, 3, null));
+        // EditBox's widget/text_field: #A0A0A0 round black, white round black when focused
+        mk('field', 200, 20, function (cx) { sprRect(cx, 0, 0, 200, 20, '#a0a0a0'); sprRect(cx, 1, 1, 198, 18, '#000000'); });
+        mk('field_h', 200, 20, function (cx) { sprRect(cx, 0, 0, 200, 20, '#ffffff'); sprRect(cx, 1, 1, 198, 18, '#000000'); });
+        // inworld_menu_background: black at about half alpha with a faint grain, tiled every 32 GUI pixels
+        mk('iwbg', 32, 32, function (cx) {
+            for (var y = 0; y < 32; y++) for (var x = 0; x < 32; x++) {
+                cx.fillStyle = 'rgba(0,0,0,' + (0.47 + (rnd() - 0.5) * 0.07).toFixed(3) + ')'; cx.fillRect(x, y, 1, 1);
+            }
+        });
+        var IC = {
+            ic_bug: ['...............', '.....#...#.....', '......#.#......', '....#######....', '...##.###.##...', '..#.#######.#..', '....#######....',
+                     '..#.#######.#..', '....#######....', '..#.#######.#..', '.....#####.....', '......###......', '...............', '...............', '...............'],
+            ic_feedback: ['...............', '..###########..', '.#...........#.', '.#.#########.#.', '.#...........#.', '.#.#######...#.', '.#...........#.',
+                          '.#.#########.#.', '.#...........#.', '..####..######.', '.....#.#.......', '.....##........', '.....#.........', '...............', '...............'],
+            ic_friends: ['...............', '....###........', '...#####..###..', '...#####.#####.', '...#####.#####.', '....###..#####.', '..........###..',
+                         '..#######......', '.#########.###.', '.#########.####', '.#########.####', '.#########.####', '...............', '...............', '...............'],
+            ic_report: ['...............', '..#............', '..##########...', '..#########....', '..########.....', '..#########....', '..##########...',
+                        '..#............', '..#............', '..#............', '..#............', '..#............', '..#............', '...............', '...............']
+        };
+        for (var ik in IC) (function (rows) { mk(ik, 15, 15, function (cx) { sprMap(cx, rows, { '#': '#ffffff' }); }); })(IC[ik]);
+    }
+    /* ── the advancement screen's sprites ─────────────────────────
+       The 252x140 window with the hole its 234x113 view shows through, the
+       26x26 frames (a square task, a rounded goal, a spiked challenge) in gold
+       once done and in grey before, the 200x26 title bars the hover draws
+       (gold for done, blue for not), and the dark box the description sits in.
+       The game's sizes, our pictures. */
+    function sprAdv(mk) {
+        var K = '#000000', L = '#ffffff', D = '#555555', F = '#c6c6c6', SD = '#373737';
+        function px(cx, x, y, c) { cx.fillStyle = c; cx.fillRect(x, y, 1, 1); }
+        mk('adv_win', 252, 140, function (cx) {
+            var W = 252, H = 140;
+            sprRect(cx, 1, 1, W - 2, H - 2, F);
+            sprRect(cx, 2, 1, W - 5, 1, L); sprRect(cx, 1, 2, W - 4, 1, L); sprRect(cx, 1, 3, 2, H - 6, L); px(cx, 3, 3, L);
+            sprRect(cx, W - 3, 3, 2, H - 5, D); sprRect(cx, 3, H - 3, W - 6, 1, D); sprRect(cx, 3, H - 2, W - 5, 1, D); px(cx, W - 4, H - 4, D);
+            sprRect(cx, 2, 0, W - 5, 1, K); sprRect(cx, 3, H - 1, W - 5, 1, K); sprRect(cx, 0, 2, 1, H - 5, K); sprRect(cx, W - 1, 3, 1, H - 5, K);
+            px(cx, 1, 1, K); px(cx, W - 3, 1, K); px(cx, W - 2, 2, K); px(cx, 1, H - 3, K); px(cx, 2, H - 2, K); px(cx, W - 2, H - 2, K);
+            cx.clearRect(W - 2, 1, 1, 1); cx.clearRect(1, H - 2, 1, 1);
+            // the view's recess: dark above and left, white below and right, and the hole itself
+            sprRect(cx, 8, 17, 236, 1, SD); sprRect(cx, 8, 17, 1, 115, SD);
+            sprRect(cx, 9, 131, 235, 1, L); sprRect(cx, 243, 18, 1, 114, L);
+            cx.clearRect(9, 18, 234, 113);
+        });
+        function inside(kind, x, y) {
+            if (kind === 'task') return x >= 1 && x <= 24 && y >= 1 && y <= 24 && !((x === 1 || x === 24) && (y === 1 || y === 24));
+            if (kind === 'goal') { var dx = Math.max(0, Math.abs(x - 12.5) - 5.5), dy = Math.max(0, Math.abs(y - 12.5) - 5.5); return dx * dx + dy * dy <= 42; }
+            // the challenge frame: a square with a spike at each corner and each edge's middle
+            var ax = Math.abs(x - 12.5), ay = Math.abs(y - 12.5);
+            if (ax <= 9.5 && ay <= 9.5) return true;
+            if (ax + ay >= 20 && ax <= 12.5 && ay <= 12.5 && Math.abs(ax - ay) <= 1.5) return true;
+            return (ax <= 1.5 && ay <= 12.5) || (ay <= 1.5 && ax <= 12.5);
+        }
+        function frame(kind, done) {
+            var body = done ? '#e0ac2f' : '#b4b4b4', lite = done ? '#fff08c' : '#ececec', dark = done ? '#9d6311' : '#727272', well = done ? '#c78f1c' : '#949494';
+            return function (cx) {
+                for (var y = 0; y < 26; y++) for (var x = 0; x < 26; x++) {
+                    if (inside(kind, x, y)) {
+                        var edgeTL = !inside(kind, x - 1, y) || !inside(kind, x, y - 1) || !inside(kind, x - 2, y) || !inside(kind, x, y - 2);
+                        var edgeBR = !inside(kind, x + 1, y) || !inside(kind, x, y + 1) || !inside(kind, x + 2, y) || !inside(kind, x, y + 2);
+                        var c = edgeTL && !edgeBR ? lite : edgeBR ? dark : body;
+                        if (x >= 5 && x <= 20 && y >= 5 && y <= 20) c = well;   // where the item sits
+                        px(cx, x, y, c);
+                    } else if (inside(kind, x + 1, y) || inside(kind, x - 1, y) || inside(kind, x, y + 1) || inside(kind, x, y - 1)) px(cx, x, y, K);
+                }
+            };
+        }
+        ['task', 'goal', 'challenge'].forEach(function (k) { mk('adv_' + k + '_o', 26, 26, frame(k, true)); mk('adv_' + k + '_u', 26, 26, frame(k, false)); });
+        function bar(face, lite, dark) {
+            return function (cx) {
+                sprRect(cx, 0, 0, 200, 26, K);
+                sprRect(cx, 1, 1, 198, 24, face);
+                sprRect(cx, 1, 1, 198, 2, lite); sprRect(cx, 1, 1, 2, 24, lite);
+                sprRect(cx, 1, 23, 198, 2, dark); sprRect(cx, 197, 1, 2, 24, dark);
+            };
+        }
+        mk('adv_bar_o', 200, 26, bar('#c9972a', '#f2d06a', '#7d5a13'));
+        mk('adv_bar_u', 200, 26, bar('#1f59a6', '#4e8ad6', '#0d2d5c'));
+        mk('adv_desc', 16, 16, function (cx) {   // the description's box, nine-sliced with a 2-pixel border
+            sprRect(cx, 0, 0, 16, 16, K); sprRect(cx, 1, 1, 14, 14, '#555555'); sprRect(cx, 2, 2, 12, 12, '#212121');
+        });
+    }
+    /* the Statistics screen's column headers, an 18x18 raised box with the
+       column's picture, and the items' slot; our own little drawings */
+    function sprStats(mk) {
+        var W = '#ffffff';
+        function box(cx) { sprRect(cx, 0, 0, 18, 18, '#8b8b8b'); sprRect(cx, 0, 0, 17, 1, W); sprRect(cx, 0, 0, 1, 17, W); sprRect(cx, 1, 17, 17, 1, '#373737'); sprRect(cx, 17, 1, 1, 17, '#373737'); }
+        mk('st_slot', 18, 18, function (cx) { sprRect(cx, 0, 0, 18, 18, '#8b8b8b'); sprRect(cx, 0, 0, 17, 1, '#373737'); sprRect(cx, 0, 0, 1, 17, '#373737'); sprRect(cx, 1, 17, 17, 1, W); sprRect(cx, 17, 1, 1, 17, W); });
+        var PIC = {
+            st_mined: ['..........', '.####.....', '.#..#.....', '.####.....', '....#.....', '.....#....', '......#...', '.......#..', '..........', '..........'],
+            st_broken: ['..........', '.####.....', '.#..#.....', '.###......', '....#.#...', '......#...', '.....#.#..', '.......#..', '..........', '..........'],
+            st_crafted: ['..........', '.########.', '.#..#..#..', '.########.', '.#..#..#..', '.########.', '.#......#.', '.#......#.', '..........', '..........'],
+            st_used: ['..........', '...##.....', '...##.....', '...####...', '..######..', '..######..', '...####...', '...###....', '..........', '..........'],
+            st_picked: ['..........', '....#.....', '...###....', '..#####...', '....#.....', '....#.....', '....#.....', '..#####...', '..........', '..........'],
+            st_dropped: ['..........', '..#####...', '....#.....', '....#.....', '....#.....', '..#####...', '...###....', '....#.....', '..........', '..........']
+        };
+        for (var k in PIC) (function (rows) { mk(k, 18, 18, function (cx) { box(cx); sprMap(cx, rows, { '#': '#202020' }, 4, 4); }); })(PIC[k]);
+    }
+    /* ── the menus' sprites ─────────────────────────────────────────
+       What the title screen's menus are drawn over and with since 1.20.5: the
+       menu background (black at about a third, a faint grain, tiled every 32
+       GUI pixels) over the blurred panorama, the darker list background, the
+       slider's track, the Create New World tabs, and the two icon buttons'
+       pictures. The game's sizes and borders, our pixels. */
+    function sprMenu(mk) {
+        var rnd = mulb(0x3E7B6);
+        function grain(a0, spread) {
+            return function (cx) {
+                for (var y = 0; y < 32; y++) for (var x = 0; x < 32; x++) {
+                    cx.fillStyle = 'rgba(0,0,0,' + (a0 + (rnd() - 0.5) * spread).toFixed(3) + ')'; cx.fillRect(x, y, 1, 1);
+                }
+            };
+        }
+        mk('mbg', 32, 32, grain(0.32, 0.06));
+        mk('mlbg', 32, 32, grain(0.52, 0.06));
+        function track(frame) {
+            return function (cx) {
+                sprRect(cx, 0, 0, 200, 20, frame);
+                for (var y = 1; y < 19; y++) for (var x = 1; x < 199; x++) {
+                    var v = 0x2e + Math.round((rnd() - 0.5) * 5);
+                    cx.fillStyle = 'rgb(' + v + ',' + v + ',' + v + ')'; cx.fillRect(x, y, 1, 1);
+                }
+            };
+        }
+        mk('slider', 200, 20, track('#000000'));
+        mk('slider_h', 200, 20, track('#ffffff'));
+        // MenuTabBar's tabs: nine-sliced with a 2-pixel border on the top and sides and none below, so they open onto the page
+        function tab(outer, inner, fill) {
+            return function (cx) {
+                if (fill) sprRect(cx, 2, 2, 126, 22, fill);
+                sprRect(cx, 0, 0, 130, 1, outer); sprRect(cx, 0, 0, 1, 24, outer); sprRect(cx, 129, 0, 1, 24, outer);
+                sprRect(cx, 1, 1, 128, 1, inner); sprRect(cx, 1, 1, 1, 23, inner); sprRect(cx, 128, 1, 1, 23, inner);
+            };
+        }
+        mk('tab', 130, 24, tab('#000000', '#4f4f4f', 'rgba(0,0,0,0.45)'));
+        mk('tab_h', 130, 24, tab('#ffffff', '#8f8f8f', 'rgba(0,0,0,0.45)'));
+        mk('tab_s', 130, 24, tab('#000000', '#a0a0a0', null));
+        mk('tab_sh', 130, 24, tab('#ffffff', '#d0d0d0', null));
+        var IC = {
+            ic_lang: ['...............', '.....#####.....', '...##.#.#.##...', '..#..#...#..#..', '.#...#...#...#.', '.#############.', '#....#...#....#',
+                      '#....#...#....#', '#....#...#....#', '.#############.', '.#...#...#...#.', '..#..#...#..#..', '...##.#.#.##...', '.....#####.....', '...............'],
+            ic_acc: ['......###......', '......###......', '......###......', '...............', '.#############.', '......###......', '......###......',
+                     '......###......', '......###......', '.....#...#.....', '.....#...#.....', '....#.....#....', '....#.....#....', '...#.......#...', '...............']
+        };
+        for (var ik in IC) (function (rows) { mk(ik, 15, 15, function (cx) { sprMap(cx, rows, { '#': '#ffffff' }); }); })(IC[ik]);
+    }
     function sprPanels(mk) {
         var K = '#000000', L = '#ffffff', D = '#555555', F = '#c6c6c6', W8 = '#8b8b8b', SD = '#373737';
         function px(cx, x, y, c) { cx.fillStyle = c; cx.fillRect(x, y, 1, 1); }
@@ -6400,6 +7194,8 @@
     function openPanel(kind, t) {
         closePanel(true);
         RT.panel = { kind: kind, key: t ? tentKey(t.x, t.y, t.z) : null, at: t ? [t.x + 0.5, t.y + 0.5, t.z + 0.5] : null };
+        var ist = { table: 'interact_with_crafting_table', furnace: 'interact_with_furnace', chest: 'open_chest', anvil: 'interact_with_anvil' }[kind];
+        if (ist) stat('c', ist);
         if (kind === 'furnace') tentAt(t.x, t.y, t.z, 'furnace');
         if (kind === 'chest') tentAt(t.x, t.y, t.z, 'chest');
         RT.craftW = kind === 'table' ? 3 : 2;
@@ -6586,7 +7382,7 @@
        hands back the x after the shadow) or a bar on the first column of the
        next glyph inside it; and a selection as the game's OR_REVERSE
        highlight, which inverts red and green and fills blue. */
-    function paintFieldMirror(inp, mir, col, room) {
+    function paintFieldMirror(inp, mir, col, room, hint) {
         if (!inp || !mir) return;
         var v = inp.value || '', caret = inp.selectionStart == null ? v.length : inp.selectionStart, skip = 0;
         var s0 = inp.selectionStart == null ? caret : inp.selectionStart, s1 = inp.selectionEnd == null ? caret : inp.selectionEnd;
@@ -6594,10 +7390,11 @@
         while (skip < caret && mfWidth(v.slice(skip, caret)) > room - 6) skip++;
         var show = v.slice(skip), html = show ? mtHTML(show, inp.disabled ? '#707070' : col) : '';
         var focused = document.activeElement === inp && !inp.disabled;
+        if (!v && hint && !focused) html = mtHTML(hint, '#555555');   // the hint, dark grey, only while the box is empty and idle
         function xAt(k) { return k > skip ? mfWidth(v.slice(skip, k)) + 1 : 0; }
         var cx = xAt(caret);
         if (focused && (((performance.now() - (inp._ft || 0)) / 300) | 0) % 2 === 0) {
-            html += caret < v.length ? '<i class="mc-fbar" style="left:calc(var(--px) * ' + cx + ')"></i>'
+            html += caret < v.length ? '<i class="mc-fbar" style="left:calc(var(--px) * ' + cx + ');background:' + col + '"></i>'
                                      : '<span class="mc-fcur" style="left:calc(var(--px) * ' + (caret > skip ? cx + 1 : 0) + ')">' + mtHTML('_', col) + '</span>';
         }
         if (focused && s1 > s0) {
@@ -6846,6 +7643,7 @@
                 }
             }
             for (var i = 0; i < 9; i++) if (RT.craft[i]) { RT.craft[i].c--; if (!RT.craft[i].c) RT.craft[i] = null; }
+            stat('cr', r.out, r.n);
             craftHooks(r.out);
             snd('click');
         } while (shiftAll && guard++ < 64);
@@ -6984,7 +7782,7 @@
         if (RT.cur && !slotAccepts(g, idx, RT.cur)) return;   // wrong item for this special slot
         if (g === 'fout') {   // output: take only
             if (!st) return;
-            if (!RT.cur) { RT.cur = st; grp.set(idx, null); if (st.id === 'iron') unlock('iron'); }
+            if (!RT.cur) { RT.cur = st; grp.set(idx, null); stat('cr', st.id, st.c); if (st.id === 'iron') unlock('iron'); }
             else if (RT.cur.id === st.id && RT.cur.c + st.c <= stkMax(st.id)) { RT.cur.c += st.c; grp.set(idx, null); if (st.id === 'iron') unlock('iron'); }
             snd('click');   // taking a crafted item clicks; taking a smelted one was silent
             paintPanel(); return;
@@ -7085,8 +7883,8 @@
        background at alpha 240 reaching 4 pixels out with its corners cut, and
        inside that a 1-pixel ring 3 out running from #5000FF at the top to
        #290080 at the bottom, both at alpha 80. */
-    function tipRender(lines, clientX, clientY) {
-        var wrap = RT.el.querySelector('.mc-panelwrap'), tip = wrap && wrap.querySelector('.mc-ptip');
+    function tipRender(lines, clientX, clientY, tipEl) {
+        var wrap = RT.el.querySelector('.mc-panelwrap'), tip = tipEl || (wrap && wrap.querySelector('.mc-ptip'));
         if (!tip) return;
         if (!lines || !lines.length) { tip.style.display = 'none'; tip._sig = ''; return; }
         var r = RT.el.getBoundingClientRect(), s = RT.gs, mx = Math.floor((clientX - r.left) / s), my = Math.floor((clientY - r.top) / s);
@@ -7420,6 +8218,7 @@
     /* the Q key and a click on the dark outside a panel both throw an item the way
        you are looking, on the real game's arc */
     function tossItem(st, n) {
+        stat('c', 'drop'); stat('d', st.id, n);   // Player.drop: one drop, and that many of the item
         var d = look();
         RT.drops.push({ x: S.px + d[0], y: S.py + EYE - 0.3, z: S.pz + d[2], vx: d[0] * 6, vy: d[1] * 6 + 2, vz: d[2] * 6,
             it: st.id, c: n, dur: st.dur, ench: st.ench || null, iname: st.name || null, age: -0.8, hw: 0.12, h: 0.24 });
@@ -8260,45 +9059,6 @@
         musStart('menu', MUSIC.menu);
     }
 
-    /* ── the options sliders ─────────────────────────────────
-       The real options screen has draggable sliders, not toggles, and OFF is
-       just the left end of one. Old saves hold booleans, which read as 0 and 1
-       through sVol()/mVol(), so nothing has to be migrated. */
-    function paintOpts() {
-        if (!RT || !RT.el) return;
-        var rows = RT.el.querySelectorAll('.mc-slider');
-        for (var i = 0; i < rows.length; i++) {
-            var el = rows[i], k = el.getAttribute('data-vk');
-            var v = k === 'snd' ? sVol() : mVol();
-            var pct = Math.round(v * 100);
-            el.querySelector('span').textContent = (k === 'snd' ? 'Sound: ' : 'Music: ') + (pct ? pct + '%' : 'OFF');
-            el.querySelector('i').style.left = (v * 100) + '%';
-        }
-    }
-    function wireSliders(root) {
-        var rows = root.querySelectorAll('.mc-slider');
-        for (var i = 0; i < rows.length; i++) (function (el) {
-            var k = el.getAttribute('data-vk'), dragging = false;
-            function setFrom(e) {
-                var r = el.getBoundingClientRect();
-                // the knob is 10px wide and centred, so the usable track is inset by half of it
-                var v = (e.clientX - r.left - 5) / Math.max(1, r.width - 10);
-                v = Math.max(0, Math.min(1, v));
-                if (v < 0.03) v = 0;                       // a real dead zone at the left end
-                v = Math.round(v * 20) / 20;               // 5% notches, like the game's
-                if (k === 'snd') S.snd = v; else S.mus = v;
-                applyVolumes();
-                paintOpts();
-            }
-            el.addEventListener('mousedown', function (e) { dragging = true; setFrom(e); e.preventDefault(); e.stopPropagation(); });
-            el.addEventListener('mousemove', function (e) { if (dragging) setFrom(e); });
-            el.addEventListener('mouseup', function () { dragging = false; });
-            el.addEventListener('mouseleave', function () { dragging = false; });
-            // a click that lands on the label still has to move the knob
-            el.addEventListener('click', function (e) { e.stopPropagation(); });
-        })(rows[i]);
-    }
-
     /* ── chunk streaming ────────────────────────────────────── */
     function ensureChunks() {
         var pcx = Math.floor(S.px / CW), pcz = Math.floor(S.pz / CW), k;
@@ -8426,7 +9186,7 @@
             /* A lock request already in flight when a screen opens still resolves,
                and used to be accepted — leaving the inventory up with the pointer
                captured and the camera spinning behind it. Hand it straight back. */
-            if (RT.panel || RT.dead || RT.chat) { unlockCursor(); return; }
+            if (RT.panel || RT.dead || RT.chat || (RT.sleep && !RT.woke)) { unlockCursor(); return; }
             if (RT.paused) hidePause();
             RT.el.focus();
         }
@@ -8454,8 +9214,9 @@
            screen), so it gets a step of the ladder and then the frame. */
         if (RT.menu) {
             if (!RT.built) bootStep();
-            mnFrame(RT.menu, dt);
-            menuMusic(dt);
+            var mm0 = RT.menu;
+            mnFrame(mm0, dt);
+            if (!mm0.inworld) menuMusic(dt);   // the world's music carries on under its own options
             return;
         }
         if (!RT.built) { bootStep(); return; }
@@ -8489,6 +9250,7 @@
             RT.lightning = Math.max(0, (RT.lightning || 0) - dt);
             RT.target = raycast();
             stepPlayer(dt);
+            statMove(dt);
             fovTick(dt);
             digTick(dt);
             useTick(dt);
@@ -8558,10 +9320,41 @@
         hudFrame(dt);
         if (RT.av) avatarDraw();   // the figure in the inventory box, turning with the pointer and swaying
     }
-    function bootBar(f) {
-        var b = RT.el.querySelector('.mc-bar i');
-        if (b) b.style.width = Math.round(f * 100) + '%';
+    /* ── the world's loading screen ──
+       LevelLoadingScreen as 1.21.9 draws it: over the blurred panorama and the
+       menu background, "Loading terrain..." in white, a 200x2 bar twelve pixels
+       under it filling in green on black, and in singleplayer the chunk map:
+       every chunk the world is waiting on as a 2x2 cell in its generation
+       status's colour, centred on the screen, the text 26 pixels above it. */
+    var LOAD_COL = { none: '#000000', queued: '#545454', terrain: '#21c600', light: '#ffe0a0', full: '#ffffff' };
+    function loadShow(on) {
+        var ld = RT.el.querySelector('.mc-load');
+        if (!ld) return;
+        ld.style.display = on ? '' : 'none';
+        RT.el.classList.toggle('mc-loading', !!on);
+        RT.el.classList.toggle('mc-mblur', !!on);
+        if (on) { RT.loadF = 0; RT.el.style.setProperty('--mblur', (5.5 / (window.devicePixelRatio || 1)).toFixed(2) + 'px'); loadPaint(0); }
     }
+    function loadPaint(f) {
+        var ld = RT.el.querySelector('.mc-load');
+        if (!ld || ld.style.display === 'none' || !RT.gs) return;
+        RT.loadF = (RT.loadF || 0) + (f - (RT.loadF || 0)) * 0.2;
+        var W = RT.gw, H = RT.gh, r = VIEW, n = 2 * r + 1, cy = H >> 1, ty = cy - 2 * r - 27;
+        var t = ld.querySelector('.mc-ltext'), bar = ld.querySelector('.mc-lbar'), map = ld.querySelector('.mc-lmap');
+        mtSet(t.firstChild, 'Loading terrain...', '#ffffff');
+        hudPlace(t, (W >> 1) - ((mfWidth('Loading terrain...') + 1) >> 1), ty);
+        hudPlace(bar, (W >> 1) - 100, ty + 12);
+        bar.firstChild.style.width = 'calc(var(--px) * ' + Math.round(200 * Math.max(0, Math.min(1, RT.loadF))) + ')';
+        if (map.width !== n) { map.width = map.height = n; map.style.width = map.style.height = 'calc(var(--px) * ' + 2 * n + ')'; }
+        hudPlace(map, (W >> 1) - n, cy - n);
+        var c = map.getContext('2d'), pcx = Math.floor(S.px / CW), pcz = Math.floor(S.pz / CW);
+        for (var dz = -r; dz <= r; dz++) for (var dx = -r; dx <= r; dx++) {
+            var k = ckey(pcx + dx, pcz + dz), ch = RT.chunks[k];
+            c.fillStyle = LOAD_COL[ch ? (ch.mesh ? 'full' : RT.lit ? 'light' : 'terrain') : RT.genQ.indexOf(k) >= 0 ? 'queued' : 'none'];
+            c.fillRect(dx + r, dz + r, 1, 1);
+        }
+    }
+    function bootBar(f) { loadPaint(f); }
     /* The boot ladder — generate, light, mesh — pulled out of frame() so that
        both things that wait on it can drive their own progress bar: the menu's,
        while the panorama world stands up behind the title screen, and the
@@ -8608,7 +9401,7 @@
         var guard = 0;
         while (boxHits(S.px, S.py, S.pz) && S.py < CH - 2 && guard++ < CH) S.py += 1;
         RT.fallY = S.py; RT.vy = 0;
-        RT.el.querySelector('.mc-load').style.display = 'none';
+        loadShow(false);
         restoreEnts();
         if (S.bonusPending) bonusChest();
         paintHotbar(); paintVitals(); paintHudMode();
@@ -8690,23 +9483,22 @@
         // flight belongs to the world that granted it, not to the session
         RT.fly = !!S.fly && (S.gm === 1 || S.gm === 3);
         RT.vy = 0; RT.sprint = false; RT.swing = 0; RT.sleep = 0;
-        var ld = RT.el.querySelector('.mc-load');
-        ld.querySelector('h3').textContent = 'Building terrain…';
-        ld.style.display = '';
-        bootBar(0);
+        loadShow(true);
         ensureChunks();
         wsTouch(id, { played: Date.now(), ver: (RT && RT.ver) || '26.2' });
     }
     /* Vanilla's "Save and Quit to Title": the world is written out, the world
        is thrown away, and the panorama is generated fresh behind the menu. */
     function mnToTitle() {
+        stat('c', 'leave_game');
         sSave();
         if (S && S.wid) wsTouch(S.wid, { played: Date.now(), hrs: S.hrs || 0 });
         unlockCursor();
         if (RT.paused) hidePause();
+        iwHide(); leaveBed();
         RT.lan = null; RT.lanUI = null;   // cheats from Open to LAN end with the session, as the real ones do
         if (RT.panel) closePanel(true);
-        RT.el.querySelector('.mc-load').style.display = 'none';
+        loadShow(false);
         // the debug overlay belongs to the world; it would sit frozen over the menu
         RT.f3 = false;
         RT.el.querySelector('.mc-debug').style.display = 'none';
@@ -9356,78 +10148,60 @@
         mnRect(cx, x, y, w, 1, lite); mnRect(cx, x, y, 1, h, lite);
         mnRect(cx, x, y + h - 1, w, 1, dark); mnRect(cx, x + w - 1, y, 1, h, dark);
     }
-    /* The widget in its three states. Vanilla nine-slices these out of
-       widgets.png at v=46 disabled, v=66 idle, v=86 hovered, and the label is
-       0xFFFFFF whenever the button is active and 0xA0A0A0 when it is not —
-       hovering does NOT recolour the text, however strongly everyone
-       remembers that it does. */
+    /* A sprite nine-sliced onto the menu canvas: corners as they are, edges and
+       middle tiled from their top-left, as the game's GuiSprites scaling does */
+    function mnNine(cx, sp, x, y, w, h, b) {
+        var cv = sp.cv, sw = sp.w, sh = sp.h, cw = sw - 2 * b, ch = sh - 2 * b;
+        function tile(sx, sy, sW, sH, dx, dy, dW, dH) {
+            if (dW <= 0 || dH <= 0) return;
+            for (var yy = 0; yy < dH; yy += sH) for (var xx = 0; xx < dW; xx += sW) {
+                var ww = Math.min(sW, dW - xx), hh = Math.min(sH, dH - yy);
+                cx.drawImage(cv, sx, sy, ww, hh, dx + xx, dy + yy, ww, hh);
+            }
+        }
+        var bx = Math.min(b, w >> 1), by = Math.min(b, h >> 1);
+        tile(0, 0, bx, by, x, y, bx, by); tile(sw - bx, 0, bx, by, x + w - bx, y, bx, by);
+        tile(0, sh - by, bx, by, x, y + h - by, bx, by); tile(sw - bx, sh - by, bx, by, x + w - bx, y + h - by, bx, by);
+        tile(b, 0, cw, by, x + bx, y, w - 2 * bx, by); tile(b, sh - by, cw, by, x + bx, y + h - by, w - 2 * bx, by);
+        tile(0, b, bx, ch, x, y + by, bx, h - 2 * by); tile(sw - bx, b, bx, ch, x + w - bx, y + by, bx, h - 2 * by);
+        tile(b, b, cw, ch, x + bx, y + by, w - 2 * bx, h - 2 * by);
+    }
+    /* AbstractWidget.renderScrollingString: centred between the margins when it
+       fits; wider, it eases from one end to the other and back inside a clip,
+       lingering at each, a full cycle every max(overflow / 2, 3) seconds */
+    function mnLabel(cx, text, x0, y0, x1, y1, col) {
+        var tw = mfWidth(text) + 1, ty = ((y0 + y1 - 9) >> 1) + 1, room = x1 - x0;
+        if (tw <= room) { mfText(cx, text, ((x0 + x1) >> 1) - (tw >> 1), ty, col); return; }
+        var over = tw - room, period = Math.max(over * 0.5, 3), sec = performance.now() / 1000;
+        var a = Math.sin(Math.PI / 2 * Math.cos(2 * Math.PI * sec / period)) / 2 + 0.5;
+        cx.save(); cx.beginPath(); cx.rect(x0, y0, room, y1 - y0); cx.clip();
+        mfText(cx, text, x0 - Math.floor(a * over), ty, col);
+        cx.restore();
+        if (RT && RT.menu) RT.menu.anim = true;   // it moves on its own, so the screen keeps repainting
+    }
+    /* The widget in its three states, the current game's sprites: widget/button,
+       button_highlighted (hovered or focused: the white frame) and
+       button_disabled; the label white, or 0xA0A0A0 on a dead button. */
     function mnButton(cx, b, state) {
-        var top = state === 2 ? '#4a4a4a' : state === 1 ? '#8f8fae' : '#7a7a7a';
-        var bot = state === 2 ? '#2e2e2e' : state === 1 ? '#5f5f80' : '#565656';
-        var lite = state === 2 ? '#5e5e5e' : state === 1 ? '#c2c2d8' : '#9e9e9e';
-        // a hard black frame first: it is what separates a widget from the dirt
-        mnRect(cx, b.x, b.y, b.w, b.h, '#000000');
-        var g = cx.createLinearGradient(0, b.y + 1, 0, b.y + b.h - 1);
-        g.addColorStop(0, top); g.addColorStop(1, bot);
-        cx.fillStyle = g;
-        cx.fillRect(b.x + 1, b.y + 1, b.w - 2, b.h - 2);
-        mnRect(cx, b.x + 1, b.y + 1, b.w - 2, 1, lite);
-        mnRect(cx, b.x + 1, b.y + 1, 1, b.h - 2, lite);
-        mnRect(cx, b.x + 1, b.y + b.h - 2, b.w - 2, 1, '#242424');
-        mnRect(cx, b.x + b.w - 2, b.y + 1, 1, b.h - 2, '#242424');
-        var ty = b.y + ((b.h - 7) >> 1);
+        mnNine(cx, guiSprites()[state === 2 ? 'btn_d' : state === 1 ? 'btn_h' : 'btn'], b.x, b.y, b.w, b.h, 3);
         var lbl = b.label == null ? '' : b.label;
-        if (lbl === '') return;
-        var col = state === 2 ? '#a0a0a0' : MC_WHITE;
-        /* A label wider than its widget is clipped to it — vanilla scrolls it,
-           but either way it must not spill onto the dirt, which is what made
-           "Direct Connection" read as a different kind of button. */
-        if (mfWidth(lbl) > b.w - 4) {
-            cx.save();
-            cx.beginPath(); cx.rect(b.x + 2, b.y, b.w - 4, b.h); cx.clip();
-            mfCenter(cx, lbl, b.x + b.w / 2, ty, col);
-            cx.restore();
-        } else mfCenter(cx, lbl, b.x + b.w / 2, ty, col);
+        if (lbl !== '') mnLabel(cx, lbl, b.x + 2, b.y, b.x + b.w - 2, b.y + b.h, state === 2 ? MC_GREY : MC_WHITE);
     }
-    /* The dirt background behind every screen that has no panorama: the game
-       tiles its dirt texture at 32 GUI pixels and darkens it hard. We already
-       have a dirt tile in the atlas, so use the real one. */
-    var MN_DIRT = null;
-    function mnDirtTile() {
-        if (MN_DIRT) return MN_DIRT;
-        var t = TILE.dirt, sx = (t % 16) * 16, sy = ((t / 16) | 0) * 16;
-        var cv = document.createElement('canvas');
-        cv.width = 32; cv.height = 32;
-        var cx = cv.getContext('2d');
-        cx.imageSmoothingEnabled = false;
-        cx.drawImage(ATLAS, sx, sy, 16, 16, 0, 0, 32, 32);
-        cx.fillStyle = 'rgba(0, 0, 0, 0.75)';   // vanilla multiplies the tile by 0x404040
-        cx.fillRect(0, 0, 32, 32);
-        MN_DIRT = cv;
-        return cv;
-    }
-    function mnDirt(cx, x, y, w, h) {
-        var p = cx.createPattern(mnDirtTile(), 'repeat');
-        cx.fillStyle = p;
-        cx.fillRect(x, y, w, h);
+    function mnMenuBg(cx, W, H, list) {   // the menu background, or the darker list one
+        cx.fillStyle = cx.createPattern(guiSprites()[list ? 'mlbg' : 'mbg'].cv, 'repeat');
+        cx.fillRect(0, 0, W, H);
     }
     /* A scrolling list's frame: dirt inside, and the two shadow gradients the
        game bleeds over the top and bottom edges so entries fade out rather
        than getting guillotined. */
-    function mnListFrame(cx, x, y, w, h) {
+    function mnListFrame(cx, x, y, w, h) {   // menu_list_background over the list's rectangle
         cx.save();
         cx.beginPath(); cx.rect(x, y, w, h); cx.clip();
-        mnDirt(cx, x, y, w, h);
+        if (RT.menu && RT.menu.inworld) { cx.fillStyle = 'rgba(0, 0, 0, 0.3)'; cx.fillRect(x, y, w, h); }
+        else mnMenuBg(cx, x + w, y + h, true);
         cx.restore();
     }
-    function mnListEdges(cx, x, y, w, h) {
-        var g = cx.createLinearGradient(0, y, 0, y + 4);
-        g.addColorStop(0, 'rgba(0, 0, 0, 1)'); g.addColorStop(1, 'rgba(0, 0, 0, 0)');
-        cx.fillStyle = g; cx.fillRect(x, y, w, 4);
-        g = cx.createLinearGradient(0, y + h - 4, 0, y + h);
-        g.addColorStop(0, 'rgba(0, 0, 0, 0)'); g.addColorStop(1, 'rgba(0, 0, 0, 1)');
-        cx.fillStyle = g; cx.fillRect(x, y + h - 4, w, 4);
-    }
+    function mnListEdges(cx, x, y, w, h) { mnSep(cx, x, y - 2, w, true); mnSep(cx, x, y + h, w, false); }   // the header and footer separators
 
     /* — the wordmark —
        The real logo is a texture; this one is built at boot from a bold
@@ -9629,7 +10403,7 @@
        the frame. Screens never touch the canvas transform or the DOM. */
     var MN_SCR = {};   // filled in below, one entry per screen
 
-    function mnOpen(scr, fade) {
+    function mnOpen(scr, fade, inworld) {
         var m = {
             scr: scr || 'title', prev: [], t: 0, spin: 0, fadeT: 0, fading: false, wantFade: fade !== false,
             splash: optLoad().splash ? mnPickSplash() : null,
@@ -9639,8 +10413,10 @@
         m.cv = RT.el.querySelector('.mc-mcv');
         m.cx = m.cv.getContext('2d');
         m.ui = RT.el.querySelector('.mc-mui');
+        m.inworld = !!inworld;   // the Game Menu's Options...: the paused world, blurred, behind it
         RT.menu = m;
-        RT.el.classList.add('mc-menuon');
+        RT.el.classList.add(m.inworld ? 'mc-menuworld' : 'mc-menuon');
+        if (m.inworld) RT.el.classList.add('mc-blur');
         m.cv.style.display = ''; m.ui.style.display = '';
         mnWire(m);
         mnSize(m);
@@ -9651,6 +10427,8 @@
         var m = RT.menu;
         RT.menu = null;
         RT.el.classList.remove('mc-menuon');
+        RT.el.classList.remove('mc-menuworld');
+        RT.el.classList.remove('mc-mblur');
         if (m) {
             m.cv.style.display = 'none';
             m.ui.style.display = 'none';
@@ -9682,7 +10460,9 @@
        Select World with the same world still highlighted. Only a descent
        through mnGo builds a fresh screen. */
     function mnBack(m) {
-        var to = m.prev.pop() || 'title';
+        var to = m.prev.pop();
+        if (!to && m.inworld) { mnCloseUI(); if (RT.paused) iwShow('pause'); return; }   // out of Options, back to the Game Menu
+        to = to || 'title';
         m.scr = to; m.hover = -1; m.focus = -1; m.msg = null; m.sig = ''; m.dirty = true;
     }
     function mnSize(m) {
@@ -9810,6 +10590,7 @@
         });
         ui.addEventListener('focusin', function (ev) {
             var mm = RT && RT.menu; if (!mm) return;
+            if (ev.target && ev.target.tagName === 'INPUT') ev.target._ft = performance.now();   // the cursor's blink starts at focus
             mm.focus = idx(ev); mm.dirty = true;
         });
         ui.addEventListener('focusout', function () {
@@ -9884,7 +10665,14 @@
             scr.tick(m, dt);
             scr = MN_SCR[m.scr] || MN_SCR.title;
         }
-        if (scr.bg !== 'dirt' && scr.bg !== 'flat') { RT.fov = MN_FOV; mnPanoCam(m, dt); drawFrame(); }
+        /* the panorama turns behind every screen now; only the title screen shows it
+           sharp, every other one blurs it under the menu background */
+        if (!m.inworld && scr.bg !== 'flat') { RT.fov = MN_FOV; mnPanoCam(m, dt); drawFrame(); }
+        var blur = !m.inworld && scr.bg === 'dirt';
+        if (RT.el.classList.contains('mc-mblur') !== blur) {
+            RT.el.classList.toggle('mc-mblur', blur);
+            RT.el.style.setProperty('--mblur', (5.5 / (window.devicePixelRatio || 1)).toFixed(2) + 'px');
+        }
         /* While the widgets are still invisible they are not interactive at
            all. pointer-events alone is not enough: a button with no pointer
            events is still in the tab order, so Tab-then-Enter could start a
@@ -9893,7 +10681,7 @@
         m.inert = a < 0.02;
         m.ui.style.pointerEvents = m.inert ? 'none' : '';
         // repaint when something changed, or when the screen animates on its own
-        if (m.dirty || scr.live) mnPaint(m, scr);
+        if (m.dirty || scr.live || m.anim) mnPaint(m, scr);
     }
     function mnPaint(m, scr) {
         var cx = m.cx, s = m.scale;
@@ -9901,8 +10689,10 @@
         cx.clearRect(0, 0, m.cv.width, m.cv.height);
         cx.imageSmoothingEnabled = false;
         cx.setTransform(s, 0, 0, s, 0, 0);
+        m.anim = false;
         var W = m.W, H = m.H;
-        if (scr.bg === 'dirt') mnDirt(cx, 0, 0, W, H);
+        if (m.inworld) { cx.fillStyle = cx.createPattern(guiSprites().iwbg.cv, 'repeat'); cx.fillRect(0, 0, W, H); }   // over the blurred world
+        else if (scr.bg === 'dirt') mnMenuBg(cx, W, H);
         else if (scr.bg === 'scrim') { cx.fillStyle = 'rgba(0, 0, 0, 0.62)'; cx.fillRect(0, 0, W, H); }
         var ga = 1;
         if (scr.bg === 'pano') {
@@ -9922,12 +10712,10 @@
             if (b.k === 'btn' || b.k === 'icon') {
                 var st = b.enabled === false ? 2 : (i === m.hover || i === m.focus) ? 1 : 0;
                 b.st = st;
-                mnButton(cx, b, st);
-                if (b.k === 'icon' && b.draw) b.draw(cx, b, st);
-                if (i === m.focus) {   // vanilla outlines the keyboard-focused widget
-                    cx.fillStyle = MC_WHITE;
-                    cx.fillRect(b.x - 1, b.y - 1, b.w + 2, 1); cx.fillRect(b.x - 1, b.y + b.h, b.w + 2, 1);
-                    cx.fillRect(b.x - 1, b.y, 1, b.h); cx.fillRect(b.x + b.w, b.y, 1, b.h);
+                mnButton(cx, b, st);   // focus is the highlighted sprite's white frame, as in the game
+                if (b.k === 'icon') {   // SpriteIconButton: the 15x15 picture at (3, 3)
+                    if (b.icon) cx.drawImage(guiSprites()[b.icon].cv, b.x + 3, b.y + 3);
+                    else if (b.draw) b.draw(cx, b, st);
                 }
             } else if (b.k === 'input') mnInput(cx, m, b, i);
             else if (b.k === 'draw' && b.draw) {
@@ -9950,26 +10738,43 @@
         m.dirty = false;
         mnSync(m);
     }
-    /* A text field: sunken bevel, the value painted in the bitmap font, a
-       caret that blinks on the game's half-second, and the DOM selection
-       mirrored as a highlight so dragging a seed looks like it works. */
+    /* EditBox, the current game's: the text_field sprite inside the widget's
+       bounds (#A0A0A0 round black, white while focused), the text at (4, 6) in
+       0xE0E0E0, scrolled to keep the cursor in view; the cursor blinks 300 ms
+       from focus, an underscore where the text ends and a bar in the text's own
+       colour inside it; a selection is the game's OR_REVERSE highlight; an empty
+       box shows its hint in dark grey, a search box's in grey italics. */
     function mnInput(cx, m, b, i) {
         var el = m.ui.children[i], focus = el && document.activeElement === el;
-        mnRect(cx, b.x - 1, b.y - 1, b.w + 2, b.h + 2, focus ? '#ffffff' : '#a0a0a0');
-        mnRect(cx, b.x, b.y, b.w, b.h, '#000000');
-        var v = b.value || '', tx = b.x + 4, ty = b.y + ((b.h - 7) >> 1);
-        if (!v && b.hint) { mfText(cx, b.hint, tx, ty, '#707070'); }
-        else {
-            if (focus && el.selectionStart !== el.selectionEnd) {
-                var a = mfWidth(v.slice(0, el.selectionStart)), z = mfWidth(v.slice(0, el.selectionEnd));
-                mnRect(cx, tx + a, ty - 1, Math.max(1, z - a), 10, '#3030c0');
+        mnNine(cx, guiSprites()[focus ? 'field_h' : 'field'], b.x, b.y, b.w, b.h, 1);
+        var v = b.value || '', tx = b.x + 4, ty = b.y + ((b.h - 8) >> 1), col = b.enabled === false ? '#707070' : '#e0e0e0';
+        var room = b.w - 8, s0 = el && el.selectionStart != null ? el.selectionStart : v.length, s1 = el && el.selectionEnd != null ? el.selectionEnd : s0;
+        var caret = el && el.selectionDirection === 'backward' ? s0 : s1, skip = 0;
+        while (skip < caret && mfWidth(v.slice(skip, caret)) > room - 6) skip++;
+        var show = v.slice(skip), end = show.length;
+        while (end > 0 && mfWidth(show.slice(0, end)) > room) end--;
+        show = show.slice(0, end);
+        cx.save(); cx.beginPath(); cx.rect(b.x + 1, b.y + 1, b.w - 2, b.h - 2); cx.clip();
+        if (!v && b.hint && !focus) {
+            if (b.search) { cx.save(); cx.transform(1, 0, -0.25, 1, 1 + 0.25 * ty, 0); mfText(cx, b.hint, tx, ty, '#aaaaaa'); cx.restore(); }
+            else mfText(cx, b.hint, tx, ty, '#555555');
+        } else mfText(cx, show, tx, ty, col);
+        function xAt(k) { return k > skip ? mfWidth(v.slice(skip, k)) + 1 : 0; }
+        if (focus && (((performance.now() - (el._ft || 0)) / 300) | 0) % 2 === 0) {
+            var cxp = xAt(caret);
+            if (caret < v.length) mnRect(cx, tx + cxp, ty - 1, 1, 11, col);
+            else mfText(cx, '_', tx + (caret > skip ? cxp + 1 : 0), ty, col);
+        }
+        if (focus && s1 > s0) {
+            var xa = xAt(Math.max(skip, s0)), xb = xAt(Math.max(skip, s1)) - 1;
+            if (xb > xa) {
+                cx.globalCompositeOperation = 'difference'; mnRect(cx, tx + xa, ty - 1, xb - xa, 11, '#ffff00');
+                cx.globalCompositeOperation = 'lighten'; mnRect(cx, tx + xa, ty - 1, xb - xa, 11, '#0000ff');
+                cx.globalCompositeOperation = 'source-over';
             }
-            mfText(cx, v, tx, ty, b.enabled === false ? '#707070' : '#e0e0e0');
         }
-        if (focus && (Date.now() % 1000) < 500) {
-            var cpos = el ? el.selectionStart : v.length;
-            mnRect(cx, tx + mfWidth(v.slice(0, cpos)), ty - 1, 1, 10, '#d0d0d0');
-        }
+        cx.restore();
+        if (focus && m) m.anim = true;   // the cursor blinks on its own
         if (b.title) mfText(cx, b.title, b.x, b.y - 12, MC_GREY);
     }
 
@@ -10141,11 +10946,11 @@
             }));
             w.push(mnBtn('realms', x, j + 48, MN_BW, MN_BH, 'Minecraft Realms', function (mm) { mnGo(mm, 'realms'); }));
             w.push(mnBtn('lang', (W / 2 | 0) - 124, r, 20, 20, '', function (mm) { mnGo(mm, 'lang'); },
-                { k: 'icon', aria: 'Language', draw: mnIconGlobe }));
+                { k: 'icon', aria: 'Language', icon: 'ic_lang' }));
             w.push(mnBtn('opt', x, r, 98, 20, 'Options...', function (mm) { mnGo(mm, 'options'); }));
             w.push(mnBtn('quit', (W / 2 | 0) + 2, r, 98, 20, 'Quit Game', function () { mnQuit(); }));
             w.push(mnBtn('acc', (W / 2 | 0) + 104, r, 20, 20, '', function (mm) { mnGo(mm, 'access'); },
-                { k: 'icon', aria: 'Accessibility Settings', draw: mnIconAcc }));
+                { k: 'icon', aria: 'Accessibility Settings', icon: 'ic_acc' }));
             /* The copyright line is a real button in the game — it opens the
                credits, and underlines itself on hover. So is this one. */
             var note = MN_COPY, nw = mfWidth(note);
@@ -10165,26 +10970,6 @@
         }
     };
     var MN_COPY = 'A fan recreation. Not Mojang, not affiliated.';
-    /* The two icon buttons carry small glyphs rather than labels. Drawn, not
-       blitted, because the originals are a texture we do not have. */
-    function mnIconGlobe(cx, b) {
-        var x = b.x + 4, y = b.y + 4;
-        cx.fillStyle = '#e0e0e0';
-        cx.fillRect(x + 3, y, 6, 1); cx.fillRect(x + 3, y + 11, 6, 1);
-        cx.fillRect(x, y + 3, 1, 6); cx.fillRect(x + 11, y + 3, 1, 6);
-        cx.fillRect(x + 1, y + 1, 2, 2); cx.fillRect(x + 9, y + 1, 2, 2);
-        cx.fillRect(x + 1, y + 9, 2, 2); cx.fillRect(x + 9, y + 9, 2, 2);
-        cx.fillRect(x + 5, y + 1, 2, 10); cx.fillRect(x + 1, y + 5, 10, 2);
-    }
-    function mnIconAcc(cx, b) {
-        var x = b.x + 5, y = b.y + 3;
-        cx.fillStyle = '#e0e0e0';
-        cx.fillRect(x + 4, y, 2, 2);                       // head
-        cx.fillRect(x, y + 3, 10, 2);                      // arms
-        cx.fillRect(x + 4, y + 3, 2, 5);                   // body
-        cx.fillRect(x + 1, y + 8, 2, 5); cx.fillRect(x + 7, y + 8, 2, 5);   // legs
-    }
-
     /* ── screen: Select World ────────────────────────────────
        Vanilla: title at y=8, search at y=22, the list from 48 to height-64 at
        36px an entry, two rows of buttons pinned to the bottom. Play / Edit /
@@ -10205,7 +10990,7 @@
         layout: function (m, W, H) {
             var w = [], cxp = W / 2 | 0;
             w.push({ k: 'input', id: 'q', x: cxp - 100, y: 22, w: 200, h: 20, value: m.d.q || '',
-                hint: 'Search…', enabled: true, aria: 'search for worlds',
+                hint: 'Search…', search: true, enabled: true, aria: 'search for worlds',
                 set: function (mm, v) { mm.d.q = v; mm.d.scroll = 0; } });
             var top = 48, bot = H - 64, rows = MN_SCR.world.rows(m);
             var maxScroll = Math.max(0, rows.length * MN_ROWH - (bot - top) + 8);
@@ -10277,7 +11062,8 @@
     function mnWorldRow(cx, b, hover) {
         var m = RT.menu, w = b.world, sel = m.d.sel === w.id;
         if (sel) {
-            mnRect(cx, b.x - 2, b.y - 2, b.w + 4, b.h + 4, '#ffffff');
+            var lf = m.widgets[m.focus] && m.widgets[m.focus].world;
+            mnRect(cx, b.x - 2, b.y - 2, b.w + 4, b.h + 4, lf ? '#ffffff' : '#808080');
             mnRect(cx, b.x - 1, b.y - 1, b.w + 2, b.h + 2, '#000000');
         }
         mnWorldIcon(cx, w, b.x, b.y);
@@ -10338,43 +11124,61 @@
                 set(mm, f);
             },
             draw: function (cx, b, hover, focus) {
-                /* Vanilla draws the track from the widget sheet's DISABLED row
-                   and the handle from the normal one, which is the only reason
-                   the handle is visible at all — matched grey on grey is just a
-                   pair of bevel lines. */
-                mnButton(cx, { x: b.x, y: b.y, w: b.w, h: b.h, label: '' }, 2);
-                var kx = b.x + 1 + Math.round((b.w - 2 - 8) * Math.max(0, Math.min(1, frac)));
-                mnButton(cx, { x: kx, y: b.y, w: 8, h: b.h, label: '' }, hover || focus ? 1 : 0);
-                mfCenter(cx, b.label, b.x + b.w / 2, b.y + ((b.h - 7) >> 1), MC_WHITE);
-                if (focus) {
-                    cx.fillStyle = MC_WHITE;
-                    cx.fillRect(b.x - 1, b.y - 1, b.w + 2, 1); cx.fillRect(b.x - 1, b.y + b.h, b.w + 2, 1);
-                    cx.fillRect(b.x - 1, b.y, 1, b.h); cx.fillRect(b.x + b.w, b.y, 1, b.h);
-                }
+                /* AbstractSliderButton: the widget/slider track across the widget
+                   (its frame white while focused) and the 8-wide handle at
+                   x + value x (w - 8), a little button, white-framed under the
+                   pointer; the label over both */
+                mnNine(cx, guiSprites()[focus ? 'slider_h' : 'slider'], b.x, b.y, b.w, b.h, 1);
+                var kx = b.x + Math.floor(Math.max(0, Math.min(1, frac)) * (b.w - 8));
+                mnNine(cx, guiSprites()[hover || focus ? 'btn_h' : 'btn'], kx, b.y, 8, b.h, 3);
+                mnLabel(cx, b.label, b.x + 2, b.y, b.x + b.w - 2, b.y + b.h, MC_WHITE);
             } };
     }
     function mnOnOff(v) { return v ? 'ON' : 'OFF'; }
-    /* Screens that are a titled column of buttons over dirt — most of the
-       options tree is exactly this, so build them from one description. */
+    /* OptionsSubScreen, the way the options tree has been laid out since
+       1.20.5: the title in a 33-pixel header, the options as a list of rows 25
+       apart from y 37 on the list background between the header and footer
+       separators, two 150-wide buttons a row at W/2 - 155 and W/2 + 5, and
+       Done in the footer. The list scrolls when the rows outgrow it. */
     function mnGrid(title, rows, done) {
         return {
-            bg: 'dirt',
+            bg: 'dirt', list: true,
+            wheel: function (m, dy) { m.d.gscroll = Math.max(0, Math.min(m.d.gmax || 0, (m.d.gscroll || 0) + (dy > 0 ? 25 : -25))); },
             layout: function (m, W, H) {
-                var w = [], cxp = W / 2 | 0, y0 = ((H / 6) | 0) - 12, list = rows(m, W, H), i;
+                var w = [], cxp = W / 2 | 0, list = rows(m, W, H), i, n = 0, sc = m.d.gscroll || 0;
+                var top = 33, bot = H - 33, nrow = Math.ceil(list.length / 2);
+                m.d.gmax = Math.max(0, nrow * 25 + 4 - (bot - top));
+                if (sc > m.d.gmax) sc = m.d.gscroll = m.d.gmax;
                 for (i = 0; i < list.length; i++) {
                     var r = list[i];
                     if (!r) continue;
                     r.x = cxp + (i % 2 ? 5 : -155);
-                    r.y = y0 + ((i / 2) | 0) * 24;
+                    r.y = top + 4 + ((i / 2) | 0) * 25 - sc;
                     if (!r.w) { r.w = 150; r.h = 20; }
-                    w.push(r);
+                    if (r.y + r.h < top || r.y > bot) continue;
+                    r.clip = [0, top, W, bot - top];
+                    w.push(r); n++;
                 }
-                var last = y0 + Math.ceil(list.length / 2) * 24 + 6;
-                w.push(mnBtn('done', cxp - 100, Math.min(H - 27, last), 200, 20, done || 'Done', function (mm) { mnBack(mm); }));
+                w.push(mnBtn('done', cxp - 100, H - 27, 200, 20, done || 'Done', function (mm) { mnBack(mm); }));
                 return w;
             },
-            paint: function (cx, m, W) { mfCenter(cx, title, W / 2, 15, MC_WHITE); }
+            paint: function (cx, m, W, H) {
+                mnListBg(cx, m, 0, 33, W, H - 66);
+                mfCenter(cx, title, W / 2, 12, MC_WHITE);
+            }
         };
+    }
+    /* the list background between the header and footer separators */
+    function mnListBg(cx, m, x, y, w, h) {
+        cx.save(); cx.beginPath(); cx.rect(x, y, w, h); cx.clip();
+        if (m && m.inworld) { cx.fillStyle = 'rgba(0, 0, 0, 0.3)'; cx.fillRect(x, y, w, h); }
+        else mnMenuBg(cx, x + w, y + h, true);
+        cx.restore();
+        mnSep(cx, x, y - 2, w, true); mnSep(cx, x, y + h, w, false);
+    }
+    function mnSep(cx, x, y, w, head) {   // header_separator: light over dark; footer_separator: dark over light
+        mnRect(cx, x, y, w, 1, head ? 'rgba(255, 255, 255, 0.25)' : 'rgba(0, 0, 0, 0.55)');
+        mnRect(cx, x, y + 1, w, 1, head ? 'rgba(0, 0, 0, 0.55)' : 'rgba(255, 255, 255, 0.25)');
     }
     /* A screen that is a title, some wrapped prose and one button back. Used
        by everything the game shows as an informational panel. */
@@ -10426,9 +11230,9 @@
         layout: function (m, W, H) {
             var c = m.d.cw || (m.d.cw = mnCreateDefaults());
             var w = [], cxp = W / 2 | 0, i;
-            var tabs = ['Game', 'World', 'More'], tw = Math.min(120, (W - 8) / 3 | 0);
+            var tabs = ['Game', 'World', 'More'], tw = mnTabW(W), tx0 = (W - 3 * tw) >> 1;
             for (i = 0; i < 3; i++) {
-                w.push({ k: 'draw', id: 'tab' + i, x: Math.round(cxp - tw * 1.5 + i * tw), y: 4, w: tw, h: 20,
+                w.push({ k: 'draw', id: 'tab' + i, x: tx0 + i * tw, y: 0, w: tw, h: 24,
                     enabled: true, aria: tabs[i], label: tabs[i], ti: i,
                     on: (function (n) { return function (mm) { mm.d.cw.tab = n; mm.sig = ''; }; })(i),
                     draw: mnTab });
@@ -10452,7 +11256,7 @@
                     function (mm, n) { mm.d.cw.diff = n; }, { enabled: !c.hardcore }));
                 y += 28;
                 // untouched, the switch follows the mode (ON for Creative); once you set it, it stays set
-                w.push(mnCycle('ch', cxp - 105, y, 210, 20, 'Allow Cheats', ['OFF', 'ON'], eff.cheats ? 1 : 0,
+                w.push(mnCycle('ch', cxp - 105, y, 210, 20, 'Allow Commands', ['OFF', 'ON'], eff.cheats ? 1 : 0,
                     function (mm, n) { mm.d.cw.cheats = !!n; }, { enabled: !c.hardcore }));
             } else if (c.tab === 1) {
                 w.push(mnCycle('wt', cxp - 155, y, 150, 20, 'World Type', MN_WTYPE, c.type,
@@ -10483,18 +11287,27 @@
            the way it has been since the flat "More World Options..." screen was
            replaced. The name still reaches a screen reader through the widgets. */
         paint: function (cx, m, W, H) {
-            mnRect(cx, 0, 0, W, 28, 'rgba(0, 0, 0, 0.45)');
-            mnRect(cx, 0, 28, W, 1, '#000000');
-            mnRect(cx, 0, H - 36, W, 1, '#000000');
+            var tw = mnTabW(W), tx0 = (W - 3 * tw) >> 1;
+            mnSep(cx, 0, 22, tx0, true); mnSep(cx, tx0 + 3 * tw, 22, W - tx0 - 3 * tw, true);   // out from either end of the tab row
+            mnSep(cx, 0, H - 38, W, false);   // over the footer
             var c = m.d.cw;
             // the grey line under Game Mode that says what the mode is, as the real screen has it
             if (c && c.tab === 0) mfText(cx, MN_GM_INFO[c.hardcore ? 1 : c.gm === 1 ? 2 : 0], (W / 2 | 0) - 105, 42 + 44 + 24, MC_GREY);
         }
     };
+    /* MenuTabBar: tabs as wide as roundUpToEven((min(400, W) - 28) / 3), the row
+       centred along the top, 24 tall; the selected one open onto the page with
+       its label 2 higher and underlined, the others darker; the header's
+       separator runs out from either end of the row at y 22 */
+    function mnTabW(W) { var t = Math.ceil((Math.min(400, W) - 28) / 3); return t + (t & 1); }
     function mnTab(cx, b, hover, focus) {
-        var on = RT.menu.d.cw && RT.menu.d.cw.tab === b.ti;
-        mnButton(cx, { x: b.x, y: b.y, w: b.w, h: b.h, label: b.label }, on || hover || focus ? 1 : 0);
-        if (on) mnRect(cx, b.x + 1, b.y + b.h - 2, b.w - 2, 1, MC_WHITE);   // the selected tab is underlined
+        var on = RT.menu.d.cw && RT.menu.d.cw.tab === b.ti, hi = hover || focus;
+        mnNine(cx, guiSprites()[on ? (hi ? 'tab_sh' : 'tab_s') : (hi ? 'tab_h' : 'tab')], b.x, b.y, b.w, b.h, 2);
+        var tw = mfWidth(b.label) + 1, lx = b.x + (b.w >> 1) - (tw >> 1), ly = b.y + (on ? 8 : 10);
+        cx.save(); cx.beginPath(); cx.rect(b.x + 1, b.y, b.w - 2, b.h); cx.clip();
+        mfText(cx, b.label, lx, ly, MC_WHITE);
+        cx.restore();
+        if (on) { var uw = Math.min(tw - 1, b.w - 4); mnRect(cx, b.x + (b.w >> 1) - (uw >> 1), b.y + 22, uw, 1, MC_WHITE); }
     }
     function mnCreate(m) {
         var c = m.d.cw, seed;
@@ -10803,24 +11616,41 @@
        The grid is vanilla's, in vanilla's order. Every entry that this game
        can honour is wired to the thing it names; the ones it cannot are
        screens that say so rather than switches that lie. */
-    MN_SCR.options = mnGrid('Options', function (m, W, H) {
-        var o = optLoad();
-        return [
-            mnSlider('fov', 0, 0, 150, 20, 'FOV: ' + (o.fov === 70 ? 'Normal' : o.fov >= 110 ? 'Quake Pro' : o.fov),
-                (o.fov - 30) / 80, function (mm, f) { o.fov = Math.round(30 + f * 80); optSave(); }),
-            mnBtn('online', 0, 0, 150, 20, 'Online...', function (mm) { mnGo(mm, 'online'); }),
-            mnBtn('skin', 0, 0, 150, 20, 'Skin Customization...', function (mm) { mnGo(mm, 'skin'); }),
-            mnBtn('snd', 0, 0, 150, 20, 'Music & Sounds...', function (mm) { mnGo(mm, 'sound'); }),
-            mnBtn('vid', 0, 0, 150, 20, 'Video Settings...', function (mm) { mnGo(mm, 'video'); }),
-            mnBtn('ctrl', 0, 0, 150, 20, 'Controls...', function (mm) { mnGo(mm, 'controls'); }),
-            mnBtn('lang', 0, 0, 150, 20, 'Language...', function (mm) { mnGo(mm, 'lang'); }),
-            mnBtn('chat', 0, 0, 150, 20, 'Chat Settings...', function (mm) { mnGo(mm, 'chat'); }),
-            mnBtn('rp', 0, 0, 150, 20, 'Resource Packs...', function (mm) { mnGo(mm, 'packs'); }),
-            mnBtn('acc', 0, 0, 150, 20, 'Accessibility Settings...', function (mm) { mnGo(mm, 'access'); }),
-            mnBtn('tel', 0, 0, 150, 20, 'Telemetry Data...', function (mm) { mnGo(mm, 'telemetry'); }),
-            mnBtn('cred', 0, 0, 150, 20, 'Credits & Attribution...', function (mm) { mnGo(mm, 'credits'); })
-        ];
-    });
+    /* OptionsScreen: a 61-pixel header holding the title and the FOV slider and
+       Online... side by side, 8 apart; the ten screens in a two-column grid of
+       150-wide buttons, 158 to a column and 24 to a row, centred in what is left;
+       Done in the footer. */
+    MN_SCR.options = {
+        bg: 'dirt',
+        rows: function () {
+            var o = optLoad();
+            return [
+                mnSlider('fov', 0, 0, 150, 20, 'FOV: ' + (o.fov === 70 ? 'Normal' : o.fov >= 110 ? 'Quake Pro' : o.fov),
+                    (o.fov - 30) / 80, function (mm, f) { o.fov = Math.round(30 + f * 80); optSave(); }),
+                mnBtn('online', 0, 0, 150, 20, 'Online...', function (mm) { mnGo(mm, 'online'); }),
+                mnBtn('skin', 0, 0, 150, 20, 'Skin Customization...', function (mm) { mnGo(mm, 'skin'); }),
+                mnBtn('snd', 0, 0, 150, 20, 'Music & Sounds...', function (mm) { mnGo(mm, 'sound'); }),
+                mnBtn('vid', 0, 0, 150, 20, 'Video Settings...', function (mm) { mnGo(mm, 'video'); }),
+                mnBtn('ctrl', 0, 0, 150, 20, 'Controls...', function (mm) { mnGo(mm, 'controls'); }),
+                mnBtn('lang', 0, 0, 150, 20, 'Language...', function (mm) { mnGo(mm, 'lang'); }),
+                mnBtn('chat', 0, 0, 150, 20, 'Chat Settings...', function (mm) { mnGo(mm, 'chat'); }),
+                mnBtn('rp', 0, 0, 150, 20, 'Resource Packs...', function (mm) { mnGo(mm, 'packs'); }),
+                mnBtn('acc', 0, 0, 150, 20, 'Accessibility Settings...', function (mm) { mnGo(mm, 'access'); }),
+                mnBtn('tel', 0, 0, 150, 20, 'Telemetry Data...', function (mm) { mnGo(mm, 'telemetry'); }),
+                mnBtn('cred', 0, 0, 150, 20, 'Credits & Attribution...', function (mm) { mnGo(mm, 'credits'); })
+            ];
+        },
+        layout: function (m, W, H) {
+            var cxp = W / 2 | 0, l = MN_SCR.options.rows(), w = [], i;
+            l[0].x = cxp - 154; l[0].y = 29; l[1].x = cxp + 4; l[1].y = 29;
+            w.push(l[0], l[1]);
+            var gy = 61 + (((H - 94) - 120) >> 1);
+            for (i = 2; i < l.length; i++) { var k = i - 2; l[i].x = cxp + (k % 2 ? 4 : -154); l[i].y = gy + ((k / 2) | 0) * 24; w.push(l[i]); }
+            w.push(mnBtn('done', cxp - 100, H - 27, 200, 20, 'Done', function (mm) { mnBack(mm); }));
+            return w;
+        },
+        paint: function (cx, m, W) { mfCenter(cx, 'Options', W / 2, 12, MC_WHITE); }
+    };
     MN_SCR.video = mnGrid('Video Settings', function (m) {
         var o = optLoad();
         return [
@@ -10999,33 +11829,13 @@
             '<div class="mc-panelwrap" style="display:none"></div>' +
             '<div class="mc-debug" style="display:none"></div>' +
             '<div class="mc-sleepov" style="display:none"></div>' +
-            '<div class="mc-pause" style="display:none"><div class="mc-menu mc-pmain">' +
-            '<h3>Game Menu</h3>' +
-            '<button class="mc-btn mc-resume">Back to Game</button>' +
-            '<button class="mc-btn mc-achbtn">Achievements</button>' +
-            '<button class="mc-btn mc-lanbtn">Open to LAN</button>' +
-            '<button class="mc-btn mc-totitle">Save and Quit to Title</button>' +
-            '<div class="mc-optrow">' +
-            '<div class="mc-slider mc-snd" data-vk="snd"><i></i><span>Sound: 100%</span></div>' +
-            '<div class="mc-slider mc-mus" data-vk="mus"><i></i><span>Music: 100%</span></div>' +
-            '</div>' +
-            '<p class="mc-hint">WASD move · Space jump · double-tap W sprints · Shift sneak<br>LMB mine · RMB place/use · MMB pick block · E inventory · Q drop · F3 debug<br>T chat · /gamemode creative (needs cheats: Allow Cheats, or Open to LAN) · double-tap Space to fly</p>' +
-            '<div class="mc-achs" style="display:none"><div class="mc-achn"></div><div class="mc-achrows"></div></div>' +
-            '</div>' +
-            /* the real pause menu's way into a world that was made without cheats:
-               Open to LAN, Allow Cheats: ON, Start LAN World — commands for the
-               rest of the session, and a chat line naming the port */
-            '<div class="mc-menu mc-lan" style="display:none">' +
-            '<h3>LAN World</h3>' +
-            '<div class="mc-lansub">Settings for Other Players</div>' +
-            '<div class="mc-optrow"><button class="mc-btn half mc-langm">Game Mode: Survival</button><button class="mc-btn half mc-lanch">Allow Cheats: OFF</button></div>' +
-            '<label class="mc-lanportrow"><span>Port Number</span><input class="mc-lanport" maxlength="5" inputmode="numeric" spellcheck="false" autocomplete="off"></label>' +
-            '<div class="mc-lanmsg"></div>' +
-            '<div class="mc-optrow"><button class="mc-btn half mc-lanstart">Start LAN World</button><button class="mc-btn half mc-lancancel">Cancel</button></div>' +
-            '</div></div>' +
-            '<div class="mc-death" style="display:none"><div class="mc-menu"><h3>You died!</h3><div class="mc-dscore"></div>' +
-            '<button class="mc-btn mc-respawn">Respawn</button></div></div>' +
-            '<div class="mc-load" style="display:none"><div class="mc-menu"><h3>Building terrain…</h3><div class="mc-bar"><i></i></div></div></div>' +
+            '<div class="mc-pause" style="display:none"><i class="mc-iwbg"></i>' +
+              '<div class="mc-iwl mc-pmain"></div><div class="mc-iwl mc-lan" style="display:none"></div><div class="mc-iwl mc-plink" style="display:none"></div>' +
+              '<div class="mc-iwl mc-advs" style="display:none"></div><div class="mc-iwl mc-stats" style="display:none"></div>' +
+              '<div class="mc-ptip mc-iwtip"></div></div>' +
+            '<div class="mc-death" style="display:none"><div class="mc-iwl mc-dmain"></div><div class="mc-iwl mc-dquit" style="display:none"></div><div class="mc-ptip mc-iwtip"></div></div>' +
+            '<div class="mc-bed" style="display:none"></div>' +
+            '<div class="mc-load" style="display:none"><span class="mc-ltext"><span class="mt"></span></span><i class="mc-lbar"><b></b></i><canvas class="mc-lmap"></canvas></div>' +
             /* the menu draws itself on its own canvas, with a transparent layer
                of real controls over it for focus, typing and screen readers */
             '<canvas class="mc-mcv" style="display:none"></canvas>' +
@@ -11687,7 +12497,7 @@
         RT.vy = 0; RT.fallY = y;
         ensureChunks();
     }
-    function hurtBypass(n) { S.hp = 0; RT.dead = false; die(); }
+    function hurtBypass(n) { S.hp = 0; RT.dead = false; RT.lastSrc = { m: 'kill' }; die(); }
     function killFoe(f) {
         var i = RT.foes.indexOf(f);
         if (i >= 0) RT.foes.splice(i, 1);
@@ -11711,7 +12521,7 @@
         var d = EFFECTS[id];
         if (d.instant) {   // instant health/damage resolve immediately and are never stored
             if (id === 'instant_health') { S.hp = Math.min(20, S.hp + 4 * (amp + 1)); paintVitals(); }
-            else hurt(3 * (amp + 1), null, true, true);
+            else hurt(3 * (amp + 1), null, true, true, null, { m: 'magic' });
             return;
         }
         S.eff[id] = { amp: amp, t: secs >= 1000000 ? 1e9 : secs };
@@ -12198,9 +13008,7 @@
             wsIndex();                       // adopts a pre-world-list save before anything else reads one
             wsSyncFS();
             S = mnPanoSave();
-        } else {
-            RT.el.querySelector('.mc-load').style.display = '';
-        }
+        } else loadShow(true);
         // fresh world: starting position + a bootstrapping run of chunks
         if (!S.wspawn) {
             S.wspawn = findSpawn();
@@ -12309,7 +13117,9 @@
             if (e.key === 'Escape') {
                 if (RT.chat) { closeChat(true); e.stopPropagation(); e.preventDefault(); }
                 else if (RT.panel) { closePanel(); e.stopPropagation(); }
-                else if (RT.lanUI) { lanClose(); e.stopPropagation(); e.preventDefault(); }   // the LAN screen backs out to the menu, not the world
+                else if (RT.sleep && !RT.woke && !RT.paused && !RT.dead) { leaveBed(); e.stopPropagation(); e.preventDefault(); }
+                // a screen behind the Game Menu backs out to it, not to the world; the death screens ignore Escape
+                else if (RT.iw && RT.iw.scr !== 'pause') { var iwd = IW_SCR[RT.iw.scr]; if (iwd.esc) iwd.esc(); e.stopPropagation(); e.preventDefault(); }
                 else if (RT.paused && RT.ready) {
                     // don't hide the menu on hope: Chrome refuses relocks for ~1.3s after an Esc exit.
                     // onLockChange dismisses the menu when the lock actually lands; a rejection keeps it up.
@@ -12383,6 +13193,11 @@
                 }
             }
             if (e.key === 'F3') { RT.f3 = !RT.f3; paintDebug(); e.preventDefault(); }
+            if (k === 'l' && RT.ready && !RT.dead && !RT.panel && !RT.paused && !RT.chat) {
+                RT.paused = true; unlockCursor(); sSave();
+                iwShow('adv', { fromKey: true });
+                e.preventDefault();
+            }
             var n = parseInt(e.key, 10);
             // ungated, these silently changed what you were holding from behind a
             // chest, the pause menu, the death screen and the loading screen
@@ -12408,7 +13223,7 @@
             root.focus();
             if (!RT.ready || RT.dead) return;
             if (!document.pointerLockElement && !RT.devFree) {
-                if (!RT.panel && !RT.paused) lockCursor();
+                if (!RT.panel && !RT.paused && !(RT.sleep && !RT.woke)) lockCursor();
                 return;
             }
             if (e.button === 0) { RT.mouse.l = true; attack(); creativeInstaBreak(); }
@@ -12459,31 +13274,12 @@
             paintHotbar();
             e.preventDefault();
         }, { passive: false });
-        // menu buttons
-        root.querySelector('.mc-resume').addEventListener('click', function () { audioInit(); hidePause(); lockCursor(); });
-        root.querySelector('.mc-totitle').addEventListener('click', function () { audioInit(); mnToTitle(); });
-        root.querySelector('.mc-achbtn').addEventListener('click', function () {
-            var a = root.querySelector('.mc-achs');
-            a.style.display = a.style.display === 'none' ? '' : 'none';
-        });
-        root.querySelector('.mc-lanbtn').addEventListener('click', function () { audioInit(); lanOpen(); });
-        root.querySelector('.mc-langm').addEventListener('click', function () { if (RT.lanUI) { RT.lanUI.gm = (RT.lanUI.gm + 1) % 4; snd('click'); lanPaint(); } });
-        root.querySelector('.mc-lanch').addEventListener('click', function () { if (RT.lanUI) { RT.lanUI.cheats = !RT.lanUI.cheats; snd('click'); lanPaint(); } });
-        root.querySelector('.mc-lanstart').addEventListener('click', function () { lanStart(); });
-        root.querySelector('.mc-lancancel').addEventListener('click', function () { snd('click'); lanClose(); });
-        var portIn = root.querySelector('.mc-lanport');
-        portIn.addEventListener('mousedown', function (e) { e.stopPropagation(); });
-        portIn.addEventListener('keydown', function (e) {
-            // the box owns its keys, or a digit would pick a hotbar slot; Enter
-            // starts, Esc backs out to the menu
-            e.stopPropagation();
-            if (e.key === 'Enter') { e.preventDefault(); lanStart(); }
-            else if (e.key === 'Escape') { e.preventDefault(); lanClose(); }
-        });
-        portIn.addEventListener('keyup', function (e) { e.stopPropagation(); });
-        portIn.addEventListener('input', function () { if (RT.lanUI) { RT.lanUI.port = portIn.value; lanPaint(false); } });
-        wireSliders(root);
-        root.querySelector('.mc-respawn').addEventListener('click', function () { respawn(); lockCursor(); });
+        // the in-world screens' widgets, and the bed's one button
+        iwWire(root.querySelector('.mc-pause'));
+        iwWire(root.querySelector('.mc-death'));
+        var bedEl = root.querySelector('.mc-bed');
+        bedEl.addEventListener('mousedown', function (e) { if (e.target.closest && e.target.closest('.mc-wb')) { audioInit(); snd('click'); } e.preventDefault(); e.stopPropagation(); });
+        bedEl.addEventListener('click', function (e) { if (e.target.closest && e.target.closest('.mc-wb')) { if (!e.detail) snd('click'); leaveBed(); e.stopPropagation(); } });
         setTimeout(function () { root.focus(); }, 30);
     }
 
@@ -12721,7 +13517,7 @@
             flying: function () { return !!RT.fly; },
             openPanel: function (k, t) { openPanel(k, t); },
             place: function (id) { var t = RT.target; if (t) { S.inv[S.sel] = { id: id, c: 1 }; tryUse(); } },
-            setB: setB, getB: getB, explode: explode, unlockAll: function () { for (var i = 0; i < ACH.length; i++) unlock(ACH[i].id); },
+            setB: setB, getB: getB, explode: explode, unlock: unlock, unlockAll: function () { for (var i = 0; i < ACH.length; i++) unlock(ACH[i].id); },
             chunkDbg: function (cx, cz) { var c = RT.chunks[cx + ',' + cz]; return c ? { op: c.dbgOp || null, cut: c.dbgCut || null } : null; },
             remesh: function (cx, cz) { var c = RT.chunks[cx + ',' + cz]; if (c) meshChunk(c); },
             lightAt: function (x, y, z) { return [getSky(x, y, z), getBlk(x, y, z)]; },

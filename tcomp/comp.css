@@ -2799,46 +2799,81 @@ button.cr-iu-skip { position: absolute; right: 1rem; bottom: 1rem; z-index: 11; 
 .mc-ptip .mc-tipf { position: absolute; left: var(--px); top: var(--px); right: var(--px); bottom: var(--px); box-sizing: border-box;
     border: var(--px) solid transparent; border-image: linear-gradient(rgba(80, 0, 255, 0.314), rgba(40, 0, 127, 0.314)) 1; }
 .mc-ptip .mc-tipl { position: absolute; }
-.mc-pause, .mc-death, .mc-load { position: absolute; inset: 0; z-index: 7; display: flex; align-items: center; justify-content: center; }
-.mc-pause { background: rgba(8, 8, 12, 0.55); }
-.mc-death { background: rgba(140, 10, 10, 0.45); z-index: 8; }
-.mc-load { background: #16120d; z-index: 9; }
+/* the menus since 1.20.5: the panorama blurred behind every screen but the title */
+.mc.mc-mblur .mc-cv { filter: blur(var(--mblur, 2.75px)); }
+/* the world's loading screen, over the last panorama frame, blurred; no HUD while it is up */
+.mc-load { position: absolute; inset: 0; z-index: 9; font-family: MCUI, monospace; font-size: calc(var(--px) * 8); line-height: calc(var(--px) * 9);
+    background: var(--spr-mbg) 0 0 / calc(var(--px) * 32) calc(var(--px) * 32) repeat; image-rendering: pixelated; }
+.mc-load > * { position: absolute; left: 0; top: 0; }
+.mc-load .mc-lbar { display: block; width: calc(var(--px) * 200); height: calc(var(--px) * 2); background: #000; }
+.mc-load .mc-lbar b { display: block; height: 100%; width: 0; background: #00ff00; }
+.mc-load .mc-lmap { image-rendering: pixelated; }
+.mc.mc-loading .mc-hud, .mc.mc-loading .mc-cross, .mc.mc-loading .mc-atk, .mc.mc-loading .mc-chat, .mc.mc-loading .mc-effects { display: none; }
 .mc-menu { display: flex; flex-direction: column; align-items: center; gap: 8px; max-width: 340px; }
 .mc-menu h3 { color: #fff; font-size: 20px; text-shadow: 2px 2px 0 #3f3f3f; margin-bottom: 10px; }
-.mc-dscore { color: #ffd75e; font-size: 13px; margin-bottom: 6px; text-shadow: 1px 1px 0 #3f3f3f; }
-.mc-btn { width: 280px; padding: 9px 0; background: #6f6f6f; border: 2px solid; border-color: #a8a8a8 #2f2f2f #2f2f2f #a8a8a8; color: #e8e8e8; font-family: inherit; font-size: 13px; text-shadow: 1px 1px 0 #3f3f3f; cursor: pointer; }
-.mc-btn:hover { background: #7f8bbd; color: #ffffa0; }
-.mc-btn.half { width: 136px; }
-.mc-optrow { display: flex; gap: 8px; }
-/* Open to LAN: the game's screen, in the pause menu's clothes */
-.mc-lansub { color: #a0a0a0; font-size: 12px; text-shadow: 1px 1px 0 #26262c; margin: -4px 0 6px; }
-.mc-lanportrow { display: flex; align-items: center; gap: 10px; width: 280px; color: #e8e8e8; font-size: 13px; text-shadow: 1px 1px 0 #3f3f3f; }
-.mc-lanport { flex: 1 1 auto; height: 28px; background: #000; border: 2px solid #a0a0a0; color: #e8e8e8; font: inherit; font-size: 13px; padding: 0 8px; outline: none; }
-.mc-lanport:focus { border-color: #ffffff; }
-.mc-lanmsg { min-height: 16px; color: #ff5555; font-size: 12px; text-shadow: 1px 1px 0 #3f3f3f; }
-.mc-btn:disabled, .mc-btn:disabled:hover { background: #4a4a4a; color: #a0a0a0; border-color: #6a6a6a #242424 #242424 #6a6a6a; cursor: default; }
-/* the options screen's slider: a sunken track with a button-shaped knob on it */
-.mc-slider { position: relative; width: 136px; height: 33px; background: #000; border: 2px solid; border-color: #2f2f2f #a8a8a8 #a8a8a8 #2f2f2f; cursor: pointer; user-select: none; overflow: hidden; }
-.mc-slider i { position: absolute; top: -2px; bottom: -2px; width: 10px; margin-left: -5px; background: #8b8b8b; border: 2px solid; border-color: #c6c6c6 #2f2f2f #2f2f2f #c6c6c6; pointer-events: none; }
-.mc-slider span { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #e8e8e8; font-size: 13px; text-shadow: 1px 1px 0 #3f3f3f; pointer-events: none; }
-.mc-slider:hover span { color: #ffffa0; }
-.mc-hint { color: #b8b8c2; font-size: 11px; text-align: center; line-height: 1.7; margin-top: 8px; text-shadow: 1px 1px 0 #26262c; }
-.mc-achs { width: 300px; max-height: 200px; overflow: auto; background: rgba(14, 14, 18, 0.85); border: 2px solid #4a4a55; padding: 8px; }
-.mc-achn { color: #ffd75e; font-size: 12px; margin-bottom: 6px; }
-.mc-achrow { padding: 4px 2px; opacity: 0.45; }
-.mc-achrow.got { opacity: 1; }
-.mc-achrow b { display: block; color: #cfe08a; font-size: 12px; }
-.mc-achrow.got b { color: #8ae08a; }
-.mc-achrow span { color: #9a9aa8; font-size: 11px; }
+/* ── Minecraft: in-world screens ──
+   The Game Menu, its sub-screens and the death screens, on the GUI grid.
+   Under the Game Menu the world and the HUD are blurred (--mblur is the
+   game's 5.5 screen pixels) beneath the in-world menu background. */
+.mc-pause, .mc-death { position: absolute; inset: 0; z-index: 5; font-family: MCUI, monospace; font-size: calc(var(--px) * 8); line-height: calc(var(--px) * 9); }
+.mc-death { background: linear-gradient(rgba(80, 0, 0, 0.376), rgba(128, 48, 48, 0.627)); }
+.mc-iwbg { position: absolute; inset: 0; background: var(--spr-iwbg) 0 0 / calc(var(--px) * 32) calc(var(--px) * 32) repeat; image-rendering: pixelated; }
+.mc-iwl { position: absolute; inset: 0; }
+.mc-iwl > *, .mc-bed > * { position: absolute; }
+.mc-iwt { position: absolute; pointer-events: none; }
+.mc.mc-blur .mc-cv, .mc.mc-blur .mc-vig, .mc.mc-blur .mc-cross, .mc.mc-blur .mc-atk, .mc.mc-blur .mc-cross3d, .mc.mc-blur .mc-hud,
+.mc.mc-blur .mc-chat, .mc.mc-blur .mc-effects, .mc.mc-blur .mc-sleepov { filter: blur(var(--mblur, 2.75px)); }
+/* the 20-pixel button, nine-sliced off its sprite with a 3-pixel border */
+.mc-wb { position: absolute; height: calc(var(--px) * 20); padding: 0; margin: 0; border: 0; background: none; outline: none; cursor: default; font: inherit; color: transparent; }
+.mc-wb::before { content: ''; position: absolute; inset: 0; box-sizing: border-box; border: calc(var(--px) * 3) solid transparent;
+    border-image: var(--spr-btn) 3 fill / calc(var(--px) * 3) repeat; image-rendering: pixelated; pointer-events: none; }
+.mc-wb:hover::before, .mc-wb:focus-visible::before { border-image-source: var(--spr-btn_h); }
+.mc-wb:disabled::before { border-image-source: var(--spr-btn_d); }
+.mc-wb .mc-wbl { position: absolute; top: calc(var(--px) * 6); pointer-events: none; }
+.mc-wbi i { position: absolute; left: calc(var(--px) * 3); top: calc(var(--px) * 3); width: calc(var(--px) * 15); height: calc(var(--px) * 15); background: 0 0 / 100% 100% no-repeat; image-rendering: pixelated; pointer-events: none; }
+/* a bordered text box: the sprite, the real input over it invisibly, the mirror at (4, 6) */
+.mc-iwfield { height: calc(var(--px) * 20); }
+.mc-iwfield::before { content: ''; position: absolute; inset: 0; box-sizing: border-box; border: var(--px) solid transparent;
+    border-image: var(--spr-field) 1 fill / var(--px) stretch; image-rendering: pixelated; pointer-events: none; }
+.mc-iwfield.on::before { border-image-source: var(--spr-field_h); }
+.mc-iwfield input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0 calc(var(--px) * 4); box-sizing: border-box; border: 0; outline: none;
+    background: transparent; color: transparent; caret-color: transparent; font: inherit; opacity: 0; }
+.mc-iwfield .mc-iwmir { position: absolute; left: calc(var(--px) * 4); top: calc(var(--px) * 6); }
+.mc .mt.x2 { font-size: calc(var(--px) * 16); line-height: calc(var(--px) * 18); }
+.mc .mt.x2::before { transform: translate(calc(var(--px) * 2), calc(var(--px) * 2)); }
+/* the advancement screen: the view clips the tree, the window sits over it, the hover over both */
+.mc-advview { overflow: hidden; background-size: calc(var(--px) * 16) calc(var(--px) * 16); image-rendering: pixelated; }
+.mc-advview.empty { background: #000; }
+.mc-advc { position: absolute; left: 0; top: 0; }
+.mc-advc > i, .mc-advhov > i { position: absolute; display: block; }
+.mc-advf { width: calc(var(--px) * 26); height: calc(var(--px) * 26); background: 0 0 / 100% 100% no-repeat; image-rendering: pixelated; }
+.mc-advi { width: calc(var(--px) * 16); height: calc(var(--px) * 16); background: 0 0 / 100% 100% no-repeat; image-rendering: pixelated; }
+.mc-advfade { position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; }
+.mc-advwin { background: var(--spr-adv_win) 0 0 / 100% 100% no-repeat; image-rendering: pixelated; pointer-events: none; }
+.mc-advhov { position: absolute; inset: 0; pointer-events: none; }
+.mc-advhov .mc-iwt { position: absolute; }
+.mc-advbar { background-repeat: no-repeat; background-size: calc(var(--px) * 200) calc(var(--px) * 26); image-rendering: pixelated; }
+.mc-advdesc { box-sizing: border-box; border: calc(var(--px) * 2) solid transparent; border-image: var(--spr-adv_desc) 2 fill / calc(var(--px) * 2) stretch; image-rendering: pixelated; }
+/* the Statistics screen: a list on the in-world list background between two separators */
+.mc-stlist { background: rgba(0, 0, 0, 0.29); }
+.mc-sep { background: linear-gradient(rgba(255, 255, 255, 0.25) 50%, rgba(0, 0, 0, 0.55) 50%); }
+.mc-sep.bot { background: linear-gradient(rgba(0, 0, 0, 0.55) 50%, rgba(255, 255, 255, 0.25) 50%); }
+.mc-stclip { overflow: hidden; }
+.mc-stbody { position: absolute; left: 0; right: 0; height: 0; }
+.mc-stbody > * { position: absolute; }
+.mc-stslot { display: block; background: var(--spr-st_slot) 0 0 / 100% 100% no-repeat; image-rendering: pixelated; }
+.mc-sthead { display: block; background: 0 0 / 100% 100% no-repeat; image-rendering: pixelated; }
+.mc-stslot b { position: absolute; display: block; left: var(--px); top: var(--px); width: calc(var(--px) * 16); height: calc(var(--px) * 16); background: 0 0 / 100% 100% no-repeat; image-rendering: pixelated; }
+.mc-stbar { display: block; background: rgba(0, 0, 0, 0.6); }
+.mc-stthumb { display: block; background: #c0c0c0; box-shadow: inset calc(var(--px) * -1) calc(var(--px) * -1) 0 #808080; }
+.mc-bed { position: absolute; inset: 0; z-index: 5; pointer-events: none; font-family: MCUI, monospace; font-size: calc(var(--px) * 8); line-height: calc(var(--px) * 9); }
+.mc-bed .mc-wb { pointer-events: auto; }
 /* F3: each line on its own 0x90505050 backdrop, a GUI pixel wider than its text all round */
 .mc-debug { position: absolute; inset: 0; z-index: 7; pointer-events: none; }   /* 26.x draws F3 over the toasts */
 .mc-debug .mc-dl { position: absolute; left: 0; top: 0; display: block; height: calc(var(--px) * 9); background: rgba(80, 80, 80, 0.565); }
 .mc-debug .mc-dl.blank { background: none; }
 .mc-debug .mc-dl .mt { position: absolute; left: var(--px); top: var(--px); }
 .mc-sleepov { position: absolute; inset: 0; z-index: 3; pointer-events: none; background: #101020; opacity: 0; }
-.mc-bar { width: 260px; height: 12px; border: 2px solid #8b8b8b; background: #26201a; }
-.mc-bar i { display: block; height: 100%; width: 0; background: #4be04b; transition: width 120ms linear; }
-.mc-load h3 { color: #d8d0c4; }
 
 /* ── Minecraft: creative mode ──
    The four bars that only mean anything in survival come off in creative;

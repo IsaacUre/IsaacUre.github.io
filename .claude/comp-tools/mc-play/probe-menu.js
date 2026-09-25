@@ -17,8 +17,8 @@ const SHOTS = require('path').join(__dirname, '..', 'shots'); require('fs').mkdi
     await g.wait('window.__h.byName("Game Mode: Hardcore")');
     await g.h('clickName("Game Mode: Hardcore")');
     await g.wait('window.__h.byName("Game Mode: Creative")');
-    await g.h('clickName("Allow Cheats: OFF")');
-    await g.wait('window.__h.byName("Allow Cheats: ON")');
+    await g.h('clickName("Allow Commands: OFF")');
+    await g.wait('window.__h.byName("Allow Commands: ON")');
     out('create screen', await g.h('names()'));
     await g.h('clickName("Create New World")');
     await g.wait('(function(){var s=window.__h.screens(); return s.load===false && s.pause===true;})()', 120000);
