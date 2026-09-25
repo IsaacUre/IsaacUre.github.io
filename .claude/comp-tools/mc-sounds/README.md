@@ -6,18 +6,22 @@ builds those files and checks them.
 
 ## Where they come from
 
-A fan-kept archive of every sound file in Minecraft Java and Bedrock: the "Minecraft Audio
-Files" Google Drive folder and the documentation spreadsheet that indexes it, downloaded on
-2026-09-24 and checked for malware before use (Defender, plus a byte-level audit of every
-zip and WAV). It is 5 GB, so it lives outside the repo, on Isaac's PC at
+A fan-kept archive of every sound file in Minecraft Java and Bedrock, as 16-bit WAV in the
+game's own `assets/minecraft/sounds/` layout (`dig/`, `step/`, `mob/`, `music/`, ...): the
+"Minecraft Audio Files" Google Drive folder
+(https://drive.google.com/drive/folders/1lw7vy-_O5CHZM0ryD7dIsVTtR7Rw1qNa) and the spreadsheet
+that indexes it with each file's sound event, volume and pitch
+(https://docs.google.com/spreadsheets/d/1Q1GmzRyDPNFTVhqVDUx4k2eVu9YdEuSvGfylgzPhjbQ).
+Downloaded on 2026-09-24 and checked for malware before use (Defender, plus a byte-level
+audit of every zip and WAV), then deleted from the PC to save its 9 GB. These are Mojang's
+and C418's recordings; `/tcomp/` is Isaac's personal test build, and he is fine with them
+there.
 
-    C:\Users\isaac\code\site-assets\Minecraft sounds\
-
-(`MC_SOUND_LIB` overrides it). Its folders mirror the game's own `assets/minecraft/sounds/`
-tree (`dig/`, `step/`, `mob/`, `music/`, ...) as 16-bit WAV, and the spreadsheet beside them
-lists each file's sound event, volume and pitch as the game's `sounds.json` has them. These
-are Mojang's and C418's recordings, published on a public repo and site: keep that in mind
-before adding more.
+What is not shipped but could plausibly be wanted later is kept pre-encoded on GitHub, in
+the `mc-sounds-archive` release of this repo: classic-era (up to about 1.12) mobs, blocks,
+items and ambience, every other music track and the 22 music discs. 1,460 files, 254 MB,
+outside the repo so no clone downloads them. Its `CONTENTS.tsv` lists every file with its
+length and sound events; the spreadsheet is attached too.
 
 ## What ships
 
@@ -35,18 +39,26 @@ every effect by exactly that much. Music streams through an `<audio>` element in
 being decoded, and has its `moov` box moved to the front so a stream starts without first
 fetching the end of the file.
 
-## Adding or replacing a sound
+## Adding a sound
 
-1. Add the path to `SFX` (or `MUSIC`) in `build.py`, and to whichever table in
-   `minecraft.js` plays it: `MAT` (block SoundTypes), `MOBSND` (mob voices), `SFX` (one-shot
-   events, `snd(name, arg, x, y, z)`), `SVOL` (a per-sample volume from sounds.json) or
-   `MUSIC`.
-2. `python .claude/comp-tools/mc-sounds/build.py <path prefix>` (Windows; Media Foundation's
-   AAC encoder through `mf_encode.ps1`, nothing to install). With no arguments it rebuilds
-   everything in about a minute and a half. Encodes are not byte-identical run to run (the
-   MP4 header carries timestamps), so rebuild only what changed.
+From the archive release, which is already in the shipped format:
+
+1. `gh release download mc-sounds-archive -R IsaacUre/IsaacUre.github.io -p mc-sounds-effects.zip`
+   (or `mc-sounds-music.zip`, `mc-sounds-records.zip`), and copy the `.m4a` you want to
+   `tcomp/mc-sounds/<its path>.m4a`. For an effect, also copy its entry from the zip's
+   `effects-lengths.json` into `manifest.json` (same shape); music needs no entry.
+2. Add it to whichever table in `minecraft.js` plays it: `MAT` (block SoundTypes), `MOBSND`
+   (mob voices), `SFX` (one-shot events, `snd(name, arg, x, y, z)`), `SVOL` (a per-sample
+   volume from sounds.json) or `MUSIC`. Add its path to `SFX` or `MUSIC` in `build.py` too,
+   so a rebuild would include it.
 3. `python .claude/comp-tools/mc-sounds/check.py paths` confirms the game and the folder
    agree; run the other passes too.
+
+Anything else has to come from the original archive (link above): download its WAVs, point
+`MC_SOUND_LIB` at the folder, and `python .claude/comp-tools/mc-sounds/build.py <path prefix>`
+(Windows; Media Foundation's AAC encoder through `mf_encode.ps1`, nothing to install).
+Encodes are not byte-identical run to run (the MP4 header carries timestamps), so rebuild
+only what changed.
 
 ## Checking
 

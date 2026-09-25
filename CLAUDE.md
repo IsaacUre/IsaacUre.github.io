@@ -59,8 +59,33 @@ to try things on before they move to `/comp/`.
   `.claude/ninth-night/qc-2026-08-12/` still say `comp/` because they are
   a record, not instructions.
 - Minecraft's sounds are the real game's own recordings, as files in
-  `tcomp/mc-sounds/` (84 MB, most of it the soundtrack), built from a 5 GB
-  library kept outside the repo; `.claude/comp-tools/mc-sounds/README.md`
-  says where it lives and how to rebuild and check. `minecraft.js` loads
-  them from beside its own script, so a copy of the game in `/comp/` would
-  need its own `mc-sounds/` beside it.
+  `tcomp/mc-sounds/` (83 MB, most of it the soundtrack). More, already
+  encoded the same way, wait in this repo's `mc-sounds-archive` release;
+  `.claude/comp-tools/mc-sounds/README.md` says how to add one, where the
+  full original archive is, and how to check. `minecraft.js` loads them
+  from beside its own script, so a copy of the game in `/comp/` would need
+  its own `mc-sounds/` beside it.
+
+## test
+
+`/test/` is the face of the site being built: a "who is this guy" page in the
+holding page's look (the same boot terminal, and the same LCD, which now types
+the name and `whoami`). It lives at isaacure.com/test until Isaac moves it to
+the root. (It was at `/new/` at first; that path is gone, not redirected.)
+
+- It stays unlisted until he says otherwise: `noindex, nofollow`, no
+  canonical or `og:url`, and no link to it from anywhere on the site. Drop
+  the noindex when it moves.
+- Every fact on it is one he has confirmed or published himself. Ask him
+  before adding a biographical claim (a date, a title, a number), and don't
+  copy one from `comp/`, `ureboy/` or `behind-the-lens/`: the computer is
+  half lore, and the other two still carry old dates.
+- Nothing on it loops, and the screen settles within five seconds of the
+  boot's hand-off (WCAG 2.2.2). Without JS, or under reduced motion, it is
+  simply the finished page. Keep both true.
+- It loads everything by absolute path (`/images/...`, `/favicon.svg`), so
+  moving it to the root is a copy.
+- There is no section for the rest of the site yet. Isaac took the "This
+  site" one out and will add one when `comp/` and `1p/` are ready to link.
+- `.claude/test/rig/` has its checks (154 of them, plus axe and
+  html-validate). Run them after any change; its README says how.

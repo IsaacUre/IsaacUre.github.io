@@ -1,0 +1,1317 @@
+<!DOCTYPE html>
+<html lang="en" class="no-js">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="description" content="Isaac Ure. I study econ at Rice, occasionally shoot for the Thresher, chug and bike for Martel, and run the budget for Rice's first Formula SAE team.">
+    <meta name="theme-color" content="#000000">
+    <meta name="color-scheme" content="dark">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Isaac Ure">
+    <meta property="og:description" content="I study econ at Rice, occasionally shoot for the Thresher, chug and bike for Martel, and run the budget for Rice's first Formula SAE team.">
+    <meta property="og:image" content="https://isaacure.com/images/Headshot-10x9.jpg">
+    <meta property="og:image:width" content="720">
+    <meta property="og:image:height" content="648">
+    <meta property="og:image:alt" content="Isaac Ure">
+    <meta name="twitter:card" content="summary">
+    <title>Isaac Ure</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=3">
+    <script>
+    /* js on, and before anything paints, whether this visit boots: once a browser session,
+       never under reduced motion or on a link to a section, always with ?boot. storage that
+       throws just plays it. a visit that doesn't boot is warm: the screen is already on.
+       the timer is the last resort if the page's own script never gets to hand off */
+    (function () {
+        var d = document.documentElement, boot = false;
+        try {
+            var seen = false;
+            try { seen = window.sessionStorage.getItem('iu.booted') === '1'; } catch (e) {}
+            var force = /(^|&)boot(=|&|$)/.test(location.search.slice(1));
+            var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+            boot = !reduce && !!window.Promise && (force || (!seen && location.hash.length < 2));
+            if (boot) { try { window.sessionStorage.setItem('iu.booted', '1'); } catch (e) {} }
+        } catch (e) { boot = false; }
+        d.className = boot ? 'js booting' : 'js warm';
+        if (boot) window.iuLast = setTimeout(function () {
+            if (!/\bbooting\b/.test(d.className)) return;
+            d.className = d.className.replace(/\s*\bbooting\b/g, '');
+            var h = document.getElementById('top'); if (h) h.className += ' lit';
+        }, 14000);
+    })();
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+    <style>
+        /* ────────────────────────────────────────────────────────────
+           THE FACE OF THE SITE
+           The holding page, answered. The same terminal boots, the same
+           LCD powers on, but the screen types the name now, and the
+           prompt under it types whoami. The answer prints below, on the
+           black, and the rest of the page is that answer: terminal output
+           in one column. Section heads are the boot's check lines, dotted
+           leader and all; the past is a dated log; contact is commands.
+           Press Start 2P lives on the LCDs, VT323 lives on the black.
+           The boot plays once a session. After that the screen is simply
+           on when you arrive, and the words are there at once.
+           Everything works without the script. No JS, or reduced motion,
+           and you get the finished page.
+           ──────────────────────────────────────────────────────────── */
+
+        /* until VT323 arrives, a stand-in with its column: the usual monospace faces run .6em
+           to a column and VT323 runs .4, so two thirds of their size keeps every width built
+           in columns where it will be, and nothing jumps when the real face lands. only the
+           characters the page uses, so anything VT323 lacks (the skip button's arrow) still
+           falls through to plain monospace at full size */
+        @font-face {
+            font-family: 'VT323 fallback';
+            src: local('Menlo Regular'), local('Menlo-Regular'), local('DejaVu Sans Mono'), local('Liberation Mono'), local('Courier New'), local('Droid Sans Mono');
+            size-adjust: 66.667%;
+            unicode-range: U+0000-00FF, U+2013-2014, U+2018-201F, U+2026;
+        }
+
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --red: #D81E05;          /* Tornado Red: focus rings */
+
+            /* the LCD, same palette as the console */
+            --screen-bg: #e6e4d2;
+            --screen-ink: #1c1d17;
+            --screen-dim: #5a5b50;
+            --screen-accent: #b5180a;
+            --screen-hi: #ffffff;
+
+            /* the terminal: the LCD's cream as phosphor, the shell's grey for dim, the
+               lighter red the site uses on dark (AA), and a darker grey for leaders, which
+               are decoration and only have to read as a line of dots */
+            --term-fg: #e6e4d2;
+            --term-dim: #8a8a82;
+            --term-warn: #ff5436;
+            --term-lead: #55554f;
+            --glow: rgba(230, 228, 210, .16);
+
+            --font-pixel: 'Press Start 2P', monospace;
+            --font-term: 'VT323', 'VT323 fallback', monospace;
+
+            /* the type. VT323 runs small, so body copy starts at 20px, where a column is
+               exactly 8px */
+            --fs: 1.25rem;
+            --fs-h2: 1.75rem;
+            --fs-ans: 1.375rem;
+            --gutter: 1rem;
+            --sec-gap: 4.5rem;
+
+            /* the screen's width. it gives up height on a short window, so more of the
+               answer and the commands fit under it, but never gets narrower than 248px, the
+               216px name plus the padding round it (the commands run a little past it
+               rather than wrap: see .bar-in) */
+            --vh: 100vh;
+            --lcdw: max(248px, min(100vw - 2 * var(--gutter), 364px, (var(--vh) - 14rem) / .9));
+            --colw: 72ch;
+            /* what sits under the screen: the answer's four lines and their margin, the
+               commands and theirs. reserved, so a late font never moves the screen */
+            --below: calc(2.85rem + 6.25 * var(--fs-ans));
+        }
+        @supports (height: 100svh) { :root { --vh: 100svh; } }
+        @media (min-width: 640px) {
+            :root { --fs: 1.5rem; --fs-h2: 2rem; --fs-ans: 1.625rem; --sec-gap: 6.5rem; }
+        }
+        @media (max-width: 380px) {
+            :root { --fs-ans: 1.25rem; }
+        }
+        /* the longest check line, "> about ... who is this guy", is 27 columns. a 320 screen
+           has 25 of them at 28px and 30 at 24px */
+        @media (max-width: 360px) {
+            :root { --fs-h2: 1.5rem; }
+        }
+
+        /* the gutter is kept, so the scrollbar coming back after the boot does not nudge the
+           page; and a jump or a focused link lands clear of the pinned commands, however
+           tall they really are (the script measures them). while focus is on the pinned
+           commands themselves, the padding moves to the bottom edge: they are always in view,
+           and with it at the top every step of focus along them would scroll the page half a
+           screen; at the bottom it still comes off each page a key scrolls, so nothing slides
+           under them unseen. (no script, nothing is known to be pinned: it just lets go.) */
+        html {
+            background: #000; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; scrollbar-gutter: stable;
+            --pin: calc(var(--bar-h, 3.25rem) + .25rem);
+            scroll-padding-top: var(--pin);
+        }
+        html:has(#bar.stuck :focus), html:not(.js):has(#bar :focus) { --pin: 0px; }
+        html:has(#bar.stuck :focus) { scroll-padding-bottom: calc(var(--bar-h, 3.25rem) + .25rem); }
+        /* smooth only once the page has loaded: a link to a section should open on it, not
+           glide there past everything else while the fonts are still arriving */
+        @media (prefers-reduced-motion: no-preference) { html.sm { scroll-behavior: smooth; } }
+        body {
+            background: #000;
+            color: var(--term-fg);
+            font-family: var(--font-term);
+            font-size: var(--fs);
+            line-height: 1.3;
+            -webkit-font-smoothing: antialiased;
+            font-variant-ligatures: none;          /* VT323 has an fi ligature, and a terminal has columns */
+            font-feature-settings: "liga" 0, "clig" 0;
+            padding: 0 max(var(--gutter), env(safe-area-inset-right, 0px)) 0 max(var(--gutter), env(safe-area-inset-left, 0px));
+        }
+        /* while the boot covers the screen the page underneath does not scroll */
+        html.booting, html.booting body { overflow: hidden; }
+
+        ::selection { background: var(--term-fg); color: #000; text-shadow: none; }
+        a { color: inherit; }
+        :focus-visible { outline: 3px solid var(--red); outline-offset: 2px; }
+
+        /* a keyboard way past the hero, out of sight until it is used */
+        .skip {
+            position: absolute; left: max(var(--gutter), env(safe-area-inset-left, 0px)); top: calc(.75rem + env(safe-area-inset-top, 0px)); z-index: 5;
+            font-size: 1.1rem; line-height: 1; padding: .3rem .65rem .35rem;
+            background: #000; color: var(--term-fg); border: 1px solid var(--term-dim); border-radius: 4px;
+            text-decoration: none;
+            transform: translateY(-300%);
+        }
+        .skip:focus { transform: none; }
+
+        /* ── the boot terminal: up from the first frame when this visit boots, so nothing of
+             the page flashes first; the script fills it and takes it away ── */
+        /* top-left, small, and it scrolls: once the log outgrows the viewport the
+           oldest lines leave through the top, as they do */
+        .term {
+            display: none;
+            position: fixed; inset: 0; z-index: 10;
+            overflow: hidden;
+            background: #000;
+            padding: calc(.5rem + env(safe-area-inset-top, 0px)) .6rem calc(3rem + env(safe-area-inset-bottom, 0px)) calc(.6rem + env(safe-area-inset-left, 0px));
+            font-family: var(--font-term);
+            font-size: 1rem;
+            line-height: 1.15;
+            color: var(--term-fg);
+            text-shadow: 0 0 6px rgba(230, 228, 210, .22);
+            cursor: default;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;           /* a swipe on it must not scroll the page behind */
+            -webkit-tap-highlight-color: transparent;
+        }
+        .booting .term { display: block; }
+        .tl { white-space: pre-wrap; word-break: break-word; min-height: 1.15em; }
+        /* the banner (52 columns) and the eye (48) must not wrap: past a phone they
+           take the terminal's size, and under it they take what the width allows.
+           --col is the width of a column in ems, measured off whatever face is really
+           rendering (VT323's is .4; the fallback monospace is wider), and the last
+           clause keeps a 13-row eye frame inside a very short viewport */
+        .tl-art {
+            white-space: pre; word-break: normal; line-height: 1; letter-spacing: 0;
+            font-size: min(1rem, calc((100vw - 1.2rem) / (52 * var(--col, .4))), calc((100vh - 5rem) / 10.4));
+        }
+        .tl-px { line-height: .8; padding-bottom: .8em; }   /* the pixel eye: two columns to a cell, .8 of a row
+                                                               to a cell, and a cell row under each frame */
+        .tl-dim { color: var(--term-dim); }
+        .tl-warn { color: var(--term-warn); }
+        /* the cursor, the boot's and the page's own */
+        .tc {
+            display: inline-block; width: .55em; height: .95em; margin-top: .1em;
+            background: var(--term-fg); vertical-align: text-bottom;
+            animation: termBlink 1.06s steps(1) infinite;
+        }
+        .term-skip {
+            display: none;
+            position: fixed; right: 1rem; bottom: calc(1rem + env(safe-area-inset-bottom, 0px)); z-index: 11;
+            font-family: var(--font-term); font-size: 1.1rem; line-height: 1;
+            color: var(--term-dim); background: #000;
+            border: 1px solid #45453f; border-radius: 4px;
+            padding: .3rem .65rem .35rem;
+            cursor: pointer;
+            opacity: 0; visibility: hidden;       /* not in the tab order until it can be seen */
+            animation: appear .1s steps(1, start) 1.2s forwards;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .booting .term-skip { display: block; }
+        .term-skip:hover { color: var(--term-fg); border-color: var(--term-dim); }
+
+        /* ── the hero: the holding page's LCD, same recipe, same size ──
+           the screen, the answer and the commands are centred as one. the room under the
+           screen is reserved, not measured, so the screen's place depends on the window
+           alone: a late font can move the words, never the screen */
+        .hero {
+            display: flex; flex-direction: column; align-items: center;
+            padding-top: max(calc(1.5rem + env(safe-area-inset-top, 0px)), calc((var(--vh) - var(--lcdw) * .9 - var(--below)) / 2));
+        }
+        .hero:focus { outline: none; }        /* it takes focus from the skip button, quietly */
+        .hero-w { width: min(100%, var(--lcdw)); }
+
+        /* while the terminal is up, the screen is there for assistive tech but not for eyes,
+           and the hero's choreography is held at frame zero. it all starts at the hand-off */
+        .booting .screen-frame { opacity: 0; }
+        .booting .hero *, .booting .bar { animation-play-state: paused !important; }
+
+        .screen {
+            position: relative;
+            aspect-ratio: 10 / 9;
+            background: var(--screen-bg);
+            overflow: hidden;
+            box-shadow: inset 0 0 0 2px rgba(0,0,0,.25), inset 0 0 26px rgba(0,0,0,.22);
+            color: var(--screen-ink);
+            text-shadow: none;
+        }
+        .screen-glow {
+            position: absolute; inset: 0; pointer-events: none; z-index: 5;
+            background: radial-gradient(120% 80% at 50% 0%, rgba(255,255,255,.16), transparent 60%);
+        }
+        .scanlines {
+            position: absolute; inset: 0; pointer-events: none; z-index: 6; opacity: .35;
+            background: repeating-linear-gradient(to bottom, rgba(0,0,0,.18) 0 1px, transparent 1px 3px);
+            mix-blend-mode: multiply;
+        }
+        /* power-on surge: a white pop, a dark dip, then the LCD is just on */
+        .screen-flash {
+            position: absolute; inset: 0; z-index: 7; pointer-events: none;
+            opacity: 0; background: #fff;
+            animation: screenSurge .34s ease .1s both;
+        }
+        @keyframes screenSurge {
+            0%   { opacity: 0;   background: #fff; }
+            14%  { opacity: .85; background: #fff; }
+            40%  { opacity: .9;  background: #06060a; }
+            72%  { opacity: .45; background: #06060a; }
+            100% { opacity: 0;   background: #06060a; }
+        }
+
+        /* ── what is on the screen ── */
+        .holding {
+            position: absolute; inset: 0;
+            padding: .85rem .9rem;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            gap: .95rem;
+            text-align: center;
+        }
+
+        /* the eye: the console's pixel mark. 48 units, 2 units to a cell, so a multiple of
+           24px keeps every cell a whole number of pixels (96 = 4px cells, 48 = 2px, 24 = 1px) */
+        .eye { width: 96px; height: 96px; color: var(--screen-ink); }
+        .eye svg, .foot-eye svg, .home svg { width: 100%; height: 100%; display: block; shape-rendering: crispEdges; }
+        /* power-on: a bright line that stretches into the picture, the way a tube warms up */
+        .eye svg { animation: bootOpen .5s ease .35s both; }
+        @keyframes bootOpen {
+            0%   { transform: scaleY(.05); opacity: 0; }
+            40%  { opacity: 1; }
+            100% { transform: scaleY(1); opacity: 1; }
+        }
+        .eye-glint { fill: var(--screen-hi); }
+        /* once it is on, a quick look left, right, and back to you */
+        .eye .eye-pupil { animation: glance .7s steps(1, end) .95s; }
+        @keyframes glance {
+            0%        { transform: translateX(-4px); }
+            43%       { transform: translateX(4px); }
+            79%, 100% { transform: translateX(0); }
+        }
+        /* the blink: three frames (see the SVG), shown one at a time with steps(). the shut
+           frame holds longest and the eye opens a little slower than it closed, like a real
+           one. once as the name finishes printing; after that, once each time you come back
+           to it (the script plays the same frames). the holding page blinks on a loop, but
+           it is one screen; nothing on a page people read should blink forever */
+        .lid-skin { fill: var(--screen-bg); }
+        .lid-edge { fill: currentColor; }
+        .bf { opacity: 0; }
+        .eye .bf-half { animation: bootHalf .3s steps(1, end) 1.4s; }
+        .eye .bf-slit { animation: bootSlit .3s steps(1, end) 1.4s; }
+        .eye .bf-shut { animation: bootShut .3s steps(1, end) 1.4s; }
+        /* one blink, 300ms: half 45 · slit 40 · shut 90 · slit 55 · half 70 */
+        @keyframes bootHalf { 0% { opacity: 1; } 15% { opacity: 0; } 76.667% { opacity: 1; } 100% { opacity: 0; } }
+        @keyframes bootSlit { 0% { opacity: 0; } 15% { opacity: 1; } 28.333% { opacity: 0; } 58.333% { opacity: 1; } 76.667% { opacity: 0; } 100% { opacity: 0; } }
+        @keyframes bootShut { 0% { opacity: 0; } 28.333% { opacity: 1; } 58.333% { opacity: 0; } 100% { opacity: 0; } }
+
+        /* the name. it types, one glyph a step (the first on the beat, the rest 45ms
+           apart). 24px is three times the bitmap, so each glyph is exactly 24 whole pixels
+           wide and the reveal edge never cuts through a pixel. a reader who has set a large
+           default size gets it smaller rather than cut off by the screen's edge */
+        .holding-word {
+            font-family: var(--font-pixel);
+            font-weight: normal;
+            font-size: min(1.5rem, calc((var(--lcdw) - 1.8rem) / 9));
+            line-height: 1.5;
+            letter-spacing: 0;
+            text-transform: uppercase;
+            color: var(--screen-ink);
+            white-space: nowrap;
+        }
+        .holding-word b { font-weight: normal; color: var(--screen-accent); }
+        .holding-word .nm {
+            display: inline-block;
+            animation: typeOut .405s steps(9, start) .7s backwards;
+            will-change: transform;    /* its own layer: greyscale edges, not the colour fringe subpixel smoothing (Windows, some Linux) gives it */
+        }
+        .holding-word .vh { -webkit-user-select: none; user-select: none; }   /* a copy of the name copies it once */
+        /* exactly 9 cells while it types (the inner text box rounds up by 1/64px because of
+           the <b>, and 9 steps of that would drift a hair into the next glyph), and only
+           then: filled backwards, it waits hidden through the delay and the boot, and once
+           typed it lets go, so a reader's own letter spacing can widen the name, not clip it */
+        @keyframes typeOut {
+            from { width: 9ch; -webkit-clip-path: inset(0 100% 0 0); clip-path: inset(0 100% 0 0); }
+            to   { width: 9ch; -webkit-clip-path: inset(0 0 0 0);    clip-path: inset(0 0 0 0); }
+        }
+
+        /* the shell prompt, and someone at it: whoami, typed at a person's uneven pace,
+           then the cursor waits. the row is as wide as the finished line and starts at
+           its left, so the prompt holds still while the command grows */
+        .term-row {
+            display: flex; align-items: baseline;
+            width: calc(8ch + .55em);
+            font-family: var(--font-term);
+            font-size: 1.2rem; line-height: 1.1;
+            margin-top: -.25rem;
+            text-align: left;
+        }
+        /* steps(n, start), not end, wherever a stepped animation fills forwards: the
+           browser's progress at the end is (end - delay) / duration in floating point,
+           which can land a hair under 1, and an end step then floors to the frame before
+           the last and holds it. a start step rounds up and lands on the last. */
+        @keyframes appear { to { opacity: 1; visibility: visible; } }
+        .term-ps { color: var(--screen-accent); margin-right: 1ch; }
+        .cmd {
+            white-space: nowrap;
+            width: 0;
+            -webkit-clip-path: inset(-.3em 0);
+            clip-path: inset(-.3em 0);          /* the box's own width is the reveal edge */
+            animation: typeCmd .45s steps(1, end) 1.2s forwards;
+        }
+        /* a keystroke per keyframe, 40 to 100ms apart. the last value is held from 84%,
+           so wherever the end lands the whole word is there */
+        @keyframes typeCmd {
+            0%        { width: 1ch; }
+            16%       { width: 2ch; }
+            30%       { width: 3ch; }
+            52%       { width: 4ch; }
+            66%       { width: 5ch; }
+            84%, 100% { width: 6ch; }
+        }
+        .term-block {
+            display: inline-block; width: .55em; height: .95em; margin-top: .1em; flex: none;
+            background: var(--screen-ink); align-self: center;
+            animation: termBlink 1.06s steps(1) 1.75s 3;    /* solid while typing, a few blinks, then it waits, solid */
+        }
+        @keyframes termBlink { 50% { opacity: 0; } }
+
+        /* ── the answer, on the black: what whoami printed ── */
+        .answer {
+            margin-top: 1.25rem;
+            min-height: calc(4 * 1.25 * var(--fs-ans));      /* four lines, there from the start */
+            font-size: var(--fs-ans);
+            line-height: 1.25;
+            text-shadow: 0 0 6px var(--glow);
+        }
+
+        /* after the boot, the words wait their turn: the command, then its output, then the
+           commands to run next, which can't be clicked until they can be seen (a second tap
+           to skip the boot must not land on one). a keyboard can still reach them, and shows
+           them when it does. the click guard is an animation of its own, so a browser that
+           can't animate it loses only the guard, never the commands. a warm visit or a page
+           without the script waits for none of it */
+        .js:not(.warm) .term-row { opacity: 0; animation: appear .1s steps(1, start) 1.15s forwards; }
+        .js:not(.warm) .answer { opacity: 0; animation: appear .1s steps(1, start) 1.7s forwards; }
+        .js:not(.warm) .bar { opacity: 0; animation: appear .1s steps(1, start) 1.8s forwards, unclickable 1.8s; }
+        .js:not(.warm) .bar:focus-within { opacity: 1; pointer-events: auto !important; }
+        @keyframes unclickable { from, to { pointer-events: none; } }
+
+        /* a warm visit: the screen was on when you got here */
+        .warm .screen-flash, .warm .eye svg, .warm .holding-word .nm, .warm .cmd { animation: none; }
+        .warm .cmd { width: 6ch; }
+        .warm .term-block { animation-delay: .53s; }
+
+        /* ── the commands: pinned under the top edge once you scroll past them, where they
+             mark the section you are reading and a small eye takes you back up ── */
+        .bar {
+            position: sticky; top: 0; z-index: 4;
+            background: #000;
+            margin: .4rem calc(-1 * max(var(--gutter), env(safe-area-inset-right, 0px))) 0 calc(-1 * max(var(--gutter), env(safe-area-inset-left, 0px)));
+            padding: env(safe-area-inset-top, 0px) max(var(--gutter), env(safe-area-inset-right, 0px)) 0 max(var(--gutter), env(safe-area-inset-left, 0px));
+            font-size: var(--fs-ans);
+            line-height: 1.25;
+        }
+        .bar.stuck { box-shadow: 0 1px 0 #2b2b27; }
+        /* as wide as the screen, and starting at its left edge; but the three commands and
+           the eye keep to one row, so where the screen has shrunk (a short window) or the
+           text has grown (a larger default size, a reader's own spacing) they run on past
+           its right edge instead of wrapping, as far as the window allows */
+        .bar-in {
+            width: min(100%, var(--lcdw)); min-width: fit-content; margin: 0 auto 0 max(0px, (100% - var(--lcdw)) / 2);
+            display: flex; flex-wrap: wrap; align-items: center; gap: .15em 2ch;
+            padding: .6rem 0;
+        }
+        .home {
+            margin-left: auto; width: 24px; height: 24px; flex: none;
+            color: var(--term-fg);
+            visibility: hidden;                 /* until pinned: at the top you are already home */
+        }
+        .bar.stuck .home { visibility: visible; }
+        .home .eye-glint { fill: #000; }
+
+        /* commands: a red prompt, the thing to run underlined, and inverse video under the
+           pointer or on the section you are in, the way a terminal selects. no transition:
+           it is on or it is off */
+        .ps { color: var(--term-warn); }
+        .cmd-a { text-decoration: none; white-space: nowrap; text-shadow: 0 0 6px var(--glow); }
+        .cmd-a .arg { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: .18em; }
+        .cmd-a .verb { color: var(--term-dim); }
+        .cmd-a:hover .arg, .cmd-a[aria-current] .arg { background: var(--term-fg); color: #000; text-shadow: none; }
+        .cmd-a:hover .verb { color: var(--term-fg); }
+
+        /* ── the output: one column, a comfortable measure of VT323 ── */
+        .col { width: 100%; max-width: var(--colw); margin: 0 auto; }
+        /* on a phone the column is the screen's width, so the hero and the words share both
+           edges: only where the screen really is its full 364px, so a short or zoomed-in
+           window keeps the whole width to read in */
+        @media screen and (max-width: 639.98px) and (min-height: 34.5rem) {
+            :root { --colw: 364px; }
+        }
+        main { text-shadow: 0 0 6px var(--glow); }
+        main:focus { outline: none; }          /* the skip link's landing, not a control */
+        /* a jump to a section lands with its check line a line's gap under the pinned
+           commands, whether the padding is on or has let go for focus (see html) */
+        .sec { padding-top: var(--sec-gap); scroll-margin-top: calc(var(--bar-h, 3.25rem) + 1rem - var(--pin) - var(--sec-gap)); }
+        .sec p { max-width: 68ch; text-wrap: pretty; }
+        .nw { white-space: nowrap; }
+        .row .k { text-wrap: balance; }
+        .sec p + p { margin-top: 1.3em; }      /* a blank line, the way output separates */
+
+        /* check lines. a heading prints like the boot's checks: the prompt, the name, a
+           leader of real dots, the result. every row runs the column's full width, so the
+           results of every size share one right edge. the dots are cut to whole columns
+           and pushed against the result, so a leader always ends on a dot, never on half
+           of one: whatever is left over is a sliver of blank at its far end. (VT323's
+           columns snap to whole pixels at some sizes and not at others, so no two sizes can
+           be trusted to divide a width the same way.) too narrow for all of it, the result
+           drops to the next line, flush right, and the leader still points at it */
+        .row {
+            display: flex; flex-wrap: wrap; align-items: baseline;
+            width: 100%;
+            font-weight: normal;
+        }
+        .row .k { flex: 0 1 auto; min-width: 0; text-transform: uppercase; }
+        .ld { flex: 1 1 0; min-width: 3ch; margin: 0 1ch; color: var(--term-lead); text-shadow: none; }
+        .ld::before {
+            content: "................................................................................................................................";
+            display: block; margin-left: auto;
+            width: 100%;
+            width: round(down, 100% + .1px, 1ch);      /* a hair over, so float noise can't eat a dot */
+            overflow: hidden; white-space: nowrap;
+        }
+        .row .res { flex: 0 1 auto; min-width: 0; margin-left: auto; color: var(--term-dim); }
+        .vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; text-transform: none; }
+
+        h2.row { font-size: var(--fs-h2); line-height: 1.1; margin-bottom: 1.1em; }
+        h3.row.sub { font-size: 1.1667em; margin: 1.9em 0 .75em; }
+        @media (max-width: 360px) { h3.row.sub { font-size: 1em; } }
+
+        /* ── about: neofetch, more or less. the picture on its own small LCD, the readout
+             beside it, then the long version, then what the rest of the time goes on ── */
+        .card { display: grid; gap: 1.5rem 2ch; margin-bottom: 2.2em; }
+        @media (min-width: 760px) {
+            .card { grid-template-columns: 240px minmax(0, 1fr); align-items: start; }
+        }
+
+        /* the photo's LCD: the headshot as a Game Boy Camera shot, the same crop in the
+           screen's four shades, laid over the real one. the first time it comes into view
+           it develops, a band of rows at a time, top down. only the Game Boy layer is ever
+           clipped, so the real photo loads, prints and reads like any image */
+        .shot { position: relative; width: min(100%, 360px); }
+        .shot .screen { width: 100%; }
+        .shot img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+        .shot-gb { z-index: 2; image-rendering: pixelated; }
+        .shot .screen-glow, .shot .scanlines { z-index: 3; }
+        .bezel { position: absolute; inset: 0; z-index: 4; pointer-events: none; box-shadow: inset 0 0 0 2px rgba(0,0,0,.25), inset 0 0 22px rgba(0,0,0,.22); }
+        .shot.dev .shot-gb { animation: develop .6s steps(12, start) forwards; }
+        /* both ends spelled out: from none there is nothing to step through, and it just flips */
+        @keyframes develop {
+            from { -webkit-clip-path: inset(0 0 0 0);    clip-path: inset(0 0 0 0); }
+            to   { -webkit-clip-path: inset(100% 0 0 0); clip-path: inset(100% 0 0 0); }
+        }
+        .shot.done .shot-gb, .no-js .shot-gb { display: none; }
+        .cap { margin-top: .45rem; font-size: .85em; color: var(--term-dim); }
+        @media (min-width: 760px) {
+            .shot { width: 240px; }                /* twice the Game Boy picture, every pixel 2x2 whole ones */
+        }
+        @media screen and (max-width: 639.98px) and (min-height: 34.5rem) {
+            .shot { width: 100%; }                 /* the phone column's full width (see .col) */
+        }
+
+        /* the readout: a key, dots to a fixed column, the value. a value too long for the
+           line wraps under itself, not under the key. a key a reader has spaced wider than
+           its column pushes the column out rather than losing letters */
+        .readout { margin: 0; }
+        .ro { display: flex; }
+        .ro + .ro { margin-top: .05em; }
+        /* 19 columns: the longest key, "ideally will get", and a leader of two dots */
+        .ro dt { flex: none; width: 19ch; min-width: max-content; display: flex; white-space: nowrap; color: var(--term-dim); }
+        .ro dt .ld { margin-right: 0; min-width: 0; width: 0; contain: inline-size; }   /* the dots never count toward the key's width */
+        .ro dd { flex: 1 1 0; min-width: 0; margin-left: 1ch; overflow-wrap: anywhere; text-wrap: pretty; }
+
+        /* off the clock: a picture each, drawn on the eye's grid at 3px a cell, glowing the
+           way the text does */
+        .tiles { list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 30ch), 1fr)); gap: 1.4em 4ch; margin-top: 1.3em; }
+        .tile { display: grid; grid-template-columns: 66px minmax(0, 1fr); column-gap: 2ch; align-items: start; }
+        .tile .ico { display: block; height: 42px; width: auto; color: var(--term-fg); filter: drop-shadow(0 0 5px rgba(230, 228, 210, .18)); margin-top: .15em; }
+        .tile .tk { text-transform: uppercase; color: var(--term-dim); }
+        .sec .tile p + p { margin-top: .1em; }
+
+        /* ── the log: newest first ──
+           two layouts, picked by the log's own width in its own columns, so the call is the
+           same whatever the platform rounds a VT323 column to. narrow, it stacks: the date,
+           the name a step up in size, the role under it, the copy. wide, the date gets a
+           column and the name and role share a check line. 66 columns is the longest one,
+           "rice undergraduate wealth management club ... analyst" (53), beside the date's 13;
+           a leader that had to wrap would only be a line of dots */
+        .log { list-style: none; container: log / inline-size; }
+        .ent + .ent { margin-top: 2em; }
+        .ent { display: grid; grid-template-columns: minmax(0, 1fr); }
+        .ent .when { grid-row: 1; color: var(--term-dim); }
+        .ent .now { color: var(--term-warn); }
+        .ent .row { grid-row: 2; font-size: 1.1667em; line-height: 1.25; }
+        .ent .row .k { color: var(--term-fg); }
+        .ent .row .ld { display: none; }
+        .ent .row .res { flex-basis: 100%; margin-left: 0; font-size: .857em; line-height: 1.3; }
+        .ent p.what { margin-top: .35em; }
+        .ent .go { margin-top: .35em; }
+        @container log (min-width: 66ch) {
+            .ent { grid-template-columns: 13ch minmax(0, 1fr); align-items: baseline; }
+            .ent > * { grid-column: 2; }
+            .ent .when { grid-column: 1; grid-row: 1; }
+            .ent .row { grid-row: 1; font-size: 1em; line-height: inherit; }
+            .ent .row .ld { display: block; }
+            .ent .row .res { flex-basis: auto; margin-left: auto; font-size: 1em; line-height: inherit; }
+        }
+
+        /* the car's own readout, on a little screen of its own, the way a Game Boy boxes a
+           status window */
+        .rr { position: relative; width: min(100%, 24rem); margin-top: .8em; padding: .75rem 1rem .85rem; background: var(--screen-bg); color: var(--screen-ink); text-shadow: none; box-shadow: inset 0 0 0 2px rgba(0,0,0,.25), inset 0 0 22px rgba(0,0,0,.22); }
+        .rr .scanlines { z-index: 1; }
+        .rr .screen-glow { z-index: 1; }
+        .rr-h { position: relative; z-index: 2; font-family: var(--font-pixel); font-size: 1rem; line-height: 1.5; margin-bottom: .3rem; }
+        .rr .readout { position: relative; z-index: 2; }
+        .rr .ro dt { width: 9ch; color: var(--screen-dim); }
+        .rr .ld { color: #9a998b; }
+
+
+        /* ── contact: commands you can run, each a whole row to aim at ── */
+        .cmdl { list-style: none; margin-top: .9em; }
+        .cmdl .cmd-a { display: inline-block; padding: .45em 0; }
+        .go .cmd-a, .cmdl .cmd-a { white-space: normal; overflow-wrap: anywhere; }   /* a narrow screen, or a wider stand-in face, wraps them */
+        .wait { margin-top: .3em; }
+        .wait .tc { animation: termBlink 1.06s steps(1) .53s 4; }
+        .pend .wait .tc { animation-name: none; }         /* its blinks start when contact prints */
+
+        /* ── the foot ── */
+        .foot { text-align: center; padding: calc(var(--sec-gap) + 1rem) 0 calc(2.5rem + env(safe-area-inset-bottom, 0px)); color: var(--term-dim); }
+        .foot-eye { width: 48px; height: 48px; margin: 0 auto 1rem; color: var(--term-fg); }
+        .foot-eye .lid-skin, .foot-eye .eye-glint { fill: #000; }   /* it blinks when you reach it (the script) */
+        .foot .vroom { color: var(--term-fg); text-shadow: 0 0 6px var(--glow); }
+
+        /* ── printing: a section prints as it arrives, a line a step, once, in well under
+           half a second, and its check lands last. only the script sets .pend, so without
+           it, in print and under reduced motion nothing is held back ── */
+        .js .pend .pl, .js .pend .chk .res { opacity: 0; }
+        .prn .pl { animation: printIn 1ms steps(1, start) both; animation-delay: calc(var(--i, 0) * var(--step, 30ms)); }
+        .prn .chk .res { animation: printIn 1ms steps(1, start) both; animation-delay: var(--done, 300ms); }
+        @keyframes printIn { from { opacity: 0; } to { opacity: 1; } }
+
+        /* ── small screens ── */
+        @media (max-width: 380px) {
+            .holding { gap: .8rem; padding: .6rem .68rem; }
+            .eye { width: 72px; height: 72px; }
+            .term-row { font-size: 1.1rem; }
+        }
+
+        /* ── whole pixels. the page scrolls, and a scrollbar leaves an odd number of pixels to
+             centre in, which would put the screen, the name and the column on half pixels,
+             where a bitmap face goes soft. so the widths are even and the centring is rounded
+             down, wherever the browser can round; anywhere else it centres as before ── */
+        @media screen {
+            @supports (width: round(down, 1px, 1px)) {
+                :root { --lcdw: round(down, max(248px, min(100vw - 2 * var(--gutter), 364px, (var(--vh) - 14rem) / .9)), 2px); }
+                .hero { align-items: flex-start; }
+                .hero-w, .bar-in { width: round(down, min(100%, var(--lcdw)), 2px); margin-left: max(0px, round(down, (100% - var(--lcdw)) / 2, 1px)); }
+                .col { width: round(down, 100%, 2px); max-width: round(down, var(--colw), 2px); margin-left: max(0px, round(down, (100% - round(down, var(--colw), 2px)) / 2, 1px)); }
+                @container log (min-width: 66ch) { .ent { grid-template-columns: round(up, 13ch, 1px) minmax(0, 1fr); } }
+            }
+        }
+
+        /* ── forced colours (Windows High Contrast): the screens go Canvas, so the lid skin
+             has to follow it or a blink paints a beige almond; the cursor blocks are
+             backgrounds, which forced colours would erase; a screen with no fill needs an
+             edge to be a screen at all; and the light on the glass is only in the way ── */
+        @media (forced-colors: active) {
+            .lid-skin, .foot-eye .lid-skin { fill: Canvas; }
+            .eye-glint, .foot-eye .eye-glint, .home .eye-glint { fill: Canvas; }
+            .term-block, .tc { forced-color-adjust: none; background: CanvasText; }
+            .screen, .rr { border: 2px solid CanvasText; }
+            .screen-flash, .scanlines, .screen-glow, .bezel { display: none; }
+            .bar.stuck { border-bottom: 1px solid CanvasText; }
+            .cmd-a:hover .arg, .cmd-a[aria-current] .arg { forced-color-adjust: none; background: Highlight; color: HighlightText; }
+        }
+
+        /* ── reduced motion: no boot, everything lands in its final state, nothing moves ── */
+        @media (prefers-reduced-motion: reduce) {
+            .term, .term-skip { display: none !important; }
+            .booting .screen-frame { opacity: 1; }
+            .screen-flash, .eye svg, .eye-pupil, .bf, .holding-word .nm, .term-row, .cmd,
+            .term-block, .tc, .answer, .bar, .pl, .chk .res, .shot-gb { animation: none !important; }
+            .cmd { width: 6ch; }
+            .term-row, .answer, .bar, .pl, .chk .res { opacity: 1 !important; }
+            .bf { opacity: 0 !important; }          /* and no blink the script might still have in flight */
+            .shot-gb { display: none; }
+            .scanlines { display: none; }
+        }
+
+        /* ── paper: ink on white, no screens, no chrome, links spelled out ── */
+        @media print {
+            :root { --term-fg: #000; --term-dim: #555; --term-warn: #000; --screen-ink: #000; --screen-accent: #000; --screen-dim: #555; --sec-gap: 1.75rem; }
+            html, body { background: #fff !important; color: #000 !important; }
+            body { padding: 0; font-size: 13pt; }
+            .term, .term-skip, .skip, .bar, .scanlines, .screen-glow, .screen-flash, .bezel, .eye, .term-row,
+            .wait, .foot-eye, .shot-gb, .ld, .ps, .tiles .ico { display: none !important; }
+            *, *::before, *::after { text-shadow: none !important; animation: none !important; }
+            .hero { display: block; padding: 0; max-width: 72ch; margin: 0 auto; font-size: 13pt; }
+            .hero-w { width: auto; }
+            .screen { background: none; box-shadow: none; aspect-ratio: auto; overflow: visible; }
+            .holding { position: static; display: block; padding: 0; text-align: left; }
+            .holding-word { font-size: 16pt; }
+            .answer { margin-top: .75rem; min-height: 0; font-size: 13pt; }
+            .answer, .pl, .chk .res, .screen-frame { opacity: 1 !important; }
+            .col { width: 100%; }
+            .row .res { margin-left: 2ch; }
+            .card { grid-template-columns: 1fr; }
+            .shot { width: 200px; }
+            .shot .screen { aspect-ratio: 10 / 9; overflow: hidden; }
+            .tile { grid-template-columns: 1fr; }
+            .rr { background: none; box-shadow: none; border: 1px solid #000; }
+            a[data-print-url]::after { content: " (" attr(href) ")"; font-size: .85em; overflow-wrap: anywhere; }
+            .ent, .ro, .card, .chk, .tile { break-inside: avoid; }
+            .chk { break-after: avoid; }
+            .foot { padding: 2rem 0 0; }
+        }
+    </style>
+</head>
+<body>
+    <!-- the boot terminal. decoration for the ear: the page's content is everything below it -->
+    <div class="term" id="term" aria-hidden="true">
+        <div id="termLog"></div>
+    </div>
+    <button class="term-skip" id="termSkip" type="button" aria-label="skip the boot">skip ▸</button>
+
+    <a class="skip" href="#main">skip to content</a>
+
+    <header class="hero" id="top">
+        <div class="screen-frame hero-w" id="frame">
+            <div class="screen">
+                <div class="screen-glow"></div>
+                <div class="scanlines" aria-hidden="true"></div>
+                <div class="screen-flash" aria-hidden="true"></div>
+
+                <div class="holding">
+                    <div class="eye" aria-hidden="true">
+                        <svg viewBox="0 0 48 48" shape-rendering="crispEdges">
+                            <g class="eye-ink" fill="currentColor"><rect x="22" y="12" width="14" height="2"/><rect x="16" y="14" width="24" height="2"/><rect x="14" y="16" width="28" height="2"/><rect x="8" y="18" width="24" height="2"/><rect x="38" y="18" width="6" height="2"/><rect x="42" y="20" width="4" height="2"/><rect x="44" y="22" width="2" height="2"/><rect x="4" y="24" width="4" height="2"/><rect x="46" y="24" width="2" height="2"/><rect x="2" y="26" width="2" height="2"/><rect x="0" y="28" width="2" height="2"/><rect x="38" y="28" width="10" height="2"/><rect x="6" y="30" width="12" height="2"/><rect x="32" y="30" width="8" height="2"/><rect x="14" y="32" width="22" height="2"/><rect x="20" y="34" width="10" height="2"/></g>
+                            <g class="eye-pupil" fill="currentColor"><rect x="8" y="20" width="8" height="2"/><rect x="18" y="20" width="14" height="2"/><rect x="6" y="22" width="8" height="2"/><rect x="18" y="22" width="8" height="2"/><rect x="30" y="22" width="6" height="2"/><rect x="18" y="24" width="14" height="2"/><rect x="20" y="26" width="12" height="2"/><rect x="20" y="28" width="10" height="2"/><g class="eye-glint"><rect x="16" y="20" width="2" height="2"/><rect x="14" y="22" width="4" height="2"/></g></g>
+                            <!-- the blink: three frames drawn on the same 24-cell grid. each frame paints LCD-coloured
+                                 skin over whatever the lids have moved past (the open lid's own ink, the pupil, the lower
+                                 lid when it lifts) and inks the lid edges where they are now. columns 0 and 23 are the
+                                 corners and no frame touches them, so the eye shuts along its own corner-to-corner line.
+                                 half: the upper lid, still arched, part-way down, the iris showing under it.
+                                 slit: the lids almost meet; a sliver of iris in the gap; the lower lid has lifted a row.
+                                 shut: the upper lid resting on the lifted lower lid, two cells thick, corner to corner. -->
+                            <g class="bf bf-half"><g class="lid-skin"><rect x="2" y="10" width="44" height="2"/><rect x="2" y="12" width="44" height="2"/><rect x="2" y="14" width="44" height="2"/><rect x="2" y="16" width="44" height="2"/><rect x="2" y="18" width="44" height="2"/><rect x="2" y="20" width="10" height="2"/><rect x="38" y="20" width="8" height="2"/><rect x="2" y="22" width="6" height="2"/><rect x="44" y="22" width="2" height="2"/><rect x="2" y="24" width="6" height="2"/></g><g class="lid-edge"><rect x="12" y="20" width="26" height="2"/><rect x="8" y="22" width="36" height="2"/><rect x="8" y="24" width="4" height="2"/><rect x="38" y="24" width="8" height="2"/><rect x="2" y="26" width="6" height="2"/></g></g>
+                            <g class="bf bf-slit"><g class="lid-skin"><rect x="2" y="10" width="44" height="2"/><rect x="2" y="12" width="44" height="2"/><rect x="2" y="14" width="44" height="2"/><rect x="2" y="16" width="44" height="2"/><rect x="2" y="18" width="44" height="2"/><rect x="2" y="20" width="44" height="2"/><rect x="2" y="22" width="44" height="2"/><rect x="2" y="24" width="6" height="2"/><rect x="18" y="24" width="14" height="2"/><rect x="2" y="30" width="16" height="2"/><rect x="32" y="30" width="14" height="2"/><rect x="2" y="32" width="44" height="2"/><rect x="2" y="34" width="44" height="2"/></g><g class="lid-edge"><rect x="8" y="24" width="10" height="2"/><rect x="32" y="24" width="14" height="2"/><rect x="2" y="26" width="6" height="2"/><rect x="18" y="26" width="14" height="2"/><rect x="2" y="28" width="16" height="2"/><rect x="32" y="28" width="14" height="2"/><rect x="18" y="30" width="14" height="2"/></g></g>
+                            <g class="bf bf-shut"><g class="lid-skin"><rect x="2" y="10" width="44" height="2"/><rect x="2" y="12" width="44" height="2"/><rect x="2" y="14" width="44" height="2"/><rect x="2" y="16" width="44" height="2"/><rect x="2" y="18" width="44" height="2"/><rect x="2" y="20" width="44" height="2"/><rect x="2" y="22" width="44" height="2"/><rect x="2" y="24" width="44" height="2"/><rect x="18" y="26" width="14" height="2"/><rect x="2" y="30" width="16" height="2"/><rect x="32" y="30" width="14" height="2"/><rect x="2" y="32" width="44" height="2"/><rect x="2" y="34" width="44" height="2"/></g><g class="lid-edge"><rect x="2" y="26" width="16" height="2"/><rect x="32" y="26" width="14" height="2"/><rect x="2" y="28" width="44" height="2"/><rect x="18" y="30" width="14" height="2"/></g></g>
+                        </svg>
+                    </div>
+
+                    <h1 class="holding-word"><span class="vh">Isaac Ure</span> <span class="nm" aria-hidden="true">Isaac <b>Ure</b></span></h1>
+
+                    <div class="term-row" aria-hidden="true"><span class="term-ps">&gt;</span><span class="cmd">whoami</span><span class="term-block"></span></div>
+                </div>
+            </div>
+        </div>
+
+        <p class="answer hero-w">I study econ at Rice, occasionally shoot for the Thresher, chug and bike for Martel, and run the budget for Rice's first Formula SAE team.</p>
+    </header>
+
+    <nav class="bar" id="bar" aria-label="Sections">
+        <div class="bar-in">
+            <a class="cmd-a" href="#about"><span class="ps" aria-hidden="true">&gt;</span> <span class="arg">about</span></a>
+            <a class="cmd-a" href="#log"><span class="ps" aria-hidden="true">&gt;</span> <span class="arg">log</span></a>
+            <a class="cmd-a" href="#contact"><span class="ps" aria-hidden="true">&gt;</span> <span class="arg">contact</span></a>
+            <a class="home" href="#top" aria-label="Back to the top">
+                <svg viewBox="0 0 48 48" shape-rendering="crispEdges" aria-hidden="true" focusable="false">
+                    <g fill="currentColor"><rect x="22" y="12" width="14" height="2"/><rect x="16" y="14" width="24" height="2"/><rect x="14" y="16" width="28" height="2"/><rect x="8" y="18" width="24" height="2"/><rect x="38" y="18" width="6" height="2"/><rect x="42" y="20" width="4" height="2"/><rect x="44" y="22" width="2" height="2"/><rect x="4" y="24" width="4" height="2"/><rect x="46" y="24" width="2" height="2"/><rect x="2" y="26" width="2" height="2"/><rect x="0" y="28" width="2" height="2"/><rect x="38" y="28" width="10" height="2"/><rect x="6" y="30" width="12" height="2"/><rect x="32" y="30" width="8" height="2"/><rect x="14" y="32" width="22" height="2"/><rect x="20" y="34" width="10" height="2"/></g>
+                    <g fill="currentColor"><rect x="8" y="20" width="8" height="2"/><rect x="18" y="20" width="14" height="2"/><rect x="6" y="22" width="8" height="2"/><rect x="18" y="22" width="8" height="2"/><rect x="30" y="22" width="6" height="2"/><rect x="18" y="24" width="14" height="2"/><rect x="20" y="26" width="12" height="2"/><rect x="20" y="28" width="10" height="2"/><g class="eye-glint"><rect x="16" y="20" width="2" height="2"/><rect x="14" y="22" width="4" height="2"/></g></g>
+                </svg>
+            </a>
+        </div>
+    </nav>
+
+    <main id="main" class="col" tabindex="-1">
+
+        <section class="sec" id="about" aria-labelledby="about-h">
+            <h2 class="row chk pl"><span class="k" id="about-h"><span class="ps" aria-hidden="true">&gt; </span>About</span><span class="ld" aria-hidden="true"></span><span class="res"><span class="vh">: </span>who is this guy</span></h2>
+
+            <div class="card">
+                <figure class="shot pl">
+                    <div class="screen">
+                        <img class="shot-real" src="/images/Headshot-10x9-sm.jpg" srcset="/images/Headshot-10x9-sm.jpg 360w, /images/Headshot-10x9.jpg 720w, /images/Headshot-10x9-lg.jpg 1080w" sizes="(min-width: 760px) 240px, 360px" width="360" height="324" alt="Isaac Ure" loading="lazy" decoding="async">
+                        <img class="shot-gb" src="/images/Headshot-gb.png" width="120" height="108" alt="" aria-hidden="true">
+                        <div class="screen-glow" aria-hidden="true"></div>
+                        <div class="scanlines" aria-hidden="true"></div>
+                        <div class="bezel" aria-hidden="true"></div>
+                    </div>
+                    <p class="cap" aria-hidden="true">fig. 1: this guy</p>
+                </figure>
+
+                <dl class="readout">
+                    <div class="ro pl"><dt>school<span class="ld" aria-hidden="true"></span></dt><dd>Rice University, class of&nbsp;2029</dd></div>
+                    <div class="ro pl"><dt>uptime<span class="ld" aria-hidden="true"></span></dt><dd>sophomore year</dd></div>
+                    <div class="ro pl"><dt>studying<span class="ld" aria-hidden="true"></span></dt><dd>Mathematical Economic Analysis</dd></div>
+                    <div class="ro pl"><dt>college<span class="ld" aria-hidden="true"></span></dt><dd>Martel</dd></div>
+                    <div class="ro pl"><dt>based in<span class="ld" aria-hidden="true"></span></dt><dd>Houston, TX</dd></div>
+                    <div class="ro pl"><dt>ideally will get<span class="ld" aria-hidden="true"></span></dt><dd>an econ PhD</dd></div>
+                </dl>
+            </div>
+
+            <p class="pl">I'm Isaac. I came to Rice on the finance track, but I'm slowly moving towards academia. The goal now is an econ PhD and, eventually (hopefully), a job as an economics professor.</p>
+
+            <h3 class="row chk sub pl"><span class="k"><span class="ps" aria-hidden="true">&gt; </span>What else tho</span><span class="ld" aria-hidden="true"></span><span class="res"><span class="vh">: </span>interests, innit</span></h3>
+            <p class="pl">I'm a systems-and-optimization guy, which explains most of this list.</p>
+            <ul class="tiles" role="list">
+                <li class="tile pl">
+                    <svg class="ico" viewBox="0 0 32 28" width="48" height="42" shape-rendering="crispEdges" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="10" y="2" width="12" height="2"/><rect x="2" y="4" width="6" height="2"/><rect x="10" y="4" width="12" height="2"/><rect x="2" y="6" width="10" height="2"/><rect x="20" y="6" width="10" height="2"/><rect x="0" y="8" width="10" height="2"/><rect x="14" y="8" width="4" height="2"/><rect x="22" y="8" width="10" height="2"/><rect x="0" y="10" width="8" height="2"/><rect x="12" y="10" width="8" height="2"/><rect x="24" y="10" width="8" height="2"/><rect x="0" y="12" width="8" height="2"/><rect x="10" y="12" width="2" height="2"/><rect x="14" y="12" width="8" height="2"/><rect x="24" y="12" width="8" height="2"/><rect x="0" y="14" width="8" height="2"/><rect x="10" y="14" width="12" height="2"/><rect x="24" y="14" width="8" height="2"/><rect x="0" y="16" width="8" height="2"/><rect x="10" y="16" width="12" height="2"/><rect x="24" y="16" width="8" height="2"/><rect x="0" y="18" width="8" height="2"/><rect x="12" y="18" width="8" height="2"/><rect x="24" y="18" width="8" height="2"/><rect x="0" y="20" width="10" height="2"/><rect x="14" y="20" width="4" height="2"/><rect x="22" y="20" width="10" height="2"/><rect x="2" y="22" width="10" height="2"/><rect x="20" y="22" width="10" height="2"/></g></svg>
+                    <div><p class="tk">Photography</p><p>I shoot Canon, sometimes for the Thresher. I like portraiture and lowk everything else too.</p></div>
+                </li>
+                <li class="tile pl">
+                    <svg class="ico" viewBox="0 0 32 28" width="48" height="42" shape-rendering="crispEdges" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="12" y="0" width="8" height="2"/><rect x="8" y="2" width="16" height="2"/><rect x="4" y="4" width="24" height="2"/><rect x="0" y="6" width="32" height="2"/><rect x="0" y="8" width="32" height="2"/><rect x="0" y="10" width="8" height="2"/><rect x="14" y="10" width="4" height="2"/><rect x="24" y="10" width="8" height="2"/><rect x="0" y="12" width="12" height="2"/><rect x="14" y="12" width="4" height="2"/><rect x="20" y="12" width="2" height="2"/><rect x="24" y="12" width="8" height="2"/><rect x="0" y="14" width="8" height="2"/><rect x="14" y="14" width="4" height="2"/><rect x="20" y="14" width="2" height="2"/><rect x="24" y="14" width="8" height="2"/><rect x="0" y="16" width="8" height="2"/><rect x="10" y="16" width="8" height="2"/><rect x="20" y="16" width="2" height="2"/><rect x="24" y="16" width="8" height="2"/><rect x="0" y="18" width="8" height="2"/><rect x="14" y="18" width="4" height="2"/><rect x="24" y="18" width="8" height="2"/><rect x="0" y="20" width="32" height="2"/><rect x="4" y="22" width="24" height="2"/><rect x="8" y="24" width="16" height="2"/><rect x="12" y="26" width="8" height="2"/></g></svg>
+                    <div><p class="tk">D&amp;D</p><p>I lowkey don't really play much anymore, but I "helped" run a D&amp;D club in high school.</p></div>
+                </li>
+                <li class="tile pl">
+                    <svg class="ico" viewBox="0 0 32 28" width="48" height="42" shape-rendering="crispEdges" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="6" y="6" width="20" height="2"/><rect x="4" y="8" width="24" height="2"/><rect x="2" y="10" width="8" height="2"/><rect x="12" y="10" width="12" height="2"/><rect x="26" y="10" width="4" height="2"/><rect x="2" y="12" width="6" height="2"/><rect x="14" y="12" width="8" height="2"/><rect x="24" y="12" width="2" height="2"/><rect x="28" y="12" width="2" height="2"/><rect x="2" y="14" width="8" height="2"/><rect x="12" y="14" width="12" height="2"/><rect x="26" y="14" width="4" height="2"/><rect x="2" y="16" width="28" height="2"/><rect x="2" y="18" width="12" height="2"/><rect x="18" y="18" width="12" height="2"/><rect x="2" y="20" width="10" height="2"/><rect x="20" y="20" width="10" height="2"/><rect x="4" y="22" width="6" height="2"/><rect x="22" y="22" width="6" height="2"/></g></svg>
+                    <div><p class="tk">Games &amp; code</p><p>I initially thought I was going to get a CS degree, but then decided I wanted a job. I play PC and like shooters and roguelikes, but sadly I'm too employed nowadays to play much.</p></div>
+                </li>
+                <li class="tile pl">
+                    <svg class="ico" viewBox="0 0 36 28" width="54" height="42" shape-rendering="crispEdges" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="22" y="2" width="6" height="2"/><rect x="20" y="4" width="2" height="2"/><rect x="24" y="4" width="6" height="2"/><rect x="18" y="6" width="4" height="2"/><rect x="24" y="6" width="8" height="2"/><rect x="18" y="8" width="14" height="2"/><rect x="18" y="10" width="14" height="2"/><rect x="20" y="12" width="10" height="2"/><rect x="32" y="12" width="4" height="2"/><rect x="22" y="14" width="6" height="2"/><rect x="30" y="14" width="6" height="2"/><rect x="22" y="16" width="14" height="2"/><rect x="18" y="18" width="18" height="2"/><rect x="12" y="20" width="24" height="2"/><rect x="8" y="22" width="28" height="2"/><rect x="4" y="24" width="32" height="2"/><rect x="0" y="26" width="36" height="2"/></g></svg>
+                    <div><p class="tk">Philosophy</p><p>Mostly absurdism/<wbr>existentialism. I've taken a few classes in college so far, I'm thinking about maybe doing a minor for fun.</p></div>
+                </li>
+                <li class="tile pl">
+                    <svg class="ico" viewBox="0 0 44 28" width="66" height="42" shape-rendering="crispEdges" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="18" y="6" width="18" height="2"/><rect x="16" y="8" width="2" height="2"/><rect x="26" y="8" width="2" height="2"/><rect x="36" y="8" width="2" height="2"/><rect x="14" y="10" width="2" height="2"/><rect x="26" y="10" width="2" height="2"/><rect x="38" y="10" width="2" height="2"/><rect x="6" y="12" width="36" height="2"/><rect x="2" y="14" width="42" height="2"/><rect x="2" y="16" width="6" height="2"/><rect x="20" y="16" width="8" height="2"/><rect x="40" y="16" width="4" height="2"/><rect x="2" y="18" width="6" height="2"/><rect x="10" y="18" width="8" height="2"/><rect x="20" y="18" width="8" height="2"/><rect x="30" y="18" width="8" height="2"/><rect x="40" y="18" width="4" height="2"/><rect x="8" y="20" width="12" height="2"/><rect x="28" y="20" width="12" height="2"/><rect x="8" y="22" width="12" height="2"/><rect x="28" y="22" width="12" height="2"/><rect x="8" y="24" width="12" height="2"/><rect x="28" y="24" width="12" height="2"/><rect x="10" y="26" width="8" height="2"/><rect x="30" y="26" width="8" height="2"/></g></svg>
+                    <div><p class="tk">My GTI</p><p>My beloved silver MK8 GTI.</p></div>
+                </li>
+            </ul>
+        </section>
+
+        <section class="sec" id="log" aria-labelledby="log-h">
+            <h2 class="row chk pl"><span class="k" id="log-h"><span class="ps" aria-hidden="true">&gt; </span>Log</span><span class="ld" aria-hidden="true"></span><span class="res"><span class="vh">: </span>effectively mini resume</span></h2>
+
+            <ol class="log" role="list">
+                <li class="ent pl">
+                    <h3 class="row"><span class="k">Rice Racing</span><span class="ld" aria-hidden="true"></span><span class="res"><span class="vh">, </span>Director of Financing</span></h3>
+                    <p class="when now">now</p>
+                    <p class="what">Rice's first Formula SAE team. We're building our first car. I lead the budget and financial planning and help with sponsor outreach.</p>
+                    <div class="rr">
+                        <div class="screen-glow" aria-hidden="true"></div>
+                        <div class="scanlines" aria-hidden="true"></div>
+                        <p class="rr-h">RR01</p>
+                        <dl class="readout">
+                            <div class="ro"><dt>class<span class="ld" aria-hidden="true"></span></dt><dd>IC (combustion)</dd></div>
+                            <div class="ro"><dt>race<span class="ld" aria-hidden="true"></span></dt><dd>FSAE Michigan 2027</dd></div>
+                            <div class="ro"><dt>goal<span class="ld" aria-hidden="true"></span></dt><dd>built by spring 2027</dd></div>
+                        </dl>
+                    </div>
+                    <p class="go"><a class="cmd-a" href="https://riceracing.org"><span class="ps" aria-hidden="true">&gt;</span> <span class="verb">open</span> <span class="arg">riceracing.org</span></a></p>
+                </li>
+                <li class="ent pl">
+                    <h3 class="row"><span class="k">The Rice Thresher &amp; Rice RAW</span><span class="ld" aria-hidden="true"></span><span class="res"><span class="vh">, </span>Photographer</span></h3>
+                    <p class="when now">now</p>
+                    <p class="what">I shoot for the Thresher, Rice's student newspaper, and with Rice RAW&nbsp;Photography.</p>
+                    <p class="go"><a class="cmd-a" href="https://ricethresher.org/by/isaac-ure" data-print-url><span class="ps" aria-hidden="true">&gt;</span> <span class="verb">open</span> <span class="arg">my Thresher credits</span></a></p>
+                </li>
+                <li class="ent pl">
+                    <h3 class="row"><span class="k">Deep Blue Midland Basin</span><span class="ld" aria-hidden="true"></span><span class="res"><span class="vh">, </span>Summer Intern</span></h3>
+                    <p class="when">summer 2026</p>
+                    <p class="what">Midstream water infrastructure in the Permian Basin. I did finance, research and the weekly newsletter.</p>
+                </li>
+                <li class="ent pl">
+                    <h3 class="row"><span class="k">Rice Undergraduate Wealth Management Club</span><span class="ld" aria-hidden="true"></span><span class="res"><span class="vh">, </span>Analyst</span></h3>
+                    <p class="when">2025–26</p>
+                    <p class="what">I worked on portfolio research focused on client relationships and stability, with Monte Carlo simulations.</p>
+                </li>
+                <li class="ent pl">
+                    <h3 class="row"><span class="k">The John Cooper School</span><span class="ld" aria-hidden="true"></span><span class="res"><span class="vh">, </span>Graduated cum laude</span></h3>
+                    <p class="when">may 2025</p>
+                    <p class="what">High school, in The Woodlands, TX. Founding member of the D&amp;D club (0&nbsp;to&nbsp;20+ members in a year), <span class="nw">co-president</span> of the Tabletop Club, and tennis MVP my junior year (most improved the year before).</p>
+                </li>
+            </ol>
+        </section>
+
+        <section class="sec" id="contact" aria-labelledby="contact-h">
+            <h2 class="row chk pl"><span class="k" id="contact-h"><span class="ps" aria-hidden="true">&gt; </span>Contact</span><span class="ld" aria-hidden="true"></span><span class="res"><span class="vh">: </span>say hi</span></h2>
+            <p class="pl">I'm always open to connecting! Whether it's about econ, finance, cars, photos, or anything in between, feel free to reach out.</p>
+            <ul class="cmdl" role="list">
+                <li class="pl"><a class="cmd-a" href="mailto:isaacoure@gmail.com"><span class="ps" aria-hidden="true">&gt;</span> <span class="verb">mail</span> <span class="arg">isaacoure@gmail.com</span></a></li>
+                <li class="pl"><a class="cmd-a" href="https://www.linkedin.com/in/isaacure/"><span class="ps" aria-hidden="true">&gt;</span> <span class="verb">open</span> <span class="arg">linkedin.com/in/isaacure</span></a></li>
+            </ul>
+            <p class="wait pl" aria-hidden="true"><span class="ps">&gt;</span> <span class="tc"></span></p>
+        </section>
+    </main>
+
+    <footer class="foot col">
+        <div class="foot-eye" aria-hidden="true">
+            <svg viewBox="0 0 48 48" shape-rendering="crispEdges">
+                <g fill="currentColor"><rect x="22" y="12" width="14" height="2"/><rect x="16" y="14" width="24" height="2"/><rect x="14" y="16" width="28" height="2"/><rect x="8" y="18" width="24" height="2"/><rect x="38" y="18" width="6" height="2"/><rect x="42" y="20" width="4" height="2"/><rect x="44" y="22" width="2" height="2"/><rect x="4" y="24" width="4" height="2"/><rect x="46" y="24" width="2" height="2"/><rect x="2" y="26" width="2" height="2"/><rect x="0" y="28" width="2" height="2"/><rect x="38" y="28" width="10" height="2"/><rect x="6" y="30" width="12" height="2"/><rect x="32" y="30" width="8" height="2"/><rect x="14" y="32" width="22" height="2"/><rect x="20" y="34" width="10" height="2"/></g>
+                <g fill="currentColor"><rect x="8" y="20" width="8" height="2"/><rect x="18" y="20" width="14" height="2"/><rect x="6" y="22" width="8" height="2"/><rect x="18" y="22" width="8" height="2"/><rect x="30" y="22" width="6" height="2"/><rect x="18" y="24" width="14" height="2"/><rect x="20" y="26" width="12" height="2"/><rect x="20" y="28" width="10" height="2"/><g class="eye-glint"><rect x="16" y="20" width="2" height="2"/><rect x="14" y="22" width="4" height="2"/></g></g>
+                <!-- the same three blink frames as the screen's, the skin black here: this eye is on the page -->
+                <g class="bf bf-half"><g class="lid-skin"><rect x="2" y="10" width="44" height="2"/><rect x="2" y="12" width="44" height="2"/><rect x="2" y="14" width="44" height="2"/><rect x="2" y="16" width="44" height="2"/><rect x="2" y="18" width="44" height="2"/><rect x="2" y="20" width="10" height="2"/><rect x="38" y="20" width="8" height="2"/><rect x="2" y="22" width="6" height="2"/><rect x="44" y="22" width="2" height="2"/><rect x="2" y="24" width="6" height="2"/></g><g class="lid-edge"><rect x="12" y="20" width="26" height="2"/><rect x="8" y="22" width="36" height="2"/><rect x="8" y="24" width="4" height="2"/><rect x="38" y="24" width="8" height="2"/><rect x="2" y="26" width="6" height="2"/></g></g>
+                <g class="bf bf-slit"><g class="lid-skin"><rect x="2" y="10" width="44" height="2"/><rect x="2" y="12" width="44" height="2"/><rect x="2" y="14" width="44" height="2"/><rect x="2" y="16" width="44" height="2"/><rect x="2" y="18" width="44" height="2"/><rect x="2" y="20" width="44" height="2"/><rect x="2" y="22" width="44" height="2"/><rect x="2" y="24" width="6" height="2"/><rect x="18" y="24" width="14" height="2"/><rect x="2" y="30" width="16" height="2"/><rect x="32" y="30" width="14" height="2"/><rect x="2" y="32" width="44" height="2"/><rect x="2" y="34" width="44" height="2"/></g><g class="lid-edge"><rect x="8" y="24" width="10" height="2"/><rect x="32" y="24" width="14" height="2"/><rect x="2" y="26" width="6" height="2"/><rect x="18" y="26" width="14" height="2"/><rect x="2" y="28" width="16" height="2"/><rect x="32" y="28" width="14" height="2"/><rect x="18" y="30" width="14" height="2"/></g></g>
+                <g class="bf bf-shut"><g class="lid-skin"><rect x="2" y="10" width="44" height="2"/><rect x="2" y="12" width="44" height="2"/><rect x="2" y="14" width="44" height="2"/><rect x="2" y="16" width="44" height="2"/><rect x="2" y="18" width="44" height="2"/><rect x="2" y="20" width="44" height="2"/><rect x="2" y="22" width="44" height="2"/><rect x="2" y="24" width="44" height="2"/><rect x="18" y="26" width="14" height="2"/><rect x="2" y="30" width="16" height="2"/><rect x="32" y="30" width="14" height="2"/><rect x="2" y="32" width="44" height="2"/><rect x="2" y="34" width="44" height="2"/></g><g class="lid-edge"><rect x="2" y="26" width="16" height="2"/><rect x="32" y="26" width="14" height="2"/><rect x="2" y="28" width="44" height="2"/><rect x="18" y="30" width="14" height="2"/></g></g>
+            </svg>
+        </div>
+        <p>2026 Isaac Ure</p>
+        <p class="vroom">Vroooooooooooom.</p>
+    </footer>
+
+    <script>
+    /* the boot, then the page. the terminal is the holding page's, cut down the same way:
+       print lines, land results, stamp the eye frame after frame, hand off. nothing types:
+       a machine prints. whether it plays at all was settled in the head (html.booting).
+       anything that goes wrong lights the screen; so does any key, a tap, focus landing
+       on the page, or 12 seconds. */
+    (function () {
+        var root = document.documentElement, hero = document.getElementById('top'),
+            term = document.getElementById('term'), log = document.getElementById('termLog'),
+            skipBtn = document.getElementById('termSkip'), bar = document.getElementById('bar'),
+            eye = document.querySelector('.eye'), footEye = document.querySelector('.foot-eye');
+        var rmq = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)'), reduce = !!(rmq && rmq.matches);
+        var lit = false, gen = 0;
+        function has(el, c) { return (' ' + el.className + ' ').indexOf(' ' + c + ' ') > -1; }
+        function drop(el, c) { el.className = (' ' + el.className + ' ').replace(' ' + c + ' ', ' ').replace(/^\s+|\s+$/g, ''); }
+        function add(el, c) { if (!has(el, c)) el.className += ' ' + c; }
+
+        function light() {                 // hand off: drop the terminal, wake the screen, let the page scroll
+            if (lit) return;
+            lit = true; gen++;
+            if (skipBtn && document.activeElement === skipBtn) {   // keep the keyboard on the page
+                hero.setAttribute('tabindex', '-1');
+                try { hero.focus({ preventScroll: true }); } catch (e) { hero.focus(); }
+            }
+            if (term && term.parentNode) term.parentNode.removeChild(term);
+            if (skipBtn && skipBtn.parentNode) skipBtn.parentNode.removeChild(skipBtn);
+            drop(root, 'booting');
+            add(hero, 'lit');
+            try { watch(); } catch (e) { reveal(); }
+        }
+
+        /* ---- the page: sections print as they arrive, the photo develops, the commands
+           pin and mark where you are, the eyes blink when you come back to them. one pass
+           per frame of scrolling does all of it ---- */
+        var secs = [], links = [], shot = null, developed = false, queued = false,
+            barH = 0, heroSeen = true, footSeen = false, hold = false;
+        /* the blink, the same frames and timings as the CSS one (half 45 · slit 40 · shut 90 ·
+           slit 55 · half 70), played once on an eye that has just come back into view */
+        var S = 'steps(1, end)', LIDS = {
+            'bf-half': [{ opacity: 1, easing: S }, { opacity: 0, offset: .15, easing: S }, { opacity: 1, offset: .76667, easing: S }, { opacity: 0 }],
+            'bf-slit': [{ opacity: 0, easing: S }, { opacity: 1, offset: .15, easing: S }, { opacity: 0, offset: .28333, easing: S }, { opacity: 1, offset: .58333, easing: S }, { opacity: 0, offset: .76667, easing: S }, { opacity: 0 }],
+            'bf-shut': [{ opacity: 0, easing: S }, { opacity: 1, offset: .28333, easing: S }, { opacity: 0, offset: .58333, easing: S }, { opacity: 0 }]
+        };
+        function blink(el) {
+            if (reduce || !el || (rmq && rmq.matches)) return;
+            for (var k in LIDS) {          // already blinking, or about to (the CSS one waits out its delay)
+                var f = el.querySelector('.' + k);
+                if (f && f.getAnimations && f.getAnimations().length) return;
+            }
+            for (k in LIDS) {
+                var g = el.querySelector('.' + k);
+                if (g && g.animate) try { g.animate(LIDS[k], { duration: 300, delay: 150 }); } catch (e) {}
+            }
+        }
+        /* an eye is back once the middle of it, where the lids close, is all on screen, and
+           gone only once none of it is: so the blink is never spent out of sight, and a
+           wobble in the scroll doesn't replay it */
+        function lids(el, seen, vh) {
+            if (!el) return seen;
+            var q = el.getBoundingClientRect(), full = q.top + q.height / 4 >= 0 && q.top + q.height * .75 <= vh;
+            if (full && !seen) blink(el);
+            return full || (seen && q.bottom > 0 && q.top < vh);
+        }
+        function fitBar() {                // how far below the pinned commands a jump lands follows their real height
+            var h = bar ? bar.offsetHeight : 0;
+            if (h && h !== barH) { barH = h; root.style.setProperty('--bar-h', h + 'px'); }
+        }
+        function reveal() {                // the way out of every state: nothing held back
+            for (var i = 0; i < secs.length; i++) drop(secs[i], 'pend');
+            if (shot) add(shot, 'done');
+        }
+        function show(sec) {
+            if (!has(sec, 'pend')) return;
+            drop(sec, 'pend'); add(sec, 'prn');
+        }
+        function develop() {
+            developed = true;
+            var real = shot.querySelector('.shot-real');
+            function go() {
+                setTimeout(function () {
+                    add(shot, 'dev');
+                    setTimeout(function () { add(shot, 'done'); }, 700);
+                }, 450);
+            }
+            if (real.complete && real.naturalWidth) go();
+            else { real.addEventListener('load', go); real.loading = 'eager'; }   // if it never loads, the Game Boy one stays
+        }
+        function pass() {
+            queued = false;
+            var vh = window.innerHeight || document.documentElement.clientHeight, i, r;
+            /* print everything that has reached the lower edge, and everything above it, so a
+               jump or a fling never leaves words unprinted behind you (unless a first visit is
+               still waiting its turn: see watch; a scroll ends the wait) */
+            if (hold && (window.pageYOffset || document.documentElement.scrollTop) > 0) hold = false;
+            for (i = secs.length - 1; i >= 0 && !hold; i--) {
+                if (secs[i].getBoundingClientRect().top < vh * .92) { for (var j = 0; j <= i; j++) show(secs[j]); break; }
+            }
+            /* the photo: most of it in view, or as much as a very short window holds */
+            if (shot && !hold && !developed && !has(shot, 'done')) {
+                r = shot.getBoundingClientRect();
+                var seen = Math.min(r.bottom, vh) - Math.max(r.top, 0);
+                if (seen >= r.height * .6 || seen >= vh * .7) develop();
+            }
+            /* the eyes: once each time you come back to one, never on a timer */
+            heroSeen = lids(eye, heroSeen, vh);
+            footSeen = lids(footEye, footSeen, vh);
+            if (!bar) return;
+            fitBar();                      // where there is no ResizeObserver to do it
+            /* pinned: its top at the window's, with page scrolled under it */
+            var br = bar.getBoundingClientRect();
+            if (br.top <= 0 && (window.pageYOffset || document.documentElement.scrollTop) > 0) add(bar, 'stuck'); else drop(bar, 'stuck');
+            /* the section you are in: the last one whose head has passed four tenths of the
+               way down, or the last of all at the very bottom */
+            var cur = null, doc = document.documentElement;
+            for (i = 0; i < secs.length; i++) if (secs[i].getBoundingClientRect().top < vh * .4) cur = secs[i].id;
+            if (window.innerHeight + (window.pageYOffset || doc.scrollTop) >= doc.scrollHeight - 2) cur = secs.length ? secs[secs.length - 1].id : cur;
+            for (i = 0; i < links.length; i++) {
+                if (links[i].getAttribute('href') === '#' + cur) links[i].setAttribute('aria-current', 'true');
+                else links[i].removeAttribute('aria-current');
+            }
+        }
+        function queue() {
+            if (queued) return;
+            queued = true;
+            (window.requestAnimationFrame || setTimeout)(pass);
+        }
+        function watch() {
+            var list = document.querySelectorAll('.sec'), i, j;
+            shot = document.querySelector('.shot');
+            links = bar ? bar.querySelectorAll('.cmd-a') : [];
+            for (i = 0; i < list.length; i++) secs.push(list[i]);
+            window.addEventListener('scroll', queue, { passive: true });
+            window.addEventListener('resize', queue);
+            window.addEventListener('beforeprint', reveal);
+            fitBar();
+            if (bar && window.ResizeObserver) try { new ResizeObserver(fitBar).observe(bar); } catch (e) {}
+            if (reduce) { reveal(); pass(); return; }
+
+            /* a line a step: 34ms, or less if the section is long, so none takes more than
+               about 400ms. the check's result lands one step after the last line. only
+               sections still below the fold wait to be printed, and never the one focus is
+               already in (a Shift+Tab that skipped the boot lands on the last link). but on a
+               first visit that hands off at the top, whatever the first screen shows of them
+               waits too, and prints just after the commands, so the screen powers on alone,
+               the way the holding page's does */
+            var vh = window.innerHeight || document.documentElement.clientHeight;
+            hold = !has(root, 'warm') && !(window.pageYOffset || document.documentElement.scrollTop);
+            for (i = 0; i < secs.length; i++) {
+                var lines = secs[i].querySelectorAll('.pl'), step = Math.min(34, Math.floor(400 / lines.length));
+                for (j = 0; j < lines.length; j++) lines[j].style.setProperty('--i', j);
+                secs[i].style.setProperty('--step', step + 'ms');
+                secs[i].style.setProperty('--done', (lines.length * step + 60) + 'ms');
+                if ((hold || secs[i].getBoundingClientRect().top >= vh * .92) && !secs[i].contains(document.activeElement)) add(secs[i], 'pend');
+            }
+            if (hold) setTimeout(function () { hold = false; queue(); }, 1900);
+            // a keyboard or a find-in-page that lands in a section prints it at once
+            document.addEventListener('focusin', function (e) {
+                for (var n = e.target; n && n !== document; n = n.parentNode) if (n.className && has(n, 'sec')) { show(n); break; }
+            });
+            pass();
+            // a face that lands late moves everything up: measure again once the fonts are in
+            if (document.fonts && document.fonts.ready) document.fonts.ready.then(queue);
+            window.addEventListener('load', queue);
+        }
+
+        // smooth scrolling from here on, for the commands (see the CSS)
+        window.addEventListener('load', function () { (window.requestAnimationFrame || setTimeout)(function () { add(root, 'sm'); }); });
+
+        if (!hero) return;
+
+        /* ---- no boot this visit (settled in the head), or nothing to boot with ---- */
+        if (!has(root, 'booting') || reduce || !term || !log || !window.Promise) { light(); return; }
+
+        /* ---- the terminal ---- */
+        var cursor = document.createElement('span'); cursor.className = 'tc';
+        function jump() { term.scrollTop = 1e9; }
+        function isIdle(d) { return !!(d && d.lastChild === cursor && d.firstChild.data === ''); }
+        function make(text, cls) {
+            var d = document.createElement('div');
+            d.className = 'tl' + (cls ? ' ' + cls : '');
+            d.appendChild(document.createTextNode(text));
+            return d;
+        }
+        function block(text, cls) {          // a line the cursor does not sit on
+            var d = make(text, cls); log.appendChild(d); jump(); return d;
+        }
+        function line(text, cls) {           // the cursor's line: writes on a waiting empty one, else a new one
+            var d = log.lastChild;
+            if (!isIdle(d)) { d = make('', ''); log.appendChild(d); }
+            d.className = 'tl' + (cls ? ' ' + cls : '');
+            d.firstChild.data = text;
+            d.appendChild(cursor);
+            jump();
+            return d;
+        }
+        /* a frame of output: goes in above the waiting cursor line, so the cursor stays
+           at the bottom and the frames stack up over it, oldest at the top */
+        function stamp(text) {
+            var d = make(text, 'tl-art tl-px'), last = log.lastChild;
+            if (isIdle(last)) log.insertBefore(d, last); else { log.appendChild(d); line(''); }
+            return d;
+        }
+        /* ease the scroll to the new bottom, so a stamped frame slides up into view and
+           the last one slides out: the flipbook the console's boot does */
+        function slide(ms) {
+            var g = gen, el = term, start = el.scrollTop, end = el.scrollHeight - el.clientHeight;
+            if (ms <= 0 || end <= start) { jump(); return Promise.resolve(); }
+            return new Promise(function (res) {
+                var t0 = Date.now();
+                (function step() {
+                    if (g !== gen) return;
+                    var t = Math.min(1, (Date.now() - t0) / ms);
+                    el.scrollTop = start + (end - start) * (1 - Math.pow(1 - t, 2));   // ease-out
+                    if (t < 1) requestAnimationFrame(step); else res();
+                })();
+            });
+        }
+        function pause(ms) {
+            var g = gen;
+            return new Promise(function (res) { setTimeout(function () { if (g === gen) res(); }, ms); });
+        }
+        /* dotted leader to a fixed width, the way the console's checks line up. 36, not the
+           holding page's 34: "looking for isaacure.com" has a result to land now */
+        function lead(left, right) {
+            var w = 36, dots = w - left.length - right.length - 2;
+            return left + ' ' + new Array(Math.max(3, dots) + 1).join('.') + ' ' + right;
+        }
+        /* a check: the leader prints now, the result lands when the check is done */
+        function check(left, right, ms, cls) {
+            var full = lead(left, right), d = line(full.slice(0, full.length - right.length));
+            return pause(ms).then(function () { d.firstChild.data = full; if (cls) d.className += ' ' + cls; });
+        }
+        function pad2(n) { return (n < 10 ? '0' : '') + n; }
+
+        /* ---- the eye: the LCD's own pixel eye, cell for cell. every cell is two
+           characters wide and, at line-height .8, one row tall, so the cells come out
+           square (VT323 is .4em to the column). the three blink frames and the glance
+           are the LCD's too, so the terminal and the screen draw the same eye. generated
+           from the SVG's rects; a cell row of padding under each keeps them apart ---- */
+        var EYE = {
+            open: [
+                '                      ##############',
+                '                ########################',
+                '              ############################',
+                '        ########################      ######',
+                '        ########  ##############          ####',
+                '      ########    ########    ######        ##',
+                '    ####          ##############              ##',
+                '  ##                ############',
+                '##                  ##########        ##########',
+                '      ############              ########',
+                '              ######################',
+                '                    ##########'
+            ].join('\n'),
+            left: [
+                '                      ##############',
+                '                ########################',
+                '              ############################',
+                '        ########################      ######',
+                '    ########  ##############              ####',
+                '  ########    ########    ######            ##',
+                '    ####      ##############                  ##',
+                '  ##            ############',
+                '##              ##########            ##########',
+                '      ############              ########',
+                '              ######################',
+                '                    ##########'
+            ].join('\n'),
+            right: [
+                '                      ##############',
+                '                ########################',
+                '              ############################',
+                '        ########################      ######',
+                '            ########  ##############      ####',
+                '          ########    ########    ######    ##',
+                '    ####              ##############          ##',
+                '  ##                    ############',
+                '##                      ##########    ##########',
+                '      ############              ########',
+                '              ######################',
+                '                    ##########'
+            ].join('\n'),
+            half: [
+                '',
+                '',
+                '',
+                '',
+                '            ##########################',
+                '        ####################################',
+                '        ####      ##############      ##########',
+                '  ######            ############',
+                '##                  ##########        ##########',
+                '      ############              ########',
+                '              ######################',
+                '                    ##########'
+            ].join('\n'),
+            slit: [
+                '',
+                '',
+                '',
+                '',
+                '',
+                '',
+                '        ##########              ################',
+                '  ######          ##############',
+                '##################  ##########  ################',
+                '                  ##############',
+                '',
+                ''
+            ].join('\n'),
+            shut: [
+                '',
+                '',
+                '',
+                '',
+                '',
+                '',
+                '                                              ##',
+                '  ################              ##############',
+                '################################################',
+                '                  ##############',
+                '',
+                ''
+            ].join('\n')
+        };
+
+        var BANNER = [
+        ' ___ ____    _        _    ____   _   _ ____  _____',
+        '|_ _/ ___|  / \\      / \\  / ___| | | | |  _ \\| ____|',
+        ' | |\\___ \\ / _ \\    / _ \\| |     | | | | |_) |  _|',
+        ' | | ___) / ___ \\  / ___ \\ |___  | |_| |  _ <| |___',
+        '|___|____/_/   \\_\\/_/   \\_\\____|  \\___/|_| \\_\\_____|'
+        ].join('\n');
+
+        /* ---- the sequence ---- */
+        function run() {
+            var g = gen, now = new Date();
+            var today = now.getFullYear() + '-' + pad2(now.getMonth() + 1) + '-' + pad2(now.getDate());
+            function eyeFrame(name, slideMs, hold) {
+                return function () { if (g !== gen) return; stamp(EYE[name]); return slide(slideMs).then(function () { return pause(hold); }); };
+            }
+            /* about 3.1s end to end, like the holding page's: the checks land in order, quick
+               ones quicker, the ones that look for something a beat longer. the site is
+               there now, so /site mounts and the search finds it. the eye's one blink keeps
+               the LCD's timing */
+            var seq = pause(250)
+                .then(function () { return check('> power', 'ok', 60); })
+                .then(function () { return pause(20); })
+                .then(function () { return check('> memcheck 8K', 'ok', 110); })
+                .then(function () { return pause(20); })
+                .then(function () { return check('> clock', today, 30); })
+                .then(function () { return pause(20); })
+                .then(function () { return check('> mounting /site', 'ok', 150); })
+                .then(function () { return pause(30); })
+                .then(function () { return check('> looking for isaacure.com', 'found', 240); })
+                .then(function () { return pause(40); })
+                .then(function () { return check('> eye subsystem', 'waking', 100); })
+                .then(function () { return pause(70); })
+                .then(function () {
+                    block('');
+                    block(BANNER, 'tl-art');
+                    line('                A GOOD EYE OS  v2.0', 'tl-art tl-dim');
+                    return pause(220);
+                })
+                .then(function () { block(''); line(''); return pause(30); })
+                // the eye powers on, has a look around, and blinks once, the LCD's blink
+                // (half 45 · slit 40 · shut 90 · slit 55 · half 70): each frame is stamped
+                // under the last and the log slides up to it
+                .then(eyeFrame('open', 120, 260))
+                .then(eyeFrame('left', 40, 70)).then(eyeFrame('right', 40, 70)).then(eyeFrame('open', 40, 80));
+            [['half', 45], ['slit', 40], ['shut', 90], ['slit', 55], ['half', 70]].forEach(function (f) { seq = seq.then(eyeFrame(f[0], 20, f[1])); });
+            seq = seq.then(eyeFrame('open', 40, 200));
+            seq.then(function () { return pause(120); })
+               .then(function () { return check('> handing off to /dev/eye0', 'ok', 80); })
+               .then(function () { return pause(200); })
+               .then(function () { if (g === gen) light(); })
+               .catch(light);
+        }
+
+        /* any key, a tap or click anywhere, the button, or focus arriving on the page
+           skips to the screen. a browser chord (zoom, find, reload) is not a skip, nor are
+           lock and function keys, nor Tab itself (the focus it moves is). a click rather
+           than pointerdown, so a pinch to read the small type or a swipe is not either.
+           a key that would scroll only skips: the page opens at its top, not a screen down */
+        window.addEventListener('keydown', function (e) {
+            if (lit || e.ctrlKey || e.metaKey || e.altKey) return;
+            if (/^(Tab|Shift|Control|Alt|Meta|AltGraph|CapsLock|NumLock|ScrollLock|Dead|Unidentified|Process|ContextMenu|PrintScreen|F\d{1,2})$/.test(e.key)) return;
+            if (/^( |Spacebar|Enter|PageDown|PageUp|ArrowDown|ArrowUp|ArrowLeft|ArrowRight|Home|End)$/.test(e.key)) e.preventDefault();
+            light();
+        });
+        window.addEventListener('click', function () { light(); });   // the skip button's click bubbles here too
+        // and the terminal listens itself: iOS only turns a tap into a click where something
+        // below body answers it, and a listener on window doesn't count
+        term.addEventListener('click', function () { light(); });
+        document.addEventListener('focusin', function (e) {
+            var t = e.target;
+            if (lit || t === skipBtn || t === document.body || t === root || t === document || t === window) return;
+            light();
+        });
+
+        /* the terminal shows its lone cursor at once, then waits (briefly) for its face, so
+           the art does not reflow mid-boot, and waits to be looked at: in a hidden tab timers
+           crawl and frames cannot slide. the 12s budget is armed when the boot really starts;
+           the 20s one from now covers a document that never says it is visible. if the
+           head's own last resort got there first, there is nothing left to boot */
+        var started = false;
+        line('');
+        function fit() {                 // the column the face really advances, for the art's size
+            var probe = make('0000000000', 'tl-art');
+            probe.style.cssText = 'position:absolute;visibility:hidden';
+            log.appendChild(probe);
+            var em = parseFloat(getComputedStyle(probe).fontSize), w = probe.getBoundingClientRect().width;
+            log.removeChild(probe);
+            if (w > 0 && em > 0) term.style.setProperty('--col', (w / 10 / em).toFixed(4));
+        }
+        function start() {
+            if (started || lit) return;
+            if (!has(root, 'booting')) { light(); return; }
+            started = true;
+            setTimeout(light, 12000);
+            clearTimeout(window.iuLast);       // the head's last resort: this budget covers it now
+            fit();
+            try { run(); } catch (e) { light(); }
+        }
+        function whenVisible(fn) {
+            if (!document.hidden) return fn();
+            document.addEventListener('visibilitychange', function f() {
+                if (!document.hidden) { document.removeEventListener('visibilitychange', f); fn(); }
+            });
+        }
+        function go() { whenVisible(start); }
+        setTimeout(function () { if (!started) light(); }, 20000);
+        if (document.fonts && document.fonts.load) {
+            document.fonts.load('1em VT323').then(function () { if (started && !lit) fit(); go(); }, go);
+            setTimeout(go, 1500);
+        } else go();
+    })();
+    </script>
+</body>
+</html>
