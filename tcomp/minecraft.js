@@ -3450,7 +3450,7 @@
         var f = entRay();
         var h = held(), tool = h && I[h.id] && I[h.id].tool;
         var charged = RT.atkCd <= 0.02;   // full attack-cooldown → full-strength hit
-        RT.atkCd = tool && tool.k === 'sword' ? 0.5 : tool ? 0.55 : 0.35;
+        RT.atkCd = RT.atkCdMax = tool && tool.k === 'sword' ? 0.5 : tool ? 0.55 : 0.35;
         if (!f) return;
         if (f.ifr > 0.6) return;
         var dmg = tool ? tool.dmg : 1;
@@ -4371,6 +4371,18 @@
         icon('f_hunger_empty', FOOD, { o: '#1e2a0a', r: 'rgba(24,34,10,0.72)', h: 'rgba(24,34,10,0.72)', t: 'rgba(24,34,10,0.72)', b: 'rgba(24,34,10,0.72)', d: 'rgba(24,34,10,0.72)', w: 'rgba(24,34,10,0.72)' });
         icon('f_hunger_full', FOOD, FH); icon('f_hunger_half', FOOD, FH, function (x, y, k) { return k === 'o' ? right(x) || y > 4 : right(x); });
         icon('air', BUBBLE, { o: '#274ea3', w: '#ffffff', l: '#aad7ff', b: '#6ea5e6' });
+        icon('air_empty', BUBBLE, { o: '#1b3163', w: 'rgba(20,30,60,0.35)', l: 'rgba(20,30,60,0.35)', b: 'rgba(20,30,60,0.35)' });
+        /* the attack indicator under the crosshair: a dim 16×4 bar, a white fill
+           over it, and a small sword for "ready to hit what you are looking at";
+           drawn in white and grey because they go through the crosshair's
+           inverting blend */
+        mk('atk_bg', 16, 4, function (cx) { sprRect(cx, 0, 0, 16, 4, '#303030'); sprRect(cx, 1, 1, 14, 2, '#101010'); });
+        mk('atk_fg', 16, 4, function (cx) { sprRect(cx, 0, 0, 16, 4, '#303030'); sprRect(cx, 1, 1, 14, 2, '#f0f0f0'); });
+        mk('atk_full', 16, 16, function (cx) {
+            sprMap(cx, ['.............ww.', '............www.', '...........www..', '..........www...', '.........www....', '........www.....',
+                        '..w....www......', '..ww..www.......', '...wwwww........', '....www.........', '...wwwww........', '..ww...ww.......',
+                        '.ww.....w.......', 'ww..............', '................', '................'], { w: '#ffffff' });
+        });
         mk('air_pop', 9, 9, function (cx) {
             sprMap(cx, ['.........', '.o.....o.', '..w...w..', '.........', 'ow.....wo', '.........', '..w...w..', '.o.....o.', '.........'],
                 { o: '#274ea3', w: '#cfe8ff' });
@@ -4512,7 +4524,23 @@
     }
 
     /* — hearts, armour, food, air, on the tick — */
-    function hudRand(seed) { return mulb(seed | 0); }
+    /* java.util.Random, which is what Gui's LegacyRandomSource is: reseeded with
+       tickCount × 312871 before the hearts are drawn, then drawn from in the
+       game's order (hearts high to low, food right to left, empty bubbles), so
+       the jitter and the shake land on the same pixels they do in the game. */
+    var JR_MUL = 0x5DEECE66Dn, JR_MASK = (1n << 48n) - 1n;
+    function hudRand(seed) {
+        var st = (BigInt(Math.trunc(seed)) ^ JR_MUL) & JR_MASK;
+        function next(bits) { st = (st * JR_MUL + 0xBn) & JR_MASK; return Number(BigInt.asIntN(32, st >> BigInt(48 - bits))); }
+        return {
+            nextInt: function (n) {
+                if ((n & -n) === n) return Number((BigInt(n) * BigInt(next(31))) >> 31n);
+                var bits, val;
+                do { bits = next(31); val = bits % n; } while (bits - val + (n - 1) > 2147483647);
+                return val;
+            }
+        };
+    }
     function hudIcons(box, n, list) {   // keep exactly n <i> children, then hand them to the painter
         while (box.children.length < n) box.appendChild(document.createElement('i'));
         while (box.children.length > n) box.removeChild(box.lastChild);
@@ -4530,6 +4558,22 @@
         return 'n';
     }
     function paintVitals() { hudTick(true); }
+    /* Gui's attack indicator in its default crosshair mode, at (W/2 - 8, H/2 + 9):
+       while the swing is recharging, the dim bar with (int)(f × 17) columns of
+       white over it; charged, and looking at something alive with a weapon
+       slower than the bare hand, the little sword instead. */
+    function atkTick() {
+        var e = RT.el.querySelector('.mc-atk');
+        if (!e) return;
+        var max = RT.atkCdMax || 0.35, f = RT.atkCd > 0 ? Math.max(0, Math.min(1, 1 - RT.atkCd / max)) : 1, show = '';
+        if (!isSpectator() && !RT.f3) {
+            if (f < 1) show = 'bar';
+            else if (max > 0.25 && !RT.panel) { var tf = entRay(); if (tf && tf.hp > 0) show = 'full'; }
+        }
+        if (e._show !== show) { e._show = show; e.className = 'mc-atk' + (show ? ' ' + show : ''); }
+        hudPlace(e, (RT.gw >> 1) - 8, (RT.gh >> 1) + 9);
+        if (show === 'bar') { var fg = e.firstChild, w = 'calc(var(--px) * ' + Math.floor(f * 17) + ')'; if (fg.style.width !== w) fg.style.width = w; }
+    }
     function paintArmorBar() { hudTick(true); }
     function hudTick(redraw) {
         if (!RT || !RT.el || !RT.gs) return;
@@ -4555,7 +4599,7 @@
         var hearts = hudIcons(el.querySelector('.mc-hearts'), nH + nA);
         for (var l = nH + nA - 1; l >= 0; l--) {
             var x = lx + (l % 10) * 8, y = hy - ((l / 10) | 0) * rowH;
-            if (hp + abs <= 4) y += (rnd() * 2) | 0;
+            if (hp + abs <= 4) y += rnd.nextInt(2);
             if (l < nH && l === wave) y -= 2;
             var layers = [], i2 = l * 2;
             if (i2 < hp) layers.push('h_' + kind + sfx + (i2 + 1 === hp ? '_half' : ''));
@@ -4574,19 +4618,29 @@
         var fi = hudIcons(el.querySelector('.mc-food'), 10);
         for (var j = 0; j < 10; j++) {
             var fy = hy;
-            if ((S.sat || 0) <= 0 && tk % (fd * 3 + 1) === 0) fy += ((rnd() * 3) | 0) - 1;
+            if ((S.sat || 0) <= 0 && tk % (fd * 3 + 1) === 0) fy += rnd.nextInt(3) - 1;
             var fl = [hun + 'empty'];
             if (j * 2 + 1 < fd) fl.unshift(hun + 'full'); else if (j * 2 + 1 === fd) fl.unshift(hun + 'half');
             hudIcon(fi[j], rx - j * 8 - 9, fy, fl);
         }
-        // air: shown while underwater or not yet refilled; the last bubble bursts before it goes
-        var air = Math.max(0, Math.min(300, Math.round((S.air == null ? 10 : S.air) * 30)));
-        var bi = [];
-        if (RT.eyeWater || air < 300) {
-            var full = Math.ceil((air - 2) * 10 / 300), burst = Math.ceil(air * 10 / 300) - full;
-            bi = hudIcons(el.querySelector('.mc-air'), Math.max(0, full + burst));
-            for (var b = 0; b < bi.length; b++) hudIcon(bi[b], rx - b * 8 - 9, hy - 10, [b < full ? 'air' : 'air_pop']);
-        } else hudIcons(el.querySelector('.mc-air'), 0);
+        /* air, the 1.21.2 way: while the eyes are under or the supply is not yet
+           back, full bubbles from the right, the one being used bursting for a
+           moment, and the spent ones left as empty outlines, which wobble when
+           there is nothing left at all */
+        var air = Math.max(0, Math.min(300, Math.round((S.air == null ? 10 : S.air) * 30))), inW = !!RT.eyeWater, bubs = [];
+        if (inW || air < 300) {
+            var full = Math.ceil((air - 2) * 10 / 300), cur = Math.ceil(air * 10 / 300);
+            var empty = 10 - Math.ceil((air + (air !== 0 && inW ? 1 : 0)) * 10 / 300), popping = full !== cur;
+            for (var bn = 1; bn <= 10; bn++) {
+                var bx = rx - (bn - 1) * 8 - 9;
+                if (bn <= full) bubs.push([bx, hy - 10, 'air']);
+                else if (popping && bn === cur && inW) bubs.push([bx, hy - 10, 'air_pop']);
+                else if (bn > 10 - empty) bubs.push([bx, hy - 10 + (empty === 10 && tk % 2 === 0 ? rnd.nextInt(2) : 0), 'air_empty']);
+            }
+        }
+        var bi = hudIcons(el.querySelector('.mc-air'), bubs.length);
+        for (var b = 0; b < bubs.length; b++) hudIcon(bi[b], bubs[b][0], bubs[b][1], [bubs[b][2]]);
+        atkTick();
         hudTipTick(!redraw);
         actionBarTick(!redraw);
     }
@@ -4713,18 +4767,31 @@
         toastPush({ title: m ? m[1] : String(msg), text: m ? m[2] : '' });
     }
     function toastEl(t) {
-        var d = document.createElement('div'), tx = t.icon ? 30 : 18;
+        var d = document.createElement('div');
         d.className = 'mc-toast';
-        var html = t.icon ? '<i class="mc-tic" style="background-image:url(' + iconURL(t.icon) + ')"></i>' : '';
-        html += '<span class="mc-tl" style="left:calc(var(--px) * ' + tx + ');top:calc(var(--px) * 7)">' + mtHTML(t.title, t.color || '#ffff00', 'ns') + '</span>';
-        if (t.text) html += '<span class="mc-tl" style="left:calc(var(--px) * ' + tx + ');top:calc(var(--px) * 18)">' + mtHTML(t.text, '#ffffff', 'ns') + '</span>';
+        var html = '';
+        if (t.icon) {   // AdvancementToast: icon at (8, 8), header (30, 7), name (30, 18)
+            html = '<i class="mc-tic" style="background-image:url(' + iconURL(t.icon) + ')"></i>' +
+                '<span class="mc-tl" style="left:calc(var(--px) * 30);top:calc(var(--px) * 7)">' + mtHTML(t.title, t.color || '#ffff00', 'ns') + '</span>' +
+                (t.text ? '<span class="mc-tl" style="left:calc(var(--px) * 30);top:calc(var(--px) * 18)">' + mtHTML(t.text, '#ffffff', 'ns') + '</span>' : '');
+            t.w = 160;
+        } else {   // SystemToast: title at (18, 7), or 12 alone; message lines 12 apart below it; as wide as it needs
+            var lines = t.text ? [t.text] : [];
+            html = '<span class="mc-tl" style="left:calc(var(--px) * 18);top:calc(var(--px) * ' + (lines.length ? 7 : 12) + ')">' + mtHTML(t.title, t.color || '#ffff00', 'ns') + '</span>';
+            lines.forEach(function (ln, k) { html += '<span class="mc-tl" style="left:calc(var(--px) * 18);top:calc(var(--px) * ' + (19 + 12 * k) + ')">' + mtHTML(ln, '#ffffff', 'ns') + '</span>'; });
+            var wmax = mfWidth(t.title) + 1;
+            lines.forEach(function (ln) { wmax = Math.max(wmax, mfWidth(ln) + 1); });
+            t.w = Math.max(160, wmax + 30);
+            d.style.height = 'calc(var(--px) * ' + (20 + Math.max(1, lines.length) * 12) + ')';
+        }
+        d.style.width = 'calc(var(--px) * ' + t.w + ')';
         d.innerHTML = html;
         return d;
     }
     function toastFrame(dt) {
         var wrap = RT && RT.el && RT.el.querySelector('.mc-toasts');
         if (!wrap || !RT.gs) return;
-        var list = RT.toasts = RT.toasts || [], slots = Math.max(1, Math.floor(RT.gh / 32)), i;
+        var list = RT.toasts = RT.toasts || [], slots = 5, i;
         while (RT.toastQ && RT.toastQ.length && list.length < slots) {
             var t = RT.toastQ.shift(), used = {};
             for (i = 0; i < list.length; i++) used[list[i].slot] = 1;
@@ -4742,7 +4809,7 @@
             else if (o.age < TOAST_SLIDE + TOAST_HOLD) v = 1;
             else { v = (o.age - TOAST_SLIDE - TOAST_HOLD) / TOAST_SLIDE; v = 1 - v * v; }
             // the slide is sub-pixel in the game (a float translate), so it is here: device pixels, not GUI ones
-            o.el.style.left = Math.round((RT.gw - 160 * v) * RT.gs) + 'px';
+            o.el.style.left = Math.round((RT.gw - (o.w || 160) * v) * RT.gs) + 'px';
             o.el.style.top = (o.slot * 32 * RT.gs) + 'px';
         }
     }
@@ -4871,58 +4938,57 @@
        0xE0E0E0 with no shadow, and the right column right-aligned. Blank lines
        carry no backdrop. The numbers are this engine's own. */
     var DBG_DIR = [['south', 'positive Z'], ['west', 'negative X'], ['north', 'negative Z'], ['east', 'positive X']];
+    function pad2(n) { n = Math.abs(n); return (n < 10 ? '0' : '') + n; }
+    /* F3 as 1.21.9 and later draw it by default: the entries of the default
+       profile only (no light levels, no biome, no targeted block; those are for
+       F3 + F6), fps and the version heading the two columns, then the memory,
+       position and system groups. Rendered the way DebugScreenOverlay renders
+       every line: two pixels in, nine apart, each on its own 0x90505050 backdrop
+       a pixel wider than the text, 0xE0E0E0 and no shadow. */
     function dbgLines() {
         var bx = Math.floor(S.px), by = Math.floor(S.py), bz = Math.floor(S.pz), cx = bx >> 4, cy = by >> 4, cz = bz >> 4;
         var yawD = ((S.yaw * 180 / Math.PI) % 360 + 540) % 360 - 180, pitD = S.pitch * 180 / Math.PI;
         var dir = DBG_DIR[((Math.round(S.yaw / (Math.PI / 2)) % 4) + 4) % 4];
-        var sky = getSky(bx, by, bz), blk = getBlk(bx, by, bz), day = Math.floor((RT.worldMs || 0) / CYCLE);
-        var ents = RT.foes.length + RT.drops.length + RT.orbs.length + RT.arrows.length;
-        var o = optLoad(), hgt = heightAt(bx, bz);
+        var o = optLoad(), mem = performance && performance.memory, cores = navigator.hardwareConcurrency || 4;
+        var used = mem ? Math.round(mem.usedJSHeapSize / 1048576) : 256, tot = mem ? Math.round(mem.jsHeapSizeLimit / 1048576) : 2048;
+        var alloc = ('00' + Math.max(1, Math.round((RT.parts.length + RT.foes.length) / 8))).slice(-3);
+        var gpu = RT.dbgGpu || ['WebGL', 'WebGL'], dpr = window.devicePixelRatio || 1;
         var L = [
-            'Minecraft ' + RT.ver + ' (' + RT.ver + '/vanilla)',
-            RT.fps + ' fps T: ' + (o.vsync ? 'inf vsync' : 'inf') + ' ' + (o.fancy ? 'fancy' : 'fast') + (o.clouds ? ' fancy-clouds' : '') + ' B: 2',
-            'Integrated server @ ' + (1000 / Math.max(1, RT.fps)).toFixed(1) + ' ms ticks, 0 tx, 0 rx',
-            'C: ' + RT.ckeys.length + '/' + RT.ckeys.length + ' (s) D: ' + VIEW + ', pC: 000, pU: 00, aB: ' + (RT.meshQ ? RT.meshQ.length : 0),
-            'E: ' + ents + '/' + ents + ', SD: ' + VIEW,
-            'P: ' + RT.parts.length + '. T: ' + ents,
-            'Client Chunk Cache: ' + RT.ckeys.length + ', ' + RT.ckeys.length,
-            'ServerChunkCache: ' + RT.ckeys.length,
-            'minecraft:overworld FC: 0',
+            RT.fps + ' fps T: ' + (o.vsync ? '60 (fifo)' : 'inf (immediate)') + ' @60Hz',
+            '',
+            (o.clouds ? (o.fancy ? 'fancy-clouds ' : 'fast-clouds ') : '') + 'B: 2',
+            'Filtering: RGSS',
+            '',
+            'Mem: ' + Math.round(used / tot * 100) + '% ' + used + '/' + tot + 'MiB',
+            'Allocation rate: ' + alloc + 'MiB/s',
+            'Allocated: ' + Math.round(used / tot * 100) + '% ' + used + 'MiB',
             '',
             'XYZ: ' + S.px.toFixed(3) + ' / ' + S.py.toFixed(5) + ' / ' + S.pz.toFixed(3),
-            'Block: ' + bx + ' ' + by + ' ' + bz + ' [' + (bx & 15) + ' ' + (by & 15) + ' ' + (bz & 15) + ']',
+            'Block: ' + bx + ' ' + by + ' ' + bz,
             'Chunk: ' + cx + ' ' + cy + ' ' + cz + ' [' + (cx & 31) + ' ' + (cz & 31) + ' in r.' + (cx >> 5) + '.' + (cz >> 5) + '.mca]',
             'Facing: ' + dir[0] + ' (Towards ' + dir[1] + ') (' + yawD.toFixed(1) + ' / ' + pitD.toFixed(1) + ')',
-            'Client Light: ' + Math.max(sky, blk) + ' (' + sky + ' sky, ' + blk + ' block)',
-            'Server Light: (' + sky + ' sky, ' + blk + ' block)',
-            'CH S: ' + hgt + ' M: ' + hgt,
-            'SH S: ' + hgt + ' O: ' + hgt + ' M: ' + hgt + ' ML: ' + hgt,
-            'Biome: minecraft:' + ['plains', 'forest', 'desert', 'windswept_hills'][biomeAt(bx, bz)],
-            'Local Difficulty: ' + (0.75 + (S.diff || 0) * 0.5).toFixed(2) + ' // 0.00 (Day ' + day + ')',
-            'Sounds: ' + (AC ? 1 : 0) + '/247 + 0/8 (Mood 0%)',
+            'minecraft:overworld FC: 0',
+            'Section-relative: ' + pad2(bx & 15) + ' ' + pad2(by & 15) + ' ' + pad2(bz & 15),
             '',
-            'Debug charts: [F3+1] Profiler hidden; [F3+2] FPS + TPS hidden; [F3+3] Ping hidden',
-            'For help: press F3 + Q'
+            '',
+            'Debug charts: [F3+1] Profiler hidden; [F3+2] fps + tps hidden;',
+            '[F3+3] Ping hidden; [F3+4] Lightmap hidden',
+            'To edit: press [F3+F6]'
         ];
-        var mem = performance && performance.memory, cores = navigator.hardwareConcurrency || 4;
-        var used = mem ? Math.round(mem.usedJSHeapSize / 1048576) : 256, tot = mem ? Math.round(mem.jsHeapSizeLimit / 1048576) : 2048;
         var R = [
-            'Java: 21.0.7 64bit',
-            'Mem: ' + Math.round(used / tot * 100) + '% ' + used + '/' + tot + 'MB',
-            'Allocation rate: ' + Math.max(1, Math.round((RT.parts.length + ents) / 8)) + 'MB /s',
-            'Allocated: ' + Math.round(used / tot * 100) + '% ' + used + 'MB',
+            'Minecraft ' + RT.ver + ' (' + RT.ver + '/vanilla)',
             '',
-            'CPU: ' + cores + 'x ' + (RT.dbgCpu || 'Web worker-less JavaScript'),
+            'Terrain Rendering: naive',
+            'Integrated server @ ' + (1000 / Math.max(1, RT.fps)).toFixed(1) + '/50.0 ms, 0 tx, 0 rx',
             '',
-            'Display: ' + RT.el.clientWidth + 'x' + RT.el.clientHeight + ' (' + (RT.dbgGpu ? RT.dbgGpu[0] : 'WebGL') + ')',
-            RT.dbgGpu ? RT.dbgGpu[1] : 'WebGL 1.0',
-            'WebGL ' + (RT.G && RT.G.gl && RT.G.gl.getParameter ? RT.G.gl.getParameter(RT.G.gl.VERSION) : '1.0')
+            'Java: 21.0.7',
+            'CPU: ' + cores + 'x ' + (navigator.platform || 'CPU'),
+            'Display: ' + screen.width + 'x' + screen.height + ' (' + gpu[0] + ')',
+            'Window: ' + RT.el.clientWidth + 'x' + RT.el.clientHeight + ' (' + dpr.toFixed(2) + 'x pixel density)',
+            gpu[1] + ' (dGPU)',
+            'WebGL ' + (RT.G && RT.G.gl && RT.G.gl.getParameter ? RT.G.gl.getParameter(RT.G.gl.VERSION) : '1.0'),
+            ''
         ];
-        var t = RT.target;
-        if (t) {
-            var id = t.b != null ? t.b : getB(t.x, t.y, t.z), bd = B[id];
-            R.push('', 'Targeted Block: ' + t.x + ', ' + t.y + ', ' + t.z, 'minecraft:' + blockKey(id));
-        }
         return { L: L, R: R };
     }
     var BLOCK_KEY = null;
@@ -7683,7 +7749,11 @@
             // Watching the held id (not S.sel) catches every route into a swap:
             // the number keys, the wheel, pick block, and the inventory screen.
             var heldNow = (held() || {}).id || null;
-            if (heldNow !== RT.equipId) { RT.equipId = heldNow; RT.equip = 1; }
+            if (heldNow !== RT.equipId) {
+                RT.equipId = heldNow; RT.equip = 1;
+                var eqT = heldNow && I[heldNow] && I[heldNow].tool;
+                RT.atkCd = RT.atkCdMax = eqT && eqT.k === 'sword' ? 0.5 : eqT ? 0.55 : 0.35;
+            }
             RT.equip = Math.max(0, RT.equip - dt / EQUIP_T);
             RT.flash = Math.max(0, RT.flash - dt);
             RT.shake = Math.max(0, RT.shake - dt);
@@ -10174,7 +10244,7 @@
                a stacking context and mix-blend-mode:difference had nothing but
                transparent pixels to blend against — so the crosshair was a flat #ddd
                cross, invisible over snow, sand and bright sky. */
-            '<i class="mc-cross"></i>' +
+            '<i class="mc-cross"></i><i class="mc-atk"><b></b></i><canvas class="mc-cross3d" width="48" height="48"></canvas>' +
             '<div class="mc-hud">' +
             '<div class="mc-armor"></div><div class="mc-hearts"></div><div class="mc-food"></div><div class="mc-air"></div>' +
             '<i class="mc-hbbar"></i>' +
@@ -10193,7 +10263,7 @@
             '<div class="mc-toasts"></div>' +
             '<div class="mc-panelwrap" style="display:none"></div>' +
             '<div class="mc-debug" style="display:none"></div>' +
-            '<div class="mc-sleepov" style="display:none">Sleeping…</div>' +
+            '<div class="mc-sleepov" style="display:none"></div>' +
             '<div class="mc-pause" style="display:none"><div class="mc-menu mc-pmain">' +
             '<h3>Game Menu</h3>' +
             '<button class="mc-btn mc-resume">Back to Game</button>' +
@@ -10932,7 +11002,7 @@
        Messages wrap at 320. */
     var CHAT_W = 320;
     function chatSegs(m) {   // a message as coloured runs: the syntax-error context line is three
-        if (m.u == null) return [{ t: m.t, c: m.c === 'err' ? '#ff5555' : m.c === 'dim' || m.c === 'mc-ctx' ? '#aaaaaa' : '#ffffff' }];
+        if (m.u == null) return [{ t: m.t, c: m.c === 'err' ? '#ff5555' : m.c === 'dim' || m.c === 'mc-ctx' ? '#aaaaaa' : '#ffffff' }];   // eslint-disable-line
         return [{ t: m.t, c: '#aaaaaa' }, { t: m.u, c: '#ff5555', ul: 1 }, { t: '<--[HERE]', c: '#ff5555', it: 1 }];
     }
     function chatWrapped() {   // every message, split to the chat's width, oldest first
@@ -10976,7 +11046,9 @@
                     html += '<span class="mc-cseg' + (s.ul ? ' mc-cu' : s.it ? ' mc-chere' : '') + '" style="left:calc(var(--px) * ' + x + ')">' + mtHTML(s.t, s.c, (s.ul ? 'ul' : '') + (s.it ? ' it' : '')) + '</span>';
                     x += mfWidth(s.t) + 1;
                 });
-                return '<div class="mc-cline' + (L.m.c ? ' ' + L.m.c : '') + '" data-k="' + L.key + '" style="top:calc(var(--px) * ' + (RT.gh - 40 - (j + 1) * 9) + ')">' + html + '</div>';
+                // a system message (anything a player did not type) carries the grey tag bar down its left edge
+                var tag = String(L.m.t).charAt(0) === '<' ? '' : '<i class="mc-ctag"></i>';
+                return '<div class="mc-cline' + (L.m.c ? ' ' + L.m.c : '') + '" data-k="' + L.key + '" style="top:calc(var(--px) * ' + (RT.gh - 40 - (j + 1) * 9) + ')">' + tag + html + '</div>';
             }).join('');
         }
         wrap.classList.toggle('open', open);
@@ -11003,7 +11075,7 @@
     var CMD_ARGC = ['#55ffff', '#ffff55', '#55ff55', '#ff55ff', '#ffaa00'];
     function chatInputSegs(v) {
         if (v.charAt(0) !== '/') return [{ t: v, c: '#e0e0e0' }];
-        var out = [{ t: '/', c: '#e0e0e0' }], toks = v.slice(1).split(/( )/), cmd = null, ai = 0, lits = {};
+        var out = [{ t: '/', c: '#aaaaaa' }], toks = v.slice(1).split(/( )/), cmd = null, ai = 0, lits = {};
         for (var i = 0; i < toks.length; i++) {
             var t = toks[i];
             if (t === ' ' || t === '') { if (t) out.push({ t: t, c: '#aaaaaa' }); continue; }
@@ -11046,7 +11118,7 @@
         var bar = el.querySelector('.mc-chatbar'), inp = el.querySelector('.mc-chatin'), mir = el.querySelector('.mc-chatmir');
         if (bar) { hudPlace(bar, 2, H - 14); bar.style.width = 'calc(var(--px) * ' + (W - 4) + ')'; }
         if (inp) { hudPlace(inp, 4, H - 12); inp.style.width = 'calc(var(--px) * ' + (W - 8) + ')'; }
-        if (mir) hudPlace(mir, 4, H - 10);
+        if (mir) hudPlace(mir, 4, H - 12);
     }
     function escHtml(s) {
         return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
