@@ -58,3 +58,10 @@ to try things on before they move to `/comp/`.
   `/tcomp/`; nothing they drive is in `/comp/` any more. The QC logs in
   `.claude/ninth-night/qc-2026-08-12/` still say `comp/` because they are
   a record, not instructions.
+- Minecraft's sounds are the real game's own recordings, as files in
+  `tcomp/mc-sounds/` (83 MB, most of it the soundtrack). More, already
+  encoded the same way, wait in this repo's `mc-sounds-archive` release;
+  `.claude/comp-tools/mc-sounds/README.md` says how to add one, where the
+  full original archive is, and how to check. `minecraft.js` loads them
+  from beside its own script, so a copy of the game in `/comp/` would need
+  its own `mc-sounds/` beside it.
