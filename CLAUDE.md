@@ -85,7 +85,7 @@ the root.
   simply the finished page. Keep both true.
 - It loads everything by absolute path (`/images/...`, `/favicon.svg`), so
   moving it to the root is a copy.
-- "This site … in progress" is the slot for `comp/` and `1p/` when they are
-  woven in.
+- There is no section for the rest of the site yet. Isaac took the "This
+  site" one out and will add one when `comp/` and `1p/` are ready to link.
 - `.claude/new/rig/` has its checks (154 of them, plus axe and
   html-validate). Run them after any change; its README says how.
