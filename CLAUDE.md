@@ -91,7 +91,9 @@ the root. (It was at `/new/` at first; that path is gone, not redirected.)
   its I before typing it.
 - It loads everything by absolute path (`/images/...`, `/favicon.svg`), so
   moving it to the root is a copy.
-- There is no section for the rest of the site yet. Isaac took the "This
-  site" one out and will add one when `comp/` and `1p/` are ready to link.
+- There is no section for the rest of the site. Isaac took the "This
+  site" one out and may add one back later (it would be the place for
+  `comp/` and `1p/`). GitHub is off the Contact list on purpose until he has
+  a GitHub he wants to show; don't put it back unless he asks.
 - `.claude/test/rig/` has its checks (156 of them, plus axe and
   html-validate). Run them after any change; its README says how.
