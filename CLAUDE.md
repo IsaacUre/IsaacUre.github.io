@@ -85,6 +85,10 @@ the root. (It was at `/new/` at first; that path is gone, not redirected.)
   for that over WCAG 2.2.2's five-second rule, so don't "fix" it. Everything
   else settles within five seconds of the boot's hand-off, and without JS or
   under reduced motion it is simply the finished page, with nothing moving.
+- The About pictures each have a little move (PICS in the script, drawn in
+  frames like the blink). Each plays once when all of it comes into view,
+  again on hover or tap, and again when you come back after 20s. They never
+  loop.
 - Stepped animations that fill backwards use end steps (or none): a start
   step filled backwards shows its first frame during the delay in browsers
   without the easing spec's "before flag". That is how the name once showed
@@ -95,5 +99,5 @@ the root. (It was at `/new/` at first; that path is gone, not redirected.)
   site" one out and may add one back later (it would be the place for
   `comp/` and `1p/`). GitHub is off the Contact list on purpose until he has
   a GitHub he wants to show; don't put it back unless he asks.
-- `.claude/test/rig/` has its checks (156 of them, plus axe and
+- `.claude/test/rig/` has its checks (169 of them, plus axe and
   html-validate). Run them after any change; its README says how.

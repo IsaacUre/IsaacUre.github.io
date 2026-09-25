@@ -578,6 +578,12 @@
         .tile .ico { display: block; height: 42px; width: auto; color: var(--term-fg); filter: drop-shadow(0 0 5px rgba(230, 228, 210, .18)); margin-top: .15em; }
         .tile .tk { text-transform: uppercase; color: var(--term-dim); }
         .sec .tile p + p { margin-top: .1em; }
+        /* and each picture has a little move of its own (the script's PICS), drawn in frames
+           the way the blink is: a .pf group is a frame, hidden until a step shows it, so
+           without the script, or between plays, each is simply the picture. the car and the
+           boulder leave by the edge of their own picture, which clips them */
+        .tile .pf { opacity: 0; }
+        .tile .ico { overflow: hidden; -webkit-tap-highlight-color: transparent; }
 
         /* ── the log: newest first ──
            two layouts, picked by the log's own width in its own columns, so the call is the
@@ -683,6 +689,8 @@
             .cmd { width: 6ch; }
             .term-row, .answer, .bar, .pl, .chk .res { opacity: 1 !important; }
             .bf { opacity: 0 !important; }          /* and no blink the script might still have in flight */
+            .tile .ico [data-f] { transform: none !important; opacity: 1 !important; }   /* and no picture in flight either */
+            .tile .ico .pf { opacity: 0 !important; }
             .shot-gb { display: none; }
             .scanlines { display: none; }
         }
@@ -807,23 +815,23 @@
             <p class="pl">I'm a systems-and-optimization guy, which explains most of this list.</p>
             <ul class="tiles" role="list">
                 <li class="tile pl">
-                    <svg class="ico" viewBox="0 0 32 28" width="48" height="42" shape-rendering="crispEdges" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="10" y="2" width="12" height="2"/><rect x="2" y="4" width="6" height="2"/><rect x="10" y="4" width="12" height="2"/><rect x="2" y="6" width="10" height="2"/><rect x="20" y="6" width="10" height="2"/><rect x="0" y="8" width="10" height="2"/><rect x="14" y="8" width="4" height="2"/><rect x="22" y="8" width="10" height="2"/><rect x="0" y="10" width="8" height="2"/><rect x="12" y="10" width="8" height="2"/><rect x="24" y="10" width="8" height="2"/><rect x="0" y="12" width="8" height="2"/><rect x="10" y="12" width="2" height="2"/><rect x="14" y="12" width="8" height="2"/><rect x="24" y="12" width="8" height="2"/><rect x="0" y="14" width="8" height="2"/><rect x="10" y="14" width="12" height="2"/><rect x="24" y="14" width="8" height="2"/><rect x="0" y="16" width="8" height="2"/><rect x="10" y="16" width="12" height="2"/><rect x="24" y="16" width="8" height="2"/><rect x="0" y="18" width="8" height="2"/><rect x="12" y="18" width="8" height="2"/><rect x="24" y="18" width="8" height="2"/><rect x="0" y="20" width="10" height="2"/><rect x="14" y="20" width="4" height="2"/><rect x="22" y="20" width="10" height="2"/><rect x="2" y="22" width="10" height="2"/><rect x="20" y="22" width="10" height="2"/></g></svg>
+                    <svg class="ico" data-pic="cam" viewBox="0 0 32 28" width="48" height="42" shape-rendering="crispEdges" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="10" y="2" width="12" height="2"/><rect x="10" y="4" width="12" height="2"/><rect x="2" y="6" width="10" height="2"/><rect x="20" y="6" width="10" height="2"/><rect x="0" y="8" width="10" height="2"/><rect x="22" y="8" width="10" height="2"/><rect x="0" y="10" width="8" height="2"/><rect x="24" y="10" width="8" height="2"/><rect x="0" y="12" width="8" height="2"/><rect x="24" y="12" width="8" height="2"/><rect x="0" y="14" width="8" height="2"/><rect x="24" y="14" width="8" height="2"/><rect x="0" y="16" width="8" height="2"/><rect x="24" y="16" width="8" height="2"/><rect x="0" y="18" width="8" height="2"/><rect x="24" y="18" width="8" height="2"/><rect x="0" y="20" width="10" height="2"/><rect x="22" y="20" width="10" height="2"/><rect x="2" y="22" width="10" height="2"/><rect x="20" y="22" width="10" height="2"/><g data-f="btn"><rect x="2" y="4" width="6" height="2"/></g><g data-f="l1"><rect x="14" y="8" width="4" height="2"/><rect x="12" y="10" width="2" height="2"/><rect x="18" y="10" width="2" height="2"/><rect x="10" y="12" width="2" height="2"/><rect x="20" y="12" width="2" height="2"/><rect x="10" y="14" width="2" height="4"/><rect x="20" y="14" width="2" height="4"/><rect x="12" y="18" width="2" height="2"/><rect x="18" y="18" width="2" height="2"/><rect x="14" y="20" width="4" height="2"/></g><g data-f="l2"><rect x="14" y="10" width="4" height="2"/><rect x="18" y="12" width="2" height="2"/><rect x="12" y="14" width="2" height="4"/><rect x="18" y="14" width="2" height="4"/><rect x="14" y="18" width="4" height="2"/></g><g data-f="l3"><rect x="14" y="12" width="4" height="6"/></g></g></svg>
                     <div><p class="tk">Photography</p><p>I shoot Canon, sometimes for the Thresher. I like portraiture and lowk everything else too.</p></div>
                 </li>
                 <li class="tile pl">
-                    <svg class="ico" viewBox="0 0 32 28" width="48" height="42" shape-rendering="crispEdges" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="12" y="0" width="8" height="2"/><rect x="8" y="2" width="16" height="2"/><rect x="4" y="4" width="24" height="2"/><rect x="0" y="6" width="32" height="2"/><rect x="0" y="8" width="32" height="2"/><rect x="0" y="10" width="8" height="2"/><rect x="14" y="10" width="4" height="2"/><rect x="24" y="10" width="8" height="2"/><rect x="0" y="12" width="12" height="2"/><rect x="14" y="12" width="4" height="2"/><rect x="20" y="12" width="2" height="2"/><rect x="24" y="12" width="8" height="2"/><rect x="0" y="14" width="8" height="2"/><rect x="14" y="14" width="4" height="2"/><rect x="20" y="14" width="2" height="2"/><rect x="24" y="14" width="8" height="2"/><rect x="0" y="16" width="8" height="2"/><rect x="10" y="16" width="8" height="2"/><rect x="20" y="16" width="2" height="2"/><rect x="24" y="16" width="8" height="2"/><rect x="0" y="18" width="8" height="2"/><rect x="14" y="18" width="4" height="2"/><rect x="24" y="18" width="8" height="2"/><rect x="0" y="20" width="32" height="2"/><rect x="4" y="22" width="24" height="2"/><rect x="8" y="24" width="16" height="2"/><rect x="12" y="26" width="8" height="2"/></g></svg>
+                    <svg class="ico" data-pic="d20" viewBox="0 0 32 28" width="48" height="42" shape-rendering="crispEdges" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="12" y="0" width="8" height="2"/><rect x="8" y="2" width="16" height="2"/><rect x="4" y="4" width="24" height="2"/><rect x="0" y="6" width="32" height="4"/><rect x="0" y="10" width="8" height="10"/><rect x="24" y="10" width="8" height="10"/><rect x="0" y="20" width="32" height="2"/><rect x="4" y="22" width="24" height="2"/><rect x="8" y="24" width="16" height="2"/><rect x="12" y="26" width="8" height="2"/><g data-f="n20"><rect x="14" y="10" width="4" height="6"/><rect x="8" y="12" width="4" height="2"/><rect x="20" y="12" width="2" height="6"/><rect x="10" y="16" width="8" height="2"/><rect x="14" y="18" width="4" height="2"/></g><g class="pf" data-f="n13"><rect x="8" y="10" width="2" height="2"/><rect x="12" y="10" width="6" height="2"/><rect x="12" y="12" width="10" height="2"/><rect x="8" y="14" width="2" height="4"/><rect x="12" y="14" width="8" height="2"/><rect x="12" y="16" width="10" height="2"/><rect x="14" y="18" width="4" height="2"/></g><g class="pf" data-f="n7"><rect x="8" y="10" width="4" height="2"/><rect x="18" y="10" width="6" height="6"/><rect x="8" y="12" width="8" height="4"/><rect x="8" y="16" width="6" height="4"/><rect x="16" y="16" width="8" height="4"/></g><g class="pf" data-f="n1"><rect x="8" y="10" width="8" height="2"/><rect x="18" y="10" width="6" height="8"/><rect x="8" y="12" width="6" height="2"/><rect x="8" y="14" width="8" height="4"/><rect x="8" y="18" width="6" height="2"/><rect x="20" y="18" width="4" height="2"/></g></g></svg>
                     <div><p class="tk">D&amp;D</p><p>I lowkey don't really play much anymore, but I "helped" run a D&amp;D club in high school.</p></div>
                 </li>
                 <li class="tile pl">
-                    <svg class="ico" viewBox="0 0 32 28" width="48" height="42" shape-rendering="crispEdges" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="6" y="6" width="20" height="2"/><rect x="4" y="8" width="24" height="2"/><rect x="2" y="10" width="8" height="2"/><rect x="12" y="10" width="12" height="2"/><rect x="26" y="10" width="4" height="2"/><rect x="2" y="12" width="6" height="2"/><rect x="14" y="12" width="8" height="2"/><rect x="24" y="12" width="2" height="2"/><rect x="28" y="12" width="2" height="2"/><rect x="2" y="14" width="8" height="2"/><rect x="12" y="14" width="12" height="2"/><rect x="26" y="14" width="4" height="2"/><rect x="2" y="16" width="28" height="2"/><rect x="2" y="18" width="12" height="2"/><rect x="18" y="18" width="12" height="2"/><rect x="2" y="20" width="10" height="2"/><rect x="20" y="20" width="10" height="2"/><rect x="4" y="22" width="6" height="2"/><rect x="22" y="22" width="6" height="2"/></g></svg>
+                    <svg class="ico" data-pic="pad" viewBox="0 0 32 28" width="48" height="42" shape-rendering="crispEdges" aria-hidden="true" focusable="false"><g fill="currentColor"><g data-f="pad"><rect x="6" y="6" width="20" height="2"/><rect x="4" y="8" width="24" height="2"/><rect x="2" y="10" width="8" height="2"/><rect x="12" y="10" width="12" height="2"/><rect x="26" y="10" width="4" height="2"/><rect x="2" y="12" width="6" height="2"/><rect x="14" y="12" width="8" height="2"/><rect x="24" y="12" width="2" height="2"/><rect x="28" y="12" width="2" height="2"/><rect x="2" y="14" width="8" height="2"/><rect x="12" y="14" width="12" height="2"/><rect x="26" y="14" width="4" height="2"/><rect x="2" y="16" width="28" height="2"/><rect x="2" y="18" width="12" height="2"/><rect x="18" y="18" width="12" height="2"/><rect x="2" y="20" width="10" height="2"/><rect x="20" y="20" width="10" height="2"/><rect x="4" y="22" width="6" height="2"/><rect x="22" y="22" width="6" height="2"/><g class="pf" data-f="r"><rect x="12" y="12" width="2" height="2"/></g><g class="pf" data-f="a"><rect x="24" y="14" width="2" height="2"/></g></g></g></svg>
                     <div><p class="tk">Games &amp; code</p><p>I initially thought I was going to get a CS degree, but then decided I wanted a job. I play PC and like shooters and roguelikes, but sadly I'm too employed nowadays to play much.</p></div>
                 </li>
                 <li class="tile pl">
-                    <svg class="ico" viewBox="0 0 36 28" width="54" height="42" shape-rendering="crispEdges" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="22" y="2" width="6" height="2"/><rect x="20" y="4" width="2" height="2"/><rect x="24" y="4" width="6" height="2"/><rect x="18" y="6" width="4" height="2"/><rect x="24" y="6" width="8" height="2"/><rect x="18" y="8" width="14" height="2"/><rect x="18" y="10" width="14" height="2"/><rect x="20" y="12" width="10" height="2"/><rect x="32" y="12" width="4" height="2"/><rect x="22" y="14" width="6" height="2"/><rect x="30" y="14" width="6" height="2"/><rect x="22" y="16" width="14" height="2"/><rect x="18" y="18" width="18" height="2"/><rect x="12" y="20" width="24" height="2"/><rect x="8" y="22" width="28" height="2"/><rect x="4" y="24" width="32" height="2"/><rect x="0" y="26" width="36" height="2"/></g></svg>
+                    <svg class="ico" data-pic="sis" viewBox="0 0 36 28" width="54" height="42" shape-rendering="crispEdges" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="22" y="16" width="14" height="2"/><rect x="18" y="18" width="18" height="2"/><rect x="12" y="20" width="24" height="2"/><rect x="8" y="22" width="28" height="2"/><rect x="4" y="24" width="32" height="2"/><rect x="0" y="26" width="36" height="2"/><rect x="32" y="12" width="4" height="2"/><rect x="30" y="14" width="6" height="2"/><g data-f="rock"><g data-f="b0"><rect x="22" y="2" width="6" height="2"/><rect x="20" y="4" width="2" height="2"/><rect x="24" y="4" width="6" height="2"/><rect x="18" y="6" width="4" height="2"/><rect x="24" y="6" width="8" height="2"/><rect x="18" y="8" width="14" height="4"/><rect x="20" y="12" width="10" height="2"/><rect x="22" y="14" width="6" height="2"/></g><g class="pf" data-f="b1"><rect x="22" y="2" width="6" height="2"/><rect x="20" y="4" width="10" height="2"/><rect x="18" y="6" width="14" height="4"/><rect x="18" y="10" width="2" height="2"/><rect x="24" y="10" width="8" height="2"/><rect x="20" y="12" width="10" height="2"/><rect x="22" y="14" width="6" height="2"/></g><g class="pf" data-f="b2"><rect x="22" y="2" width="6" height="2"/><rect x="20" y="4" width="10" height="2"/><rect x="18" y="6" width="14" height="4"/><rect x="18" y="10" width="8" height="2"/><rect x="28" y="10" width="4" height="2"/><rect x="20" y="12" width="6" height="2"/><rect x="28" y="12" width="2" height="2"/><rect x="22" y="14" width="6" height="2"/></g><g class="pf" data-f="b3"><rect x="22" y="2" width="6" height="2"/><rect x="20" y="4" width="10" height="2"/><rect x="18" y="6" width="8" height="2"/><rect x="30" y="6" width="2" height="2"/><rect x="18" y="8" width="14" height="4"/><rect x="20" y="12" width="10" height="2"/><rect x="22" y="14" width="6" height="2"/></g></g></g></svg>
                     <div><p class="tk">Philosophy</p><p>Mostly absurdism/<wbr>existentialism. I've taken a few classes in college so far, I'm thinking about maybe doing a minor for fun.</p></div>
                 </li>
                 <li class="tile pl">
-                    <svg class="ico" viewBox="0 0 44 28" width="66" height="42" shape-rendering="crispEdges" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="18" y="6" width="18" height="2"/><rect x="16" y="8" width="2" height="2"/><rect x="26" y="8" width="2" height="2"/><rect x="36" y="8" width="2" height="2"/><rect x="14" y="10" width="2" height="2"/><rect x="26" y="10" width="2" height="2"/><rect x="38" y="10" width="2" height="2"/><rect x="6" y="12" width="36" height="2"/><rect x="2" y="14" width="42" height="2"/><rect x="2" y="16" width="6" height="2"/><rect x="20" y="16" width="8" height="2"/><rect x="40" y="16" width="4" height="2"/><rect x="2" y="18" width="6" height="2"/><rect x="10" y="18" width="8" height="2"/><rect x="20" y="18" width="8" height="2"/><rect x="30" y="18" width="8" height="2"/><rect x="40" y="18" width="4" height="2"/><rect x="8" y="20" width="12" height="2"/><rect x="28" y="20" width="12" height="2"/><rect x="8" y="22" width="12" height="2"/><rect x="28" y="22" width="12" height="2"/><rect x="8" y="24" width="12" height="2"/><rect x="28" y="24" width="12" height="2"/><rect x="10" y="26" width="8" height="2"/><rect x="30" y="26" width="8" height="2"/></g></svg>
+                    <svg class="ico" data-pic="gti" viewBox="0 0 44 28" width="66" height="42" shape-rendering="crispEdges" aria-hidden="true" focusable="false"><g fill="currentColor"><g data-f="car"><g data-f="body"><rect x="18" y="6" width="18" height="2"/><rect x="16" y="8" width="2" height="2"/><rect x="26" y="8" width="2" height="4"/><rect x="36" y="8" width="2" height="2"/><rect x="14" y="10" width="2" height="2"/><rect x="38" y="10" width="2" height="2"/><rect x="6" y="12" width="36" height="2"/><rect x="2" y="14" width="42" height="2"/><rect x="2" y="16" width="6" height="4"/><rect x="20" y="16" width="8" height="4"/><rect x="40" y="16" width="4" height="4"/></g><rect x="10" y="18" width="8" height="2"/><rect x="30" y="18" width="8" height="2"/><rect x="8" y="20" width="12" height="6"/><rect x="28" y="20" width="12" height="6"/><rect x="10" y="26" width="8" height="2"/><rect x="30" y="26" width="8" height="2"/></g></g></svg>
                     <div><p class="tk">My GTI</p><p>My beloved silver MK8 GTI.</p></div>
                 </li>
             </ul>
@@ -964,6 +972,130 @@
             if (full && !seen) blink(el);
             return full || (seen && q.bottom > 0 && q.top < vh);
         }
+        /* the About pictures: a little move each, in frames like the blink (whole 3px cells,
+           steps, no tweens). a book is [ms, words] steps: NAME shows a hidden frame (.pf),
+           -NAME hides a part, NAME@x,y moves one (units: 2 is a cell). what a step doesn't
+           name is at rest, and so is all of it after the last step: no fill, so before and
+           after a play the markup is simply the picture */
+        var PICS = {
+            // click: the button goes down and the lens blinks the eye's blink (45 · 40 · 90 · 55 · 70)
+            cam: [[60, '-btn'], [45, '-btn -l1'], [40, '-btn -l1 -l2'], [90, '-btn -l1 -l2 -l3'], [55, '-btn -l1 -l2'], [70, '-btn -l1']],
+            // 13, 7, a natural 1 ... and the DM "helps": 20
+            d20: [[70, '-n20 n13'], [100, '-n20 n7'], [400, '-n20 n1']],
+            // right, then A: it jumps
+            pad: [[110, 'r'], [60, ''], [60, 'a pad@0,-2'], [110, 'a pad@0,-4'], [60, 'pad@0,-2']],
+            // it slips, and rolls away down the hill ... and it's at the top again
+            sis: [[180, 'rock@-2,0'], [90, 'rock@-8,0 -b0 b1'], [80, 'rock@-14,4 -b0 b2'], [70, 'rock@-22,6 -b0 b3'], [240, '-rock']],
+            // Vroooom: a rev, off to the left, and round again from the right into its spot
+            gti: [[90, 'body@0,-2'], [60, ''], [70, 'car@-2,0'], [50, 'car@-4,0'], [40, 'car@-8,0'], [35, 'car@-14,0'], [35, 'car@-22,0'], [35, 'car@-32,0'],
+                  [120, 'car@-44,0'], [35, 'car@30,0'], [40, 'car@18,0'], [45, 'car@10,0'], [60, 'car@4,0'], [80, 'car@2,0']]
+        }, pics = [], lastGo = -1e9, movedAt = 0, picT = 0,
+            BEAT = 250, GAP = 360, REST = 400, AGAIN = 20000;
+        function flip(svg, book) {         // -> [[part, stepped keyframes] ...] and the length; null if the markup disagrees
+            var steps = [], uses = {}, fx = [], ms = 0, i, j, m, w, s, n, g, kf, k, v, last, pr, rest;
+            for (i = 0; i < book.length; i++) {
+                s = {}; w = book[i][1].split(' ');
+                for (j = 0; j < w.length; j++) {
+                    if (!(m = /^(-?)(\w+)(?:@(-?\d+),(-?\d+))?$/.exec(w[j]))) continue;
+                    n = s[m[2]] = s[m[2]] || {}; uses[m[2]] = uses[m[2]] || {};
+                    if (m[3]) { n.transform = 'translate(' + m[3] + 'px, ' + m[4] + 'px)'; uses[m[2]].transform = 1; }
+                    else { n.opacity = m[1] ? 0 : 1; uses[m[2]].opacity = 1; }
+                }
+                steps.push([ms, s]); ms += book[i][0];
+            }
+            for (n in uses) {
+                if (!(g = svg.querySelector('[data-f="' + n + '"]'))) return null;
+                rest = { opacity: /\bpf\b/.test(g.getAttribute('class') || '') ? 0 : 1, transform: 'translate(0px, 0px)' };
+                kf = []; last = '';
+                for (i = 0; i < steps.length; i++) {
+                    k = { offset: steps[i][0] / ms, easing: S }; v = '';
+                    for (pr in uses[n]) { k[pr] = steps[i][1][n] && pr in steps[i][1][n] ? steps[i][1][n][pr] : rest[pr]; v += k[pr] + ';'; }
+                    if (v !== last) kf.push(k);
+                    last = v;
+                }
+                k = { offset: 1 };
+                for (pr in uses[n]) k[pr] = rest[pr];
+                kf.push(k);
+                fx.push([g, kf]);
+            }
+            return [fx, ms];
+        }
+        function play(p) {                 // not while it plays already, under reduced motion, or in a hidden tab
+            if (p.a || (rmq && rmq.matches) || document.hidden) return false;
+            var a = [], i;
+            for (i = 0; i < p.fx.length; i++) try { a.push(p.fx[i][0].animate(p.fx[i][1], p.ms)); } catch (e) {}
+            p.at = +new Date(); p.done = true; p.off = false;
+            if (!a.length) return false;
+            p.a = a;
+            a[0].onfinish = function () { if (p.a === a) p.a = null; };
+            return true;
+        }
+        function hush(p) {                 // stop a play where it is: the markup is the picture again
+            if (!p.a) return;
+            for (var i = 0; i < p.a.length; i++) try { p.a[i].cancel(); } catch (e) {}
+            p.a = null;
+        }
+        /* once all of a picture is in view (under the pinned commands), a beat after its line
+           prints, it plays. ones that arrive together take turns, GAP apart in reading order,
+           and one that leaves before its turn gives it up: nothing plays out of sight. right
+           off the screen, and a while (AGAIN) after it played, it is owed again, so coming
+           back to it plays it, the way the foot's eye blinks, but rereading a line doesn't */
+        function spot(vh) {
+            if (!pics.length || document.hidden || (rmq && rmq.matches)) return;
+            var now = +new Date(), edge = bar && has(bar, 'stuck') ? barH : 0, t = lastGo, soon = 0, i, p, r, due;
+            for (i = 0; i < pics.length; i++) {
+                p = pics[i]; r = p.el.getBoundingClientRect();
+                if (!r.height || r.top < edge || r.bottom > vh) {
+                    p.inAt = 0;
+                    if (r.bottom <= 0 || r.top >= vh) p.off = true;   // right off the screen since it played
+                    continue;
+                }
+                // owed again: checked here, not while it is away, so a jump straight back (a link, Home) counts too
+                if (p.done && !p.a && p.off && now - p.at >= AGAIN) p.done = false;
+                p.inAt = p.inAt || now;
+                if (p.done || p.a || has(p.sec, 'pend')) continue;
+                due = Math.max(p.inAt + BEAT, (p.sec.iuAt || 0) + p.line + BEAT, t + GAP);
+                if (due <= now) { play(p); t = lastGo = now; }
+                else { t = due; soon = soon || due; }
+            }
+            clearTimeout(picT);
+            if (soon) picT = setTimeout(function () { spot(window.innerHeight || document.documentElement.clientHeight); }, soon - now + 4);
+        }
+        function again(p) {                // a pointer resting on one, or a tap; not the page moving under a still pointer
+            var now = +new Date();
+            if (now - movedAt < 300 || now - p.at < p.ms + REST || has(p.sec, 'pend')) return;
+            play(p);
+        }
+        function hook(p) {
+            pics.push(p);
+            p.el.addEventListener('mouseenter', function () { clearTimeout(p.hov); p.hov = setTimeout(function () { again(p); }, 120); });
+            p.el.addEventListener('mouseleave', function () { clearTimeout(p.hov); });
+            p.el.addEventListener('click', function () { again(p); });   // below body, so iOS sends the tap
+        }
+        function picsOn() {                // from watch(): so never under reduced motion; and never without WAAPI
+            var list = document.querySelectorAll('.tile .ico[data-pic]'), i, li, sec, b, c;
+            if (!list.length || !root.animate) return;
+            for (i = 0; i < list.length; i++) {
+                li = list[i].parentNode;       // its line (has() can't read an svg's className)
+                for (sec = li; sec && !(sec.className && has(sec, 'sec')); sec = sec.parentNode) {}
+                b = PICS[list[i].getAttribute('data-pic')];
+                c = b && sec && flip(list[i], b);
+                if (c) hook({ el: list[i], sec: sec, fx: c[0], ms: c[1], at: -1e9, done: false, off: false, a: null, inAt: 0, hov: 0,
+                              line: (parseFloat(li.style.getPropertyValue('--i')) || 0) * (parseFloat(sec.style.getPropertyValue('--step')) || 0) });
+            }
+            function moved() { movedAt = +new Date(); }
+            window.addEventListener('scroll', moved, { passive: true });
+            window.addEventListener('resize', moved);
+            document.addEventListener('visibilitychange', function () {
+                if (!document.hidden) { queue(); return; }
+                for (var j = 0; j < pics.length; j++) {
+                    pics[j].inAt = 0;          // back, each waits its beat again
+                    if (pics[j].a) { hush(pics[j]); pics[j].done = false; }   // cut short: owed
+                }
+            });
+            function calm(e) { if (e.matches) for (var j = 0; j < pics.length; j++) hush(pics[j]); }
+            if (rmq && rmq.addEventListener) rmq.addEventListener('change', calm); else if (rmq && rmq.addListener) rmq.addListener(calm);
+        }
         function fitBar() {                // how far below the pinned commands a jump lands follows their real height
             var h = bar ? bar.offsetHeight : 0;
             if (h && h !== barH) { barH = h; root.style.setProperty('--bar-h', h + 'px'); }
@@ -975,6 +1107,7 @@
         function show(sec) {
             if (!has(sec, 'pend')) return;
             drop(sec, 'pend'); add(sec, 'prn');
+            sec.iuAt = +new Date();        // when it printed: the pictures in it wait for their lines
         }
         function develop() {
             developed = true;
@@ -1007,6 +1140,8 @@
             /* the foot's eye: once each time you come back to it (the screen's loops) */
             heroSeen = lids(eye, heroSeen, vh);
             footSeen = lids(footEye, footSeen, vh);
+            /* the About pictures: each once when you reach it (see spot) */
+            spot(vh);
             if (!bar) return;
             fitBar();                      // where there is no ResizeObserver to do it
             /* pinned: its top at the window's, with page scrolled under it */
@@ -1056,6 +1191,7 @@
                 if ((hold || secs[i].getBoundingClientRect().top >= vh * .92) && !secs[i].contains(document.activeElement)) add(secs[i], 'pend');
             }
             if (hold) setTimeout(function () { hold = false; queue(); }, 1900);
+            picsOn();
             // a keyboard or a find-in-page that lands in a section prints it at once
             document.addEventListener('focusin', function (e) {
                 for (var n = e.target; n && n !== document; n = n.parentNode) if (n.className && has(n, 'sec')) { show(n); break; }
