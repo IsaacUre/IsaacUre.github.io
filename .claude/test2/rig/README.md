@@ -22,7 +22,14 @@ be there.
   into the body, no maximize button on a phone), a finger scrolling over a
   title bar, keyboard order and focus, the loops (the LCD's blink, the foot's
   eye, the cursors), print, forced colours, a 24px default font, and whole
-  pixel window edges.
+  pixel window edges. T15 and T16 are the two review rounds' findings, kept
+  fixed: nothing climbs over the taskbar or the list, the boot visit's
+  hand-off blink, a finger never drags (a touchscreen laptop included), the
+  screen-filling window's edge cases (shade, print, links, narrowing below
+  760, Escape with the list open), a drag surviving a close or a reopen, the
+  list closing when focus lands elsewhere, the car's readout keys, a double
+  tap on close, back to a closed window's hash, selection on the cream, no
+  hover left behind by a tap.
 - shoot.js: desktop cold and warm (the cascade frames), laptop, tablet, phone,
   320, reduced motion, no JS. report.json has console errors, failed requests
   and horizontal overflow per run.

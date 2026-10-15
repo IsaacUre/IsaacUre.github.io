@@ -537,6 +537,115 @@ async function barsFit(page) {              // every title bar's buttons inside 
         for (i = 0; i < 20; i++) { var f = await p.evaluate(function () { return [].some.call(document.querySelectorAll('#eye0 .bf'), function (g) { return +getComputedStyle(g).opacity === 1; }); }); if (f) frames++; await sleep(25); }
         rec('T15c on a boot visit the eye holds its loop under the boot and blinks once at the hand-off', pre.length === 0 && post.some(function (n) { return /^bootHalf@/.test(n); }) && frames >= 2, { pre: pre, post: post, blinkSamples: frames });
         await c.close();
+
+        /* ---- T16: the workflow's findings stay fixed ---- */
+        c = await ctxWith(browser, { viewport: { width: 1440, height: 900 } }, true);
+        p = await c.newPage(); errs = []; p.on('pageerror', function (e) { errs.push(String(e)); });
+        await p.goto(URL, { waitUntil: 'load' }); await sleep(1800);
+        // a: the terminal shades
+        await p.click('#terminal .wbtn.mn'); await sleep(80);
+        var ts = await p.evaluate(function () { var w = document.getElementById('terminal'); return { disp: getComputedStyle(w.querySelector('.wd')).display, h: Math.round(w.getBoundingClientRect().height) }; });
+        rec('T16a minimize shades the terminal too', ts.disp === 'none' && ts.h < 40, ts);
+        await p.click('#terminal .wbtn.mn'); await sleep(60);
+        // m: the about readout's dots keep their colour when the window is lit
+        var dotsBefore = await p.evaluate(function () { return getComputedStyle(document.querySelector('#about .ro dt .ld')).color; });
+        var ab = await rect(p, '#about .wb'); await p.mouse.click(ab.l + 30, ab.t + 12); await sleep(60);
+        var dotsAfter = await p.evaluate(function () { return { c: getComputedStyle(document.querySelector('#about .ro dt .ld')).color, top: document.getElementById('about').classList.contains('top') }; });
+        rec('T16m the about readout\'s dots keep their colour when the window is lit', dotsAfter.top && dotsAfter.c === dotsBefore, { before: dotsBefore, after: dotsAfter });
+        // e: the car's readout keys are the screen's dim
+        var rk = await p.evaluate(function () { return { key: getComputedStyle(document.querySelector('#rr .rr dt')).color, dots: getComputedStyle(document.querySelector('#rr .rr dt .ld')).color }; });
+        rec('T16e RR01\'s keys are the screen\'s dim grey, its dots the lighter one', rk.key === 'rgb(90, 91, 80)' && rk.dots === 'rgb(154, 153, 139)', rk);
+        // n: a selection on the cream shows
+        var selc = await p.evaluate(function () { return getComputedStyle(document.querySelector('#about dd'), '::selection').backgroundColor; });
+        rec('T16n selected text on a screen is ink on cream', selc === 'rgb(28, 29, 23)', selc);
+        // o: the listing shows lowercase names that are proper in the markup
+        var ls = await p.evaluate(function () { var a = document.querySelector('#log .ls a .arg'); return { text: a.textContent, tt: getComputedStyle(a).textTransform, title: document.getElementById('rr-h').textContent.trim() }; });
+        rec('T16o the listing lowercases by style; the names keep their case', ls.text === 'Rice Racing' && ls.tt === 'lowercase' && /Rice Racing$/.test(ls.title), ls);
+        // b: a drag survives a close and a reopen on the desk
+        await p.evaluate(function () { document.getElementById('deepblue').scrollIntoView(); }); await sleep(900);
+        br = await rect(p, '#deepblue .wb');
+        await p.mouse.move(br.l + 40, br.t + 12); await p.mouse.down(); await p.mouse.move(br.l + 40 + 1200, br.t + 12, { steps: 8 }); await p.mouse.up(); await sleep(80);
+        var d0 = await p.evaluate(function () { var r = document.getElementById('deepblue').getBoundingClientRect(); return { r: Math.round(r.right), docW: document.documentElement.scrollWidth }; });
+        await p.click('#thresher .wbtn.x'); await sleep(450);
+        var d1 = await p.evaluate(function () { var r = document.getElementById('deepblue').getBoundingClientRect(), dk = document.getElementById('desk').getBoundingClientRect(); return { r: Math.round(r.right), deskR: Math.round(dk.right), docW: document.documentElement.scrollWidth, inner: innerWidth }; });
+        await p.click('#tbEye'); await sleep(80); await p.click('#menu button[data-w="deepblue"]'); await sleep(500);
+        var d2 = await p.evaluate(function () { return { x: scrollX, docW: document.documentElement.scrollWidth }; });
+        rec('T16b a window dragged to the edge stays on the desk when another closes, and picking it scrolls nothing sideways', d1.r <= d1.deskR + 1 && d1.docW <= d1.inner && d2.x === 0 && d2.docW <= d1.inner, { afterDrag: d0, afterClose: d1, afterPick: d2 });
+        await p.click('#tbEye'); await sleep(80); await p.click('#menu button[data-w="thresher"]'); await sleep(500);
+        var d3 = await p.evaluate(function () { var r = document.getElementById('deepblue').getBoundingClientRect(); return { l: Math.round(r.left), r: Math.round(r.right), inner: innerWidth, docW: document.documentElement.scrollWidth, x: scrollX }; });
+        rec('T16b2 and when the closed window comes back, the dragged one is still on the page', d3.l >= 0 && d3.r <= d3.inner && d3.docW <= d3.inner && d3.x === 0, d3);
+        // j: after a reset, a click on the window that was lit raises it
+        await p.click('#tbEye'); await sleep(80); await p.click('#menu button[data-act="reset"]'); await sleep(1800);
+        var lit0 = await p.evaluate(function () { return { tops: document.querySelectorAll('.win.top').length }; });
+        await p.evaluate(function () { document.getElementById('readme').scrollIntoView({ block: 'center' }); }); await sleep(300);
+        ab = await rect(p, '#readme .wb'); await p.mouse.click(ab.l + 30, ab.t + 12); await sleep(60);
+        var lit1 = await p.evaluate(function () { var w = document.getElementById('readme'); return { top: w.classList.contains('top'), z: +w.style.zIndex, maxZ: Math.max.apply(null, [].map.call(document.querySelectorAll('.win'), function (x) { return +x.style.zIndex || 0; })) }; });
+        rec('T16j after a reset nothing is lit, and the first click lights and fronts its window', lit0.tops === 0 && lit1.top && lit1.z === lit1.maxZ && lit1.z > 0, { before: lit0, after: lit1 });
+        // i: Escape closes the list before it restores a window filling the screen
+        await p.click('#about .wbtn.mx'); await sleep(100); await p.click('#tbEye'); await sleep(80);
+        await p.keyboard.press('Escape'); await sleep(80);
+        var em = await p.evaluate(function () { return { menu: !document.getElementById('menu').hidden, maxi: document.getElementById('about').classList.contains('maxi') }; });
+        await p.keyboard.press('Escape'); await sleep(80);
+        var em2 = await p.evaluate(function () { return document.getElementById('about').classList.contains('maxi'); });
+        rec('T16i Escape closes the list first, then the window filling the screen', !em.menu && em.maxi && !em2, { first: em, second: em2 });
+        // f: a window filling the screen keeps its way back when the page narrows below 760
+        await p.click('#readme .wbtn.mx'); await sleep(100); await p.setViewportSize({ width: 600, height: 800 }); await sleep(300);
+        var nb = await p.evaluate(function () { var b = document.querySelector('#readme .wbtn.mx'); return { shown: b.offsetWidth > 0, maxi: document.getElementById('readme').classList.contains('maxi'), other: document.querySelector('#about .wbtn.mx').offsetWidth }; });
+        await p.click('#readme .wbtn.mx'); await sleep(100);
+        var nb2 = await p.evaluate(function () { return { maxi: document.getElementById('readme').classList.contains('maxi'), shown: document.querySelector('#readme .wbtn.mx').offsetWidth > 0 }; });
+        rec('T16f narrowed below 760 while filling the screen, the window keeps its restore button, and it works', nb.shown && nb.maxi && nb.other === 0 && !nb2.maxi && !nb2.shown, { before: nb, after: nb2 });
+        await p.setViewportSize({ width: 1440, height: 900 }); await sleep(300);
+        // c: the list closes when focus lands elsewhere on the page
+        await p.click('#tbEye'); await sleep(80);
+        await p.evaluate(function () { document.querySelector('.skip').focus(); }); await sleep(80);
+        var mc = await p.evaluate(function () { return { menu: !document.getElementById('menu').hidden, focus: document.activeElement.className }; });
+        rec('T16c focus landing elsewhere on the page closes the list', !mc.menu && /skip/.test(mc.focus), mc);
+        // k: back to the hash of a closed window brings it back
+        await p.click('#contact .wbtn.x'); await sleep(450);
+        await p.evaluate(function () { location.hash = '#contact'; }); await sleep(500);
+        var hk = await p.evaluate(function () { var w = document.getElementById('contact'), r = w.getBoundingClientRect(); return { hidden: w.hidden, up: w.classList.contains('up'), inView: r.top >= 0 && r.bottom <= innerHeight }; });
+        rec('T16k a hash change to a closed window brings it back into view', !hk.hidden && hk.up && hk.inView, hk);
+        // g: forced colours: the lit bar's "now" is the theme's text
+        await p.evaluate(function () { scrollTo(0, 0); }); await sleep(100);
+        await p.emulateMedia({ forcedColors: 'active' }); await sleep(100);
+        await p.evaluate(function () { document.getElementById('rr').scrollIntoView(); }); await sleep(600);
+        var rb = await rect(p, '#rr .wb'); await p.mouse.click(rb.l + 30, rb.t + 12); await sleep(80);
+        var fcn = await p.evaluate(function () { var w = document.getElementById('rr'); return { top: w.classList.contains('top'), now: getComputedStyle(w.querySelector('.wb .wr.now')).color, title: getComputedStyle(w.querySelector('.wt')).color }; });
+        rec('T16g in forced colours the lit bar\'s "now" is the theme\'s text, like its title', fcn.top && fcn.now === fcn.title, fcn);
+        await p.emulateMedia({ forcedColors: 'none' });
+        // h: printed windows are white
+        await p.emulateMedia({ media: 'print' }); await sleep(100);
+        var pw0 = await p.evaluate(function () { return { win: getComputedStyle(document.getElementById('readme')).backgroundColor, wd: getComputedStyle(document.querySelector('#readme .wd')).backgroundColor, lcd: getComputedStyle(document.querySelector('#about .wd')).backgroundColor }; });
+        rec('T16h a printed window is white, with no black body or screen', pw0.win === 'rgb(255, 255, 255)' && /rgba\(0, 0, 0, 0\)|transparent/.test(pw0.wd) && /rgba\(0, 0, 0, 0\)|transparent/.test(pw0.lcd), pw0);
+        await p.emulateMedia({ media: 'screen' });
+        rec('T16z no page errors in the workflow checks', errs.length === 0, errs);
+        await c.close();
+
+        // d: a finger on a touchscreen laptop scrolls over a title bar
+        c = await ctxWith(browser, { viewport: { width: 1280, height: 800 }, hasTouch: true }, true);
+        p = await c.newPage(); await p.goto(URL, { waitUntil: 'load' }); await sleep(1500);
+        var fineNow = await p.evaluate(function () { return matchMedia('(pointer: fine) and (min-width: 760px)').matches; });
+        before = await rect(p, '#terminal .wb');
+        cdp = await c.newCDPSession(p);
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: before.l + 60, y: before.t + 12 }] });
+        for (k = 1; k <= 6; k++) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: before.l + 60, y: before.t + 12 - k * 30 }] });
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await sleep(400);
+        var tl = await p.evaluate(function () { return { y: scrollY, nx: document.getElementById('terminal').style.getPropertyValue('--nx'), ta: getComputedStyle(document.querySelector('#terminal .wb')).touchAction }; });
+        rec('T16d on a touchscreen laptop a finger on a title bar scrolls the page and drags nothing', tl.y > 50 && tl.nx === '' && tl.ta !== 'none', { fine: fineNow, result: tl });
+        await c.close();
+
+        // l, p: a phone: a double tap on close closes one window; a tap leaves no hover behind
+        c = await ctxWith(browser, { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }, true);
+        p = await c.newPage(); await p.goto(URL, { waitUntil: 'load' }); await sleep(1500);
+        await p.evaluate(function () { document.getElementById('cam').scrollIntoView(); scrollBy(0, -40); }); await sleep(800);
+        var xb2 = await rect(p, '#cam .wbtn.x');
+        await p.touchscreen.tap(xb2.l + 14, xb2.t + 14); await sleep(120); await p.touchscreen.tap(xb2.l + 14, xb2.t + 14); await sleep(600);
+        var dt = await p.evaluate(function () { return { cam: document.getElementById('cam').hidden, d20: document.getElementById('d20').hidden, pad: document.getElementById('pad').hidden, hidden: document.querySelectorAll('.win[hidden]').length }; });
+        rec('T16l a double tap on close closes one window, not the one that moved up under it', dt.cam && dt.hidden === 1, dt);
+        await p.tap('#about .wbtn.mn'); await sleep(150);
+        var hv = await p.evaluate(function () { var b = document.querySelector('#about .wbtn.mn'); return { bg: getComputedStyle(b).backgroundColor, hover: matchMedia('(hover: hover)').matches }; });
+        rec('T16p a tapped button is not left lit (no hover on a touch screen)', /rgba\(0, 0, 0, 0\)|transparent/.test(hv.bg) && !hv.hover, hv);
+        await c.close();
     } finally {
         await browser.close();
         var fails = results.filter(function (r) { return !r.ok; });
