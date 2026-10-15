@@ -122,10 +122,17 @@ isaacure.com/test2 until Isaac picks one of the two.
   under reduced motion or without JS. GitHub stays off the contact list.
 - The prompt is zsh's on the console: `isaac@ureboy ~ %`. The windows' titles
   are plain names (`whoami`, `neofetch`, `readme.txt`, `log/rice-racing.md`);
-  the command is the first line inside. Prompt lines are `aria-hidden`
-  decoration except where they hold a link or Isaac's words (`# interests,
-  innit`). The lights are in macOS's order (close, shade, zoom) and are 24px
-  targets drawn as 12px lights; a window at the back has grey ones.
+  the command is the first line inside, and `/test/`'s section titles are
+  comments at the prompt above it (`# who is this guy`, `# effectively mini
+  resume`, `# say hi`). Prompt lines are `aria-hidden` decoration except where
+  they hold a link or Isaac's words (the comments, with the `# ` hidden). The
+  lights are in macOS's order (close, shade, zoom) and are 24px targets drawn
+  as 12px lights; a window at the back has grey ones. The log entries' `# Org`
+  lines are `h3`s under the window's `h2`.
+- Two things break by the window's width, not the viewport's (container
+  queries on `.wd`, with a viewport query as the fallback): neofetch puts the
+  eye above the facts in a window under 348px, and the banner breaks into its
+  two words, URE under ISAAC, the way figlet wraps, in one under 310px.
 - The windows are a CSS grid (twelve columns on a desktop, six on a tablet,
   one on a phone) with a whole-pixel nudge each (`--nx`, `--ny`) so they
   overlap at the edges. The script only adds behaviour: the cascade (what is
@@ -135,7 +142,13 @@ isaacure.com/test2 until Isaac picks one of the two.
   shade, fill the screen (the green light or Escape restores; the rest goes
   `inert`), close, and the eye's window list in the status line, which also
   resets the desk. The cursor is solid and blinking in the front window and
-  hollow in the rest.
+  hollow in the rest; the login shell is the front window at rest (after the
+  cascade, and after a reset), so its cursor is the one blinking. The status
+  line marks `0:home` while the login shell's top half is on screen, the
+  section in the upper part of the screen below that, and `3:contact` at the
+  bottom; it gives up the hostname, the session, the clock and then the
+  numbers as it narrows, in ems. The skip link goes to the status line, the
+  one thing after the windows.
 - The boot terminal is `.term`; a terminal window is `.win`. Don't reuse the
   boot's class for a window: its rule once leaked onto every terminal window
   (16px text, `touch-action: none`).

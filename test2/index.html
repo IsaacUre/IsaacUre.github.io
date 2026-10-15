@@ -226,7 +226,7 @@
             }
         }
         @media (max-width: 759.98px) { .desk { grid-template-columns: minmax(0, 1fr); } }   /* one column: the whole width, no slack */
-        .desk:focus { outline: none; }         /* the skip link's landing, not a control */
+        .desk:focus, .tb:focus { outline: none; }   /* a landing, not a control */
 
         /* ── a window: a terminal emulator's. dark glass, a thin edge, a title bar with the
              three lights, and a shadow with some air under it ── */
@@ -263,10 +263,11 @@
         .wt {
             grid-column: 2; min-width: 0; max-width: 100%;
             font: 13px/1 var(--font-ui); font-weight: 500; letter-spacing: .01em;
-            color: #8d8d90; text-align: center;
+            color: #9a9a9e; text-align: center;
             white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
         .win.top .wt { color: #d9d9dc; }
+        @media (max-width: 759.98px) { .wb { grid-template-columns: 84px minmax(0, 1fr) 8px; } .wt { text-align: left; } }   /* a phone: the title has the room beside the lights */
         /* the lights: close, minimize, zoom. grey on a window at the back, as they are; the
            glyphs show under the pointer or on a focused one. the hit area is bigger than the
            light (24px): a finger needs it */
@@ -277,14 +278,14 @@
             cursor: pointer;
             -webkit-tap-highlight-color: transparent;
         }
-        .wbtn::before { content: ""; position: absolute; inset: 6px; border-radius: 50%; background: #4b4b4e; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .3); }   /* the light */
+        .wbtn::before { content: ""; position: absolute; inset: 6px; border-radius: 50%; background: #808084; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .3); }   /* the light */
         .wbtn svg { position: absolute; left: 8px; top: 8px; width: 8px; height: 8px; display: block; opacity: 0; }
         .win.top .wbtn.x::before { background: #ff5f57; box-shadow: inset 0 0 0 1px #d7463f; }
         .win.top .wbtn.mn::before { background: #febc2e; box-shadow: inset 0 0 0 1px #d99e1f; }
         .win.top .wbtn.mx::before { background: #28c840; box-shadow: inset 0 0 0 1px #1fa432; }
         @media (hover: hover) { .wc:hover .wbtn svg { opacity: 1; } }
         .wbtn:focus-visible svg, .wbtn[aria-pressed="true"] svg { opacity: 1; }
-        .wbtn:focus-visible { outline-offset: -2px; }
+        .wbtn:focus-visible { outline-offset: -2px; outline-color: var(--term-warn); }   /* the lighter red: the bar is dark */
         .no-js .wc { display: none; }           /* the lights do nothing without the script */
         /* a mouse drags a window by its title bar (the script); a finger scrolls the page, on a
            touchscreen laptop too (the script checks the pointer) */
@@ -356,7 +357,13 @@
             line-height: 1.1; margin: .45em 0 .6em; color: var(--term-fg);
             text-shadow: 0 0 10px rgba(230, 228, 210, .25);
         }
-        .banner b { font-weight: normal; color: var(--term-warn); }
+        .banner .b1, .banner b { display: inline-block; vertical-align: top; white-space: pre; }   /* the two words: 32 columns, a column's gap, then 19 */
+        .banner b { font-weight: normal; color: var(--term-warn); margin-left: 1ch; }
+        /* a window too narrow for the banner at 14px breaks it the way figlet breaks a line
+           wider than the terminal: the second word under the first. the viewport query is
+           for browsers without container queries */
+        @media (max-width: 369.98px) { .banner { font-size: min(1.1rem, calc((100cqw - 1.2rem) / 12.8)); } .banner b { display: block; margin-left: 0; } }
+        @container (max-width: 309.98px) { .banner { font-size: min(1.1rem, calc((100cqw - 1.2rem) / 12.8)); } .banner b { display: block; margin-left: 0; } }
         .term-row { display: flex; align-items: baseline; flex-wrap: wrap; }
         .term-row .pr { white-space: nowrap; margin-right: 1ch; }
         .up .cmd { width: 0; animation: typeCmd .45s steps(1, end) .4s forwards; }
@@ -379,7 +386,11 @@
 
         /* neofetch: the logo, and beside it user@host, a rule, the facts, and the palette */
         .nf { display: grid; grid-template-columns: 96px minmax(0, 1fr); column-gap: 2.5ch; align-items: start; margin-top: .3em; }
-        @media (max-width: 439.98px) { .nf { grid-template-columns: minmax(0, 1fr); row-gap: .5em; } .eye { margin: .2em 0 0; } }   /* the narrowest phones: the logo above the facts, which then have the width */
+        /* a window too narrow for the logo beside the facts (under 348px the facts' column is
+           under 232px and every fact wraps) puts the logo above them. the viewport query is
+           for browsers without container queries */
+        @media (max-width: 439.98px) { .nf { grid-template-columns: minmax(0, 1fr); row-gap: .5em; } .eye { margin: -16px 0 -20px; } }
+        @container (max-width: 347.98px) { .nf { grid-template-columns: minmax(0, 1fr); row-gap: .5em; } .eye { margin: -16px 0 -20px; } }   /* the drawing is rows 10 to 36 of 48: the blank rows above and below come off */
         .eye { width: 96px; height: 96px; color: var(--term-fg); margin-top: .35em; }
         .eye svg, .foot-eye svg, .tb-eye svg { width: 100%; height: 100%; display: block; shape-rendering: crispEdges; }
         .up .eye svg { animation: bootOpen .5s ease .35s both; }
@@ -434,6 +445,7 @@
         .nf-h .pu { color: var(--term-warn); }
         .nf-h .pa { color: var(--term-dim); }
         .nf-rule { color: var(--term-lead); overflow: hidden; white-space: nowrap; }
+        .wd .nf-h + .nf-rule { margin-top: 0; }
         .readout { margin: 0; }
         .ro { display: flex; }
         .ro dt { flex: none; color: var(--term-warn); white-space: nowrap; }
@@ -468,7 +480,7 @@
         .cap { margin-top: .35em; color: var(--term-dim); width: min(100%, 360px); }
 
         /* cat on a markdown file: the hash of a heading in red, the rest as it is */
-        .md { white-space: pre-wrap; overflow-wrap: anywhere; }
+        .md { font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
         .md .h { color: var(--term-warn); }
         .md .hd { color: var(--term-hi); }
         .role { color: var(--term-dim); }
@@ -541,15 +553,23 @@
         .tb-a .n { color: #5a5b50; }
         .tb-a[aria-current] .n { color: var(--term-dim); }
         .tb-a[aria-current] { background: var(--ink); color: var(--term-fg); }
+        .tb-a::after { content: " "; white-space: pre; }       /* the flag's column, kept, so the names hold still */
         .tb-a[aria-current]::after { content: "*"; }
-        @media (hover: hover) { .tb-a:hover { background: var(--ink); color: var(--term-fg); } }
+        @media (hover: hover) { .tb-a:hover { background: var(--ink); color: var(--term-fg); } .tb-a:hover .n { color: var(--term-dim); } }
+        .tb-a:focus-visible, .tb-eye:focus-visible { outline-offset: -3px; }
         .tb-host { margin-left: auto; white-space: nowrap; opacity: .7; }
-        .tb-clk { white-space: nowrap; font-variant-numeric: tabular-nums; min-width: 0; overflow: hidden; margin-left: 1ch; }
+        .tb-clk { white-space: nowrap; font-variant-numeric: tabular-nums; margin-left: 1ch; }
         .tb-clk:empty { display: none; }
         .no-js .tb-host { margin-left: auto; }
-        @media (max-width: 600px) { .tb-host { display: none; } .tb-clk { margin-left: auto; } }
-        @media (max-width: 420px) { .tb { gap: 0 .25ch; } .tb-a { padding: .4em .35ch; } .tb-s { display: none; } }
-        @media (max-width: 359.98px) { .tb-clk { display: none; } }
+        /* what the line gives up as it narrows, in ems so a larger default size does the same:
+           the hostname, then the session, then the clock, then the numbers; and it scrolls
+           sideways rather than lose a command past the edge */
+        .tb { overflow-x: auto; scrollbar-width: none; }
+        .tb::-webkit-scrollbar { display: none; }
+        @media (max-width: 37.5em) { .tb-host { display: none; } .tb-clk { margin-left: auto; } }
+        @media (max-width: 31.25em) { .tb { gap: 0 .25ch; } .tb-a { padding: .4em .35ch; } .tb-s { display: none; } }
+        @media (max-width: 25.6em) { .tb-clk { display: none; } }
+        @media (max-width: 22.49em) { .tb-a .n { display: none; } }
 
         /* the list of windows: up from the eye, the way tmux's chooser comes up */
         .menu {
@@ -561,6 +581,7 @@
             background: #121214; border: 1px solid rgba(230, 228, 210, .35); border-radius: 6px;
             box-shadow: 0 24px 60px rgba(0, 0, 0, .7);
             padding: .35rem 0;
+            line-height: 1.25; text-align: left;
             text-shadow: 0 0 6px var(--glow);
         }
         .menu[hidden] { display: none; }
@@ -596,7 +617,7 @@
             #else { grid-column: span 6; }
             #cam, #d20, #pad, #sis, #gti { grid-column: span 6; }
             #log { grid-column: span 6; }
-            #rr { grid-column: span 12; }
+            #rr { grid-column: span 6; }
             #thresher, #deepblue { grid-column: span 6; }
             #ruwmc, #jcs { grid-column: span 6; }
             #contact { grid-column: 3 / span 8; }
@@ -612,19 +633,19 @@
             #terminal { --nx: 0px;   --ny: 0px; }
             #about    { --nx: -14px; --ny: 26px; }
             #readme   { --nx: 10px;  --ny: 12px; }
-            #shot     { --nx: 6px;   --ny: -18px; }
+            #shot     { --nx: 6px;   --ny: -10px; }
             #else     { --nx: -12px; --ny: 18px; }
             #cam      { --nx: 14px;  --ny: -6px; }
-            #d20      { --nx: -6px;  --ny: -16px; }
+            #d20      { --nx: -6px;  --ny: -10px; }
             #pad      { --nx: 14px;  --ny: 20px; }
-            #sis      { --nx: -10px; --ny: -24px; }
+            #sis      { --nx: -10px; --ny: -12px; }
             #gti      { --nx: 12px;  --ny: 10px; }
-            #log      { --nx: -14px; --ny: -22px; }
+            #log      { --nx: -14px; --ny: 0px; }
             #rr       { --nx: 10px;  --ny: -8px; }
             #thresher { --nx: -8px;  --ny: 18px; }
-            #deepblue { --nx: 14px;  --ny: -20px; }
+            #deepblue { --nx: 14px;  --ny: -10px; }
             #ruwmc    { --nx: -10px; --ny: 8px; }
-            #jcs      { --nx: 10px;  --ny: -14px; }
+            #jcs      { --nx: 10px;  --ny: -12px; }
             #contact  { --nx: 12px;  --ny: 12px; }
         }
 
@@ -637,7 +658,9 @@
             .tc { forced-color-adjust: none; background: CanvasText; }
             .wd .tc { background: transparent; box-shadow: inset 0 0 0 1px CanvasText; }
             .win.top .wd .tc { background: CanvasText; }
-            .win, .wb, .tb, .menu, .box, .shot .frame { border-color: CanvasText; }
+            .win, .wb, .menu, .box { border-color: CanvasText; }
+            .tb { border-top: 1px solid CanvasText; }
+            .tb-a[aria-current] .n { color: HighlightText; }
             .wb { border-bottom: 1px solid CanvasText; }
             .wbtn::before { background: Canvas; box-shadow: none; border: 1px solid CanvasText; }
             .wbtn svg { opacity: 1; color: CanvasText; }
@@ -673,6 +696,8 @@
             .desk { display: block; max-width: 72ch; margin: 0 auto; padding: 0; width: auto; }
             .win { display: block; transform: none !important; border: 1px solid #000; border-radius: 0; margin: 0 0 1rem; opacity: 1 !important; break-inside: avoid; position: static; background: #fff; }
             .win.pend { opacity: 1 !important; }
+            .win.top { border-color: #000; }
+            .win.top .wt { color: #000; }
             .win.maxi { position: static; }
             .win.shade .wd, .win.shade .cap { display: block; }
             .wb { height: auto; display: block; padding: .25rem .6rem; border-bottom: 1px solid #000; background: none !important; }
@@ -697,7 +722,7 @@
     </div>
     <button class="term-skip" id="termSkip" type="button" aria-label="skip the boot">skip ▸</button>
 
-    <a class="skip" href="#desk">skip to content</a>
+    <a class="skip" href="#tb">skip to the status line</a>
 
     <main class="desk" id="desk" tabindex="-1">
 
@@ -705,11 +730,15 @@
             <header class="wb"><div class="wc"><button class="wbtn x" type="button" aria-label="close whoami"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><path d="M2 2l4 4M6 2l-4 4" stroke="currentColor" stroke-width="1.3" fill="none"/></svg></button><button class="wbtn mn" type="button" aria-pressed="false" aria-label="minimize whoami"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><path d="M1.5 4h5" stroke="currentColor" stroke-width="1.3" fill="none"/></svg></button><button class="wbtn mx" type="button" aria-pressed="false" aria-label="maximize whoami"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><path d="M4 1.5v5M1.5 4h5" stroke="currentColor" stroke-width="1.3" fill="none"/></svg></button></div><p class="wt" id="terminal-h">whoami</p></header>
             <div class="wd">
                 <p class="ln lastlogin" aria-hidden="true">Last login: <span id="lastlogin"></span> on ttys000</p>
-                <h1 class="name"><span class="vh">Isaac Ure</span><span class="banner" aria-hidden="true"> ___ ____    _        _    ____   <b>_   _ ____  _____</b>
-|_ _/ ___|  / \      / \  / ___| |<b> | | |  _ \| ____|</b>
- | |\___ \ / _ \    / _ \| |     |<b> | | | |_) |  _|</b>
- | | ___) / ___ \  / ___ \ |___  |<b> |_| |  _ &lt;| |___</b>
-|___|____/_/   \_\/_/   \_\____|  <b>\___/|_| \_\_____|</b></span></h1>
+                <h1 class="name"><span class="vh">Isaac Ure</span><span class="banner" aria-hidden="true"><span class="b1"> ___ ____    _        _    ____
+|_ _/ ___|  / \      / \  / ___|
+ | |\___ \ / _ \    / _ \| |
+ | | ___) / ___ \  / ___ \ |___
+|___|____/_/   \_\/_/   \_\____|</span><b> _   _ ____  _____
+| | | |  _ \| ____|
+| | | | |_) |  _|
+| |_| |  _ &lt;| |___
+ \___/|_| \_\_____|</b></span></h1>
                 <p class="ln term-row" aria-hidden="true"><span class="pr"><span class="pu">isaac</span><span class="pa">@</span><span class="ph">ureboy</span> <span class="pp">~</span> %</span><span class="cmd">whoami</span><span class="tc"></span></p>
                 <p class="answer">I study econ at Rice, occasionally shoot for the Thresher, chug and bike for Martel, and run the budget for Rice's first Formula SAE team.</p>
                 <p class="ln wait" aria-hidden="true"><span class="pr"><span class="pu">isaac</span><span class="pa">@</span><span class="ph">ureboy</span> <span class="pp">~</span> %</span> <span class="tc"></span></p>
@@ -719,6 +748,7 @@
         <section class="win" id="about" aria-labelledby="about-h" data-sec="about" data-name="neofetch">
             <header class="wb"><div class="wc"><button class="wbtn x" type="button" aria-label="close neofetch"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><path d="M2 2l4 4M6 2l-4 4" stroke="currentColor" stroke-width="1.3" fill="none"/></svg></button><button class="wbtn mn" type="button" aria-pressed="false" aria-label="minimize neofetch"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><path d="M1.5 4h5" stroke="currentColor" stroke-width="1.3" fill="none"/></svg></button><button class="wbtn mx" type="button" aria-pressed="false" aria-label="maximize neofetch"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><path d="M4 1.5v5M1.5 4h5" stroke="currentColor" stroke-width="1.3" fill="none"/></svg></button></div><h2 class="wt" id="about-h">neofetch</h2></header>
             <div class="wd">
+                <p class="ln"><span aria-hidden="true"><span class="pr"><span class="pu">isaac</span><span class="pa">@</span><span class="ph">ureboy</span> <span class="pp">~</span> %</span> </span><span class="cm"><span aria-hidden="true"># </span>who is this guy</span></p>
                 <p class="ln" aria-hidden="true"><span class="pr"><span class="pu">isaac</span><span class="pa">@</span><span class="ph">ureboy</span> <span class="pp">~</span> %</span> <span class="cm">neofetch</span></p>
                 <div class="nf">
                     <div class="eye" aria-hidden="true"><svg viewBox="0 0 48 48" shape-rendering="crispEdges">
@@ -775,7 +805,7 @@
         <section class="win" id="else" aria-labelledby="else-h" data-sec="about" data-name="what else tho">
             <header class="wb"><div class="wc"><button class="wbtn x" type="button" aria-label="close what else tho"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><path d="M2 2l4 4M6 2l-4 4" stroke="currentColor" stroke-width="1.3" fill="none"/></svg></button><button class="wbtn mn" type="button" aria-pressed="false" aria-label="minimize what else tho"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><path d="M1.5 4h5" stroke="currentColor" stroke-width="1.3" fill="none"/></svg></button><button class="wbtn mx" type="button" aria-pressed="false" aria-label="maximize what else tho"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><path d="M4 1.5v5M1.5 4h5" stroke="currentColor" stroke-width="1.3" fill="none"/></svg></button></div><h2 class="wt" id="else-h">what else tho</h2></header>
             <div class="wd">
-                <p class="ln"><span aria-hidden="true"><span class="pr"><span class="pu">isaac</span><span class="pa">@</span><span class="ph">ureboy</span> <span class="pp">~</span> %</span> </span><span class="cm"># interests, innit</span></p>
+                <p class="ln"><span aria-hidden="true"><span class="pr"><span class="pu">isaac</span><span class="pa">@</span><span class="ph">ureboy</span> <span class="pp">~</span> %</span> </span><span class="cm"><span aria-hidden="true"># </span>interests, innit</span></p>
                 <p class="ln" aria-hidden="true"><span class="pr"><span class="pu">isaac</span><span class="pa">@</span><span class="ph">ureboy</span> <span class="pp">~</span> %</span> <span class="cm">ls interests/</span></p>
                 <ul class="lsx" role="list">
                     <li><a href="#d20"><span class="arg">dnd.md</span></a></li>
@@ -857,6 +887,7 @@
         <section class="win" id="log" aria-labelledby="log-h" data-sec="log" data-name="log">
             <header class="wb"><div class="wc"><button class="wbtn x" type="button" aria-label="close log"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><path d="M2 2l4 4M6 2l-4 4" stroke="currentColor" stroke-width="1.3" fill="none"/></svg></button><button class="wbtn mn" type="button" aria-pressed="false" aria-label="minimize log"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><path d="M1.5 4h5" stroke="currentColor" stroke-width="1.3" fill="none"/></svg></button><button class="wbtn mx" type="button" aria-pressed="false" aria-label="maximize log"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><path d="M4 1.5v5M1.5 4h5" stroke="currentColor" stroke-width="1.3" fill="none"/></svg></button></div><h2 class="wt" id="log-h">log</h2></header>
             <div class="wd">
+                <p class="ln"><span aria-hidden="true"><span class="pr"><span class="pu">isaac</span><span class="pa">@</span><span class="ph">ureboy</span> <span class="pp">~</span> %</span> </span><span class="cm"><span aria-hidden="true"># </span>effectively mini resume</span></p>
                 <p class="ln" aria-hidden="true"><span class="pr"><span class="pu">isaac</span><span class="pa">@</span><span class="ph">ureboy</span> <span class="pp">~</span> %</span> <span class="cm">ls -lt log/</span></p>
                 <ul class="ls" role="list">
                     <li><span class="lsd now">now</span><a href="#rr"><span class="arg">rice-racing.md</span></a></li>
@@ -873,7 +904,7 @@
             <header class="wb"><div class="wc"><button class="wbtn x" type="button" aria-label="close log/rice-racing.md"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><path d="M2 2l4 4M6 2l-4 4" stroke="currentColor" stroke-width="1.3" fill="none"/></svg></button><button class="wbtn mn" type="button" aria-pressed="false" aria-label="minimize log/rice-racing.md"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><path d="M1.5 4h5" stroke="currentColor" stroke-width="1.3" fill="none"/></svg></button><button class="wbtn mx" type="button" aria-pressed="false" aria-label="maximize log/rice-racing.md"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><path d="M4 1.5v5M1.5 4h5" stroke="currentColor" stroke-width="1.3" fill="none"/></svg></button></div><h2 class="wt" id="rr-h">log/rice-racing.md</h2></header>
             <div class="wd">
                 <p class="ln" aria-hidden="true"><span class="pr"><span class="pu">isaac</span><span class="pa">@</span><span class="ph">ureboy</span> <span class="pp">~</span> %</span> <span class="cm">cat log/rice-racing.md</span></p>
-                <p class="md"><span class="h" aria-hidden="true"># </span><span class="hd">Rice Racing</span></p>
+                <h3 class="md"><span class="h" aria-hidden="true"># </span><span class="hd">Rice Racing</span></h3>
                 <p class="role">Director of Financing</p>
                 <p class="when now">now</p>
                 <p class="what">Rice's first Formula SAE team. We're building our first car. I lead the budget and financial planning and help with sponsor outreach.</p>
@@ -894,7 +925,7 @@
             <header class="wb"><div class="wc"><button class="wbtn x" type="button" aria-label="close log/thresher-and-raw.md"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><path d="M2 2l4 4M6 2l-4 4" stroke="currentColor" stroke-width="1.3" fill="none"/></svg></button><button class="wbtn mn" type="button" aria-pressed="false" aria-label="minimize log/thresher-and-raw.md"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><path d="M1.5 4h5" stroke="currentColor" stroke-width="1.3" fill="none"/></svg></button><button class="wbtn mx" type="button" aria-pressed="false" aria-label="maximize log/thresher-and-raw.md"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><path d="M4 1.5v5M1.5 4h5" stroke="currentColor" stroke-width="1.3" fill="none"/></svg></button></div><h2 class="wt" id="thresher-h">log/thresher-and-raw.md</h2></header>
             <div class="wd">
                 <p class="ln" aria-hidden="true"><span class="pr"><span class="pu">isaac</span><span class="pa">@</span><span class="ph">ureboy</span> <span class="pp">~</span> %</span> <span class="cm">cat log/thresher-and-raw.md</span></p>
-                <p class="md"><span class="h" aria-hidden="true"># </span><span class="hd">The Rice Thresher &amp; Rice RAW</span></p>
+                <h3 class="md"><span class="h" aria-hidden="true"># </span><span class="hd">The Rice Thresher &amp; Rice RAW</span></h3>
                 <p class="role">Photographer</p>
                 <p class="when now">now</p>
                 <p class="what">I shoot for the Thresher, Rice's student newspaper, and with Rice RAW&nbsp;Photography.</p>
@@ -907,7 +938,7 @@
             <header class="wb"><div class="wc"><button class="wbtn x" type="button" aria-label="close log/deep-blue.md"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><path d="M2 2l4 4M6 2l-4 4" stroke="currentColor" stroke-width="1.3" fill="none"/></svg></button><button class="wbtn mn" type="button" aria-pressed="false" aria-label="minimize log/deep-blue.md"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><path d="M1.5 4h5" stroke="currentColor" stroke-width="1.3" fill="none"/></svg></button><button class="wbtn mx" type="button" aria-pressed="false" aria-label="maximize log/deep-blue.md"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><path d="M4 1.5v5M1.5 4h5" stroke="currentColor" stroke-width="1.3" fill="none"/></svg></button></div><h2 class="wt" id="deepblue-h">log/deep-blue.md</h2></header>
             <div class="wd">
                 <p class="ln" aria-hidden="true"><span class="pr"><span class="pu">isaac</span><span class="pa">@</span><span class="ph">ureboy</span> <span class="pp">~</span> %</span> <span class="cm">cat log/deep-blue.md</span></p>
-                <p class="md"><span class="h" aria-hidden="true"># </span><span class="hd">Deep Blue Midland Basin</span></p>
+                <h3 class="md"><span class="h" aria-hidden="true"># </span><span class="hd">Deep Blue Midland Basin</span></h3>
                 <p class="role">Summer Intern</p>
                 <p class="when">summer 2026</p>
                 <p class="what">Midstream water infrastructure in the Permian Basin. I did finance, research and the weekly newsletter.</p>
@@ -919,7 +950,7 @@
             <header class="wb"><div class="wc"><button class="wbtn x" type="button" aria-label="close log/wealth-management-club.md"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><path d="M2 2l4 4M6 2l-4 4" stroke="currentColor" stroke-width="1.3" fill="none"/></svg></button><button class="wbtn mn" type="button" aria-pressed="false" aria-label="minimize log/wealth-management-club.md"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><path d="M1.5 4h5" stroke="currentColor" stroke-width="1.3" fill="none"/></svg></button><button class="wbtn mx" type="button" aria-pressed="false" aria-label="maximize log/wealth-management-club.md"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><path d="M4 1.5v5M1.5 4h5" stroke="currentColor" stroke-width="1.3" fill="none"/></svg></button></div><h2 class="wt" id="ruwmc-h">log/wealth-management-club.md</h2></header>
             <div class="wd">
                 <p class="ln" aria-hidden="true"><span class="pr"><span class="pu">isaac</span><span class="pa">@</span><span class="ph">ureboy</span> <span class="pp">~</span> %</span> <span class="cm">cat log/wealth-management-club.md</span></p>
-                <p class="md"><span class="h" aria-hidden="true"># </span><span class="hd">Rice Undergraduate Wealth Management Club</span></p>
+                <h3 class="md"><span class="h" aria-hidden="true"># </span><span class="hd">Rice Undergraduate Wealth Management Club</span></h3>
                 <p class="role">Analyst</p>
                 <p class="when">2025–26</p>
                 <p class="what">I worked on portfolio research focused on client relationships and stability, with Monte Carlo simulations.</p>
@@ -931,7 +962,7 @@
             <header class="wb"><div class="wc"><button class="wbtn x" type="button" aria-label="close log/john-cooper.md"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><path d="M2 2l4 4M6 2l-4 4" stroke="currentColor" stroke-width="1.3" fill="none"/></svg></button><button class="wbtn mn" type="button" aria-pressed="false" aria-label="minimize log/john-cooper.md"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><path d="M1.5 4h5" stroke="currentColor" stroke-width="1.3" fill="none"/></svg></button><button class="wbtn mx" type="button" aria-pressed="false" aria-label="maximize log/john-cooper.md"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><path d="M4 1.5v5M1.5 4h5" stroke="currentColor" stroke-width="1.3" fill="none"/></svg></button></div><h2 class="wt" id="jcs-h">log/john-cooper.md</h2></header>
             <div class="wd">
                 <p class="ln" aria-hidden="true"><span class="pr"><span class="pu">isaac</span><span class="pa">@</span><span class="ph">ureboy</span> <span class="pp">~</span> %</span> <span class="cm">cat log/john-cooper.md</span></p>
-                <p class="md"><span class="h" aria-hidden="true"># </span><span class="hd">The John Cooper School</span></p>
+                <h3 class="md"><span class="h" aria-hidden="true"># </span><span class="hd">The John Cooper School</span></h3>
                 <p class="role">Graduated cum laude</p>
                 <p class="when">may 2025</p>
                 <p class="what">High school, in The Woodlands, TX. Founding member of the D&amp;D club (0&nbsp;to&nbsp;20+ members in a year), <span class="nw">co-president</span> of the Tabletop Club, and tennis MVP my junior year (most improved the year before).</p>
@@ -942,6 +973,7 @@
         <section class="win" id="contact" aria-labelledby="contact-h" data-sec="contact" data-name="contact">
             <header class="wb"><div class="wc"><button class="wbtn x" type="button" aria-label="close contact"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><path d="M2 2l4 4M6 2l-4 4" stroke="currentColor" stroke-width="1.3" fill="none"/></svg></button><button class="wbtn mn" type="button" aria-pressed="false" aria-label="minimize contact"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><path d="M1.5 4h5" stroke="currentColor" stroke-width="1.3" fill="none"/></svg></button><button class="wbtn mx" type="button" aria-pressed="false" aria-label="maximize contact"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><path d="M4 1.5v5M1.5 4h5" stroke="currentColor" stroke-width="1.3" fill="none"/></svg></button></div><h2 class="wt" id="contact-h">contact</h2></header>
             <div class="wd">
+                <p class="ln"><span aria-hidden="true"><span class="pr"><span class="pu">isaac</span><span class="pa">@</span><span class="ph">ureboy</span> <span class="pp">~</span> %</span> </span><span class="cm"><span aria-hidden="true"># </span>say hi</span></p>
                 <p class="ln" aria-hidden="true"><span class="pr"><span class="pu">isaac</span><span class="pa">@</span><span class="ph">ureboy</span> <span class="pp">~</span> %</span> <span class="cm">cat contact</span></p>
                 <p>I'm always open to connecting! Whether it's about econ, finance, cars, photos, or anything in between, feel free to reach out.</p>
                 <p class="go ln"><span aria-hidden="true"><span class="pr"><span class="pu">isaac</span><span class="pa">@</span><span class="ph">ureboy</span> <span class="pp">~</span> %</span> </span><a class="cmd-a" href="mailto:isaacoure@gmail.com"><span class="verb">mail</span> <span class="arg">isaacoure@gmail.com</span></a></p>
@@ -967,7 +999,7 @@
     </footer>
 
     <!-- the status line -->
-    <nav class="tb" id="tb" aria-label="Status line">
+    <nav class="tb" id="tb" aria-label="Status line" tabindex="-1">
         <button class="tb-eye" id="tbEye" type="button" aria-expanded="false" aria-controls="menu" aria-label="Windows">
             <svg viewBox="0 0 48 48" shape-rendering="crispEdges" aria-hidden="true" focusable="false">
                 <g fill="currentColor"><rect x="22" y="12" width="14" height="2"/><rect x="16" y="14" width="24" height="2"/><rect x="14" y="16" width="28" height="2"/><rect x="8" y="18" width="24" height="2"/><rect x="38" y="18" width="6" height="2"/><rect x="42" y="20" width="4" height="2"/><rect x="44" y="22" width="2" height="2"/><rect x="4" y="24" width="4" height="2"/><rect x="46" y="24" width="2" height="2"/><rect x="2" y="26" width="2" height="2"/><rect x="0" y="28" width="2" height="2"/><rect x="38" y="28" width="10" height="2"/><rect x="6" y="30" width="12" height="2"/><rect x="32" y="30" width="8" height="2"/><rect x="14" y="32" width="22" height="2"/><rect x="20" y="34" width="10" height="2"/></g>
@@ -981,8 +1013,8 @@
         <a class="tb-a" href="#contact" data-sec="contact"><span class="n" aria-hidden="true">3:</span>contact</a>
         <span class="tb-host" aria-hidden="true">"ureboy"</span>
         <span class="tb-clk" id="clk"></span>
+        <div class="menu" id="menu" hidden></div>
     </nav>
-    <div class="menu" id="menu" hidden></div>
 
     <script>
     /* the boot, then the desktop. the terminal is the holding page's, cut down the same way:
@@ -1011,7 +1043,7 @@
         var STAG = 110, zTop = 1, active = null, nextAt = 0, io = null, queued = false, footSeen = false, maxed = null;
 
         function raise(w) {                // to the front, and its title bar lights up
-            if (!w || w.hidden || (maxed && w !== maxed) || active === w) return;
+            if (!w || w.hidden || has(w, 'down') || (maxed && w !== maxed) || active === w) return;
             if (active) drop(active, 'top');
             active = w; add(w, 'top');
             w.style.zIndex = ++zTop;
@@ -1051,6 +1083,7 @@
                 else later.push(w);
             }
             nextAt = +new Date() + n * STAG;
+            setTimeout(function () { if (!maxed) raise(wins[0]); }, n * STAG + 120);   // then the login shell is the front window: its cursor blinks
             if (later.length && window.IntersectionObserver) {
                 io = new IntersectionObserver(seen, { rootMargin: '0px 0px -' + ((tb ? tb.offsetHeight : 0) + 24) + 'px 0px' });
                 for (i = 0; i < later.length; i++) io.observe(later[i]);
@@ -1077,6 +1110,7 @@
             if (on && has(w, 'maxi')) maxi(w, false);
             if (on) add(w, 'shade'); else drop(w, 'shade');
             pressed(w, 'mn', on);
+            settleAll();                   // its height changed: a dragged one stays on the desk
             queue();
         }
         function maxi(w, on) {
@@ -1087,13 +1121,13 @@
                 raise(w);
                 add(w, 'maxi'); drop(w, 'shade'); pressed(w, 'mn', false); maxed = w; add(root, 'lock');
                 w.style.zIndex = 100000;
-                if (wd) { wd.setAttribute('tabindex', '0'); wd.setAttribute('role', 'region'); wd.setAttribute('aria-labelledby', w.getAttribute('aria-labelledby')); wd.scrollTop = 0; }
+                if (wd) { wd.setAttribute('tabindex', '0'); wd.scrollTop = 0; }
                 for (i = 0; i < wins.length; i++) if (wins[i] !== w) wins[i].inert = true;
                 if (footEye) footEye.parentNode.inert = true;
             } else {
                 drop(w, 'maxi'); if (maxed === w) maxed = null; drop(root, 'lock');
                 w.style.zIndex = ++zTop;
-                if (wd) { wd.removeAttribute('tabindex'); wd.removeAttribute('role'); wd.removeAttribute('aria-labelledby'); }
+                if (wd) wd.removeAttribute('tabindex');
                 for (i = 0; i < wins.length; i++) wins[i].inert = false;
                 if (footEye) footEye.parentNode.inert = false;
             }
@@ -1133,7 +1167,7 @@
             if (has(w, 'shade')) shade(w, false);
             if (has(w, 'pend')) { if (reduce) up(w); else setTimeout(function () { up(w); }, jump ? 160 : 0); }
             raise(w);
-            if (jump) try { w.scrollIntoView({ block: 'nearest' }); } catch (e) { w.scrollIntoView(); }
+            if (jump) try { w.scrollIntoView({ block: w.offsetHeight > seeable() - 32 ? 'start' : 'nearest' }); } catch (e) { w.scrollIntoView(); }
             buildMenu();
         }
         function reset() {                 // the desk as it was: every window open, where the grid put it
@@ -1147,19 +1181,29 @@
             }
             zTop = 1; if (active) { drop(active, 'top'); active = null; }
             for (i = 0; i < wins.length; i++) if (has(wins[i], 'pend')) (function (w, k) { setTimeout(function () { up(w, true); }, k * 70); })(wins[i], i);
+            setTimeout(function () { if (!maxed) raise(wins[0]); }, wins.length * 70 + 120);
             buildMenu(); queue();
         }
-        var closedAt = 0;
+        /* a double tap's second tap lands where the first did; if the first closed or shaded a
+           window and another moved up under the finger, the second does nothing to that one.
+           a keyboard's click (detail 0) is never a second tap */
+        var lastAt = 0, lastWin = null, lastX = 0, lastY = 0;
+        function near(e) { return Math.abs(e.clientX - lastX) < 24 && Math.abs(e.clientY - lastY) < 24; }
+        function twice(w, e) {
+            var now = +new Date(), again = e.detail !== 0 && now - lastAt < 450 && w !== lastWin && near(e);
+            lastAt = now; lastWin = w; lastX = e.clientX; lastY = e.clientY;
+            return again;
+        }
         desk.addEventListener('click', function (e) {
-            var b = e.target.closest ? e.target.closest('.wbtn') : null, w = winOf(b), now = +new Date();
-            if (!b || !w) return;
+            var b = e.target.closest ? e.target.closest('.wbtn') : null, w = winOf(b);
+            if (!b || !w || twice(w, e)) return;
             if (has(b, 'mn')) shade(w);
             else if (has(b, 'mx')) maxi(w);
-            else if (has(b, 'x')) { if (now - closedAt < 450) return; closedAt = now; close(w); }   // a double tap closes one, not the window that moved up under it
+            else if (has(b, 'x')) close(w);
         });
         desk.addEventListener('dblclick', function (e) {
             var bar = e.target.closest ? e.target.closest('.wb') : null, w = winOf(bar), b = w && w.querySelector('.wbtn.mx');
-            if (!bar || e.target.closest('.wbtn') || !b || !b.offsetWidth) return;   // no maximize button, no maximize (a phone)
+            if (!bar || e.target.closest('.wbtn') || !b || !b.offsetWidth || (lastWin && lastWin !== w && +new Date() - lastAt < 450 && near(e))) return;
             e.preventDefault();
             maxi(w);
         });
@@ -1182,7 +1226,7 @@
 
         window.addEventListener('hashchange', function () {    // back or forward to a window that was closed brings it back
             var w = location.hash.length > 1 && document.getElementById(location.hash.slice(1));
-            if (w && has(w, 'win')) { if (maxed && maxed !== w) maxi(maxed, false); open(w, true); }
+            if (w && has(w, 'win')) { var j = w.hidden; if (maxed && maxed !== w) maxi(maxed, false); open(w, j); }   // a click already opened it, and the browser's own scroll is under way
         });
 
         /* ---- a mouse drags a window by its title bar (a finger scrolls the page, see the CSS).
@@ -1245,7 +1289,7 @@
         }
         function showMenu(on) {
             if (on === undefined) on = menu.hidden;
-            if (on) { buildMenu(); menu.hidden = false; eyeBtn.setAttribute('aria-expanded', 'true'); var b = menu.querySelector('button'); if (b) b.focus(); }
+            if (on) { buildMenu(); menu.hidden = false; eyeBtn.setAttribute('aria-expanded', 'true'); menu.style.touchAction = menu.scrollHeight > menu.clientHeight ? '' : 'none'; var b = menu.querySelector('button'); if (b) b.focus(); }
             else {
                 var inside = menu.contains(document.activeElement);
                 menu.hidden = true; eyeBtn.setAttribute('aria-expanded', 'false');
@@ -1374,7 +1418,7 @@
             var now = +new Date(), t = lastGo, soon = 0, i, p, r, due;
             for (i = 0; i < pics.length; i++) {
                 p = pics[i]; r = p.el.getBoundingClientRect();
-                if (!r.height || r.top < 0 || r.bottom > vh || p.win.hidden || has(p.win, 'shade')) {
+                if (!r.height || r.top < 0 || r.bottom > vh || p.win.hidden || has(p.win, 'shade') || (maxed && p.win !== maxed)) {
                     p.inAt = 0;
                     if (r.bottom <= 0 || r.top >= vh || p.win.hidden) p.off = true;
                     continue;
@@ -1427,6 +1471,7 @@
                 w = wins[i]; if (w.hidden) continue;
                 if (w.getBoundingClientRect().top < vh * .4) cur = w.getAttribute('data-sec');
             }
+            if ((window.pageYOffset || doc.scrollTop) < wins[0].offsetHeight / 2) cur = 'home';   /* the login shell's half: home */
             if (vh + (window.pageYOffset || doc.scrollTop) >= doc.scrollHeight - 2) cur = 'contact';
             for (i = 0; i < links.length; i++) {
                 if (links[i].getAttribute('data-sec') === cur) links[i].setAttribute('aria-current', 'true');
@@ -1435,9 +1480,6 @@
         }
         function queue() { if (queued) return; queued = true; (window.requestAnimationFrame || setTimeout)(pass); }
 
-        /* a title bar's leader and result go when the title and the buttons leave them no
-           room. the face is monospace, so a title's width is its length in columns, and a
-           hidden result is still counted: hiding it never makes room for itself */
         function start() {                 // the desktop, once
             if (started) return; started = true;
             lastLogin();

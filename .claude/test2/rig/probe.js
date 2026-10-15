@@ -121,7 +121,7 @@ async function barsFit(page) {              // every title bar's buttons inside 
         rec('T2a after a walk every window is up, none pending', s.pend === 0 && s.up === s.n, s);
         rec('T2b at the bottom the taskbar marks contact', s.current && /contact/.test(s.current), s.current);
         await p.evaluate(function () { scrollTo(0, 0); }); await sleep(300); s = await state(p);
-        rec('T2c at the top it marks about', s.current && /about/.test(s.current), s.current);
+        rec('T2c at the top it marks home', s.current && /home/.test(s.current), s.current);
         await p.evaluate(function () { document.getElementById('log').scrollIntoView(); scrollBy(0, -200); }); await sleep(300); s = await state(p);
         rec('T2d with the log in the upper part it marks log', s.current && /log/.test(s.current), s.current);
         // T3: a reload in the same session is warm, and still cascades
@@ -181,7 +181,7 @@ async function barsFit(page) {              // every title bar's buttons inside 
         rec('T7a a click brings a window to the front: .top on it alone, highest z-index', z.top && z.tops === 1 && z.z === z.maxZ, z);
         // the title bar inverts on the top window
         var bar = await p.evaluate(function () { var b = document.querySelector('#shot .wb'), o = document.querySelector('#readme .wb'); return { topBar: getComputedStyle(b).backgroundImage, otherBar: getComputedStyle(o).backgroundImage, light: getComputedStyle(document.querySelector('#shot .wbtn.x'), '::before').backgroundColor, otherLight: getComputedStyle(document.querySelector('#readme .wbtn.x'), '::before').backgroundColor }; });
-        rec('T7b the front window\'s title bar is lit and its lights are coloured; a window at the back has grey ones', bar.topBar !== bar.otherBar && bar.light === 'rgb(255, 95, 87)' && bar.otherLight === 'rgb(75, 75, 78)', bar);
+        rec('T7b the front window\'s title bar is lit and its lights are coloured; a window at the back has grey ones', bar.topBar !== bar.otherBar && bar.light === 'rgb(255, 95, 87)' && bar.otherLight === 'rgb(128, 128, 132)', bar);
         // drag by the title bar
         var br = await grab(p, '#terminal .wb'), before = await rect(p, '#terminal');
         await p.mouse.move(br.x, br.y); await p.mouse.down(); await p.mouse.move(br.x + 50, br.y + 30, { steps: 6 }); await p.mouse.move(br.x + 100, br.y + 60, { steps: 6 });
@@ -329,7 +329,7 @@ async function barsFit(page) {              // every title bar's buttons inside 
         for (i = 0; i < 6; i++) { await p.keyboard.press('Tab'); await sleep(60); tabs.push(await p.evaluate(function () { var a = document.activeElement; return (a.className || '').split(' ')[0] + ':' + (a.getAttribute('aria-label') || a.textContent.trim().slice(0, 20)); })); }
         rec('T10a Tab: skip link, then the first window\'s three lights (close, shade, zoom), then the next window', /skip/.test(tabs[0]) && /close whoami/.test(tabs[1]) && /minimize whoami/.test(tabs[2]) && /maximize whoami/.test(tabs[3]) && /close neofetch/.test(tabs[4]) && /minimize neofetch/.test(tabs[5]), tabs);
         var fv = await p.evaluate(function () { return getComputedStyle(document.activeElement).outlineStyle + ' ' + getComputedStyle(document.activeElement).outlineColor; });
-        rec('T10b focus is visible (red outline)', /solid/.test(fv) && /216, 30, 5/.test(fv), fv);
+        rec('T10b focus is visible (red outline)', /solid/.test(fv) && /216, 30, 5|255, 84, 54/.test(fv), fv);
         // Enter on a button works, Space too (focus is on neofetch's shade light)
         await p.keyboard.press('Enter'); await sleep(80);
         sh = await p.evaluate(function () { return document.getElementById('about').classList.contains('shade'); });
@@ -341,11 +341,13 @@ async function barsFit(page) {              // every title bar's buttons inside 
         await p.evaluate(function () { document.querySelector('#contact .wbtn.mn').focus(); }); await sleep(300);
         var pc = await p.evaluate(function () { var w = document.getElementById('contact'), r = w.getBoundingClientRect(); return { up: w.classList.contains('up'), pend: w.classList.contains('pend'), inView: r.top >= 0 && r.bottom <= innerHeight + 1 }; });
         rec('T10e focus landing in a window below the fold pops it and shows it', pc.up && !pc.pend && pc.inView, pc);
-        // the skip link lands on the desk
+        // the skip link lands on the status line, and Tab from there is the eye
         await p.evaluate(function () { scrollTo(0, 0); }); await p.keyboard.press('Tab'); await sleep(50);
         await p.evaluate(function () { document.querySelector('.skip').focus(); }); await p.keyboard.press('Enter'); await sleep(200);
         var sk = await p.evaluate(function () { return document.activeElement.id; });
-        rec('T10f the skip link lands on the desk', sk === 'desk', sk);
+        await p.keyboard.press('Tab'); await sleep(50);
+        var sk2 = await p.evaluate(function () { return document.activeElement.id; });
+        rec('T10f the skip link lands on the status line, and the next Tab is the eye', sk === 'tb' && sk2 === 'tbEye', { landed: sk, next: sk2 });
         await c.close();
 
         /* ---- T11: the loops: the LCD eye blinks on its own, the foot's eye once when reached ---- */
@@ -482,14 +484,14 @@ async function barsFit(page) {              // every title bar's buttons inside 
         c = await ctxWith(browser, { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }, true);
         p = await c.newPage();
         await p.goto(URL, { waitUntil: 'load' }); await sleep(1500);
-        var topBefore = await p.evaluate(function () { return (document.querySelector('.win.top') || {}).id; });
-        before = await rect(p, '#terminal');
+        // the finger goes down on a window that is up, in view, and not the front one
+        var fg = await p.evaluate(function () { var t = document.querySelector('.win.top'), ws = document.querySelectorAll('.win.up'), i, r; for (i = 0; i < ws.length; i++) { r = ws[i].getBoundingClientRect(); if (ws[i] !== t && r.top >= 0 && r.top + 160 < innerHeight) return { top: t && t.id, id: ws[i].id, l: r.left, t: r.top }; } return { top: t && t.id }; });
         cdp = await c.newCDPSession(p);
-        await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: before.l + 60, y: before.t + 60 }] });
-        for (k = 1; k <= 6; k++) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: before.l + 60, y: before.t + 60 - k * 30 }] });
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: fg.l + 60, y: fg.t + 60 }] });
+        for (k = 1; k <= 6; k++) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: fg.l + 60, y: fg.t + 60 - k * 30 }] });
         await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await sleep(300);
         var topAfter = await p.evaluate(function () { return (document.querySelector('.win.top') || {}).id; });
-        rec('T15d a finger scrolling over a window does not bring it to the front', topAfter === topBefore && topBefore !== 'terminal', { before: topBefore, after: topAfter });
+        rec('T15d a finger scrolling over a window does not bring it to the front', !!fg.id && topAfter === fg.top && fg.top !== fg.id, { over: fg.id, before: fg.top, after: topAfter });
         await p.evaluate(function () { scrollTo(0, 0); }); await sleep(200);
         await p.tap('#terminal .wb'); await p.tap('#terminal .wb'); await sleep(200);
         var dm = await p.evaluate(function () { var b = document.querySelector('#terminal .wbtn.mx'); return { maxi: document.getElementById('terminal').classList.contains('maxi'), top: (document.querySelector('.win.top') || {}).id, back: b.offsetWidth > 0 }; });
@@ -554,11 +556,11 @@ async function barsFit(page) {              // every title bar's buttons inside 
         rec('T16b2 and when the closed window comes back, the dragged one is still on the page', d3.l >= 0 && d3.r <= d3.inner && d3.docW <= d3.inner && d3.x === 0, d3);
         // j: after a reset, a click on the window that was lit raises it
         await p.click('#tbEye'); await sleep(80); await p.click('#menu button[data-act="reset"]'); await sleep(1800);
-        var lit0 = await p.evaluate(function () { return { tops: document.querySelectorAll('.win.top').length }; });
+        var lit0 = await p.evaluate(function () { var t = document.querySelectorAll('.win.top'); return { tops: t.length, top: t[0] && t[0].id }; });
         await p.evaluate(function () { document.getElementById('readme').scrollIntoView({ block: 'center' }); }); await sleep(300);
         var ab = await grab(p, '#readme .wb'); await p.mouse.click(ab.x, ab.y); await sleep(60);
         var lit1 = await p.evaluate(function () { var w = document.getElementById('readme'); return { top: w.classList.contains('top'), z: +w.style.zIndex, maxZ: Math.max.apply(null, [].map.call(document.querySelectorAll('.win'), function (x) { return +x.style.zIndex || 0; })) }; });
-        rec('T16j after a reset nothing is lit, and the first click lights and fronts its window', lit0.tops === 0 && lit1.top && lit1.z === lit1.maxZ && lit1.z > 0, { before: lit0, after: lit1 });
+        rec('T16j after a reset the login shell alone is lit, and the first click lights and fronts its window', lit0.tops === 1 && lit0.top === 'terminal' && lit1.top && lit1.z === lit1.maxZ && lit1.z > 0, { before: lit0, after: lit1 });
         // i: Escape closes the list before it restores a window filling the screen
         await p.click('#about .wbtn.mx'); await sleep(100); await p.click('#tbEye'); await sleep(80);
         await p.keyboard.press('Escape'); await sleep(80);
