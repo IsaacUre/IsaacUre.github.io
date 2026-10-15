@@ -8,14 +8,17 @@
      node .claude/comp-tools/serve.js . 8571 &
      node .claude/comp-tools/mc-play/drag.js        (any suite in mc-play/)
 
-   Needs Playwright (npm i -g playwright, or set PLAYWRIGHT_PATH) and its
-   Chromium. MC_BASE overrides the server (default http://localhost:8571).
+   Uses Playwright and its Chromium if they are installed (npm i -g playwright,
+   or set PLAYWRIGHT_PATH), and otherwise pwshim/ beside this file, which
+   drives the Edge that Windows already has. MC_BASE overrides the server
+   (default http://localhost:8571).
    Headless Chromium has no pointer lock, so a shim grants it; to "press
    Escape in the world" a suite calls document.exitPointerLock(), which is
    what the browser does, and the game pauses off the lock change. */
 const pw = (function () {
     var tries = [process.env.PLAYWRIGHT_PATH, 'playwright'];
     try { tries.push(require('child_process').execSync('npm root -g', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim() + '/playwright'); } catch (e) {}
+    tries.push(require('path').join(__dirname, 'pwshim'));   // no Playwright: drive the installed Edge
     for (var i = 0; i < tries.length; i++) { if (!tries[i]) continue; try { return require(tries[i]); } catch (e) {} }
     throw new Error('playwright not found: npm i -g playwright, or set PLAYWRIGHT_PATH');
 })();

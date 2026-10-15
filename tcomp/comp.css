@@ -2677,7 +2677,6 @@ button.cr-iu-skip { position: absolute; right: 1rem; bottom: 1rem; z-index: 11; 
    the game's own GUI arithmetic, and every sprite is one of guiSprites() */
 .mc-cross { position: absolute; left: 0; top: 0; width: calc(var(--px) * 15); height: calc(var(--px) * 15); z-index: 4; pointer-events: none;
     background: var(--spr-cross) 0 0 / 100% 100% no-repeat; image-rendering: pixelated; mix-blend-mode: difference; }
-.mc-ico { display: inline-block; width: 18px; height: 18px; background-size: 288px 288px; background-repeat: no-repeat; image-rendering: pixelated; }
 .mc-hud > * { position: absolute; left: 0; top: 0; }
 .mc-hud i { display: block; image-rendering: pixelated; }
 .mc-hbbar { width: calc(var(--px) * 182); height: calc(var(--px) * 22); background: var(--spr-hotbar) 0 0 / 100% 100% no-repeat; }
@@ -2726,6 +2725,8 @@ button.cr-iu-skip { position: absolute; right: 1rem; bottom: 1rem; z-index: 11; 
 .mc-toast .mc-tl { position: absolute; }
 /* RecipeToast: the white card, the crafting table (or furnace) small in the corner behind what was learned */
 .mc-toast.mc-rtoast::before { border-image-source: var(--spr-toast_rc); }
+/* SystemToast: its 160x64 card sliced the game's way per size, painted by nineURL() */
+.mc-toast.mc-stoast::before { border: 0; border-image: none; background: var(--nine) 0 0 / 100% 100% no-repeat; image-rendering: pixelated; }
 .mc-toast .mc-tcat { left: calc(var(--px) * 1.8); top: calc(var(--px) * 1.8); width: calc(var(--px) * 9.6); height: calc(var(--px) * 9.6); }
 .mc-actbar { opacity: 0; }
 /* the attack indicator and F3's 3D crosshair sit beside .mc-cross, outside .mc-hud, for the same inverting blend */

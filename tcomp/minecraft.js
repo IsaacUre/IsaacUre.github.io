@@ -7,8 +7,9 @@
    the full survival loop (punch tree → craft → mine → smelt →
    build → don't get creeper'd), boxy mobs, hunger, farming, beds,
    TNT, and the game's own sounds and C418 soundtrack, from
-   mc-sounds/ beside this file. Every texture is still painted onto
-   the atlas at boot.
+   mc-sounds/ beside this file, and its own textures, font and
+   interface sprites from mc-tex/ (anything missing from there is
+   painted here at boot instead).
    Interface (for the launcher app): window.MC = { render(), init(el),
    close() → raw hours, ach() → {n,total,list}, hours() }.
    ═══════════════════════════════════════════════════════════════ */
@@ -37,6 +38,43 @@
     var RT = null;     // runtime (rebuilt every open)
     var EMPTY_KEYS = {};   // stand-in for RT.keys while a GUI suppresses movement
 
+    /* ── the game's own textures ─────────────────────────────────
+       mc-tex/ beside this file holds what .claude/comp-tools/mc-tex/build.py
+       takes out of the game's jar: tiles.png (block, item and particle
+       textures in 16x16 cells), gui.png (the interface sprites at their own
+       sizes), logo.png (the title and edition wordmarks) and tex.json, which
+       says where each is by the name this file knows it by and carries the
+       font's glyphs. They start loading as soon as this script is read; the
+       game waits for them (eight seconds at most) before it builds anything,
+       and paints whatever they lack itself. */
+    var TEX_BASE = (function () {
+        var s = document.currentScript;
+        try { return new URL('mc-tex/', s && s.src ? s.src : location.href).href; } catch (e) { return 'mc-tex/'; }
+    })();
+    var MTEX = { ok: false, done: false, wait: [] };
+    (function () {
+        function img(name) {
+            return new Promise(function (res) {
+                var im = new Image();
+                im.onload = function () { res(im); };
+                im.onerror = function () { res(null); };
+                im.src = TEX_BASE + name;
+            });
+        }
+        function finish(a) {
+            if (MTEX.done) return;
+            if (a && a[0] && a[1] && a[2]) { MTEX.man = a[0]; MTEX.tiles = a[1]; MTEX.gui = a[2]; MTEX.logoImg = a[3]; MTEX.skyImg = a[4]; MTEX.ok = true; }
+            MTEX.done = true;
+            var w = MTEX.wait; MTEX.wait = [];
+            w.forEach(function (f) { f(); });
+        }
+        setTimeout(function () { finish(null); }, 8000);
+        Promise.all([
+            fetch(TEX_BASE + 'tex.json').then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; }),
+            img('tiles.png'), img('gui.png'), img('logo.png'), img('sky.png')
+        ]).then(finish, function () { finish(null); });
+    })();
+
     function sLoad() {
         try { var s = JSON.parse(localStorage.getItem('comp_mc') || 'null'); if (s && s.seed != null) return s; } catch (e) {}
         return null;
@@ -52,6 +90,7 @@
             xpl: 0, xp: 0,                 // level, points into the current level
             weather: 0, wt: 120,           // 0 clear / 1 rain / 2 thunder; seconds until it changes
             t: DAY_MS * 0.25,              // world clock, ms into the cycle (start mid-morning)
+            day: 0,                        // days gone by: the moon's phase, and /time query day
             edits: {},                     // 'cx,cz' → { idx: blockId }
             tents: {},                     // 'x,y,z' → furnace/chest tile state
             ents: [],                      // saved mobs + item drops
@@ -86,6 +125,7 @@
         if (S.diff == null) S.diff = 2;
         if (!S.eff || typeof S.eff !== 'object' || S.eff instanceof Array) S.eff = {};
         if (S.off === undefined) S.off = null;   // the off hand, from before it existed
+        if (S.day == null) S.day = 0;
         // the recipe book, from before it existed: learn what the inventory already teaches, without a toast
         if (!Array.isArray(S.rbk)) { S.rbk = []; S.rbQuiet = 1; }
         if (!S.rules || typeof S.rules !== 'object' || S.rules instanceof Array) S.rules = {};
@@ -277,7 +317,7 @@
     // xp:[min,max] = orbs on harvest, mul:[min,max] = extra drops (fortune multiplies these)
     B[ORE_COAL].xp = [0, 2];
     B[ORE_DIA].xp = [3, 7];
-    B[CACTUS] = { n: 'cactus', hard: 0.4, solid: 1, opaque: 1, hurt: 1 };
+    B[CACTUS] = { n: 'cactus', hard: 0.4, solid: 1, opaque: 0, inset: 1, hurt: 1 };   // the game's cactus is a 14-wide box: its sides sit a texel in, under a full top
     B[SUGARCANE] = { n: 'sugarcane', hard: 0, solid: 0, opaque: 0, cross: 1 };
     B[PUMPKIN] = { n: 'pumpkin', hard: 1, tool: 'axe', solid: 1, opaque: 1 };
     B[MELON] = { n: '?melon', hard: 1, tool: 'axe', solid: 1, opaque: 1 };
@@ -516,7 +556,10 @@
                    clay_ball: 'brick', potato: 'baked_potato' };
     var SMELT_S = 10;   // seconds per item
 
-    /* ── the atlas: every texture painted at boot ───────────── */
+    /* ── the atlas ─────────────────────────────────────────────
+       32 x 32 cells of 16x16: the game's own texture where mc-tex has one,
+       otherwise the drawing below. */
+    var ATC = 32;   // cells a row (and rows)
     var ATLAS = null, actx = null, TILE = {}, tileN = 0, TX = 0, TY = 0, trnd = null;
     function tpx(x, y, c) { actx.fillStyle = c; actx.fillRect(TX + x, TY + y, 1, 1); }
     function trect(x, y, w, h, c) { actx.fillStyle = c; actx.fillRect(TX + x, TY + y, w, h); }
@@ -526,12 +569,18 @@
     }
     function tile(name, fn) {
         var idx = tileN++;
-        TX = (idx % 16) * 16; TY = ((idx / 16) | 0) * 16;
+        TX = (idx % ATC) * 16; TY = ((idx / ATC) | 0) * 16;
         var h = 0; for (var i = 0; i < name.length; i++) h = (Math.imul(h, 31) + name.charCodeAt(i)) | 0;
         trnd = mulb(h ^ 0x5DEECE6D);   // per-tile fixed seed: textures identical in every world
-        fn();
+        var at = MTEX.ok ? MTEX.man.tiles[name] : null;
+        if (at != null) actx.drawImage(MTEX.tiles, (at % 16) * 16, ((at / 16) | 0) * 16, 16, 16, TX, TY, 16, 16);
+        else fn();
         TILE[name] = idx;
         return idx;
+    }
+    function tileIf(name) { return MTEX.ok && MTEX.man.tiles[name] != null ? tile(name, null) : null; }   // only where the game has one
+    function copyOf(name) {   // a stand-in: another tile's drawing
+        return function () { var t = TILE[name]; actx.drawImage(ATLAS, (t % ATC) * 16, ((t / ATC) | 0) * 16, 16, 16, TX, TY, 16, 16); };
     }
     function grainTile(name, base, specks, n) {
         return tile(name, function () { trect(0, 0, 16, 16, base); sprinkle(specks, n || 70); });
@@ -546,7 +595,7 @@
         });
     }
     function buildAtlas() {
-        ATLAS = document.createElement('canvas'); ATLAS.width = ATLAS.height = 256;
+        ATLAS = document.createElement('canvas'); ATLAS.width = ATLAS.height = ATC * 16;
         actx = ATLAS.getContext('2d'); tileN = 0; TILE = {};
 
         grainTile('grass_top', '#5d9e3a', ['#4f8c31', '#6cb043', '#559636', '#7ec850'], 90);
@@ -828,6 +877,7 @@
         // (it used to borrow the flat leather ITEM sprite, which stretched over the box into a
         //  glitchy brown blob with the icon's stitched border floating around it)
         hide('hand', '#b0794f', ['#9c6a44', '#c48c5e', '#a5744e']);
+        tile('arm', function () { armPaintCell(avatarSkin()); });   // the skin's right arm, for the first-person hand
 
         /* flat item sprites */
         tile('i_stick', function () { for (var i = 0; i < 10; i++) { tpx(3 + i, 12 - i, '#a8834f'); tpx(4 + i, 12 - i, '#8a6a3e'); } });
@@ -980,7 +1030,7 @@
         /* the XP orb: a round lime ball, dark at the rim and pale at the heart, for
            the renderer to tint (ExperienceOrbRenderer multiplies it by a colour that
            pulses from green to yellow) */
-        tile('xporb', function () {
+        for (var xo = 0; xo < 4; xo++) tile('xporb' + xo, function () {   // the orb's first four sizes, by value
             trect(5, 4, 6, 8, '#6f8f10'); trect(4, 5, 8, 6, '#6f8f10');
             trect(5, 5, 6, 6, '#d8f850'); trect(6, 4, 4, 1, '#b8dc30'); trect(6, 11, 4, 1, '#88aa18');
             trect(6, 6, 3, 3, '#f4ffa8'); tpx(6, 6, '#ffffe0'); tpx(10, 10, '#a0c028'); tpx(9, 10, '#a0c028');
@@ -1021,6 +1071,18 @@
                 tile('i_' + t + '_' + s, function () { paintArmor(s, TC[t][0], TC[t][1]); });
             })(tn, sk);
         })();
+        /* the game's own textures for things never drawn here: the crafting
+           table's front, the undersides, the bow as it is drawn back, and the
+           items that had no picture of their own (spawn eggs keep the drawn
+           egg where the game has none) */
+        tile('table_front', copyOf('table_side'));
+        tile('tnt_bottom', copyOf('tnt_top'));
+        tile('sandstone_bottom', copyOf('sandstone_top'));
+        tile('etable_bottom', copyOf('obsidian'));
+        tile('cactus_bottom', copyOf('cactus_top'));
+        for (var bp = 0; bp < 3; bp++) tile('i_bow_p' + bp, copyOf('i_bow'));
+        ['i_seeds_pumpkin', 'i_seeds_melon', 'i_cake', 'i_compass', 'i_oak_sign'].forEach(tileIf);
+        for (var em in EGG_COL) tileIf('i_egg_' + em);
         /* enchant glint overlay (sampled additively onto item icons) */
         tile('glint', function () { for (var i = 0; i < 10; i++) { var x = (trnd() * 14) | 0, y = (trnd() * 14) | 0; trect(x, y, 2, 1, 'rgba(180,120,255,0.55)'); tpx(x, y + 1, 'rgba(220,180,255,0.7)'); } });
     }
@@ -1045,7 +1107,7 @@
         TEX[BEDROCK] = [t.bedrock, t.bedrock, t.bedrock];
         TEX[WATER] = [t.water, t.water, t.water];
         TEX[LAVA] = [t.lava, t.lava, t.lava];
-        TEX[TABLE] = [t.table_top, t.planks, t.table_side];
+        TEX[TABLE] = [t.table_side, t.table_front, t.table_top, t.planks, t.table_side, t.table_front];   // the front north and west, as the game's model has it
         // per-face [d0=+X, d1=-X, d2=top, d3=bottom, d4=+Z front, d5=-Z] so the mouth shows on ONE
         // face, not all four (furn_side/chest_side were painted but never wired up)
         TEX[FURN] = [t.furn_side, t.furn_side, t.furn_top, t.furn_top, t.furn_front, t.furn_side];
@@ -1064,9 +1126,9 @@
         TEX[WHEAT2] = [t.wheat2, t.wheat2, t.wheat2];
         TEX[WHEAT3] = [t.wheat3, t.wheat3, t.wheat3];
         TEX[CHEST] = [t.chest_side, t.chest_side, t.chest_top, t.chest_top, t.chest_front, t.chest_side];
-        TEX[TNT] = [t.tnt_top, t.tnt_top, t.tnt_side];
+        TEX[TNT] = [t.tnt_top, t.tnt_bottom, t.tnt_side];
         // ── expansion blocks ──
-        TEX[CACTUS] = [t.cactus_top, t.cactus_top, t.cactus_side];
+        TEX[CACTUS] = [t.cactus_top, t.cactus_bottom, t.cactus_side];
         TEX[SUGARCANE] = [t.sugarcane, t.sugarcane, t.sugarcane];
         TEX[PUMPKIN] = [t.pumpkin_top, t.pumpkin_top, t.pumpkin_side];
         TEX[MELON] = [t.melon_top, t.melon_top, t.melon_side];
@@ -1081,13 +1143,13 @@
         TEX[ORE_EMERALD] = [t.ore_emerald, t.ore_emerald, t.ore_emerald];
         TEX[OBSIDIAN] = [t.obsidian, t.obsidian, t.obsidian];
         TEX[STONEBRICK] = [t.stonebrick, t.stonebrick, t.stonebrick];
-        TEX[SANDSTONE] = [t.sandstone_top, t.sandstone_top, t.sandstone_side];
+        TEX[SANDSTONE] = [t.sandstone_top, t.sandstone_bottom, t.sandstone_side];
         TEX[BRICKS] = [t.bricks, t.bricks, t.bricks];
         TEX[BOOKSHELF] = [t.planks, t.planks, t.bookshelf_side];
         TEX[LADDER] = [t.ladder, t.ladder, t.ladder];
         TEX[RLAMP] = [t.rlamp, t.rlamp, t.rlamp];
         TEX[CAKE] = [t.cake_top, t.cake_inner, t.cake_side];
-        TEX[ETABLE] = [t.etable_top, t.obsidian, t.etable_side];
+        TEX[ETABLE] = [t.etable_top, t.etable_bottom, t.etable_side];
         TEX[ANVIL] = [t.anvil_top, t.anvil_top, t.anvil_side];
         TEX[MUSHROOM] = [t.mushroom, t.mushroom, t.mushroom];
         TEX[MUSHROOM_R] = [t.mushroom_r, t.mushroom_r, t.mushroom_r];
@@ -1609,8 +1671,54 @@
         [[0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]],
         [[1, 0, 0], [0, 0, 0], [0, 1, 0], [1, 1, 0]]
     ];
-    var TS16 = 1 / 16, INSET = 1 / 512;   // half-texel inset stops atlas bleed
-    function tileUV(tid) { return [(tid % 16) * TS16, ((tid / 16) | 0) * TS16]; }
+    /* The world samples its own copy of the atlas, ATLASW. Block faces there
+       are the game's 16x16 textures taken down to WTEX texels, each new texel
+       the colour that covers most of its square (so edges stay hard and no new
+       colours appear): a notch more pixel than the game. Items, mobs, plants
+       and everything else keep all sixteen. Its cells are WC pixels, a
+       multiple of both, so every texel is a whole square. */
+    var WTEX = 12, WC = 48, ATLASW = null;
+    var TS16 = 1 / ATC, INSET = 1 / (2 * ATC * WC);   // a tile's span in UV; the half-texel inset stops atlas bleed
+    function tileUV(tid) { return [(tid % ATC) * TS16, ((tid / ATC) | 0) * TS16]; }
+    function buildWorldAtlas() {
+        var down = {}, b, k, n = WTEX;
+        for (b in TEX) if (B[b] && !B[b].cross) TEX[b].forEach(function (t) { if (t != null) down[t] = 1; });
+        var cv = document.createElement('canvas');
+        cv.width = cv.height = ATC * WC;
+        var cx = cv.getContext('2d');
+        cx.imageSmoothingEnabled = false;
+        var sd = actx.getImageData(0, 0, ATLAS.width, ATLAS.height).data, SW = ATLAS.width;
+        var small = document.createElement('canvas');
+        small.width = small.height = n;
+        var sc = small.getContext('2d'), sid = sc.createImageData(n, n);
+        for (var t = 0; t < tileN; t++) {
+            var ox = (t % ATC) * 16, oy = ((t / ATC) | 0) * 16, dx = (t % ATC) * WC, dy = ((t / ATC) | 0) * WC;
+            if (!down[t] || n >= 16) { cx.drawImage(ATLAS, ox, oy, 16, 16, dx, dy, WC, WC); continue; }
+            texDown(sd, SW, ox, oy, n, sid.data);
+            sc.putImageData(sid, 0, 0);
+            cx.drawImage(small, 0, 0, n, n, dx, dy, WC, WC);
+        }
+        return cv;
+    }
+    function texDown(sd, SW, ox, oy, n, out) {   // each of n x n squares of a 16x16 tile: the colour covering most of it
+        var f = 16 / n;
+        for (var j = 0; j < n; j++) for (var i = 0; i < n; i++) {
+            var x0 = i * f, x1 = x0 + f, y0 = j * f, y1 = y0 + f, votes = {}, best = 0, bw = -1;
+            for (var sy = Math.floor(y0); sy < Math.ceil(y1); sy++) {
+                var wy = Math.min(y1, sy + 1) - Math.max(y0, sy);
+                if (wy <= 0) continue;
+                for (var sx = Math.floor(x0); sx < Math.ceil(x1); sx++) {
+                    var wx = Math.min(x1, sx + 1) - Math.max(x0, sx);
+                    if (wx <= 0) continue;
+                    var o = ((oy + sy) * SW + ox + sx) * 4, key = sd[o] << 24 ^ sd[o + 1] << 16 ^ sd[o + 2] << 8 ^ sd[o + 3];
+                    var v = (votes[key] = (votes[key] || 0) + wx * wy);
+                    if (v > bw) { bw = v; best = o; }
+                }
+            }
+            var d = (j * n + i) * 4;
+            out[d] = sd[best]; out[d + 1] = sd[best + 1]; out[d + 2] = sd[best + 2]; out[d + 3] = sd[best + 3];
+        }
+    }
     // TEX is [top, bottom, side] (3) or per-face [d0..d5] (6, for directional blocks)
     function texTop(tx) { return tx.length === 6 ? tx[2] : tx[0]; }
     function texSide(tx) { return tx.length === 6 ? tx[0] : tx[2]; }
@@ -1684,7 +1792,7 @@
                 }
                 continue;
             }
-            var hgt = def.half ? 0.5 : 1;
+            var hgt = def.half ? 0.5 : 1, ins = def.inset ? 1 / 16 : 0;   // an inset block's side faces sit a texel inward, full width
             for (d = 0; d < 6; d++) {
                 var nx = wx + FACE_N[d][0], ny = y + FACE_N[d][1], nz = wz + FACE_N[d][2];
                 var nb = getB(nx, ny, nz);
@@ -1709,7 +1817,7 @@
                     var fuv = faceUV(d, cr);
                     var vy = cr[1] === 1 ? hgt : 0;
                     var vv = def.half && d !== 2 && d !== 3 ? (cr[1] === 1 ? 0.5 : 1) : fuv[1];
-                    quad.push([wx + cr[0], y + vy, wz + cr[2],
+                    quad.push([wx + cr[0] - (ins && d < 2 ? FACE_N[d][0] * ins : 0), y + vy, wz + cr[2] - (ins && d > 3 ? FACE_N[d][2] * ins : 0),
                         uv0[0] + INSET + fuv[0] * (TS16 - 2 * INSET), uv0[1] + INSET + vv * (TS16 - 2 * INSET),
                         L[0], L[1], L[2]]);
                 }
@@ -1741,8 +1849,8 @@
         'uniform mat4 uMvp;varying vec2 vUv;varying vec2 vLt;varying float vAo;varying float vWh;varying float vD;' +
         'void main(){gl_Position=uMvp*vec4(aPos,1.0);vUv=aUv;vLt=aLt;vAo=aAo;vWh=aWh;vD=gl_Position.w;}';
     var FS = 'precision mediump float;uniform sampler2D uTex;uniform float uDay;uniform vec3 uFogC;' +
-        'uniform vec2 uFogR;uniform float uAlpha;varying vec2 vUv;varying vec2 vLt;varying float vAo;varying float vWh;varying float vD;' +
-        'void main(){vec4 c=texture2D(uTex,vUv);if(c.a<0.5)discard;' +
+        'uniform vec2 uFogR;uniform float uAlpha;uniform float uCut;varying vec2 vUv;varying vec2 vLt;varying float vAo;varying float vWh;varying float vD;' +
+        'void main(){vec4 c=texture2D(uTex,vUv);if(c.a<uCut)discard;' +
         'float l=max(vLt.x*uDay,vLt.y);float b=l/(4.0-3.0*l);b=mix(0.045,1.0,b);' +
         'vec3 rgb=(vWh>1.5?c.rgb*vec3(sin(vWh*6.2831853)*0.5+0.5,1.0,(sin(vWh*6.2831853+4.1887903)+1.0)*0.1)' +
         ':vWh<0.0?mix(c.rgb,vec3(1.0,0.0,0.0),-vWh):mix(c.rgb,vec3(1.0),vWh))*b*vAo;' +
@@ -1780,18 +1888,30 @@
         G.u = {
             mvp: gl.getUniformLocation(G.prog, 'uMvp'), tex: gl.getUniformLocation(G.prog, 'uTex'),
             day: gl.getUniformLocation(G.prog, 'uDay'), fogC: gl.getUniformLocation(G.prog, 'uFogC'),
-            fogR: gl.getUniformLocation(G.prog, 'uFogR'), alpha: gl.getUniformLocation(G.prog, 'uAlpha')
+            fogR: gl.getUniformLocation(G.prog, 'uFogR'), alpha: gl.getUniformLocation(G.prog, 'uAlpha'), cut: gl.getUniformLocation(G.prog, 'uCut')
         };
         G.uf = { mvp: gl.getUniformLocation(G.flat, 'uMvp'), col: gl.getUniformLocation(G.flat, 'uCol'), pos: gl.getAttribLocation(G.flat, 'aPos') };
         G.us = { mvp: gl.getUniformLocation(G.skyq, 'uMvp'), tex: gl.getUniformLocation(G.skyq, 'uTex'), a: gl.getUniformLocation(G.skyq, 'uA'), pos: gl.getAttribLocation(G.skyq, 'aPos'), uv: gl.getAttribLocation(G.skyq, 'aUv') };
         // atlas
         G.tex = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, G.tex);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, ATLAS);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, ATLASW || ATLAS);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        // the sun and the moon's phases at their own 32x32, when mc-tex has them
+        G.skyTex = null;
+        if (MTEX.ok && MTEX.skyImg && MTEX.man.sky && MTEX.man.sky.sun) {
+            G.skyTex = gl.createTexture();
+            gl.bindTexture(gl.TEXTURE_2D, G.skyTex);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, MTEX.skyImg);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+            gl.bindTexture(gl.TEXTURE_2D, G.tex);
+        }
         // shared quad index buffer
         var idx = new Uint16Array(MAXQ * 6);
         for (var q = 0; q < MAXQ; q++) {
@@ -1879,16 +1999,30 @@
         }
         G.cloudB = mkVbo(gl, cl); G.cloudN = cl.length / 3;
     }
-    function drawSkyQuad(G, pv, dir, tile, size, alpha) {
-        var gl = G.gl, uv = tileUV(tile);
+    /* SkyRenderer: the sun is a quad 30 either way at a hundred out along the
+       sun's direction, the moon 20, both added onto the sky (black adds
+       nothing); the moon shows the phase the day count gives it */
+    function moonPhase() { return (((S && S.day) || 0) % 8 + 8) % 8; }
+    function skyBody(G, day) {
+        var M = MTEX.ok && MTEX.man.sky, img = MTEX.skyImg;
+        if (G.skyTex && M && M.sun && M.moon && M.moon.length === 8) {
+            var r = day ? M.sun : M.moon[moonPhase()], W = img.width, H = img.height;
+            return { tex: G.skyTex, size: day ? 30 : 20, r: [r[0] / W, r[1] / H, (r[0] + r[2]) / W, (r[1] + r[3]) / H] };
+        }
+        var uv = tileUV(day ? TILE.sun : TILE.moon);   // the drawn ones, off the atlas
+        return { tex: G.tex, size: day ? 30 : 20, r: [uv[0] + INSET, uv[1] + INSET, uv[0] + TS16 - INSET, uv[1] + TS16 - INSET] };
+    }
+    function drawSkyQuad(G, pv, dir, size, alpha, tex, r) {
+        var gl = G.gl;
         // billboard basis perpendicular to the celestial direction
         var up = [0, 0, 1], rx = dir[1], ry = -dir[0];   // dir × z
         var v = [], corners = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
         for (var i = 0; i < 4; i++) {
             var cx = corners[i][0] * size, cy = corners[i][1] * size;
             v.push(dir[0] * 100 + rx * cx, dir[1] * 100 + ry * cx + cy * 0, dir[2] * 100 + up[2] * cy,
-                uv[0] + (corners[i][0] > 0 ? TS16 : 0), uv[1] + (corners[i][1] > 0 ? 0 : TS16));
+                corners[i][0] > 0 ? r[2] : r[0], corners[i][1] > 0 ? r[1] : r[3]);
         }
+        gl.bindTexture(gl.TEXTURE_2D, tex);
         gl.useProgram(G.skyq);
         gl.uniformMatrix4fv(G.us.mvp, false, pv);
         gl.uniform1f(G.us.a, alpha);
@@ -1941,7 +2075,11 @@
                 gl.enableVertexAttribArray(G.uf.pos);
                 gl.drawArrays(gl.POINTS, 0, G.starN);
             }
-            drawSkyQuad(G, pvRot, dir, sky.day ? TILE.sun : TILE.moon, sky.day ? 9 : 6, 1);
+            var body = skyBody(G, sky.day);
+            gl.blendFunc(gl.SRC_ALPHA, gl.ONE);   // the game adds its sun and moon onto the sky
+            drawSkyQuad(G, pvRot, dir, body.size, 1, body.tex, body.r);
+            gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+            gl.bindTexture(gl.TEXTURE_2D, G.tex);
             gl.disable(gl.BLEND);
             gl.depthMask(true);
         }
@@ -1953,6 +2091,7 @@
         gl.uniform3f(G.u.fogC, fogC[0], fogC[1], fogC[2]);
         gl.uniform2f(G.u.fogR, fogR[0], fogR[1]);
         gl.uniform1f(G.u.alpha, 1);
+        gl.uniform1f(G.u.cut, 0.5);   // the alpha test: a texel is there or it is not
         gl.uniformMatrix4fv(G.u.mvp, false, pv);
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, G.ebo);
         var fx = Math.sin(S.yaw) * Math.cos(S.pitch), fz = -Math.cos(S.yaw) * Math.cos(S.pitch);   // forward (for a cheap behind-cull)
@@ -1989,7 +2128,9 @@
             gl.bindBuffer(gl.ARRAY_BUFFER, G.dyn);
             gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(cr), gl.DYNAMIC_DRAW);
             bindMain(G, G.dyn);
+            gl.uniform1f(G.u.cut, 0.004);   // the cracks are half-transparent black and white: blended, not alpha-tested
             if (cr.length) gl.drawElements(gl.TRIANGLES, cr.length / 36 * 6, gl.UNSIGNED_SHORT, 0);
+            gl.uniform1f(G.u.cut, 0.5);
             gl.disable(gl.BLEND); gl.disable(gl.POLYGON_OFFSET_FILL);
         }
         if (RT.target) {
@@ -3435,7 +3576,7 @@
         if (Math.random() > 0.15) return;
         var uv0 = tileUV(TILE.h_heart);
         RT.parts.push({ x: f.x + (Math.random() - 0.5) * 0.5, y: f.y + f.h + 0.2, z: f.z + (Math.random() - 0.5) * 0.5,
-            vx: 0, vy: 0.6, vz: 0, life: 0.8, u: uv0[0] + 4 * TS16 / 16, v: uv0[1] + 4 * TS16 / 16, s: 0.1 });
+            vx: 0, vy: 0.6, vz: 0, life: 0.8, u: uv0[0] + INSET, v: uv0[1] + INSET, us: TS16 - 2 * INSET, s: 0.1 });
     }
     function teleportEnder(f) {   // hop to a valid spot within ~24 blocks; false if none found
         for (var t = 0; t < 16; t++) {
@@ -4283,8 +4424,8 @@
            t = age / 2 in ticks, so it throbs green to yellow a couple of times a
            second; the shader reads the phase out of the overlay value */
         for (i = 0; i < RT.orbs.length; i++) {
-            var o = RT.orbs[i], ou = tileUV(TILE.xporb), oph = ((o.age * 10) % 6.2831853) / 6.2831853;
-            pushBillboard(v, o.x, o.y + 0.1, o.z, o.v >= 7 ? 0.16 : 0.11, ou[0] + INSET, ou[1] + INSET, ou[0] + TS16 - INSET, ou[1] + TS16 - INSET, 1, 1, 2 + oph);
+            var o = RT.orbs[i], ou = tileUV(TILE['xporb' + (o.v >= 17 ? 3 : o.v >= 7 ? 2 : o.v >= 3 ? 1 : 0)]), oph = ((o.age * 10) % 6.2831853) / 6.2831853;
+            pushBillboard(v, o.x, o.y + 0.1, o.z, 0.15, ou[0] + INSET, ou[1] + INSET, ou[0] + TS16 - INSET, ou[1] + TS16 - INSET, 1, 1, 2 + oph);
         }
         for (i = 0; i < RT.parts.length; i++) {
             var pp = RT.parts[i];
@@ -4409,7 +4550,7 @@
     var HAND_MODEL = {};
     function flatModel(tid) {
         if (HAND_MODEL[tid]) return HAND_MODEL[tid];
-        var tx = (tid % 16) * 16, ty = ((tid / 16) | 0) * 16, a = null;
+        var tx = (tid % ATC) * 16, ty = ((tid / ATC) | 0) * 16, a = null;
         try { a = ATLAS.getContext('2d').getImageData(tx, ty, 16, 16).data; } catch (e) {}
         function op(x, y) { return x >= 0 && y >= 0 && x < 16 && y < 16 && (!a || a[(y * 16 + x) * 4 + 3] > 127); }
         var uv = tileUV(tid), q = [], U = TS16 / 16;
@@ -4436,13 +4577,15 @@
             }
         }
     }
-    function pushCube(v, M, x0, y0, z0, x1, y1, z1, tileFn, sk, bl) {   // a box in model units, a tile a face
+    function pushCube(v, M, x0, y0, z0, x1, y1, z1, tileFn, sk, bl, uvFn) {   // a box in model units, a tile (or uvFn's part of one) a face
         for (var d = 0; d < 6; d++) {
-            var uv0 = tileUV(tileFn(d));
+            var uv0 = tileUV(tileFn(d)), r = uvFn ? uvFn(d) : [0, 0, 1, 1];
+            var su = r[2] >= r[0] ? 1 : -1, sv = r[3] >= r[1] ? 1 : -1;   // a part may read upside down
             for (var k = 0; k < 4; k++) {
                 var cr = FACE_C[d][k], f = faceUV(d, cr);
                 var p = emAt(M, cr[0] ? x1 : x0, cr[1] ? y1 : y0, cr[2] ? z1 : z0);
-                v.push(p[0], p[1], p[2], uv0[0] + INSET + f[0] * (TS16 - 2 * INSET), uv0[1] + INSET + f[1] * (TS16 - 2 * INSET), sk, bl, FACE_SHADE[d], 0);
+                v.push(p[0], p[1], p[2], uv0[0] + r[0] * TS16 + su * INSET + f[0] * ((r[2] - r[0]) * TS16 - 2 * su * INSET),
+                    uv0[1] + r[1] * TS16 + sv * INSET + f[1] * ((r[3] - r[1]) * TS16 - 2 * sv * INSET), sk, bl, FACE_SHADE[d], 0);
             }
         }
     }
@@ -4489,12 +4632,51 @@
             M = emMul(M, emS(0.68, 0.68, 0.68));
             M = emMul(M, emT(-0.5, -0.5, -0.5));
             var tid = def && def.tile != null ? def.tile : (def && def.place != null ? texTop(TEX[def.place]) : TILE.i_stick);
+            // the bow's pulling_0 to 2, at a pull of 0, 0.65 and 0.9 (a second's draw is 1)
+            if (i === 1 && st.id === 'bow' && RT.bowT > 0) tid = TILE[RT.bowT >= 0.9 ? 'i_bow_p2' : RT.bowT >= 0.65 ? 'i_bow_p1' : 'i_bow_p0'];
             pushModel(v, M, flatModel(tid), 1 / 16, sk, bl);
         }
     }
+    /* The arm's texture, out of the skin the inventory figure wears: the right
+       arm's four sides (outer, front, inner, back, each 4 or a slim skin's 3
+       texels by 12) across the top of one tile, its top and bottom ends under
+       them. Painted into the atlas at boot and again when the skin changes. */
+    var ARM_SIG = '', ARM_W = 4;
+    function armSkinSig(sk) { return sk.id + '|' + sk.model + '|' + sk.rows.join('') + '|' + JSON.stringify(sk.pal); }
+    function armPaintCell(sk) {   // into the atlas cell tile() (or armSync) has pointed TX, TY at
+        var slim = sk.model === 'slim', w = slim ? 3 : 4, px = avPixels(sk);
+        var f = avSkinBox(px, slim ? 1 : 0, 8, w, 12, 4, 'arm', true);
+        tclear(0, 0, 16, 16);
+        actx.drawImage(f.left, TX, TY); actx.drawImage(f.front, TX + 4, TY); actx.drawImage(f.right, TX + 8, TY); actx.drawImage(f.back, TX + 12, TY);
+        actx.drawImage(f.top, TX, TY + 12); actx.drawImage(f.bottom, TX + 4, TY + 12);
+        ARM_W = w; ARM_SIG = armSkinSig(sk);
+    }
+    function armSync() {   // the skin changed under a running game: repaint the cell and hand the GPU the atlas again
+        if (!RT || !RT.G || !ATLASW || TILE.arm == null) return;
+        var sk = avatarSkin();
+        if (armSkinSig(sk) === ARM_SIG) return;
+        var t = TILE.arm, gl = RT.G.gl;
+        TX = (t % ATC) * 16; TY = ((t / ATC) | 0) * 16;
+        armPaintCell(sk);
+        var cx = ATLASW.getContext('2d');
+        cx.imageSmoothingEnabled = false;
+        cx.clearRect((t % ATC) * WC, ((t / ATC) | 0) * WC, WC, WC);
+        cx.drawImage(ATLAS, TX, TY, 16, 16, (t % ATC) * WC, ((t / ATC) | 0) * WC, WC, WC);
+        gl.bindTexture(gl.TEXTURE_2D, RT.G.tex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, ATLASW);
+    }
+    // where each face of the arm box reads in that tile: [u0, v0, u1, v1] in sixteenths, v
+    // upside down because the model's y runs down its texture (the sleeve at the shoulder)
+    function armUV(d) {
+        var w = ARM_W;
+        if (d === 2) return [0, 12, w, 16];
+        if (d === 3) return [4, 12, 4 + w, 16];
+        var c = d === 0 ? [8, 12] : d === 1 ? [0, 4] : d === 4 ? [4, 4 + w] : [12, 12 + w];
+        return [c[0], 12, c[1], 0];
+    }
     /* renderPlayerArm: the empty main hand, the right arm out of the player
-       model (a 4x12x4 box pivoted at (-5, 2, 0), turned 0.1 rad) put where the
-       game puts it, the swing sweeping it in and up */
+       model (a 4x12x4 box pivoted at (-5, 2, 0), turned 0.1 rad; 3 wide for a
+       slim skin) put where the game puts it, the swing sweeping it in and up */
     function handArm(v, M, i, s, h, sk, bl) {
         var D = Math.PI / 180, sq = Math.sqrt(s);
         M = emMul(M, emT(i * (0.64000005 - 0.3 * Math.sin(sq * Math.PI)), -0.6 + 0.4 * Math.sin(sq * 2 * Math.PI) - 0.6 * h, -0.71999997 - 0.4 * Math.sin(s * Math.PI)));
@@ -4502,7 +4684,8 @@
         M = emMul(M, emT(i * -1, 3.6, 3.5)); M = emMul(M, emRz(i * 120 * D)); M = emMul(M, emRx(200 * D)); M = emMul(M, emRy(i * -135 * D));
         M = emMul(M, emT(i * 5.6, 0, 0));
         M = emMul(M, emT(-5 / 16 * i, 2 / 16, 0)); M = emMul(M, emRz(0.1 * i));
-        pushCube(v, M, (i > 0 ? -3 : -1) / 16, -2 / 16, -2 / 16, (i > 0 ? 1 : 3) / 16, 10 / 16, 2 / 16, function () { return TILE.hand; }, sk, bl);
+        var aw = ARM_W, ax0 = i > 0 ? aw - 7 : -1, ax1 = i > 0 ? 1 : aw - 1;
+        pushCube(v, M, ax0 / 16, -2 / 16, -2 / 16, ax1 / 16, 10 / 16, 2 / 16, function () { return TILE.arm; }, sk, bl, function (d) { return armUV(d).map(function (q) { return q / 16; }); });
     }
     /* ── first-person hands (view space) ──
        The bob and the hurt tilt, then the sway toward where you were looking a
@@ -4573,6 +4756,7 @@
             '......kkkk......'] }
     };
     var ICON = {};
+    var FLAT_ICON = { cake: 1 };   // placed as blocks, shown in the inventory as their item's picture
     function iconURL(id) {
         var r = Math.max(2, (RT && RT.gs) || 2), key = id + '@' + r;
         if (ICON[key]) return ICON[key];
@@ -4580,8 +4764,11 @@
         cv.width = cv.height = 16 * r;
         var c = cv.getContext('2d');
         c.imageSmoothingEnabled = false;
-        function tsrc(tid) { return { x: (tid % 16) * 16, y: ((tid / 16) | 0) * 16 }; }
-        if (def && def.place != null && !B[def.place].cross && !B[def.place].half) {
+        function tsrc(tid) { return { x: (tid % ATC) * 16, y: ((tid / ATC) | 0) * 16 }; }
+        if (def && def.tile != null && (def.egg || FLAT_ICON[id])) {   // the game draws these flat, from their own texture
+            var s0 = tsrc(def.tile);
+            c.drawImage(ATLAS, s0.x, s0.y, 16, 16, 0, 0, 16 * r, 16 * r);
+        } else if (def && def.place != null && !B[def.place].cross && !B[def.place].half) {
             var tx = TEX[def.place];
             var top = tsrc(texTop(tx)), side = tsrc(texSide(tx));
             function face(tf, sx, shade) {
@@ -4612,6 +4799,9 @@
             }
             c.fillStyle = 'rgba(255,255,255,0.28)';
             c.fillRect(12, 7, 3, 4);
+        } else if (!def && TILE['i_' + id] != null) {   // a tab's icon the game has a texture for
+            var s1 = tsrc(TILE['i_' + id]);
+            c.drawImage(ATLAS, s1.x, s1.y, 16, 16, 0, 0, 16 * r, 16 * r);
         } else if (!def && ICON_ART[id]) {
             c.setTransform(r, 0, 0, r, 0, 0);
             sprMap(c, ICON_ART[id].rows, ICON_ART[id].pal);
@@ -4630,9 +4820,8 @@
        and at the sizes the game's own sprites have, then handed to the
        stylesheet as a --spr-<name> custom property on .mc. The DOM draws them
        at --gs with nearest-neighbour sampling, so one sprite pixel is always a
-       whole square of device pixels. They are our own drawings of the same
-       furniture, not copies of Mojang's textures, the same way the block atlas
-       is. */
+       whole square of device pixels. Each is the game's own sprite when
+       mc-tex has it at that size, and the drawing below when it does not. */
     var GSPR = null;
     function sprMap(cx, rows, pal, ox, oy) {
         for (var y = 0; y < rows.length; y++) for (var x = 0; x < rows[y].length; x++) {
@@ -4648,7 +4837,9 @@
             var cv = document.createElement('canvas');
             cv.width = w; cv.height = h;
             var cx = cv.getContext('2d');
-            draw(cx, w, h);
+            var r = MTEX.ok && MTEX.man.gui[name];
+            if (r && r[2] === w && r[3] === h) cx.drawImage(MTEX.gui, r[0], r[1], w, h, 0, 0, w, h);
+            else draw(cx, w, h);
             GSPR[name] = { cv: cv, w: w, h: h, url: cv.toDataURL() };
         }
         sprHud(mk);
@@ -4821,6 +5012,14 @@
         for (var eid in EFFECTS) mk('eff_' + eid, 18, 18, bottle(EFFECTS[eid].c));
         mk('eff_bg_amb', 24, 24, function (cx) { effFrame(cx, '#8fb3d8', '#d8ecff', '#3a5a82'); });
         /* A toast: 160×32, dark, in a thin light frame with the corners cut. */
+        mk('toast_sys', 160, 64, function (cx) {
+            sprRect(cx, 2, 0, 156, 1, '#000000'); sprRect(cx, 2, 63, 156, 1, '#000000'); sprRect(cx, 0, 2, 1, 60, '#000000'); sprRect(cx, 159, 2, 1, 60, '#000000');
+            sprRect(cx, 1, 1, 1, 1, '#000000'); sprRect(cx, 158, 1, 1, 1, '#000000'); sprRect(cx, 1, 62, 1, 1, '#000000'); sprRect(cx, 158, 62, 1, 1, '#000000');
+            sprRect(cx, 2, 1, 156, 62, '#0e2e50'); sprRect(cx, 1, 2, 158, 60, '#0e2e50');
+            sprRect(cx, 2, 1, 156, 1, '#2a5a8a'); sprRect(cx, 1, 2, 1, 60, '#2a5a8a');
+            sprRect(cx, 2, 62, 156, 1, '#071a30'); sprRect(cx, 158, 2, 1, 60, '#071a30');
+            sprRect(cx, 7, 7, 3, 10, '#f5d83c'); sprRect(cx, 7, 19, 3, 3, '#f5d83c'); sprRect(cx, 9, 8, 1, 9, '#b89a20'); sprRect(cx, 9, 20, 1, 2, '#b89a20');
+        });
         mk('toast', 160, 32, function (cx) {
             sprRect(cx, 2, 0, 156, 1, '#000000'); sprRect(cx, 2, 31, 156, 1, '#000000');
             sprRect(cx, 0, 2, 1, 28, '#000000'); sprRect(cx, 159, 2, 1, 28, '#000000');
@@ -5209,6 +5408,36 @@
         var m = /^<b>(.*?)<\/b>(.*)$/.exec(String(msg));
         toastPush({ title: m ? m[1] : String(msg), text: m ? m[2] : '' });
     }
+    /* a sprite nine-sliced the game's way, GuiGraphics.blitNineSlicedSprite: each
+       border clamped to half the box, the edges and the middle tiled from their
+       top left corner; the result as a background for the DOM, by size */
+    var NINE = {};
+    function nineURL(name, w, h, l, t, r, b) {
+        var sp = guiSprites()[name];
+        if (!sp) return 'none';
+        var key = name + '|' + w + 'x' + h + '|' + l + ',' + t + ',' + r + ',' + b;
+        if (NINE[key]) return NINE[key];
+        var cv = document.createElement('canvas');
+        cv.width = w; cv.height = h;
+        var cx = cv.getContext('2d'), sw = sp.w, sh = sp.h;
+        var L = Math.min(l, w >> 1), R = Math.min(r, w >> 1), T = Math.min(t, h >> 1), Bb = Math.min(b, h >> 1);
+        function part(sx, sy, sww, shh, dx, dy, dw, dh) {
+            if (sww <= 0 || shh <= 0 || dw <= 0 || dh <= 0) return;
+            for (var y = 0; y < dh; y += shh) for (var x = 0; x < dw; x += sww) {
+                var cw = Math.min(sww, dw - x), ch = Math.min(shh, dh - y);
+                cx.drawImage(sp.cv, sx, sy, cw, ch, dx + x, dy + y, cw, ch);
+            }
+        }
+        if (w === sw && h === sh) cx.drawImage(sp.cv, 0, 0);
+        else {
+            part(0, 0, L, T, 0, 0, L, T); part(sw - R, 0, R, T, w - R, 0, R, T);
+            part(0, sh - Bb, L, Bb, 0, h - Bb, L, Bb); part(sw - R, sh - Bb, R, Bb, w - R, h - Bb, R, Bb);
+            part(L, 0, sw - L - R, T, L, 0, w - L - R, T); part(L, sh - Bb, sw - L - R, Bb, L, h - Bb, w - L - R, Bb);
+            part(0, T, L, sh - T - Bb, 0, T, L, h - T - Bb); part(sw - R, T, R, sh - T - Bb, w - R, T, R, h - T - Bb);
+            part(L, T, sw - L - R, sh - T - Bb, L, T, w - L - R, h - T - Bb);
+        }
+        return (NINE[key] = 'url(' + cv.toDataURL() + ')');
+    }
     function toastEl(t) {
         var d = document.createElement('div');
         d.className = 'mc-toast';
@@ -5224,14 +5453,17 @@
                 '<span class="mc-tl" style="left:calc(var(--px) * 30);top:calc(var(--px) * 7)">' + mtHTML(t.title, t.color || '#ffff00', 'ns') + '</span>' +
                 (t.text ? '<span class="mc-tl" style="left:calc(var(--px) * 30);top:calc(var(--px) * 18)">' + mtHTML(t.text, '#ffffff', 'ns') + '</span>' : '');
             t.w = 160;
-        } else {   // SystemToast: title at (18, 7), or 12 alone; message lines 12 apart below it; as wide as it needs
-            var lines = t.text ? [t.text] : [];
+        } else {   // SystemToast: its own card; the title at (18, 7), or 12 alone, the message split at 200 wide on lines 12 apart from 18; 160 wide or as wide as it needs
+            d.classList.add('mc-stoast');
+            var lines = t.text ? mfWrap(t.text, 200) : [];
             html = '<span class="mc-tl" style="left:calc(var(--px) * 18);top:calc(var(--px) * ' + (lines.length ? 7 : 12) + ')">' + mtHTML(t.title, t.color || '#ffff00', 'ns') + '</span>';
-            lines.forEach(function (ln, k) { html += '<span class="mc-tl" style="left:calc(var(--px) * 18);top:calc(var(--px) * ' + (19 + 12 * k) + ')">' + mtHTML(ln, '#ffffff', 'ns') + '</span>'; });
+            lines.forEach(function (ln, k) { html += '<span class="mc-tl" style="left:calc(var(--px) * 18);top:calc(var(--px) * ' + (18 + 12 * k) + ')">' + mtHTML(ln, '#ffffff', 'ns') + '</span>'; });
             var wmax = mfWidth(t.title) + 1;
             lines.forEach(function (ln) { wmax = Math.max(wmax, mfWidth(ln) + 1); });
             t.w = Math.max(160, wmax + 30);
-            d.style.height = 'calc(var(--px) * ' + (20 + Math.max(1, lines.length) * 12) + ')';
+            var th = 20 + Math.max(1, lines.length) * 12;
+            d.style.height = 'calc(var(--px) * ' + th + ')';
+            d.style.setProperty('--nine', nineURL('toast_sys', t.w, th, 17, 30, 4, 4));   // toast/system's nine-slice borders
         }
         d.style.width = 'calc(var(--px) * ' + t.w + ')';
         d.innerHTML = html;
@@ -5802,7 +6034,7 @@
         if (ADV_STONE) return ADV_STONE;
         var cv = document.createElement('canvas'), t = TILE.stone;
         cv.width = cv.height = 16;
-        cv.getContext('2d').drawImage(ATLAS, (t % 16) * 16, ((t / 16) | 0) * 16, 16, 16, 0, 0, 16, 16);
+        cv.getContext('2d').drawImage(ATLAS, (t % ATC) * 16, ((t / ATC) | 0) * 16, 16, 16, 0, 0, 16, 16);
         return (ADV_STONE = cv.toDataURL());
     }
     /* ── Statistics ───────────────────────────────────────────────
@@ -6595,11 +6827,12 @@
         { o: [1, 1, 0], u: [-1, 0, 0], v: [0, -1, 0], n: [0, 0, -1], k: 'back' }
     ];
     var D2R = Math.PI / 180;
+    var BOOT_SKIN = null;   // the skin init was handed, before RT exists to hold it
     function avValidSkin(sk) { return !!(sk && sk.rows && sk.rows.length === 32 && sk.pal); }
     function avatarSkin() {   // the launcher's live choice, else what it handed over at launch, else Steve
         var sk = null;
         try { var h = window.MCHOST; if (h && h.skin) sk = h.skin(); } catch (e) { sk = null; }
-        if (!avValidSkin(sk)) sk = RT && RT.skin;
+        if (!avValidSkin(sk)) sk = (RT && RT.skin) || BOOT_SKIN;
         if (!avValidSkin(sk)) sk = AV_STEVE;
         return sk;
     }
@@ -6644,7 +6877,7 @@
     }
     /* a box of the skin: w×h×d skin pixels, its front cut from the region at
        (x0, y0) of the 16×32 front view and the other five faces made from it */
-    function avSkinBox(px, x0, y0, w, h, d, kind) {
+    function avSkinBox(px, x0, y0, w, h, d, kind, flat) {   // flat: unshaded, for a texture the renderer lights itself
         var y, x, rowMode = [], all = [], top2 = [];
         for (y = 0; y < h; y++) {
             var row = [];
@@ -6653,7 +6886,7 @@
         }
         var hair = null;
         if (kind === 'head') { var m2 = avMode(top2); hair = m2.n >= 8 ? m2.col : avMode(all).col; }
-        var SH = AV_SHADE;
+        var SH = flat ? [1, 1, 1, 1, 1, 1] : AV_SHADE;
         // a side carries the row's outermost painted pixel round the corner, and a
         // transparent pixel on the front (a horn's gap) stays open on the top
         function firstOpaque(y, fromRight) {
@@ -6737,7 +6970,7 @@
         var cv = document.createElement('canvas');
         cv.width = cv.height = 16;
         var c = cv.getContext('2d');
-        c.drawImage(ATLAS, (tid % 16) * 16, ((tid / 16) | 0) * 16, 16, 16, 0, 0, 16, 16);
+        c.drawImage(ATLAS, (tid % ATC) * 16, ((tid / ATC) | 0) * 16, 16, 16, 0, 0, 16, 16);
         if (shade < 1) { c.globalCompositeOperation = 'source-atop'; c.fillStyle = 'rgba(0,0,0,' + (1 - shade) + ')'; c.fillRect(0, 0, 16, 16); }
         return cv;
     }
@@ -6823,6 +7056,7 @@
                 if (AV_CACHE_KEYS.length > 6) delete AV_CACHE[AV_CACHE_KEYS.shift()];
             }
             av.parts = AV_CACHE[sig];
+            armSync();   // the hand in the world wears the same skin
         }
         var h = held(), hid = h ? h.id : null;
         if (hid !== av.itemId) { av.itemId = hid; av.item = h ? avHeldPart(h) : null; }
@@ -6951,6 +7185,9 @@
         mk('btn', 200, 20, button('#000000', 0x6f, 11, '#aaaaaa', '#565656', '#555555'));
         mk('btn_h', 200, 20, button('#ffffff', 0x77, 11, '#b4b4b4', '#5c5c5c', '#5a5a5a'));
         mk('btn_d', 200, 20, button('#000000', 0x31, 3, null));
+        // AbstractSliderButton's handle, 8x20: the button's ends, white-framed under the pointer
+        mk('slider_k', 8, 20, function (cx) { cx.drawImage(GSPR.btn.cv, 0, 0, 4, 20, 0, 0, 4, 20); cx.drawImage(GSPR.btn.cv, 196, 0, 4, 20, 4, 0, 4, 20); });
+        mk('slider_kh', 8, 20, function (cx) { cx.drawImage(GSPR.btn_h.cv, 0, 0, 4, 20, 0, 0, 4, 20); cx.drawImage(GSPR.btn_h.cv, 196, 0, 4, 20, 4, 0, 4, 20); });
         // EditBox's widget/text_field: #A0A0A0 round black, white round black when focused
         mk('field', 200, 20, function (cx) { sprRect(cx, 0, 0, 200, 20, '#a0a0a0'); sprRect(cx, 1, 1, 198, 18, '#000000'); });
         mk('field_h', 200, 20, function (cx) { sprRect(cx, 0, 0, 200, 20, '#ffffff'); sprRect(cx, 1, 1, 198, 18, '#000000'); });
@@ -7295,7 +7532,7 @@
             }
             px(cx, 3, y0 + 3, L);
         }
-        mk('tab_t_un', 26, 32, function (cx) { tabBody(cx, 2, 30, W8); });
+        for (var tcu = 1; tcu <= 7; tcu++) mk('tab_t_u' + tcu, 26, 32, function (cx) { tabBody(cx, 2, 30, W8); });
         function tabTopSel(variant) {
             return function (cx) {
                 tabBody(cx, 0, 29, F);
@@ -7314,7 +7551,7 @@
                 if (variant === 1) { px(cx, 0, 31, K); sprRect(cx, 1, 31, 2, 1, L); }
             };
         }
-        mk('tab_t_s1', 26, 32, tabTopSel(1)); mk('tab_t_sm', 26, 32, tabTopSel(2)); mk('tab_t_s7', 26, 32, tabTopSel(7));
+        for (var tcs = 1; tcs <= 7; tcs++) mk('tab_t_s' + tcs, 26, 32, tabTopSel(tcs === 1 || tcs === 7 ? tcs : 2));
         function tabBottom(cx, rows, fill, y0) {   // rows of body starting at y0, then the rounded foot
             for (var y = y0; y < y0 + rows; y++) {
                 px(cx, 0, y, K); sprRect(cx, 1, y, 2, 1, L); sprRect(cx, 3, y, 20, 1, fill); sprRect(cx, 23, y, 2, 1, D); px(cx, 25, y, K);
@@ -7324,7 +7561,7 @@
             px(cx, 2, f + 1, K); sprRect(cx, 3, f + 1, 21, 1, D); px(cx, 24, f + 1, K);
             sprRect(cx, 3, f + 2, 21, 1, K);
         }
-        mk('tab_b_un', 26, 32, function (cx) { tabBottom(cx, 25, W8, 0); });
+        for (var tbu = 1; tbu <= 7; tbu++) mk('tab_b_u' + tbu, 26, 32, function (cx) { tabBottom(cx, 25, W8, 0); });
         function tabBotSel(variant) {
             return function (cx) {
                 tabBottom(cx, 29, F, 0);
@@ -7333,7 +7570,7 @@
                 else { sprRect(cx, 0, 0, 26, 1, F); sprRect(cx, 0, 1, 2, 1, D); px(cx, 2, 1, L); px(cx, 0, 2, D); sprRect(cx, 23, 1, 3, 2, D); }
             };
         }
-        mk('tab_b_s1', 26, 32, tabBotSel(1)); mk('tab_b_sm', 26, 32, tabBotSel(2)); mk('tab_b_s7', 26, 32, tabBotSel(7));
+        for (var tbs = 1; tbs <= 7; tbs++) mk('tab_b_s' + tbs, 26, 32, tabBotSel(tbs === 1 || tbs === 7 ? tbs : 2));
         function scroller(fill, grip) {
             return function (cx) {
                 sprRect(cx, 0, 0, 12, 15, fill);
@@ -7950,7 +8187,7 @@
             var tab = CTABS[RT.cTab] || CTABS[0], tabs = '', sel = '';
             for (var ti = 0; ti < CTABS.length; ti++) {
                 var T = CTABS[ti], on = ti === RT.cTab, x = T.col < 5 ? 27 * T.col : 195 - 27 * (7 - T.col) + 1, y = T.row ? 132 : -28;
-                var spr = 'tab_' + (T.row ? 'b' : 't') + '_' + (on ? (T.col === 0 ? 's1' : T.col === 6 ? 's7' : 'sm') : 'un');
+                var spr = 'tab_' + (T.row ? 'b' : 't') + '_' + (on ? 's' : 'u') + (T.col + 1);
                 var html = '<button class="mc-ctab' + (on ? ' on' : '') + '" type="button" data-ct="' + ti + '" aria-label="' + escHtml(T.t) + '" style="' + pAt(x, y) +
                     ';background-image:var(--spr-' + spr + ')"><b class="mc-ctic" style="' + pAt(5, T.row ? 7 : 9) + ';background-image:url(' + iconURL(T.ic) + ')"></b></button>';
                 if (on) sel = html; else tabs += html;
@@ -8244,6 +8481,7 @@
             while (rows.length < MF_ROWS) rows.push('');
             SGA[ch] = { w: SGA_ROWS[ch][0].length, rows: rows };
         }
+        if (MTEX.ok && MTEX.man.sga) for (ch in MTEX.man.sga) SGA[ch] = mfParse(MTEX.man.sga[ch]);   // font/ascii_sga.png, the game's own runes
         return SGA;
     }
     function sgaWidth(t) {
@@ -10034,7 +10272,7 @@
         if (simming) {
             RT.playT += dt;
             RT.worldMs += dt * 1000;
-            if (rule('doDaylightCycle')) S.t = (S.t + dt * 1000) % CYCLE;
+            if (rule('doDaylightCycle')) { S.t += dt * 1000; if (S.t >= CYCLE) { S.t -= CYCLE; S.day = (S.day || 0) + 1; } }
             RT.iframe = Math.max(0, RT.iframe - dt);
             RT.digCd = Math.max(0, RT.digCd - dt);
             RT.atkCd = Math.max(0, RT.atkCd - dt);
@@ -10500,18 +10738,19 @@
     };
 
     var MF = null;   // { g: {ch: {w,h,px}}, atlas: {color: canvas}, map: {ch:[x,y,w]} }
+    function mfParse(src) {   // a glyph's rows out of its 'a/b/c' string, placed from the row its 'N:' names
+        var off = 0, m = /^(\d+):/.exec(src);
+        if (m) { off = +m[1]; src = src.slice(m[0].length); }
+        var r = src.split('/'), w = 0, out = [], j;
+        for (j = 0; j < r.length; j++) { if (r[j].length > w) w = r[j].length; }
+        for (j = 0; j < MF_ROWS; j++) out.push(r[j - off] === undefined ? '' : r[j - off]);
+        return { w: w, rows: out };
+    }
     function mfBuild() {
         if (MF) return MF;
         var g = {}, ch, i, rows;
-        function parse(src) {
-            var off = 0, m = /^(\d+):/.exec(src);
-            if (m) { off = +m[1]; src = src.slice(m[0].length); }
-            var r = src.split('/'), w = 0, out = [], j;
-            for (j = 0; j < r.length; j++) { if (r[j].length > w) w = r[j].length; }
-            for (j = 0; j < MF_ROWS; j++) out.push(r[j - off] === undefined ? '' : r[j - off]);
-            return { w: w, rows: out };
-        }
-        for (ch in MF_SRC) g[ch] = parse(MF_SRC[ch]);
+        for (ch in MF_SRC) g[ch] = mfParse(MF_SRC[ch]);
+        if (MTEX.ok && MTEX.man.font) for (ch in MTEX.man.font) g[ch] = mfParse(MTEX.man.font[ch]);   // font/ascii.png's own
         g[' '].w = 3;   // the space carries no pixels, so its width has to be stated
         for (ch in MF_ACC) {
             var base = g[MF_ACC[ch][0]], mark = MF_MARK[MF_ACC[ch][1]];
@@ -11088,6 +11327,19 @@
     }
     /* The edition strip sits under the wordmark, overlapping it by 7px, in a
        128×14 box — vanilla's edition.png geometry. */
+    /* LogoRenderer: 256x44 of the wordmark (the top of its 256x64) at the given
+       spot, the edition's 128x14 centred 37 below; the game's own art from
+       mc-tex, or the drawn ones */
+    function mnDrawLogo(cx, x, y, k, noEdition) {
+        var L = MTEX.ok && MTEX.logoImg && MTEX.man.logo && MTEX.man.logo.logo ? MTEX.man.logo : null;
+        if (L) {
+            cx.drawImage(MTEX.logoImg, L.logo[0], L.logo[1], L.logo[2], Math.round(L.logo[3] * 44 / 64), x, y, 256 * k, 44 * k);
+            if (!noEdition) cx.drawImage(MTEX.logoImg, L.edition[0], L.edition[1], L.edition[2], Math.round(L.edition[3] * 14 / 16), x + 64 * k, y + 37 * k, 128 * k, 14 * k);
+            return;
+        }
+        cx.drawImage(mnLogo(), x, y, MN_LOGO_W * k, MN_LOGO_H * k);
+        if (!noEdition) mnEdition(cx, x + 128 * k, y + 37 * k);
+    }
     function mnEdition(cx, cxp, y) {
         var t = 'JAVA EDITION';
         mfCenter(cx, t, cxp, y + 3, '#d8d8d8');
@@ -11722,11 +11974,10 @@
             cx.fillRect(0, 0, W, H);
             /* At 1:1. Halving pixel art with smoothing off just throws away
                every other column and the wordmark comes out gap-toothed. */
-            var lg = mnLogo(), half = W < MN_LOGO_W + 24;
-            var lw = half ? MN_LOGO_W >> 1 : MN_LOGO_W, lh = half ? MN_LOGO_H >> 1 : MN_LOGO_H;
+            var half = W < MN_LOGO_W + 24, lw = half ? MN_LOGO_W >> 1 : MN_LOGO_W;
             cx.save();
             cx.globalAlpha = 0.28 + 0.72 * Math.min(1, m.t / 0.5);
-            cx.drawImage(lg, Math.round(W / 2 - lw / 2), Math.round(H / 2 - 46), lw, lh);
+            mnDrawLogo(cx, Math.round(W / 2 - lw / 2), Math.round(H / 2 - 46), half ? 0.5 : 1, true);
             cx.restore();
             var bw = 200, bx = Math.round((W - bw) / 2), by = Math.round(H / 2 + 12);
             mnRect(cx, bx - 1, by - 1, bw + 2, 7, '#ffffff');
@@ -11767,8 +12018,7 @@
             return w;
         },
         paint: function (cx, m, W, H) {
-            cx.drawImage(mnLogo(), Math.round(W / 2 - 128), 30);
-            mnEdition(cx, W / 2, 67);
+            mnDrawLogo(cx, Math.round(W / 2 - 128), 30, 1);
             mnSplash(cx, m, W);
             mfText(cx, 'Minecraft ' + ((RT && RT.ver) || '26.2'), 2, H - 10, MC_WHITE);
         }
@@ -11934,7 +12184,7 @@
                    pointer; the label over both */
                 mnNine(cx, guiSprites()[focus ? 'slider_h' : 'slider'], b.x, b.y, b.w, b.h, 1);
                 var kx = b.x + Math.floor(Math.max(0, Math.min(1, frac)) * (b.w - 8));
-                mnNine(cx, guiSprites()[hover || focus ? 'btn_h' : 'btn'], kx, b.y, 8, b.h, 3);
+                mnNine(cx, guiSprites()[hover || focus ? 'slider_kh' : 'slider_k'], kx, b.y, 8, b.h, 2);
                 mnLabel(cx, b.label, b.x + 2, b.y, b.x + b.w - 2, b.y + b.h, MC_WHITE);
             } };
     }
@@ -12931,7 +13181,7 @@
         if (sub === 'query') {
             var q = rd.word().toLowerCase() || 'daytime';
             var ticks = Math.floor(S.t / CYCLE * 24000);
-            if (q === 'day') return chatSay('The time is ' + Math.floor(S.hrs * 3600000 / CYCLE));
+            if (q === 'day') return chatSay('The time is ' + (S.day || 0));
             return chatSay('The time is ' + ticks);
         }
         if (sub !== 'set' && sub !== 'add') return usageErr('time', raw, rd.i);
@@ -12945,8 +13195,10 @@
             if (n === null) return chatSyntax('Expected integer', raw, rd.i - v.length);
             ticks2 = n;
         }
-        if (sub === 'set') S.t = ((ticks2 % 24000) + 24000) % 24000 / 24000 * CYCLE;
-        else S.t = (S.t + ticks2 / 24000 * CYCLE) % CYCLE;
+        // the game's dayTime is one running count of ticks: set replaces it, day and all, add moves it on
+        var total = sub === 'set' ? ticks2 : (S.day || 0) * 24000 + Math.floor(S.t / CYCLE * 24000) + ticks2;
+        S.day = Math.floor(total / 24000);
+        S.t = (total - S.day * 24000) / 24000 * CYCLE;
         var now = Math.floor(S.t / CYCLE * 24000);
         chatSay(sub === 'set' ? 'Set the time to ' + now : 'Added ' + ticks2 + ' to the time');
     }, function (a) { return a === 0 ? ['set', 'add', 'query'] : a === 1 ? ['day', 'noon', 'sunset', 'night', 'midnight', 'sunrise'] : []; });
@@ -13768,8 +14020,16 @@
         return m + ':' + ('0' + (s % 60)).slice(-2);
     }
 
+    var INIT_WAIT = null;
     function init(el, opts) {
+        if (!MTEX.done) {   // the textures are still on their way: build nothing until they are here
+            var tk = INIT_WAIT = {};
+            MTEX.wait.push(function () { if (INIT_WAIT === tk) { INIT_WAIT = null; init(el, opts); } });
+            return;
+        }
+        INIT_WAIT = null;
         var root = el.querySelector('.mc');
+        BOOT_SKIN = (opts && opts.skin) || null;   // the atlas paints the arm from it before RT exists
         /* The launcher has been passing { version, installation, skin } since
            it was written; nothing ever read it. The title screen puts the
            version it was launched with in the bottom-left corner, which is
@@ -13791,14 +14051,9 @@
         normalizeCmdState();
         buildAtlas();
         texInit();
+        ATLASW = buildWorldAtlas();
         mfWebFont();
         guiSprites();
-        if (!document.getElementById('mc-atlas-css')) {   // HUD icons sample the atlas via CSS
-            var st = document.createElement('style');
-            st.id = 'mc-atlas-css';
-            st.textContent = '.mc-ico{background-image:url(' + ATLAS.toDataURL() + ')}';
-            document.head.appendChild(st);
-        }
         var cv = root.querySelector('.mc-cv');
         var G = glInit(cv);
         if (!G) { root.innerHTML = '<p style="padding:24px">WebGL fell out of the world. (This machine refused a 3D context.)</p>'; return; }
@@ -14262,7 +14517,7 @@
             armorPts: function () { return armorPoints(); },
             spawnMob: function (k, dx, dz, sz) { var nf = mkFoe(k, S.px + (dx || 3), S.py + 2, S.pz + (dz || 0)); if (k === 'slime' && sz) { nf.sz = sz; applySlimeSize(nf); } RT.foes.push(nf); return nf; },
             foeCount: function (k) { var n = 0; for (var i = 0; i < RT.foes.length; i++) if (!k || RT.foes[i].k === k) n++; return n; },
-            tiles: function () { return tileN; },   // atlas is 16×16: anything over 256 wraps and corrupts
+            tiles: function () { return tileN; },   // the atlas is 32×32: anything over 1024 wraps and corrupts
             /* The only honest answer to "is that mob animating?" is its actual
                geometry, so this hands back the built vertices per part: their
                centroids move iff the animation moves them. Same trick as hand(). */
@@ -14370,7 +14625,10 @@
                     ghost: RT.rbGhost ? rbId(RT.rbGhost) : null, lx: RT.panel ? RT.panel.lx : null, fresh: Object.keys(S.rbNew || {}) };
             },
             rbLearnAll: function () { return rbLearn(rbAll().map(function (r) { return r.key; })); },
+            items: function () { return Object.keys(I).map(function (k) { var d = I[k]; return k + ':' + (d.tile != null ? 't' : '') + (d.place != null ? 'p' : '') + (d.egg ? 'e' : ''); }).concat(Object.keys(ICON_ART).map(function (k) { return k + ':art'; })); },
             orbs: function () { return RT.orbs.map(function (o) { return [Math.round(o.x * 10) / 10, Math.round(o.y * 10) / 10, Math.round(o.z * 10) / 10, o.v]; }).concat([[S.px, S.py, S.pz]]); },
+            toast: function (msg) { toast(msg); },   // a system toast, to look at
+            atlasURL: function (world) { return (world ? ATLASW : ATLAS).toDataURL(); },   // the atlases, to look at
             spawnXp: function (dx, dz, v) { var gy = Math.floor(S.py) + 1; while (gy > 0 && !getB(Math.floor(S.px + dx), gy - 1, Math.floor(S.pz + dz))) gy--; spawnXp(S.px + dx, gy + 0.1, S.pz + dz, v || 3); }
         };
         if (has('mobs')) setTimeout(function () {
@@ -14397,6 +14655,7 @@
 
     /* ── lifecycle + export ─────────────────────────────────── */
     function close() {
+        INIT_WAIT = null;   // a start still waiting on the textures never happens
         if (!RT) return 0;
         // every world played this session, not just the one open when it closed
         var hrs = ((RT.bankT || 0) + RT.playT) / 3600;
