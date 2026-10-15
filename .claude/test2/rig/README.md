@@ -15,20 +15,20 @@ be there.
 - probe.js: the boot and its skip, the cascade (what is in view pops in order,
   the rest when scrolled to), warm visits, `?boot`, deep links, reduced motion
   (nothing moves, nothing held back), no JS, the windows as windows (raise,
-  drag and its clamp, a drag that starts on a button, shade, fill the screen
+  drag and its clamp, a drag that starts on a light, shade, fill the screen
   and Escape, double-click, close, the eye's window list, reset the desk), the
-  taskbar's commands and the part they mark, the title bars fitting at twelve
-  widths (tight bars drop their leader and result, a log line's date moves
-  into the body, no maximize button on a phone), a finger scrolling over a
-  title bar, keyboard order and focus, the loops (the LCD's blink, the foot's
-  eye, the cursors), print, forced colours, a 24px default font, and whole
-  pixel window edges. T15 and T16 are the two review rounds' findings, kept
-  fixed: nothing climbs over the taskbar or the list, the boot visit's
+  status line's commands and the part they mark, the title bars at twelve
+  widths (the lights inside the window, the title clear of them, the three
+  lights 24px targets on a phone), a finger scrolling over a title bar,
+  keyboard order and focus, the loops (neofetch's eye, the foot's eye, the
+  front window's cursor solid and blinking, the others hollow), print, forced
+  colours, a 24px default font, and whole pixel window edges. T15 and T16 are the two review rounds' findings, kept
+  fixed: nothing climbs over the status line or the list, the boot visit's
   hand-off blink, a finger never drags (a touchscreen laptop included), the
   screen-filling window's edge cases (shade, print, links, narrowing below
   760, Escape with the list open), a drag surviving a close or a reopen, the
-  list closing when focus lands elsewhere, the car's readout keys, a double
-  tap on close, back to a closed window's hash, selection on the cream, no
+  list closing when focus lands elsewhere, the car's spec box, a double
+  tap on close, back to a closed window's hash, no
   hover left behind by a tap.
 - shoot.js: desktop cold and warm (the cascade frames), laptop, tablet, phone,
   320, reduced motion, no JS. report.json has console errors, failed requests
