@@ -101,3 +101,37 @@ the root. (It was at `/new/` at first; that path is gone, not redirected.)
   a GitHub he wants to show; don't put it back unless he asks.
 - `.claude/test/rig/` has its checks (170 of them, plus axe and
   html-validate). Run them after any change; its README says how.
+
+## test2
+
+`/test2/` is the same page as `/test/` rebuilt as a desktop: the holding
+page's boot hands off to a black desk with a taskbar, and every part of the
+page is a window with pixel chrome that pops open in turn (the LCD as
+`/dev/eye0`, a terminal that answers `whoami`, the photo, the readout, a
+readme, one window an interest, one window a line of the log, contact). It
+lives at isaacure.com/test2 until Isaac picks one of the two.
+
+- Everything in `## test` holds here too: unlisted (`noindex, nofollow`, no
+  canonical or `og:url`, no link to it), only facts he has confirmed (the copy
+  is `/test/`'s, word for word), absolute paths, the screen's loops kept (the
+  LCD's eye blinks on the 8s loop, the cursors blink), everything else still
+  within five seconds, and the finished page with nothing moving under
+  reduced motion or without JS. GitHub stays off the contact list.
+- The windows are a CSS grid (twelve columns on a desktop, six on a tablet,
+  one on a phone) with a whole-pixel nudge each (`--nx`, `--ny`) so they
+  overlap at the edges. The script only adds behaviour: the cascade (what is
+  in view pops in order, the rest when scrolled to), raise on click, drag by
+  the title bar with a mouse (never a finger: a finger scrolls), shade, fill
+  the screen (Escape or the button restores; the rest goes `inert`), close,
+  and the eye's window list in the taskbar, which also resets the desk. A
+  title bar too narrow for its leader and result gets `.tight` from the
+  script (measured in VT323 columns, the face is monospace) and shows the
+  title alone; a log line's date then shows in the body instead.
+- The boot terminal is `.term`; a terminal window is `.win.tty`. Don't
+  reuse one for the other: the boot's rule once leaked onto every terminal
+  window (16px text, `touch-action: none`).
+- Its boot flag is `iu2.booted`, its own, so a visit to `/test/` in the same
+  session doesn't skip it.
+- `.claude/test2/rig/` has its checks (the probe, axe, html-validate, the
+  screenshots). Run them after any change; its README says how. The fonts
+  come from `.claude/test/rig/fonts`.

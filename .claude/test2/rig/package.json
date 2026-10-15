@@ -1,0 +1,10 @@
+{
+  "name": "rig2",
+  "version": "1.0.0",
+  "description": "checks for /test2",
+  "private": true,
+  "dependencies": {
+    "axe-core": "^4.13.0",
+    "html-validate": "^11.16.0"
+  }
+}
