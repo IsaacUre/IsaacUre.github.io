@@ -128,7 +128,7 @@ async function barsFit(page) {              // every title bar's buttons inside 
         await p.reload({ waitUntil: 'domcontentloaded' }); await sleep(100); s = await state(p);
         rec('T3a same-session reload is warm, no terminal', /warm/.test(s.cls) && (s.term === 'none' || s.term === 'gone'), s);
         await sleep(1500); s = await state(p);
-        rec('T3b and the windows in view have cascaded, nothing left in .cas', s.up >= 9 && !/\bcas\b/.test(s.cls), s);
+        rec('T3b and the windows in view have cascaded, nothing left in .cas', s.up >= 6 && s.pend === s.n - s.up && !/\bcas\b/.test(s.cls), s);
         await p.goto(URL + '?boot', { waitUntil: 'domcontentloaded' }); await sleep(300); s = await state(p);
         rec('T3c ?boot forces the boot in a warm session', /booting/.test(s.cls) && s.term === 'block', s);
         rec('T1k no page errors so far', errs.length === 0, errs);
@@ -400,6 +400,143 @@ async function barsFit(page) {              // every title bar's buttons inside 
             rec('T14 at ' + vw + ' every window sits on whole pixels', px.length === 0, px);
             await c.close();
         }
+
+        /* ---- T15: the review's findings stay fixed ---- */
+        c = await ctxWith(browser, { viewport: { width: 1280, height: 800 } }, true);
+        p = await c.newPage(); errs = []; p.on('pageerror', function (e) { errs.push(String(e)); });
+        await p.goto(URL, { waitUntil: 'load' }); await sleep(1800);
+        // a: however many raises, nothing covers the taskbar, the list or the skip link
+        for (i = 0; i < 12; i++) { var id = ['eye0', 'terminal', 'shot', 'about', 'readme', 'else'][i % 6]; var rr0 = await rect(p, '#' + id + ' .wb'); await p.mouse.click(rr0.l + 30, rr0.t + 12); }
+        br = await rect(p, '#readme .wb');
+        await p.mouse.move(br.l + 40, br.t + 12); await p.mouse.down(); await p.mouse.move(br.l + 40, br.t + 700, { steps: 10 }); await p.mouse.up(); await sleep(100);
+        var over = await p.evaluate(function () {
+            var tb = document.getElementById('tb').getBoundingClientRect(), r = document.getElementById('readme').getBoundingClientRect();
+            var hit = document.elementFromPoint(Math.round(r.left + 30), Math.round(tb.top + 20));
+            return { winOverTb: r.bottom > tb.top, hitInTb: !!(hit && hit.closest('#tb')), hit: hit && (hit.id || hit.className) };
+        });
+        rec('T15a a window dragged under the taskbar stays beneath it', over.winOverTb && over.hitInTb, over);
+        await p.click('#tbEye'); await sleep(120);
+        var mhit = await p.evaluate(function () { var m = document.getElementById('menu').getBoundingClientRect(); var hit = document.elementFromPoint(Math.round(m.left + 40), Math.round(m.top + 60)); return !!(hit && hit.closest('#menu')); });
+        rec('T15b the list opens over the windows', mhit, mhit);
+        await p.keyboard.press('Escape'); await sleep(60);
+        var zcount = await p.evaluate(function () { return +document.getElementById('readme').style.zIndex; });
+        var rr1 = await rect(p, '#readme .wb'); for (i = 0; i < 5; i++) await p.mouse.click(rr1.l + 30, rr1.t + 12);
+        var zcount2 = await p.evaluate(function () { return +document.getElementById('readme').style.zIndex; });
+        rec('T15c clicking the front window again does not raise it further', zcount === zcount2 && zcount < 40, { before: zcount, after: zcount2 });
+        // f/g: a shaded window cannot stay filling the screen; a link while one fills the screen fronts the target
+        await p.click('#about .wbtn.mx'); await sleep(120); await p.click('#about .wbtn.mn'); await sleep(120);
+        var sm = await p.evaluate(function () { var w = document.getElementById('about'); return { maxi: w.classList.contains('maxi'), shade: w.classList.contains('shade'), lock: /\block\b/.test(document.documentElement.className), inert: [].some.call(document.querySelectorAll('.win'), function (x) { return x.inert; }) }; });
+        rec('T15f shading a window that fills the screen brings it back first', !sm.maxi && sm.shade && !sm.lock && !sm.inert, sm);
+        await p.click('#about .wbtn.mn'); await sleep(60);
+        await p.click('#terminal .wbtn.mx'); await sleep(120); await p.click('.tb-a[data-sec="about"]'); await sleep(400);
+        var lk = await p.evaluate(function () { return { top: (document.querySelector('.win.top') || {}).id, maxi: document.querySelectorAll('.win.maxi').length }; });
+        rec('T15g a taskbar command while a window fills the screen brings the target to the front', lk.top === 'about' && lk.maxi === 0, lk);
+        // h: the LCD filling the screen does not scroll
+        await p.click('#eye0 .wbtn.mx'); await sleep(150);
+        var es = await p.evaluate(function () { var wd = document.querySelector('#eye0 .wd'); return { sh: wd.scrollHeight, ch: wd.clientHeight }; });
+        rec('T15h /dev/eye0 filling the screen fills it without a scrollbar', es.sh <= es.ch + 1, es);
+        await p.keyboard.press('Escape'); await sleep(100);
+        // i: the readout wears its glass
+        var gl = await p.evaluate(function () { var sc = document.querySelector('#about .wd .scanlines'), r = sc.getBoundingClientRect(); return { pos: getComputedStyle(sc).position, h: Math.round(r.height), bodyH: Math.round(document.querySelector('#about .wd').getBoundingClientRect().height) }; });
+        rec('T15i the about readout has its scanlines over the whole screen', gl.pos === 'absolute' && gl.h === gl.bodyH && gl.h > 100, gl);
+        // j: closing from the keyboard moves focus on
+        await p.evaluate(function () { document.querySelector('#else .wbtn.x').focus(); }); await p.keyboard.press('Enter'); await sleep(400);
+        var fo = await p.evaluate(function () { var a = document.activeElement; return { tag: a.tagName, label: a.getAttribute('aria-label'), elseHidden: document.getElementById('else').hidden }; });
+        rec('T15j Enter on close takes focus to the next window\'s first button', fo.elseHidden && fo.tag === 'BUTTON' && /minimize photography/.test(fo.label || ''), fo);
+        // r: a window opened again while it is closing stays
+        await p.evaluate(function () { scrollTo(0, 0); }); await sleep(100);
+        await p.click('#cam .wbtn.x'); await sleep(40);
+        await p.click('#tbEye'); await sleep(60); await p.click('#menu button[data-w="cam"]'); await sleep(500);
+        var ro = await p.evaluate(function () { var w = document.getElementById('cam'); return { hidden: w.hidden, down: w.classList.contains('down'), up: w.classList.contains('up'), disp: getComputedStyle(w).display }; });
+        rec('T15r a window opened again mid-close is open', !ro.hidden && !ro.down && ro.up && ro.disp !== 'none', ro);
+        // q: the column still measures after /dev/eye0 is closed
+        await p.click('#eye0 .wbtn.x'); await sleep(400);
+        await p.setViewportSize({ width: 1440, height: 900 }); await sleep(400);
+        var tq = await p.evaluate(function () { return { ruwmc: document.getElementById('ruwmc').classList.contains('tight'), about: document.getElementById('about').classList.contains('tight') }; });
+        rec('T15q with /dev/eye0 closed the bars are still measured (a resize keeps the club window tight)', tq.ruwmc && !tq.about, tq);
+        // s: a resize while a dragged window fills the screen keeps its place
+        await p.click('#tbEye'); await sleep(60); await p.click('#menu button[data-act="reset"]'); await sleep(1500);
+        br = await rect(p, '#readme .wb'); await p.mouse.move(br.l + 40, br.t + 12); await p.mouse.down(); await p.mouse.move(br.l + 84, br.t + 100, { steps: 5 }); await p.mouse.up(); await sleep(60);
+        var nxBefore = await p.evaluate(function () { return document.getElementById('readme').style.getPropertyValue('--nx'); });
+        await p.click('#readme .wbtn.mx'); await sleep(100); await p.setViewportSize({ width: 1380, height: 900 }); await sleep(300); await p.keyboard.press('Escape'); await sleep(100);
+        var nxAfter = await p.evaluate(function () { return document.getElementById('readme').style.getPropertyValue('--nx'); });
+        rec('T15s a resize while a dragged window fills the screen leaves its drag alone', nxBefore === nxAfter && nxBefore !== '', { before: nxBefore, after: nxAfter });
+        // t: printing brings a screen-filling window back
+        await p.click('#contact .wbtn.mx'); await sleep(100);
+        await p.evaluate(function () { window.dispatchEvent(new Event('beforeprint')); }); await sleep(100);
+        var pm = await p.evaluate(function () { return { maxi: document.querySelectorAll('.win.maxi').length, lock: /\block\b/.test(document.documentElement.className) }; });
+        rec('T15t printing restores a window that filled the screen', pm.maxi === 0 && !pm.lock, pm);
+        // p: the markup says what the controls are
+        var ar = await p.evaluate(function () { return { haspopup: document.getElementById('tbEye').hasAttribute('aria-haspopup'), pressed: document.querySelectorAll('.wbtn.mn[aria-pressed], .wbtn.mx[aria-pressed]').length, firstHeading: document.querySelector('h1, h2, h3').tagName, marker: getComputedStyle(document.querySelector('.menu .st.off') || document.body).color }; });
+        rec('T15p the eye is a disclosure, every toggle is pressed or not, the first heading is the h1', !ar.haspopup && ar.pressed === 36 && ar.firstHeading === 'H1', ar);
+        rec('T15v no page errors in the review checks', errs.length === 0, errs);
+        await c.close();
+
+        // k: nothing reveals itself after ten seconds; l: a window under the taskbar waits
+        c = await ctxWith(browser, { viewport: { width: 1280, height: 800 } }, true);
+        p = await c.newPage();
+        await p.goto(URL, { waitUntil: 'load' }); await sleep(1500);
+        var tr = await rect(p, '#terminal .wb'); await p.mouse.click(tr.l + 30, tr.t + 12); await sleep(50);
+        var s0 = await state(p);
+        await sleep(10500); var s1 = await state(p);
+        rec('T15k ten seconds of nothing changes nothing: the rest still wait, the front window is the same', s1.pend === s0.pend && s1.pend > 0 && s1.top === 'terminal', { before: s0, after: s1 });
+        var under = await p.evaluate(function () {
+            var w = document.getElementById('contact'), tb = document.getElementById('tb').getBoundingClientRect();
+            var y = w.getBoundingClientRect().top + scrollY - tb.top - 10;        // its top 10px into the taskbar's strip
+            document.documentElement.style.scrollBehavior = 'auto'; scrollTo(0, y); return y;
+        }); await sleep(600);
+        var u1 = await p.evaluate(function () { var w = document.getElementById('contact'), r = w.getBoundingClientRect(), tb = document.getElementById('tb').getBoundingClientRect(); return { pend: w.classList.contains('pend'), top: Math.round(r.top), tbTop: Math.round(tb.top) }; });
+        await p.evaluate(function () { scrollBy(0, 90); }); await sleep(600);
+        var u2 = await p.evaluate(function () { var w = document.getElementById('contact'); return w.classList.contains('pend'); });
+        rec('T15l a window still under the taskbar waits; once clear of it, it pops', u1.pend && u1.top > u1.tbTop && !u2, { under: u1, after: u2 });
+        await c.close();
+
+        // d/e: a finger
+        c = await ctxWith(browser, { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }, true);
+        p = await c.newPage();
+        await p.goto(URL, { waitUntil: 'load' }); await sleep(1500);
+        var topBefore = await p.evaluate(function () { return (document.querySelector('.win.top') || {}).id; });
+        before = await rect(p, '#terminal');
+        cdp = await c.newCDPSession(p);
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: before.l + 60, y: before.t + 60 }] });
+        for (k = 1; k <= 6; k++) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: before.l + 60, y: before.t + 60 - k * 30 }] });
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await sleep(300);
+        var topAfter = await p.evaluate(function () { return (document.querySelector('.win.top') || {}).id; });
+        rec('T15d a finger scrolling over a window does not bring it to the front', topAfter === topBefore && topBefore !== 'terminal', { before: topBefore, after: topAfter });
+        await p.evaluate(function () { scrollTo(0, 0); }); await sleep(200);
+        br = await rect(p, '#terminal .wb');
+        await p.tap('#terminal .wb'); await p.tap('#terminal .wb'); await sleep(200);
+        var dm = await p.evaluate(function () { return { maxi: document.getElementById('terminal').classList.contains('maxi'), top: (document.querySelector('.win.top') || {}).id }; });
+        rec('T15e a double tap on a phone\'s title bar does not fill the screen (there is no button back); a tap fronts it', !dm.maxi && dm.top === 'terminal', dm);
+        var ldw = await p.evaluate(function () { return { ld: getComputedStyle(document.querySelector('#rr .wb .ld')).display, wr: getComputedStyle(document.querySelector('#rr .wb .wr')).display }; });
+        rec('T15o a phone hides a log line\'s date and the leader that pointed at it', ldw.ld === 'none' && ldw.wr === 'none', ldw);
+        await c.close();
+        // n: 320 keeps "Mathematical" whole; m: no JS shows one cursor
+        c = await ctxWith(browser, { viewport: { width: 320, height: 640 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }, true);
+        p = await c.newPage(); await p.goto(URL, { waitUntil: 'load' }); await sleep(1200);
+        var mw = await p.evaluate(function () {
+            var dd = document.querySelectorAll('#about dd')[2], range = document.createRange(); range.selectNodeContents(dd);
+            var rects = [].map.call(range.getClientRects(), function (r) { return Math.round(r.width); });
+            return { ddW: Math.round(dd.getBoundingClientRect().width), first: rects[0], text: dd.textContent };
+        });
+        rec('T15n at 320 the readout keeps "Mathematical" on one line', mw.ddW >= 96 && mw.first >= 96, mw);
+        await c.close();
+        c = await ctxWith(browser, { viewport: { width: 1280, height: 800 }, javaScriptEnabled: false }, false);
+        p = await c.newPage(); await p.goto(URL, { waitUntil: 'load' }); await sleep(500);
+        var nc = await p.evaluate(function () { return { typed: getComputedStyle(document.querySelector('#terminal .term-row .tc')).display, wait: getComputedStyle(document.querySelector('#terminal .wait .tc')).display }; });
+        rec('T15m without the script the terminal shows one cursor, at the prompt', nc.typed === 'none' && nc.wait !== 'none', nc);
+        await c.close();
+        // c: on a boot visit the hand-off blink plays (the loop waits for the pop)
+        c = await ctxWith(browser, { viewport: { width: 1280, height: 800 } }, false);
+        p = await c.newPage(); await p.goto(URL, { waitUntil: 'domcontentloaded' }); await sleep(2500);
+        var pre = await p.evaluate(function () { return document.querySelector('#eye0 .eye').getAnimations({ subtree: true }).map(function (a) { return a.animationName; }); });
+        await p.keyboard.press('Space'); await sleep(250);
+        var post = await p.evaluate(function () { return document.querySelector('#eye0 .eye').getAnimations({ subtree: true }).map(function (a) { return a.animationName + '@' + Math.round(a.currentTime); }); });
+        await sleep(1100);                   // the hand-off blink is at 1.4s after the pop
+        var frames = 0;
+        for (i = 0; i < 20; i++) { var f = await p.evaluate(function () { return [].some.call(document.querySelectorAll('#eye0 .bf'), function (g) { return +getComputedStyle(g).opacity === 1; }); }); if (f) frames++; await sleep(25); }
+        rec('T15c on a boot visit the eye holds its loop under the boot and blinks once at the hand-off', pre.length === 0 && post.some(function (n) { return /^bootHalf@/.test(n); }) && frames >= 2, { pre: pre, post: post, blinkSamples: frames });
+        await c.close();
     } finally {
         await browser.close();
         var fails = results.filter(function (r) { return !r.ok; });
