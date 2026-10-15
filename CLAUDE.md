@@ -104,32 +104,54 @@ the root. (It was at `/new/` at first; that path is gone, not redirected.)
 
 ## test2
 
-`/test2/` is the same page as `/test/` rebuilt as a desktop: the holding
-page's boot hands off to a black desk with a taskbar, and every part of the
-page is a window with pixel chrome that pops open in turn (the LCD as
-`/dev/eye0`, a terminal that answers `whoami`, the photo, the readout, a
-readme, one window an interest, one window a line of the log, contact). It
-lives at isaacure.com/test2 until Isaac picks one of the two.
+`/test2/` is the same page as `/test/` rebuilt as a desk of terminal windows:
+the holding page's boot hands off to a desk with a tmux status line along the
+bottom, and every part of the page is a terminal window (the glass, the three
+lights, the shadow, VT323 inside) that ran one command: a login shell that
+prints the banner and answers `whoami`, `neofetch` with the eye for a logo,
+`imgcat headshot.jpg`, `cat readme.txt`, `ls interests/` and a `cat` for each,
+`ls -lt log/` and a `cat` for each line, and `cat contact`. It lives at
+isaacure.com/test2 until Isaac picks one of the two.
 
 - Everything in `## test` holds here too: unlisted (`noindex, nofollow`, no
   canonical or `og:url`, no link to it), only facts he has confirmed (the copy
-  is `/test/`'s, word for word), absolute paths, the screen's loops kept (the
-  LCD's eye blinks on the 8s loop, the cursors blink), everything else still
-  within five seconds, and the finished page with nothing moving under
-  reduced motion or without JS. GitHub stays off the contact list.
+  is `/test/`'s, word for word; the file names, the prompt and the window
+  titles are chrome, not facts), absolute paths, the loops kept (neofetch's
+  eye blinks on the 8s loop, the front window's cursor blinks), everything
+  else still within five seconds, and the finished page with nothing moving
+  under reduced motion or without JS. GitHub stays off the contact list.
+- The prompt is zsh's on the console: `isaac@ureboy ~ %`. The windows' titles
+  are plain names (`whoami`, `neofetch`, `readme.txt`, `log/rice-racing.md`);
+  the command is the first line inside, and `/test/`'s section titles are
+  comments at the prompt above it (`# who is this guy`, `# effectively mini
+  resume`, `# say hi`). Prompt lines are `aria-hidden` decoration except where
+  they hold a link or Isaac's words (the comments, with the `# ` hidden). The
+  lights are in macOS's order (close, shade, zoom) and are 24px targets drawn
+  as 12px lights; a window at the back has grey ones. The log entries' `# Org`
+  lines are `h3`s under the window's `h2`.
+- Two things break by the window's width, not the viewport's (container
+  queries on `.wd`, with a viewport query as the fallback): neofetch puts the
+  eye above the facts in a window under 348px, and the banner breaks into its
+  two words, URE under ISAAC, the way figlet wraps, in one under 310px.
 - The windows are a CSS grid (twelve columns on a desktop, six on a tablet,
   one on a phone) with a whole-pixel nudge each (`--nx`, `--ny`) so they
   overlap at the edges. The script only adds behaviour: the cascade (what is
-  in view pops in order, the rest when scrolled to), raise on click, drag by
-  the title bar with a mouse (never a finger: a finger scrolls), shade, fill
-  the screen (Escape or the button restores; the rest goes `inert`), close,
-  and the eye's window list in the taskbar, which also resets the desk. A
-  title bar too narrow for its leader and result gets `.tight` from the
-  script (measured in VT323 columns, the face is monospace) and shows the
-  title alone; a log line's date then shows in the body instead.
-- The boot terminal is `.term`; a terminal window is `.win.tty`. Don't
-  reuse one for the other: the boot's rule once leaked onto every terminal
-  window (16px text, `touch-action: none`).
+  in view pops in order and lights up in turn; the rest when scrolled to,
+  without taking the front), raise on click, drag by the title bar with a
+  mouse (never a finger, a touchscreen laptop's included: a finger scrolls),
+  shade, fill the screen (the green light or Escape restores; the rest goes
+  `inert`), close, and the eye's window list in the status line, which also
+  resets the desk. The cursor is solid and blinking in the front window and
+  hollow in the rest; the login shell is the front window at rest (after the
+  cascade, and after a reset), so its cursor is the one blinking. The status
+  line marks `0:home` while the login shell's top half is on screen, the
+  section in the upper part of the screen below that, and `3:contact` at the
+  bottom; it gives up the hostname, the session, the clock and then the
+  numbers as it narrows, in ems. The skip link goes to the status line, the
+  one thing after the windows.
+- The boot terminal is `.term`; a terminal window is `.win`. Don't reuse the
+  boot's class for a window: its rule once leaked onto every terminal window
+  (16px text, `touch-action: none`).
 - Its boot flag is `iu2.booted`, its own, so a visit to `/test/` in the same
   session doesn't skip it.
 - `.claude/test2/rig/` has its checks (the probe, axe, html-validate, the
