@@ -1,0 +1,1805 @@
+<!DOCTYPE html>
+<html lang="en" class="no-js">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="description" content="Isaac Ure. I study econ at Rice, occasionally shoot for the Thresher, chug and bike for Martel, and run the budget for Rice's first Formula SAE team.">
+    <meta name="theme-color" content="#000000">
+    <meta name="color-scheme" content="dark">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Isaac Ure">
+    <meta property="og:description" content="I study econ at Rice, occasionally shoot for the Thresher, chug and bike for Martel, and run the budget for Rice's first Formula SAE team.">
+    <meta property="og:image" content="https://isaacure.com/images/Headshot-10x9.jpg">
+    <meta property="og:image:width" content="720">
+    <meta property="og:image:height" content="648">
+    <meta property="og:image:alt" content="Isaac Ure">
+    <meta name="twitter:card" content="summary">
+    <title>Isaac Ure</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=3">
+    <script>
+    /* js on, and before anything paints, whether this visit boots: once a browser session,
+       never under reduced motion or on a link to a window, always with ?boot. storage that
+       throws just plays it. a visit that doesn't boot is warm: the desktop is already up.
+       the timer is the last resort if the page's own script never gets to hand off */
+    (function () {
+        var d = document.documentElement, boot = false;
+        try {
+            var seen = false;
+            try { seen = window.sessionStorage.getItem('iu2.booted') === '1'; } catch (e) {}
+            var force = /(^|&)boot(=|&|$)/.test(location.search.slice(1));
+            var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+            boot = !reduce && !!window.Promise && (force || (!seen && location.hash.length < 2));
+            if (boot) { try { window.sessionStorage.setItem('iu2.booted', '1'); } catch (e) {} }
+        } catch (e) { boot = false; }
+        d.className = boot ? 'js booting cas' : 'js warm cas';
+        /* .cas holds the windows back until the script lines up the cascade; if it never does,
+           ten seconds is the most they wait */
+        window.iuCas = setTimeout(function () { d.className = d.className.replace(/\s*\bcas\b/g, ''); }, 10000);
+        if (boot) window.iuLast = setTimeout(function () {
+            if (!/\bbooting\b/.test(d.className)) return;
+            d.className = d.className.replace(/\s*\bbooting\b/g, '');
+        }, 14000);
+    })();
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+    <style>
+        /* ────────────────────────────────────────────────────────────
+           THE FACE OF THE SITE, AS A DESKTOP
+           The holding page's terminal boots, hands off, and this time
+           what comes up is a desktop: black, with a taskbar, and the
+           page is a pile of windows that pop open one after another.
+           Each window is one thing: the LCD (/dev/eye0), a terminal
+           that answers whoami, the photo, a readout, a readme, one
+           window an interest, one window a line of the log, and the
+           contact commands. They sit on a grid nudged a few pixels
+           each way so they overlap at the edges the way windows left
+           open do. Click one and it comes to the front; on a desktop
+           with a mouse it drags by its title bar. The buttons on each
+           do what they say: shade, fill the screen, close. The eye in
+           the taskbar lists every window, so a closed one comes back.
+           Press Start 2P lives on the LCD, VT323 everywhere else.
+           Everything works without the script: no JS, or reduced
+           motion, and the windows are simply there, in the grid.
+           ──────────────────────────────────────────────────────────── */
+
+        /* until VT323 arrives, a stand-in with its column: the usual monospace faces run .6em
+           to a column and VT323 runs .4, so two thirds of their size keeps every width built
+           in columns where it will be, and nothing jumps when the real face lands */
+        @font-face {
+            font-family: 'VT323 fallback';
+            src: local('Menlo Regular'), local('Menlo-Regular'), local('DejaVu Sans Mono'), local('Liberation Mono'), local('Courier New'), local('Droid Sans Mono');
+            size-adjust: 66.667%;
+            unicode-range: U+0000-00FF, U+2013-2014, U+2018-201F, U+2026;
+        }
+
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --red: #D81E05;          /* Tornado Red: focus rings */
+
+            /* the LCD, same palette as the console */
+            --screen-bg: #e6e4d2;
+            --screen-ink: #1c1d17;
+            --screen-dim: #5a5b50;
+            --screen-accent: #b5180a;
+            --screen-hi: #ffffff;
+
+            /* the terminal: the LCD's cream as phosphor, the shell's grey for dim, the
+               lighter red the site uses on dark (AA), a darker grey for leaders */
+            --term-fg: #e6e4d2;
+            --term-dim: #8a8a82;
+            --term-warn: #ff5436;
+            --term-lead: #55554f;
+            --glow: rgba(230, 228, 210, .16);
+
+            /* the window chrome: a frame that reads against black, a darker one for a window
+               at the back, and a hard shadow a few pixels down and right */
+            --frame: #6a6a63;
+            --frame-dim: #3a3a36;
+            --shadow: #1e1e1b;
+
+            --font-pixel: 'Press Start 2P', monospace;
+            --font-term: 'VT323', 'VT323 fallback', monospace;
+
+            /* the type: 20px, where a VT323 column is exactly 8px */
+            --fs: 1.25rem;
+            --fs-ans: 1.5rem;
+
+            --gut: 1rem;             /* the desk's edge */
+            --gap: 1rem;             /* between windows */
+            --tbh: 2.75rem;          /* the taskbar */
+            --wbh: clamp(32px, 2rem, 40px);   /* a title bar, and a button on it: it grows with the type, but not so far that three of them squeeze a short title */
+        }
+        @media (min-width: 760px) {
+            :root { --gut: 1.5rem; --gap: 1.5rem; }
+        }
+
+        html {
+            background: #000; -webkit-text-size-adjust: 100%; text-size-adjust: 100%;
+            scrollbar-gutter: stable;
+            /* a jump or a focused link lands clear of the taskbar */
+            scroll-padding-top: 1rem;
+            scroll-padding-bottom: calc(var(--tbh) + 1rem + env(safe-area-inset-bottom, 0px));
+        }
+        @media (prefers-reduced-motion: no-preference) { html.sm { scroll-behavior: smooth; } }
+        body {
+            background: #000;
+            color: var(--term-fg);
+            font-family: var(--font-term);
+            font-size: var(--fs);
+            line-height: 1.3;
+            -webkit-font-smoothing: antialiased;
+            font-variant-ligatures: none;          /* VT323 has an fi ligature, and a terminal has columns */
+            font-feature-settings: "liga" 0, "clig" 0;
+            padding: 0 max(var(--gut), env(safe-area-inset-right, 0px)) calc(var(--tbh) + env(safe-area-inset-bottom, 0px)) max(var(--gut), env(safe-area-inset-left, 0px));
+            overflow-x: hidden;                    /* a dragged window never widens the page */
+        }
+        /* while the boot covers the screen, or a window fills it, the page underneath does
+           not scroll */
+        html.booting, html.booting body, html.lock, html.lock body { overflow: hidden; }
+        html.lock { scrollbar-gutter: auto; }
+
+        ::selection { background: var(--term-fg); color: #000; text-shadow: none; }
+        a { color: inherit; }
+        :focus-visible { outline: 3px solid var(--red); outline-offset: 2px; }
+        .vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; text-transform: none; }
+
+        /* a keyboard way past the windows, out of sight until it is used */
+        .skip {
+            position: absolute; left: max(var(--gut), env(safe-area-inset-left, 0px)); top: calc(.75rem + env(safe-area-inset-top, 0px)); z-index: 5;
+            font-size: 1.1rem; line-height: 1; padding: .3rem .65rem .35rem;
+            background: #000; color: var(--term-fg); border: 1px solid var(--term-dim);
+            text-decoration: none;
+            transform: translateY(-300%);
+        }
+        .skip:focus { transform: none; }
+
+        /* ── the boot terminal: up from the first frame when this visit boots, so nothing of
+             the page flashes first; the script fills it and takes it away ── */
+        .term {
+            display: none;
+            position: fixed; inset: 0; z-index: 100;
+            overflow: hidden;
+            background: #000;
+            padding: calc(.5rem + env(safe-area-inset-top, 0px)) .6rem calc(3rem + env(safe-area-inset-bottom, 0px)) calc(.6rem + env(safe-area-inset-left, 0px));
+            font-family: var(--font-term);
+            font-size: 1rem;
+            line-height: 1.15;
+            color: var(--term-fg);
+            text-shadow: 0 0 6px rgba(230, 228, 210, .22);
+            cursor: default;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .booting .term { display: block; }
+        .tl { white-space: pre-wrap; word-break: break-word; min-height: 1.15em; }
+        .tl-art {
+            white-space: pre; word-break: normal; line-height: 1; letter-spacing: 0;
+            font-size: min(1rem, calc((100vw - 1.2rem) / (52 * var(--col, .4))), calc((100vh - 5rem) / 10.4));
+        }
+        .tl-px { line-height: .8; padding-bottom: .8em; }
+        .tl-dim { color: var(--term-dim); }
+        .tl-warn { color: var(--term-warn); }
+        /* the cursor, the boot's and the page's own */
+        .tc {
+            display: inline-block; width: .55em; height: .95em; margin-top: .1em;
+            background: var(--term-fg); vertical-align: text-bottom;
+            animation: termBlink 1.06s steps(1) infinite;
+        }
+        @keyframes termBlink { 50% { opacity: 0; } }
+        .term-skip {
+            display: none;
+            position: fixed; right: 1rem; bottom: calc(1rem + env(safe-area-inset-bottom, 0px)); z-index: 101;
+            font-family: var(--font-term); font-size: 1.1rem; line-height: 1;
+            color: var(--term-dim); background: #000;
+            border: 1px solid #45453f;
+            padding: .3rem .65rem .35rem;
+            cursor: pointer;
+            opacity: 0; visibility: hidden;
+            animation: appear .1s steps(1, start) 1.2s forwards;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .booting .term-skip { display: block; }
+        .term-skip:hover { color: var(--term-fg); border-color: var(--term-dim); }
+        @keyframes appear { to { opacity: 1; visibility: visible; } }
+
+        /* ── the desk: a grid of twelve, as wide as the page allows, and the windows on it.
+             the columns are whole pixels wherever the browser can round, so a bitmap face
+             never sits on a half pixel ── */
+        .desk {
+            position: relative;
+            display: grid;
+            grid-template-columns: repeat(12, minmax(0, 1fr));
+            gap: var(--gap);
+            align-items: start;
+            width: 100%; max-width: 1360px;
+            margin: 0 auto;
+            padding: calc(var(--gut) + env(safe-area-inset-top, 0px)) 0 var(--gut);
+        }
+        @supports (width: round(down, 1px, 1px)) {
+            .desk {
+                width: round(down, min(100%, 1360px), 2px);
+                margin-left: max(0px, round(down, (100% - min(100%, 1360px)) / 2, 1px));
+                grid-template-columns: repeat(12, round(down, (100% - 11 * var(--gap)) / 12 + .01px, 1px));   /* a hair over, so float noise can't eat a pixel */
+            }
+        }
+        .desk:focus { outline: none; }         /* the skip link's landing, not a control */
+
+        /* ── a window ── */
+        .win {
+            position: relative;
+            display: flex; flex-direction: column;
+            min-width: 0;
+            background: #000;
+            border: 1px solid var(--frame-dim);
+            box-shadow: 6px 6px 0 var(--shadow);
+            transform: translate(var(--nx, 0px), var(--ny, 0px));
+            text-shadow: 0 0 6px var(--glow);
+        }
+        .win.top { border-color: var(--frame); }
+        /* the title bar: a check line, the way the boot prints one. the prompt, the name, a
+           leader of real dots to the result (where a window has one), and the buttons */
+        .wb {
+            display: flex; align-items: stretch;
+            min-height: var(--wbh); flex: none;
+            padding-left: .6rem;
+            border-bottom: 1px solid var(--frame-dim);
+            color: var(--term-dim);
+            line-height: 1;
+            user-select: none; -webkit-user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .win.top .wb { background: var(--term-fg); color: #000; border-bottom-color: var(--term-fg); text-shadow: none; }
+        .wt { font-size: var(--fs); font-weight: normal; text-transform: uppercase; min-width: 0; flex: 0 1 auto; align-self: center; padding: .3rem 0; line-height: 1.05; }
+        .wt .ps { color: var(--term-warn); }
+        .win.top .wt .ps { color: var(--screen-accent); }
+        .wr { white-space: nowrap; flex: none; margin-right: 1ch; color: var(--term-dim); align-self: center; }
+        .win.top .wr { color: #000; }
+        .wr.now, .when.now { color: var(--term-warn); }
+        .win.top .wr.now { color: var(--screen-accent); }
+        .ld { flex: 1 1 0; min-width: 2ch; margin: 0 1ch; color: var(--term-lead); text-shadow: none; }
+        .wb .ld { min-width: 0; align-self: center; }
+        /* a title bar too narrow for its leader and result (the script measures) shows the
+           title alone; a line of the log then shows its date in the body instead */
+        .win.tight .wb .ld, .win.tight .wb .wr { display: none; }
+        .win.top .ld { color: #000; opacity: .45; }
+        .ld::before {
+            content: "................................................................................................................................";
+            display: block; margin-left: auto;
+            width: 100%;
+            width: round(down, 100% + .1px, 1ch);      /* whole dots: a leader never ends on half of one */
+            overflow: hidden; white-space: nowrap;
+        }
+        .wc { display: flex; align-self: stretch; flex: none; margin-left: auto; }
+        .wbtn {
+            width: var(--wbh); flex: none;
+            display: grid; place-items: center;
+            background: none; border: 0; border-left: 1px solid var(--frame-dim);
+            color: inherit; cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .win.top .wbtn { border-left-color: rgba(0,0,0,.35); }
+        .wbtn svg { width: 16px; height: 16px; display: block; shape-rendering: crispEdges; }
+        .wbtn:hover { background: var(--term-fg); color: #000; }
+        .win.top .wbtn:hover { background: #000; color: var(--term-fg); }
+        .wbtn.x:hover, .win.top .wbtn.x:hover { background: var(--red); color: #fff; }
+        .wbtn:focus-visible { outline-offset: -3px; }
+        .no-js .wc { display: none; }           /* the buttons do nothing without the script */
+        /* a mouse drags a window by its title bar (the script); a finger scrolls the page */
+        @media (pointer: fine) and (min-width: 760px) {
+            .js .wb { cursor: grab; touch-action: none; }
+            .js .wb:active { cursor: grabbing; }
+            .js .wbtn { cursor: pointer; }
+            .js .win.drag { transition: none; }
+            .js .win.drag .wb { cursor: grabbing; }
+        }
+        /* the body */
+        .wd { flex: 1 1 auto; min-height: 0; padding: .7rem .9rem .85rem; }
+        .wd p { max-width: 68ch; text-wrap: pretty; }
+        .wd p + p { margin-top: 1.3em; }
+        .wd .answer { margin-top: .3em; }
+        .wd .wait { margin-top: .5em; }
+        .wd .when + .role, .wd .role:first-child { margin-top: 0; }
+        .wd .when { margin-top: 0; }
+        .wd .role + .what { margin-top: .8em; }
+        .wd .what + .go, .wd .rr + .go { margin-top: .5em; }
+        .nw { white-space: nowrap; }
+        /* a shaded window is its title bar; a closed one is gone; one that fills the screen
+           sits over everything, scrolls inside, and loses its nudge and its shadow */
+        .win[hidden] { display: none; }
+        .win.shade .wd, .win.shade .cap { display: none; }
+        .win.maxi {
+            position: fixed; inset: 0 0 calc(var(--tbh) + env(safe-area-inset-bottom, 0px)) 0; z-index: 60;
+            transform: none; box-shadow: none; border: 0;
+            max-width: none; width: auto; height: auto;
+        }
+        .win.maxi .wb { padding-left: max(.6rem, env(safe-area-inset-left, 0px)); }
+        .win.maxi .wd { overflow: auto; overscroll-behavior: contain; padding: 1rem max(1rem, env(safe-area-inset-right, 0px), (100% - 72ch) / 2) 1.5rem max(1rem, env(safe-area-inset-left, 0px), (100% - 72ch) / 2); }
+
+        /* the cascade: a window pops open, a touch small and clear, then it is simply there.
+           only the script sets .pend, so without it, in print and under reduced motion
+           nothing is held back. once a pop has played the animation comes off, so a drag's
+           own transform is the only one left */
+        .js .win.pend, .js.cas .win { opacity: 0; pointer-events: none; }
+        .js .win.up { animation: winPop .2s cubic-bezier(.2, .9, .25, 1.12) both; }
+        .js .win.on { animation: none; }
+        @keyframes winPop {
+            from { opacity: 0; transform: translate(var(--nx, 0px), var(--ny, 0px)) scale(.92); }
+            to   { opacity: 1; transform: translate(var(--nx, 0px), var(--ny, 0px)) scale(1); }
+        }
+        .js .win.down { animation: winOut .14s ease-in both; pointer-events: none; }
+        @keyframes winOut {
+            from { opacity: 1; transform: translate(var(--nx, 0px), var(--ny, 0px)) scale(1); }
+            to   { opacity: 0; transform: translate(var(--nx, 0px), var(--ny, 0px)) scale(.94); }
+        }
+
+        @media (min-width: 760px) {
+            .win:not(.tight) .wd .when { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+        }
+        @media (max-width: 759.98px) {
+            .wb .wr.when, .wbtn.mx { display: none; }      /* on a phone a window is as wide as the page already */
+        }
+
+        /* ── the kinds of window ── */
+        /* an LCD: the console's screen, in a window */
+        .lcd .wd { position: relative; background: var(--screen-bg); color: var(--screen-ink); text-shadow: none; }
+        .lcd .wd > * { position: relative; z-index: 2; }
+        .screen-glow {
+            position: absolute; inset: 0; pointer-events: none; z-index: 5;
+            background: radial-gradient(120% 80% at 50% 0%, rgba(255,255,255,.16), transparent 60%);
+        }
+        .scanlines {
+            position: absolute; inset: 0; pointer-events: none; z-index: 6; opacity: .35;
+            background: repeating-linear-gradient(to bottom, rgba(0,0,0,.18) 0 1px, transparent 1px 3px);
+            mix-blend-mode: multiply;
+        }
+        .bezel { position: absolute; inset: 0; z-index: 4; pointer-events: none; box-shadow: inset 0 0 0 2px rgba(0,0,0,.25), inset 0 0 22px rgba(0,0,0,.22); }
+        .lcd .wd > .screen-glow, .lcd .wd > .scanlines, .lcd .wd > .bezel { z-index: 5; }
+        .lcd .wd > .scanlines { z-index: 6; }
+
+        /* /dev/eye0: the holding page's LCD. the eye, and the name typed under it */
+        #eye0 .wd { padding: 0; }
+        .screen {
+            position: relative;
+            aspect-ratio: 10 / 9;
+            background: var(--screen-bg);
+            overflow: hidden;
+            box-shadow: inset 0 0 0 2px rgba(0,0,0,.25), inset 0 0 26px rgba(0,0,0,.22);
+            color: var(--screen-ink);
+            text-shadow: none;
+        }
+        /* power-on surge: a white pop, a dark dip, then the LCD is just on. it plays when the
+           window pops, so it waits for the script */
+        .screen-flash { position: absolute; inset: 0; z-index: 7; pointer-events: none; opacity: 0; background: #fff; }
+        .up .screen-flash { animation: screenSurge .34s ease .1s both; }
+        @keyframes screenSurge {
+            0%   { opacity: 0;   background: #fff; }
+            14%  { opacity: .85; background: #fff; }
+            40%  { opacity: .9;  background: #06060a; }
+            72%  { opacity: .45; background: #06060a; }
+            100% { opacity: 0;   background: #06060a; }
+        }
+        .holding {
+            position: absolute; inset: 0;
+            padding: .85rem .9rem;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            gap: 1.1rem;
+            text-align: center;
+        }
+        /* the eye: the console's pixel mark. 48 units, 2 units to a cell, so a multiple of
+           24px keeps every cell a whole number of pixels */
+        .eye { width: 96px; height: 96px; color: var(--screen-ink); }
+        .eye svg, .foot-eye svg, .tb-eye svg { width: 100%; height: 100%; display: block; shape-rendering: crispEdges; }
+        .up .eye svg { animation: bootOpen .5s ease .35s both; }
+        @keyframes bootOpen {
+            0%   { transform: scaleY(.05); opacity: 0; }
+            40%  { opacity: 1; }
+            100% { transform: scaleY(1); opacity: 1; }
+        }
+        .eye-glint { fill: var(--screen-hi); }
+        .up .eye .eye-pupil { animation: glance .7s steps(1, end) .95s; }
+        @keyframes glance {
+            0%        { transform: translateX(-4px); }
+            43%       { transform: translateX(4px); }
+            79%, 100% { transform: translateX(0); }
+        }
+        /* the blink: three frames (see the SVG), one at a time with steps(). once as the name
+           finishes, then twice every 8s at uneven spacing, for as long as you're here. the
+           loop runs on its own, script or not; only reduced motion stops it */
+        .lid-skin { fill: var(--screen-bg); }
+        .lid-edge { fill: currentColor; }
+        .bf { opacity: 0; }
+        .eye .bf-half { animation: idleHalf 8s steps(1, end) 3.4s infinite; }
+        .eye .bf-slit { animation: idleSlit 8s steps(1, end) 3.4s infinite; }
+        .eye .bf-shut { animation: idleShut 8s steps(1, end) 3.4s infinite; }
+        .up .eye .bf-half { animation: bootHalf .3s steps(1, end) 1.4s, idleHalf 8s steps(1, end) 3.4s infinite; }
+        .up .eye .bf-slit { animation: bootSlit .3s steps(1, end) 1.4s, idleSlit 8s steps(1, end) 3.4s infinite; }
+        .up .eye .bf-shut { animation: bootShut .3s steps(1, end) 1.4s, idleShut 8s steps(1, end) 3.4s infinite; }
+        /* one blink, 300ms: half 45 · slit 40 · shut 90 · slit 55 · half 70 */
+        @keyframes bootHalf { 0% { opacity: 1; } 15% { opacity: 0; } 76.667% { opacity: 1; } 100% { opacity: 0; } }
+        @keyframes bootSlit { 0% { opacity: 0; } 15% { opacity: 1; } 28.333% { opacity: 0; } 58.333% { opacity: 1; } 76.667% { opacity: 0; } 100% { opacity: 0; } }
+        @keyframes bootShut { 0% { opacity: 0; } 28.333% { opacity: 1; } 58.333% { opacity: 0; } 100% { opacity: 0; } }
+        /* the same blink at 3.28s and 7.04s of every 8s */
+        @keyframes idleHalf {
+            0% { opacity: 0; }
+            41% { opacity: 1; } 41.5625% { opacity: 0; } 43.875% { opacity: 1; } 44.75% { opacity: 0; }
+            88% { opacity: 1; } 88.5625% { opacity: 0; } 90.875% { opacity: 1; } 91.75% { opacity: 0; }
+            100% { opacity: 0; }
+        }
+        @keyframes idleSlit {
+            0% { opacity: 0; }
+            41.5625% { opacity: 1; } 42.0625% { opacity: 0; } 43.1875% { opacity: 1; } 43.875% { opacity: 0; }
+            88.5625% { opacity: 1; } 89.0625% { opacity: 0; } 90.1875% { opacity: 1; } 90.875% { opacity: 0; }
+            100% { opacity: 0; }
+        }
+        @keyframes idleShut {
+            0% { opacity: 0; }
+            42.0625% { opacity: 1; } 43.1875% { opacity: 0; }
+            89.0625% { opacity: 1; } 90.1875% { opacity: 0; }
+            100% { opacity: 0; }
+        }
+        /* the name: 24px is three times the bitmap, so each glyph is 24 whole pixels wide
+           and the reveal edge never cuts through a pixel; narrower than its nine glyphs
+           need, it shrinks */
+        .holding-word {
+            font-family: var(--font-pixel);
+            font-weight: normal;
+            font-size: min(1.5rem, calc((100% - 1.8rem) / 9));
+            font-size: min(1.5rem, calc((100cqw - 1.8rem) / 9));
+            line-height: 1.5;
+            letter-spacing: 0;
+            text-transform: uppercase;
+            color: var(--screen-ink);
+            white-space: nowrap;
+        }
+        .screen { container-type: inline-size; }
+        .holding-word b { font-weight: normal; color: var(--screen-accent); }
+        .holding-word .nm { display: inline-block; will-change: transform; }
+        .up .holding-word .nm { animation: typeOut .405s steps(9, end) .655s backwards; }
+        .holding-word .vh { -webkit-user-select: none; user-select: none; }
+        @keyframes typeOut {
+            from { width: 9ch; -webkit-clip-path: inset(0 100% 0 0); clip-path: inset(0 100% 0 0); }
+            to   { width: 9ch; -webkit-clip-path: inset(0 0 0 0);    clip-path: inset(0 0 0 0); }
+        }
+        .lcd-line { font-size: 1.1rem; line-height: 1.1; color: var(--screen-dim); margin-top: -.2rem; }
+
+        /* the terminal: someone at the prompt types whoami, the answer prints, the prompt
+           comes back and waits. the row is as wide as the finished line and starts at its
+           left, so the prompt holds still while the command grows */
+        .term-row { display: flex; align-items: baseline; width: max-content; }
+        .ps { color: var(--term-warn); }
+        .term-ps { margin-right: 1ch; }
+        .cmd { white-space: nowrap; -webkit-clip-path: inset(-.3em 0); clip-path: inset(-.3em 0); width: 6ch; }
+        .up .cmd { width: 0; animation: typeCmd .45s steps(1, end) .4s forwards; }
+        /* a keystroke per keyframe, 40 to 100ms apart. the last value is held from 84% */
+        @keyframes typeCmd {
+            0%        { width: 1ch; }
+            16%       { width: 2ch; }
+            30%       { width: 3ch; }
+            52%       { width: 4ch; }
+            66%       { width: 5ch; }
+            84%, 100% { width: 6ch; }
+        }
+        .term-row .tc { animation: none; flex: none; align-self: center; }   /* solid while typing */
+        .up .term-row .tc { animation: gone .1s steps(1, start) 1.05s forwards; }
+        @keyframes gone { to { opacity: 0; visibility: hidden; } }
+        .answer { margin-top: .35em; font-size: var(--fs-ans); line-height: 1.25; }
+        .up .answer { opacity: 0; animation: appear .1s steps(1, start) 1.05s forwards; }
+        .wait { margin-top: .5em; }
+        .wait .tc { animation: termBlink 1.06s steps(1) .53s infinite; }
+        .up .wait { opacity: 0; animation: appear .1s steps(1, start) 1.15s forwards; }
+        #terminal .wd { display: flex; flex-direction: column; }
+        #terminal .wait { margin-top: auto; padding-top: .5em; }
+
+        /* the photo: the headshot as a Game Boy Camera shot, the same crop in the screen's
+           four shades, laid over the real one. when the window pops it develops, a band of
+           rows at a time, top down. only the Game Boy layer is ever clipped, so the real
+           photo loads, prints and reads like any image */
+        .pic .wd { display: flex; flex-direction: column; align-items: center; padding: .9rem; }
+        .shot { position: relative; width: min(100%, 360px); }
+        .shot .screen { width: 100%; }
+        .shot img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+        .shot-gb { z-index: 2; image-rendering: pixelated; }
+        .shot .screen-glow, .shot .scanlines { z-index: 3; }
+        .shot.dev .shot-gb { animation: develop .6s steps(12, start) forwards; }
+        @keyframes develop {
+            from { -webkit-clip-path: inset(0 0 0 0);    clip-path: inset(0 0 0 0); }
+            to   { -webkit-clip-path: inset(100% 0 0 0); clip-path: inset(100% 0 0 0); }
+        }
+        .shot.done .shot-gb, .no-js .shot-gb { display: none; }
+        .cap { margin-top: .45rem; font-size: .85em; color: var(--term-dim); width: min(100%, 360px); }
+
+        /* the readout: a key, dots to a fixed column, the value. a value too long for the
+           line wraps under itself, not under the key */
+        .readout { margin: 0; }
+        .ro { display: flex; }
+        .ro + .ro { margin-top: .05em; }
+        .ro dt { flex: none; width: 19ch; min-width: max-content; display: flex; white-space: nowrap; color: var(--screen-dim); }
+        .ro dt .ld { margin-right: 0; min-width: 0; width: 0; contain: inline-size; color: #9a998b; opacity: 1; }
+        .ro dd { flex: 1 1 0; min-width: 0; margin-left: 1ch; overflow-wrap: anywhere; text-wrap: pretty; }
+        .tty .ro dt { color: var(--term-dim); }
+        .tty .ro dt .ld { color: var(--term-lead); }
+
+        /* an interest: a picture drawn on the eye's grid at 3px a cell, and a line or two.
+           each picture has a little move of its own (the script's PICS), drawn in frames the
+           way the blink is: a .pf group is a frame, hidden until a step shows it, so without
+           the script, or between plays, each is simply the picture */
+        .tile { display: grid; grid-template-columns: 66px minmax(0, 1fr); column-gap: 1.5ch; align-items: start; }
+        .tile .ico { display: block; height: 42px; width: auto; color: var(--term-fg); filter: drop-shadow(0 0 5px rgba(230, 228, 210, .18)); margin-top: .15em; overflow: hidden; -webkit-tap-highlight-color: transparent; }
+        .tile .pf { opacity: 0; }
+
+        /* a line of the log: the role, the words, maybe a command */
+        .role { color: var(--term-dim); text-transform: uppercase; }
+        .what { margin-top: .35em; }
+        .go { margin-top: .5em; }
+        .wd .go, .wd .what + .go { margin-top: .5em; }
+        /* the car's own readout, on a little screen of its own */
+        .rr { position: relative; width: min(100%, 24rem); margin-top: .8em; padding: .75rem 1rem .85rem; background: var(--screen-bg); color: var(--screen-ink); text-shadow: none; box-shadow: inset 0 0 0 2px rgba(0,0,0,.25), inset 0 0 22px rgba(0,0,0,.22); }
+        .rr .scanlines, .rr .screen-glow { z-index: 1; }
+        .rr-h { position: relative; z-index: 2; font-family: var(--font-pixel); font-size: 1rem; line-height: 1.5; margin-bottom: .3rem; }
+        .rr .readout { position: relative; z-index: 2; }
+        .rr .ro dt { width: 9ch; }
+        /* the log's own listing: a date column and a name, each the way to that window */
+        .ls { list-style: none; margin-top: .3em; }
+        .ls li { display: flex; gap: 2ch; }
+        .ls .lsd { flex: none; width: 11ch; color: var(--term-dim); }
+        .ls .lsd.now { color: var(--term-warn); }
+        .ls a { text-decoration: none; }
+        .ls a .arg { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: .18em; }
+        .ls a:hover .arg { background: var(--term-fg); color: #000; text-shadow: none; }
+
+        /* commands: a red prompt, the thing to run underlined, and inverse video under the
+           pointer, the way a terminal selects */
+        .cmd-a { text-decoration: none; }
+        .cmd-a .arg { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: .18em; }
+        .cmd-a .verb { color: var(--term-dim); }
+        .cmd-a:hover .arg { background: var(--term-fg); color: #000; text-shadow: none; }
+        .cmd-a:hover .verb { color: var(--term-fg); }
+        .go .cmd-a, .cmdl .cmd-a { white-space: normal; overflow-wrap: anywhere; }
+        .cmdl { list-style: none; margin-top: .6em; }
+        .cmdl .cmd-a { display: inline-block; padding: .3em 0; }
+
+        /* ── the taskbar: pinned along the bottom. the eye opens the list of windows, three
+             commands jump to a part of the page and mark the one you are in, and the clock
+             is the clock ── */
+        .tb {
+            position: fixed; left: 0; right: 0; bottom: 0; z-index: 70;
+            height: calc(var(--tbh) + env(safe-area-inset-bottom, 0px));
+            padding: 0 max(.75rem, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px) max(.5rem, env(safe-area-inset-left, 0px));
+            display: flex; align-items: center; gap: 0 1.5ch;
+            background: #000;
+            border-top: 1px solid var(--frame-dim);
+            font-size: var(--fs); line-height: 1;
+            text-shadow: 0 0 6px var(--glow);
+        }
+        .js:not(.warm) .tb { opacity: 0; animation: appear .1s steps(1, start) .05s forwards; }
+        .booting .tb { display: none; }
+        .tb-eye {
+            width: 2.25rem; height: 2.25rem; flex: none; padding: 6px;
+            background: none; border: 1px solid transparent; color: var(--term-fg); cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .tb-eye .eye-glint { fill: #000; }
+        .tb-eye:hover, .tb-eye[aria-expanded="true"] { background: var(--term-fg); color: #000; }
+        .tb-eye:hover .eye-glint, .tb-eye[aria-expanded="true"] .eye-glint { fill: var(--term-fg); }
+        .no-js .tb-eye { display: none; }
+        .tb-a { text-decoration: none; white-space: nowrap; padding: .45em .25em; }
+        .tb-a .arg { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: .18em; }
+        .tb-a:hover .arg, .tb-a[aria-current] .arg { background: var(--term-fg); color: #000; text-shadow: none; }
+        .tb-clk { margin-left: auto; color: var(--term-dim); white-space: nowrap; font-variant-numeric: tabular-nums; }
+        .tb-clk:empty { display: none; }
+        @media (max-width: 420px) {
+            .tb { gap: 0 .75ch; padding-right: max(.5rem, env(safe-area-inset-right, 0px)); }
+            .tb-a { padding: .45em .1em; }
+        }
+
+        /* the list of windows: up from the eye. every window, open ones marked, and a way
+           back to the top and to the desk as it was */
+        .menu {
+            position: fixed; left: max(.5rem, env(safe-area-inset-left, 0px)); bottom: calc(var(--tbh) + .5rem + env(safe-area-inset-bottom, 0px)); z-index: 71;
+            width: min(22rem, calc(100vw - 1rem));
+            max-height: calc(100vh - var(--tbh) - 2rem - env(safe-area-inset-bottom, 0px));
+            overflow: auto; overscroll-behavior: contain;
+            background: #000; border: 1px solid var(--frame); box-shadow: 6px 6px 0 var(--shadow);
+            padding: .35rem 0;
+            text-shadow: 0 0 6px var(--glow);
+        }
+        .menu[hidden] { display: none; }
+        .menu ul { list-style: none; }
+        .menu-h { padding: .3rem .9rem .35rem; color: var(--term-dim); text-transform: uppercase; }
+        .menu button {
+            display: flex; align-items: baseline; gap: 1ch; width: 100%; text-align: left;
+            padding: .3rem .9rem; background: none; border: 0; color: var(--term-fg);
+            font: inherit; cursor: pointer; text-shadow: inherit;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .menu button:hover { background: var(--term-fg); color: #000; text-shadow: none; }
+        .menu button:focus-visible { outline-offset: -3px; }
+        .menu .st { flex: none; width: 3ch; color: var(--term-dim); }
+        .menu button:hover .st { color: #000; }
+        .menu .st.off { color: var(--term-lead); }
+        .menu hr { border: 0; border-top: 1px solid var(--frame-dim); margin: .3rem 0; }
+
+        /* ── the foot ── */
+        .foot { text-align: center; padding: 2.5rem 0 2rem; color: var(--term-dim); }
+        .foot-eye { width: 48px; height: 48px; margin: 0 auto 1rem; color: var(--term-fg); }
+        .foot-eye .lid-skin, .foot-eye .eye-glint { fill: #000; }   /* it blinks when you reach it (the script) */
+        .foot .vroom { color: var(--term-fg); text-shadow: 0 0 6px var(--glow); }
+
+        /* ── the arrangement: which columns each window takes, and a nudge each way so
+             they overlap at the edges. twelve columns on a desktop, six on a tablet, one
+             on a phone, where nothing is nudged ── */
+        .win { grid-column: 1 / -1; }
+        @media (min-width: 760px) {
+            #eye0 { grid-column: span 5; }
+            #terminal { grid-column: span 7; }
+            #shot { grid-column: span 6; }
+            #about { grid-column: span 6; }
+            #readme { grid-column: span 7; }
+            #else { grid-column: span 5; }
+            #cam, #d20, #pad, #sis, #gti { grid-column: span 6; }
+            #log { grid-column: span 6; }
+            #rr { grid-column: span 12; }
+            #thresher, #deepblue { grid-column: span 6; }
+            #ruwmc, #jcs { grid-column: span 6; }
+            #contact { grid-column: 3 / span 8; }
+        }
+        @media (min-width: 1200px) {
+            #eye0 { grid-column: span 3; }
+            #terminal { grid-column: span 5; }
+            #shot { grid-column: span 4; }
+            #about, #readme, #else { grid-column: span 4; }
+            #cam, #d20, #pad, #sis, #gti { grid-column: span 4; }
+            #log { grid-column: span 4; }
+            #rr { grid-column: span 7; }
+            #thresher { grid-column: span 5; }
+            #deepblue { grid-column: span 4; }
+            #ruwmc { grid-column: span 5; }
+            #jcs { grid-column: span 4; }
+            #contact { grid-column: 6 / span 6; }
+        }
+        /* the nudges, whole pixels, each a little off its cell. a window pulled up sits over
+           the bottom edge of the one above it; one pushed right over the edge of its
+           neighbour. they are decoration: a drag replaces them */
+        @media (min-width: 760px) {
+            #eye0     { --nx: 0px;   --ny: 0px; }
+            #terminal { --nx: -16px; --ny: 48px; }
+            #shot     { --nx: 12px;  --ny: -4px; }
+            #about    { --nx: 6px;   --ny: -18px; }
+            #readme   { --nx: -12px; --ny: 12px; }
+            #else     { --nx: 18px;  --ny: 34px; }
+            #cam      { --nx: -6px;  --ny: -14px; }
+            #d20      { --nx: 14px;  --ny: 20px; }
+            #pad      { --nx: -10px; --ny: -24px; }
+            #sis      { --nx: 12px;  --ny: -8px; }
+            #gti      { --nx: -16px; --ny: 22px; }
+            #log      { --nx: 10px;  --ny: -30px; }
+            #rr       { --nx: -8px;  --ny: 4px; }
+            #thresher { --nx: 14px;  --ny: -22px; }
+            #deepblue { --nx: -10px; --ny: -12px; }
+            #ruwmc    { --nx: 14px;  --ny: 16px; }
+            #jcs      { --nx: -6px;  --ny: -18px; }
+            #contact  { --nx: 10px;  --ny: 10px; }
+        }
+
+        /* ── forced colours (Windows High Contrast): the screens go Canvas, so the lid skin
+             has to follow it or a blink paints a beige almond; the cursor blocks are
+             backgrounds, which forced colours would erase; a window needs an edge ── */
+        @media (forced-colors: active) {
+            .lid-skin, .foot-eye .lid-skin { fill: Canvas; }
+            .eye-glint, .foot-eye .eye-glint, .tb-eye .eye-glint { fill: Canvas; }
+            .tc { forced-color-adjust: none; background: CanvasText; }
+            .win, .wb, .wbtn, .tb, .menu, .rr, .screen { border-color: CanvasText; }
+            .screen, .rr { border: 2px solid CanvasText; }
+            .win.top .wb { forced-color-adjust: none; background: Highlight; color: HighlightText; }
+            .win.top .wb .ps, .win.top .wr, .win.top .ld { color: HighlightText; }
+            .screen-flash, .scanlines, .screen-glow, .bezel { display: none; }
+            .cmd-a:hover .arg, .tb-a:hover .arg, .tb-a[aria-current] .arg, .ls a:hover .arg, .menu button:hover { forced-color-adjust: none; background: Highlight; color: HighlightText; }
+        }
+
+        /* ── reduced motion: no boot, no pops, everything lands in its final state and
+             nothing moves ── */
+        @media (prefers-reduced-motion: reduce) {
+            .term, .term-skip { display: none !important; }
+            .js .win.up, .js .win.down, .screen-flash, .eye svg, .eye-pupil, .bf, .holding-word .nm, .cmd,
+            .tc, .term-row .tc, .answer, .wait, .shot-gb, .tb { animation: none !important; }
+            .js .win.pend, .js.cas .win, .answer, .wait, .tb { opacity: 1 !important; pointer-events: auto; }
+            .up .cmd { width: 6ch; }
+            .bf { opacity: 0 !important; }
+            .term-row .tc { opacity: 0; visibility: hidden; }
+            .tile .ico [data-f] { transform: none !important; opacity: 1 !important; }
+            .tile .ico .pf { opacity: 0 !important; }
+            .shot .shot-gb, .scanlines { display: none; }
+            html.sm { scroll-behavior: auto; }
+        }
+
+        /* ── paper: ink on white, one column, no chrome, links spelled out ── */
+        @media print {
+            :root { --term-fg: #000; --term-dim: #555; --term-warn: #000; --term-lead: #999; --screen-ink: #000; --screen-accent: #000; --screen-dim: #555; }
+            html, body { background: #fff !important; color: #000 !important; }
+            body { padding: 0; font-size: 13pt; }
+            .term, .term-skip, .skip, .tb, .menu, .scanlines, .screen-glow, .screen-flash, .bezel, .wc, .wait, .term-row,
+            .foot-eye, .shot-gb, .tile .ico, .eye, #log { display: none !important; }
+            *, *::before, *::after { text-shadow: none !important; animation: none !important; box-shadow: none !important; }
+            .desk { display: block; max-width: 72ch; margin: 0 auto; padding: 0; width: auto; }
+            .win { display: block; transform: none !important; border: 1px solid #000; margin: 0 0 1rem; opacity: 1 !important; break-inside: avoid; position: static; }
+            .win.pend { opacity: 1 !important; }
+            .wb { height: auto; padding: .25rem .6rem; border-bottom: 1px solid #000; color: #000; background: none !important; }
+            .win.top .wb { background: none; color: #000; }
+            .ld { color: #999; }
+            .wd { padding: .5rem .6rem .6rem; background: none !important; color: #000 !important; }
+            .screen { background: none; box-shadow: none; aspect-ratio: auto; overflow: visible; }
+            .holding { position: static; display: block; padding: 0; text-align: left; }
+            .holding-word { font-size: 16pt; }
+            .answer { opacity: 1 !important; font-size: 13pt; margin-top: 0; }
+            .shot { width: 200px; }
+            .shot .screen { aspect-ratio: 10 / 9; overflow: hidden; }
+            .tile { grid-template-columns: 1fr; }
+            .rr { background: none; box-shadow: none; border: 1px solid #000; }
+            a[data-print-url]::after { content: " (" attr(href) ")"; font-size: .85em; overflow-wrap: anywhere; }
+            .foot { padding: 1rem 0 0; }
+        }
+    </style>
+</head>
+<body>
+    <!-- the boot terminal. decoration for the ear: the page's content is everything below it -->
+    <div class="term" id="term" aria-hidden="true">
+        <div id="termLog"></div>
+    </div>
+    <button class="term-skip" id="termSkip" type="button" aria-label="skip the boot">skip ▸</button>
+
+    <a class="skip" href="#desk">skip to content</a>
+
+    <main class="desk" id="desk" tabindex="-1">
+
+        <!-- /dev/eye0: the holding page's LCD -->
+        <section class="win lcd" id="eye0" aria-labelledby="eye0-h" data-sec="about">
+            <header class="wb">
+                <h2 class="wt" id="eye0-h"><span class="ps" aria-hidden="true">&gt; </span>/dev/eye0</h2>
+                <span class="ld" aria-hidden="true"></span><span class="wr">on</span>
+                <div class="wc"><button class="wbtn mn" type="button" aria-label="minimize /dev/eye0"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><rect x="1" y="6" width="6" height="1" fill="currentColor"/></svg></button><button class="wbtn mx" type="button" aria-label="maximize /dev/eye0"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="1" y="1" width="6" height="2"/><rect x="1" y="3" width="1" height="4"/><rect x="6" y="3" width="1" height="4"/><rect x="1" y="6" width="6" height="1"/></g></svg></button><button class="wbtn x" type="button" aria-label="close /dev/eye0"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="1" y="1" width="1" height="1"/><rect x="2" y="2" width="1" height="1"/><rect x="3" y="3" width="1" height="1"/><rect x="4" y="4" width="1" height="1"/><rect x="5" y="5" width="1" height="1"/><rect x="6" y="6" width="1" height="1"/><rect x="6" y="1" width="1" height="1"/><rect x="5" y="2" width="1" height="1"/><rect x="4" y="3" width="1" height="1"/><rect x="3" y="4" width="1" height="1"/><rect x="2" y="5" width="1" height="1"/><rect x="1" y="6" width="1" height="1"/></g></svg></button></div>
+            </header>
+            <div class="wd">
+                <div class="screen">
+                    <div class="screen-glow"></div>
+                    <div class="scanlines" aria-hidden="true"></div>
+                    <div class="screen-flash" aria-hidden="true"></div>
+                    <div class="holding">
+                        <div class="eye" aria-hidden="true">
+                            <svg viewBox="0 0 48 48" shape-rendering="crispEdges">
+                                <g class="eye-ink" fill="currentColor"><rect x="22" y="12" width="14" height="2"/><rect x="16" y="14" width="24" height="2"/><rect x="14" y="16" width="28" height="2"/><rect x="8" y="18" width="24" height="2"/><rect x="38" y="18" width="6" height="2"/><rect x="42" y="20" width="4" height="2"/><rect x="44" y="22" width="2" height="2"/><rect x="4" y="24" width="4" height="2"/><rect x="46" y="24" width="2" height="2"/><rect x="2" y="26" width="2" height="2"/><rect x="0" y="28" width="2" height="2"/><rect x="38" y="28" width="10" height="2"/><rect x="6" y="30" width="12" height="2"/><rect x="32" y="30" width="8" height="2"/><rect x="14" y="32" width="22" height="2"/><rect x="20" y="34" width="10" height="2"/></g>
+                                <g class="eye-pupil" fill="currentColor"><rect x="8" y="20" width="8" height="2"/><rect x="18" y="20" width="14" height="2"/><rect x="6" y="22" width="8" height="2"/><rect x="18" y="22" width="8" height="2"/><rect x="30" y="22" width="6" height="2"/><rect x="18" y="24" width="14" height="2"/><rect x="20" y="26" width="12" height="2"/><rect x="20" y="28" width="10" height="2"/><g class="eye-glint"><rect x="16" y="20" width="2" height="2"/><rect x="14" y="22" width="4" height="2"/></g></g>
+                                <!-- the blink: three frames drawn on the same 24-cell grid. each frame paints LCD-coloured
+                                     skin over whatever the lids have moved past and inks the lid edges where they are now -->
+                                <g class="bf bf-half"><g class="lid-skin"><rect x="2" y="10" width="44" height="2"/><rect x="2" y="12" width="44" height="2"/><rect x="2" y="14" width="44" height="2"/><rect x="2" y="16" width="44" height="2"/><rect x="2" y="18" width="44" height="2"/><rect x="2" y="20" width="10" height="2"/><rect x="38" y="20" width="8" height="2"/><rect x="2" y="22" width="6" height="2"/><rect x="44" y="22" width="2" height="2"/><rect x="2" y="24" width="6" height="2"/></g><g class="lid-edge"><rect x="12" y="20" width="26" height="2"/><rect x="8" y="22" width="36" height="2"/><rect x="8" y="24" width="4" height="2"/><rect x="38" y="24" width="8" height="2"/><rect x="2" y="26" width="6" height="2"/></g></g>
+                                <g class="bf bf-slit"><g class="lid-skin"><rect x="2" y="10" width="44" height="2"/><rect x="2" y="12" width="44" height="2"/><rect x="2" y="14" width="44" height="2"/><rect x="2" y="16" width="44" height="2"/><rect x="2" y="18" width="44" height="2"/><rect x="2" y="20" width="44" height="2"/><rect x="2" y="22" width="44" height="2"/><rect x="2" y="24" width="6" height="2"/><rect x="18" y="24" width="14" height="2"/><rect x="2" y="30" width="16" height="2"/><rect x="32" y="30" width="14" height="2"/><rect x="2" y="32" width="44" height="2"/><rect x="2" y="34" width="44" height="2"/></g><g class="lid-edge"><rect x="8" y="24" width="10" height="2"/><rect x="32" y="24" width="14" height="2"/><rect x="2" y="26" width="6" height="2"/><rect x="18" y="26" width="14" height="2"/><rect x="2" y="28" width="16" height="2"/><rect x="32" y="28" width="14" height="2"/><rect x="18" y="30" width="14" height="2"/></g></g>
+                                <g class="bf bf-shut"><g class="lid-skin"><rect x="2" y="10" width="44" height="2"/><rect x="2" y="12" width="44" height="2"/><rect x="2" y="14" width="44" height="2"/><rect x="2" y="16" width="44" height="2"/><rect x="2" y="18" width="44" height="2"/><rect x="2" y="20" width="44" height="2"/><rect x="2" y="22" width="44" height="2"/><rect x="2" y="24" width="44" height="2"/><rect x="18" y="26" width="14" height="2"/><rect x="2" y="30" width="16" height="2"/><rect x="32" y="30" width="14" height="2"/><rect x="2" y="32" width="44" height="2"/><rect x="2" y="34" width="44" height="2"/></g><g class="lid-edge"><rect x="2" y="26" width="16" height="2"/><rect x="32" y="26" width="14" height="2"/><rect x="2" y="28" width="44" height="2"/><rect x="18" y="30" width="14" height="2"/></g></g>
+                            </svg>
+                        </div>
+                        <h1 class="holding-word"><span class="vh">Isaac Ure</span> <span class="nm" aria-hidden="true">Isaac <b>Ure</b></span></h1>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- the terminal: whoami, answered -->
+        <section class="win tty" id="terminal" aria-labelledby="terminal-h" data-sec="about">
+            <header class="wb">
+                <h2 class="wt" id="terminal-h"><span class="ps" aria-hidden="true">&gt; </span>terminal</h2>
+                <div class="wc"><button class="wbtn mn" type="button" aria-label="minimize terminal"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><rect x="1" y="6" width="6" height="1" fill="currentColor"/></svg></button><button class="wbtn mx" type="button" aria-label="maximize terminal"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="1" y="1" width="6" height="2"/><rect x="1" y="3" width="1" height="4"/><rect x="6" y="3" width="1" height="4"/><rect x="1" y="6" width="6" height="1"/></g></svg></button><button class="wbtn x" type="button" aria-label="close terminal"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="1" y="1" width="1" height="1"/><rect x="2" y="2" width="1" height="1"/><rect x="3" y="3" width="1" height="1"/><rect x="4" y="4" width="1" height="1"/><rect x="5" y="5" width="1" height="1"/><rect x="6" y="6" width="1" height="1"/><rect x="6" y="1" width="1" height="1"/><rect x="5" y="2" width="1" height="1"/><rect x="4" y="3" width="1" height="1"/><rect x="3" y="4" width="1" height="1"/><rect x="2" y="5" width="1" height="1"/><rect x="1" y="6" width="1" height="1"/></g></svg></button></div>
+            </header>
+            <div class="wd">
+                <p class="term-row" aria-hidden="true"><span class="ps term-ps">&gt;</span><span class="cmd">whoami</span><span class="tc"></span></p>
+                <p class="answer">I study econ at Rice, occasionally shoot for the Thresher, chug and bike for Martel, and run the budget for Rice's first Formula SAE team.</p>
+                <p class="wait" aria-hidden="true"><span class="ps">&gt;</span> <span class="tc"></span></p>
+            </div>
+        </section>
+
+        <!-- the photo -->
+        <section class="win pic" id="shot" aria-labelledby="shot-h" data-sec="about">
+            <header class="wb">
+                <h2 class="wt" id="shot-h"><span class="ps" aria-hidden="true">&gt; </span>headshot.jpg</h2>
+                <div class="wc"><button class="wbtn mn" type="button" aria-label="minimize headshot.jpg"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><rect x="1" y="6" width="6" height="1" fill="currentColor"/></svg></button><button class="wbtn mx" type="button" aria-label="maximize headshot.jpg"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="1" y="1" width="6" height="2"/><rect x="1" y="3" width="1" height="4"/><rect x="6" y="3" width="1" height="4"/><rect x="1" y="6" width="6" height="1"/></g></svg></button><button class="wbtn x" type="button" aria-label="close headshot.jpg"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="1" y="1" width="1" height="1"/><rect x="2" y="2" width="1" height="1"/><rect x="3" y="3" width="1" height="1"/><rect x="4" y="4" width="1" height="1"/><rect x="5" y="5" width="1" height="1"/><rect x="6" y="6" width="1" height="1"/><rect x="6" y="1" width="1" height="1"/><rect x="5" y="2" width="1" height="1"/><rect x="4" y="3" width="1" height="1"/><rect x="3" y="4" width="1" height="1"/><rect x="2" y="5" width="1" height="1"/><rect x="1" y="6" width="1" height="1"/></g></svg></button></div>
+            </header>
+            <div class="wd">
+                <figure class="shot">
+                    <div class="screen">
+                        <img class="shot-real" src="/images/Headshot-10x9-sm.jpg" srcset="/images/Headshot-10x9-sm.jpg 360w, /images/Headshot-10x9.jpg 720w, /images/Headshot-10x9-lg.jpg 1080w" sizes="(min-width: 760px) 360px, calc(100vw - 4rem)" width="360" height="324" alt="Isaac Ure" loading="lazy" decoding="async">
+                        <img class="shot-gb" src="/images/Headshot-gb.png" width="120" height="108" alt="" aria-hidden="true">
+                        <div class="screen-glow" aria-hidden="true"></div>
+                        <div class="scanlines" aria-hidden="true"></div>
+                        <div class="bezel" aria-hidden="true"></div>
+                    </div>
+                    <figcaption class="cap">fig. 1: this guy</figcaption>
+                </figure>
+            </div>
+        </section>
+
+        <!-- the readout -->
+        <section class="win lcd" id="about" aria-labelledby="about-h" data-sec="about">
+            <header class="wb">
+                <h2 class="wt" id="about-h"><span class="ps" aria-hidden="true">&gt; </span>about</h2>
+                <span class="ld" aria-hidden="true"></span><span class="wr">who is this guy</span>
+                <div class="wc"><button class="wbtn mn" type="button" aria-label="minimize about"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><rect x="1" y="6" width="6" height="1" fill="currentColor"/></svg></button><button class="wbtn mx" type="button" aria-label="maximize about"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="1" y="1" width="6" height="2"/><rect x="1" y="3" width="1" height="4"/><rect x="6" y="3" width="1" height="4"/><rect x="1" y="6" width="6" height="1"/></g></svg></button><button class="wbtn x" type="button" aria-label="close about"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="1" y="1" width="1" height="1"/><rect x="2" y="2" width="1" height="1"/><rect x="3" y="3" width="1" height="1"/><rect x="4" y="4" width="1" height="1"/><rect x="5" y="5" width="1" height="1"/><rect x="6" y="6" width="1" height="1"/><rect x="6" y="1" width="1" height="1"/><rect x="5" y="2" width="1" height="1"/><rect x="4" y="3" width="1" height="1"/><rect x="3" y="4" width="1" height="1"/><rect x="2" y="5" width="1" height="1"/><rect x="1" y="6" width="1" height="1"/></g></svg></button></div>
+            </header>
+            <div class="wd">
+                <div class="screen-glow" aria-hidden="true"></div>
+                <div class="scanlines" aria-hidden="true"></div>
+                <div class="bezel" aria-hidden="true"></div>
+                <dl class="readout">
+                    <div class="ro"><dt>school<span class="ld" aria-hidden="true"></span></dt><dd>Rice University, class of&nbsp;2029</dd></div>
+                    <div class="ro"><dt>uptime<span class="ld" aria-hidden="true"></span></dt><dd>sophomore year</dd></div>
+                    <div class="ro"><dt>studying<span class="ld" aria-hidden="true"></span></dt><dd>Mathematical Economic Analysis</dd></div>
+                    <div class="ro"><dt>college<span class="ld" aria-hidden="true"></span></dt><dd>Martel</dd></div>
+                    <div class="ro"><dt>based in<span class="ld" aria-hidden="true"></span></dt><dd>Houston, TX</dd></div>
+                    <div class="ro"><dt>ideally will get<span class="ld" aria-hidden="true"></span></dt><dd>an econ PhD</dd></div>
+                </dl>
+            </div>
+        </section>
+
+        <!-- the long version -->
+        <section class="win tty" id="readme" aria-labelledby="readme-h" data-sec="about">
+            <header class="wb">
+                <h2 class="wt" id="readme-h"><span class="ps" aria-hidden="true">&gt; </span>readme.txt</h2>
+                <div class="wc"><button class="wbtn mn" type="button" aria-label="minimize readme.txt"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><rect x="1" y="6" width="6" height="1" fill="currentColor"/></svg></button><button class="wbtn mx" type="button" aria-label="maximize readme.txt"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="1" y="1" width="6" height="2"/><rect x="1" y="3" width="1" height="4"/><rect x="6" y="3" width="1" height="4"/><rect x="1" y="6" width="6" height="1"/></g></svg></button><button class="wbtn x" type="button" aria-label="close readme.txt"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="1" y="1" width="1" height="1"/><rect x="2" y="2" width="1" height="1"/><rect x="3" y="3" width="1" height="1"/><rect x="4" y="4" width="1" height="1"/><rect x="5" y="5" width="1" height="1"/><rect x="6" y="6" width="1" height="1"/><rect x="6" y="1" width="1" height="1"/><rect x="5" y="2" width="1" height="1"/><rect x="4" y="3" width="1" height="1"/><rect x="3" y="4" width="1" height="1"/><rect x="2" y="5" width="1" height="1"/><rect x="1" y="6" width="1" height="1"/></g></svg></button></div>
+            </header>
+            <div class="wd">
+                <p>I'm Isaac. I came to Rice on the finance track, but I'm slowly moving towards academia. The goal now is an econ PhD and, eventually (hopefully), a job as an economics professor.</p>
+            </div>
+        </section>
+
+        <!-- what else tho -->
+        <section class="win tty" id="else" aria-labelledby="else-h" data-sec="about">
+            <header class="wb">
+                <h2 class="wt" id="else-h"><span class="ps" aria-hidden="true">&gt; </span>what else tho</h2>
+                <span class="ld" aria-hidden="true"></span><span class="wr">interests, innit</span>
+                <div class="wc"><button class="wbtn mn" type="button" aria-label="minimize what else tho"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><rect x="1" y="6" width="6" height="1" fill="currentColor"/></svg></button><button class="wbtn mx" type="button" aria-label="maximize what else tho"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="1" y="1" width="6" height="2"/><rect x="1" y="3" width="1" height="4"/><rect x="6" y="3" width="1" height="4"/><rect x="1" y="6" width="6" height="1"/></g></svg></button><button class="wbtn x" type="button" aria-label="close what else tho"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="1" y="1" width="1" height="1"/><rect x="2" y="2" width="1" height="1"/><rect x="3" y="3" width="1" height="1"/><rect x="4" y="4" width="1" height="1"/><rect x="5" y="5" width="1" height="1"/><rect x="6" y="6" width="1" height="1"/><rect x="6" y="1" width="1" height="1"/><rect x="5" y="2" width="1" height="1"/><rect x="4" y="3" width="1" height="1"/><rect x="3" y="4" width="1" height="1"/><rect x="2" y="5" width="1" height="1"/><rect x="1" y="6" width="1" height="1"/></g></svg></button></div>
+            </header>
+            <div class="wd">
+                <p>I'm a systems-and-optimization guy, which explains most of this list.</p>
+            </div>
+        </section>
+
+        <!-- the interests, one window each -->
+        <section class="win tty" id="cam" aria-labelledby="cam-h" data-sec="about">
+            <header class="wb">
+                <h2 class="wt" id="cam-h"><span class="ps" aria-hidden="true">&gt; </span>photography</h2>
+                <div class="wc"><button class="wbtn mn" type="button" aria-label="minimize photography"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><rect x="1" y="6" width="6" height="1" fill="currentColor"/></svg></button><button class="wbtn mx" type="button" aria-label="maximize photography"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="1" y="1" width="6" height="2"/><rect x="1" y="3" width="1" height="4"/><rect x="6" y="3" width="1" height="4"/><rect x="1" y="6" width="6" height="1"/></g></svg></button><button class="wbtn x" type="button" aria-label="close photography"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="1" y="1" width="1" height="1"/><rect x="2" y="2" width="1" height="1"/><rect x="3" y="3" width="1" height="1"/><rect x="4" y="4" width="1" height="1"/><rect x="5" y="5" width="1" height="1"/><rect x="6" y="6" width="1" height="1"/><rect x="6" y="1" width="1" height="1"/><rect x="5" y="2" width="1" height="1"/><rect x="4" y="3" width="1" height="1"/><rect x="3" y="4" width="1" height="1"/><rect x="2" y="5" width="1" height="1"/><rect x="1" y="6" width="1" height="1"/></g></svg></button></div>
+            </header>
+            <div class="wd">
+                <div class="tile">
+                    <svg class="ico" data-pic="cam" viewBox="0 0 32 28" width="48" height="42" shape-rendering="crispEdges" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="10" y="2" width="12" height="2"/><rect x="10" y="4" width="12" height="2"/><rect x="2" y="6" width="10" height="2"/><rect x="20" y="6" width="10" height="2"/><rect x="0" y="8" width="10" height="2"/><rect x="22" y="8" width="10" height="2"/><rect x="0" y="10" width="8" height="2"/><rect x="24" y="10" width="8" height="2"/><rect x="0" y="12" width="8" height="2"/><rect x="24" y="12" width="8" height="2"/><rect x="0" y="14" width="8" height="2"/><rect x="24" y="14" width="8" height="2"/><rect x="0" y="16" width="8" height="2"/><rect x="24" y="16" width="8" height="2"/><rect x="0" y="18" width="8" height="2"/><rect x="24" y="18" width="8" height="2"/><rect x="0" y="20" width="10" height="2"/><rect x="22" y="20" width="10" height="2"/><rect x="2" y="22" width="10" height="2"/><rect x="20" y="22" width="10" height="2"/><g data-f="btn"><rect x="2" y="4" width="6" height="2"/></g><g data-f="l1"><rect x="14" y="8" width="4" height="2"/><rect x="12" y="10" width="2" height="2"/><rect x="18" y="10" width="2" height="2"/><rect x="10" y="12" width="2" height="2"/><rect x="20" y="12" width="2" height="2"/><rect x="10" y="14" width="2" height="4"/><rect x="20" y="14" width="2" height="4"/><rect x="12" y="18" width="2" height="2"/><rect x="18" y="18" width="2" height="2"/><rect x="14" y="20" width="4" height="2"/></g><g data-f="l2"><rect x="14" y="10" width="4" height="2"/><rect x="18" y="12" width="2" height="2"/><rect x="12" y="14" width="2" height="4"/><rect x="18" y="14" width="2" height="4"/><rect x="14" y="18" width="4" height="2"/></g><g data-f="l3"><rect x="14" y="12" width="4" height="6"/></g></g></svg>
+                    <p>I shoot Canon, sometimes for the Thresher. I like portraiture and lowk everything else too.</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="win tty" id="d20" aria-labelledby="d20-h" data-sec="about">
+            <header class="wb">
+                <h2 class="wt" id="d20-h"><span class="ps" aria-hidden="true">&gt; </span>d&amp;d</h2>
+                <div class="wc"><button class="wbtn mn" type="button" aria-label="minimize d&amp;d"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><rect x="1" y="6" width="6" height="1" fill="currentColor"/></svg></button><button class="wbtn mx" type="button" aria-label="maximize d&amp;d"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="1" y="1" width="6" height="2"/><rect x="1" y="3" width="1" height="4"/><rect x="6" y="3" width="1" height="4"/><rect x="1" y="6" width="6" height="1"/></g></svg></button><button class="wbtn x" type="button" aria-label="close d&amp;d"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="1" y="1" width="1" height="1"/><rect x="2" y="2" width="1" height="1"/><rect x="3" y="3" width="1" height="1"/><rect x="4" y="4" width="1" height="1"/><rect x="5" y="5" width="1" height="1"/><rect x="6" y="6" width="1" height="1"/><rect x="6" y="1" width="1" height="1"/><rect x="5" y="2" width="1" height="1"/><rect x="4" y="3" width="1" height="1"/><rect x="3" y="4" width="1" height="1"/><rect x="2" y="5" width="1" height="1"/><rect x="1" y="6" width="1" height="1"/></g></svg></button></div>
+            </header>
+            <div class="wd">
+                <div class="tile">
+                    <svg class="ico" data-pic="d20" viewBox="0 0 32 28" width="48" height="42" shape-rendering="crispEdges" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="12" y="0" width="8" height="2"/><rect x="8" y="2" width="16" height="2"/><rect x="4" y="4" width="24" height="2"/><rect x="0" y="6" width="32" height="4"/><rect x="0" y="10" width="8" height="10"/><rect x="24" y="10" width="8" height="10"/><rect x="0" y="20" width="32" height="2"/><rect x="4" y="22" width="24" height="2"/><rect x="8" y="24" width="16" height="2"/><rect x="12" y="26" width="8" height="2"/><g data-f="n20"><rect x="14" y="10" width="4" height="6"/><rect x="8" y="12" width="4" height="2"/><rect x="20" y="12" width="2" height="6"/><rect x="10" y="16" width="8" height="2"/><rect x="14" y="18" width="4" height="2"/></g><g class="pf" data-f="n13"><rect x="8" y="10" width="2" height="2"/><rect x="12" y="10" width="6" height="2"/><rect x="12" y="12" width="10" height="2"/><rect x="8" y="14" width="2" height="4"/><rect x="12" y="14" width="8" height="2"/><rect x="12" y="16" width="10" height="2"/><rect x="14" y="18" width="4" height="2"/></g><g class="pf" data-f="n7"><rect x="8" y="10" width="4" height="2"/><rect x="18" y="10" width="6" height="6"/><rect x="8" y="12" width="8" height="4"/><rect x="8" y="16" width="6" height="4"/><rect x="16" y="16" width="8" height="4"/></g><g class="pf" data-f="n1"><rect x="8" y="10" width="8" height="2"/><rect x="18" y="10" width="6" height="8"/><rect x="8" y="12" width="6" height="2"/><rect x="8" y="14" width="8" height="4"/><rect x="8" y="18" width="6" height="2"/><rect x="20" y="18" width="4" height="2"/></g></g></svg>
+                    <p>I lowkey don't really play much anymore, but I "helped" run a D&amp;D club in high school.</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="win tty" id="pad" aria-labelledby="pad-h" data-sec="about">
+            <header class="wb">
+                <h2 class="wt" id="pad-h"><span class="ps" aria-hidden="true">&gt; </span>games &amp; code</h2>
+                <div class="wc"><button class="wbtn mn" type="button" aria-label="minimize games &amp; code"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><rect x="1" y="6" width="6" height="1" fill="currentColor"/></svg></button><button class="wbtn mx" type="button" aria-label="maximize games &amp; code"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="1" y="1" width="6" height="2"/><rect x="1" y="3" width="1" height="4"/><rect x="6" y="3" width="1" height="4"/><rect x="1" y="6" width="6" height="1"/></g></svg></button><button class="wbtn x" type="button" aria-label="close games &amp; code"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="1" y="1" width="1" height="1"/><rect x="2" y="2" width="1" height="1"/><rect x="3" y="3" width="1" height="1"/><rect x="4" y="4" width="1" height="1"/><rect x="5" y="5" width="1" height="1"/><rect x="6" y="6" width="1" height="1"/><rect x="6" y="1" width="1" height="1"/><rect x="5" y="2" width="1" height="1"/><rect x="4" y="3" width="1" height="1"/><rect x="3" y="4" width="1" height="1"/><rect x="2" y="5" width="1" height="1"/><rect x="1" y="6" width="1" height="1"/></g></svg></button></div>
+            </header>
+            <div class="wd">
+                <div class="tile">
+                    <svg class="ico" data-pic="pad" viewBox="0 0 32 28" width="48" height="42" shape-rendering="crispEdges" aria-hidden="true" focusable="false"><g fill="currentColor"><g data-f="pad"><rect x="6" y="6" width="20" height="2"/><rect x="4" y="8" width="24" height="2"/><rect x="2" y="10" width="8" height="2"/><rect x="12" y="10" width="12" height="2"/><rect x="26" y="10" width="4" height="2"/><rect x="2" y="12" width="6" height="2"/><rect x="14" y="12" width="8" height="2"/><rect x="24" y="12" width="2" height="2"/><rect x="28" y="12" width="2" height="2"/><rect x="2" y="14" width="8" height="2"/><rect x="12" y="14" width="12" height="2"/><rect x="26" y="14" width="4" height="2"/><rect x="2" y="16" width="28" height="2"/><rect x="2" y="18" width="12" height="2"/><rect x="18" y="18" width="12" height="2"/><rect x="2" y="20" width="10" height="2"/><rect x="20" y="20" width="10" height="2"/><rect x="4" y="22" width="6" height="2"/><rect x="22" y="22" width="6" height="2"/><g class="pf" data-f="r"><rect x="12" y="12" width="2" height="2"/></g><g class="pf" data-f="a"><rect x="24" y="14" width="2" height="2"/></g></g></g></svg>
+                    <p>I initially thought I was going to get a CS degree, but then decided I wanted a job. I play PC and like shooters and roguelikes, but sadly I'm too employed nowadays to play much.</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="win tty" id="sis" aria-labelledby="sis-h" data-sec="about">
+            <header class="wb">
+                <h2 class="wt" id="sis-h"><span class="ps" aria-hidden="true">&gt; </span>philosophy</h2>
+                <div class="wc"><button class="wbtn mn" type="button" aria-label="minimize philosophy"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><rect x="1" y="6" width="6" height="1" fill="currentColor"/></svg></button><button class="wbtn mx" type="button" aria-label="maximize philosophy"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="1" y="1" width="6" height="2"/><rect x="1" y="3" width="1" height="4"/><rect x="6" y="3" width="1" height="4"/><rect x="1" y="6" width="6" height="1"/></g></svg></button><button class="wbtn x" type="button" aria-label="close philosophy"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="1" y="1" width="1" height="1"/><rect x="2" y="2" width="1" height="1"/><rect x="3" y="3" width="1" height="1"/><rect x="4" y="4" width="1" height="1"/><rect x="5" y="5" width="1" height="1"/><rect x="6" y="6" width="1" height="1"/><rect x="6" y="1" width="1" height="1"/><rect x="5" y="2" width="1" height="1"/><rect x="4" y="3" width="1" height="1"/><rect x="3" y="4" width="1" height="1"/><rect x="2" y="5" width="1" height="1"/><rect x="1" y="6" width="1" height="1"/></g></svg></button></div>
+            </header>
+            <div class="wd">
+                <div class="tile">
+                    <svg class="ico" data-pic="sis" viewBox="0 0 36 28" width="54" height="42" shape-rendering="crispEdges" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="22" y="16" width="14" height="2"/><rect x="18" y="18" width="18" height="2"/><rect x="12" y="20" width="24" height="2"/><rect x="8" y="22" width="28" height="2"/><rect x="4" y="24" width="32" height="2"/><rect x="0" y="26" width="36" height="2"/><rect x="32" y="12" width="4" height="2"/><rect x="30" y="14" width="6" height="2"/><g data-f="rock"><g data-f="b0"><rect x="22" y="2" width="6" height="2"/><rect x="20" y="4" width="2" height="2"/><rect x="24" y="4" width="6" height="2"/><rect x="18" y="6" width="4" height="2"/><rect x="24" y="6" width="8" height="2"/><rect x="18" y="8" width="14" height="4"/><rect x="20" y="12" width="10" height="2"/><rect x="22" y="14" width="6" height="2"/></g><g class="pf" data-f="b1"><rect x="22" y="2" width="6" height="2"/><rect x="20" y="4" width="10" height="2"/><rect x="18" y="6" width="14" height="4"/><rect x="18" y="10" width="2" height="2"/><rect x="24" y="10" width="8" height="2"/><rect x="20" y="12" width="10" height="2"/><rect x="22" y="14" width="6" height="2"/></g><g class="pf" data-f="b2"><rect x="22" y="2" width="6" height="2"/><rect x="20" y="4" width="10" height="2"/><rect x="18" y="6" width="14" height="4"/><rect x="18" y="10" width="8" height="2"/><rect x="28" y="10" width="4" height="2"/><rect x="20" y="12" width="6" height="2"/><rect x="28" y="12" width="2" height="2"/><rect x="22" y="14" width="6" height="2"/></g><g class="pf" data-f="b3"><rect x="22" y="2" width="6" height="2"/><rect x="20" y="4" width="10" height="2"/><rect x="18" y="6" width="8" height="2"/><rect x="30" y="6" width="2" height="2"/><rect x="18" y="8" width="14" height="4"/><rect x="20" y="12" width="10" height="2"/><rect x="22" y="14" width="6" height="2"/></g></g></g></svg>
+                    <p>Mostly absurdism/<wbr>existentialism. I've taken a few classes in college so far, I'm thinking about maybe doing a minor for fun.</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="win tty" id="gti" aria-labelledby="gti-h" data-sec="about">
+            <header class="wb">
+                <h2 class="wt" id="gti-h"><span class="ps" aria-hidden="true">&gt; </span>my gti</h2>
+                <div class="wc"><button class="wbtn mn" type="button" aria-label="minimize my gti"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><rect x="1" y="6" width="6" height="1" fill="currentColor"/></svg></button><button class="wbtn mx" type="button" aria-label="maximize my gti"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="1" y="1" width="6" height="2"/><rect x="1" y="3" width="1" height="4"/><rect x="6" y="3" width="1" height="4"/><rect x="1" y="6" width="6" height="1"/></g></svg></button><button class="wbtn x" type="button" aria-label="close my gti"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="1" y="1" width="1" height="1"/><rect x="2" y="2" width="1" height="1"/><rect x="3" y="3" width="1" height="1"/><rect x="4" y="4" width="1" height="1"/><rect x="5" y="5" width="1" height="1"/><rect x="6" y="6" width="1" height="1"/><rect x="6" y="1" width="1" height="1"/><rect x="5" y="2" width="1" height="1"/><rect x="4" y="3" width="1" height="1"/><rect x="3" y="4" width="1" height="1"/><rect x="2" y="5" width="1" height="1"/><rect x="1" y="6" width="1" height="1"/></g></svg></button></div>
+            </header>
+            <div class="wd">
+                <div class="tile">
+                    <svg class="ico" data-pic="gti" viewBox="0 0 44 28" width="66" height="42" shape-rendering="crispEdges" aria-hidden="true" focusable="false"><g fill="currentColor"><g data-f="car"><g data-f="body"><rect x="18" y="6" width="18" height="2"/><rect x="16" y="8" width="2" height="2"/><rect x="26" y="8" width="2" height="4"/><rect x="36" y="8" width="2" height="2"/><rect x="14" y="10" width="2" height="2"/><rect x="38" y="10" width="2" height="2"/><rect x="6" y="12" width="36" height="2"/><rect x="2" y="14" width="42" height="2"/><rect x="2" y="16" width="6" height="4"/><rect x="20" y="16" width="8" height="4"/><rect x="40" y="16" width="4" height="4"/></g><rect x="10" y="18" width="8" height="2"/><rect x="30" y="18" width="8" height="2"/><rect x="8" y="20" width="12" height="6"/><rect x="28" y="20" width="12" height="6"/><rect x="10" y="26" width="8" height="2"/><rect x="30" y="26" width="8" height="2"/></g></g></svg>
+                    <p>My beloved silver MK8 GTI.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- the log, newest first: a listing, then a window a line -->
+        <section class="win tty" id="log" aria-labelledby="log-h" data-sec="log">
+            <header class="wb">
+                <h2 class="wt" id="log-h"><span class="ps" aria-hidden="true">&gt; </span>log</h2>
+                <span class="ld" aria-hidden="true"></span><span class="wr">effectively mini resume</span>
+                <div class="wc"><button class="wbtn mn" type="button" aria-label="minimize log"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><rect x="1" y="6" width="6" height="1" fill="currentColor"/></svg></button><button class="wbtn mx" type="button" aria-label="maximize log"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="1" y="1" width="6" height="2"/><rect x="1" y="3" width="1" height="4"/><rect x="6" y="3" width="1" height="4"/><rect x="1" y="6" width="6" height="1"/></g></svg></button><button class="wbtn x" type="button" aria-label="close log"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="1" y="1" width="1" height="1"/><rect x="2" y="2" width="1" height="1"/><rect x="3" y="3" width="1" height="1"/><rect x="4" y="4" width="1" height="1"/><rect x="5" y="5" width="1" height="1"/><rect x="6" y="6" width="1" height="1"/><rect x="6" y="1" width="1" height="1"/><rect x="5" y="2" width="1" height="1"/><rect x="4" y="3" width="1" height="1"/><rect x="3" y="4" width="1" height="1"/><rect x="2" y="5" width="1" height="1"/><rect x="1" y="6" width="1" height="1"/></g></svg></button></div>
+            </header>
+            <div class="wd">
+                <p class="term-row" aria-hidden="true"><span class="ps term-ps">&gt;</span>ls log/</p>
+                <ul class="ls" role="list">
+                    <li><span class="lsd now">now</span><a href="#rr"><span class="arg">rice racing</span>/</a></li>
+                    <li><span class="lsd now">now</span><a href="#thresher"><span class="arg">the rice thresher &amp; rice raw</span>/</a></li>
+                    <li><span class="lsd">summer 2026</span><a href="#deepblue"><span class="arg">deep blue midland basin</span>/</a></li>
+                    <li><span class="lsd">2025–26</span><a href="#ruwmc"><span class="arg">rice undergraduate wealth management club</span>/</a></li>
+                    <li><span class="lsd">may 2025</span><a href="#jcs"><span class="arg">the john cooper school</span>/</a></li>
+                </ul>
+            </div>
+        </section>
+
+        <section class="win tty" id="rr" aria-labelledby="rr-h" data-sec="log">
+            <header class="wb">
+                <h2 class="wt" id="rr-h"><span class="ps" aria-hidden="true">&gt; </span>log/rice racing</h2>
+                <span class="ld" aria-hidden="true"></span><span class="wr when now" aria-hidden="true">now</span>
+                <div class="wc"><button class="wbtn mn" type="button" aria-label="minimize rice racing"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><rect x="1" y="6" width="6" height="1" fill="currentColor"/></svg></button><button class="wbtn mx" type="button" aria-label="maximize rice racing"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="1" y="1" width="6" height="2"/><rect x="1" y="3" width="1" height="4"/><rect x="6" y="3" width="1" height="4"/><rect x="1" y="6" width="6" height="1"/></g></svg></button><button class="wbtn x" type="button" aria-label="close rice racing"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="1" y="1" width="1" height="1"/><rect x="2" y="2" width="1" height="1"/><rect x="3" y="3" width="1" height="1"/><rect x="4" y="4" width="1" height="1"/><rect x="5" y="5" width="1" height="1"/><rect x="6" y="6" width="1" height="1"/><rect x="6" y="1" width="1" height="1"/><rect x="5" y="2" width="1" height="1"/><rect x="4" y="3" width="1" height="1"/><rect x="3" y="4" width="1" height="1"/><rect x="2" y="5" width="1" height="1"/><rect x="1" y="6" width="1" height="1"/></g></svg></button></div>
+            </header>
+            <div class="wd">
+                <p class="when now">now</p>
+                <p class="role">Director of Financing</p>
+                <p class="what">Rice's first Formula SAE team. We're building our first car. I lead the budget and financial planning and help with sponsor outreach.</p>
+                <div class="rr">
+                    <div class="screen-glow" aria-hidden="true"></div>
+                    <div class="scanlines" aria-hidden="true"></div>
+                    <p class="rr-h">RR01</p>
+                    <dl class="readout">
+                        <div class="ro"><dt>class<span class="ld" aria-hidden="true"></span></dt><dd>IC (combustion)</dd></div>
+                        <div class="ro"><dt>race<span class="ld" aria-hidden="true"></span></dt><dd>FSAE Michigan 2027</dd></div>
+                        <div class="ro"><dt>goal<span class="ld" aria-hidden="true"></span></dt><dd>built by spring 2027</dd></div>
+                    </dl>
+                </div>
+                <p class="go"><a class="cmd-a" href="https://riceracing.org"><span class="ps" aria-hidden="true">&gt;</span> <span class="verb">open</span> <span class="arg">riceracing.org</span></a></p>
+            </div>
+        </section>
+
+        <section class="win tty" id="thresher" aria-labelledby="thresher-h" data-sec="log">
+            <header class="wb">
+                <h2 class="wt" id="thresher-h"><span class="ps" aria-hidden="true">&gt; </span>log/the rice thresher &amp; rice raw</h2>
+                <span class="ld" aria-hidden="true"></span><span class="wr when now" aria-hidden="true">now</span>
+                <div class="wc"><button class="wbtn mn" type="button" aria-label="minimize the rice thresher &amp; rice raw"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><rect x="1" y="6" width="6" height="1" fill="currentColor"/></svg></button><button class="wbtn mx" type="button" aria-label="maximize the rice thresher &amp; rice raw"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="1" y="1" width="6" height="2"/><rect x="1" y="3" width="1" height="4"/><rect x="6" y="3" width="1" height="4"/><rect x="1" y="6" width="6" height="1"/></g></svg></button><button class="wbtn x" type="button" aria-label="close the rice thresher &amp; rice raw"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="1" y="1" width="1" height="1"/><rect x="2" y="2" width="1" height="1"/><rect x="3" y="3" width="1" height="1"/><rect x="4" y="4" width="1" height="1"/><rect x="5" y="5" width="1" height="1"/><rect x="6" y="6" width="1" height="1"/><rect x="6" y="1" width="1" height="1"/><rect x="5" y="2" width="1" height="1"/><rect x="4" y="3" width="1" height="1"/><rect x="3" y="4" width="1" height="1"/><rect x="2" y="5" width="1" height="1"/><rect x="1" y="6" width="1" height="1"/></g></svg></button></div>
+            </header>
+            <div class="wd">
+                <p class="when now">now</p>
+                <p class="role">Photographer</p>
+                <p class="what">I shoot for the Thresher, Rice's student newspaper, and with Rice RAW&nbsp;Photography.</p>
+                <p class="go"><a class="cmd-a" href="https://ricethresher.org/by/isaac-ure" data-print-url><span class="ps" aria-hidden="true">&gt;</span> <span class="verb">open</span> <span class="arg">my Thresher credits</span></a></p>
+            </div>
+        </section>
+
+        <section class="win tty" id="deepblue" aria-labelledby="deepblue-h" data-sec="log">
+            <header class="wb">
+                <h2 class="wt" id="deepblue-h"><span class="ps" aria-hidden="true">&gt; </span>log/deep blue midland basin</h2>
+                <span class="ld" aria-hidden="true"></span><span class="wr when" aria-hidden="true">summer 2026</span>
+                <div class="wc"><button class="wbtn mn" type="button" aria-label="minimize deep blue midland basin"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><rect x="1" y="6" width="6" height="1" fill="currentColor"/></svg></button><button class="wbtn mx" type="button" aria-label="maximize deep blue midland basin"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="1" y="1" width="6" height="2"/><rect x="1" y="3" width="1" height="4"/><rect x="6" y="3" width="1" height="4"/><rect x="1" y="6" width="6" height="1"/></g></svg></button><button class="wbtn x" type="button" aria-label="close deep blue midland basin"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="1" y="1" width="1" height="1"/><rect x="2" y="2" width="1" height="1"/><rect x="3" y="3" width="1" height="1"/><rect x="4" y="4" width="1" height="1"/><rect x="5" y="5" width="1" height="1"/><rect x="6" y="6" width="1" height="1"/><rect x="6" y="1" width="1" height="1"/><rect x="5" y="2" width="1" height="1"/><rect x="4" y="3" width="1" height="1"/><rect x="3" y="4" width="1" height="1"/><rect x="2" y="5" width="1" height="1"/><rect x="1" y="6" width="1" height="1"/></g></svg></button></div>
+            </header>
+            <div class="wd">
+                <p class="when">summer 2026</p>
+                <p class="role">Summer Intern</p>
+                <p class="what">Midstream water infrastructure in the Permian Basin. I did finance, research and the weekly newsletter.</p>
+            </div>
+        </section>
+
+        <section class="win tty" id="ruwmc" aria-labelledby="ruwmc-h" data-sec="log">
+            <header class="wb">
+                <h2 class="wt" id="ruwmc-h"><span class="ps" aria-hidden="true">&gt; </span>log/rice undergraduate wealth management club</h2>
+                <span class="ld" aria-hidden="true"></span><span class="wr when" aria-hidden="true">2025–26</span>
+                <div class="wc"><button class="wbtn mn" type="button" aria-label="minimize rice undergraduate wealth management club"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><rect x="1" y="6" width="6" height="1" fill="currentColor"/></svg></button><button class="wbtn mx" type="button" aria-label="maximize rice undergraduate wealth management club"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="1" y="1" width="6" height="2"/><rect x="1" y="3" width="1" height="4"/><rect x="6" y="3" width="1" height="4"/><rect x="1" y="6" width="6" height="1"/></g></svg></button><button class="wbtn x" type="button" aria-label="close rice undergraduate wealth management club"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="1" y="1" width="1" height="1"/><rect x="2" y="2" width="1" height="1"/><rect x="3" y="3" width="1" height="1"/><rect x="4" y="4" width="1" height="1"/><rect x="5" y="5" width="1" height="1"/><rect x="6" y="6" width="1" height="1"/><rect x="6" y="1" width="1" height="1"/><rect x="5" y="2" width="1" height="1"/><rect x="4" y="3" width="1" height="1"/><rect x="3" y="4" width="1" height="1"/><rect x="2" y="5" width="1" height="1"/><rect x="1" y="6" width="1" height="1"/></g></svg></button></div>
+            </header>
+            <div class="wd">
+                <p class="when">2025–26</p>
+                <p class="role">Analyst</p>
+                <p class="what">I worked on portfolio research focused on client relationships and stability, with Monte Carlo simulations.</p>
+            </div>
+        </section>
+
+        <section class="win tty" id="jcs" aria-labelledby="jcs-h" data-sec="log">
+            <header class="wb">
+                <h2 class="wt" id="jcs-h"><span class="ps" aria-hidden="true">&gt; </span>log/the john cooper school</h2>
+                <span class="ld" aria-hidden="true"></span><span class="wr when" aria-hidden="true">may 2025</span>
+                <div class="wc"><button class="wbtn mn" type="button" aria-label="minimize the john cooper school"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><rect x="1" y="6" width="6" height="1" fill="currentColor"/></svg></button><button class="wbtn mx" type="button" aria-label="maximize the john cooper school"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="1" y="1" width="6" height="2"/><rect x="1" y="3" width="1" height="4"/><rect x="6" y="3" width="1" height="4"/><rect x="1" y="6" width="6" height="1"/></g></svg></button><button class="wbtn x" type="button" aria-label="close the john cooper school"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="1" y="1" width="1" height="1"/><rect x="2" y="2" width="1" height="1"/><rect x="3" y="3" width="1" height="1"/><rect x="4" y="4" width="1" height="1"/><rect x="5" y="5" width="1" height="1"/><rect x="6" y="6" width="1" height="1"/><rect x="6" y="1" width="1" height="1"/><rect x="5" y="2" width="1" height="1"/><rect x="4" y="3" width="1" height="1"/><rect x="3" y="4" width="1" height="1"/><rect x="2" y="5" width="1" height="1"/><rect x="1" y="6" width="1" height="1"/></g></svg></button></div>
+            </header>
+            <div class="wd">
+                <p class="when">may 2025</p>
+                <p class="role">Graduated cum laude</p>
+                <p class="what">High school, in The Woodlands, TX. Founding member of the D&amp;D club (0&nbsp;to&nbsp;20+ members in a year), <span class="nw">co-president</span> of the Tabletop Club, and tennis MVP my junior year (most improved the year before).</p>
+            </div>
+        </section>
+
+        <!-- contact -->
+        <section class="win tty" id="contact" aria-labelledby="contact-h" data-sec="contact">
+            <header class="wb">
+                <h2 class="wt" id="contact-h"><span class="ps" aria-hidden="true">&gt; </span>contact</h2>
+                <span class="ld" aria-hidden="true"></span><span class="wr">say hi</span>
+                <div class="wc"><button class="wbtn mn" type="button" aria-label="minimize contact"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><rect x="1" y="6" width="6" height="1" fill="currentColor"/></svg></button><button class="wbtn mx" type="button" aria-label="maximize contact"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="1" y="1" width="6" height="2"/><rect x="1" y="3" width="1" height="4"/><rect x="6" y="3" width="1" height="4"/><rect x="1" y="6" width="6" height="1"/></g></svg></button><button class="wbtn x" type="button" aria-label="close contact"><svg viewBox="0 0 8 8" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="1" y="1" width="1" height="1"/><rect x="2" y="2" width="1" height="1"/><rect x="3" y="3" width="1" height="1"/><rect x="4" y="4" width="1" height="1"/><rect x="5" y="5" width="1" height="1"/><rect x="6" y="6" width="1" height="1"/><rect x="6" y="1" width="1" height="1"/><rect x="5" y="2" width="1" height="1"/><rect x="4" y="3" width="1" height="1"/><rect x="3" y="4" width="1" height="1"/><rect x="2" y="5" width="1" height="1"/><rect x="1" y="6" width="1" height="1"/></g></svg></button></div>
+            </header>
+            <div class="wd">
+                <p>I'm always open to connecting! Whether it's about econ, finance, cars, photos, or anything in between, feel free to reach out.</p>
+                <ul class="cmdl" role="list">
+                    <li><a class="cmd-a" href="mailto:isaacoure@gmail.com"><span class="ps" aria-hidden="true">&gt;</span> <span class="verb">mail</span> <span class="arg">isaacoure@gmail.com</span></a></li>
+                    <li><a class="cmd-a" href="https://www.linkedin.com/in/isaacure/"><span class="ps" aria-hidden="true">&gt;</span> <span class="verb">open</span> <span class="arg">linkedin.com/in/isaacure</span></a></li>
+                </ul>
+                <p class="wait" aria-hidden="true"><span class="ps">&gt;</span> <span class="tc"></span></p>
+            </div>
+        </section>
+    </main>
+
+    <footer class="foot">
+        <div class="foot-eye" aria-hidden="true">
+            <svg viewBox="0 0 48 48" shape-rendering="crispEdges">
+                <g fill="currentColor"><rect x="22" y="12" width="14" height="2"/><rect x="16" y="14" width="24" height="2"/><rect x="14" y="16" width="28" height="2"/><rect x="8" y="18" width="24" height="2"/><rect x="38" y="18" width="6" height="2"/><rect x="42" y="20" width="4" height="2"/><rect x="44" y="22" width="2" height="2"/><rect x="4" y="24" width="4" height="2"/><rect x="46" y="24" width="2" height="2"/><rect x="2" y="26" width="2" height="2"/><rect x="0" y="28" width="2" height="2"/><rect x="38" y="28" width="10" height="2"/><rect x="6" y="30" width="12" height="2"/><rect x="32" y="30" width="8" height="2"/><rect x="14" y="32" width="22" height="2"/><rect x="20" y="34" width="10" height="2"/></g>
+                <g fill="currentColor"><rect x="8" y="20" width="8" height="2"/><rect x="18" y="20" width="14" height="2"/><rect x="6" y="22" width="8" height="2"/><rect x="18" y="22" width="8" height="2"/><rect x="30" y="22" width="6" height="2"/><rect x="18" y="24" width="14" height="2"/><rect x="20" y="26" width="12" height="2"/><rect x="20" y="28" width="10" height="2"/><g class="eye-glint"><rect x="16" y="20" width="2" height="2"/><rect x="14" y="22" width="4" height="2"/></g></g>
+                <!-- the same three blink frames as the screen's, the skin black here: this eye is on the page -->
+                <g class="bf bf-half"><g class="lid-skin"><rect x="2" y="10" width="44" height="2"/><rect x="2" y="12" width="44" height="2"/><rect x="2" y="14" width="44" height="2"/><rect x="2" y="16" width="44" height="2"/><rect x="2" y="18" width="44" height="2"/><rect x="2" y="20" width="10" height="2"/><rect x="38" y="20" width="8" height="2"/><rect x="2" y="22" width="6" height="2"/><rect x="44" y="22" width="2" height="2"/><rect x="2" y="24" width="6" height="2"/></g><g class="lid-edge"><rect x="12" y="20" width="26" height="2"/><rect x="8" y="22" width="36" height="2"/><rect x="8" y="24" width="4" height="2"/><rect x="38" y="24" width="8" height="2"/><rect x="2" y="26" width="6" height="2"/></g></g>
+                <g class="bf bf-slit"><g class="lid-skin"><rect x="2" y="10" width="44" height="2"/><rect x="2" y="12" width="44" height="2"/><rect x="2" y="14" width="44" height="2"/><rect x="2" y="16" width="44" height="2"/><rect x="2" y="18" width="44" height="2"/><rect x="2" y="20" width="44" height="2"/><rect x="2" y="22" width="44" height="2"/><rect x="2" y="24" width="6" height="2"/><rect x="18" y="24" width="14" height="2"/><rect x="2" y="30" width="16" height="2"/><rect x="32" y="30" width="14" height="2"/><rect x="2" y="32" width="44" height="2"/><rect x="2" y="34" width="44" height="2"/></g><g class="lid-edge"><rect x="8" y="24" width="10" height="2"/><rect x="32" y="24" width="14" height="2"/><rect x="2" y="26" width="6" height="2"/><rect x="18" y="26" width="14" height="2"/><rect x="2" y="28" width="16" height="2"/><rect x="32" y="28" width="14" height="2"/><rect x="18" y="30" width="14" height="2"/></g></g>
+                <g class="bf bf-shut"><g class="lid-skin"><rect x="2" y="10" width="44" height="2"/><rect x="2" y="12" width="44" height="2"/><rect x="2" y="14" width="44" height="2"/><rect x="2" y="16" width="44" height="2"/><rect x="2" y="18" width="44" height="2"/><rect x="2" y="20" width="44" height="2"/><rect x="2" y="22" width="44" height="2"/><rect x="2" y="24" width="44" height="2"/><rect x="18" y="26" width="14" height="2"/><rect x="2" y="30" width="16" height="2"/><rect x="32" y="30" width="14" height="2"/><rect x="2" y="32" width="44" height="2"/><rect x="2" y="34" width="44" height="2"/></g><g class="lid-edge"><rect x="2" y="26" width="16" height="2"/><rect x="32" y="26" width="14" height="2"/><rect x="2" y="28" width="44" height="2"/><rect x="18" y="30" width="14" height="2"/></g></g>
+            </svg>
+        </div>
+        <p>2026 Isaac Ure</p>
+        <p class="vroom">Vroooooooooooom.</p>
+    </footer>
+
+    <!-- the taskbar -->
+    <nav class="tb" id="tb" aria-label="Taskbar">
+        <button class="tb-eye" id="tbEye" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="menu" aria-label="Windows">
+            <svg viewBox="0 0 48 48" shape-rendering="crispEdges" aria-hidden="true" focusable="false">
+                <g fill="currentColor"><rect x="22" y="12" width="14" height="2"/><rect x="16" y="14" width="24" height="2"/><rect x="14" y="16" width="28" height="2"/><rect x="8" y="18" width="24" height="2"/><rect x="38" y="18" width="6" height="2"/><rect x="42" y="20" width="4" height="2"/><rect x="44" y="22" width="2" height="2"/><rect x="4" y="24" width="4" height="2"/><rect x="46" y="24" width="2" height="2"/><rect x="2" y="26" width="2" height="2"/><rect x="0" y="28" width="2" height="2"/><rect x="38" y="28" width="10" height="2"/><rect x="6" y="30" width="12" height="2"/><rect x="32" y="30" width="8" height="2"/><rect x="14" y="32" width="22" height="2"/><rect x="20" y="34" width="10" height="2"/></g>
+                <g fill="currentColor"><rect x="8" y="20" width="8" height="2"/><rect x="18" y="20" width="14" height="2"/><rect x="6" y="22" width="8" height="2"/><rect x="18" y="22" width="8" height="2"/><rect x="30" y="22" width="6" height="2"/><rect x="18" y="24" width="14" height="2"/><rect x="20" y="26" width="12" height="2"/><rect x="20" y="28" width="10" height="2"/><g class="eye-glint"><rect x="16" y="20" width="2" height="2"/><rect x="14" y="22" width="4" height="2"/></g></g>
+            </svg>
+        </button>
+        <a class="tb-a" href="#about" data-sec="about"><span class="ps" aria-hidden="true">&gt;</span> <span class="arg">about</span></a>
+        <a class="tb-a" href="#log" data-sec="log"><span class="ps" aria-hidden="true">&gt;</span> <span class="arg">log</span></a>
+        <a class="tb-a" href="#contact" data-sec="contact"><span class="ps" aria-hidden="true">&gt;</span> <span class="arg">contact</span></a>
+        <span class="tb-clk" id="clk"></span>
+    </nav>
+    <div class="menu" id="menu" hidden></div>
+
+    <script>
+    /* the boot, then the desktop. the terminal is the holding page's, cut down the same way:
+       print lines, land results, stamp the eye frame after frame, hand off. this time the
+       hand-off brings up a desktop: the taskbar, and the windows one after another. whether
+       the boot plays at all was settled in the head (html.booting). anything that goes wrong
+       brings the desktop up; so does any key, a tap, focus landing on the page, or 12 seconds. */
+    (function () {
+        var root = document.documentElement, desk = document.getElementById('desk'),
+            term = document.getElementById('term'), log = document.getElementById('termLog'),
+            skipBtn = document.getElementById('termSkip'), tb = document.getElementById('tb'),
+            eyeBtn = document.getElementById('tbEye'), menu = document.getElementById('menu'),
+            clk = document.getElementById('clk'), footEye = document.querySelector('.foot-eye');
+        var rmq = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)'), reduce = !!(rmq && rmq.matches);
+        var fine = window.matchMedia && window.matchMedia('(pointer: fine) and (min-width: 760px)');
+        var wins = [], i, list = document.querySelectorAll('.win');
+        for (i = 0; i < list.length; i++) wins.push(list[i]);
+        var lit = false, gen = 0, started = false;
+        function has(el, c) { return (' ' + el.className + ' ').indexOf(' ' + c + ' ') > -1; }
+        function drop(el, c) { el.className = (' ' + el.className + ' ').replace(' ' + c + ' ', ' ').replace(/^\s+|\s+$/g, ''); }
+        function add(el, c) { if (!has(el, c)) el.className += ' ' + c; }
+        function name(w) { var h = w.querySelector('.wt'); return h ? h.textContent.replace(/^>\s*/, '').replace(/\s+/g, ' ').trim() : w.id; }
+        function winOf(el) { return el && el.closest ? el.closest('.win') : null; }
+
+        /* ---- the desktop ---- */
+        var STAG = 110, zTop = 1, active = null, nextAt = 0, io = null, queued = false, footSeen = false, maxed = null;
+
+        function raise(w) {                // to the front, and its title bar lights up
+            if (!w || w.hidden || (maxed && w !== maxed)) return;
+            if (active && active !== w) drop(active, 'top');
+            active = w; add(w, 'top');
+            w.style.zIndex = ++zTop;
+        }
+        function settle(w) { add(w, 'on'); }
+        function up(w) {                   // one window pops
+            if (!has(w, 'pend')) return;
+            drop(w, 'pend'); add(w, 'up'); raise(w);
+            w.iuUp = +new Date();
+            setTimeout(function () { settle(w); }, 450);   // the pop is over; a drag's transform is the only one left
+            if (w.id === 'shot') develop(w);
+            queue();
+        }
+        function revealAll() {             // the way out of every state: nothing held back
+            for (var i = 0; i < wins.length; i++) if (has(wins[i], 'pend')) up(wins[i]);
+            drop(root, 'cas');
+        }
+        function seen(entries) {           // a window scrolled into view pops; ones arriving together take turns
+            var now = +new Date(), i, w, at;
+            for (i = 0; i < entries.length; i++) {
+                if (!entries[i].isIntersecting) continue;
+                w = entries[i].target; io.unobserve(w);
+                if (!has(w, 'pend')) continue;
+                at = Math.max(now, nextAt); nextAt = at + 80;
+                (function (w, ms) { setTimeout(function () { up(w); }, ms); })(w, at - now);
+            }
+        }
+        function cascade() {               // the windows in view pop in turn; the rest wait to be scrolled to
+            var vh = window.innerHeight || root.clientHeight, n = 0, later = [], i, w, r;
+            for (i = 0; i < wins.length; i++) add(wins[i], 'pend');
+            drop(root, 'cas'); clearTimeout(window.iuCas);
+            if (reduce) { revealAll(); return; }
+            for (i = 0; i < wins.length; i++) {
+                w = wins[i]; r = w.getBoundingClientRect();
+                if (r.top < vh * .98 && r.bottom > 0) (function (w, k) { setTimeout(function () { up(w); }, k * STAG); })(w, n++);
+                else later.push(w);
+            }
+            nextAt = +new Date() + n * STAG;
+            if (later.length && window.IntersectionObserver) {
+                io = new IntersectionObserver(seen, { rootMargin: '0px 0px -24px 0px' });
+                for (i = 0; i < later.length; i++) io.observe(later[i]);
+            } else for (i = 0; i < later.length; i++) up(later[i]);
+            setTimeout(revealAll, 10000);
+        }
+        function develop(w) {              // the Game Boy layer wipes off the photo, top down
+            var shot = w.querySelector('.shot'), real = w.querySelector('.shot-real');
+            if (!shot || !real || has(shot, 'done')) return;
+            if (reduce) { add(shot, 'done'); return; }
+            function go() {
+                setTimeout(function () {
+                    add(shot, 'dev');
+                    setTimeout(function () { add(shot, 'done'); }, 700);
+                }, 450);
+            }
+            if (real.complete && real.naturalWidth) go();
+            else { real.addEventListener('load', go); real.loading = 'eager'; }   // if it never loads, the Game Boy one stays
+        }
+
+        /* ---- the buttons: shade, fill the screen, close; and the ways back ---- */
+        function pressed(w, cls, on) { var b = w.querySelector('.wbtn.' + cls); if (b) b.setAttribute('aria-pressed', on ? 'true' : 'false'); }
+        function shade(w, on) {
+            if (on === undefined) on = !has(w, 'shade');
+            if (on) add(w, 'shade'); else drop(w, 'shade');
+            pressed(w, 'mn', on);
+            queue();
+        }
+        function maxi(w, on) {
+            if (on === undefined) on = !has(w, 'maxi');
+            var i, wd = w.querySelector('.wd');
+            if (on && maxed && maxed !== w) maxi(maxed, false);
+            if (on) {
+                add(w, 'maxi'); drop(w, 'shade'); pressed(w, 'mn', false); maxed = w; add(root, 'lock');
+                raise(w); w.style.zIndex = 100000;
+                if (wd) wd.setAttribute('tabindex', '0');
+                for (i = 0; i < wins.length; i++) if (wins[i] !== w) wins[i].inert = true;
+                if (footEye) footEye.parentNode.inert = true;
+                w.scrollTop = 0;
+            } else {
+                drop(w, 'maxi'); if (maxed === w) maxed = null; drop(root, 'lock');
+                w.style.zIndex = ++zTop;
+                if (wd) wd.removeAttribute('tabindex');
+                for (i = 0; i < wins.length; i++) wins[i].inert = false;
+                if (footEye) footEye.parentNode.inert = false;
+            }
+            pressed(w, 'mx', on);
+            raise(w);
+            queue();
+        }
+        function close(w) {
+            if (w.hidden) return;
+            if (has(w, 'maxi')) maxi(w, false);
+            if (active === w) { drop(w, 'top'); active = null; }
+            function gone() { w.hidden = true; drop(w, 'down'); if (io) try { io.unobserve(w); } catch (e) {} buildMenu(); queue(); }
+            if (reduce || !has(w, 'on') || has(w, 'pend')) { gone(); return; }
+            add(w, 'down');
+            var done = false;
+            function once() { if (done) return; done = true; w.removeEventListener('animationend', once); gone(); }
+            w.addEventListener('animationend', once);
+            setTimeout(once, 300);
+        }
+        function open(w, jump) {           // back from closed (or shaded), popped, in view, in front
+            if (w.hidden) { w.hidden = false; add(w, 'pend'); drop(w, 'on'); drop(w, 'up'); fitBar(w); }
+            if (has(w, 'shade')) shade(w, false);
+            if (has(w, 'pend')) { if (reduce) up(w); else setTimeout(function () { up(w); }, jump ? 160 : 0); }
+            raise(w);
+            if (jump) try { w.scrollIntoView({ block: 'nearest' }); } catch (e) { w.scrollIntoView(); }
+            buildMenu();
+        }
+        function reset() {                 // the desk as it was: every window open, where the grid put it
+            var i, w;
+            if (maxed) maxi(maxed, false);
+            for (i = 0; i < wins.length; i++) {
+                w = wins[i];
+                w.style.removeProperty('--nx'); w.style.removeProperty('--ny'); w.style.zIndex = '';
+                if (has(w, 'shade')) shade(w, false);
+                if (w.hidden) { w.hidden = false; drop(w, 'on'); drop(w, 'up'); add(w, 'pend'); }
+            }
+            zTop = 1;
+            for (i = 0; i < wins.length; i++) if (has(wins[i], 'pend')) (function (w, k) { setTimeout(function () { up(w); }, k * 70); })(wins[i], i);
+            buildMenu(); queue();
+        }
+        desk.addEventListener('click', function (e) {
+            var b = e.target.closest ? e.target.closest('.wbtn') : null, w = winOf(b);
+            if (!b || !w) return;
+            if (has(b, 'mn')) shade(w);
+            else if (has(b, 'mx')) maxi(w);
+            else if (has(b, 'x')) close(w);
+        });
+        desk.addEventListener('dblclick', function (e) {
+            var bar = e.target.closest ? e.target.closest('.wb') : null;
+            if (!bar || e.target.closest('.wbtn')) return;
+            e.preventDefault();
+            maxi(winOf(bar));
+        });
+        // a click or a tap anywhere on a window brings it to the front; so does focus landing in it
+        desk.addEventListener('pointerdown', function (e) { var w = winOf(e.target); if (w && !has(w, 'pend')) raise(w); });
+        desk.addEventListener('focusin', function (e) { var w = winOf(e.target); if (w) { if (has(w, 'pend')) up(w); raise(w); } });
+        document.addEventListener('keydown', function (e) {
+            if (e.key !== 'Escape') return;
+            if (maxed) { var b = maxed.querySelector('.wbtn.mx'); maxi(maxed, false); if (b) b.focus(); }
+            else if (!menu.hidden) showMenu(false);
+        });
+        // a link to a window (the taskbar, the log's listing) opens it if it was closed
+        document.addEventListener('click', function (e) {
+            var a = e.target.closest ? e.target.closest('a[href^="#"]') : null, w;
+            if (!a) return;
+            w = document.getElementById(a.getAttribute('href').slice(1));
+            if (w && has(w, 'win')) { open(w, false); if (maxed && maxed !== w) maxi(maxed, false); }
+        });
+
+        /* ---- a mouse drags a window by its title bar (a finger scrolls the page, see the CSS).
+                the nudge the grid gave it is the start; it never leaves the desk ---- */
+        desk.addEventListener('pointerdown', function (e) {
+            var bar = e.target.closest ? e.target.closest('.wb') : null, w = winOf(bar);
+            if (!bar || !w || e.button !== 0 || !fine || !fine.matches || e.target.closest('.wbtn') || has(w, 'maxi') || has(w, 'pend')) return;
+            e.preventDefault();
+            settle(w);
+            var cs = getComputedStyle(w), x0 = parseFloat(cs.getPropertyValue('--nx')) || 0, y0 = parseFloat(cs.getPropertyValue('--ny')) || 0,
+                sx = e.clientX, sy = e.clientY, id = e.pointerId, moved = false,
+                lx = w.offsetLeft, ly = w.offsetTop, ww = w.offsetWidth, wh = w.offsetHeight,
+                dw = desk.clientWidth, dh = desk.clientHeight;
+            function at(ev) {
+                var nx = Math.round(x0 + ev.clientX - sx), ny = Math.round(y0 + ev.clientY - sy);
+                nx = Math.max(-lx, Math.min(dw - lx - ww, nx));
+                ny = Math.max(-ly, Math.min(dh - ly - wh, ny));
+                if (!moved && (nx !== x0 || ny !== y0)) { moved = true; add(w, 'drag'); }
+                w.style.setProperty('--nx', nx + 'px'); w.style.setProperty('--ny', ny + 'px');
+            }
+            function end(ev) {
+                if (ev.pointerId !== id) return;
+                bar.removeEventListener('pointermove', at); bar.removeEventListener('pointerup', end); bar.removeEventListener('pointercancel', end);
+                try { bar.releasePointerCapture(id); } catch (x) {}
+                drop(w, 'drag');
+            }
+            try { bar.setPointerCapture(id); } catch (x) {}
+            bar.addEventListener('pointermove', at); bar.addEventListener('pointerup', end); bar.addEventListener('pointercancel', end);
+        });
+
+        /* a dragged window keeps its place through a resize only where it still fits: on a
+           desk that has narrowed it is pulled back inside, and on a phone (no drag) the grid
+           has it back */
+        function settleAll() {
+            var i, w, nx, ny, lx, ly, dw = desk.clientWidth, dh = desk.clientHeight;
+            for (i = 0; i < wins.length; i++) {
+                w = wins[i];
+                if (!w.style.getPropertyValue('--nx') && !w.style.getPropertyValue('--ny')) continue;
+                if (!fine || !fine.matches || w.hidden) { w.style.removeProperty('--nx'); w.style.removeProperty('--ny'); continue; }
+                nx = parseFloat(w.style.getPropertyValue('--nx')) || 0; ny = parseFloat(w.style.getPropertyValue('--ny')) || 0;
+                lx = w.offsetLeft; ly = w.offsetTop;
+                nx = Math.max(-lx, Math.min(dw - lx - w.offsetWidth, nx));
+                ny = Math.max(-ly, Math.min(dh - ly - w.offsetHeight, ny));
+                w.style.setProperty('--nx', nx + 'px'); w.style.setProperty('--ny', ny + 'px');
+            }
+        }
+        window.addEventListener('resize', settleAll);
+
+        /* ---- the taskbar: the list of windows, the commands, the clock ---- */
+        function esc(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
+        function buildMenu() {
+            var h = '<p class="menu-h">windows</p><ul>', i, w, on;
+            for (i = 0; i < wins.length; i++) {
+                w = wins[i]; on = !w.hidden;
+                h += '<li><button type="button" data-w="' + w.id + '"><span class="st' + (on ? '' : ' off') + '" aria-hidden="true">' + (on ? '[x]' : '[ ]') + '</span>' + esc(name(w)) + '<span class="vh">, ' + (on ? 'open' : 'closed') + '</span></button></li>';
+            }
+            h += '</ul><hr><ul><li><button type="button" data-act="top"><span class="st" aria-hidden="true">&gt;</span>top</button></li>' +
+                 '<li><button type="button" data-act="reset"><span class="st" aria-hidden="true">&gt;</span>reset the desk</button></li></ul>';
+            menu.innerHTML = h;
+        }
+        function showMenu(on) {
+            if (on === undefined) on = menu.hidden;
+            if (on) { buildMenu(); menu.hidden = false; eyeBtn.setAttribute('aria-expanded', 'true'); var b = menu.querySelector('button'); if (b) b.focus(); }
+            else {
+                var inside = menu.contains(document.activeElement);
+                menu.hidden = true; eyeBtn.setAttribute('aria-expanded', 'false');
+                if (inside) eyeBtn.focus();
+            }
+        }
+        eyeBtn.addEventListener('click', function () { showMenu(); });
+        menu.addEventListener('click', function (e) {
+            var b = e.target.closest ? e.target.closest('button') : null, w;
+            if (!b) return;
+            if (b.getAttribute('data-act') === 'top') { showMenu(false); eyeBtn.focus(); window.scrollTo(0, 0); return; }
+            if (b.getAttribute('data-act') === 'reset') { showMenu(false); eyeBtn.focus(); reset(); return; }
+            w = document.getElementById(b.getAttribute('data-w'));
+            if (!w) return;
+            showMenu(false);
+            if (maxed && maxed !== w) maxi(maxed, false);
+            open(w, true);
+            var t = w.querySelector('.wbtn'); if (t) try { t.focus({ preventScroll: true }); } catch (x) { t.focus(); }
+        });
+        document.addEventListener('pointerdown', function (e) {
+            if (menu.hidden || menu.contains(e.target) || eyeBtn.contains(e.target)) return;
+            showMenu(false);
+        });
+        menu.addEventListener('focusout', function (e) {
+            if (menu.hidden || !e.relatedTarget || menu.contains(e.relatedTarget) || e.relatedTarget === eyeBtn) return;
+            showMenu(false);
+        });
+        function tick() {
+            var d = new Date(), t;
+            try { t = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); } catch (e) { t = d.getHours() + ':' + (d.getMinutes() < 10 ? '0' : '') + d.getMinutes(); }
+            clk.textContent = t.toLowerCase();
+            setTimeout(tick, 60000 - d.getSeconds() * 1000 - d.getMilliseconds() + 20);
+        }
+
+        /* ---- the pass: once a frame of scrolling. the command for the part of the page you are
+                in, the foot's eye when you reach it, the pictures when you reach them ---- */
+        var links = tb.querySelectorAll('.tb-a'), S = 'steps(1, end)', LIDS = {
+            'bf-half': [{ opacity: 1, easing: S }, { opacity: 0, offset: .15, easing: S }, { opacity: 1, offset: .76667, easing: S }, { opacity: 0 }],
+            'bf-slit': [{ opacity: 0, easing: S }, { opacity: 1, offset: .15, easing: S }, { opacity: 0, offset: .28333, easing: S }, { opacity: 1, offset: .58333, easing: S }, { opacity: 0, offset: .76667, easing: S }, { opacity: 0 }],
+            'bf-shut': [{ opacity: 0, easing: S }, { opacity: 1, offset: .28333, easing: S }, { opacity: 0, offset: .58333, easing: S }, { opacity: 0 }]
+        };
+        function blink(el) {               // the foot's eye blinks once when it comes back into view
+            if (reduce || !el || (rmq && rmq.matches)) return;
+            for (var k in LIDS) { var f = el.querySelector('.' + k); if (f && f.getAnimations && f.getAnimations().length) return; }
+            for (k in LIDS) { var g = el.querySelector('.' + k); if (g && g.animate) try { g.animate(LIDS[k], { duration: 300, delay: 150 }); } catch (e) {} }
+        }
+        function lids(el, seen, vh) {
+            if (!el) return seen;
+            var q = el.getBoundingClientRect(), full = q.top + q.height / 4 >= 0 && q.top + q.height * .75 <= vh;
+            if (full && !seen) blink(el);
+            return full || (seen && q.bottom > 0 && q.top < vh);
+        }
+        /* the interests' pictures: a little move each, in frames like the blink (whole 3px cells,
+           steps, no tweens). a book is [ms, words] steps: NAME shows a hidden frame (.pf), -NAME
+           hides a part, NAME@x,y moves one (units: 2 is a cell). what a step doesn't name is at
+           rest, and so is all of it after the last step */
+        var PICS = {
+            cam: [[60, '-btn'], [45, '-btn -l1'], [40, '-btn -l1 -l2'], [90, '-btn -l1 -l2 -l3'], [55, '-btn -l1 -l2'], [70, '-btn -l1']],
+            d20: [[70, '-n20 n13'], [100, '-n20 n7'], [400, '-n20 n1']],
+            pad: [[110, 'r'], [60, ''], [60, 'a pad@0,-2'], [110, 'a pad@0,-4'], [60, 'pad@0,-2']],
+            sis: [[180, 'rock@-2,0'], [90, 'rock@-8,0 -b0 b1'], [80, 'rock@-14,4 -b0 b2'], [70, 'rock@-22,6 -b0 b3'], [240, '-rock']],
+            gti: [[90, 'body@0,-2'], [60, ''], [70, 'car@-2,0'], [50, 'car@-4,0'], [40, 'car@-8,0'], [35, 'car@-14,0'], [35, 'car@-22,0'], [35, 'car@-32,0'],
+                  [120, 'car@-44,0'], [35, 'car@30,0'], [40, 'car@18,0'], [45, 'car@10,0'], [60, 'car@4,0'], [80, 'car@2,0']]
+        }, pics = [], lastGo = -1e9, movedAt = 0, picT = 0, BEAT = 300, GAP = 360, REST = 400, AGAIN = 20000;
+        function flip(svg, book) {
+            var steps = [], uses = {}, fx = [], ms = 0, i, j, m, w, s, n, g, kf, k, v, last, pr, rest;
+            for (i = 0; i < book.length; i++) {
+                s = {}; w = book[i][1].split(' ');
+                for (j = 0; j < w.length; j++) {
+                    if (!(m = /^(-?)(\w+)(?:@(-?\d+),(-?\d+))?$/.exec(w[j]))) continue;
+                    n = s[m[2]] = s[m[2]] || {}; uses[m[2]] = uses[m[2]] || {};
+                    if (m[3]) { n.transform = 'translate(' + m[3] + 'px, ' + m[4] + 'px)'; uses[m[2]].transform = 1; }
+                    else { n.opacity = m[1] ? 0 : 1; uses[m[2]].opacity = 1; }
+                }
+                steps.push([ms, s]); ms += book[i][0];
+            }
+            for (n in uses) {
+                if (!(g = svg.querySelector('[data-f="' + n + '"]'))) return null;
+                rest = { opacity: /\bpf\b/.test(g.getAttribute('class') || '') ? 0 : 1, transform: 'translate(0px, 0px)' };
+                kf = []; last = '';
+                for (i = 0; i < steps.length; i++) {
+                    k = { offset: steps[i][0] / ms, easing: S }; v = '';
+                    for (pr in uses[n]) { k[pr] = steps[i][1][n] && pr in steps[i][1][n] ? steps[i][1][n][pr] : rest[pr]; v += k[pr] + ';'; }
+                    if (v !== last) kf.push(k);
+                    last = v;
+                }
+                k = { offset: 1 };
+                for (pr in uses[n]) k[pr] = rest[pr];
+                kf.push(k);
+                fx.push([g, kf]);
+            }
+            return [fx, ms];
+        }
+        function play(p) {
+            if (p.a || (rmq && rmq.matches) || document.hidden) return false;
+            var a = [], i;
+            for (i = 0; i < p.fx.length; i++) try { a.push(p.fx[i][0].animate(p.fx[i][1], p.ms)); } catch (e) {}
+            p.at = +new Date(); p.done = true; p.off = false;
+            if (!a.length) return false;
+            p.a = a;
+            a[0].onfinish = function () { if (p.a === a) p.a = null; };
+            return true;
+        }
+        function hush(p) {
+            if (!p.a) return;
+            for (var i = 0; i < p.a.length; i++) try { p.a[i].cancel(); } catch (e) {}
+            p.a = null;
+        }
+        /* once all of a picture is in view, a beat after its window pops, it plays. ones that
+           arrive together take turns, GAP apart in reading order. right off the screen, and a
+           while (AGAIN) after it played, it is owed again */
+        function spot(vh) {
+            if (!pics.length || document.hidden || (rmq && rmq.matches)) return;
+            var now = +new Date(), t = lastGo, soon = 0, i, p, r, due;
+            for (i = 0; i < pics.length; i++) {
+                p = pics[i]; r = p.el.getBoundingClientRect();
+                if (!r.height || r.top < 0 || r.bottom > vh || p.win.hidden || has(p.win, 'shade')) {
+                    p.inAt = 0;
+                    if (r.bottom <= 0 || r.top >= vh || p.win.hidden) p.off = true;
+                    continue;
+                }
+                if (p.off) { if (p.done && !p.a && now - p.at >= AGAIN) p.done = false; p.off = false; }
+                p.inAt = p.inAt || now;
+                if (p.done || p.a || has(p.win, 'pend')) continue;
+                due = Math.max(p.inAt + BEAT, (p.win.iuUp || 0) + BEAT, t + GAP);
+                if (due <= now) { play(p); t = lastGo = now; }
+                else { t = due; soon = soon || due; }
+            }
+            clearTimeout(picT);
+            if (soon) picT = setTimeout(function () { spot(window.innerHeight || root.clientHeight); }, soon - now + 4);
+        }
+        function again(p) {                // a pointer resting on one, or a tap; not the page moving under a still pointer
+            var now = +new Date();
+            if (now - movedAt < 300 || now - p.at < p.ms + REST || has(p.win, 'pend') || now < (p.win.iuUp || 0) + BEAT) return;
+            play(p);
+        }
+        function picsOn() {
+            var all = document.querySelectorAll('.tile .ico[data-pic]'), i, w, b, c;
+            if (!all.length || !root.animate || reduce) return;
+            for (i = 0; i < all.length; i++) {
+                w = winOf(all[i]); b = PICS[all[i].getAttribute('data-pic')]; c = b && w && flip(all[i], b);
+                if (c) (function (p) {
+                    pics.push(p);
+                    p.el.addEventListener('mouseenter', function () { clearTimeout(p.hov); p.hov = setTimeout(function () { again(p); }, 120); });
+                    p.el.addEventListener('mouseleave', function () { clearTimeout(p.hov); });
+                    p.el.addEventListener('click', function () { again(p); });
+                })({ el: all[i], win: w, fx: c[0], ms: c[1], at: -1e9, done: false, off: false, a: null, inAt: 0, hov: 0 });
+            }
+            function moved() { movedAt = +new Date(); }
+            window.addEventListener('scroll', moved, { passive: true });
+            window.addEventListener('resize', moved);
+            document.addEventListener('visibilitychange', function () {
+                if (!document.hidden) { queue(); return; }
+                for (var j = 0; j < pics.length; j++) { pics[j].inAt = 0; if (pics[j].a) { hush(pics[j]); pics[j].done = false; } }
+            });
+            function calm(e) { if (e.matches) for (var j = 0; j < pics.length; j++) hush(pics[j]); }
+            if (rmq && rmq.addEventListener) rmq.addEventListener('change', calm); else if (rmq && rmq.addListener) rmq.addListener(calm);
+        }
+        function pass() {
+            queued = false;
+            var vh = window.innerHeight || root.clientHeight, i, w, r, cur = null, doc = root;
+            footSeen = lids(footEye, footSeen, vh);
+            spot(vh);
+            /* the part of the page you are in: the last window whose top has passed four tenths
+               of the way down, or the last part of all at the very bottom */
+            for (i = 0; i < wins.length; i++) {
+                w = wins[i]; if (w.hidden) continue;
+                if (w.getBoundingClientRect().top < vh * .4) cur = w.getAttribute('data-sec');
+            }
+            if (vh + (window.pageYOffset || doc.scrollTop) >= doc.scrollHeight - 2) cur = 'contact';
+            for (i = 0; i < links.length; i++) {
+                if (links[i].getAttribute('data-sec') === cur) links[i].setAttribute('aria-current', 'true');
+                else links[i].removeAttribute('aria-current');
+            }
+        }
+        function queue() { if (queued) return; queued = true; (window.requestAnimationFrame || setTimeout)(pass); }
+
+        /* a title bar's leader and result go when the title and the buttons leave them no
+           room: the result's own width is remembered from when it was last seen, so hiding
+           it never makes room for itself */
+        var chW = 0;
+        function column() {                // one column of the face a title bar really renders in
+            var wb = wins[0] && wins[0].querySelector('.wb'), probe;
+            if (!wb) return 8;
+            probe = document.createElement('span');
+            probe.className = 'wt'; probe.textContent = '0000000000';
+            probe.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap;padding:0';
+            wb.appendChild(probe);
+            var w = probe.getBoundingClientRect().width / 10;
+            wb.removeChild(probe);
+            return w > 0 ? w : 8;
+        }
+        function cols(el) { return el ? (el.textContent || '').replace(/\s+/g, ' ').length : 0; }
+        function fitBar(w) {
+            var wb = w.querySelector('.wb'), wt = w.querySelector('.wt'), wr = w.querySelector('.wr'), wc = w.querySelector('.wc'), need;
+            if (!wb || !wt || !wr) return;
+            need = (cols(wt) + cols(wr) + 5) * (chW || column()) + (wc ? wc.offsetWidth : 0) + 12;
+            if (need > wb.clientWidth) add(w, 'tight'); else drop(w, 'tight');
+        }
+        function fitBars() { chW = column(); for (var i = 0; i < wins.length; i++) fitBar(wins[i]); }
+        function start() {                 // the desktop, once
+            if (started) return; started = true;
+            fitBars();
+            if (window.ResizeObserver) try {
+                var ro = new ResizeObserver(function (es) { chW = column(); for (var i = 0; i < es.length; i++) fitBar(es[i].target); });
+                for (var i = 0; i < wins.length; i++) ro.observe(wins[i]);
+            } catch (e) { window.addEventListener('resize', fitBars); }
+            else window.addEventListener('resize', fitBars);
+            /* the column is the face's own once it lands, and the swap shows up a frame or two
+               after the face says it has loaded, so the bars are measured again then */
+            function refit() { fitBars(); (window.requestAnimationFrame || setTimeout)(function () { (window.requestAnimationFrame || setTimeout)(fitBars); }); setTimeout(fitBars, 400); }
+            if (document.fonts && document.fonts.ready) document.fonts.ready.then(refit);
+            if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', refit);
+            window.addEventListener('load', refit);
+            cascade();
+            picsOn();
+            buildMenu();
+            tick();
+            window.addEventListener('scroll', queue, { passive: true });
+            window.addEventListener('resize', queue);
+            window.addEventListener('beforeprint', revealAll);
+            if (document.fonts && document.fonts.ready) document.fonts.ready.then(queue);
+            window.addEventListener('load', queue);
+            pass();
+        }
+        window.addEventListener('load', function () { (window.requestAnimationFrame || setTimeout)(function () { add(root, 'sm'); }); });
+
+        function light() {                 // hand off: drop the terminal, bring up the desk
+            if (lit) return;
+            lit = true; gen++;
+            if (skipBtn && document.activeElement === skipBtn) {   // keep the keyboard on the page
+                try { desk.focus({ preventScroll: true }); } catch (e) { desk.focus(); }
+            }
+            if (term && term.parentNode) term.parentNode.removeChild(term);
+            if (skipBtn && skipBtn.parentNode) skipBtn.parentNode.removeChild(skipBtn);
+            drop(root, 'booting');
+            try { start(); } catch (e) { revealAll(); }
+        }
+
+        /* ---- no boot this visit (settled in the head), or nothing to boot with ---- */
+        if (!has(root, 'booting') || reduce || !term || !log || !window.Promise) { light(); return; }
+
+        /* ---- the terminal ---- */
+        var cursor = document.createElement('span'); cursor.className = 'tc';
+        function jump() { term.scrollTop = 1e9; }
+        function isIdle(d) { return !!(d && d.lastChild === cursor && d.firstChild.data === ''); }
+        function make(text, cls) {
+            var d = document.createElement('div');
+            d.className = 'tl' + (cls ? ' ' + cls : '');
+            d.appendChild(document.createTextNode(text));
+            return d;
+        }
+        function block(text, cls) { var d = make(text, cls); log.appendChild(d); jump(); return d; }
+        function line(text, cls) {
+            var d = log.lastChild;
+            if (!isIdle(d)) { d = make('', ''); log.appendChild(d); }
+            d.className = 'tl' + (cls ? ' ' + cls : '');
+            d.firstChild.data = text;
+            d.appendChild(cursor);
+            jump();
+            return d;
+        }
+        function stamp(text) {
+            var d = make(text, 'tl-art tl-px'), last = log.lastChild;
+            if (isIdle(last)) log.insertBefore(d, last); else { log.appendChild(d); line(''); }
+            return d;
+        }
+        function slide(ms) {
+            var g = gen, el = term, start = el.scrollTop, end = el.scrollHeight - el.clientHeight;
+            if (ms <= 0 || end <= start) { jump(); return Promise.resolve(); }
+            return new Promise(function (res) {
+                var t0 = Date.now();
+                (function step() {
+                    if (g !== gen) return;
+                    var t = Math.min(1, (Date.now() - t0) / ms);
+                    el.scrollTop = start + (end - start) * (1 - Math.pow(1 - t, 2));
+                    if (t < 1) requestAnimationFrame(step); else res();
+                })();
+            });
+        }
+        function pause(ms) {
+            var g = gen;
+            return new Promise(function (res) { setTimeout(function () { if (g === gen) res(); }, ms); });
+        }
+        function lead(left, right) {
+            var w = 36, dots = w - left.length - right.length - 2;
+            return left + ' ' + new Array(Math.max(3, dots) + 1).join('.') + ' ' + right;
+        }
+        function check(left, right, ms, cls) {
+            var full = lead(left, right), d = line(full.slice(0, full.length - right.length));
+            return pause(ms).then(function () { d.firstChild.data = full; if (cls) d.className += ' ' + cls; });
+        }
+        function pad2(n) { return (n < 10 ? '0' : '') + n; }
+
+        /* ---- the eye: the LCD's own pixel eye, cell for cell. every cell is two characters
+           wide and, at line-height .8, one row tall, so the cells come out square ---- */
+        var EYE = {
+            open: [
+                '                      ##############',
+                '                ########################',
+                '              ############################',
+                '        ########################      ######',
+                '        ########  ##############          ####',
+                '      ########    ########    ######        ##',
+                '    ####          ##############              ##',
+                '  ##                ############',
+                '##                  ##########        ##########',
+                '      ############              ########',
+                '              ######################',
+                '                    ##########'
+            ].join('\n'),
+            left: [
+                '                      ##############',
+                '                ########################',
+                '              ############################',
+                '        ########################      ######',
+                '    ########  ##############              ####',
+                '  ########    ########    ######            ##',
+                '    ####      ##############                  ##',
+                '  ##            ############',
+                '##              ##########            ##########',
+                '      ############              ########',
+                '              ######################',
+                '                    ##########'
+            ].join('\n'),
+            right: [
+                '                      ##############',
+                '                ########################',
+                '              ############################',
+                '        ########################      ######',
+                '            ########  ##############      ####',
+                '          ########    ########    ######    ##',
+                '    ####              ##############          ##',
+                '  ##                    ############',
+                '##                      ##########    ##########',
+                '      ############              ########',
+                '              ######################',
+                '                    ##########'
+            ].join('\n'),
+            half: [
+                '',
+                '',
+                '',
+                '',
+                '            ##########################',
+                '        ####################################',
+                '        ####      ##############      ##########',
+                '  ######            ############',
+                '##                  ##########        ##########',
+                '      ############              ########',
+                '              ######################',
+                '                    ##########'
+            ].join('\n'),
+            slit: [
+                '',
+                '',
+                '',
+                '',
+                '',
+                '',
+                '        ##########              ################',
+                '  ######          ##############',
+                '##################  ##########  ################',
+                '                  ##############',
+                '',
+                ''
+            ].join('\n'),
+            shut: [
+                '',
+                '',
+                '',
+                '',
+                '',
+                '',
+                '                                              ##',
+                '  ################              ##############',
+                '################################################',
+                '                  ##############',
+                '',
+                ''
+            ].join('\n')
+        };
+
+        var BANNER = [
+        ' ___ ____    _        _    ____   _   _ ____  _____',
+        '|_ _/ ___|  / \\      / \\  / ___| | | | |  _ \\| ____|',
+        ' | |\\___ \\ / _ \\    / _ \\| |     | | | | |_) |  _|',
+        ' | | ___) / ___ \\  / ___ \\ |___  | |_| |  _ <| |___',
+        '|___|____/_/   \\_\\/_/   \\_\\____|  \\___/|_| \\_\\_____|'
+        ].join('\n');
+
+        /* ---- the sequence ---- */
+        function run() {
+            var g = gen, now = new Date();
+            var today = now.getFullYear() + '-' + pad2(now.getMonth() + 1) + '-' + pad2(now.getDate());
+            function eyeFrame(name, slideMs, hold) {
+                return function () { if (g !== gen) return; stamp(EYE[name]); return slide(slideMs).then(function () { return pause(hold); }); };
+            }
+            /* about 3.3s end to end, like the holding page's: the checks land in order, quick
+               ones quicker, the ones that look for something a beat longer. the eye's one blink
+               keeps the LCD's timing, and the last check is the window manager coming up */
+            var seq = pause(250)
+                .then(function () { return check('> power', 'ok', 60); })
+                .then(function () { return pause(20); })
+                .then(function () { return check('> memcheck 8K', 'ok', 110); })
+                .then(function () { return pause(20); })
+                .then(function () { return check('> clock', today, 30); })
+                .then(function () { return pause(20); })
+                .then(function () { return check('> mounting /site', 'ok', 150); })
+                .then(function () { return pause(30); })
+                .then(function () { return check('> looking for isaacure.com', 'found', 240); })
+                .then(function () { return pause(40); })
+                .then(function () { return check('> eye subsystem', 'waking', 100); })
+                .then(function () { return pause(70); })
+                .then(function () {
+                    block('');
+                    block(BANNER, 'tl-art');
+                    line('                A GOOD EYE OS  v2.0', 'tl-art tl-dim');
+                    return pause(220);
+                })
+                .then(function () { block(''); line(''); return pause(30); })
+                .then(eyeFrame('open', 120, 260))
+                .then(eyeFrame('left', 40, 70)).then(eyeFrame('right', 40, 70)).then(eyeFrame('open', 40, 80));
+            [['half', 45], ['slit', 40], ['shut', 90], ['slit', 55], ['half', 70]].forEach(function (f) { seq = seq.then(eyeFrame(f[0], 20, f[1])); });
+            seq = seq.then(eyeFrame('open', 40, 200));
+            seq.then(function () { return pause(120); })
+               .then(function () { return check('> handing off to /dev/eye0', 'ok', 80); })
+               .then(function () { return pause(40); })
+               .then(function () { return check('> window manager', 'up', 160); })
+               .then(function () { return pause(220); })
+               .then(function () { if (g === gen) light(); })
+               .catch(light);
+        }
+
+        /* any key, a tap or click anywhere, the button, or focus arriving on the page skips
+           to the desk. a browser chord is not a skip, nor are lock and function keys, nor Tab
+           itself. a key that would scroll only skips */
+        window.addEventListener('keydown', function (e) {
+            if (lit || e.ctrlKey || e.metaKey || e.altKey) return;
+            if (/^(Tab|Shift|Control|Alt|Meta|AltGraph|CapsLock|NumLock|ScrollLock|Dead|Unidentified|Process|ContextMenu|PrintScreen|F\d{1,2})$/.test(e.key)) return;
+            if (/^( |Spacebar|Enter|PageDown|PageUp|ArrowDown|ArrowUp|ArrowLeft|ArrowRight|Home|End)$/.test(e.key)) e.preventDefault();
+            light();
+        });
+        window.addEventListener('click', function () { if (!lit) light(); });
+        term.addEventListener('click', function () { light(); });
+        document.addEventListener('focusin', function (e) {
+            var t = e.target;
+            if (lit || t === skipBtn || t === document.body || t === root || t === document || t === window) return;
+            light();
+        });
+
+        /* the terminal shows its lone cursor at once, then waits (briefly) for its face, so the
+           art does not reflow mid-boot, and waits to be looked at */
+        var begun = false;
+        line('');
+        function fit() {
+            var probe = make('0000000000', 'tl-art');
+            probe.style.cssText = 'position:absolute;visibility:hidden';
+            log.appendChild(probe);
+            var em = parseFloat(getComputedStyle(probe).fontSize), w = probe.getBoundingClientRect().width;
+            log.removeChild(probe);
+            if (w > 0 && em > 0) term.style.setProperty('--col', (w / 10 / em).toFixed(4));
+        }
+        function begin() {
+            if (begun || lit) return;
+            if (!has(root, 'booting')) { light(); return; }
+            begun = true;
+            setTimeout(light, 12000);
+            clearTimeout(window.iuLast);
+            fit();
+            try { run(); } catch (e) { light(); }
+        }
+        function whenVisible(fn) {
+            if (!document.hidden) return fn();
+            document.addEventListener('visibilitychange', function f() {
+                if (!document.hidden) { document.removeEventListener('visibilitychange', f); fn(); }
+            });
+        }
+        function go() { whenVisible(begin); }
+        setTimeout(function () { if (!begun) light(); }, 20000);
+        if (document.fonts && document.fonts.load) {
+            document.fonts.load('1em VT323').then(function () { if (begun && !lit) fit(); go(); }, go);
+            setTimeout(go, 1500);
+        } else go();
+    })();
+    </script>
+</body>
+</html>
