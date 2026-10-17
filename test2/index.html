@@ -608,7 +608,8 @@
            clock. the labels stay at every width */
         @media (max-width: 37.5em) { .tb { grid-template-columns: auto 1fr auto; } .tb-mid { grid-column: 1; } .tray { display: none; } }
         @media (max-width: 30em) { .tb-i { display: none; } .tb-clk .d { display: none; } .tb-a { gap: 0; } }
-        @media (max-width: 22.5em) { .tb-clk { display: none; } }
+        @media (max-width: 22.5em) { .tb-clk { display: none; } .tb { padding-left: .5rem; padding-right: .5rem; } .tb-mid { gap: 2px; } .tb-eye { width: 2rem; padding: 0 .25rem; } .tb-a { min-width: 0; padding: 0 .25rem; } }
+        @media (max-width: 16.99em) { .tb { font-size: .625rem; } }   /* a phone at a 24px default font: the labels still fit */
 
         /* the list of windows: a flyout up from Start, Windows 11's, in the cream */
         .menu {
@@ -704,7 +705,7 @@
             .tab { border: 1px solid CanvasText; border-bottom: 0; }
             .tab::after { display: none; }
             .wbtn { color: ButtonText; }
-            .wbtn:hover, .wbtn:focus-visible { forced-color-adjust: none; background: Highlight; color: HighlightText; }
+            .wbtn:hover, .wbtn:focus-visible, .wbtn.x:hover, .wbtn.x:focus-visible { forced-color-adjust: none; background: Highlight; color: HighlightText; }
             .tb { background: Canvas; border-top: 1px solid CanvasText; }
             .tb-a::after { forced-color-adjust: none; background: CanvasText; }
             .tb-a[aria-current]::after { background: Highlight; }
