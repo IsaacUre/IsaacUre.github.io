@@ -65,6 +65,17 @@ to try things on before they move to `/comp/`.
   full original archive is, and how to check. `minecraft.js` loads them
   from beside its own script, so a copy of the game in `/comp/` would need
   its own `mc-sounds/` beside it.
+- Its textures, interface sprites, font glyphs and title wordmark are the
+  game's own too, in `tcomp/mc-tex/`, built from a Minecraft client jar by
+  `.claude/comp-tools/mc-tex/build.py` (its README says how, and what each
+  file is). Anything missing there falls back to the drawings in
+  `minecraft.js`. Block faces in the world are taken down from 16 to 12
+  texels on purpose (Isaac asked for a slightly more pixel look); `WTEX` in
+  `minecraft.js` sets it.
+- Its screens follow Java 26.3, read out of the jar's class files with
+  `.claude/comp-tools/mc-tex/jdis.py` (the README there says how). The Game
+  Menu's World Options... holds the LAN scope and the world's Allow Cheats
+  (26.3 has no Open to LAN screen); the `mc-play/creative.js` suite drives it.
 
 ## test
 

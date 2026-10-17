@@ -8590,7 +8590,9 @@ function mcPalMap(arr) { var m = {}, i; for (i = 0; i < arr.length; i++) m[MC_CH
 
 /* —— every version the dropdown knows (t: release | snapshot | beta | alpha | fools) —— */
 var MC_VERS = [
-    // Mojang went year.drop in Dec 2025, so snapshots are 26.3-snapshot-N now, not 26w29a
+    // Mojang went year.drop in Dec 2025, so snapshots are 26.4-snapshot-N now, not 26w29a
+    { id: '26.4-snapshot-1', t: 'snapshot', d: '9/22/2026' },
+    { id: '26.3', t: 'release', d: '9/15/2026', n: 'Wilderness Bound' },
     { id: '26.3-snapshot-4', t: 'snapshot', d: '7/16/2026' },
     { id: '26.3-snapshot-3', t: 'snapshot', d: '7/7/2026' },
     { id: '26.3-snapshot-2', t: 'snapshot', d: '6/30/2026' },
@@ -8675,7 +8677,7 @@ var MC_VERS = [
     { id: 'rd-132211', t: 'alpha', d: '5/13/2009' }
 ];
 function mcVer(id) { var i; for (i = 0; i < MC_VERS.length; i++) if (MC_VERS[i].id === id) return MC_VERS[i]; return null; }
-function mcLatest(t) { var i; for (i = 0; i < MC_VERS.length; i++) if (MC_VERS[i].t === t) return MC_VERS[i].id; return '26.2'; }
+function mcLatest(t) { var i; for (i = 0; i < MC_VERS.length; i++) if (MC_VERS[i].t === t) return MC_VERS[i].id; return '26.3'; }
 function mcResolveVer(v) {
     if (v === 'latest-release') return mcLatest('release');
     if (v === 'latest-snapshot') return mcLatest('snapshot');
@@ -8787,10 +8789,20 @@ var MC_ART = {
         r: ['sSssSssSsSss', 'ssSssSsssSsS', 'sysysssyyyss', 'syyyssoyyyos', 'sYyYssyyyyys', 'ssyssskyykss', 'ssossyyyyyss', 'sooosyYyyYys', 'soooosyyyyss', 'SsooossYyYss', 'sSsssSssSsSs'] },
     tiny: { p: { p: '#f3a5c0', P: '#e07fa8', k: '#26262b', y: '#f0c93a', g: '#5da03a', G: '#3a8a30', w: '#f9fffe' },
         r: ['......y.....', '.....yyy....', '......y.....', '..pppp.pppp.', '.pkppp.pkppp', '.pppppppppp.', '.pPppp.pPppp', '.pppppppppp.', '..pp.p..pp.p', 'gggggggggggg', 'GGGGGGGGGGGG'] },
+    poplar: { p: { r: '#c9472a', o: '#e8862c', y: '#e8c33a', t: '#6e4a2c', T: '#4f3420', g: '#9ab04a', s: '#d8b86a', S: '#b8964a' },
+        r: ['....yoyo....', '...oyroyoy..', '..royoryoro.', '..yoroyoryo.', '...oyroyor..', '....ryyo....', '.....tt.....', '.....tt.....', 'ssSs.tt.....', 'sSsS.tt.ggg.', 'gggggggggggg'] },
     snap: { p: { g: '#7cbd4b', G: '#5da03a', d: '#8a5f3c', D: '#6e4a2c', q: '#e8e4dc', k: '#26262b' },
         r: ['........q...', '.......qqq..', '......qqq...', 'ggGg.qqq.gGg', 'GggGqqqgggGG', 'dDddqqdddDdd', 'ddDdd.ddDddd', 'DddDdddDdddD', 'ddddDdddDddd', 'dDddddDddddd', '............'] }
 };
 var MC_NOTES = [
+    { v: '26.4-snapshot-1', name: 'Snapshot 26.4-snapshot-1', d: 'September 22, 2026', art: 'snap', b: [
+        'The Vulkan renderer is now the default.',
+        'Fixed bugs.'] },
+    { v: '26.3', name: 'Wilderness Bound', d: 'September 15, 2026', art: 'poplar', b: [
+        'Dappled forests: poplar trees in reds, oranges and yellows, with shelf mushrooms and red shrubs.',
+        'Abandoned camps, with loot, campfires, straw beds and cushions.',
+        'Stairs and slabs for every colour of wool and concrete.',
+        'New explorer maps, and portals now carry spectators.'] },
     { v: '26.3-snapshot-4', name: 'Snapshot 26.3-snapshot-4', d: 'July 16, 2026', art: 'snap', b: [
         'Experimental features are available behind a toggle.',
         'Fixed four bugs.'] },
@@ -10237,7 +10249,7 @@ var APPS = {
         render: function () { return window.MC ? window.MC.render() : '<p style="padding:24px">The world fell into the void (minecraft.js missing).</p>'; },
         // the launcher has always passed { version, installation, skin }; the title screen is the first thing that reads it
         init: function (el, id, arg) {
-            var t = el.querySelector('.win-title'); if (t) t.textContent = 'Minecraft ' + ((arg && arg.version) || '26.2');   // the client's own title: "Minecraft <version>"
+            var t = el.querySelector('.win-title'); if (t) t.textContent = 'Minecraft ' + ((arg && arg.version) || '26.3');   // the client's own title: "Minecraft <version>"
             if (window.MC) window.MC.init(el, arg);
         },
         onFocus: function (el) { var r = el.querySelector('.mc'); if (r) r.focus(); },

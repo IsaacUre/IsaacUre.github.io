@@ -2676,8 +2676,7 @@ button.cr-iu-skip { position: absolute; right: 1rem; bottom: 1rem; z-index: 11; 
 /* the HUD: every child is placed in device pixels by hudLayout()/hudTick() from
    the game's own GUI arithmetic, and every sprite is one of guiSprites() */
 .mc-cross { position: absolute; left: 0; top: 0; width: calc(var(--px) * 15); height: calc(var(--px) * 15); z-index: 4; pointer-events: none;
-    background: var(--spr-cross) 0 0 / 100% 100% no-repeat; image-rendering: pixelated; mix-blend-mode: difference; }
-.mc-ico { display: inline-block; width: 18px; height: 18px; background-size: 288px 288px; background-repeat: no-repeat; image-rendering: pixelated; }
+    background: var(--spr-cross) 0 0 / 100% 100% no-repeat; image-rendering: pixelated; mix-blend-mode: exclusion; }   /* GL's invert blend: s + d - 2sd */
 .mc-hud > * { position: absolute; left: 0; top: 0; }
 .mc-hud i { display: block; image-rendering: pixelated; }
 .mc-hbbar { width: calc(var(--px) * 182); height: calc(var(--px) * 22); background: var(--spr-hotbar) 0 0 / 100% 100% no-repeat; }
@@ -2726,10 +2725,12 @@ button.cr-iu-skip { position: absolute; right: 1rem; bottom: 1rem; z-index: 11; 
 .mc-toast .mc-tl { position: absolute; }
 /* RecipeToast: the white card, the crafting table (or furnace) small in the corner behind what was learned */
 .mc-toast.mc-rtoast::before { border-image-source: var(--spr-toast_rc); }
+/* SystemToast: its 160x64 card sliced the game's way per size, painted by nineURL() */
+.mc-toast.mc-stoast::before { border: 0; border-image: none; background: var(--nine) 0 0 / 100% 100% no-repeat; image-rendering: pixelated; }
 .mc-toast .mc-tcat { left: calc(var(--px) * 1.8); top: calc(var(--px) * 1.8); width: calc(var(--px) * 9.6); height: calc(var(--px) * 9.6); }
 .mc-actbar { opacity: 0; }
 /* the attack indicator and F3's 3D crosshair sit beside .mc-cross, outside .mc-hud, for the same inverting blend */
-.mc-atk { position: absolute; left: 0; top: 0; z-index: 4; display: none; pointer-events: none; mix-blend-mode: difference; image-rendering: pixelated; }
+.mc-atk { position: absolute; left: 0; top: 0; z-index: 4; display: none; pointer-events: none; mix-blend-mode: exclusion; image-rendering: pixelated; }
 .mc-atk.bar { display: block; width: calc(var(--px) * 16); height: calc(var(--px) * 4); background: var(--spr-atk_bg) 0 0 / 100% 100% no-repeat; }
 .mc-atk.bar b { display: block; width: 0; height: 100%; background: var(--spr-atk_fg) 0 0 / calc(var(--px) * 16) 100% no-repeat; }
 .mc-atk.full { display: block; width: calc(var(--px) * 16); height: calc(var(--px) * 16); background: var(--spr-atk_full) 0 0 / 100% 100% no-repeat; }
@@ -2899,16 +2900,40 @@ button.cr-iu-skip { position: absolute; right: 1rem; bottom: 1rem; z-index: 11; 
 .mc-advhov { position: absolute; inset: 0; pointer-events: none; }
 .mc-advhov .mc-iwt { position: absolute; }
 .mc-advbar { background-repeat: no-repeat; background-size: calc(var(--px) * 200) calc(var(--px) * 26); image-rendering: pixelated; }
-.mc-advdesc { box-sizing: border-box; border: calc(var(--px) * 2) solid transparent; border-image: var(--spr-adv_desc) 2 fill / calc(var(--px) * 2) stretch; image-rendering: pixelated; }
+.mc-advdesc { box-sizing: border-box; border: calc(var(--px) * 10) solid transparent; border-image: var(--spr-adv_desc) 10 fill / calc(var(--px) * 10) stretch; image-rendering: pixelated; }
 /* the Statistics screen: a list on the in-world list background between two separators */
-.mc-stlist { background: rgba(0, 0, 0, 0.29); }
-.mc-sep { background: linear-gradient(rgba(255, 255, 255, 0.25) 50%, rgba(0, 0, 0, 0.55) 50%); }
-.mc-sep.bot { background: linear-gradient(rgba(0, 0, 0, 0.55) 50%, rgba(255, 255, 255, 0.25) 50%); }
+.mc-stlist { background: rgba(0, 0, 0, 0.439); }   /* inworld_menu_list_background: black at 112 */
+.mc-sep { background: linear-gradient(rgba(255, 255, 255, 0.2) 50%, rgba(0, 0, 0, 0.749) 50%); }   /* header_separator: white at 51 over black at 191 */
+.mc-sep.bot { background: linear-gradient(rgba(0, 0, 0, 0.749) 50%, rgba(255, 255, 255, 0.2) 50%); }
 .mc-stclip { overflow: hidden; }
 .mc-stbody { position: absolute; left: 0; right: 0; height: 0; }
 .mc-stbody > * { position: absolute; }
 .mc-stslot { display: block; background: var(--spr-st_slot) 0 0 / 100% 100% no-repeat; image-rendering: pixelated; }
-.mc-sthead { display: block; background: 0 0 / 100% 100% no-repeat; image-rendering: pixelated; }
+.mc-sthead { display: block; background: var(--sth) 0 0 / 100% 100% no-repeat, var(--spr-st_head) 0 0 / 100% 100% no-repeat; image-rendering: pixelated; }
+/* the Items header's sort buttons: an ImageButton on statistics/header, container/slot under the pointer, the column's picture over either */
+.mc-wb.mc-stsort { width: calc(var(--px) * 18); height: calc(var(--px) * 18); }
+.mc-wb.mc-stsort::before { border: 0; border-image: none; background: var(--sth) 0 0 / 100% 100% no-repeat, var(--spr-st_head) 0 0 / 100% 100% no-repeat; }
+.mc-wb.mc-stsort:hover::before, .mc-wb.mc-stsort:focus-visible::before { background-image: var(--sth), var(--spr-st_slot); }
+.mc-stsortarrow { display: block; background: 0 0 / 100% 100% no-repeat; image-rendering: pixelated; pointer-events: none; }
+/* a MenuTabBar tab: the tab sprites, sliced 2 on top and sides and open at the bottom; the open one's inside is clear */
+.mc-wb.mc-iwtab { height: calc(var(--px) * 24); }
+.mc-wb.mc-iwtab::before { border-width: calc(var(--px) * 2) calc(var(--px) * 2) 0; border-image: var(--spr-tab) 2 2 0 2 fill / calc(var(--px) * 2) calc(var(--px) * 2) 0 repeat; }
+.mc-wb.mc-iwtab:hover::before, .mc-wb.mc-iwtab:focus-visible::before { border-image-source: var(--spr-tab_h); }
+.mc-wb.mc-iwtab.on::before { border-image-source: var(--spr-tab_s); }
+.mc-wb.mc-iwtab.on:hover::before, .mc-wb.mc-iwtab.on:focus-visible::before { border-image-source: var(--spr-tab_sh); }
+.mc-wb.mc-iwtab:disabled::before { border-image-source: var(--spr-tab); }
+.mc-iwtab .mc-tabl { position: absolute; pointer-events: none; }
+/* the Friends overlay over the blurred Game Menu */
+.mc-pause .mc-iwl.mc-under { filter: blur(var(--mblur)); pointer-events: none; }
+.mc-frdim { display: block; }
+.mc-frpanel { display: block; box-sizing: border-box; border: calc(var(--px) * 8) solid transparent; border-image: var(--spr-fr_bg) 8 fill / calc(var(--px) * 8) stretch; image-rendering: pixelated; pointer-events: none; }
+.mc-wb.mc-frtab::before { border-image: var(--spr-fr_btn) 3 fill / calc(var(--px) * 3) repeat; }
+.mc-wb.mc-frtab:hover::before, .mc-wb.mc-frtab:focus-visible::before { border-image-source: var(--spr-fr_btn_h); }
+.mc-wb.mc-frtab .mc-tabu { position: absolute; height: var(--px); background: #ffffff; pointer-events: none; }
+.mc-frsep { display: block; background: var(--spr-fr_sep) 0 0 / auto 100% repeat-x; image-rendering: pixelated; }
+.mc-frcopy { position: absolute; padding: 0; margin: 0; border: 0; background: none; font: inherit; color: transparent; cursor: default; }
+.mc-iwfield.off input { pointer-events: none; }
+.mc-iwtab .mc-tabu { position: absolute; height: var(--px); background: #ffffff; pointer-events: none; }
 .mc-stslot b { position: absolute; display: block; left: var(--px); top: var(--px); width: calc(var(--px) * 16); height: calc(var(--px) * 16); background: 0 0 / 100% 100% no-repeat; image-rendering: pixelated; }
 .mc-stbar { display: block; background: rgba(0, 0, 0, 0.6); }
 .mc-stthumb { display: block; background: #c0c0c0; box-shadow: inset calc(var(--px) * -1) calc(var(--px) * -1) 0 #808080; }
@@ -2919,7 +2944,8 @@ button.cr-iu-skip { position: absolute; right: 1rem; bottom: 1rem; z-index: 11; 
 .mc-debug .mc-dl { position: absolute; left: 0; top: 0; display: block; height: calc(var(--px) * 9); background: rgba(80, 80, 80, 0.565); }
 .mc-debug .mc-dl.blank { background: none; }
 .mc-debug .mc-dl .mt { position: absolute; left: var(--px); top: var(--px); }
-.mc-sleepov { position: absolute; inset: 0; z-index: 3; pointer-events: none; background: #101020; opacity: 0; }
+/* Gui draws the sleep sheet after the crosshair, hotbar and effects and before the chat, so it sits at their level, last in the DOM */
+.mc-sleepov { position: absolute; inset: 0; z-index: 4; pointer-events: none; background: #101020; opacity: 0; }
 
 /* ── Minecraft: creative mode ──
    The four bars that only mean anything in survival come off in creative;
@@ -3743,11 +3769,14 @@ button.nn-drow:hover { background: rgba(30,60,48,.5); }
 
 /* ═══════════════ Minecraft: chat & command console ═══════════════ */
 /* chat: ChatComponent's geometry, placed by paintChat() and chatLayout() */
-.mc-chat { position: absolute; inset: 0; z-index: 4; pointer-events: none; }
+.mc-chat { position: absolute; inset: 0; z-index: 5; pointer-events: none; }   /* over the sleep sheet, under every screen */
 .mc-chatlog { position: absolute; inset: 0; }
 .mc-cline { position: absolute; left: 0; width: calc(var(--px) * 332); height: calc(var(--px) * 9); --ca: 1; background: rgba(0, 0, 0, calc(var(--ca) * 0.5)); }
 .mc-cline .mc-cseg { position: absolute; top: var(--px); opacity: var(--ca); }
 .mc-cline .mc-ctag { position: absolute; left: 0; top: 0; width: calc(var(--px) * 2); height: 100%; background: #d0d0d0; opacity: var(--ca); }
+/* the scrollbar: at 4 + width + 4, two pixels wide, its right column 0xCCCCCC over the first, both at the bar's alpha */
+.mc-cscroll { position: absolute; left: calc(var(--px) * 328); width: calc(var(--px) * 2); background: var(--csc); pointer-events: none; }
+.mc-cscroll::after { content: ''; position: absolute; left: 50%; top: 0; width: 50%; height: 100%; background: var(--csl); }
 .mc-cseg { position: absolute; top: 0; }
 .mc .mt.ul::after, .mc .mt.ul::before { text-decoration: underline; text-decoration-thickness: var(--px); text-underline-offset: var(--px); }
 .mc-chatbar { position: absolute; display: none; height: calc(var(--px) * 12); background: rgba(0, 0, 0, 0.502); }
@@ -3772,7 +3801,7 @@ button.nn-drow:hover { background: rgba(30,60,48,.5); }
     background: rgba(0, 0, 0, 0.816); color: #aaaaaa; padding: calc(var(--px) * 2) var(--px); white-space: pre-wrap; font-family: MCUI, monospace; font-size: calc(var(--px) * 8); line-height: calc(var(--px) * 12); }
 .mc-chat.open .mc-chattab:not(:empty) { display: block; }
 /* active effects: 24x24 frames down the top-right corner */
-.mc-effects { position: absolute; inset: 0; z-index: 5; pointer-events: none; }
+.mc-effects { position: absolute; inset: 0; z-index: 4; pointer-events: none; }   /* under the sleep sheet, as the game's are */
 .mc-eff { position: absolute; left: 0; top: 0; display: block; width: calc(var(--px) * 24); height: calc(var(--px) * 24); background: var(--spr-eff_bg) 0 0 / 100% 100% no-repeat; image-rendering: pixelated; }
 .mc-eff.amb { background-image: var(--spr-eff_bg_amb); }
 .mc-eff b { position: absolute; left: calc(var(--px) * 3); top: calc(var(--px) * 3); width: calc(var(--px) * 18); height: calc(var(--px) * 18); background-size: 100% 100%; image-rendering: pixelated; }

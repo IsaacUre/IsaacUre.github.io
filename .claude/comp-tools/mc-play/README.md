@@ -1,8 +1,11 @@
 # mc-play: the Minecraft game driven like a player
 
-Playwright + headless Chromium, real events only (see ../mc-drive.js). Start
-the static server first, then run a suite; each prints PASS/FAIL lines and
-ends with ALL PASS or FAILURES: n. Screenshots land in ../shots/ (gitignored).
+Playwright + headless Chromium, real events only (see ../mc-drive.js). Where
+Playwright is not installed, mc-drive.js uses ../pwshim/ instead, which drives
+the Microsoft Edge that Windows already has over the DevTools protocol (Node 22
+or newer, nothing to install). Start the static server first, then run a suite;
+each prints PASS/FAIL lines and ends with ALL PASS or FAILURES: n. Screenshots
+land in ../shots/ (gitignored).
 
     node .claude/comp-tools/serve.js . 8571 &
     node .claude/comp-tools/mc-play/drag.js             drag-split, double-click gather, throw-outside

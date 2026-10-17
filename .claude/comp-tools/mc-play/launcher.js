@@ -43,7 +43,7 @@ async function run(forceCrash) {
       await page.waitForTimeout(400);
       ok((await toasts()).length === 0, 'no OS toast during the launch (nor for the second press)', await toasts());
       ok(!!(await page.$('.win[data-app="minecraft"]')), 'the game window opened');
-      ok((await text('.win[data-app="minecraft"] .win-title')) === 'Minecraft 26.2', 'the game window is titled with its version', await text('.win[data-app="minecraft"] .win-title'));
+      ok((await text('.win[data-app="minecraft"] .win-title')) === 'Minecraft 26.3', 'the game window is titled with its version', await text('.win[data-app="minecraft"] .win-title'));
       ok(!(await page.$('.win[data-app="mclauncher"]')), 'by default the launcher hides while the game runs');
       ok(!(await page.$('.tb-btn.app[data-app="mclauncher"].running')), 'and has no live taskbar button');
       const log = await page.evaluate(() => JSON.parse(localStorage.getItem('comp_mc_log')).text);
@@ -145,7 +145,7 @@ async function run(forceCrash) {
       const crash = await page.evaluate(() => JSON.parse(localStorage.getItem('comp_mc_crash'))[0]);
       ok(/^crash-\d{4}-\d\d-\d\d_\d\d\.\d\d\.\d\d-client\.txt$/.test(crash.n), 'crash file is named like the game names them', crash.n);
       ok(/^---- Minecraft Crash Report ----\n\/\/ I just don't know what went wrong :\(\n\nTime: \d{4}-\d\d-\d\d \d\d:\d\d:\d\d\nDescription: Initializing game/.test(crash.text), 'crash report header is the real one');
-      ok(/-- System Details --\nDetails:\n\tMinecraft Version: 26\.2\n/.test(crash.text) && /JVM Flags: 9 total; -XX:HeapDumpPath=/.test(crash.text), 'System Details block is real-shaped');
+      ok(/-- System Details --\nDetails:\n\tMinecraft Version: 26\.3\n/.test(crash.text) && /JVM Flags: 9 total; -XX:HeapDumpPath=/.test(crash.text), 'System Details block is real-shaped');
       ok(!TELLS.test(crash.text), 'crash report has none of the old tells');
       const log = await page.evaluate(() => JSON.parse(localStorage.getItem('comp_mc_log')).text);
       ok(/\[Render thread\/ERROR\]: GLFW error 65542: WGL: The driver does not appear to support OpenGL\n#@!@# Game crashed! Crash report saved to: #@!@# C:\\Users\\isaac\\AppData\\Roaming\\.minecraft\\crash-reports\\crash-/.test(log), 'the failed launch\'s log ends with the GLFW error and the game\'s crash line', log.split('\n').slice(-2));

@@ -48,7 +48,7 @@ function boot() {
   host.style.width = W + 'px';
   host.style.height = H + 'px';
   host.innerHTML = window.MC.render();
-  window.MC.init(host, { version: Q.get('ver') || '26.2', installation: 'Latest release' });
+  window.MC.init(host, { version: Q.get('ver') || '26.3', installation: 'Latest release' });
 
   /* Poll for the control, never sleep for it. Headless runs virtual time, so
      the panorama world takes tens of virtual seconds to generate and any fixed
@@ -159,7 +159,7 @@ function drawProof() {
     'Quit Game  Create New World',
     'Play Selected World  Cancel',
     "'world (1)' will be lost forever!",
-    'Survival Mode, Version: 26.2',
+    'Survival Mode, Version: 26.3',
     'Also try NINTH NIGHT!'
   ];
   for (var i = 0; i < rows.length; i++) t.text(cx, rows[i], 4, 6 + i * 12, '#ffffff');
