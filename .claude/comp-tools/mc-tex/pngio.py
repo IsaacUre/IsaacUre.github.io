@@ -40,7 +40,7 @@ def _samples(line, w, depth, per):
     """one unfiltered row as ints, per samples to a pixel"""
     n = w * per
     if depth == 8: return list(line[:n])
-    if depth == 16: return [(line[2 * k] << 8 | line[2 * k + 1]) >> 8 for k in range(n)]
+    if depth == 16: return [line[2 * k] << 8 | line[2 * k + 1] for k in range(n)]   # the full sample; the caller takes the high byte
     out = []
     mask = (1 << depth) - 1
     for byte in line:
@@ -79,6 +79,11 @@ def decode(data, name='png'):
     bpp = max(1, bits // 8)
     px = bytearray(w * h * 4)
     scale = 255 // ((1 << depth) - 1) if depth < 8 else 1
+    sh = 8 if depth == 16 else 0
+    grey_key = (trns[0] << 8 | trns[1]) if trns is not None and len(trns) >= 2 else None
+    rgb_key = struct.unpack('>HHH', trns[:6]) if trns is not None and len(trns) >= 6 else None
+
+    def norm(v): return (v >> sh) * scale   # a sample as 8 bits
 
     def emit(x, y, s, k):
         o = (y * w + x) * 4
@@ -88,17 +93,17 @@ def decode(data, name='png'):
             a = trns[idx] if trns is not None and idx < len(trns) else 255
             px[o:o + 4] = bytes((r, g, b, a))
         elif ctype == 0:
-            v = s[k] * scale
-            a = 0 if trns is not None and len(trns) >= 2 and s[k] == ((trns[0] << 8 | trns[1]) >> (8 if depth == 16 else 0)) else 255
+            v = norm(s[k])
+            a = 0 if grey_key is not None and s[k] == grey_key else 255   # the key is the raw sample at any depth
             px[o:o + 4] = bytes((v, v, v, a))
         elif ctype == 4:
-            v = s[2 * k]; px[o:o + 4] = bytes((v, v, v, s[2 * k + 1]))
+            px[o:o + 4] = bytes((norm(s[2 * k]), norm(s[2 * k]), norm(s[2 * k]), norm(s[2 * k + 1])))
         elif ctype == 2:
-            r, g, b = s[3 * k:3 * k + 3]
-            a = 0 if trns is not None and len(trns) >= 6 and depth == 8 and (r, g, b) == struct.unpack('>HHH', trns[:6]) else 255
-            px[o:o + 4] = bytes((r, g, b, a))
+            raw = tuple(s[3 * k:3 * k + 3])
+            a = 0 if rgb_key is not None and raw == rgb_key else 255
+            px[o:o + 4] = bytes((norm(raw[0]), norm(raw[1]), norm(raw[2]), a))
         else:
-            px[o:o + 4] = bytes(s[4 * k:4 * k + 4])
+            px[o:o + 4] = bytes(norm(v) for v in s[4 * k:4 * k + 4])
 
     if inter == 0:
         rowlen = (w * bits + 7) // 8
@@ -178,12 +183,13 @@ def blit(dst, src, dx, dy, over=False):
 
 
 def scale_nearest(img, nw, nh):
+    """nearest neighbour, sampling at pixel centres as GL_NEAREST does"""
     w, h, px = img
     out = bytearray(nw * nh * 4)
     for y in range(nh):
-        sy = y * h // nh
+        sy = min(h - 1, (2 * y + 1) * h // (2 * nh))
         for x in range(nw):
-            sx = x * w // nw
+            sx = min(w - 1, (2 * x + 1) * w // (2 * nw))
             s = (sy * w + sx) * 4
             d = (y * nw + x) * 4
             out[d:d + 4] = px[s:s + 4]

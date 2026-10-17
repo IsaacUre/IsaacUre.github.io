@@ -3,11 +3,13 @@
 Takes what tcomp/minecraft.js draws out of a Minecraft Java client jar and
 packs it into tcomp/mc-tex/:
 
-  tiles.png   block, item, particle and sky textures, 16x16 cells, 16 a row
+  tiles.png   block, item and particle textures, 16x16 cells, 16 a row
   gui.png     the interface sprites at their own sizes, shelf-packed
   logo.png    the title wordmark (1024x256) over the edition line (512x64)
+  sky.png     the sun and the eight moon phases, 32x32 each, in one strip
   tex.json    where each of those is, by the name minecraft.js knows it by,
-              the glyphs of font/ascii.png, and the jar's version
+              the glyphs of font/ascii.png and of the enchanting runes
+              (ascii_sga.png), and the jar's version
 
     python .claude/comp-tools/mc-tex/build.py [client.jar]
 
@@ -36,8 +38,9 @@ def It(n): return 'item/' + n
 
 # ── the atlas tiles, by minecraft.js's names ──────────────────────────────
 # A spec is a texture path, or a dict: src (path), tint, layers [(path, tint)],
-# frame (of an animation strip), crop [x, y, w, h], mode ('crack' | 'opaque'),
-# chest ('front' | 'side' | 'top').
+# crop [x, y, w, h], mode ('crack' | 'opaque'), alt (a spec used when src is
+# missing from the jar), chest ('front' | 'side' | 'west' | 'back' | 'top' |
+# 'bottom'), bed (a bed side, rebuilt for a half block).
 TILES = {
     'grass_top': {'src': B('grass_block_top'), 'tint': GRASS},
     'grass_side': {'layers': [(B('grass_block_side'), None), (B('grass_block_side_overlay'), GRASS)]},
@@ -55,22 +58,25 @@ TILES = {
     'farmland': B('farmland_moist'), 'wool': B('white_wool'),
     'carrot0': B('carrots_stage0'), 'carrot1': B('carrots_stage1'), 'carrot2': B('carrots_stage2'), 'carrot3': B('carrots_stage3'),
     'potato0': B('potatoes_stage0'), 'potato1': B('potatoes_stage1'), 'potato2': B('potatoes_stage2'), 'potato3': B('potatoes_stage3'),
-    'bed_top': B('red_bed_head_up'), 'bed_side': B('red_bed_head_east'),
+    'bed_top': B('red_bed_head_up'), 'bed_bottom': B('bed_down'),
+    'bed_east': {'bed': B('red_bed_head_east')}, 'bed_west': {'bed': B('red_bed_head_west')},
+    'bed_north': {'bed': B('bed_head_north')}, 'bed_south': {'bed': B('red_bed_foot_south')},
     'tnt_side': B('tnt_side'), 'tnt_top': B('tnt_top'), 'tnt_bottom': B('tnt_bottom'),
-    'chest_front': {'chest': 'front'}, 'chest_side': {'chest': 'side'}, 'chest_top': {'chest': 'top'},
+    'chest_front': {'chest': 'front'}, 'chest_side': {'chest': 'side'}, 'chest_west': {'chest': 'west'},
+    'chest_back': {'chest': 'back'}, 'chest_top': {'chest': 'top'}, 'chest_bottom': {'chest': 'bottom'},
     'cactus_top': B('cactus_top'), 'cactus_side': B('cactus_side'), 'cactus_bottom': B('cactus_bottom'),
-    'sugarcane': B('sugar_cane'),
+    'sugarcane': {'src': B('sugar_cane'), 'tint': GRASS},   # green in the jar, and still tinted by the game
     'pumpkin_top': B('pumpkin_top'), 'pumpkin_side': B('pumpkin_side'), 'melon_top': B('melon_top'), 'melon_side': B('melon_side'),
     'pstem': {'src': B('pumpkin_stem'), 'tint': STEM}, 'mstem': {'src': B('melon_stem'), 'tint': STEM},
     'obsidian': B('obsidian'), 'stonebrick': B('stone_bricks'),
     'sandstone_top': B('sandstone_top'), 'sandstone_side': B('sandstone'), 'sandstone_bottom': B('sandstone_bottom'),
     'bricks': B('bricks'), 'bookshelf_side': B('bookshelf'), 'ladder': B('ladder'), 'rlamp': B('redstone_lamp_on'),
-    'cake_top': B('cake_top'), 'cake_side': B('cake_side'), 'cake_inner': B('cake_inner'),
+    'cake_top': B('cake_top'), 'cake_side': B('cake_side'), 'cake_inner': B('cake_inner'), 'cake_bottom': B('cake_bottom'),
     'etable_top': B('enchanting_table_top'), 'etable_side': B('enchanting_table_side'), 'etable_bottom': B('enchanting_table_bottom'),
-    'anvil_top': B('anvil_top'), 'anvil_side': B('anvil'),
+    'anvil_top': {'src': B('anvil_top'), 'crop': [3, 0, 10, 16]}, 'anvil_side': B('anvil'),   # the top is 10 wide in the game's model; ours is a full cube
     'mushroom': B('brown_mushroom'), 'mushroom_r': B('red_mushroom'), 'clay': B('clay'),
     'fire0': B('fire_0'), 'fire1': B('fire_1'),
-    'puff': {'src': 'particle/generic_7'}, 'h_heart': {'src': 'particle/heart'},
+    'puff': {'src': 'particle/generic_7'}, 'h_heart': {'src': 'particle/heart'}, 'crit': {'src': 'particle/critical_hit'},
     # items
     'i_stick': It('stick'), 'i_coal': It('coal'), 'i_charcoal': It('charcoal'), 'i_iron': It('iron_ingot'), 'i_gold': It('gold_ingot'),
     'i_diamond': It('diamond'), 'i_flint': It('flint'), 'i_feather': It('feather'), 'i_leather': It('leather'), 'i_string': It('string'),
@@ -88,7 +94,7 @@ TILES = {
     'i_golden_apple': It('golden_apple'), 'i_cookie': It('cookie'), 'i_melon_slice': It('melon_slice'), 'i_pumpkin_pie': It('pumpkin_pie'),
     'i_bowl': It('bowl'), 'i_mushroom_stew': It('mushroom_stew'), 'i_clay_ball': It('clay_ball'), 'i_brick': It('brick'),
     'i_seeds_pumpkin': It('pumpkin_seeds'), 'i_seeds_melon': It('melon_seeds'), 'i_cake': It('cake'),
-    'i_compass': It('compass_16'), 'i_oak_sign': It('oak_sign'),
+    'i_compass': It('compass_16'), 'i_oak_sign': It('oak_sign'), 'i_sugarcane': It('sugar_cane'),
 }
 for k in range(10):   # the game's own alpha form of each crack stage (its order-independent-transparency set), else derived from the multiply one
     TILES['crack%d' % k] = {'src': B('destroy_oit_stage_%d' % k), 'alt': {'src': B('destroy_stage_%d' % k), 'mode': 'crack'}}
@@ -107,9 +113,10 @@ for mob in ['pig', 'cow', 'sheep', 'chicken', 'squid', 'zombie', 'skeleton', 'cr
     TILES['i_egg_' + mob] = It(mob + '_spawn_egg')
 
 # ── the GUI sprites ───────────────────────────────────────────────────────
-# A spec is a path under gui/, or a dict: src, crop, pad [w, h, x, y] (the
-# sprite in a bigger clear box), tile2 (a 16x16 texture at two GUI pixels a
-# texel, as the menus draw it), chest (the chest screen's two halves).
+# A spec is a path under gui/, or a dict: src, crop, stretch [w, h] (resized
+# the way GuiSpriteScaling's default stretch does), tile2 (a 16x16 texture at
+# two GUI pixels a texel, as the menus draw it), chest (the chest screen's two
+# halves), tex (a path under textures/ rather than gui/), invert (1 - v).
 S = 'sprites/'
 GUI = {
     'hotbar': S + 'hud/hotbar', 'hotbar_sel': S + 'hud/hotbar_selection', 'hotbar_off': S + 'hud/hotbar_offhand_left',
@@ -158,11 +165,24 @@ GUI = {
     'toast_sys': S + 'toast/system',
     # SpriteIconButton draws these as 15x15 and GuiSpriteScaling's default stretches them to fit
     'ic_bug': {'src': S + 'pause_menu/bug', 'stretch': [15, 15]},
+    'ic_feedback': {'src': S + 'pause_menu/social_interactions', 'stretch': [15, 15]},
+    'ic_friends': {'src': S + 'friends/friends', 'stretch': [15, 15]},
     'ic_report': {'src': S + 'pause_menu/player_reporting', 'stretch': [15, 15]},
+    'hsep': 'header_separator', 'fsep': 'footer_separator',
+    # the difficulty lock (World Options), the layout scroller, the popup dialog, the friends overlay
+    'lock_on': S + 'widget/locked_button', 'lock_on_h': S + 'widget/locked_button_highlighted', 'lock_on_d': S + 'widget/locked_button_disabled',
+    'lock_off': S + 'widget/unlocked_button', 'lock_off_h': S + 'widget/unlocked_button_highlighted', 'lock_off_d': S + 'widget/unlocked_button_disabled',
+    'sb_bg': S + 'widget/scroller_background', 'sb': S + 'widget/scroller',
+    'popup_bg': S + 'popup/background', 'fr_bg': S + 'friends/background',
+    'fr_btn': S + 'friends/button', 'fr_btn_h': S + 'friends/button_highlighted', 'fr_btn_d': S + 'friends/button_disabled',
+    'ic_sendreq': S + 'friends/send_request', 'fr_sep': S + 'friends/list_separator_top',
+    'wl_join': S + 'world_list/join', 'wl_join_h': S + 'world_list/join_highlighted',
+    'vignette': {'tex': 'misc/vignette', 'invert': True},   # the game darkens by it; as a layer to multiply by, inverted
     'ic_lang': S + 'icon/language', 'ic_acc': S + 'icon/accessibility',
     'adv_win': {'src': 'advancements/window', 'crop': [0, 0, 252, 140]},
-    'adv_bar_o': S + 'advancements/box_obtained', 'adv_bar_u': S + 'advancements/box_unobtained',
-    'st_slot': S + 'container/slot', 'st_mined': S + 'statistics/block_mined', 'st_broken': S + 'statistics/item_broken',
+    'adv_bar_o': S + 'advancements/box_obtained', 'adv_bar_u': S + 'advancements/box_unobtained', 'adv_desc': S + 'advancements/title_box',
+    'st_slot': S + 'container/slot', 'st_head': S + 'statistics/header', 'st_sort_up': S + 'statistics/sort_up', 'st_sort_down': S + 'statistics/sort_down',
+    'st_mined': S + 'statistics/block_mined', 'st_broken': S + 'statistics/item_broken',
     'st_crafted': S + 'statistics/item_crafted', 'st_used': S + 'statistics/item_used', 'st_picked': S + 'statistics/item_picked_up',
     'st_dropped': S + 'statistics/item_dropped',
 }
@@ -175,6 +195,11 @@ GUI['h_bl'] = S + 'hud/heart/full_blinking'
 GUI['h_bl_half'] = S + 'hud/heart/half_blinking'
 GUI['h_bl_hc'] = S + 'hud/heart/hardcore_full_blinking'
 GUI['h_bl_hc_half'] = S + 'hud/heart/hardcore_half_blinking'
+for k, pre in [('p', 'poisoned_'), ('w', 'withered_'), ('fz', 'frozen_'), ('a', 'absorbing_')]:   # the lost health flashes in the heart's own kind
+    GUI['h_%s_bl' % k] = S + 'hud/heart/%sfull_blinking' % pre
+    GUI['h_%s_bl_half' % k] = S + 'hud/heart/%shalf_blinking' % pre
+    GUI['h_%s_bl_hc' % k] = S + 'hud/heart/%shardcore_full_blinking' % pre
+    GUI['h_%s_bl_hc_half' % k] = S + 'hud/heart/%shardcore_half_blinking' % pre
 for n in range(1, 4):
     GUI['lvl_%d' % n] = S + 'container/enchanting_table/level_%d' % n
     GUI['lvl_%dd' % n] = S + 'container/enchanting_table/level_%d_disabled' % n
@@ -218,7 +243,7 @@ def tint(img, h):
     w, hh, px = img
     out = bytearray(px)
     for i in range(0, len(out), 4):
-        out[i] = out[i] * r // 255; out[i + 1] = out[i + 1] * g // 255; out[i + 2] = out[i + 2] * b // 255
+        out[i] = (out[i] * r + 127) // 255; out[i + 1] = (out[i + 1] * g + 127) // 255; out[i + 2] = (out[i + 2] * b + 127) // 255
     return [w, hh, out]
 
 
@@ -253,24 +278,51 @@ def crack(img):
     return [w, h, out]
 
 
+def fliph(img):
+    w, h, px = img
+    out = bytearray(len(px))
+    for y in range(h):
+        for x in range(w):
+            out[(y * w + x) * 4:(y * w + x) * 4 + 4] = px[(y * w + w - 1 - x) * 4:(y * w + w - x) * 4]
+    return [w, h, out]
+
+
 def chest_face(jar, which):
     """The chest is a block entity in the game, a 14x14x14 box with a lid, drawn
     from entity/chest/normal.png. Our chest is a full cube, so each face is that
-    box's face (lid over base, the latch on the front) opened out to 16x16."""
+    box's face (lid over base, the latch on the front) opened out to 16x16.
+    ModelPart's polygons put a region's top row at the bottom of its side face
+    and its right edge at the viewer's left, so the side regions turn half a
+    turn; the lid's top reads its v from the front."""
     ch = jar.img('entity/chest/normal')
     if ch is None: return None
-    if which == 'top': return pngio.scale_nearest(pngio.crop(ch, 28, 0, 14, 14), 16, 16)
-    x = 42 if which == 'front' else 28
+    if which == 'top': return pngio.scale_nearest(flipv(pngio.crop(ch, 28, 0, 14, 14)), 16, 16)
+    if which == 'bottom': return pngio.scale_nearest(pngio.crop(ch, 14, 19, 14, 14), 16, 16)
+    x = {'front': 42, 'side': 28, 'west': 0, 'back': 14}[which]
     f = pngio.new(14, 14)
-    pngio.blit(f, flipv(pngio.crop(ch, x, 33, 14, 10)), 0, 4)   # the base's top row is behind the lid
-    pngio.blit(f, flipv(pngio.crop(ch, x, 14, 14, 5)), 0, 0)
-    if which == 'front': pngio.blit(f, flipv(pngio.crop(ch, 4, 1, 2, 4)), 6, 3)
+    pngio.blit(f, fliph(flipv(pngio.crop(ch, x, 33, 14, 10))), 0, 4)   # the base's top row is behind the lid
+    pngio.blit(f, fliph(flipv(pngio.crop(ch, x, 14, 14, 5))), 0, 0)
+    if which == 'front': pngio.blit(f, fliph(flipv(pngio.crop(ch, 4, 1, 2, 4))), 6, 3)
     return pngio.scale_nearest(f, 16, 16)
+
+
+def bed_side(jar, path):
+    """A bed side for our half block, which shows a tile's lower eight rows: the
+    six-row body (the game's rows 7 to 12) and, under it, two rows of the leg
+    atlas's outer legs, where the game has three-texel legs at the corners."""
+    src = jar.img(path)
+    if src is None: return None
+    out = pngio.new(16, 16)
+    pngio.blit(out, pngio.crop(src, 0, 7, 16, 6), 0, 8)
+    pngio.blit(out, pngio.crop(src, 0, 13, 3, 2), 0, 14)
+    pngio.blit(out, pngio.crop(src, 13, 13, 3, 2), 13, 14)
+    return out
 
 
 def build_tile(jar, name, spec):
     if isinstance(spec, str): spec = {'src': spec}
     if 'chest' in spec: return chest_face(jar, spec['chest'])
+    if 'bed' in spec: return bed_side(jar, spec['bed'])
     if 'layers' in spec:
         out = None
         for path, tn in spec['layers']:
@@ -284,8 +336,9 @@ def build_tile(jar, name, spec):
     im = jar.img(spec['src'])
     if im is None:
         if 'alt' not in spec: return None
-        jar.missing.remove(spec['src'])   # the texture it stands in for is not missing, only preferred
-        return build_tile(jar, name, spec['alt'])
+        alt = build_tile(jar, name, spec['alt'])
+        if alt is not None: jar.missing.remove(spec['src'])   # the preferred file is only missing if its stand-in is too
+        return alt
     if 'crop' in spec: im = pngio.crop(im, *spec['crop'])
     im = to16(im)
     if spec.get('tint'): im = tint(im, spec['tint'])
@@ -308,8 +361,11 @@ def build_gui(jar, name, spec):
     if 'tile2' in spec:   # drawn at 32 GUI pixels a repeat: every texel two pixels square
         g = jar.img('gui/' + spec['tile2'])
         return pngio.scale_nearest(g, g[0] * 2, g[1] * 2) if g else None
-    g = jar.img('gui/' + spec['src'])
+    g = jar.img(spec['tex']) if 'tex' in spec else jar.img('gui/' + spec['src'])
     if g is None: return None
+    if spec.get('invert'):
+        px = g[2]
+        for i in range(0, len(px), 4): px[i] = 255 - px[i]; px[i + 1] = 255 - px[i + 1]; px[i + 2] = 255 - px[i + 2]
     if 'crop' in spec: g = pngio.crop(g, *spec['crop'])
     if 'stretch' in spec: g = pngio.scale_nearest(g, spec['stretch'][0], spec['stretch'][1])
     return g
@@ -342,18 +398,79 @@ def font(jar, name='ascii', codes=range(33, 127)):
     return out
 
 
+# What minecraft.js can spell beyond ASCII: the Latin letters its language
+# names and splashes use, and the symbols of its own lines. Each is taken from
+# the first bitmap provider of font/include/default.json that has it, which is
+# how the game resolves a glyph too (accented.png before ascii.png).
+EXTRA_CHARS = '\u00a1\u00bf\u00ab\u00bb\u00b0\u00b1\u00b2\u00b3\u00b7\u00d7\u00f7\u2248\u2260\u2264\u2265\u2212\u2026\u2190\u2192\u2194\u03c0' + \
+    ''.join(chr(c) for c in range(0xC0, 0x100) if c not in (0xD7, 0xF7))
+
+
+def font_extra(jar, chars, top=1):
+    """the glyphs of `chars`, found through font/include/default.json's bitmap
+    providers in the game's order. accented.png's cells are 12 rows with the
+    baseline three lower than ascii.png's (ascent 10 against 7), so a glyph's
+    rows come out relative to the ascii cell, and one that reaches the row
+    above it (the marks of the lower-case letters do) starts with '-1:', the
+    offset mfParse reads. `top` is how many rows above the cell minecraft.js
+    keeps; a glyph needing more is left to the drawn font and reported."""
+    try:
+        inc = json.loads(jar.z.read('assets/minecraft/font/include/default.json'))
+    except KeyError:
+        return {}
+    provs = [p for p in inc.get('providers', []) if p.get('type') == 'bitmap' and p.get('chars')]
+    imgs, out = {}, {}
+    for ch in chars:
+        for p in provs:
+            rows = p['chars']
+            hit = next(((r, line.index(ch)) for r, line in enumerate(rows) if ch in line), None)
+            if hit is None: continue
+            name = p['file'].split(':')[-1]
+            if name.endswith('.png'): name = name[:-4]
+            if name not in imgs: imgs[name] = jar.img(name)
+            a = imgs[name]
+            if a is None: break
+            w, h, px = a
+            cw, chh = w // len(rows[0]), h // len(rows)
+            shift = p.get('ascent', 7) - 7        # the cell row that lines up with ascii's row 0
+            r0, c0 = hit[0] * chh, hit[1] * cw
+            lines, width, lost = [], 0, False
+            for y in range(chh):
+                row = ''
+                for x in range(cw):
+                    on = px[((r0 + y) * w + c0 + x) * 4 + 3] > 127
+                    row += '#' if on else '.'
+                    if on: width = max(width, x + 1)
+                rr = y - shift
+                if rr < -top or rr >= 9:
+                    if '#' in row: lost = True
+                    continue
+                lines.append((rr, row))
+            if not width: break                  # an empty cell: the game shows nothing either
+            if lost:
+                print('font: %r reaches outside the rows minecraft.js keeps; left to its drawing' % ch)
+                break
+            lines = [(rr, row[:width]) for rr, row in lines]
+            while lines and '#' not in lines[-1][1]: lines.pop()
+            while lines and lines[0][0] < 0 and '#' not in lines[0][1]: lines.pop(0)
+            if lines:
+                out[ch] = ('%d:' % lines[0][0] if lines[0][0] else '') + '/'.join(row for _, row in lines)
+            break
+    return out
+
+
 def pack(items):
     """shelf-pack [(name, img)] into one sheet, tallest first; returns (sheet, {name: [x, y, w, h]})"""
     items = sorted(items, key=lambda it: (-it[1][1], -it[1][0], it[0]))
-    W = 512
+    W = max([512] + [im[0] for _, im in items])
     x = y = shelf = 0
     at = {}
     for name, im in items:
         w, h = im[0], im[1]
-        if x + w > W: x = 0; y += shelf + 1; shelf = 0
+        if x > 0 and x + w > W: x = 0; y += shelf + 1; shelf = 0
         at[name] = [x, y, w, h]
         x += w + 1; shelf = max(shelf, h)
-    sheet = pngio.new(W, y + shelf)
+    sheet = pngio.new(W, max(1, y + shelf))
     for name, im in items:
         pngio.blit(sheet, im, at[name][0], at[name][1])
     return sheet, at
@@ -386,7 +503,7 @@ def main():
         k = len(tiles)
         pngio.blit(sheet, im, (k % 16) * 16, (k // 16) * 16)
         tiles[n] = k
-    sheet = pngio.crop(sheet, 0, 0, 256, 16 * ((len(tiles) + 15) // 16))
+    sheet = pngio.crop(sheet, 0, 0, 256, max(16, 16 * ((len(tiles) + 15) // 16)))
     pngio.write(os.path.join(OUT, 'tiles.png'), sheet)
 
     gui = []
@@ -399,6 +516,9 @@ def main():
     gsheet, gat = pack(gui)
     pngio.write(os.path.join(OUT, 'gui.png'), gsheet)
 
+    for stale in ('logo.png', 'sky.png'):   # not left over from an earlier jar if this one lacks them
+        try: os.remove(os.path.join(OUT, stale))
+        except OSError: pass
     logo = jar.img('gui/title/minecraft'); ed = jar.img('gui/title/edition')
     lg = {}
     if logo and ed:
@@ -421,8 +541,14 @@ def main():
             x += m[0]
         pngio.write(os.path.join(OUT, 'sky.png'), strip)
 
-    man = {'version': jar.version(), 'tiles': tiles, 'gui': dict(sorted(gat.items())), 'logo': lg, 'sky': sky,
-           'font': font(jar), 'sga': font(jar, 'ascii_sga', range(97, 123))}
+    # the launch overlay's Mojang Studios logo, as the jar has it (two halves, one above the other)
+    mj = jar.img('gui/title/mojangstudios')
+    mjp = os.path.join(OUT, 'mojang.png')
+    if mj is not None: pngio.write(mjp, mj)
+    elif os.path.exists(mjp): os.remove(mjp)
+
+    man = {'version': jar.version(), 'tiles': tiles, 'gui': dict(sorted(gat.items())), 'logo': lg, 'sky': sky, 'mojang': [mj[0], mj[1]] if mj else None,
+           'font': dict(font(jar), **font_extra(jar, EXTRA_CHARS)), 'sga': font(jar, 'ascii_sga', range(97, 123))}
     with open(os.path.join(OUT, 'tex.json'), 'w', newline='\n') as f:
         json.dump(man, f, separators=(',', ':'), sort_keys=False)
     print('jar %s (version %s)' % (jar_path, man['version']))

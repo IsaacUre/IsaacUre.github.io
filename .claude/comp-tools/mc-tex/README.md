@@ -30,8 +30,12 @@ It runs in a few seconds and prints anything it looked for and could not find.
   Advancements and Statistics pieces, the menu backgrounds.
 - `logo.png`: `gui/title/minecraft.png` (1024x256) over `gui/title/edition.png` (512x64).
 - `tex.json`: the jar's version, `tiles` (name to cell), `gui` (name to `[x, y, w, h]`), `logo`,
-  `sky` (where the sun and each moon sit in `sky.png`), `font`: the glyphs of `font/ascii.png`
-  for `!` to `~` as rows of `#` and `.`, and `sga`: `font/ascii_sga.png`'s `a` to `z`, the
+  `sky` (where the sun and each moon sit in `sky.png`), `mojang` (the size of `mojang.png`, the launch
+  overlay's Mojang Studios logo, written straight from the jar), `font`: the glyphs of `font/ascii.png`
+  for `!` to `~` as rows of `#` and `.`, plus the Latin-1 letters and the few symbols
+  `minecraft.js` can spell (`EXTRA_CHARS`), each from the first bitmap provider of
+  `font/include/default.json` that has it; `accented.png`'s lower-case marks sit on the row
+  above the ASCII cell, which such a glyph names with a `-1:` prefix; and `sga`: `font/ascii_sga.png`'s `a` to `z`, the
   enchanting table's runes.
 
 Every name is the one `minecraft.js` gives the texture: a `tile('name', ...)` in `buildAtlas()`
@@ -78,3 +82,12 @@ inventory figure wears), painted into the atlas at boot and again when the skin 
 Mob skins (our mobs are boxes, not the game's models, so the skins would not map), rain and snow,
 the enchantment glint, the panorama (the title screen shows a live world instead) and the
 enchanting table's book. The launcher window in `comp.js` still lists 26.2 as the newest release.
+
+## Reading the game's code
+
+`jdis.py` is a standard-library disassembler for the class files in the same jar (26.x ships them unobfuscated):
+
+    python -I jdis.py net/minecraft/client/gui/screens/PauseScreen            # lists its fields and methods
+    python -I jdis.py net/minecraft/client/gui/screens/PauseScreen init extract*   # those methods' bytecode, constants resolved
+
+Method names match exactly, or by prefix with a trailing `*`. Sizes, positions, colours and orderings in `minecraft.js` were read out of it this way.
