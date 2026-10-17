@@ -267,7 +267,7 @@
         }
         .nt { display: grid; grid-template-columns: 31px 31px; place-items: center; flex: none; height: 1.5rem; margin: 0 0 .25rem 4px; color: #fff; pointer-events: none; }
         .nt svg { display: block; }
-        @media (max-width: 459.98px) { .nt { display: none; } }
+        @supports not (container-type: inline-size) { @media (max-width: 453.98px) { .nt { display: none; } } }
         @container win (max-width: 419.98px) { .nt { display: none; } }
         /* the caption buttons: minimize, maximize (restore, once it fills the screen), close.
            46px wide and the row's height, a 10px glyph each, white in the front window and
@@ -297,10 +297,7 @@
         /* a mouse drags a window by its tab row (the script); a finger scrolls the page, on a
            touchscreen laptop too (the script checks the pointer) */
         @media (pointer: fine) and (min-width: 760px) {
-            .js .wb { cursor: grab; }
-            .js .wb:active { cursor: grabbing; }
-            .js .wbtn { cursor: default; }
-            .js .win.drag .wb { cursor: grabbing; }
+            .js .wb, .js .wbtn, .js .win.drag .wb { cursor: default; }   /* Windows shows the arrow over a title bar */
         }
         /* the body: a shell's screen */
         .wd { flex: 1 1 auto; min-height: 0; padding: 8px; container-type: inline-size; }   /* Windows Terminal's padding */
@@ -346,7 +343,7 @@
         /* ── what a shell prints ── */
         /* the prompt, PowerShell's own, all of it dim; then what was typed, a shade brighter,
            and a parameter dim again (PSReadLine's roles, in the page's palette) */
-        .ln { white-space: pre-wrap; overflow-wrap: anywhere; }
+        .ln { white-space: pre-wrap; overflow-wrap: anywhere; line-break: anywhere; }   /* a long line breaks at the column, as a terminal's does */
         .pr { color: var(--term-dim); }
         .cm, .cmd { color: var(--term-hi); }
         .op { color: var(--term-dim); }
@@ -372,11 +369,12 @@
             text-shadow: 0 0 10px rgba(230, 228, 210, .25);
         }
         .banner .b1, .banner b { display: inline-block; vertical-align: top; white-space: pre; }   /* the two words: 32 columns, a column's gap, then 19 */
-        .banner b { font-weight: normal; color: var(--term-warn); margin-left: 1ch; }
+        .name { font-weight: normal; }                     /* VT323 has one weight; the h1 would get a faux bold */
+        .banner b { color: var(--term-warn); margin-left: 1ch; }
         /* a window too narrow for the banner at 14px breaks it the way figlet breaks a line
            wider than the terminal: the second word under the first. the viewport query is
-           for browsers without container queries */
-        @media (max-width: 369.98px) { .banner { font-size: min(1.1rem, calc((100cqw - 1.2rem) / 12.8)); } .banner b { display: block; margin-left: 0; } }
+           only for browsers without container queries (a phone's one column: 360px) */
+        @supports not (container-type: inline-size) { @media (max-width: 359.98px) { .banner { font-size: min(1.1rem, calc((100cqw - 1.2rem) / 12.8)); } .banner b { display: block; margin-left: 0; } } }
         @container (max-width: 309.98px) { .banner { font-size: min(1.1rem, calc((100cqw - 1.2rem) / 12.8)); } .banner b { display: block; margin-left: 0; } }
         .term-row { display: flex; align-items: baseline; flex-wrap: wrap; }
         .term-row .pr { white-space: nowrap; margin-right: 1ch; }
@@ -395,16 +393,15 @@
         .answer { margin-top: .25em; font-size: var(--fs-ans); line-height: 1.2; max-width: 46ch; }
         .wd .term-row + .answer { margin-top: .25em; }
         .up .answer { opacity: 0; animation: appear .1s steps(1, start) 1.05s forwards; }
-        .up #terminal .wait { opacity: 0; animation: appear .1s steps(1, start) 1.15s forwards; }
         #terminal.up .wait { opacity: 0; animation: appear .1s steps(1, start) 1.15s forwards; }
 
         /* fastfetch: the logo, and beside it user@host, a rule, the facts, and the palette */
         .nf { display: grid; grid-template-columns: 96px minmax(0, 1fr); column-gap: 2.5ch; align-items: start; margin-top: .3em; }
         /* a window too narrow for the logo beside the facts (under 348px the facts' column is
            under 232px and every fact wraps) puts the logo above them. the viewport query is
-           for browsers without container queries */
-        @media (max-width: 439.98px) { .nf { grid-template-columns: minmax(0, 1fr); row-gap: .5em; } .eye { margin: -16px 0 -20px; } }
-        @container (max-width: 347.98px) { .nf { grid-template-columns: minmax(0, 1fr); row-gap: .5em; } .eye { margin: -16px 0 -20px; } }   /* the drawing is rows 10 to 36 of 48: the blank rows above and below come off */
+           only for browsers without container queries (a phone's one column: 398px) */
+        @supports not (container-type: inline-size) { @media (max-width: 397.98px) { .nf { grid-template-columns: minmax(0, 1fr); row-gap: .5em; } .nf .eye { margin: -16px 0 -20px; } } }
+        @container (max-width: 347.98px) { .nf { grid-template-columns: minmax(0, 1fr); row-gap: .5em; } .nf .eye { margin: -16px 0 -20px; } }   /* the drawing is rows 10 to 36 of 48: the blank rows above and below come off */
         .eye { width: 96px; height: 96px; color: var(--term-fg); margin-top: .35em; }
         .eye svg, .foot-eye svg, .tb-eye svg { width: 100%; height: 100%; display: block; shape-rendering: crispEdges; }
         .up .eye svg { animation: bootOpen .5s ease .35s both; }
@@ -502,7 +499,7 @@
         .shot.done .shot-gb, .no-js .shot-gb { display: none; }
         .cap { margin-top: .35em; color: var(--term-dim); width: min(100%, 360px); }
 
-        /* cat on a markdown file: the hash of a heading in red, the rest as it is */
+        /* type on a markdown file: the hash of a heading in red, the rest as it is */
         .md { font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
         .md .h { color: var(--term-warn); }
         .md .hd { color: var(--term-hi); }
@@ -522,7 +519,7 @@
            dashes in the table-header colour, the cells plain; a name that does not fit ends in
            an ellipsis, as a cell does. each name is the way to that window */
         .wd .ln + .ls-h { margin-top: 1.25em; }
-        .wd .ls-h + .ls-h, .ls { margin-top: 0; }
+        .wd .ls-h + .ls-h, .wd .ls-h + .ls { margin-top: 0; }
         .ls-h { color: var(--term-warn); white-space: pre; }
         .ls { list-style: none; }
         .ls li { display: grid; grid-template-columns: 11ch minmax(0, 1fr); column-gap: 1ch; }
@@ -559,10 +556,11 @@
             position: fixed; left: 0; right: 0; bottom: 0; z-index: 70;
             height: calc(var(--tbh) + env(safe-area-inset-bottom, 0px));
             padding: 0 max(.75rem, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px) max(.75rem, env(safe-area-inset-left, 0px));
-            display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
+            display: grid; grid-template-columns: 1fr auto 1fr; column-gap: .75rem; align-items: center;
             background: var(--term-fg); color: var(--ink);
             font: .75rem/1rem var(--font-ui);
-            text-shadow: none;
+            text-shadow: none; cursor: default;
+            user-select: none; -webkit-user-select: none;
             overflow-x: auto; scrollbar-width: none;      /* the last resort: it scrolls sideways rather than lose a button past the edge */
         }
         .tb::-webkit-scrollbar { display: none; }
@@ -571,7 +569,7 @@
         .tb-mid { grid-column: 2; display: flex; align-items: center; gap: 4px; }
         .tb-eye {
             width: 2.75rem; height: 2.5rem; flex: none; padding: 0 .625rem;
-            background: transparent; border: 0; border-radius: 4px; color: var(--ink); cursor: pointer;
+            background: transparent; border: 0; border-radius: 4px; color: var(--ink); cursor: default;
             --bg: #e6e4d2;
             -webkit-tap-highlight-color: transparent;
         }
@@ -581,9 +579,9 @@
         @media (hover: hover) { .tb-eye:hover { background: rgba(0, 0, 0, .035); --bg: #dedccb; } .tb-eye[aria-expanded="true"]:hover { background: rgba(255, 255, 255, .5); --bg: #f3f2e9; } }
         .no-js .tb-eye { display: none; }
         .tb-a {
-            position: relative; display: flex; align-items: center; gap: 8px;
+            position: relative; display: flex; align-items: center; justify-content: center; gap: 8px;
             height: 2.5rem; min-width: 2.75rem; padding: 0 .5rem; border-radius: 4px;
-            color: var(--ink); text-decoration: none; white-space: nowrap;
+            color: var(--ink); text-decoration: none; white-space: nowrap; cursor: default;
         }
         .tb-i { width: 1.5rem; height: 1.5rem; flex: none; }
         @media (hover: hover) { .tb-a:hover { background: rgba(0, 0, 0, .035); } }
@@ -604,9 +602,10 @@
         .tb-clk .t, .tb-clk .d { display: block; }
         .tb-clk:empty { display: none; }
         /* what the bar gives up as it narrows, in ems so a larger default size does the same:
-           it moves to the left and loses the tray, then the icons and the date, then the
-           clock. the labels stay at every width */
-        @media (max-width: 37.5em) { .tb { grid-template-columns: auto 1fr auto; } .tb-mid { grid-column: 1; } .tray { display: none; } }
+           it moves to the left and loses the tray (under 800px the middle could not be
+           centred clear of the clock anyway), then the icons and the date, then the clock.
+           the labels stay at every width */
+        @media (max-width: 50em) { .tb { grid-template-columns: auto 1fr auto; column-gap: 0; } .tb-mid { grid-column: 1; } .tray { display: none; } }
         @media (max-width: 30em) { .tb-i { display: none; } .tb-clk .d { display: none; } .tb-a { gap: 0; } }
         @media (max-width: 22.5em) { .tb-clk { display: none; } .tb { padding-left: .5rem; padding-right: .5rem; } .tb-mid { gap: 2px; } .tb-eye { width: 2rem; padding: 0 .25rem; } .tb-a { min-width: 0; padding: 0 .25rem; } }
         @media (max-width: 16.99em) { .tb { font-size: .625rem; } }   /* a phone at a 24px default font: the labels still fit */
@@ -624,7 +623,7 @@
             padding: 2px 0;
             font: .75rem/1rem var(--font-ui); text-align: left; text-shadow: none;
         }
-        @media (max-width: 37.5em) { .menu { left: max(.5rem, env(safe-area-inset-left, 0px)); transform: none; } }
+        @media (max-width: 50em) { .menu { left: max(.5rem, env(safe-area-inset-left, 0px)); transform: none; } }
         .menu[hidden] { display: none; }
         .menu ul { list-style: none; }
         .menu-h { font-weight: 600; padding: .75rem .75rem .25rem; }
@@ -639,7 +638,8 @@
         .menu button:active { background: rgba(0, 0, 0, .024); }
         .menu button:focus-visible { outline-offset: -3px; }
         .menu .ti { color: var(--ink); margin: 0; }
-        .menu .st { margin-left: auto; color: rgba(28, 29, 23, .62); }
+        .menu [data-act] .ti { width: 12px; height: 12px; margin: 0 2px; }
+        .menu .st { margin-left: auto; color: rgba(28, 29, 23, .66); }
         .menu hr { border: 0; border-top: 1px solid rgba(0, 0, 0, .059); margin: 2px 0; }
 
         /* ── the foot ── */
@@ -708,11 +708,12 @@
             .wbtn:hover, .wbtn:focus-visible, .wbtn.x:hover, .wbtn.x:focus-visible { forced-color-adjust: none; background: Highlight; color: HighlightText; }
             .tb { background: Canvas; border-top: 1px solid CanvasText; }
             .tb-a::after { forced-color-adjust: none; background: CanvasText; }
-            .tb-a[aria-current]::after { background: Highlight; }
+            .tb-a[aria-current]::after { background: HighlightText; }
+            .tb-a[aria-current]:focus-visible { outline-color: HighlightText; }
             .tb-i { display: none; }
             .ac { stroke: currentColor; }
             .blocks i { border: 1px solid CanvasText; }
-            .tb-a[aria-current], .menu button:hover, .tb-eye[aria-expanded="true"] { forced-color-adjust: none; background: Highlight; color: HighlightText; }
+            .tb-a[aria-current], .menu button:hover, .tb-eye[aria-expanded="true"], .tb-eye[aria-expanded="true"]:hover { forced-color-adjust: none; background: Highlight; color: HighlightText; }
         }
 
         /* ── reduced motion: no boot, no pops, everything lands in its final state and
@@ -759,7 +760,6 @@
             .tile { grid-template-columns: 1fr; }
             .box { border: 1px solid #000; }
             .box-h { background: #fff; }
-            a[data-print-url]::after { content: " (" attr(href) ")"; font-size: .85em; overflow-wrap: anywhere; }
             .foot { padding: 1rem 0 0; }
         }
     </style>
@@ -1073,6 +1073,7 @@
                 <g fill="currentColor"><rect x="8" y="20" width="8" height="2"/><rect x="18" y="20" width="14" height="2"/><rect x="6" y="22" width="8" height="2"/><rect x="18" y="22" width="8" height="2"/><rect x="30" y="22" width="6" height="2"/><rect x="18" y="24" width="14" height="2"/><rect x="20" y="26" width="12" height="2"/><rect x="20" y="28" width="10" height="2"/><g class="eye-glint"><rect x="16" y="20" width="2" height="2"/><rect x="14" y="22" width="4" height="2"/></g></g>
             </svg>
         </button>
+            <div class="menu" id="menu" hidden></div>
             <a class="tb-a" href="#terminal" data-sec="home"><svg class="tb-i" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><use href="#i-wt"/></svg>home</a>
             <a class="tb-a" href="#about" data-sec="about"><svg class="tb-i" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><use href="#i-wt"/></svg>about</a>
             <a class="tb-a" href="#log" data-sec="log"><svg class="tb-i" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><use href="#i-wt"/></svg>log</a>
@@ -1082,7 +1083,6 @@
             <span class="tray" aria-hidden="true"><span class="tr-chev"><svg viewBox="0 0 10 6" width="10" height="6"><use href="#g-up"/></svg></span><span class="tr-om"><svg viewBox="0 0 16 16" width="16" height="16"><use href="#g-wifi"/></svg><svg viewBox="0 0 16 16" width="16" height="16"><use href="#g-vol"/></svg></span></span>
             <span class="tb-clk" id="clk"></span>
         </div>
-        <div class="menu" id="menu" hidden></div>
     </nav>
 
     <script>
@@ -1110,7 +1110,7 @@
         function gone(w) { return w.hidden || has(w, 'mini'); }   // closed, or minimized to the taskbar
 
         /* ---- the desktop ---- */
-        var STAG = 110, zTop = 1, active = null, nextAt = 0, io = null, queued = false, footSeen = false, maxed = null;
+        var STAG = 110, zTop = 1, active = null, nextAt = 0, io = null, queued = false, footSeen = false, maxed = null, picked = false;
 
         function raise(w) {                // to the front, and its title bar lights up
             if (!w || gone(w) || has(w, 'down') || (maxed && w !== maxed) || active === w) return;
@@ -1149,11 +1149,11 @@
             if (reduce) { revealAll(); if (!maxed) raise(wins[0]); return; }   // and the login shell is the front window: its cursor is the one shown
             for (i = 0; i < wins.length; i++) {
                 w = wins[i]; r = w.getBoundingClientRect();
-                if (r.top < vh - 16 && r.bottom > 0) (function (w, k) { setTimeout(function () { up(w); }, k * STAG); })(w, n++);
+                if (r.top < vh - 16 && r.bottom > 0) (function (w, k) { setTimeout(function () { up(w, picked); }, k * STAG); })(w, n++);   // quiet once the reader has picked one
                 else later.push(w);
             }
             nextAt = +new Date() + n * STAG;
-            setTimeout(function () { if (!maxed) raise(wins[0]); }, n * STAG + 120);   // then the login shell is the front window: its cursor blinks
+            setTimeout(function () { if (!maxed && !picked) raise(wins[0]); }, n * STAG + 120);   // then the login shell is the front window: its cursor blinks
             if (later.length && window.IntersectionObserver) {
                 io = new IntersectionObserver(seen, { rootMargin: '0px 0px -' + ((tb ? tb.offsetHeight : 0) + 24) + 'px 0px' });
                 for (i = 0; i < later.length; i++) io.observe(later[i]);
@@ -1177,16 +1177,22 @@
                 ways back ---- */
         function pressed(w, cls, on) { var b = w.querySelector('.wbtn.' + cls); if (b) b.setAttribute('aria-pressed', on ? 'true' : 'false'); }
         function secLink(w) { return tb.querySelector('.tb-a[data-sec="' + w.getAttribute('data-sec') + '"]'); }
-        function mini(w) {                 // to the taskbar: the window shrinks toward its button and keeps its place on the desk
-            if (gone(w)) return;
+        function focusOn(to, kb) {         // the keyboard moves on; it scrolls only for a keyboard, and only when its target is off the screen
+            var q = to.getBoundingClientRect(), stay = !kb || (q.top >= 0 && q.bottom <= seeable());
+            try { to.focus({ preventScroll: stay }); } catch (e) { to.focus(); }
+        }
+        function mini(w, kb) {             // to the taskbar: the window shrinks toward its button and keeps its place on the desk
+            if (gone(w) || w.iuMin) return;
+            w.iuMin = true;
             if (has(w, 'maxi')) maxi(w, false);
             if (active === w) { drop(w, 'top'); active = null; }
-            var to = w.contains(document.activeElement) ? nextFocus(w) : null, done = false, anim = null;
+            var nf = nextFocus(w), to = w.contains(document.activeElement) ? nf : null, done = false, anim = null;
             function finish() {
-                if (done) return; done = true;
+                if (done) return; done = true; w.iuMin = false;
                 add(w, 'mini');
                 if (anim) try { anim.cancel(); } catch (e) {}
-                if (to) try { to.focus({ preventScroll: true }); } catch (e) { to.focus(); }
+                if (to) focusOn(to, kb);
+                else if (!active && nf !== eyeBtn) raise(winOf(nf));   // the next window is the active one, as Windows has it
                 buildMenu(); queue();
             }
             if (!reduce && !(rmq && rmq.matches) && w.animate && has(w, 'on')) {
@@ -1231,33 +1237,41 @@
             for (j = i - 1; j >= 0; j--) if (!gone(wins[j]) && (b = wins[j].querySelector('.wbtn'))) return b;
             return eyeBtn;
         }
-        function close(w) {
+        function close(w, kb) {
             if (w.hidden) return;
             if (has(w, 'mini')) { drop(w, 'mini'); drop(w, 'on'); }   // a minimized one closes at once
             if (has(w, 'maxi')) maxi(w, false);
             if (active === w) { drop(w, 'top'); active = null; }
             w.iuKeep = false;
-            function gone() {
+            function away() {
                 if (w.iuKeep) { w.iuKeep = false; drop(w, 'down'); return; }   // opened again before it went
-                var to = w.contains(document.activeElement) ? nextFocus(w) : null;   // the keyboard, if it is still in here, moves on
+                var nf = nextFocus(w), to = w.contains(document.activeElement) ? nf : null;   // the keyboard, if it is still in here, moves on
                 w.hidden = true; drop(w, 'down'); if (io) try { io.unobserve(w); } catch (e) {}
                 settleAll();                   // the grid has reflowed: a dragged window stays on the desk
-                if (to) try { to.focus({ preventScroll: true }); } catch (e) { to.focus(); }
+                if (to) focusOn(to, kb);
+                else if (!active && nf !== eyeBtn) raise(winOf(nf));
                 buildMenu(); queue();
             }
-            if (reduce || !has(w, 'on') || has(w, 'pend')) { gone(); return; }
+            if (reduce || !has(w, 'on') || has(w, 'pend')) { away(); return; }
             add(w, 'down');
             var done = false;
-            function once() { if (done) return; done = true; w.removeEventListener('animationend', once); gone(); }
+            function once() { if (done) return; done = true; w.removeEventListener('animationend', once); away(); }
             w.addEventListener('animationend', once);
             setTimeout(once, 300);
         }
-        function open(w, jump) {           // back from closed or minimized, popped, in view, in front
+        function popBack(w) {              // a minimized window comes back as it was: the frame pops, nothing inside runs again
+            drop(w, 'mini'); w.iuMin = false;
+            if (reduce || (rmq && rmq.matches) || !w.animate) return;
+            var cs = getComputedStyle(w), nx = parseFloat(cs.getPropertyValue('--nx')) || 0, ny = parseFloat(cs.getPropertyValue('--ny')) || 0, t = 'translate(' + nx + 'px,' + ny + 'px)';
+            try { w.animate([{ opacity: 0, transform: t + ' scale(.96)' }, { opacity: 1, transform: t + ' scale(1)' }], { duration: 200, easing: 'cubic-bezier(.1, .9, .2, 1)' }); } catch (e) {}
+        }
+        function open(w, jump, quiet) {    // back from closed or minimized, popped, in view, in front (quiet: not in front)
+            picked = true;
             if (has(w, 'down')) { w.iuKeep = true; drop(w, 'down'); }
             if (w.hidden) { w.hidden = false; add(w, 'pend'); drop(w, 'on'); drop(w, 'up'); settleAll(); }
-            if (has(w, 'mini')) { drop(w, 'mini'); add(w, 'pend'); drop(w, 'on'); drop(w, 'up'); }
-            if (has(w, 'pend')) { if (reduce) up(w); else setTimeout(function () { up(w); }, jump ? 160 : 0); }
-            raise(w);
+            if (has(w, 'mini')) popBack(w);
+            if (has(w, 'pend')) { if (reduce) up(w, quiet); else setTimeout(function () { up(w, quiet); }, jump ? 160 : 0); }
+            if (!quiet) raise(w);
             if (jump) try { w.scrollIntoView({ block: w.offsetHeight > seeable() - 32 ? 'start' : 'nearest' }); } catch (e) { w.scrollIntoView(); }
             buildMenu();
         }
@@ -1267,11 +1281,11 @@
             for (i = 0; i < wins.length; i++) {
                 w = wins[i];
                 w.style.removeProperty('--nx'); w.style.removeProperty('--ny'); w.style.zIndex = '';
-                if (gone(w)) { w.hidden = false; drop(w, 'mini'); drop(w, 'on'); drop(w, 'up'); add(w, 'pend'); }
+                if (gone(w)) { w.hidden = false; drop(w, 'mini'); w.iuMin = false; drop(w, 'on'); drop(w, 'up'); add(w, 'pend'); }
             }
-            zTop = 1; if (active) { drop(active, 'top'); active = null; }
+            zTop = 1; picked = false; if (active) { drop(active, 'top'); active = null; }
             for (i = 0; i < wins.length; i++) if (has(wins[i], 'pend')) (function (w, k) { setTimeout(function () { up(w, true); }, k * 70); })(wins[i], i);
-            setTimeout(function () { if (!maxed) raise(wins[0]); }, wins.length * 70 + 120);
+            setTimeout(function () { if (!maxed && !picked) raise(wins[0]); }, wins.length * 70 + 120);
             buildMenu(); queue();
         }
         /* a double tap's second tap lands where the first did; if the first closed or minimized
@@ -1287,9 +1301,9 @@
         desk.addEventListener('click', function (e) {
             var b = e.target.closest ? e.target.closest('.wbtn') : null, w = winOf(b);
             if (!b || !w || twice(w, e)) return;
-            if (has(b, 'mn')) mini(w);
+            if (has(b, 'mn')) mini(w, e.detail === 0);
             else if (has(b, 'mx')) maxi(w);
-            else if (has(b, 'x')) close(w);
+            else if (has(b, 'x')) close(w, e.detail === 0);
         });
         desk.addEventListener('dblclick', function (e) {
             var bar = e.target.closest ? e.target.closest('.wb') : null, w = winOf(bar), b = w && w.querySelector('.wbtn.mx');
@@ -1298,9 +1312,10 @@
             maxi(w);
         });
         // a click or a tap anywhere on a window brings it to the front; so does focus landing in it
-        desk.addEventListener('pointerdown', function (e) { var w = winOf(e.target); if (w && !has(w, 'pend') && e.pointerType === 'mouse') raise(w); });
-        desk.addEventListener('click', function (e) { var w = winOf(e.target); if (w && !has(w, 'pend')) raise(w); });
-        desk.addEventListener('focusin', function (e) { var w = winOf(e.target); if (w) { if (has(w, 'pend')) up(w); raise(w); } });
+        function onBtn(e) { return !!(e.target.closest && e.target.closest('.wc')); }
+        desk.addEventListener('pointerdown', function (e) { var w = winOf(e.target); if (w && !has(w, 'pend') && e.pointerType === 'mouse' && !onBtn(e)) { picked = true; raise(w); } });
+        desk.addEventListener('click', function (e) { var w = winOf(e.target); if (w && !has(w, 'pend') && !onBtn(e)) { picked = true; raise(w); } });
+        desk.addEventListener('focusin', function (e) { var w = winOf(e.target); if (w) { picked = true; if (has(w, 'pend')) up(w); raise(w); } });
         document.addEventListener('keydown', function (e) {
             if (e.key !== 'Escape') return;
             if (!menu.hidden) showMenu(false);
@@ -1314,7 +1329,7 @@
             w = document.getElementById(a.getAttribute('href').slice(1));
             if (!w || !has(w, 'win')) return;
             if (maxed && maxed !== w) maxi(maxed, false);
-            if (has(a, 'tb-a')) { sec = a.getAttribute('data-sec'); for (i = 0; i < wins.length; i++) if (wins[i] !== w && has(wins[i], 'mini') && wins[i].getAttribute('data-sec') === sec) open(wins[i], false); }
+            if (has(a, 'tb-a')) { sec = a.getAttribute('data-sec'); for (i = 0; i < wins.length; i++) if (wins[i] !== w && has(wins[i], 'mini') && wins[i].getAttribute('data-sec') === sec) open(wins[i], false, true); }
             open(w, false);
         });
 
@@ -1329,6 +1344,7 @@
             var bar = e.target.closest ? e.target.closest('.wb') : null, w = winOf(bar);
             if (!bar || !w || e.pointerType !== 'mouse' || e.button !== 0 || !fine || !fine.matches || e.target.closest('.wbtn') || has(w, 'maxi') || has(w, 'pend')) return;
             e.preventDefault();
+            if (!w.contains(document.activeElement)) try { desk.focus({ preventScroll: true }); } catch (x) { desk.focus(); }   // the keyboard leaves the window it was in
             settle(w);
             var cs = getComputedStyle(w), x0 = parseFloat(cs.getPropertyValue('--nx')) || 0, y0 = parseFloat(cs.getPropertyValue('--ny')) || 0,
                 sx = e.clientX, sy = e.clientY, id = e.pointerId, moved = false,
@@ -1433,8 +1449,8 @@
         }
         document.addEventListener('visibilitychange', function () { if (!document.hidden) tick(); });   // a timer sleeps with the device; the clock catches up
 
-        /* ---- the pass: once a frame of scrolling. the command for the part of the page you are
-                in, the foot's eye when you reach it, the pictures when you reach them ---- */
+        /* ---- the pass: once a frame of scrolling. the taskbar button for the part of the page
+                you are in, the foot's eye when you reach it, the pictures when you reach them ---- */
         var links = tb.querySelectorAll('.tb-a'), S = 'steps(1, end)', LIDS = {
             'bf-half': [{ opacity: 1, easing: S }, { opacity: 0, offset: .15, easing: S }, { opacity: 1, offset: .76667, easing: S }, { opacity: 0 }],
             'bf-slit': [{ opacity: 0, easing: S }, { opacity: 1, offset: .15, easing: S }, { opacity: 0, offset: .28333, easing: S }, { opacity: 1, offset: .58333, easing: S }, { opacity: 0, offset: .76667, easing: S }, { opacity: 0 }],
@@ -1568,8 +1584,9 @@
                 w = wins[i]; if (gone(w)) continue;
                 if (w.getBoundingClientRect().top < vh * .4) cur = w.getAttribute('data-sec');
             }
-            if ((window.pageYOffset || doc.scrollTop) < wins[0].offsetHeight / 2) cur = 'home';   /* the login shell's half: home */
-            if (vh + (window.pageYOffset || doc.scrollTop) >= doc.scrollHeight - 2) cur = 'contact';
+            if (!gone(wins[0]) && (window.pageYOffset || doc.scrollTop) < wins[0].offsetHeight / 2) cur = 'home';   /* the login shell's half: home */
+            var ct = document.getElementById('contact');
+            if (ct && !gone(ct) && vh + (window.pageYOffset || doc.scrollTop) >= doc.scrollHeight - 2) cur = 'contact';
             for (i = 0; i < links.length; i++) {
                 if (links[i].getAttribute('data-sec') === cur) links[i].setAttribute('aria-current', 'true');
                 else links[i].removeAttribute('aria-current');

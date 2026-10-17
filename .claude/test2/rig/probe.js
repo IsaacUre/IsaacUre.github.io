@@ -469,10 +469,10 @@ function capLook(page, sel) {               // a caption button after a tap: its
         var fc = await p.evaluate(function () {
             function sys(k) { var d = document.createElement('div'); d.style.cssText = 'position:absolute;width:1px;height:1px;forced-color-adjust:none;background-color:' + k; document.body.appendChild(d); var v = getComputedStyle(d).backgroundColor; d.remove(); return v; }
             var cur = document.querySelector('.tb-a[aria-current]'), tab = document.querySelector('#readme .tab');
-            return { border: getComputedStyle(document.getElementById('readme')).borderTopStyle, tab: tab ? getComputedStyle(tab).borderTopStyle : 'missing', hover: getComputedStyle(document.querySelector('#readme .wbtn.mn')).backgroundColor, highlight: sys('Highlight'), canvas: sys('Canvas'), current: cur && cur.getAttribute('data-sec'), pill: cur ? getComputedStyle(cur, '::after').backgroundColor : null, tb: getComputedStyle(document.getElementById('tb')).backgroundColor };
+            return { border: getComputedStyle(document.getElementById('readme')).borderTopStyle, tab: tab ? getComputedStyle(tab).borderTopStyle : 'missing', hover: getComputedStyle(document.querySelector('#readme .wbtn.mn')).backgroundColor, highlight: sys('Highlight'), canvas: sys('Canvas'), current: cur && cur.getAttribute('data-sec'), pill: cur ? getComputedStyle(cur, '::after').backgroundColor : null, curBg: cur ? getComputedStyle(cur).backgroundColor : null, tb: getComputedStyle(document.getElementById('tb')).backgroundColor };
         });
         var pillA = rgba(fc.pill), tbA = rgba(fc.tb);
-        rec('T12b forced colours: windows and tabs keep a solid edge, a hovered caption button is Highlight, the current pill is not Canvas, the taskbar is opaque', fc.border === 'solid' && fc.tab === 'solid' && fc.hover === fc.highlight && !!pillA && pillA[3] > 0 && fc.pill !== fc.canvas && !!tbA && tbA[3] === 1, fc);
+        rec('T12b forced colours: windows and tabs keep a solid edge, a hovered caption button is Highlight, the current pill stands out from its button, the taskbar is opaque', fc.border === 'solid' && fc.tab === 'solid' && fc.hover === fc.highlight && !!pillA && pillA[3] > 0 && fc.pill !== fc.curBg && !!tbA && tbA[3] === 1, fc);
         await p.mouse.move(5, 5);
         rec('T12c no page errors', errs.length === 0, errs);
         await c.close();
