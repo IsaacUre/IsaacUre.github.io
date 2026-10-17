@@ -104,51 +104,77 @@ the root. (It was at `/new/` at first; that path is gone, not redirected.)
 
 ## test2
 
-`/test2/` is the same page as `/test/` rebuilt as a desk of terminal windows:
-the holding page's boot hands off to a desk with a tmux status line along the
-bottom, and every part of the page is a terminal window (the glass, the three
-lights, the shadow, VT323 inside) that ran one command: a login shell that
-prints the banner and answers `whoami`, `neofetch` with the eye for a logo,
-`imgcat headshot.jpg`, `cat readme.txt`, `ls interests/` and a `cat` for each,
-`ls -lt log/` and a `cat` for each line, and `cat contact`. It lives at
-isaacure.com/test2 until Isaac picks one of the two.
+`/test2/` is the same page as `/test/` rebuilt as a Windows 11 desk of Windows
+Terminal windows: the holding page's boot hands off to a desk with a taskbar
+along the bottom, and every part of the page is a Windows Terminal window (the
+tab row with its one tab, the caption buttons at the right, VT323 inside)
+running PowerShell 7, each of which ran one command: a login shell that prints
+`PowerShell 7.6.7` and the banner and answers `whoami`, `fastfetch` with the eye
+for a logo, `chafa headshot.jpg`, `type readme.md`, `dir interests -Name` and
+a `type` for each, `Import-Csv log.csv` and a `type` for each line, and
+`type contact.txt`. It lives at isaacure.com/test2 until Isaac picks one of the
+two. The chrome follows Windows Terminal's source (the 40px tab row, the tab
+filled with the terminal's black, the 46px caption buttons and their colours,
+Campbell's `#0c0c0c`, the bar cursor) and PowerShell's (the `PowerShell 7.6.7`
+line, the default prompt, the aliases `type`, `dir`, `start`, `Import-Csv`);
+the cream taskbar, the red accent frame and the palette inside are the page's
+own choices, not Windows'.
 
 - Everything in `## test` holds here too: unlisted (`noindex, nofollow`, no
   canonical or `og:url`, no link to it), only facts he has confirmed (the copy
-  is `/test/`'s, word for word; the file names, the prompt and the window
-  titles are chrome, not facts), absolute paths, the loops kept (neofetch's
-  eye blinks on the 8s loop, the front window's cursor blinks), everything
-  else still within five seconds, and the finished page with nothing moving
-  under reduced motion or without JS. GitHub stays off the contact list.
-- The prompt is zsh's on the console: `isaac@ureboy ~ %`. The windows' titles
-  are plain names (`whoami`, `neofetch`, `readme.txt`, `log/rice-racing.md`);
-  the command is the first line inside, and `/test/`'s section titles are
-  comments at the prompt above it (`# who is this guy`, `# effectively mini
-  resume`, `# say hi`). Prompt lines are `aria-hidden` decoration except where
-  they hold a link or Isaac's words (the comments, with the `# ` hidden). The
-  lights are in macOS's order (close, shade, zoom) and are 24px targets drawn
-  as 12px lights; a window at the back has grey ones. The log entries' `# Org`
-  lines are `h3`s under the window's `h2`.
+  is `/test/`'s, word for word; the file names, the prompt, the version and the
+  window titles are chrome, not facts), absolute paths, the loops kept
+  (fastfetch's eye blinks on the 8s loop, the front window's cursor blinks),
+  everything else still within five seconds, and the finished page with
+  nothing moving under reduced motion or without JS. GitHub stays off the
+  contact list.
+- The prompt is PowerShell's default, `PS C:\Users\isaac> `, all of it dim. The
+  windows' titles are plain names (`whoami`, `fastfetch`, `readme.md`,
+  `log\rice-racing.md`, `contact.txt`); paths use backslashes; the command is
+  the first line inside, and `/test/`'s section titles are comments at the
+  prompt above it (`# who is this guy`, `# effectively mini resume`,
+  `# say hi`). Prompt lines are `aria-hidden` decoration except where they hold
+  a link or Isaac's words (the comments, with the `# ` hidden). The next prompt
+  follows the output on the very next line; the only blank lines are the ones
+  in the files and the ones the csv's table prints around itself. The log
+  entries' `# Org` lines are `h3`s under the window's `h2`.
+- The caption buttons are Windows': Minimize, Maximize, Close at the right of
+  the tab row, 46px wide and the row's full height, with 10px glyphs; Maximize
+  alone is a toggle (`aria-pressed`) and only its glyph changes to restore. The
+  front window has the accent frame (Tornado Red), a `#2e2e2e` row, white
+  glyphs and the only cursor; a window at the back has a `#333333` row, grey
+  glyphs and no cursor (Windows Terminal hides an unfocused terminal's cursor).
+  The tab is filled with the terminal's black and runs into the body; the `+`
+  and `v` after it are drawn and inert.
 - Two things break by the window's width, not the viewport's (container
-  queries on `.wd`, with a viewport query as the fallback): neofetch puts the
-  eye above the facts in a window under 348px, and the banner breaks into its
-  two words, URE under ISAAC, the way figlet wraps, in one under 310px.
+  queries, with a viewport query as the fallback): fastfetch puts the eye above
+  the facts in a window under 348px, and the banner breaks into its two words,
+  URE under ISAAC, the way figlet wraps, in one under 310px. The `+` and `v` go
+  in a window under 420px.
 - The windows are a CSS grid (twelve columns on a desktop, six on a tablet,
   one on a phone) with a whole-pixel nudge each (`--nx`, `--ny`) so they
   overlap at the edges. The script only adds behaviour: the cascade (what is
   in view pops in order and lights up in turn; the rest when scrolled to,
-  without taking the front), raise on click, drag by the title bar with a
-  mouse (never a finger, a touchscreen laptop's included: a finger scrolls),
-  shade, fill the screen (the green light or Escape restores; the rest goes
-  `inert`), close, and the eye's window list in the status line, which also
-  resets the desk. The cursor is solid and blinking in the front window and
-  hollow in the rest; the login shell is the front window at rest (after the
-  cascade, and after a reset), so its cursor is the one blinking. The status
-  line marks `0:home` while the login shell's top half is on screen, the
-  section in the upper part of the screen below that, and `3:contact` at the
-  bottom; it gives up the hostname, the session, the clock and then the
-  numbers as it narrows, in ems. The skip link goes to the status line, the
-  one thing after the windows.
+  without taking the front), raise on click, drag by the tab row with a mouse
+  (never a finger, a touchscreen laptop's included: a finger scrolls),
+  minimize to the taskbar (the window shrinks toward its taskbar button and
+  keeps its place on the desk, unseen; on a phone it is simply gone; its
+  section's taskbar button, the window list, a link to it or Reset brings it
+  back), maximize (Maximize again, a double-click on the row or Escape
+  restores; the rest goes `inert`), close (the grid reflows), and the eye's
+  window list in the taskbar, which also resets the desk. The login shell is
+  the front window at rest (after the cascade, after a reset, and under reduced
+  motion), so its cursor is the one blinking.
+- The taskbar is Windows 11's in the LCD's cream: Start (the eye) and a
+  labelled button per part of the page in the middle, the tray and the
+  two-line clock at the right, the running indicator under a part with windows
+  up and the long accent one under the part you are in (`aria-current`, set by
+  scroll: `home` while the login shell's top half is on screen, the part in the
+  upper half of the screen below that, `contact` at the bottom). As it narrows,
+  in ems, it moves left and loses the tray, then the icons and the date, then
+  the clock; the labels always stay. The skip link goes to the taskbar, the one
+  thing after the windows. The window list is a flyout up from Start with a
+  row per window and its state in words.
 - The boot terminal is `.term`; a terminal window is `.win`. Don't reuse the
   boot's class for a window: its rule once leaked onto every terminal window
   (16px text, `touch-action: none`).
