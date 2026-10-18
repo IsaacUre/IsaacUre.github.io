@@ -7,8 +7,9 @@
    the full survival loop (punch tree → craft → mine → smelt →
    build → don't get creeper'd), boxy mobs, hunger, farming, beds,
    TNT, and the game's own sounds and C418 soundtrack, from
-   mc-sounds/ beside this file. Every texture is still painted onto
-   the atlas at boot.
+   mc-sounds/ beside this file, and its own textures, font and
+   interface sprites from mc-tex/ (anything missing from there is
+   painted here at boot instead).
    Interface (for the launcher app): window.MC = { render(), init(el),
    close() → raw hours, ach() → {n,total,list}, hours() }.
    ═══════════════════════════════════════════════════════════════ */
@@ -20,7 +21,7 @@
     var SEA = 40;                          // water table
     var SNOWY = 62;                        // grass wears snow above this
     var VIEW = 4;                          // load radius, in chunks
-    var DAY_MS = 7 * 60000, NIGHT_MS = 5 * 60000, CYCLE = DAY_MS + NIGHT_MS;
+    var DAY_MS = 10 * 60000, NIGHT_MS = 10 * 60000, CYCLE = DAY_MS + NIGHT_MS;   // the game's twenty-minute day: 24000 ticks of 50 ms, sunrise at 0, sunset at 12000
     var GRAV = 32, JUMP = 8.94, TERMV = 78;
     var WALK = 4.317, SPRINT = 5.612, SNEAK = 1.31, SWIM = 2.2;
     var FLY = 10.89, FLY_SPRINT = 21.78;   // creative flight, at the real game's speeds
@@ -37,6 +38,64 @@
     var RT = null;     // runtime (rebuilt every open)
     var EMPTY_KEYS = {};   // stand-in for RT.keys while a GUI suppresses movement
 
+    /* ── the game's own textures ─────────────────────────────────
+       mc-tex/ beside this file holds what .claude/comp-tools/mc-tex/build.py
+       takes out of the game's jar: tiles.png (block, item and particle
+       textures in 16x16 cells), gui.png (the interface sprites at their own
+       sizes), logo.png (the title and edition wordmarks) and tex.json, which
+       says where each is by the name this file knows it by and carries the
+       font's glyphs. They start loading as soon as this script is read; the
+       game waits for them (eight seconds at most) before it builds anything,
+       and paints whatever they lack itself. */
+    var TEX_BASE = (function () {
+        var s = document.currentScript;
+        try { return new URL('mc-tex/', s && s.src ? s.src : location.href).href; } catch (e) { return 'mc-tex/'; }
+    })();
+    var MTEX = { ok: false, done: false, gen: 0, wait: [], timer: null };
+    (function () {
+        function img(name) {
+            return new Promise(function (res) {
+                var im = new Image();
+                im.onload = function () { res(im); };
+                im.onerror = function () { res(null); };
+                im.src = TEX_BASE + name;
+            });
+        }
+        function finish() {   // whoever is waiting goes on, with whatever has come
+            if (MTEX.done) return;
+            MTEX.done = true;
+            var w = MTEX.wait; MTEX.wait = [];
+            w.forEach(function (f) { f(); });
+        }
+        /* init() waits here, eight seconds at most from the moment it first asks;
+           files that land after that are kept for the next game opened in this
+           page, which rebuilds whatever it had cached from the drawings */
+        MTEX.waitFor = function (f) {
+            if (MTEX.done) { f(); return; }
+            MTEX.wait.push(f);
+            if (!MTEX.timer) MTEX.timer = setTimeout(finish, 8000);
+        };
+        Promise.all([
+            fetch(TEX_BASE + 'tex.json').then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; }),
+            img('tiles.png'), img('gui.png'), img('logo.png'), img('sky.png'), img('mojang.png')
+        ]).then(function (a) {
+            // the manifest must be the shape build.py writes; each image stands on its own, so a failed one drops only its part
+            var man = a[0];
+            if (!man || typeof man !== 'object' || man instanceof Array || !man.tiles || typeof man.tiles !== 'object' || !man.gui || typeof man.gui !== 'object') man = null;
+            MTEX.man = man; MTEX.tiles = man && a[1]; MTEX.gui = man && a[2]; MTEX.logoImg = man && a[3]; MTEX.skyImg = man && a[4]; MTEX.mojangImg = man && a[5];
+            MTEX.ok = !!man; MTEX.gen++;
+            finish();
+        }, finish);
+    })();
+    // what mc-tex has, part by part; the game draws the rest itself
+    function texTile(name) { return MTEX.tiles && MTEX.man.tiles[name] != null ? MTEX.man.tiles[name] : null; }
+    function texGui(name) { return MTEX.gui ? MTEX.man.gui[name] : null; }
+    function texFont() { return MTEX.man && MTEX.man.font && typeof MTEX.man.font === 'object' ? MTEX.man.font : null; }
+    function texSga() { return MTEX.man && MTEX.man.sga && typeof MTEX.man.sga === 'object' ? MTEX.man.sga : null; }
+    function texLogo() { var L = MTEX.logoImg && MTEX.man.logo; return L && L.logo && L.edition && L.logo.length === 4 && L.edition.length === 4 ? L : null; }
+    function texSky() { var M = MTEX.skyImg && MTEX.man.sky; return M && M.sun && M.moon && M.moon.length === 8 ? M : null; }
+    function texMojang() { var M = MTEX.mojangImg && MTEX.man.mojang; return M && M.length === 2 ? MTEX.mojangImg : null; }
+
     function sLoad() {
         try { var s = JSON.parse(localStorage.getItem('comp_mc') || 'null'); if (s && s.seed != null) return s; } catch (e) {}
         return null;
@@ -52,6 +111,7 @@
             xpl: 0, xp: 0,                 // level, points into the current level
             weather: 0, wt: 120,           // 0 clear / 1 rain / 2 thunder; seconds until it changes
             t: DAY_MS * 0.25,              // world clock, ms into the cycle (start mid-morning)
+            day: 0,                        // days gone by: the moon's phase, and /time query day
             edits: {},                     // 'cx,cz' → { idx: blockId }
             tents: {},                     // 'x,y,z' → furnace/chest tile state
             ents: [],                      // saved mobs + item drops
@@ -86,6 +146,7 @@
         if (S.diff == null) S.diff = 2;
         if (!S.eff || typeof S.eff !== 'object' || S.eff instanceof Array) S.eff = {};
         if (S.off === undefined) S.off = null;   // the off hand, from before it existed
+        if (S.day == null) S.day = 0;
         // the recipe book, from before it existed: learn what the inventory already teaches, without a toast
         if (!Array.isArray(S.rbk)) { S.rbk = []; S.rbQuiet = 1; }
         if (!S.rules || typeof S.rules !== 'object' || S.rules instanceof Array) S.rules = {};
@@ -277,7 +338,7 @@
     // xp:[min,max] = orbs on harvest, mul:[min,max] = extra drops (fortune multiplies these)
     B[ORE_COAL].xp = [0, 2];
     B[ORE_DIA].xp = [3, 7];
-    B[CACTUS] = { n: 'cactus', hard: 0.4, solid: 1, opaque: 1, hurt: 1 };
+    B[CACTUS] = { n: 'cactus', hard: 0.4, solid: 1, opaque: 0, inset: 1, hurt: 1 };   // the game's cactus is a 14-wide box: its sides sit a texel in, under a full top
     B[SUGARCANE] = { n: 'sugarcane', hard: 0, solid: 0, opaque: 0, cross: 1 };
     B[PUMPKIN] = { n: 'pumpkin', hard: 1, tool: 'axe', solid: 1, opaque: 1 };
     B[MELON] = { n: '?melon', hard: 1, tool: 'axe', solid: 1, opaque: 1 };
@@ -301,9 +362,13 @@
     B[BOOKSHELF] = { n: '?books', hard: 1.5, tool: 'axe', solid: 1, opaque: 1 };
     B[LADDER] = { n: 'ladder', hard: 0.4, solid: 0, opaque: 0, cross: 1, climb: 1 };
     B[RLAMP] = { n: 'rlamp', hard: 0.3, solid: 1, opaque: 1, lite: 15 };
-    B[CAKE] = { n: '', hard: 0.5, solid: 1, opaque: 0, cull: 1, half: 1, cake: 1 };
-    B[ETABLE] = { n: 'etable', hard: 5, tool: 'pick', tier: 1, solid: 1, opaque: 1 };
+    B[CAKE] = { n: '', hard: 0.5, solid: 1, opaque: 0, cull: 1, half: 1, inset: 1, cake: 1 };   // the game's cake is a 14-wide box, like the cactus
+    B[ETABLE] = { n: 'etable', hard: 5, tool: 'pick', tier: 1, solid: 1, opaque: 0, h: 0.75 };   // 12 high, its sides the texture's lower three quarters
     B[ANVIL] = { n: 'anvil', hard: 5, tool: 'pick', tier: 1, solid: 1, opaque: 1 };
+    /* The game's blockstates give these blocks four variants picked per
+       position: grass, dirt and sand turn their ends a quarter turn at a time,
+       stone and bedrock mirror and half-turn, so a field never shows a grid. */
+    var VAR_ROT = {}; VAR_ROT[GRASS] = VAR_ROT[DIRT] = VAR_ROT[SAND] = 1; VAR_ROT[STONE] = VAR_ROT[BEDROCK] = 2;
     B[MUSHROOM] = { n: 'mushroom', hard: 0, solid: 0, opaque: 0, cross: 1 };
     B[MUSHROOM_R] = { n: 'mushroom_r', hard: 0, solid: 0, opaque: 0, cross: 1 };
     B[CLAY] = { n: '?clay', hard: 0.6, tool: 'shovel', solid: 1, opaque: 1 };
@@ -319,10 +384,10 @@
         stone: { t: 'Stone', place: STONE }, log: { t: 'Oak Log', place: LOG, fuel: 15 },
         planks: { t: 'Oak Planks', place: PLANKS, fuel: 15 }, sand: { t: 'Sand', place: SAND },
         gravel: { t: 'Gravel', place: GRAVEL }, glass: { t: 'Glass', place: GLASS },
-        wool: { t: 'Wool', place: WOOL }, tnt: { t: 'TNT', place: TNT },
+        wool: { t: 'White Wool', place: WOOL }, tnt: { t: 'TNT', place: TNT },
         table: { t: 'Crafting Table', place: TABLE, fuel: 15 },
         furnace: { t: 'Furnace', place: FURN }, chest: { t: 'Chest', place: CHEST, fuel: 15 },
-        torch: { t: 'Torch', place: TORCH }, bed: { t: 'Bed', place: BED, stk: 1 },
+        torch: { t: 'Torch', place: TORCH }, bed: { t: 'Red Bed', place: BED, stk: 1 },
         ore_iron: { t: 'Iron Ore', place: ORE_IRON }, ore_gold: { t: 'Gold Ore', place: ORE_GOLD },
         stick: { t: 'Stick', fuel: 5 }, coal: { t: 'Coal', fuel: 80 }, charcoal: { t: 'Charcoal', fuel: 80 },
         iron: { t: 'Iron Ingot' }, gold: { t: 'Gold Ingot' }, diamond: { t: 'Diamond' },
@@ -348,7 +413,7 @@
         slimeball: { t: 'Slimeball' }, ink_sac: { t: 'Ink Sac' }, egg: { t: 'Egg', stk: 16 },
         paper: { t: 'Paper' }, book: { t: 'Book' }, sugar: { t: 'Sugar' },
         bucket: { t: 'Bucket', stk: 16 }, water_bucket: { t: 'Water Bucket', stk: 1 },
-        lava_bucket: { t: 'Lava Bucket', stk: 1 }, milk_bucket: { t: 'Milk', stk: 1 },
+        lava_bucket: { t: 'Lava Bucket', stk: 1 }, milk_bucket: { t: 'Milk Bucket', stk: 1 },
         flint_steel: { t: 'Flint and Steel', stk: 1, dur: 64 },
         ench_book: { t: 'Enchanted Book', stk: 1, glint: 1 },
         // ── expansion: placeable blocks ──
@@ -361,13 +426,13 @@
         ladder: { t: 'Ladder', place: LADDER, fuel: 15 }, rlamp: { t: 'Redstone Lamp', place: RLAMP },
         etable: { t: 'Enchanting Table', place: ETABLE }, anvil: { t: 'Anvil', place: ANVIL, stk: 1 },
         cake: { t: 'Cake', place: CAKE, stk: 1 },
-        mushroom: { t: 'Mushroom', place: MUSHROOM }, mushroom_r: { t: 'Red Mushroom', place: MUSHROOM_R },
+        mushroom: { t: 'Brown Mushroom', place: MUSHROOM }, mushroom_r: { t: 'Red Mushroom', place: MUSHROOM_R },
         // ── expansion: foods ──
         carrot: { t: 'Carrot', place: CARROT0, crop: 1, food: { f: 3, sat: 3.6 } },
         potato: { t: 'Potato', place: POTATO0, crop: 1, food: { f: 1, sat: 0.6 }, cook: 'baked_potato' },
         baked_potato: { t: 'Baked Potato', food: { f: 5, sat: 6 } },
         golden_carrot: { t: 'Golden Carrot', food: { f: 6, sat: 14.4 } },
-        golden_apple: { t: 'Golden Apple', food: { f: 4, sat: 9.6 }, heal: 4, glint: 1 },
+        golden_apple: { t: 'Golden Apple', food: { f: 4, sat: 9.6 }, heal: 4 },
         cookie: { t: 'Cookie', food: { f: 2, sat: 0.4 } },
         melon_slice: { t: 'Melon Slice', food: { f: 2, sat: 1.2 } },
         pumpkin_pie: { t: 'Pumpkin Pie', food: { f: 8, sat: 4.8 }, stk: 1 },
@@ -382,12 +447,13 @@
     var ARM_DEF = { leather: [1, 3, 2, 1], iron: [2, 6, 5, 2], gold: [2, 5, 3, 1], diamond: [3, 8, 6, 3] };
     var ARM_DUR = { leather: 60, iron: 240, gold: 112, diamond: 528 };
     var ARM_TOUGH = { leather: 0, iron: 0, gold: 0, diamond: 2 };
+    var LEATHER_NAME = { helm: 'Cap', chest: 'Tunic', legs: 'Pants' };   // Leather Cap, Tunic and Pants, Golden armour
     (function () {
         for (var ti = 0; ti < ARM_TIERS.length; ti++) {
-            var tn = ARM_TIERS[ti], cap = tn.charAt(0).toUpperCase() + tn.slice(1);
+            var tn = ARM_TIERS[ti], cap = tn === 'gold' ? 'Golden' : tn.charAt(0).toUpperCase() + tn.slice(1);
             for (var sk in ARM_SLOT) {
                 I[tn + '_' + sk] = {
-                    t: cap + ' ' + ARM_NAME[sk], stk: 1,
+                    t: cap + ' ' + (tn === 'leather' && LEATHER_NAME[sk] ? LEATHER_NAME[sk] : ARM_NAME[sk]), stk: 1,
                     armor: { slot: ARM_SLOT[sk], kind: sk, tier: tn, def: ARM_DEF[tn][ARM_SLOT[sk]], tough: ARM_TOUGH[tn], dur: Math.round(ARM_DUR[tn] * [0.6875, 1, 0.9375, 0.8125][ARM_SLOT[sk]]) }
                 };
             }
@@ -409,7 +475,7 @@
         for (var tier = 1; tier <= 5; tier++) for (var k in kinds) {
             var cap = TIER_N[tier].charAt(0).toUpperCase() + TIER_N[tier].slice(1);
             I[TIER_N[tier] + '_' + k] = {
-                t: cap + (tier === 4 ? 'en' : '') + ' ' + kinds[k], stk: 1,
+                t: cap + (tier === 1 || tier === 4 ? 'en' : '') + ' ' + kinds[k], stk: 1,   // Wooden, Golden
                 tool: { k: k, tier: tier, mult: TIER_MULT[tier], dmg: k === 'sword' ? SWORD_DMG[tier] : TOOL_DMG[k][tier], dur: TIER_DUR[tier] },
                 fuel: tier === 1 ? 10 : 0
             };
@@ -423,7 +489,7 @@
     I.grass_block = { t: 'Grass Block', place: GRASS };
     I.grass_snow = { t: 'Snowy Grass Block', place: SNOWGRASS };
     I.leaves = { t: 'Oak Leaves', place: LEAVES };
-    I.tallgrass = { t: 'Grass', place: TALLGRASS };
+    I.tallgrass = { t: 'Short Grass', place: TALLGRASS };
     I.ore_coal = { t: 'Coal Ore', place: ORE_COAL };
     I.ore_diamond = { t: 'Diamond Ore', place: ORE_DIA };
     I.ore_redstone = { t: 'Redstone Ore', place: ORE_RED };
@@ -516,7 +582,10 @@
                    clay_ball: 'brick', potato: 'baked_potato' };
     var SMELT_S = 10;   // seconds per item
 
-    /* ── the atlas: every texture painted at boot ───────────── */
+    /* ── the atlas ─────────────────────────────────────────────
+       32 x 32 cells of 16x16: the game's own texture where mc-tex has one,
+       otherwise the drawing below. */
+    var ATC = 32;   // cells a row (and rows)
     var ATLAS = null, actx = null, TILE = {}, tileN = 0, TX = 0, TY = 0, trnd = null;
     function tpx(x, y, c) { actx.fillStyle = c; actx.fillRect(TX + x, TY + y, 1, 1); }
     function trect(x, y, w, h, c) { actx.fillStyle = c; actx.fillRect(TX + x, TY + y, w, h); }
@@ -526,12 +595,18 @@
     }
     function tile(name, fn) {
         var idx = tileN++;
-        TX = (idx % 16) * 16; TY = ((idx / 16) | 0) * 16;
+        TX = (idx % ATC) * 16; TY = ((idx / ATC) | 0) * 16;
         var h = 0; for (var i = 0; i < name.length; i++) h = (Math.imul(h, 31) + name.charCodeAt(i)) | 0;
         trnd = mulb(h ^ 0x5DEECE6D);   // per-tile fixed seed: textures identical in every world
-        fn();
+        var at = texTile(name);
+        if (at != null) actx.drawImage(MTEX.tiles, (at % 16) * 16, ((at / 16) | 0) * 16, 16, 16, TX, TY, 16, 16);
+        else fn();
         TILE[name] = idx;
         return idx;
+    }
+    function tileIf(name) { return texTile(name) != null ? tile(name, null) : null; }   // only where the game has one
+    function copyOf(name) {   // a stand-in: another tile's drawing
+        return function () { var t = TILE[name]; actx.drawImage(ATLAS, (t % ATC) * 16, ((t / ATC) | 0) * 16, 16, 16, TX, TY, 16, 16); };
     }
     function grainTile(name, base, specks, n) {
         return tile(name, function () { trect(0, 0, 16, 16, base); sprinkle(specks, n || 70); });
@@ -546,7 +621,7 @@
         });
     }
     function buildAtlas() {
-        ATLAS = document.createElement('canvas'); ATLAS.width = ATLAS.height = 256;
+        ATLAS = document.createElement('canvas'); ATLAS.width = ATLAS.height = ATC * 16;
         actx = ATLAS.getContext('2d'); tileN = 0; TILE = {};
 
         grainTile('grass_top', '#5d9e3a', ['#4f8c31', '#6cb043', '#559636', '#7ec850'], 90);
@@ -828,6 +903,7 @@
         // (it used to borrow the flat leather ITEM sprite, which stretched over the box into a
         //  glitchy brown blob with the icon's stitched border floating around it)
         hide('hand', '#b0794f', ['#9c6a44', '#c48c5e', '#a5744e']);
+        tile('arm', function () { armPaintCell(avatarSkin()); });   // the skin's right arm, for the first-person hand
 
         /* flat item sprites */
         tile('i_stick', function () { for (var i = 0; i < 10; i++) { tpx(3 + i, 12 - i, '#a8834f'); tpx(4 + i, 12 - i, '#8a6a3e'); } });
@@ -980,7 +1056,7 @@
         /* the XP orb: a round lime ball, dark at the rim and pale at the heart, for
            the renderer to tint (ExperienceOrbRenderer multiplies it by a colour that
            pulses from green to yellow) */
-        tile('xporb', function () {
+        for (var xo = 0; xo < 4; xo++) tile('xporb' + xo, function () {   // the orb's first four sizes, by value
             trect(5, 4, 6, 8, '#6f8f10'); trect(4, 5, 8, 6, '#6f8f10');
             trect(5, 5, 6, 6, '#d8f850'); trect(6, 4, 4, 1, '#b8dc30'); trect(6, 11, 4, 1, '#88aa18');
             trect(6, 6, 3, 3, '#f4ffa8'); tpx(6, 6, '#ffffe0'); tpx(10, 10, '#a0c028'); tpx(9, 10, '#a0c028');
@@ -1021,12 +1097,28 @@
                 tile('i_' + t + '_' + s, function () { paintArmor(s, TC[t][0], TC[t][1]); });
             })(tn, sk);
         })();
+        /* the game's own textures for things never drawn here: the crafting
+           table's front, the undersides, the bow as it is drawn back, and the
+           items that had no picture of their own (spawn eggs keep the drawn
+           egg where the game has none) */
+        tile('table_front', copyOf('table_side'));
+        tile('tnt_bottom', copyOf('tnt_top'));
+        tile('sandstone_bottom', copyOf('sandstone_top'));
+        tile('etable_bottom', copyOf('obsidian'));
+        tile('cactus_bottom', copyOf('cactus_top'));
+        tile('cake_bottom', copyOf('cake_inner'));
+        tile('chest_west', copyOf('chest_side')); tile('chest_back', copyOf('chest_side')); tile('chest_bottom', copyOf('chest_top'));
+        ['bed_east', 'bed_west', 'bed_north', 'bed_south'].forEach(function (n) { tile(n, copyOf('bed_side')); });
+        tile('crit', function () { trect(6, 6, 4, 4, '#ffd75e'); trect(7, 5, 2, 6, '#fff1a8'); trect(5, 7, 6, 2, '#fff1a8'); });
+        for (var bp = 0; bp < 3; bp++) tile('i_bow_p' + bp, copyOf('i_bow'));
+        ['i_seeds_pumpkin', 'i_seeds_melon', 'i_cake', 'i_compass', 'i_oak_sign', 'i_sugarcane'].forEach(tileIf);
+        for (var em in EGG_COL) tileIf('i_egg_' + em);
         /* enchant glint overlay (sampled additively onto item icons) */
         tile('glint', function () { for (var i = 0; i < 10; i++) { var x = (trnd() * 14) | 0, y = (trnd() * 14) | 0; trect(x, y, 2, 1, 'rgba(180,120,255,0.55)'); tpx(x, y + 1, 'rgba(220,180,255,0.7)'); } });
     }
 
     /* face textures per block: [top, bottom, side] (front variants share sides) */
-    var TEX = {};
+    var TEX = {}, PART_TILE = {};
     function texInit() {
         var t = TILE;
         TEX[GRASS] = [t.grass_top, t.dirt, t.grass_side];
@@ -1045,7 +1137,7 @@
         TEX[BEDROCK] = [t.bedrock, t.bedrock, t.bedrock];
         TEX[WATER] = [t.water, t.water, t.water];
         TEX[LAVA] = [t.lava, t.lava, t.lava];
-        TEX[TABLE] = [t.table_top, t.planks, t.table_side];
+        TEX[TABLE] = [t.table_side, t.table_front, t.table_top, t.planks, t.table_side, t.table_front];   // the front north and west, as the game's model has it
         // per-face [d0=+X, d1=-X, d2=top, d3=bottom, d4=+Z front, d5=-Z] so the mouth shows on ONE
         // face, not all four (furn_side/chest_side were painted but never wired up)
         TEX[FURN] = [t.furn_side, t.furn_side, t.furn_top, t.furn_top, t.furn_front, t.furn_side];
@@ -1054,7 +1146,7 @@
         TEX[GLASS] = [t.glass, t.glass, t.glass];
         TEX[SNOWGRASS] = [t.snow_top, t.dirt, t.snow_side];
         TEX[WOOL] = [t.wool, t.wool, t.wool];
-        TEX[BED] = [t.bed_top, t.planks, t.bed_side];
+        TEX[BED] = [t.bed_east, t.bed_west, t.bed_top, t.bed_bottom, t.bed_south, t.bed_north];   // the head's own faces, the pillow at the north end
         TEX[TALLGRASS] = [t.tallgrass, t.tallgrass, t.tallgrass];
         TEX[DANDELION] = [t.dandelion, t.dandelion, t.dandelion];
         TEX[POPPY] = [t.poppy, t.poppy, t.poppy];
@@ -1063,10 +1155,10 @@
         TEX[WHEAT1] = [t.wheat1, t.wheat1, t.wheat1];
         TEX[WHEAT2] = [t.wheat2, t.wheat2, t.wheat2];
         TEX[WHEAT3] = [t.wheat3, t.wheat3, t.wheat3];
-        TEX[CHEST] = [t.chest_side, t.chest_side, t.chest_top, t.chest_top, t.chest_front, t.chest_side];
-        TEX[TNT] = [t.tnt_top, t.tnt_top, t.tnt_side];
+        TEX[CHEST] = [t.chest_side, t.chest_west, t.chest_top, t.chest_bottom, t.chest_front, t.chest_back];
+        TEX[TNT] = [t.tnt_top, t.tnt_bottom, t.tnt_side];
         // ── expansion blocks ──
-        TEX[CACTUS] = [t.cactus_top, t.cactus_top, t.cactus_side];
+        TEX[CACTUS] = [t.cactus_top, t.cactus_bottom, t.cactus_side];
         TEX[SUGARCANE] = [t.sugarcane, t.sugarcane, t.sugarcane];
         TEX[PUMPKIN] = [t.pumpkin_top, t.pumpkin_top, t.pumpkin_side];
         TEX[MELON] = [t.melon_top, t.melon_top, t.melon_side];
@@ -1081,17 +1173,20 @@
         TEX[ORE_EMERALD] = [t.ore_emerald, t.ore_emerald, t.ore_emerald];
         TEX[OBSIDIAN] = [t.obsidian, t.obsidian, t.obsidian];
         TEX[STONEBRICK] = [t.stonebrick, t.stonebrick, t.stonebrick];
-        TEX[SANDSTONE] = [t.sandstone_top, t.sandstone_top, t.sandstone_side];
+        TEX[SANDSTONE] = [t.sandstone_top, t.sandstone_bottom, t.sandstone_side];
         TEX[BRICKS] = [t.bricks, t.bricks, t.bricks];
         TEX[BOOKSHELF] = [t.planks, t.planks, t.bookshelf_side];
         TEX[LADDER] = [t.ladder, t.ladder, t.ladder];
         TEX[RLAMP] = [t.rlamp, t.rlamp, t.rlamp];
-        TEX[CAKE] = [t.cake_top, t.cake_inner, t.cake_side];
-        TEX[ETABLE] = [t.etable_top, t.obsidian, t.etable_side];
-        TEX[ANVIL] = [t.anvil_top, t.anvil_top, t.anvil_side];
+        TEX[CAKE] = [t.cake_top, t.cake_bottom, t.cake_side];
+        TEX[ETABLE] = [t.etable_top, t.etable_bottom, t.etable_side];
+        TEX[ANVIL] = [t.anvil_top, t.anvil_side, t.anvil_side];   // the underside is the body, as the model has it
         TEX[MUSHROOM] = [t.mushroom, t.mushroom, t.mushroom];
         TEX[MUSHROOM_R] = [t.mushroom_r, t.mushroom_r, t.mushroom_r];
         TEX[CLAY] = [t.clay, t.clay, t.clay];
+        // what a block's breaking (and the dust of running over it) is made of: its model's particle texture
+        PART_TILE = {}; PART_TILE[GRASS] = t.dirt; PART_TILE[SNOWGRASS] = t.dirt; PART_TILE[TABLE] = t.table_front;
+        PART_TILE[FURN] = t.furn_front; PART_TILE[FURN_LIT] = t.furn_front; PART_TILE[CHEST] = t.planks; PART_TILE[BED] = t.planks; PART_TILE[ETABLE] = t.etable_bottom;
         /* item sprite lookup + place→item reverse map (silk touch / self-drops) */
         for (var id in I) {
             var def = I[id];
@@ -1609,9 +1704,67 @@
         [[0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]],
         [[1, 0, 0], [0, 0, 0], [0, 1, 0], [1, 1, 0]]
     ];
-    var TS16 = 1 / 16, INSET = 1 / 512;   // half-texel inset stops atlas bleed
-    function tileUV(tid) { return [(tid % 16) * TS16, ((tid / 16) | 0) * TS16]; }
+    /* The world samples its own copy of the atlas, ATLASW. Block faces there
+       are the game's 16x16 textures taken down to WTEX texels, each new texel
+       the colour that covers most of its square (so edges stay hard and no new
+       colours appear): a notch more pixel than the game. Items, mobs, plants
+       and everything else keep all sixteen. Its cells are WC pixels, a
+       multiple of both, so every texel is a whole square. */
+    var WTEX = 12, WC = 48, ATLASW = null;
+    var TS16 = 1 / ATC, INSET = 1 / (2 * ATC * WC);   // a tile's span in UV; the half-texel inset stops atlas bleed
+    function tileUV(tid) { return [(tid % ATC) * TS16, ((tid / ATC) | 0) * TS16]; }
+    function buildWorldAtlas() {
+        var down = {}, b, k, n = WTEX;
+        for (b in TEX) if (B[b] && !B[b].cross) TEX[b].forEach(function (t) { if (t != null) down[t] = 1; });
+        var cv = document.createElement('canvas');
+        cv.width = cv.height = ATC * WC;
+        var cx = cv.getContext('2d');
+        cx.imageSmoothingEnabled = false;
+        var sd = actx.getImageData(0, 0, ATLAS.width, ATLAS.height).data, SW = ATLAS.width;
+        var small = document.createElement('canvas');
+        small.width = small.height = n;
+        var sc = small.getContext('2d'), sid = sc.createImageData(n, n);
+        for (var t = 0; t < tileN; t++) {
+            var ox = (t % ATC) * 16, oy = ((t / ATC) | 0) * 16, dx = (t % ATC) * WC, dy = ((t / ATC) | 0) * WC;
+            if (!down[t] || n >= 16) { cx.drawImage(ATLAS, ox, oy, 16, 16, dx, dy, WC, WC); continue; }
+            texDown(sd, SW, ox, oy, n, sid.data);
+            sc.putImageData(sid, 0, 0);
+            cx.drawImage(small, 0, 0, n, n, dx, dy, WC, WC);
+        }
+        return cv;
+    }
+    function texDown(sd, SW, ox, oy, n, out) {   // each of n x n squares of a 16x16 tile: the colour covering most of it
+        var f = 16 / n;
+        for (var j = 0; j < n; j++) for (var i = 0; i < n; i++) {
+            var x0 = i * f, x1 = x0 + f, y0 = j * f, y1 = y0 + f, votes = {}, best = 0, bw = -1;
+            for (var sy = Math.floor(y0); sy < Math.ceil(y1); sy++) {
+                var wy = Math.min(y1, sy + 1) - Math.max(y0, sy);
+                if (wy <= 0) continue;
+                for (var sx = Math.floor(x0); sx < Math.ceil(x1); sx++) {
+                    var wx = Math.min(x1, sx + 1) - Math.max(x0, sx);
+                    if (wx <= 0) continue;
+                    var o = ((oy + sy) * SW + ox + sx) * 4, key = sd[o] << 24 ^ sd[o + 1] << 16 ^ sd[o + 2] << 8 ^ sd[o + 3];
+                    var v = (votes[key] = (votes[key] || 0) + wx * wy);
+                    if (v > bw) { bw = v; best = o; }
+                }
+            }
+            var d = (j * n + i) * 4;
+            out[d] = sd[best]; out[d + 1] = sd[best + 1]; out[d + 2] = sd[best + 2]; out[d + 3] = sd[best + 3];
+        }
+    }
     // TEX is [top, bottom, side] (3) or per-face [d0..d5] (6, for directional blocks)
+    function blockVariant(x, y, z) {   // one of four, spread the way Mth.getSeed spreads a position
+        var h = (Math.imul(x, 3129871) ^ Math.imul(z, 116129781) ^ y) | 0;
+        h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d); h ^= h >>> 12;
+        return h & 3;
+    }
+    function varUV(kind, rv, d, f) {   // kind 1: the model turned about y (only the ends change); kind 2: mirrored, half-turned, or both
+        var u = f[0], v = f[1], ends = d === 2 || d === 3;
+        if (kind === 1) return !ends ? f : rv === 1 ? [1 - v, u] : rv === 2 ? [1 - u, 1 - v] : [v, 1 - u];
+        if (rv & 1) u = 1 - u;
+        if ((rv & 2) && ends) { u = 1 - u; v = 1 - v; }
+        return [u, v];
+    }
     function texTop(tx) { return tx.length === 6 ? tx[2] : tx[0]; }
     function texSide(tx) { return tx.length === 6 ? tx[0] : tx[2]; }
     function texFace(tx, d) { return tx.length === 6 ? tx[d] : tx[d === 2 ? 0 : d === 3 ? 1 : 2]; }
@@ -1684,13 +1837,14 @@
                 }
                 continue;
             }
-            var hgt = def.half ? 0.5 : 1;
+            // an inset block's side faces sit one world texel inward, full width: that is where the game's clear ring lands once the top is 12 texels
+            var hgt = def.half ? 0.5 : (def.h || 1), ins = def.inset ? 1 / Math.min(16, WTEX) : 0, rv = VAR_ROT[b] ? blockVariant(wx, y, wz) : 0;
             for (d = 0; d < 6; d++) {
                 var nx = wx + FACE_N[d][0], ny = y + FACE_N[d][1], nz = wz + FACE_N[d][2];
                 var nb = getB(nx, ny, nz);
                 if (nb === -1 || (B[nb] && B[nb].opaque)) continue;
                 if (!def.opaque && nb === b) continue;                       // glass↔glass, leaves↔leaves inner faces
-                if (def.half && d !== 2 && nb !== AIR && B[nb] && B[nb].solid && !B[nb].half) continue;
+                if (hgt < 1 && d !== 2 && nb !== AIR && B[nb] && B[nb].solid && !B[nb].half) continue;
                 // 3-slot TEX is [top, bottom, side]; a 6-slot TEX is per-face [d0..d5], letting
                 // directional blocks (furnace/chest) show a front on one face instead of all four
                 var tid = TEX[b].length === 6 ? TEX[b][d] : TEX[b][d === 2 ? 0 : d === 3 ? 1 : 2];
@@ -1706,10 +1860,10 @@
                     s2[a2] = cr[a2] * 2 - 1;
                     var L = def.opaque ? cornerLight(nx, ny, nz, s1, s2)
                                        : [getSky(nx, ny, nz) / 15, getBlk(nx, ny, nz) / 15, 1];
-                    var fuv = faceUV(d, cr);
+                    var fuv = rv ? varUV(VAR_ROT[b], rv, d, faceUV(d, cr)) : faceUV(d, cr);
                     var vy = cr[1] === 1 ? hgt : 0;
-                    var vv = def.half && d !== 2 && d !== 3 ? (cr[1] === 1 ? 0.5 : 1) : fuv[1];
-                    quad.push([wx + cr[0], y + vy, wz + cr[2],
+                    var vv = hgt < 1 && d !== 2 && d !== 3 ? (cr[1] === 1 ? 1 - hgt : 1) : fuv[1];
+                    quad.push([wx + cr[0] - (ins && d < 2 ? FACE_N[d][0] * ins : 0), y + vy, wz + cr[2] - (ins && d > 3 ? FACE_N[d][2] * ins : 0),
                         uv0[0] + INSET + fuv[0] * (TS16 - 2 * INSET), uv0[1] + INSET + vv * (TS16 - 2 * INSET),
                         L[0], L[1], L[2]]);
                 }
@@ -1741,8 +1895,8 @@
         'uniform mat4 uMvp;varying vec2 vUv;varying vec2 vLt;varying float vAo;varying float vWh;varying float vD;' +
         'void main(){gl_Position=uMvp*vec4(aPos,1.0);vUv=aUv;vLt=aLt;vAo=aAo;vWh=aWh;vD=gl_Position.w;}';
     var FS = 'precision mediump float;uniform sampler2D uTex;uniform float uDay;uniform vec3 uFogC;' +
-        'uniform vec2 uFogR;uniform float uAlpha;varying vec2 vUv;varying vec2 vLt;varying float vAo;varying float vWh;varying float vD;' +
-        'void main(){vec4 c=texture2D(uTex,vUv);if(c.a<0.5)discard;' +
+        'uniform vec2 uFogR;uniform float uAlpha;uniform float uCut;varying vec2 vUv;varying vec2 vLt;varying float vAo;varying float vWh;varying float vD;' +
+        'void main(){vec4 c=texture2D(uTex,vUv);if(c.a<uCut)discard;' +
         'float l=max(vLt.x*uDay,vLt.y);float b=l/(4.0-3.0*l);b=mix(0.045,1.0,b);' +
         'vec3 rgb=(vWh>1.5?c.rgb*vec3(sin(vWh*6.2831853)*0.5+0.5,1.0,(sin(vWh*6.2831853+4.1887903)+1.0)*0.1)' +
         ':vWh<0.0?mix(c.rgb,vec3(1.0,0.0,0.0),-vWh):mix(c.rgb,vec3(1.0),vWh))*b*vAo;' +
@@ -1780,18 +1934,30 @@
         G.u = {
             mvp: gl.getUniformLocation(G.prog, 'uMvp'), tex: gl.getUniformLocation(G.prog, 'uTex'),
             day: gl.getUniformLocation(G.prog, 'uDay'), fogC: gl.getUniformLocation(G.prog, 'uFogC'),
-            fogR: gl.getUniformLocation(G.prog, 'uFogR'), alpha: gl.getUniformLocation(G.prog, 'uAlpha')
+            fogR: gl.getUniformLocation(G.prog, 'uFogR'), alpha: gl.getUniformLocation(G.prog, 'uAlpha'), cut: gl.getUniformLocation(G.prog, 'uCut')
         };
         G.uf = { mvp: gl.getUniformLocation(G.flat, 'uMvp'), col: gl.getUniformLocation(G.flat, 'uCol'), pos: gl.getAttribLocation(G.flat, 'aPos') };
         G.us = { mvp: gl.getUniformLocation(G.skyq, 'uMvp'), tex: gl.getUniformLocation(G.skyq, 'uTex'), a: gl.getUniformLocation(G.skyq, 'uA'), pos: gl.getAttribLocation(G.skyq, 'aPos'), uv: gl.getAttribLocation(G.skyq, 'aUv') };
         // atlas
         G.tex = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, G.tex);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, ATLAS);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, ATLASW || ATLAS);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        // the sun and the moon's phases at their own 32x32, when mc-tex has them
+        G.skyTex = null;
+        if (texSky()) {
+            G.skyTex = gl.createTexture();
+            gl.bindTexture(gl.TEXTURE_2D, G.skyTex);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, MTEX.skyImg);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+            gl.bindTexture(gl.TEXTURE_2D, G.tex);
+        }
         // shared quad index buffer
         var idx = new Uint16Array(MAXQ * 6);
         for (var q = 0; q < MAXQ; q++) {
@@ -1879,16 +2045,31 @@
         }
         G.cloudB = mkVbo(gl, cl); G.cloudN = cl.length / 3;
     }
-    function drawSkyQuad(G, pv, dir, tile, size, alpha) {
-        var gl = G.gl, uv = tileUV(tile);
+    /* SkyRenderer: the sun is a quad 30 either way at a hundred out along the
+       sun's direction, the moon 20, both added onto the sky (black adds
+       nothing); the moon shows the phase the day count gives it */
+    function moonPhase() { return (((S && S.day) || 0) % 8 + 8) % 8; }
+    function skyBody(G, day) {
+        var M = texSky(), img = MTEX.skyImg;
+        if (G.skyTex && M) {
+            var r = day ? M.sun : M.moon[moonPhase()], W = img.width, H = img.height;
+            return { tex: G.skyTex, size: day ? 30 : 20, r: [r[0] / W, r[1] / H, (r[0] + r[2]) / W, (r[1] + r[3]) / H] };
+        }
+        var uv = tileUV(day ? TILE.sun : TILE.moon);   // the drawn ones, off the atlas
+        return { tex: G.tex, size: day ? 20 : 14, r: [uv[0] + INSET, uv[1] + INSET, uv[0] + TS16 - INSET, uv[1] + TS16 - INSET] };   // the drawings fill their tiles, so smaller quads give the game's discs
+    }
+    function drawSkyQuad(G, pv, dir, size, alpha, tex, r, moon) {
+        var gl = G.gl;
         // billboard basis perpendicular to the celestial direction
         var up = [0, 0, 1], rx = dir[1], ry = -dir[0];   // dir × z
         var v = [], corners = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
         for (var i = 0; i < 4; i++) {
             var cx = corners[i][0] * size, cy = corners[i][1] * size;
+            // the game's quads run u north to south and v along the path, the moon's turned the other way, so a phase's lit side faces north or south
             v.push(dir[0] * 100 + rx * cx, dir[1] * 100 + ry * cx + cy * 0, dir[2] * 100 + up[2] * cy,
-                uv[0] + (corners[i][0] > 0 ? TS16 : 0), uv[1] + (corners[i][1] > 0 ? 0 : TS16));
+                moon ? (cy > 0 ? r[0] : r[2]) : (cy > 0 ? r[2] : r[0]), moon ? (cx > 0 ? r[3] : r[1]) : (cx > 0 ? r[1] : r[3]));
         }
+        gl.bindTexture(gl.TEXTURE_2D, tex);
         gl.useProgram(G.skyq);
         gl.uniformMatrix4fv(G.us.mvp, false, pv);
         gl.uniform1f(G.us.a, alpha);
@@ -1941,7 +2122,11 @@
                 gl.enableVertexAttribArray(G.uf.pos);
                 gl.drawArrays(gl.POINTS, 0, G.starN);
             }
-            drawSkyQuad(G, pvRot, dir, sky.day ? TILE.sun : TILE.moon, sky.day ? 9 : 6, 1);
+            var body = skyBody(G, sky.day);
+            gl.blendFunc(gl.SRC_ALPHA, gl.ONE);   // the game adds its sun and moon onto the sky
+            if (!sky.rain) drawSkyQuad(G, pvRot, dir, body.size, 1, body.tex, body.r, !sky.day);   // the game fades them by the rain
+            gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+            gl.bindTexture(gl.TEXTURE_2D, G.tex);
             gl.disable(gl.BLEND);
             gl.depthMask(true);
         }
@@ -1953,6 +2138,7 @@
         gl.uniform3f(G.u.fogC, fogC[0], fogC[1], fogC[2]);
         gl.uniform2f(G.u.fogR, fogR[0], fogR[1]);
         gl.uniform1f(G.u.alpha, 1);
+        gl.uniform1f(G.u.cut, 0.5);   // the alpha test: a texel is there or it is not
         gl.uniformMatrix4fv(G.u.mvp, false, pv);
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, G.ebo);
         var fx = Math.sin(S.yaw) * Math.cos(S.pitch), fz = -Math.cos(S.yaw) * Math.cos(S.pitch);   // forward (for a cheap behind-cull)
@@ -1983,13 +2169,15 @@
         // mining crack + target outline
         if (RT.target && RT.digT > 0 && RT.digAt) {
             var stg = Math.min(9, Math.floor(RT.digT / RT.digNeed * 10) - 1);   // stage (int)(progress x 10) - 1, none below a tenth
-            var cr = stg < 0 ? [] : cubeQuads(RT.digAt[0], RT.digAt[1], RT.digAt[2], TILE['crack' + stg]);
+            var cr = stg < 0 ? [] : cubeQuads(RT.digAt[0], RT.digAt[1], RT.digAt[2], TILE['crack' + stg], getB(RT.digAt[0], RT.digAt[1], RT.digAt[2]));
             gl.enable(gl.POLYGON_OFFSET_FILL); gl.polygonOffset(-1.5, -1.5);
             gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
             gl.bindBuffer(gl.ARRAY_BUFFER, G.dyn);
             gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(cr), gl.DYNAMIC_DRAW);
             bindMain(G, G.dyn);
+            gl.uniform1f(G.u.cut, 0.004);   // the cracks are half-transparent black and white: blended, not alpha-tested
             if (cr.length) gl.drawElements(gl.TRIANGLES, cr.length / 36 * 6, gl.UNSIGNED_SHORT, 0);
+            gl.uniform1f(G.u.cut, 0.5);
             gl.disable(gl.BLEND); gl.disable(gl.POLYGON_OFFSET_FILL);
         }
         if (RT.target) {
@@ -2054,12 +2242,14 @@
             gl.enable(gl.CULL_FACE);
         }
     }
-    function cubeQuads(x, y, z, tid) {   // a full textured cube at fullbright-ish local light (crack decal)
+    function cubeQuads(x, y, z, tid, b) {   // the block's own box (its height and inset) at fullbright-ish local light (crack decal)
+        var def = B[b] || {}, hgt = def.half ? 0.5 : (def.h || 1), ins = def.inset ? 1 / Math.min(16, WTEX) : 0;
         var out = [], uv0 = tileUV(tid), sk = getSky(x, y, z + 1) / 15, bk = getBlk(x, y, z + 1) / 15;
         for (var d = 0; d < 6; d++) for (var k = 0; k < 4; k++) {
             var cr = FACE_C[d][k], f = faceUV(d, cr);
-            out.push(x + cr[0], y + cr[1], z + cr[2],
-                uv0[0] + INSET + f[0] * (TS16 - 2 * INSET), uv0[1] + INSET + f[1] * (TS16 - 2 * INSET),
+            var vv = hgt < 1 && d !== 2 && d !== 3 ? (cr[1] === 1 ? 1 - hgt : 1) : f[1];
+            out.push(x + cr[0] - (ins && d < 2 ? FACE_N[d][0] * ins : 0), y + (cr[1] ? hgt : 0), z + cr[2] - (ins && d > 3 ? FACE_N[d][2] * ins : 0),
+                uv0[0] + INSET + f[0] * (TS16 - 2 * INSET), uv0[1] + INSET + vv * (TS16 - 2 * INSET),
                 Math.max(0.6, sk), bk, 1, 0);
         }
         return out;
@@ -2557,7 +2747,7 @@
     function die() {
         S.hp = 0;
         RT.dead = true;
-        RT.digT = 0; RT.eatT = 0; RT.bowT = 0;
+        RT.digT = 0; RT.eatT = 0; RT.bowT = 0; bowFrameSync();
         S.eff = {}; paintEffects();
         closePanel(true);   // fold cursor + crafting-grid items into the inventory FIRST so they scatter too
         var keep = rule('keepInventory');
@@ -2956,6 +3146,7 @@
             if (invCount('arrow') < 1 && RT.bowT === 0 && !instaBuild()) return;   // creative never runs out of arrows
             // the real bow draws in silence; how far it was drawn is heard in the release
             RT.bowT = Math.min(1, RT.bowT + dt);
+            bowFrameSync();
         } else if (def.place != null || (def.tool && def.tool.k === 'hoe') || h.id === 'bonemeal') {
             // hold-to-build: repeat placement like the real game (mousedown already fired the first one)
             RT.placeCd -= dt;
@@ -2975,11 +3166,13 @@
             snd('bow', pw);
             paintHotbar();
         }
-        RT.eatT = 0; RT.bowT = 0;
+        RT.eatT = 0; RT.bowT = 0; bowFrameSync();
     }
     function trySleep() {
         var st = skyState();
-        if (st.day && st.sunE > 0.05) { actionBar('You can sleep only at night and during thunderstorms'); return; }
+        // ServerLevel.isDay by the sky's darkness: a bed works from 12542 to 23459 in clear weather, from 12010 to 23991 in rain, and any time in a thunderstorm
+        var tk = Math.floor(S.t / CYCLE * 24000), lo = S.weather >= 1 ? 12010 : 12542, hi = S.weather >= 1 ? 23992 : 23460;
+        if (S.weather < 2 && !(tk >= lo && tk < hi)) { actionBar('You can sleep only at night or during thunderstorms'); return; }
         for (var i = 0; i < RT.foes.length; i++) {
             var f = RT.foes[i];
             if (f.hostile && Math.abs(f.x - S.px) < 12 && Math.abs(f.z - S.pz) < 12 && Math.abs(f.y - S.py) < 6) {
@@ -3435,7 +3628,7 @@
         if (Math.random() > 0.15) return;
         var uv0 = tileUV(TILE.h_heart);
         RT.parts.push({ x: f.x + (Math.random() - 0.5) * 0.5, y: f.y + f.h + 0.2, z: f.z + (Math.random() - 0.5) * 0.5,
-            vx: 0, vy: 0.6, vz: 0, life: 0.8, u: uv0[0] + 4 * TS16 / 16, v: uv0[1] + 4 * TS16 / 16, s: 0.1 });
+            vx: 0, vy: 0.6, vz: 0, life: 0.8, u: uv0[0] + INSET, v: uv0[1] + INSET, us: TS16 - 2 * INSET, s: 0.1 });
     }
     function teleportEnder(f) {   // hop to a valid spot within ~24 blocks; false if none found
         for (var t = 0; t < 16; t++) {
@@ -3863,7 +4056,7 @@
         snd('boom', 0, ex, ey, ez);
     }
     function blockParticles(x, y, z, b) {
-        var uv0 = tileUV(texSide(TEX[b]));
+        var uv0 = tileUV(PART_TILE[b] != null ? PART_TILE[b] : texSide(TEX[b]));
         for (var i = 0; i < 10; i++) {
             RT.parts.push({ x: x + Math.random(), y: y + Math.random(), z: z + Math.random(),
                 vx: (Math.random() - 0.5) * 3, vy: Math.random() * 3.5, vz: (Math.random() - 0.5) * 3,
@@ -3891,11 +4084,11 @@
         }
     }
     function critParticles(f) {
-        var uv0 = tileUV(TILE.rlamp);   // warm little sparks around the hit
+        var uv0 = tileUV(TILE.crit);   // critical_hit, the game's spark
         for (var i = 0; i < 8; i++)
             RT.parts.push({ x: f.x + (Math.random() - 0.5) * 0.6, y: f.y + f.h * 0.6 + (Math.random() - 0.5) * 0.5, z: f.z + (Math.random() - 0.5) * 0.6,
                 vx: (Math.random() - 0.5) * 2, vy: (Math.random() - 0.5) * 2, vz: (Math.random() - 0.5) * 2,
-                life: 0.3, u: uv0[0] + 6 * TS16 / 16, v: uv0[1] + 6 * TS16 / 16, s: 0.06 });
+                life: 0.3, u: uv0[0] + INSET, v: uv0[1] + INSET, us: TS16 - 2 * INSET, s: 0.06 });
     }
     function boomParticles(x, y, z, r) {
         var uv0 = tileUV(TILE.wool);
@@ -4239,7 +4432,7 @@
             var t = RT.tnts[i];
             var TL = cellLight(t.x, t.y + 0.5, t.z);
             pushBox(v, t.x, t.y + 0.5, t.z, 0.49, 0.49, 0.49, 1, 0, 0, 0,
-                function (dd) { return dd === 2 || dd === 3 ? TILE.tnt_top : TILE.tnt_side; },
+                function (dd) { return texFace(TEX[TNT], dd); },
                 TL[0], TL[1], (t.fuse * 5 & 1) ? 0.75 : 0.1);
         }
         /* ItemEntityRenderer: every drop the item's own model, bobbing
@@ -4283,8 +4476,8 @@
            t = age / 2 in ticks, so it throbs green to yellow a couple of times a
            second; the shader reads the phase out of the overlay value */
         for (i = 0; i < RT.orbs.length; i++) {
-            var o = RT.orbs[i], ou = tileUV(TILE.xporb), oph = ((o.age * 10) % 6.2831853) / 6.2831853;
-            pushBillboard(v, o.x, o.y + 0.1, o.z, o.v >= 7 ? 0.16 : 0.11, ou[0] + INSET, ou[1] + INSET, ou[0] + TS16 - INSET, ou[1] + TS16 - INSET, 1, 1, 2 + oph);
+            var o = RT.orbs[i], ou = tileUV(TILE['xporb' + (o.v >= 17 ? 3 : o.v >= 7 ? 2 : o.v >= 3 ? 1 : 0)]), oph = ((o.age * 10) % 6.2831853) / 6.2831853;
+            pushBillboard(v, o.x, o.y + 0.1, o.z, 0.15, ou[0] + INSET, ou[1] + INSET, ou[0] + TS16 - INSET, ou[1] + TS16 - INSET, 1, 1, 2 + oph);
         }
         for (i = 0; i < RT.parts.length; i++) {
             var pp = RT.parts[i];
@@ -4409,7 +4602,7 @@
     var HAND_MODEL = {};
     function flatModel(tid) {
         if (HAND_MODEL[tid]) return HAND_MODEL[tid];
-        var tx = (tid % 16) * 16, ty = ((tid / 16) | 0) * 16, a = null;
+        var tx = (tid % ATC) * 16, ty = ((tid / ATC) | 0) * 16, a = null;
         try { a = ATLAS.getContext('2d').getImageData(tx, ty, 16, 16).data; } catch (e) {}
         function op(x, y) { return x >= 0 && y >= 0 && x < 16 && y < 16 && (!a || a[(y * 16 + x) * 4 + 3] > 127); }
         var uv = tileUV(tid), q = [], U = TS16 / 16;
@@ -4436,13 +4629,15 @@
             }
         }
     }
-    function pushCube(v, M, x0, y0, z0, x1, y1, z1, tileFn, sk, bl) {   // a box in model units, a tile a face
+    function pushCube(v, M, x0, y0, z0, x1, y1, z1, tileFn, sk, bl, uvFn) {   // a box in model units, a tile (or uvFn's part of one) a face
         for (var d = 0; d < 6; d++) {
-            var uv0 = tileUV(tileFn(d));
+            var uv0 = tileUV(tileFn(d)), r = uvFn ? uvFn(d) : [0, 0, 1, 1];
+            var su = r[2] >= r[0] ? 1 : -1, sv = r[3] >= r[1] ? 1 : -1;   // a part may read upside down
             for (var k = 0; k < 4; k++) {
                 var cr = FACE_C[d][k], f = faceUV(d, cr);
                 var p = emAt(M, cr[0] ? x1 : x0, cr[1] ? y1 : y0, cr[2] ? z1 : z0);
-                v.push(p[0], p[1], p[2], uv0[0] + INSET + f[0] * (TS16 - 2 * INSET), uv0[1] + INSET + f[1] * (TS16 - 2 * INSET), sk, bl, FACE_SHADE[d], 0);
+                v.push(p[0], p[1], p[2], uv0[0] + r[0] * TS16 + su * INSET + f[0] * ((r[2] - r[0]) * TS16 - 2 * su * INSET),
+                    uv0[1] + r[1] * TS16 + sv * INSET + f[1] * ((r[3] - r[1]) * TS16 - 2 * sv * INSET), sk, bl, FACE_SHADE[d], 0);
             }
         }
     }
@@ -4489,12 +4684,53 @@
             M = emMul(M, emS(0.68, 0.68, 0.68));
             M = emMul(M, emT(-0.5, -0.5, -0.5));
             var tid = def && def.tile != null ? def.tile : (def && def.place != null ? texTop(TEX[def.place]) : TILE.i_stick);
+            // the bow's pulling_0 to 2, at a pull of 0, 0.65 and 0.9 (a second's draw is 1)
+            if (i === 1 && st.id === 'bow' && RT.bowT > 0) tid = TILE[RT.bowT >= 0.9 ? 'i_bow_p2' : RT.bowT >= 0.65 ? 'i_bow_p1' : 'i_bow_p0'];
             pushModel(v, M, flatModel(tid), 1 / 16, sk, bl);
         }
     }
+    /* The arm's texture, out of the skin the inventory figure wears: the right
+       arm's four sides (outer, front, inner, back, each 4 or a slim skin's 3
+       texels by 12) across the top of one tile, its top and bottom ends under
+       them. Painted into the atlas at boot and again when the skin changes. */
+    var ARM_SIG = '', ARM_W = 4;
+    function armSkinSig(sk) { return sk.id + '|' + sk.model + '|' + sk.rows.join('') + '|' + JSON.stringify(sk.pal); }
+    function armPaintCell(sk) {   // into the atlas cell tile() (or armSync) has pointed TX, TY at
+        var slim = sk.model === 'slim', w = slim ? 3 : 4, px = avPixels(sk);
+        var f = avSkinBox(px, slim ? 1 : 0, 8, w, 12, 4, 'arm', true);
+        tclear(0, 0, 16, 16);
+        actx.drawImage(f.left, TX, TY); actx.drawImage(f.front, TX + 4, TY); actx.drawImage(f.right, TX + 8, TY); actx.drawImage(f.back, TX + 12, TY);
+        actx.drawImage(f.top, TX, TY + 12); actx.drawImage(f.bottom, TX + 4, TY + 12);
+        ARM_W = w; ARM_SIG = armSkinSig(sk);
+    }
+    function armSync() {   // the skin changed under a running game: repaint the cell and hand the GPU the atlas again
+        if (!RT || !RT.G || !ATLASW || TILE.arm == null) return;
+        var sk = avatarSkin();
+        if (armSkinSig(sk) === ARM_SIG) return;
+        var t = TILE.arm, gl = RT.G.gl;
+        TX = (t % ATC) * 16; TY = ((t / ATC) | 0) * 16;
+        armPaintCell(sk);
+        var cx = ATLASW.getContext('2d');
+        cx.imageSmoothingEnabled = false;
+        cx.clearRect((t % ATC) * WC, ((t / ATC) | 0) * WC, WC, WC);
+        cx.drawImage(ATLAS, TX, TY, 16, 16, (t % ATC) * WC, ((t / ATC) | 0) * WC, WC, WC);
+        gl.bindTexture(gl.TEXTURE_2D, RT.G.tex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, ATLASW);
+    }
+    // where each face of the arm box reads in that tile: [u0, v0, u1, v1] in sixteenths, v
+    // upside down because the model's y runs down its texture (the sleeve at the shoulder)
+    function armUV(d) {
+        var w = ARM_W;
+        if (d === 2) return [4, 12, 4 + w, 16];   // the hand end wears the skin's bottom cap
+        if (d === 3) return [0, 12, w, 16];       // the shoulder its top
+        if (d === 5) return [4 + w, 12, 4, 0];    // the front faces the camera, mirrored so its outer column meets the outer side
+        if (d === 4) return [12, 12, 12 + w, 0];
+        var c = d === 0 ? [8, 12] : [0, 4];
+        return [c[0], 12, c[1], 0];
+    }
     /* renderPlayerArm: the empty main hand, the right arm out of the player
-       model (a 4x12x4 box pivoted at (-5, 2, 0), turned 0.1 rad) put where the
-       game puts it, the swing sweeping it in and up */
+       model (a 4x12x4 box pivoted at (-5, 2, 0), turned 0.1 rad; 3 wide for a
+       slim skin) put where the game puts it, the swing sweeping it in and up */
     function handArm(v, M, i, s, h, sk, bl) {
         var D = Math.PI / 180, sq = Math.sqrt(s);
         M = emMul(M, emT(i * (0.64000005 - 0.3 * Math.sin(sq * Math.PI)), -0.6 + 0.4 * Math.sin(sq * 2 * Math.PI) - 0.6 * h, -0.71999997 - 0.4 * Math.sin(s * Math.PI)));
@@ -4502,7 +4738,8 @@
         M = emMul(M, emT(i * -1, 3.6, 3.5)); M = emMul(M, emRz(i * 120 * D)); M = emMul(M, emRx(200 * D)); M = emMul(M, emRy(i * -135 * D));
         M = emMul(M, emT(i * 5.6, 0, 0));
         M = emMul(M, emT(-5 / 16 * i, 2 / 16, 0)); M = emMul(M, emRz(0.1 * i));
-        pushCube(v, M, (i > 0 ? -3 : -1) / 16, -2 / 16, -2 / 16, (i > 0 ? 1 : 3) / 16, 10 / 16, 2 / 16, function () { return TILE.hand; }, sk, bl);
+        var aw = ARM_W, ax0 = i > 0 ? 1 - aw : -1, ax1 = i > 0 ? 1 : aw - 1;   // the right arm's box runs from -3 (or -2 when slim) to 1
+        pushCube(v, M, ax0 / 16, -2 / 16, -2 / 16, ax1 / 16, 10 / 16, 2 / 16, function () { return TILE.arm; }, sk, bl, function (d) { return armUV(d).map(function (q) { return q / 16; }); });
     }
     /* ── first-person hands (view space) ──
        The bob and the hurt tilt, then the sway toward where you were looking a
@@ -4573,6 +4810,7 @@
             '......kkkk......'] }
     };
     var ICON = {};
+    var FLAT_ICON = { cake: 1 };   // placed as blocks, shown in the inventory as their item's picture
     function iconURL(id) {
         var r = Math.max(2, (RT && RT.gs) || 2), key = id + '@' + r;
         if (ICON[key]) return ICON[key];
@@ -4580,19 +4818,31 @@
         cv.width = cv.height = 16 * r;
         var c = cv.getContext('2d');
         c.imageSmoothingEnabled = false;
-        function tsrc(tid) { return { x: (tid % 16) * 16, y: ((tid / 16) | 0) * 16 }; }
-        if (def && def.place != null && !B[def.place].cross && !B[def.place].half) {
-            var tx = TEX[def.place];
-            var top = tsrc(texTop(tx)), side = tsrc(texSide(tx));
-            function face(tf, sx, shade) {
+        function tsrc(tid) { return { x: (tid % ATC) * 16, y: ((tid / ATC) | 0) * 16 }; }
+        if (def && def.tile != null && (def.egg || FLAT_ICON[id])) {   // the game draws these flat, from their own texture
+            var s0 = tsrc(def.tile);
+            c.drawImage(ATLAS, s0.x, s0.y, 16, 16, 0, 0, 16 * r, 16 * r);
+        } else if (def && def.place != null && !B[def.place].cross && !B[def.place].half) {
+            /* block/block.json's gui transform: the cube turned 225 about y and
+               tipped 30 at 0.625, so its top point sits at (16, 0.27) of the
+               32-unit box, the side corners at x 1.86 and 30.14, y 7.34, the
+               bottom at 31.73. East is the left face and north the right, so a
+               block's front (the furnace mouth, the table's tools, the chest's
+               latch) shows on the right. A short block drops its top and sides
+               by the missing height; an inset one pulls its sides in a texel,
+               under the top's overhang, which is why the sides go down first. */
+            var tx = TEX[def.place], bd = B[def.place], hh = bd.h || 1, drop = (1 - hh) * 17.33, inz = bd.inset ? 1 : 0;
+            var top = tsrc(texTop(tx)), lft = tsrc(tx.length === 6 ? tx[0] : texSide(tx));
+            var rgt = tsrc(tx.length === 6 ? (tx[4] !== tx[0] ? tx[4] : tx[5]) : texSide(tx)), sv = Math.round((1 - hh) * 16);
+            function face(tf, sx, shade, skip) {
                 c.setTransform(tf[0] * k, tf[1] * k, tf[2] * k, tf[3] * k, tf[4] * k, tf[5] * k);
-                c.drawImage(ATLAS, sx.x, sx.y, 16, 16, 0, 0, 16, 16);
+                c.drawImage(ATLAS, sx.x, sx.y + skip, 16, 16 - skip, 0, 0, 16, 16 - skip);
                 if (shade) { c.globalCompositeOperation = 'source-atop'; c.fillStyle = 'rgba(8,8,16,' + shade + ')'; c.fillRect(0, 0, 16, 16); c.globalCompositeOperation = 'source-over'; }
                 c.setTransform(1, 0, 0, 1, 0, 0);
             }
-            face([0.72, 0.36, -0.72, 0.36, 16, 2.5], top, 0);
-            face([0.72, 0.36, 0, 0.82, 4.5, 8.5], side, 0.28);
-            face([0.72, -0.36, 0, 0.82, 16, 14.2], side, 0.45);
+            face([0.884, 0.442, 0, 1.083, 1.86 + 0.884 * inz, 7.34 + drop - 0.442 * inz], lft, 0.28, sv);
+            face([0.884, -0.442, 0, 1.083, 16 - 0.884 * inz, 14.41 + drop - 0.442 * inz], rgt, 0.45, sv);
+            face([0.884, 0.442, -0.884, 0.442, 16, 0.27 + drop], top, 0, 0);
         } else if (def && def.egg) {
             // a fat oval in the mob's base colour, speckled with its spot colour.
             // Same shape for every mob, same as the real item; the speckle pattern
@@ -4612,6 +4862,9 @@
             }
             c.fillStyle = 'rgba(255,255,255,0.28)';
             c.fillRect(12, 7, 3, 4);
+        } else if (!def && TILE['i_' + id] != null) {   // a tab's icon the game has a texture for
+            var s1 = tsrc(TILE['i_' + id]);
+            c.drawImage(ATLAS, s1.x, s1.y, 16, 16, 0, 0, 16 * r, 16 * r);
         } else if (!def && ICON_ART[id]) {
             c.setTransform(r, 0, 0, r, 0, 0);
             sprMap(c, ICON_ART[id].rows, ICON_ART[id].pal);
@@ -4630,9 +4883,8 @@
        and at the sizes the game's own sprites have, then handed to the
        stylesheet as a --spr-<name> custom property on .mc. The DOM draws them
        at --gs with nearest-neighbour sampling, so one sprite pixel is always a
-       whole square of device pixels. They are our own drawings of the same
-       furniture, not copies of Mojang's textures, the same way the block atlas
-       is. */
+       whole square of device pixels. Each is the game's own sprite when
+       mc-tex has it at that size, and the drawing below when it does not. */
     var GSPR = null;
     function sprMap(cx, rows, pal, ox, oy) {
         for (var y = 0; y < rows.length; y++) for (var x = 0; x < rows[y].length; x++) {
@@ -4648,7 +4900,9 @@
             var cv = document.createElement('canvas');
             cv.width = w; cv.height = h;
             var cx = cv.getContext('2d');
-            draw(cx, w, h);
+            var r = texGui(name);
+            if (r && r[2] === w && r[3] === h) cx.drawImage(MTEX.gui, r[0], r[1], w, h, 0, 0, w, h);
+            else draw(cx, w, h);
             GSPR[name] = { cv: cv, w: w, h: h, url: cv.toDataURL() };
         }
         sprHud(mk);
@@ -4761,6 +5015,11 @@
             var HH = HEART.slice(); HH[2] = 'ofhfffffo'; HH[3] = 'ofefffefo';
             icon('h_' + hk + '_hc', HH, hc);
             icon('h_' + hk + '_hc_half', HH, hc, left);
+            if (hk !== 'n' && hk !== 'bl') {   // the lost health flashing in this kind: lighter, as the game's *_blinking sprites are
+                var bp = { f: '#ffffff', h: '#ffffff', s: hp.h }, bhc = { f: bp.f, h: bp.h, s: bp.s, e: '#000000' };
+                icon('h_' + hk + '_bl', HEART, bp); icon('h_' + hk + '_bl_half', HEART, bp, left);
+                icon('h_' + hk + '_bl_hc', HH, bhc); icon('h_' + hk + '_bl_hc_half', HH, bhc, left);
+            }
         }
         var AR = { o: '#000000', f: '#b8b9c4', h: '#e6e7f2', s: '#696a70' };
         icon('a_full', ARMOR, AR);
@@ -4821,6 +5080,14 @@
         for (var eid in EFFECTS) mk('eff_' + eid, 18, 18, bottle(EFFECTS[eid].c));
         mk('eff_bg_amb', 24, 24, function (cx) { effFrame(cx, '#8fb3d8', '#d8ecff', '#3a5a82'); });
         /* A toast: 160×32, dark, in a thin light frame with the corners cut. */
+        mk('toast_sys', 160, 64, function (cx) {
+            sprRect(cx, 2, 0, 156, 1, '#000000'); sprRect(cx, 2, 63, 156, 1, '#000000'); sprRect(cx, 0, 2, 1, 60, '#000000'); sprRect(cx, 159, 2, 1, 60, '#000000');
+            sprRect(cx, 1, 1, 1, 1, '#000000'); sprRect(cx, 158, 1, 1, 1, '#000000'); sprRect(cx, 1, 62, 1, 1, '#000000'); sprRect(cx, 158, 62, 1, 1, '#000000');
+            sprRect(cx, 2, 1, 156, 62, '#0e2e50'); sprRect(cx, 1, 2, 158, 60, '#0e2e50');
+            sprRect(cx, 2, 1, 156, 1, '#2a5a8a'); sprRect(cx, 1, 2, 1, 60, '#2a5a8a');
+            sprRect(cx, 2, 62, 156, 1, '#071a30'); sprRect(cx, 158, 2, 1, 60, '#071a30');
+            sprRect(cx, 7, 7, 3, 10, '#f5d83c'); sprRect(cx, 7, 19, 3, 3, '#f5d83c'); sprRect(cx, 9, 8, 1, 9, '#b89a20'); sprRect(cx, 9, 20, 1, 2, '#b89a20');
+        });
         mk('toast', 160, 32, function (cx) {
             sprRect(cx, 2, 0, 156, 1, '#000000'); sprRect(cx, 2, 31, 156, 1, '#000000');
             sprRect(cx, 0, 2, 1, 28, '#000000'); sprRect(cx, 159, 2, 1, 28, '#000000');
@@ -4890,14 +5157,21 @@
         if (RT.iw) iwRender(false);
         bedLayout();
     }
+    function bowFrame() { return RT.bowT >= 0.9 ? 2 : RT.bowT >= 0.65 ? 1 : 0; }
+    function bowFrameSync() {   // the hotbar repaints as the draw passes each frame, and once it lets go
+        var bf = RT.bowT > 0 ? bowFrame() : null;
+        if (bf !== RT.bowF) { RT.bowF = bf; paintHotbar(); }
+    }
     function paintHotbar() {
         var bar = RT.el.querySelector('.mc-hotbar');
         if (!bar) return;
         var cells = bar.children;
         for (var i = 0; i < 9; i++) {
-            var cls = 'mc-slot mc-hb' + (i === S.sel ? ' sel' : '') + (S.inv[i] ? ' has' : '');
+            var cls = 'mc-slot mc-hb' + (i === S.sel ? ' sel' : '') + (S.inv[i] ? ' has' : ''), st = S.inv[i];
             if (cells[i].className.replace(/ glint/g, '') !== cls) cells[i].className = cls;
-            paintSlot(cells[i], S.inv[i]);
+            // the stack in use is drawn in use: the bow's pulling frames at 0, 0.65 and 0.9 of its draw
+            if (i === S.sel && st && st.id === 'bow' && RT.bowT > 0) st = { id: 'bow_p' + bowFrame(), c: 1 };
+            paintSlot(cells[i], st);
         }
         hudPlace(RT.el.querySelector('.mc-hbsel'), (RT.gw >> 1) - 91 - 1 + S.sel * 20, RT.gh - 23);
         /* Gui.renderItemHotbar: with something in the off hand, its cell (29x24) at
@@ -5022,7 +5296,7 @@
             if (l < nH && l === wave) y -= 2;
             var layers = [], i2 = l * 2;
             if (i2 < hp) layers.push('h_' + kind + sfx + (i2 + 1 === hp ? '_half' : ''));
-            if (blink && i2 < RT.hDisp) layers.push('h_bl' + sfx + (i2 + 1 === RT.hDisp ? '_half' : ''));
+            if (blink && i2 < RT.hDisp) layers.push('h_' + (kind === 'n' ? 'bl' : kind + '_bl') + sfx + (i2 + 1 === RT.hDisp ? '_half' : ''));
             if (l >= nH) { var j2 = i2 - nH * 2; if (j2 < abs) layers.push('h_' + (kind === 'w' ? 'w' : 'a') + sfx + (j2 + 1 === abs ? '_half' : '')); }
             layers.push(blink ? 'h_cont_bl' : 'h_cont');
             hudIcon(hearts[l], x, y, layers);
@@ -5209,6 +5483,36 @@
         var m = /^<b>(.*?)<\/b>(.*)$/.exec(String(msg));
         toastPush({ title: m ? m[1] : String(msg), text: m ? m[2] : '' });
     }
+    /* a sprite nine-sliced the game's way, GuiGraphics.blitNineSlicedSprite: each
+       border clamped to half the box, the edges and the middle tiled from their
+       top left corner; the result as a background for the DOM, by size */
+    var NINE = {};
+    function nineURL(name, w, h, l, t, r, b) {
+        var sp = guiSprites()[name];
+        if (!sp) return 'none';
+        var key = name + '|' + w + 'x' + h + '|' + l + ',' + t + ',' + r + ',' + b;
+        if (NINE[key]) return NINE[key];
+        var cv = document.createElement('canvas');
+        cv.width = w; cv.height = h;
+        var cx = cv.getContext('2d'), sw = sp.w, sh = sp.h;
+        var L = Math.min(l, w >> 1), R = Math.min(r, w >> 1), T = Math.min(t, h >> 1), Bb = Math.min(b, h >> 1);
+        function part(sx, sy, sww, shh, dx, dy, dw, dh) {
+            if (sww <= 0 || shh <= 0 || dw <= 0 || dh <= 0) return;
+            for (var y = 0; y < dh; y += shh) for (var x = 0; x < dw; x += sww) {
+                var cw = Math.min(sww, dw - x), ch = Math.min(shh, dh - y);
+                cx.drawImage(sp.cv, sx, sy, cw, ch, dx + x, dy + y, cw, ch);
+            }
+        }
+        if (w === sw && h === sh) cx.drawImage(sp.cv, 0, 0);
+        else {
+            part(0, 0, L, T, 0, 0, L, T); part(sw - R, 0, R, T, w - R, 0, R, T);
+            part(0, sh - Bb, L, Bb, 0, h - Bb, L, Bb); part(sw - R, sh - Bb, R, Bb, w - R, h - Bb, R, Bb);
+            part(L, 0, sw - L - R, T, L, 0, w - L - R, T); part(L, sh - Bb, sw - L - R, Bb, L, h - Bb, w - L - R, Bb);
+            part(0, T, L, sh - T - Bb, 0, T, L, h - T - Bb); part(sw - R, T, R, sh - T - Bb, w - R, T, R, h - T - Bb);
+            part(L, T, sw - L - R, sh - T - Bb, L, T, w - L - R, h - T - Bb);
+        }
+        return (NINE[key] = 'url(' + cv.toDataURL() + ')');
+    }
     function toastEl(t) {
         var d = document.createElement('div');
         d.className = 'mc-toast';
@@ -5216,7 +5520,7 @@
         if (t.kind === 'recipe') {   // RecipeToast: the header in dark purple at (30, 7), the line under it in black, no shadows
             d.classList.add('mc-rtoast');
             html = '<i class="mc-tic mc-tcat"></i><i class="mc-tic mc-tit"></i>' +
-                '<span class="mc-tl" style="left:calc(var(--px) * 30);top:calc(var(--px) * 7)">' + mtHTML('New Recipes Unlocked!', '#500050', 'ns') + '</span>' +
+                '<span class="mc-tl" style="left:calc(var(--px) * 30);top:calc(var(--px) * 7)">' + mtHTML('New Recipe(s) Unlocked!', '#500050', 'ns') + '</span>' +
                 '<span class="mc-tl" style="left:calc(var(--px) * 30);top:calc(var(--px) * 18)">' + mtHTML('Check your recipe book', '#000000', 'ns') + '</span>';
             t.w = 160;
         } else if (t.icon) {   // AdvancementToast: icon at (8, 8), header (30, 7), name (30, 18)
@@ -5224,14 +5528,18 @@
                 '<span class="mc-tl" style="left:calc(var(--px) * 30);top:calc(var(--px) * 7)">' + mtHTML(t.title, t.color || '#ffff00', 'ns') + '</span>' +
                 (t.text ? '<span class="mc-tl" style="left:calc(var(--px) * 30);top:calc(var(--px) * 18)">' + mtHTML(t.text, '#ffffff', 'ns') + '</span>' : '');
             t.w = 160;
-        } else {   // SystemToast: title at (18, 7), or 12 alone; message lines 12 apart below it; as wide as it needs
-            var lines = t.text ? [t.text] : [];
-            html = '<span class="mc-tl" style="left:calc(var(--px) * 18);top:calc(var(--px) * ' + (lines.length ? 7 : 12) + ')">' + mtHTML(t.title, t.color || '#ffff00', 'ns') + '</span>';
-            lines.forEach(function (ln, k) { html += '<span class="mc-tl" style="left:calc(var(--px) * 18);top:calc(var(--px) * ' + (19 + 12 * k) + ')">' + mtHTML(ln, '#ffffff', 'ns') + '</span>'; });
-            var wmax = mfWidth(t.title) + 1;
-            lines.forEach(function (ln) { wmax = Math.max(wmax, mfWidth(ln) + 1); });
-            t.w = Math.max(160, wmax + 30);
-            d.style.height = 'calc(var(--px) * ' + (20 + Math.max(1, lines.length) * 12) + ')';
+        } else {   // SystemToast: its own card; title and message both split at 200, the title from y 7 (12 with no message), the message from 7 + 12 a title line, lines 12 apart; max(160, the widest line) + 30 wide
+            d.classList.add('mc-stoast');
+            var tl = mfWrap(t.title, 200), lines = t.text ? mfWrap(t.text, 200) : [], ty0 = lines.length ? 7 : 12;
+            tl.forEach(function (ln, k) { html += '<span class="mc-tl" style="left:calc(var(--px) * 18);top:calc(var(--px) * ' + (ty0 + 12 * k) + ')">' + mtHTML(ln, t.color || '#ffff00', 'ns') + '</span>'; });
+            lines.forEach(function (ln, k) { html += '<span class="mc-tl" style="left:calc(var(--px) * 18);top:calc(var(--px) * ' + (7 + 12 * tl.length + 12 * k) + ')">' + mtHTML(ln, '#ffffff', 'ns') + '</span>'; });
+            var wmax = 0;
+            tl.concat(lines).forEach(function (ln) { wmax = Math.max(wmax, mfWidth(ln) + 1); });
+            t.w = Math.max(160, wmax) + 30;
+            var th = 20 + (tl.length - 1) * 12 + Math.max(1, lines.length) * 12;
+            t.h = th;
+            d.style.height = 'calc(var(--px) * ' + th + ')';
+            d.style.setProperty('--nine', nineURL('toast_sys', t.w, th, 17, 30, 4, 4));   // toast/system's nine-slice borders
         }
         d.style.width = 'calc(var(--px) * ' + t.w + ')';
         d.innerHTML = html;
@@ -5240,12 +5548,17 @@
     function toastFrame(dt) {
         var wrap = RT && RT.el && RT.el.querySelector('.mc-toasts');
         if (!wrap || !RT.gs) return;
-        var list = RT.toasts = RT.toasts || [], slots = 5, i;
-        while (RT.toastQ && RT.toastQ.length && list.length < slots) {
-            var t = RT.toastQ.shift(), used = {};
-            for (i = 0; i < list.length; i++) used[list[i].slot] = 1;
-            for (i = 0; used[i]; i++) {}
-            t.slot = i; t.age = 0; t.el = toastEl(t);
+        var list = RT.toasts = RT.toasts || [], slots = 5, i, j;
+        // ToastManager: five 32-pixel slots; a toast takes ceil(height / 32) of them in a row, and waits until that many are free together
+        while (RT.toastQ && RT.toastQ.length) {
+            var t = RT.toastQ[0], used = {};
+            if (!t.el) t.el = toastEl(t);
+            var n = Math.max(1, Math.ceil((t.h || 32) / 32)), at = -1;
+            for (i = 0; i < list.length; i++) for (j = 0; j < (list[i].n || 1); j++) used[list[i].slot + j] = 1;
+            for (i = 0; i + n <= slots && at < 0; i++) { for (j = 0; j < n && !used[i + j]; j++) {} if (j === n) at = i; }
+            if (at < 0) break;
+            RT.toastQ.shift();
+            t.slot = at; t.n = n; t.age = 0;
             wrap.appendChild(t.el);
             list.push(t);
             snd('ding');
@@ -5305,37 +5618,55 @@
         sSave();
         iwShow('pause');
     }
-    /* ── Open to LAN ────────────────────────────────────────
-       The LAN World screen: a game mode for players who would join, an Allow
-       Commands switch, a port, Start LAN World. There is nobody on this LAN,
-       but the switch is the real game's only way to turn commands on in a
-       world created without them, so it does exactly that, for the rest of the
-       session, the way the real one does, and the button greys once the world
-       is out. */
-    function lanOpen() {
-        if (!RT || !RT.paused || RT.lan) return;
-        RT.lanUI = { gm: S.gm, cheats: cheatsOn(), port: '', pick: String(1024 + ((Math.random() * (65535 - 1024)) | 0)) };   // an empty box takes the picked port
-        iwShow('lan');
-    }
-    function lanPortOk(p) { p = String(p).trim(); return p === '' || (/^\d{4,5}$/.test(p) && +p >= 1024 && +p <= 65535); }
-    function lanClose() {
-        if (!RT || !RT.el) return;
-        RT.lanUI = null;
-        if (RT.paused) iwShow('pause');
+    /* ── World Options ──────────────────────────────────────
+       26.3's WorldOptionsScreen, opened from the Game Menu, is where the
+       world's game modes, cheats, difficulty (and its lock), game rules and
+       the LAN scope with its port now live. It is a canvas screen like the
+       Options tree, over the paused world; what it changes applies on Apply
+       Changes, which then returns to the Game Menu, as setScreen(lastScreen)
+       does. Allow Cheats is the world's own setting from here, saved with it;
+       the LAN scope belongs to the session. */
+    function iwWorldOptions() {
+        var host = RT.el.querySelector('.mc-pause');
+        if (host) host.style.display = 'none';
+        RT.iw = null;
+        mnEnter(mnOpen('wopts', false, true));   // opened directly, so its enter hook (the settings as they stand) runs here
         RT.el.focus();
     }
-    function lanStart() {
-        var u = RT && RT.lanUI;
-        if (!u || !lanPortOk(u.port)) { if (u) iwRender(false); return; }
-        RT.lan = { gm: u.gm, cheats: !!u.cheats, port: +(String(u.port).trim() || u.pick) };
-        RT.lanUI = null;
-        chatSay('Local game hosted on port ' + RT.lan.port);
-        hidePause();
-        lockCursor();
+    function lanPortOk(p) { p = String(p).trim(); return p === '' || (/^\d{4,5}$/.test(p) && +p >= 1024 && +p <= 65535); }
+    var LAN_BAD = 'Not a valid port.\nLeave the edit box empty or enter a number between 1024 and 65535.';
+    function woptsEnter(m) {
+        var lo = RT.lanOpts || {};
+        if (!RT.lanPick) RT.lanPick = String(1024 + ((Math.random() * (65535 - 1024)) | 0));   // HttpUtil.getAvailablePort, for an empty box
+        m.d.wo = { gm: S.gmDefault != null ? S.gmDefault : S.gm, pgm: S.gm, cheats: cheatsOn(), diff: S.diff, lock: !!S.diffLocked,
+            lan: !!RT.lan, port: RT.lan ? String(RT.lan.port) : '', guest: !!lo.guest, force: !!lo.force };
+        m.d.wo0 = JSON.stringify(m.d.wo);
+        m.d.wscroll = 0;
+    }
+    function woptsApply(m) {
+        var d = m.d.wo;
+        if (d.lock && !S.diffLocked) {   // locking asks first, in a popup that names the difficulty
+            mnPopup(m, { title: 'Lock World Difficulty',
+                msgs: ['Are you sure you want to lock the difficulty of this world? This will set this world to always be ' + DIFF_NAME[d.diff] + ', and you will never be able to change that again.'],
+                buttons: [{ t: 'Yes', on: function (mm) { mnBack(mm); woptsCommit(mm); } }, { t: 'No', on: function (mm) { mnBack(mm); } }] });
+            return;
+        }
+        woptsCommit(m);
+    }
+    function woptsCommit(m) {
+        var d = m.d.wo, hadLan = !!RT.lan, port = +(String(d.port).trim() || RT.lanPick);
+        S.diff = d.diff;
+        if (d.lock) S.diffLocked = true;
+        S.cheats = !!d.cheats;                       // setWorldAllowCommands: the world's own setting now
+        S.gmDefault = d.gm;
+        if (d.pgm !== S.gm) setGamemode(d.pgm);      // the personal mode is this player's
+        RT.lanOpts = { guest: !!d.guest, force: !!d.force };
+        if (d.lan && (!hadLan || RT.lan.port !== port)) { RT.lan = { port: port }; chatSay('This world is now open to LAN. The port number is ' + port); }
+        else if (!d.lan && hadLan) { RT.lan = null; chatSay('This world is no longer open to multiplayer'); }
+        mnBack(m);   // setScreen(lastScreen): the Game Menu again
     }
     function hidePause() {
         RT.paused = false;
-        RT.lanUI = null;
         iwHide();
         RT.lastT = 0;   // don't count paused time as a frame
         RT.el.focus();  // the clicked button just vanished with the menu — keys must land on the game root
@@ -5390,8 +5721,8 @@
         return '<button type="button" class="mc-wb' + (cls ? ' ' + cls : '') + '" data-act="' + act + '" data-w="' + w + '"' + (off ? ' disabled' : '') +
             ' style="' + iwAt(x, y, w) + '">' + iwLabel(label, w, off) + '</button>';
     }
-    function iwIcon(cls, act, x, y, icon, name, off) {
-        return '<button type="button" class="mc-wb mc-wbi' + (cls ? ' ' + cls : '') + '" data-act="' + act + '" data-tip="' + escHtml(name) + '" aria-label="' + escHtml(name) + '"' +
+    function iwIcon(cls, act, x, y, icon, name, off, tip) {
+        return '<button type="button" class="mc-wb mc-wbi' + (cls ? ' ' + cls : '') + '" data-act="' + act + '" data-tip="' + escHtml(tip || name) + '" aria-label="' + escHtml(name) + '"' +
             (off ? ' disabled' : '') + ' style="' + iwAt(x, y, 20) + '"><i style="background-image:var(--spr-' + icon + ')"></i></button>';
     }
     function iwSetBtn(b, label, off) {   // a button whose label or state changed, updated in place so it keeps focus
@@ -5425,8 +5756,9 @@
         RT.el.style.setProperty('--mblur', (5.5 / (window.devicePixelRatio || 1)).toFixed(2) + 'px');
         var layers = host.querySelectorAll('.mc-iwl'), layer = null;
         for (var i = 0; i < layers.length; i++) {
-            var mine = layers[i].classList.contains(def.layer);
-            layers[i].style.display = mine ? '' : 'none';
+            var mine = layers[i].classList.contains(def.layer), under = !!(def.under && layers[i].classList.contains(def.under));
+            layers[i].style.display = mine || under ? '' : 'none';
+            layers[i].classList.toggle('mc-under', under);   // the screen behind an overlay: shown, blurred, out of reach
             if (mine) layer = layers[i];
         }
         if (full || layer._scr !== iw.scr || layer._W !== RT.gw || layer._H !== RT.gh) {
@@ -5467,9 +5799,7 @@
         });
         host.addEventListener('mousemove', function (e) {
             var b = e.target.closest && e.target.closest('[data-tip]'), tip = host.querySelector('.mc-iwtip');
-            var lines = null;
-            if (b) lines = b.getAttribute('data-tip').split('\n').map(function (t) { return { t: t }; });
-            tipRender(lines, e.clientX, e.clientY, tip);
+            tipRender(b ? widgetTipLines(b.getAttribute('data-tip')) : null, e.clientX, e.clientY, tip, b ? widgetTipAt(b, e.clientX, e.clientY) : null);
         });
         host.addEventListener('mouseleave', function () { tipRender(null, 0, 0, host.querySelector('.mc-iwtip')); });
         host.addEventListener('keydown', function (e) {
@@ -5485,11 +5815,11 @@
     }
 
     /* ── the Game Menu ──
-       PauseScreen as 26.2 builds it: a 212x166 grid at ((W - 212) / 2,
+       PauseScreen as 26.3 builds it: a 212x166 grid at ((W - 212) / 2,
        (H - 166) / 4) of 204-wide rows and 98-wide halves with 8 between them,
        its first row 50 down; the title 40 from the top. Report Bugs and Give
-       Feedback open their links; this world's only other players would come
-       over LAN, so Friends is where the LAN World screen lives; Player
+       Feedback open their links; Options... and World Options... share a row
+       (the LAN scope and the world's cheats live in the second); Player
        Reporting is greyed with nobody else here. */
     IW_SCR.pause = {
         host: 'pause', layer: 'mc-pmain',
@@ -5501,16 +5831,17 @@
                 iwBtn('mc-statbtn', 'stats', x0 + 110, y0 + 74, 98, 'Statistics') +
                 iwIcon('mc-bugbtn', 'bugs', x0 + 60, y0 + 98, 'ic_bug', 'Report Bugs') +
                 iwIcon('mc-fbbtn', 'feedback', x0 + 84, y0 + 98, 'ic_feedback', 'Give Feedback') +
-                iwIcon('mc-lanbtn', 'lan', x0 + 108, y0 + 98, 'ic_friends', 'Friends', !!RT.lan) +
-                iwIcon('mc-repbtn', 'report', x0 + 132, y0 + 98, 'ic_report', 'Player Reporting', true) +
-                iwBtn('mc-optbtn', 'options', x0 + 4, y0 + 122, 204, 'Options...') +
+                iwIcon('mc-frbtn', 'friends', x0 + 108, y0 + 98, 'ic_friends', 'Friends') +
+                iwIcon('mc-repbtn', 'report', x0 + 132, y0 + 98, 'ic_report', 'Player Reporting', true, 'There are no players to report in this world') +
+                iwBtn('mc-optbtn', 'options', x0 + 4, y0 + 122, 98, 'Options...') +
+                iwBtn('mc-woptbtn', 'wopts', x0 + 110, y0 + 122, 98, 'World Options...') +
                 iwBtn('mc-totitle', 'quit', x0 + 4, y0 + 146, 204, 'Save and Quit to Title');
         },
-        update: function (layer) { var b = layer.querySelector('.mc-lanbtn'); if (b) b.disabled = !!RT.lan; },
         act: function (a) {
             if (a === 'resume') { hidePause(); lockCursor(); }
             else if (a === 'quit') mnToTitle();
-            else if (a === 'lan') lanOpen();
+            else if (a === 'wopts') iwWorldOptions();
+            else if (a === 'friends') iwShow('friends');
             else if (a === 'options') iwOptions();
             else if (a === 'bugs') iwShow('link', { url: 'https://aka.ms/snapshotbugs?ref=game' });
             else if (a === 'feedback') iwShow('link', { url: 'https://aka.ms/javafeedback?ref=game' });
@@ -5518,14 +5849,19 @@
         },
         esc: function () { hidePause(); lockCursor(); }
     };
-    /* ConfirmLinkScreen for a trusted link: the question, the address under it,
-       and Open in Browser, Copy to Clipboard and Cancel, 100 wide and 5 apart */
+    /* ConfirmLinkScreen the way a link in chat opens it (Screen passes
+       trusted = false): ConfirmScreen's centred column, 8 apart, of the
+       question, the address wrapped at W - 50, the warning in 0xFFCCCC, and
+       16 under those Yes, Copy to Clipboard and No, 100 wide and 4 apart */
     IW_SCR.link = {
         host: 'pause', layer: 'mc-plink',
         html: function (W, H, iw) {
-            var tt = Math.max(10, Math.min(80, ((H - 9) >> 1) - 29)), by = Math.max(((H / 6) | 0) + 96, Math.min(H - 24, tt + 20 + 9 + 20)), cx = W >> 1;
-            return iwCenter('Do you want to open this link or copy it to your clipboard?', W, tt) + iwCenter(iw.d.url, W, tt + 20) +
-                iwBtn('', 'open', cx - 155, by, 100, 'Open in Browser') + iwBtn('', 'copy', cx - 50, by, 100, 'Copy to Clipboard') + iwBtn('', 'cancel', cx + 55, by, 100, 'Cancel');
+            var lines = mfWrap(iw.d.url, W - 50), hh = 9 + 8 + lines.length * 9 + 8 + 9 + 8 + 16 + 20, tt = (H - hh) >> 1, cx = W >> 1;
+            var html = iwCenter('Are you sure you want to open the following website?', W, tt);
+            lines.forEach(function (ln, k) { html += iwCenter(ln, W, tt + 17 + k * 9); });
+            var wy = tt + 17 + lines.length * 9 + 8, by = wy + 9 + 8 + 16;
+            html += iwCenter("Never open links from people that you don't trust!", W, wy, '#ffcccc');
+            return html + iwBtn('', 'open', cx - 154, by, 100, 'Yes') + iwBtn('', 'copy', cx - 50, by, 100, 'Copy to Clipboard') + iwBtn('', 'cancel', cx + 54, by, 100, 'No');
         },
         act: function (a) {
             var url = RT.iw.d.url;
@@ -5535,56 +5871,53 @@
         },
         esc: function () { iwShow('pause'); }
     };
-    /* ShareToLanScreen: the title at 50, "Settings for Other Players" at 82,
-       Game Mode and Allow Commands side by side at 100, "Port Number" at 142 over
-       a 150-wide box at 160 whose hint is the port it picked, and Start LAN World
-       and Cancel along the bottom. A bad port turns the box's text red, puts the
-       reason in its tooltip and greys Start. */
-    var LAN_GM = [0, 3, 1, 2];   // the cycle's order: Survival, Spectator, Creative, Adventure
-    var LAN_BAD = 'Not a valid port.\nLeave the edit box empty or enter a number between 1024 and 65535.';
-    IW_SCR.lan = {
-        host: 'pause', layer: 'mc-lan',
-        html: function (W, H) {
-            var u = RT.lanUI, cx = W >> 1;
-            return iwCenter('LAN World', W, 50) + iwCenter('Settings for Other Players', W, 82) +
-                iwBtn('mc-langm', 'gm', cx - 155, 100, 150, 'Game Mode: ' + GM_NAME[u.gm]) +
-                iwBtn('mc-lanch', 'ch', cx + 5, 100, 150, 'Allow Commands: ' + (u.cheats ? 'ON' : 'OFF')) +
-                iwCenter('Port Number', W, 142) +
-                '<div class="mc-iwfield" style="' + iwAt(cx - 75, 160, 150, 20) + '"><input class="mc-lanport" maxlength="5" inputmode="numeric" spellcheck="false" autocomplete="off" aria-label="Port Number">' +
-                '<div class="mc-iwmir mc-fmir"></div></div><span class="mc-lanmsg" hidden></span>' +
-                iwBtn('mc-lanstart', 'start', cx - 155, H - 28, 150, 'Start LAN World') +
-                iwBtn('mc-lancancel', 'cancel', cx + 5, H - 28, 150, 'Cancel');
+    /* ── the Friends overlay ──
+       FriendsOverlayScreen: a 220-wide panel (friends/background 8 out all
+       round) the height of the screen less 80, centred, over the Game Menu
+       blurred; two 110x20 tabs 27 above its content on friends/button, the
+       open one underlined as wide as its label; the Friends tab's add-friend
+       row (a 181-wide box for a profile name, 3 from a 20-pixel send button),
+       "My profile name:" under it and the list separator, then the list. With
+       no service to reach, the list shows the game's own connection line in
+       grey, centred, and the row is greyed. */
+    var FR_ERR = ['Friends List is not working right now.', '', 'Check your internet connection and try again.'];
+    IW_SCR.friends = {
+        host: 'pause', layer: 'mc-friends', under: 'mc-pmain',
+        html: function (W, H, iw) {
+            var x0 = (W - 220) >> 1, tab = iw.d.tab || 'friends', html = '';
+            html += '<i class="mc-frdim" style="' + iwAt(0, 0, W, H) + '"></i>';
+            html += '<i class="mc-frpanel" style="' + iwAt(x0 - 8, 32, 236, H - 64) + '"></i>';
+            [['friends', 'Friends'], ['pending', 'Requests (0)']].forEach(function (t, i) {
+                var on = tab === t[0], tw = mfWidth(t[1]) + 1, uw = Math.min(tw, 106);
+                html += '<button type="button" class="mc-wb mc-frtab' + (on ? ' on' : '') + '" data-act="tab:' + t[0] + '" data-w="110" style="' + iwAt(x0 + 110 * i, 13, 110) + '">' +
+                    '<span class="mc-wbl" style="' + pAt((110 >> 1) - (tw >> 1), 6) + '">' + mtHTML(t[1], '#ffffff') + '</span>' +
+                    (on ? '<i class="mc-tabu" style="' + pAt((110 - uw) >> 1, 18) + ';width:calc(var(--px) * ' + uw + ')"></i>' : '') + '</button>';
+            });
+            var ly = 40, lh = H - 80, cx0 = x0 + 8;
+            if (tab === 'friends') {
+                html += '<div class="mc-iwfield off" style="' + iwAt(cx0, ly, 181, 20) + '"><input class="mc-frname" maxlength="16" spellcheck="false" autocomplete="off" aria-label="Enter Profile Name" disabled><div class="mc-iwmir mc-fmir"></div></div>' +
+                    '<button type="button" class="mc-wb mc-wbi mc-frsend" data-act="send" data-tip="Send friend request" aria-label="Send friend request" disabled style="' + iwAt(cx0 + 184, ly, 20) + '"><i style="background-image:var(--spr-ic_sendreq)"></i></button>' +
+                    iwText('My profile name: ', cx0, ly + 24, '#ffffff') + '<button type="button" class="mc-frcopy" data-act="copy" data-tip="Copy to Clipboard" aria-label="Copy profile name Steve to clipboard" style="' + iwAt(cx0 + mfWidth('My profile name: ') + 1, ly + 24, mfWidth('Steve') + 1, 9) + '">' + mtHTML('Steve', '#ffffff', 'ul') + '</button>' +
+                    '<i class="mc-frsep" style="' + iwAt(cx0, ly + 37, 204, 2) + '"></i>';
+                ly += 39; lh -= 39;
+            }
+            var lines = [];
+            FR_ERR.forEach(function (l) { if (l) mfWrap(l, 204).forEach(function (w) { lines.push(w); }); else lines.push(''); });
+            var th = lines.length * 9, ty = ly + ((lh - th) >> 1);
+            lines.forEach(function (l, k) { if (l) html += iwText(l, x0 + 110 - ((mfWidth(l) + 1) >> 1), ty + k * 9, '#aaaaaa'); });
+            return html;
         },
-        wire: function (layer) {
-            var pin = layer.querySelector('.mc-lanport'), u = RT.lanUI;
-            pin.value = u.port; pin.placeholder = u.pick;
-            pin.addEventListener('input', function () { if (RT.lanUI) { RT.lanUI.port = pin.value; iwRender(false); } });
-            pin.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); lanStart(); } });
-            pin.addEventListener('focus', function () { pin._ft = performance.now(); });
-        },
-        update: function (layer) {
-            var u = RT.lanUI, ok = lanPortOk(u.port), box = layer.querySelector('.mc-iwfield');
-            iwSetBtn(layer.querySelector('.mc-langm'), 'Game Mode: ' + GM_NAME[u.gm]);
-            iwSetBtn(layer.querySelector('.mc-lanch'), 'Allow Commands: ' + (u.cheats ? 'ON' : 'OFF'));
-            iwSetBtn(layer.querySelector('.mc-lanstart'), 'Start LAN World', !ok);
-            layer.querySelector('.mc-lanmsg').textContent = ok ? '' : LAN_BAD;
-            if (ok) box.removeAttribute('data-tip'); else box.setAttribute('data-tip', LAN_BAD);
-            IW_SCR.lan.frame(RT.iw);
-        },
-        frame: function () {
-            var layer = RT.el.querySelector('.mc-pause .mc-lan'), pin = layer && layer.querySelector('.mc-lanport');
-            if (!pin || !RT.lanUI) return;
-            layer.querySelector('.mc-iwfield').classList.toggle('on', document.activeElement === pin);
-            paintFieldMirror(pin, layer.querySelector('.mc-iwmir'), lanPortOk(RT.lanUI.port) ? '#e0e0e0' : '#df5050', 142, RT.lanUI.pick);
+        wire: function (layer, iw) {
+            var box = layer.querySelector('.mc-iwfield');
+            if (box) paintFieldMirror(box.querySelector('input'), box.querySelector('.mc-iwmir'), '#707070', 173, 'Enter Profile Name');
+            var dim = layer.querySelector('.mc-frdim');
+            if (dim) dim.addEventListener('mousedown', function () { iwShow('pause'); });   // a click outside the panel closes it, as the game's does
         },
         act: function (a) {
-            var u = RT.lanUI;
-            if (a === 'gm') { u.gm = LAN_GM[(LAN_GM.indexOf(u.gm) + 1) % 4]; iwRender(false); }
-            else if (a === 'ch') { u.cheats = !u.cheats; iwRender(false); }
-            else if (a === 'start') lanStart();
-            else if (a === 'cancel') lanClose();
+            if (a.slice(0, 4) === 'tab:') { RT.iw.d.tab = a.slice(4); iwRender(true); }
+            else if (a === 'copy') { try { navigator.clipboard.writeText('Steve'); } catch (e) {} }
         },
-        esc: function () { lanClose(); }
+        esc: function () { iwShow('pause'); }
     };
     /* ── the death screen ──
        DeathScreen: the world stays sharp behind a gradient from 0x60500000 at
@@ -5616,10 +5949,10 @@
     IW_SCR.dquit = {
         host: 'death', layer: 'mc-dquit', delay: true,
         html: function (W, H) {
-            var tt = Math.max(10, Math.min(80, (H >> 1) - 29)), by = Math.max(((H / 6) | 0) + 96, Math.min(H - 24, tt + 40));
+            var hh = 9 + 8 + 8 + 16 + 20, tt = (H - hh) >> 1, by = tt + hh - 20;   // ConfirmScreen with no message
             return iwCenter('Are you sure you want to quit?', W, tt) +
-                iwBtn('mc-dqtitle', 'title', (W >> 1) - 155, by, 150, 'Title Screen', true) +
-                iwBtn('mc-dqrespawn', 'respawn', (W >> 1) + 5, by, 150, 'Respawn', true);
+                iwBtn('mc-dqtitle', 'title', (W >> 1) - 152, by, 150, 'Title Screen', true) +
+                iwBtn('mc-dqrespawn', 'respawn', (W >> 1) + 2, by, 150, 'Respawn', true);
         },
         update: function (layer, iw) {
             iwSetBtn(layer.querySelector('.mc-dqtitle'), 'Title Screen', !iw.live);
@@ -5628,7 +5961,8 @@
         act: function (a) {
             if (a === 'respawn') { respawn(); lockCursor(); }
             else if (a === 'title') mnToTitle();
-        }
+        },
+        esc: function () { if (RT.iw && RT.iw.live) { respawn(); lockCursor(); } }   // ConfirmScreen's Escape is its No, which here is Respawn
     };
     /* ── Advancements ──────────────────────────────────────────────
        AdvancementsScreen: "Advancements" over a 252x140 window at
@@ -5703,7 +6037,7 @@
     // AdvancementWidget's width and description lines: the title plus 29, the description split to fit round that
     function advMeasure(n) {
         if (n.w) return;
-        var base = 29 + mfWidth(n.a.t) + 1, best = null, bd = 1e9;
+        var base = 29 + Math.max(mfWidth(n.a.t) + 1, 80), best = null, bd = 1e9;   // AdvancementWidget: the title counts as no narrower than 80
         [0, 10, -10, 25, -25].some(function (o) {
             var ls = mfWrap(n.a.d, base - o), mw = ls.reduce(function (m, s) { return Math.max(m, mfWidth(s) + 1); }, 0), dd = Math.abs(mw - base);
             if (dd < bd) { bd = dd; best = ls; }
@@ -5802,7 +6136,7 @@
         if (ADV_STONE) return ADV_STONE;
         var cv = document.createElement('canvas'), t = TILE.stone;
         cv.width = cv.height = 16;
-        cv.getContext('2d').drawImage(ATLAS, (t % 16) * 16, ((t / 16) | 0) * 16, 16, 16, 0, 0, 16, 16);
+        cv.getContext('2d').drawImage(ATLAS, (t % ATC) * 16, ((t / ATC) | 0) * 16, 16, 16, 0, 0, 16, 16);
         return (ADV_STONE = cv.toDataURL());
     }
     /* ── Statistics ───────────────────────────────────────────────
@@ -5841,8 +6175,8 @@
         ['bell_ring', 'Bells Rung'], ['eat_cake_slice', 'Cake Slices Eaten'], ['fill_cauldron', 'Cauldrons Filled'], ['open_chest', 'Chests Opened'],
         ['damage_absorbed', 'Damage Absorbed', 't'], ['damage_blocked_by_shield', 'Damage Blocked by Shield', 't'], ['damage_dealt', 'Damage Dealt', 't'],
         ['damage_dealt_absorbed', 'Damage Dealt (Absorbed)', 't'], ['damage_dealt_resisted', 'Damage Dealt (Resisted)', 't'], ['damage_resisted', 'Damage Resisted', 't'],
-        ['damage_taken', 'Damage Taken', 't'], ['inspect_dispenser', 'Dispensers Searched'], ['boat_one_cm', 'Distance by Boat', 'd'], ['aviate_one_cm', 'Distance by Elytra', 'd'],
-        ['horse_one_cm', 'Distance by Horse', 'd'], ['minecart_one_cm', 'Distance by Minecart', 'd'], ['pig_one_cm', 'Distance by Pig', 'd'], ['strider_one_cm', 'Distance by Strider', 'd'],
+        ['damage_taken', 'Damage Taken', 't'], ['inspect_dispenser', 'Dispensers Searched'], ['boat_one_cm', 'Distance by Boat', 'd'], ['aviate_one_cm', 'Distance by Elytra', 'd'], ['happy_ghast_one_cm', 'Distance by Happy Ghast', 'd'],
+        ['horse_one_cm', 'Distance by Horse', 'd'], ['minecart_one_cm', 'Distance by Minecart', 'd'], ['nautilus_one_cm', 'Distance by Nautilus', 'd'], ['pig_one_cm', 'Distance by Pig', 'd'], ['strider_one_cm', 'Distance by Strider', 'd'],
         ['climb_one_cm', 'Distance Climbed', 'd'], ['crouch_one_cm', 'Distance Crouched', 'd'], ['fall_one_cm', 'Distance Fallen', 'd'], ['fly_one_cm', 'Distance Flown', 'd'],
         ['sprint_one_cm', 'Distance Sprinted', 'd'], ['swim_one_cm', 'Distance Swum', 'd'], ['walk_one_cm', 'Distance Walked', 'd'], ['walk_on_water_one_cm', 'Distance Walked on Water', 'd'],
         ['walk_under_water_one_cm', 'Distance Walked under Water', 'd'], ['inspect_dropper', 'Droppers Searched'], ['open_enderchest', 'Ender Chests Opened'], ['fish_caught', 'Fish Caught'],
@@ -5855,7 +6189,7 @@
         ['tune_noteblock', 'Note Blocks Tuned'], ['deaths', 'Number of Deaths'], ['pot_flower', 'Plants Potted'], ['player_kills', 'Player Kills'], ['raid_trigger', 'Raids Triggered'],
         ['raid_win', 'Raids Won'], ['clean_shulker_box', 'Shulker Boxes Cleaned'], ['open_shulker_box', 'Shulker Boxes Opened'], ['sneak_time', 'Sneak Time', 'time'],
         ['talked_to_villager', 'Talked to Villagers'], ['target_hit', 'Targets Hit'], ['play_time', 'Time Played', 'time'], ['time_since_death', 'Time Since Last Death', 'time'],
-        ['time_since_rest', 'Time Since Last Rest', 'time'], ['sleep_in_bed', 'Times Slept in a Bed'], ['total_world_time', 'Total World Time', 'time'],
+        ['time_since_rest', 'Time Since Last Rest', 'time'], ['total_world_time', 'Time with World Open', 'time'], ['sleep_in_bed', 'Times Slept in a Bed'], ['sleep_in_straw_bed', 'Times Slept in a Straw Bed'],
         ['traded_with_villager', 'Traded with Villagers'], ['trigger_trapped_chest', 'Trapped Chests Triggered'], ['use_cauldron', 'Water Taken from Cauldron']
     ];
     // StatFormatter: two decimals always; distance steps cm to m to km past a half, time s to min to h to d to y
@@ -5889,49 +6223,89 @@
         for (k in (st.kb || {})) ids[k] = 1;
         return Object.keys(ids).sort().map(function (m) { return { m: m }; });
     }
-    function statsBody(W, H, iw) {
-        var tab = iw.d.tab || 'general', rows = statRows(tab), top = 33, bot = H - 58, lh = bot - top;
-        var rh = tab === 'general' ? 14 : tab === 'items' ? 20 : 36, rw = tab === 'items' ? 280 : 220, left = (W >> 1) - (rw >> 1) + 2;
-        var head = tab === 'items' ? 20 : 0, total = rows.length * rh + head + 4, max = Math.max(0, total - lh);
-        var sc = iw.d.scroll = Math.max(0, Math.min(max, iw.d.scroll || 0)), html = '';
-        if (tab === 'items') STAT_COLS.forEach(function (c, i) {
-            html += '<i class="mc-sthead" data-tip="' + c[1] + '" style="' + iwAt(left + 75 + 40 * i - 18, top + 5 - sc, 18, 18) + ';background-image:var(--spr-' + c[2] + ')"></i>';
+    /* StatsScreen in 26.3: a MenuTabBar of General, Items and Mobs along the
+       top (a tab with nothing to show greyed, "No statistics found." on it),
+       the list in the band between the bar and a 33-pixel footer holding Done,
+       no list wash of its own. Rows are 280 wide, centred; an entry's content
+       sits a pixel in from its row. General rows are 14 tall, the name 2 in
+       and the value 4 from the right, white and 0xBABABA by turns; Items rows
+       22, the item's slot at the content's corner and six right-aligned
+       columns 40 apart from 75, under a header row of sort buttons (the
+       statistics/header face, container/slot under the pointer) with
+       sort_up or sort_down 36 left of the sorted column; Mobs rows 36, three
+       lines 9 apart. The scroller stands 8 right of the rows. */
+    function statSortRows(rows, iw) {
+        var col = iw.d.sortCol, ord = iw.d.sortOrd || 0;
+        if (!col || !ord) return rows;
+        return rows.slice().sort(function (a, b) {
+            var d = statGet(col, a.id) - statGet(col, b.id);
+            if (d) return ord * d;
+            return ord * (I[a.id].t < I[b.id].t ? -1 : I[a.id].t > I[b.id].t ? 1 : 0);
         });
+    }
+    function statsBody(W, H, iw) {
+        var tab = iw.d.tab || 'general', rows = statRows(tab), top = 24, bot = H - 33, lh = bot - top;
+        if (tab === 'items') rows = statSortRows(rows, iw);
+        var rh = tab === 'general' ? 14 : tab === 'items' ? 22 : 36, rw = 280, left = (W >> 1) - 140;
+        var head = tab === 'items' ? 22 : 0, total = rows.length * rh + head + 4, max = Math.max(0, total - lh);
+        var sc = iw.d.scroll = Math.max(0, Math.min(max, iw.d.scroll || 0)), html = '';
+        if (tab === 'items') {
+            var hy = top + 4 - sc;
+            STAT_COLS.forEach(function (c, i) {
+                html += '<button type="button" class="mc-wb mc-stsort" data-act="sort:' + c[0] + '" data-tip="' + c[1] + '" aria-label="' + c[1] + '" style="' + iwAt(left + 75 + 40 * i - 18, hy + 2, 18) + ';--sth:var(--spr-' + c[2] + ')"></button>';
+            });
+            if (iw.d.sortCol && iw.d.sortOrd) {
+                var ci = STAT_COLS.map(function (c) { return c[0]; }).indexOf(iw.d.sortCol);
+                html += '<i class="mc-stsortarrow" style="' + iwAt(left + 75 + 40 * ci - 36, hy + 2, 18, 18) + ';background-image:var(--spr-' + (iw.d.sortOrd === 1 ? 'st_sort_up' : 'st_sort_down') + ')"></i>';
+            }
+        }
         rows.forEach(function (r, i) {
-            var y = top + 4 - sc + head + i * rh, col = i % 2 === 0 ? '#ffffff' : (tab === 'general' ? '#bababa' : '#909090');
+            var y = top + 4 - sc + head + i * rh, col = i % 2 === 0 ? '#ffffff' : '#bababa';
             if (y + rh < top || y > bot) return;
             if (tab === 'general') {
-                var ty = y + (rh >> 1) - 4;
-                html += iwText(r.t, left + 2, ty, col) + iwText(r.v, left + rw - 8 - (mfWidth(r.v) + 1), ty, col);
+                html += iwText(r.t, left + 2, y + 3, col) + iwText(r.v, left + rw - 4 - (mfWidth(r.v) + 1), y + 3, col);
             } else if (tab === 'items') {
-                html += '<i class="mc-stslot" style="' + iwAt(left, y, 18, 18) + '"><b style="background-image:url(' + iconURL(r.id) + ')"></b></i>';
+                html += '<i class="mc-stslot" style="' + iwAt(left, y + 1, 18, 18) + '"><b style="background-image:url(' + iconURL(r.id) + ')"></b></i>';
                 STAT_COLS.forEach(function (c, ci) {
                     var n = statGet(c[0], r.id), s = n ? statFmt(n) : '-';
-                    html += iwText(s, left + 75 + 40 * ci - (mfWidth(s) + 1), y + 5, col);
+                    html += iwText(s, left + 75 + 40 * ci - (mfWidth(s) + 1), y + 7, col);
                 });
             } else {
                 var nm = r.m.charAt(0).toUpperCase() + r.m.slice(1), kl = statGet('k', r.m), kb = statGet('kb', r.m);
-                html += iwText(nm, left + 2, y + 1, '#ffffff') +
-                    iwText(kl ? 'You killed ' + kl + ' ' + nm : 'You have never killed ' + nm, left + 12, y + 10, kl ? '#909090' : '#606060') +
-                    iwText(kb ? nm + ' killed you ' + kb + ' time(s)' : 'You have never been killed by ' + nm, left + 12, y + 19, kb ? '#909090' : '#606060');
+                html += iwText(nm, left + 2, y + 2, '#ffffff') +
+                    iwText(kl ? 'You killed ' + kl + ' ' + nm : 'You have never killed ' + nm, left + 12, y + 11, kl ? '#bababa' : '#808080') +
+                    iwText(kb ? nm + ' killed you ' + kb + ' time(s)' : 'You have never been killed by ' + nm, left + 12, y + 20, kb ? '#bababa' : '#808080');
             }
         });
-        if (max > 0) {   // the scroller: 6 wide at the list's right, as tall as the view is of the content
-            var sx = left + rw + 4, th = Math.max(32, Math.min(lh - 8, Math.floor(lh * lh / total))), ty2 = top + Math.floor((lh - th) * sc / max);
+        if (max > 0) {   // AbstractScrollArea's scroller: 6 wide at the rows' right edge + 8, the thumb the view's share of the content, 32 at least
+            var sx = left + rw + 8, th = Math.max(32, Math.min(lh - 8, Math.floor(lh * lh / total))), ty2 = top + Math.floor((lh - th) * sc / max);
             html += '<i class="mc-stbar" style="' + iwAt(sx, top, 6, lh) + '"></i><i class="mc-stthumb" style="' + iwAt(sx, ty2, 6, th) + '"></i>';
         }
         return html;
     }
+    /* a MenuTabBar tab: 24 tall on the tab sprites, its label 8 down when open
+       (10 otherwise) and underlined as wide as the text, grey when greyed */
+    function iwTab(cls, act, x, y, w, label, on, off, tip) {
+        var tw = mfWidth(label) + 1, lx = (w >> 1) - (tw >> 1), uw = Math.min(tw, w - 4);
+        return '<button type="button" class="mc-wb mc-iwtab' + (on ? ' on' : '') + (cls ? ' ' + cls : '') + '" data-act="' + act + '" data-w="' + w + '"' +
+            (tip ? ' data-tip="' + escHtml(tip) + '"' : '') + (off ? ' disabled' : '') + ' style="' + iwAt(x, y, w, 24) + '">' +
+            '<span class="mc-tabl" style="' + pAt(lx, on ? 8 : 10) + '">' + mtHTML(label, off ? '#a0a0a0' : '#ffffff') + '</span>' +
+            (on ? '<i class="mc-tabu" style="' + pAt((w - uw) >> 1, 22) + ';width:calc(var(--px) * ' + uw + ')"></i>' : '') + '</button>';
+    }
     IW_SCR.stats = {
         host: 'pause', layer: 'mc-stats',
         html: function (W, H, iw) {
-            var cx = W >> 1, noItems = !statRows('items').length, noMobs = !statRows('mobs').length;
-            return '<i class="mc-stlist" style="' + iwAt(0, 33, W, H - 91) + '"></i><i class="mc-sep top" style="' + iwAt(0, 31, W, 2) + '"></i>' +
-                '<i class="mc-sep bot" style="' + iwAt(0, H - 58, W, 2) + '"></i>' +
-                '<div class="mc-stclip" style="' + iwAt(0, 33, W, H - 91) + '"><div class="mc-stbody" style="top:calc(var(--px) * -33)">' + statsBody(W, H, iw) + '</div></div>' +
-                iwCenter('Statistics', W, 12) +
-                iwBtn('mc-stgen', 'general', cx - 185, H - 52, 120, 'General') + iwBtn('mc-stitems', 'items', cx - 60, H - 52, 120, 'Items', noItems) +
-                iwBtn('mc-stmobs', 'mobs', cx + 65, H - 52, 120, 'Mobs', noMobs) + iwBtn('mc-stdone', 'done', cx - 100, H - 27, 200, 'Done');
+            var cx = W >> 1, tab = iw.d.tab || 'general', noItems = !statRows('items').length, noMobs = !statRows('mobs').length;
+            var tw = mnTabW(W), tx0 = (W - 3 * tw) >> 1, html = '';
+            // the tab bar: the header separator runs out from either end of the row at y 22
+            html += '<i class="mc-sep top" style="' + iwAt(0, 22, tx0, 2) + '"></i><i class="mc-sep top" style="' + iwAt(tx0 + 3 * tw, 22, W - tx0 - 3 * tw, 2) + '"></i>';
+            [['general', 'General', false, 'mc-stgen'], ['items', 'Items', noItems, 'mc-stitems'], ['mobs', 'Mobs', noMobs, 'mc-stmobs']].forEach(function (t, i) {
+                html += iwTab(t[3], t[0], tx0 + i * tw, 0, tw, t[1], tab === t[0], t[2], t[2] ? 'No statistics found.' : null);
+            });
+            html += '<i class="mc-sep bot" style="' + iwAt(0, H - 35, W, 2) + '"></i>' +
+                '<div class="mc-stclip" style="' + iwAt(0, 24, W, H - 57) + '"><div class="mc-stbody" style="top:calc(var(--px) * -24)">' + statsBody(W, H, iw) + '</div></div>' +
+                iwBtn('mc-stdone', 'done', cx - 100, H - 27, 200, 'Done');
+            return html;
         },
         wire: function (layer, iw) {
             var clip = layer.querySelector('.mc-stclip');
@@ -5943,8 +6317,16 @@
         redraw: function (layer, iw) { var b = layer && layer.querySelector('.mc-stbody'); if (b) b.innerHTML = statsBody(RT.gw, RT.gh, iw); },
         act: function (a) {
             if (a === 'done') { IW_SCR.stats.esc(); return; }
+            if (a.slice(0, 5) === 'sort:') {   // a column's sort button: newest first, then oldest first, then unsorted again
+                var col = a.slice(5), d = RT.iw.d;
+                if (d.sortCol !== col) { d.sortCol = col; d.sortOrd = -1; }
+                else if (d.sortOrd === -1) d.sortOrd = 1;
+                else { d.sortCol = null; d.sortOrd = 0; }
+                IW_SCR.stats.redraw(RT.el.querySelector('.mc-pause .mc-stats'), RT.iw);
+                return;
+            }
             RT.iw.d.tab = a; RT.iw.d.scroll = 0;
-            IW_SCR.stats.redraw(RT.el.querySelector('.mc-pause .mc-stats'), RT.iw);
+            iwRender(true);   // the tab bar changes with the tab
         },
         esc: function () { iwShow('pause'); }
     };
@@ -5955,6 +6337,7 @@
         if (host) host.style.display = 'none';
         RT.iw = null;
         mnOpen('options', false, true);
+        RT.el.focus();   // the button just clicked is gone with its layer: keys must still land in the game
     }
     /* Player.sleepCounter and Gui's sleep overlay: the counter climbs a tick at a
        time to 100 (five seconds) while the screen fades to 0x101020 at alpha
@@ -5966,10 +6349,11 @@
         var ov = RT.el.querySelector('.mc-sleepov');
         ov.style.display = '';
         var c = Math.min(100, RT.sleep * 20);
-        if (!RT.woke && RT.sleep >= 5) { S.t = DAY_MS * 0.02; RT.woke = RT.sleep; bedLayout(); }   // sunrise
+        if (!RT.woke && RT.sleep >= 5) { S.t = 0; S.day = (S.day || 0) + 1; RT.woke = RT.sleep; bedLayout(); }   // the next day's tick 0, as setDayTime leaves it: the moon moves on
         if (RT.woke) c = 100 + (RT.sleep - RT.woke) * 20;
         var a = c <= 100 ? 220 * c / 100 : 220 * (1 - (c - 100) / 10);
         ov.style.opacity = Math.max(0, a / 255).toFixed(3);
+        // the sheet lies over the crosshair, the hotbar and the effects and under the chat, by its place in comp.css
         if (c >= 110) { RT.sleep = 0; RT.woke = 0; ov.style.display = 'none'; }
     }
 
@@ -6253,7 +6637,7 @@
             if (lv[i] < i + 1) { RT.enchOpts.push({ level: 0, lapis: i + 1, ench: null, label: '' }); continue; }
             var er = rollEnchants(it, lv[i], rng);
             var main = er ? Object.keys(er)[0] : null;
-            RT.enchOpts.push({ level: lv[i], lapis: i + 1, ench: er, label: main ? ENCH_NAME[main] + ' ' + (ROMAN[er[main]] || er[main]) + (Object.keys(er).length > 1 ? ' …' : '') : '—' });
+            RT.enchOpts.push({ level: lv[i], lapis: i + 1, ench: er, label: main ? ENCH_NAME[main] + ' ' + (ROMAN[er[main]] || er[main]) + (Object.keys(er).length > 1 ? ' …' : '') : '...' });
         }
     }
     function applyEnchOption(i) {
@@ -6362,7 +6746,7 @@
         { id: 'inv',      t: 'Survival Inventory', ic: 'chest',         row: 1, col: 6 },
         { id: 'food',     t: 'Food & Drinks',      ic: 'golden_apple',  row: 1, col: 2 },
         { id: 'ingr',     t: 'Ingredients',        ic: 'iron',          row: 1, col: 3 },
-        { id: 'eggs',     t: 'Spawn Eggs',         ic: 'egg_pig',       row: 1, col: 4 },
+        { id: 'eggs',     t: 'Spawn Eggs',         ic: 'egg_creeper',   row: 1, col: 4 },
         { id: 'hotbar',   t: 'Saved Hotbars',      ic: 'bookshelf',     row: 0, col: 5 }
     ];
     var CLIST = null;
@@ -6454,7 +6838,7 @@
         hb[i] = [];
         for (k = 0; k < 9; k++) hb[i].push(S.inv[k] ? JSON.parse(JSON.stringify(S.inv[k])) : null);
         try { localStorage.setItem(HB_KEY, JSON.stringify(hb)); } catch (e) {}
-        actionBar('Item hotbar saved (restore with X+' + (i + 1) + ')');
+        actionBar('Item hotbar saved (restore with X + ' + (i + 1) + ')');
     }
     function creativeRows() { return Math.max(CROWS, Math.ceil(((RT.cList || []).length) / CCOLS)); }
     function creativeMaxScroll() { return Math.max(0, creativeRows() - CROWS); }
@@ -6595,11 +6979,12 @@
         { o: [1, 1, 0], u: [-1, 0, 0], v: [0, -1, 0], n: [0, 0, -1], k: 'back' }
     ];
     var D2R = Math.PI / 180;
+    var BOOT_SKIN = null;   // the skin init was handed, before RT exists to hold it
     function avValidSkin(sk) { return !!(sk && sk.rows && sk.rows.length === 32 && sk.pal); }
     function avatarSkin() {   // the launcher's live choice, else what it handed over at launch, else Steve
         var sk = null;
         try { var h = window.MCHOST; if (h && h.skin) sk = h.skin(); } catch (e) { sk = null; }
-        if (!avValidSkin(sk)) sk = RT && RT.skin;
+        if (!avValidSkin(sk)) sk = (RT && RT.skin) || BOOT_SKIN;
         if (!avValidSkin(sk)) sk = AV_STEVE;
         return sk;
     }
@@ -6644,7 +7029,7 @@
     }
     /* a box of the skin: w×h×d skin pixels, its front cut from the region at
        (x0, y0) of the 16×32 front view and the other five faces made from it */
-    function avSkinBox(px, x0, y0, w, h, d, kind) {
+    function avSkinBox(px, x0, y0, w, h, d, kind, flat) {   // flat: unshaded, for a texture the renderer lights itself
         var y, x, rowMode = [], all = [], top2 = [];
         for (y = 0; y < h; y++) {
             var row = [];
@@ -6653,7 +7038,7 @@
         }
         var hair = null;
         if (kind === 'head') { var m2 = avMode(top2); hair = m2.n >= 8 ? m2.col : avMode(all).col; }
-        var SH = AV_SHADE;
+        var SH = flat ? [1, 1, 1, 1, 1, 1] : AV_SHADE;
         // a side carries the row's outermost painted pixel round the corner, and a
         // transparent pixel on the front (a horn's gap) stays open on the top
         function firstOpaque(y, fromRight) {
@@ -6737,7 +7122,7 @@
         var cv = document.createElement('canvas');
         cv.width = cv.height = 16;
         var c = cv.getContext('2d');
-        c.drawImage(ATLAS, (tid % 16) * 16, ((tid / 16) | 0) * 16, 16, 16, 0, 0, 16, 16);
+        c.drawImage(ATLAS, (tid % ATC) * 16, ((tid / ATC) | 0) * 16, 16, 16, 0, 0, 16, 16);
         if (shade < 1) { c.globalCompositeOperation = 'source-atop'; c.fillStyle = 'rgba(0,0,0,' + (1 - shade) + ')'; c.fillRect(0, 0, 16, 16); }
         return cv;
     }
@@ -6823,6 +7208,7 @@
                 if (AV_CACHE_KEYS.length > 6) delete AV_CACHE[AV_CACHE_KEYS.shift()];
             }
             av.parts = AV_CACHE[sig];
+            armSync();   // the hand in the world wears the same skin
         }
         var h = held(), hid = h ? h.id : null;
         if (hid !== av.itemId) { av.itemId = hid; av.item = h ? avHeldPart(h) : null; }
@@ -6951,6 +7337,9 @@
         mk('btn', 200, 20, button('#000000', 0x6f, 11, '#aaaaaa', '#565656', '#555555'));
         mk('btn_h', 200, 20, button('#ffffff', 0x77, 11, '#b4b4b4', '#5c5c5c', '#5a5a5a'));
         mk('btn_d', 200, 20, button('#000000', 0x31, 3, null));
+        // AbstractSliderButton's handle, 8x20: the button's ends, white-framed under the pointer
+        mk('slider_k', 8, 20, function (cx) { cx.drawImage(GSPR.btn.cv, 0, 0, 4, 20, 0, 0, 4, 20); cx.drawImage(GSPR.btn.cv, 196, 0, 4, 20, 4, 0, 4, 20); });
+        mk('slider_kh', 8, 20, function (cx) { cx.drawImage(GSPR.btn_h.cv, 0, 0, 4, 20, 0, 0, 4, 20); cx.drawImage(GSPR.btn_h.cv, 196, 0, 4, 20, 4, 0, 4, 20); });
         // EditBox's widget/text_field: #A0A0A0 round black, white round black when focused
         mk('field', 200, 20, function (cx) { sprRect(cx, 0, 0, 200, 20, '#a0a0a0'); sprRect(cx, 1, 1, 198, 18, '#000000'); });
         mk('field_h', 200, 20, function (cx) { sprRect(cx, 0, 0, 200, 20, '#ffffff'); sprRect(cx, 1, 1, 198, 18, '#000000'); });
@@ -7028,8 +7417,10 @@
         }
         mk('adv_bar_o', 200, 26, bar('#c9972a', '#f2d06a', '#7d5a13'));
         mk('adv_bar_u', 200, 26, bar('#1f59a6', '#4e8ad6', '#0d2d5c'));
-        mk('adv_desc', 16, 16, function (cx) {   // the description's box, nine-sliced with a 2-pixel border
-            sprRect(cx, 0, 0, 16, 16, K); sprRect(cx, 1, 1, 14, 14, '#555555'); sprRect(cx, 2, 2, 12, 12, '#212121');
+        mk('adv_desc', 200, 26, function (cx) {   // advancements/title_box: the description's box, nine-sliced at 10, three clear rows top and bottom, cut corners
+            sprRect(cx, 1, 3, 198, 20, K); sprRect(cx, 0, 4, 200, 18, K);
+            sprRect(cx, 2, 4, 196, 18, '#555555'); sprRect(cx, 1, 5, 198, 16, '#555555');
+            sprRect(cx, 3, 5, 194, 16, '#212121'); sprRect(cx, 2, 6, 196, 14, '#212121');
         });
     }
     /* the Statistics screen's column headers, an 18x18 raised box with the
@@ -7046,7 +7437,11 @@
             st_picked: ['..........', '....#.....', '...###....', '..#####...', '....#.....', '....#.....', '....#.....', '..#####...', '..........', '..........'],
             st_dropped: ['..........', '..#####...', '....#.....', '....#.....', '....#.....', '..#####...', '...###....', '....#.....', '..........', '..........']
         };
-        for (var k in PIC) (function (rows) { mk(k, 18, 18, function (cx) { box(cx); sprMap(cx, rows, { '#': '#202020' }, 4, 4); }); })(PIC[k]);
+        mk('st_head', 18, 18, box);   // statistics/header, the raised box under every column's picture
+        // statistics/sort_up and sort_down: a small outlined arrow in the lower middle, for the sorted column
+        function arrow(up) { return function (cx) { var r = up ? ['....#....', '...###...', '..#####..', '.##.#.##.', '....#....', '....#....'] : ['....#....', '....#....', '.##.#.##.', '..#####..', '...###...', '....#....']; sprMap(cx, r, { '#': '#ffffff' }, 5, 6); }; }
+        mk('st_sort_up', 18, 18, arrow(true)); mk('st_sort_down', 18, 18, arrow(false));
+        for (var k in PIC) (function (rows) { mk(k, 18, 18, function (cx) { sprMap(cx, rows, { '#': '#202020' }, 4, 4); }); })(PIC[k]);
     }
     /* ── the menus' sprites ─────────────────────────────────────────
        What the title screen's menus are drawn over and with since 1.20.5: the
@@ -7065,6 +7460,45 @@
         }
         mk('mbg', 32, 32, grain(0.32, 0.06));
         mk('mlbg', 32, 32, grain(0.52, 0.06));
+        // header_separator and footer_separator: white at 0x33 over black at 0xBF, and the reverse
+        mk('hsep', 32, 2, function (cx) { sprRect(cx, 0, 0, 32, 1, 'rgba(255,255,255,0.2)'); sprRect(cx, 0, 1, 32, 1, 'rgba(0,0,0,0.749)'); });
+        mk('fsep', 32, 2, function (cx) { sprRect(cx, 0, 0, 32, 1, 'rgba(0,0,0,0.749)'); sprRect(cx, 0, 1, 32, 1, 'rgba(255,255,255,0.2)'); });
+        // world_list/join and join_highlighted: the play arrow over a hovered world, blue with the pointer on its icon
+        function joinArrow(fill, lite, dark) {
+            return function (cx) {
+                for (var i = 0; i < 9; i++) { sprRect(cx, 11 + i, 7 + i, 1, 18 - 2 * i, '#000000'); if (i < 8) sprRect(cx, 11 + i, 8 + i, 1, 16 - 2 * i, i < 2 ? lite : fill); }
+                sprRect(cx, 12, 23, 7, 1, dark);
+            };
+        }
+        mk('wl_join', 32, 32, joinArrow('#8b8b8b', '#ffffff', '#373737'));
+        mk('wl_join_h', 32, 32, joinArrow('#7a8ec8', '#d8e0ff', '#2c3a6a'));
+        // the difficulty lock: a padlock on a 20x20 button face, shut or open, lit under the pointer, dim when it cannot be used
+        function lockBtn(shut, face, ink) {
+            return function (cx) {
+                sprRect(cx, 0, 0, 20, 20, K); sprRect(cx, 1, 1, 18, 18, face);
+                var bow = shut ? ['..####..', '.#....#.', '.#....#.', '.#....#.'] : ['..####..', '.#....#.', '.#......', '.#......'];
+                sprMap(cx, bow.concat(['########', '########', '###..###', '###..###', '########', '########']), { '#': ink }, 6, 4);
+            };
+        }
+        mk('lock_on', 20, 20, lockBtn(true, '#6f6f6f', '#1e1e1e')); mk('lock_on_h', 20, 20, lockBtn(true, '#8f9fd8', '#1e1e1e')); mk('lock_on_d', 20, 20, lockBtn(true, '#4f4f4f', '#2e2e2e'));
+        mk('lock_off', 20, 20, lockBtn(false, '#6f6f6f', '#1e1e1e')); mk('lock_off_h', 20, 20, lockBtn(false, '#8f9fd8', '#1e1e1e')); mk('lock_off_d', 20, 20, lockBtn(false, '#4f4f4f', '#2e2e2e'));
+        // widget/scroller_background and widget/scroller: the layout scrollbar, 6 wide, nine-sliced at 1
+        mk('sb_bg', 6, 32, function (cx) { sprRect(cx, 0, 0, 6, 32, K); });
+        mk('sb', 6, 32, function (cx) { sprRect(cx, 0, 0, 6, 32, '#808080'); sprRect(cx, 0, 0, 5, 31, '#c0c0c0'); });
+        // popup/background and friends/background: a dark panel with a light rim, nine-sliced at 6 and 8
+        function panel(rim) { return function (cx) { sprRect(cx, 0, 0, 236, 34, K); sprRect(cx, 1, 1, 234, 32, rim); sprRect(cx, 2, 2, 232, 30, K); sprRect(cx, 3, 3, 230, 28, '#262626'); }; }
+        mk('popup_bg', 236, 34, panel('#8b8b8b')); mk('fr_bg', 236, 34, panel('#8b8b8b'));
+        // friends/button and its highlighted and disabled faces (200x20, sliced 3), the send-request icon, the list's top separator
+        function frBtn(face, rim) { return function (cx) { sprRect(cx, 0, 0, 200, 20, K); sprRect(cx, 1, 1, 198, 18, rim); sprRect(cx, 2, 2, 196, 16, face); }; }
+        mk('fr_btn', 200, 20, frBtn('#3c3c3c', '#1e1e1e')); mk('fr_btn_h', 200, 20, frBtn('#4a4a4a', '#ffffff')); mk('fr_btn_d', 200, 20, frBtn('#2a2a2a', '#1e1e1e'));
+        mk('ic_sendreq', 15, 15, function (cx) { sprMap(cx, ['......#........', '.....##........', '....###........', '...#####.......', '..######.......', '.#######.......', '########.......', '.#######.......', '..######.......', '...#####.......', '....###........', '.....##........', '......#........'], { '#': '#ffffff' }, 3, 1); });
+        mk('fr_sep', 32, 2, function (cx) { sprRect(cx, 0, 0, 32, 1, 'rgba(255,255,255,0.2)'); sprRect(cx, 0, 1, 32, 1, 'rgba(0,0,0,0.749)'); });
+        // misc/vignette, inverted: white where the screen is left alone, dark toward the corners
+        mk('vignette', 256, 256, function (cx) {
+            var g = cx.createRadialGradient(128, 128, 60, 128, 128, 180);
+            g.addColorStop(0, '#ffffff'); g.addColorStop(0.55, '#a0a0a0'); g.addColorStop(1, '#2d2d2d');
+            cx.fillStyle = g; cx.fillRect(0, 0, 256, 256);
+        });
         function track(frame) {
             return function (cx) {
                 sprRect(cx, 0, 0, 200, 20, frame);
@@ -7260,8 +7694,8 @@
                     px(cx, x, y, r > 5.5 ? ol : r > 4.6 ? (dx + dy < 0 ? hi : rim) : (dx < -1 && (x + y) % 3 === 0 ? swirl : body));
                 }
                 var g = mfBuild().g[String(n)], dig = dull ? '#8c605d' : '#c8ff8f';
-                for (var gy = 0; gy < 7; gy++) for (var gx = 0; gx < g.w; gx++) if ((g.rows[gy] || '').charAt(gx) === '#') { px(cx, 8 + gx - 1, 4 + gy, ol); }
-                for (gy = 0; gy < 7; gy++) for (gx = 0; gx < g.w; gx++) if ((g.rows[gy] || '').charAt(gx) === '#') px(cx, 7 + gx - 1, 3 + gy, dig);
+                for (var gy = 0; gy < 7; gy++) for (var gx = 0; gx < g.w; gx++) if ((g.rows[gy + MF_TOP] || '').charAt(gx) === '#') { px(cx, 8 + gx - 1, 4 + gy, ol); }
+                for (gy = 0; gy < 7; gy++) for (gx = 0; gx < g.w; gx++) if ((g.rows[gy + MF_TOP] || '').charAt(gx) === '#') px(cx, 7 + gx - 1, 3 + gy, dig);
             };
         }
         for (var ln = 1; ln <= 3; ln++) { mk('lvl_' + ln, 16, 16, orb(ln, false)); mk('lvl_' + ln + 'd', 16, 16, orb(ln, true)); }
@@ -7295,7 +7729,7 @@
             }
             px(cx, 3, y0 + 3, L);
         }
-        mk('tab_t_un', 26, 32, function (cx) { tabBody(cx, 2, 30, W8); });
+        for (var tcu = 1; tcu <= 7; tcu++) mk('tab_t_u' + tcu, 26, 32, function (cx) { tabBody(cx, 2, 30, W8); });
         function tabTopSel(variant) {
             return function (cx) {
                 tabBody(cx, 0, 29, F);
@@ -7314,7 +7748,7 @@
                 if (variant === 1) { px(cx, 0, 31, K); sprRect(cx, 1, 31, 2, 1, L); }
             };
         }
-        mk('tab_t_s1', 26, 32, tabTopSel(1)); mk('tab_t_sm', 26, 32, tabTopSel(2)); mk('tab_t_s7', 26, 32, tabTopSel(7));
+        for (var tcs = 1; tcs <= 7; tcs++) mk('tab_t_s' + tcs, 26, 32, tabTopSel(tcs === 1 || tcs === 7 ? tcs : 2));
         function tabBottom(cx, rows, fill, y0) {   // rows of body starting at y0, then the rounded foot
             for (var y = y0; y < y0 + rows; y++) {
                 px(cx, 0, y, K); sprRect(cx, 1, y, 2, 1, L); sprRect(cx, 3, y, 20, 1, fill); sprRect(cx, 23, y, 2, 1, D); px(cx, 25, y, K);
@@ -7324,7 +7758,7 @@
             px(cx, 2, f + 1, K); sprRect(cx, 3, f + 1, 21, 1, D); px(cx, 24, f + 1, K);
             sprRect(cx, 3, f + 2, 21, 1, K);
         }
-        mk('tab_b_un', 26, 32, function (cx) { tabBottom(cx, 25, W8, 0); });
+        for (var tbu = 1; tbu <= 7; tbu++) mk('tab_b_u' + tbu, 26, 32, function (cx) { tabBottom(cx, 25, W8, 0); });
         function tabBotSel(variant) {
             return function (cx) {
                 tabBottom(cx, 29, F, 0);
@@ -7333,7 +7767,7 @@
                 else { sprRect(cx, 0, 0, 26, 1, F); sprRect(cx, 0, 1, 2, 1, D); px(cx, 2, 1, L); px(cx, 0, 2, D); sprRect(cx, 23, 1, 3, 2, D); }
             };
         }
-        mk('tab_b_s1', 26, 32, tabBotSel(1)); mk('tab_b_sm', 26, 32, tabBotSel(2)); mk('tab_b_s7', 26, 32, tabBotSel(7));
+        for (var tbs = 1; tbs <= 7; tbs++) mk('tab_b_s' + tbs, 26, 32, tabBotSel(tbs === 1 || tbs === 7 ? tbs : 2));
         function scroller(fill, grip) {
             return function (cx) {
                 sprRect(cx, 0, 0, 12, 15, fill);
@@ -7600,8 +8034,8 @@
         if (pages > 1) {
             if (v.page < pages - 1) html += '<button class="mc-rbarr next" type="button" data-rb="next" style="' + iwAt(93, 137, 12, 17) + '"></button>';
             if (v.page > 0) html += '<button class="mc-rbarr prev" type="button" data-rb="prev" style="' + iwAt(38, 137, 12, 17) + '"></button>';
-            var pg = (v.page + 1) + '/' + pages;   // white, no shadow, centred on x 73
-            html += iwText(pg, 73 - ((mfWidth(pg) + 1) >> 1), 141, '#ffffff', 'ns');
+            var pg = (v.page + 1) + '/' + pages;   // white with its shadow, centred on x 73
+            html += iwText(pg, 73 - ((mfWidth(pg) + 1) >> 1), 141, '#ffffff');
         }
         var te = el.querySelector('.mc-rbtabs'), pe = el.querySelector('.mc-rbpage'), fb = el.querySelector('.mc-rbfilter');
         if (te._html !== tabs) { te._html = tabs; te.innerHTML = tabs; }
@@ -7950,7 +8384,7 @@
             var tab = CTABS[RT.cTab] || CTABS[0], tabs = '', sel = '';
             for (var ti = 0; ti < CTABS.length; ti++) {
                 var T = CTABS[ti], on = ti === RT.cTab, x = T.col < 5 ? 27 * T.col : 195 - 27 * (7 - T.col) + 1, y = T.row ? 132 : -28;
-                var spr = 'tab_' + (T.row ? 'b' : 't') + '_' + (on ? (T.col === 0 ? 's1' : T.col === 6 ? 's7' : 'sm') : 'un');
+                var spr = 'tab_' + (T.row ? 'b' : 't') + '_' + (on ? 's' : 'u') + (T.col + 1);
                 var html = '<button class="mc-ctab' + (on ? ' on' : '') + '" type="button" data-ct="' + ti + '" aria-label="' + escHtml(T.t) + '" style="' + pAt(x, y) +
                     ';background-image:var(--spr-' + spr + ')"><b class="mc-ctic" style="' + pAt(5, T.row ? 7 : 9) + ';background-image:url(' + iconURL(T.ic) + ')"></b></button>';
                 if (on) sel = html; else tabs += html;
@@ -8085,14 +8519,16 @@
        the Standard Galactic alphabet in the plate's dark ink, the level
        requirement right-aligned at x 166 in green, or a darker green when out
        of reach, and the orb says how much lapis it takes. */
-    var RUNE_WORDS = ['ember', 'hollow', 'lantern', 'moss', 'marrow', 'brine', 'thorn', 'echo', 'spindle', 'gale', 'cinder', 'frost', 'whisper', 'deep', 'bright',
-        'weave', 'sunder', 'bind', 'mend', 'kindle', 'quell', 'ward', 'seek', 'veil', 'quartz', 'drift', 'root', 'bloom', 'vex', 'lumen', 'umbra', 'sable',
-        'aurum', 'fern', 'shale', 'glint', 'hush', 'rime', 'wake', 'tide', 'spark', 'loam', 'crest', 'hearth', 'vale', 'wisp', 'rust', 'gleam'];
+    // EnchantmentNames: the game's own sixty-one words, three or four to a line
+    var RUNE_WORDS = ['the', 'elder', 'scrolls', 'klaatu', 'berata', 'niktu', 'xyzzy', 'bless', 'curse', 'light', 'darkness', 'fire', 'air', 'earth', 'water', 'hot', 'dry',
+        'cold', 'wet', 'ignite', 'snuff', 'embiggen', 'twist', 'shorten', 'stretch', 'fiddle', 'destroy', 'imbue', 'galvanize', 'enchant', 'free', 'limited', 'range', 'of',
+        'towards', 'inside', 'sphere', 'cube', 'self', 'other', 'ball', 'mental', 'physical', 'grow', 'shrink', 'demon', 'elemental', 'spirit', 'animal', 'creature', 'beast',
+        'humanoid', 'undead', 'fresh', 'stale', 'phnglui', 'mglwnafh', 'cthulhu', 'rlyeh', 'wgahnagl', 'fhtagn', 'baguette'];
     function enchRunes(seed, row, maxW) {
         var rng = mulb((seed | 0) ^ (row * 0x9E3779B9)), n = 3 + ((rng() * 2) | 0), words = [];
         for (var k = 0; k < n; k++) words.push(RUNE_WORDS[(rng() * RUNE_WORDS.length) | 0]);
         var s = words.join(' ');
-        while (s.length && sgaWidth(s) > maxW) s = s.slice(0, -1);
+        while (s.length && sgaWidth(s) + 1 > maxW) s = s.slice(0, -1);
         return s;
     }
     function enchAffordable(op) {
@@ -8204,9 +8640,9 @@
         else if (had) RT.el.focus();
     }
     /* The Standard Galactic Alphabet, a to z, as the enchanting table writes
-       it: the game's "alt" font. Seven rows like the capitals, drawn from the
-       alphabet's shapes in our own pixels. Anything that is not a letter keeps
-       the ordinary font's place. */
+       it: the game's "alt" font. Seven rows like the capitals: the game's own
+       ascii_sga.png glyphs from mc-tex, or the alphabet's shapes drawn here.
+       Anything that is not a letter keeps the ordinary font's place. */
     var SGA_FAMILY = 'MCSGA', SGA = null;
     var SGA_ROWS = {
         a: ['####', '...#', '...#', '####', '#...', '#...', '#...'],
@@ -8240,10 +8676,14 @@
         if (SGA) return SGA;
         SGA = { ' ': { w: 3, rows: [] } };
         for (var ch in SGA_ROWS) {
-            var rows = SGA_ROWS[ch].slice();
-            while (rows.length < MF_ROWS) rows.push('');
+            var rows = [];
+            for (var k = 0; k < MF_TOP; k++) rows.push('');   // the row above the cap line, which no rune uses
+            rows = rows.concat(SGA_ROWS[ch]);
+            while (rows.length < MF_TOP + MF_ROWS) rows.push('');
             SGA[ch] = { w: SGA_ROWS[ch][0].length, rows: rows };
         }
+        var sg = texSga();
+        if (sg) for (ch in sg) SGA[ch] = mfParse(sg[ch]);   // font/ascii_sga.png, the game's own runes
         return SGA;
     }
     function sgaWidth(t) {
@@ -8669,7 +9109,23 @@
        background at alpha 240 reaching 4 pixels out with its corners cut, and
        inside that a 1-pixel ring 3 out running from #5000FF at the top to
        #290080 at the bottom, both at alpha 80. */
-    function tipRender(lines, clientX, clientY, tipEl) {
+    /* a widget's Tooltip: its text split at 170 (Tooltip.splitTooltip) and placed
+       by MenuTooltipPositioner: 12 right of the pointer and, from 3 below it,
+       down by a share of the widget's height that shrinks the lower the pointer
+       sits in it, so it lands under the widget; left or above when it would run
+       off the screen */
+    function widgetTipLines(text) {
+        var out = [];
+        String(text).split('\n').forEach(function (t) { mfWrap(t, 170).forEach(function (l) { out.push({ t: l }); }); });
+        return out;
+    }
+    function widgetTipAt(el, clientX, clientY) {
+        var r = RT.el.getBoundingClientRect(), s = RT.gs, b = el.getBoundingClientRect();
+        var mx = Math.floor((clientX - r.left) / s), my = Math.floor((clientY - r.top) / s), top = Math.floor((b.top - r.top) / s), h = Math.max(1, Math.round(b.height / s));
+        var f = Math.max(0, Math.min(1, Math.abs(my + 3 - top) / h));
+        return { x: mx + 12, y: my + 3 + Math.round((h - 3) + (5 - (h - 3)) * f) };
+    }
+    function tipRender(lines, clientX, clientY, tipEl, at) {
         var wrap = RT.el.querySelector('.mc-panelwrap'), tip = tipEl || (wrap && wrap.querySelector('.mc-ptip'));
         if (!tip) return;
         if (!lines || !lines.length) { tip.style.display = 'none'; tip._sig = ''; return; }
@@ -8681,9 +9137,14 @@
             w = Math.max(w, lw);
         });
         var h = lines.length === 1 ? 8 : 10 * lines.length;
-        var tx = mx + 12, ty = my - 12;
-        if (tx + w > RT.gw) tx = Math.max(mx - 12 - w, 4);
-        if (ty + h + 3 > RT.gh) ty = RT.gh - h - 3;
+        var tx = at ? at.x : mx + 12, ty = at ? at.y : my - 12;
+        if (at) {   // MenuTooltipPositioner: left of the pointer past the right edge, above it past the bottom
+            if (tx + w + 4 > RT.gw - 5) tx = Math.max(mx - 12 - w, 9);
+            if (ty + h + 4 > RT.gh - 5) ty = my - 3 - h - 4;
+        } else {
+            if (tx + w > RT.gw) tx = Math.max(mx - 12 - w, 4);
+            if (ty + h + 3 > RT.gh) ty = RT.gh - h - 3;
+        }
         if (tip._sig !== sig) {
             tip._sig = sig;
             var html = '<i class="mc-tipf"></i>';
@@ -8728,7 +9189,7 @@
         else if (under && RT.rbGhostAt && RT.rbGhostAt[under.g + ':' + under.i] && rbShown()) lines = itemTipLines({ id: RT.rbGhostAt[under.g + ':' + under.i], c: 1 }, under.g);
         else if (under && under.g === 'ctrash') lines = [{ t: 'Destroy Item' }];
         else if (under && !RT.cur) { var st = slotStackAt(under.g, under.i); if (st) lines = itemTipLines(st, under.g); }
-        tipRender(lines, clientX, clientY);
+        tipRender(lines, clientX, clientY, null, rbEl && rbEl.classList.contains('mc-rbfilter') ? widgetTipAt(rbEl, clientX, clientY) : null);   // the switch is a widget: its tip sits under it
     }
     function slotStackAt(g, i) {   // what a slot shows, the outputs included
         if (g === 'cout') { var rr = matchRecipe(RT.craft, RT.craftW); return rr ? { id: rr.out, c: rr.n } : null; }
@@ -9937,7 +10398,7 @@
         // comp_mc stays the active world; the per-world blob is what the list reads
         if (S.wid) {
             try { localStorage.setItem(WS_PRE + S.wid, json); } catch (e) { failed = true; }
-            wsTouch(S.wid, { played: Date.now(), hrs: S.hrs || 0, gm: S.gm, diff: S.diff });
+            wsTouch(S.wid, { played: Date.now(), hrs: S.hrs || 0, gm: S.gm, diff: S.diff, cheats: cheatsOn() });
         }
         /* The browser's storage has a ceiling and a big creative build reaches
            it. The write used to fail in silence and the world quietly went back
@@ -10034,7 +10495,7 @@
         if (simming) {
             RT.playT += dt;
             RT.worldMs += dt * 1000;
-            if (rule('doDaylightCycle')) S.t = (S.t + dt * 1000) % CYCLE;
+            if (rule('doDaylightCycle')) { S.t += dt * 1000; if (S.t >= CYCLE) { S.t -= CYCLE; S.day = (S.day || 0) + 1; } }
             RT.iframe = Math.max(0, RT.iframe - dt);
             RT.digCd = Math.max(0, RT.digCd - dt);
             RT.atkCd = Math.max(0, RT.atkCd - dt);
@@ -10074,6 +10535,7 @@
                 RT.secT = 0;
                 spawnTick();
                 ensureChunks();
+                armSync();   // the launcher may have changed the skin
                 if (!RT.saveT) RT.saveT = 0;
                 if (++RT.saveT >= 20) { RT.saveT = 0; sSave(); }
                 // orphaned canopies melt over a few seconds, like they should
@@ -10130,7 +10592,7 @@
        under it filling in green on black, and in singleplayer the chunk map:
        every chunk the world is waiting on as a 2x2 cell in its generation
        status's colour, centred on the screen, the text 26 pixels above it. */
-    var LOAD_COL = { none: '#000000', queued: '#545454', terrain: '#21c600', light: '#ffe0a0', full: '#ffffff' };
+    var LOAD_COL = { none: '#000000', queued: '#545454', terrain: '#21c600', light: '#ffe4a0', full: '#ffffff' };   // LevelLoadingScreen.COLORS: EMPTY, FEATURES, LIGHT, FULL
     function loadShow(on) {
         var ld = RT.el.querySelector('.mc-load');
         if (!ld) return;
@@ -10162,7 +10624,7 @@
     /* The boot ladder — generate, light, mesh — pulled out of frame() so that
        both things that wait on it can drive their own progress bar: the menu's,
        while the panorama world stands up behind the title screen, and the
-       game's own "Building terrain…" once a world has been chosen. */
+       game's own "Preparing spawn area" once a world has been chosen. */
     function bootStep() {
         var total = (VIEW * 2 + 1) * (VIEW * 2 + 1), k, p;
         if (RT.genQ.length) {
@@ -10170,23 +10632,24 @@
                 k = RT.genQ.shift(); p = k.split(',');
                 if (!RT.chunks[k]) genChunk(p[0] | 0, p[1] | 0);
             }
-            return bootProg((total - RT.genQ.length) / total * 0.6, 'Building terrain…');
+            return bootProg((total - RT.genQ.length) / total * 0.6, spawnMsg((total - RT.genQ.length) / total * 0.6));
         }
         if (!RT.lit) {
             lightInitAll();
             RT.lit = true;
             RT.ckeys = Object.keys(RT.chunks);
             for (var mk in RT.chunks) RT.meshQ.push(mk);
-            return bootProg(0.65, 'Lighting the world…');
+            return bootProg(0.65, spawnMsg(0.65));
         }
         if (RT.meshQ.length) {
             meshStep(4);
-            return bootProg(0.65 + 0.35 * (1 - RT.meshQ.length / total), 'Building terrain…');
+            return bootProg(0.65 + 0.35 * (1 - RT.meshQ.length / total), spawnMsg(0.65 + 0.35 * (1 - RT.meshQ.length / total)));
         }
-        bootProg(1, 'Loading…');
+        bootProg(1, 'Loading terrain...');   // ReceivingLevelScreen, once the spawn area is ready
         RT.built = true;
         bootDone();
     }
+    function spawnMsg(f) { return 'Preparing spawn area: ' + Math.max(0, Math.min(100, Math.round(f * 100))) + '%'; }   // LevelLoadingScreen's line
     function bootProg(f, stage) {
         bootBar(f);
         if (RT.menu) { RT.menu.prog = f; RT.menu.stage = stage; RT.menu.dirty = true; }
@@ -10282,14 +10745,13 @@
         RT.bankT = (RT.bankT || 0) + RT.playT;
         RT.baseHrs = S.hrs || 0; RT.playT = 0; RT.dead = false; RT.fallY = S.py;
         // a LAN session belongs to the world that opened it
-        RT.lan = null; RT.lanUI = null;
-        var lanBtn = RT.el.querySelector('.mc-lanbtn'); if (lanBtn) lanBtn.disabled = false;
+        RT.lan = null; RT.lanOpts = null;
         // flight belongs to the world that granted it, not to the session
         RT.fly = !!S.fly && (S.gm === 1 || S.gm === 3);
         RT.vy = 0; RT.sprint = false; RT.swing = 0; RT.sleep = 0;
         loadShow(true);
         ensureChunks();
-        wsTouch(id, { played: Date.now(), ver: (RT && RT.ver) || '26.2' });
+        wsTouch(id, { played: Date.now(), ver: (RT && RT.ver) || '26.3' });
     }
     /* Vanilla's "Save and Quit to Title": the world is written out, the world
        is thrown away, and the panorama is generated fresh behind the menu. */
@@ -10300,7 +10762,7 @@
         unlockCursor();
         if (RT.paused) hidePause();
         iwHide(); leaveBed();
-        RT.lan = null; RT.lanUI = null;   // cheats from Open to LAN end with the session, as the real ones do
+        RT.lan = null; RT.lanOpts = null;   // the LAN scope ends with the session
         if (RT.panel) closePanel(true);
         loadShow(false);
         // the debug overlay belongs to the world; it would sit frozen over the menu
@@ -10309,7 +10771,7 @@
         mnTeardownWorld();
         S = mnPanoSave();
         var m = mnOpen('loading', false);   // vanilla only fades in on first launch
-        m.stage = 'Saving world…';
+        m.mode = 'saving';   // menu.savingLevel, in GenericMessageScreen's box
         if (RT.saveFail) m.msg = 'The world could not be saved: browser storage is full.';
         ensureChunks();
     }
@@ -10351,8 +10813,8 @@
        layer of real <button>s rides on top for hit-testing, focus, hover and
        screen readers, positioned from the same layout the painter uses.
 
-       Nothing here is copied out of the game's assets. The font glyphs, the
-       logo and the widget bevels are all authored in this file; the splash
+       The font glyphs, the logo and the widget sprites come from mc-tex when
+       it is there and from the drawings in this file when it is not; the splash
        list is a short, well-known selection with a pile of local additions. */
 
     /* ── the font ────────────────────────────────────────────
@@ -10363,6 +10825,7 @@
        seven rows and only the letters that actually dip below the baseline
        carry eight. */
     var MF_ROWS = 9, MF_LINE = 9;   // cell height, and baseline-to-baseline
+    var MF_TOP = 1;   // rows kept above the cell: the game's accented lower-case letters hang their marks on the row over the cap line
     /* A row string is 'rows joined by /', optionally prefixed 'N:' to say which
        row the first one lands on. Caps and digits run rows 0-6, so the baseline
        sits under row 6; x-height letters start at row 2, and the five that
@@ -10466,7 +10929,7 @@
         '}': '##./.#./.#./.##/.#./.#./##.',
         '~': '2:.##..#/#..##.',
         '…': '6:#.#.#',
-        '·': '4:#',
+        '·': '3:#',
         '←': '2:..#../.#.../#####/.#.../..#..',
         '→': '2:..#../...#./#####/...#./..#..'
     };
@@ -10500,18 +10963,20 @@
     };
 
     var MF = null;   // { g: {ch: {w,h,px}}, atlas: {color: canvas}, map: {ch:[x,y,w]} }
+    function mfParse(src) {   // a glyph's rows out of its 'a/b/c' string, placed from the row its 'N:' names (-1: the row above the cap line)
+        var off = 0, m = /^(-?\d+):/.exec(src);
+        if (m) { off = +m[1]; src = src.slice(m[0].length); }
+        var r = src.split('/'), w = 0, out = [], j;
+        for (j = 0; j < r.length; j++) { if (r[j].length > w) w = r[j].length; }
+        for (j = -MF_TOP; j < MF_ROWS; j++) out.push(r[j - off] === undefined ? '' : r[j - off]);   // rows[k] is row k - MF_TOP
+        return { w: w, rows: out };
+    }
     function mfBuild() {
         if (MF) return MF;
         var g = {}, ch, i, rows;
-        function parse(src) {
-            var off = 0, m = /^(\d+):/.exec(src);
-            if (m) { off = +m[1]; src = src.slice(m[0].length); }
-            var r = src.split('/'), w = 0, out = [], j;
-            for (j = 0; j < r.length; j++) { if (r[j].length > w) w = r[j].length; }
-            for (j = 0; j < MF_ROWS; j++) out.push(r[j - off] === undefined ? '' : r[j - off]);
-            return { w: w, rows: out };
-        }
-        for (ch in MF_SRC) g[ch] = parse(MF_SRC[ch]);
+        for (ch in MF_SRC) g[ch] = mfParse(MF_SRC[ch]);
+        var vf = texFont();
+        if (vf) for (ch in vf) g[ch] = mfParse(vf[ch]);   // font/ascii.png's own
         g[' '].w = 3;   // the space carries no pixels, so its width has to be stated
         for (ch in MF_ACC) {
             var base = g[MF_ACC[ch][0]], mark = MF_MARK[MF_ACC[ch][1]];
@@ -10519,13 +10984,13 @@
             rows = base.rows.slice();
             for (i = 0; i < mark.rows.length; i++) {
                 var y = mark.y + i;
-                if (y < 0 || y >= MF_ROWS) continue;
+                if (y < -MF_TOP || y >= MF_ROWS) continue;
                 // centre the mark over the letter, then OR it into that row.
                 // The mark is not always 5 wide and the base is not always 5
                 // wide either, so measure both rather than assuming.
                 var src = mark.rows[i];
                 var off = Math.max(0, Math.round((base.w - src.replace(/\.+$/, '').length) / 2));
-                var cur = rows[y] || '', line = '';
+                var cur = rows[y + MF_TOP] || '', line = '';
                 for (var x = 0; x < Math.max(cur.length, off + src.length); x++) {
                     var a = cur.charAt(x) === '#', b = src.charAt(x - off) === '#';
                     line += (a || b) ? '#' : '.';
@@ -10533,7 +10998,7 @@
                 // a diacritic never widens the letter it sits on: letting the
                 // mark's trailing blanks extend the row made ç a pixel wider
                 // than c, and "Français" came out with a gap after the ç
-                rows[y] = line.slice(0, base.w);
+                rows[y + MF_TOP] = line.slice(0, base.w);
             }
             g[ch] = { w: base.w, rows: rows };
         }
@@ -10559,7 +11024,7 @@
         if (!f.map) {
             var map = {}, x = 0, ch;
             for (ch in f.g) { map[ch] = x; x += f.g[ch].w + 1; }
-            f.map = map; f.w = Math.max(1, x); f.h = MF_ROWS;
+            f.map = map; f.w = Math.max(1, x); f.h = MF_TOP + MF_ROWS;
         }
         var cv = document.createElement('canvas');
         cv.width = f.w; cv.height = f.h;
@@ -10567,7 +11032,7 @@
         cx.fillStyle = color;
         for (var c in f.g) {
             var gl = f.g[c], ox = f.map[c];
-            for (var y = 0; y < MF_ROWS; y++) {
+            for (var y = 0; y < MF_TOP + MF_ROWS; y++) {   // atlas row y holds glyph row y - MF_TOP
                 var row = gl.rows[y] || '';
                 for (var i = 0; i < row.length; i++) if (row.charAt(i) === '#') cx.fillRect(ox + i, y, 1, 1);
             }
@@ -10593,31 +11058,47 @@
             var px = x + 1;
             for (i = 0; i < text.length; i++) {
                 ch = text.charAt(i);
-                if (f.g[ch] && ch !== ' ') cx.drawImage(sa, f.map[ch], 0, f.g[ch].w, MF_ROWS, px, y + 1, f.g[ch].w, MF_ROWS);
+                if (f.g[ch] && ch !== ' ') cx.drawImage(sa, f.map[ch], 0, f.g[ch].w, MF_TOP + MF_ROWS, px, y + 1 - MF_TOP, f.g[ch].w, MF_TOP + MF_ROWS);
                 px += mfAdvance(ch);
             }
         }
         var a = mfAtlas(color || '#ffffff');
         for (i = 0; i < text.length; i++) {
             ch = text.charAt(i);
-            if (f.g[ch] && ch !== ' ') cx.drawImage(a, f.map[ch], 0, f.g[ch].w, MF_ROWS, x, y, f.g[ch].w, MF_ROWS);
+            if (f.g[ch] && ch !== ' ') cx.drawImage(a, f.map[ch], 0, f.g[ch].w, MF_TOP + MF_ROWS, x, y - MF_TOP, f.g[ch].w, MF_TOP + MF_ROWS);
             x += mfAdvance(ch);
         }
     }
-    function mfCenter(cx, text, cxp, y, color, shadow) { mfText(cx, text, Math.round(cxp - mfWidth(text) / 2), y, color, shadow); }
-    function mfRight(cx, text, rx, y, color, shadow) { mfText(cx, text, Math.round(rx - mfWidth(text)), y, color, shadow); }
+    // Font.width counts the gap after the last glyph (mfWidth + 1); centring and right-alignment are integer, as the game's are
+    function mfCenter(cx, text, cxp, y, color, shadow) { mfText(cx, text, Math.floor(cxp) - ((mfWidth(text) + 1) >> 1), y, color, shadow); }
+    function mfRight(cx, text, rx, y, color, shadow) { mfText(cx, text, Math.floor(rx) - (mfWidth(text) + 1), y, color, shadow); }
+    function mfWidthBold(text) { text = String(text == null ? '' : text); return text.length ? mfWidth(text) + text.length : 0; }
+    function mfTextBold(cx, text, x, y, color, shadow) {
+        text = String(text == null ? '' : text);
+        var f = mfBuild(), i, ch, px, H = MF_TOP + MF_ROWS;
+        function run(a, x0, y0) {
+            px = x0;
+            for (i = 0; i < text.length; i++) {
+                ch = text.charAt(i);
+                if (f.g[ch] && ch !== ' ') { cx.drawImage(a, f.map[ch], 0, f.g[ch].w, H, px, y0 - MF_TOP, f.g[ch].w, H); cx.drawImage(a, f.map[ch], 0, f.g[ch].w, H, px + 1, y0 - MF_TOP, f.g[ch].w, H); }
+                px += mfAdvance(ch) + 1;
+            }
+        }
+        if (shadow !== false) run(mfAtlas(mfShadow(color || '#ffffff')), x + 1, y + 1);
+        run(mfAtlas(color || '#ffffff'), x, y);
+    }
     /* Break a string to a pixel width on spaces, hard-splitting a word that
        cannot fit on its own. Used by the disconnect screens and the tooltips. */
     function mfWrap(text, max) {
         var words = String(text).split(' '), lines = [], cur = '';
         for (var i = 0; i < words.length; i++) {
             var next = cur ? cur + ' ' + words[i] : words[i];
-            if (mfWidth(next) <= max) { cur = next; continue; }
+            if (mfWidth(next) + 1 <= max) { cur = next; continue; }
             if (cur) { lines.push(cur); cur = ''; }
             var w = words[i];
-            while (mfWidth(w) > max) {
+            while (mfWidth(w) + 1 > max) {
                 var cut = w.length;
-                while (cut > 1 && mfWidth(w.slice(0, cut)) > max) cut--;
+                while (cut > 1 && mfWidth(w.slice(0, cut)) + 1 > max) cut--;
                 lines.push(w.slice(0, cut)); w = w.slice(cut);
             }
             cur = w;
@@ -10638,9 +11119,10 @@
        the baseline never lands between two pixels. */
     var MF_FAMILY = 'MCUI', MF_FACE = null;
     function mfRects(gl) {
-        var open = {}, out = [], r, k;
-        for (r = 0; r <= MF_ROWS; r++) {
-            var row = r < MF_ROWS ? (gl.rows[r] || '') : '', runs = {}, x = 0;
+        var open = {}, out = [], r, k, q;
+        for (q = 0; q <= MF_TOP + MF_ROWS; q++) {
+            r = q - MF_TOP;   // the row above the cap line is -1, and lands above the ascender in the font
+            var row = q < MF_TOP + MF_ROWS ? (gl.rows[q] || '') : '', runs = {}, x = 0;
             while (x < row.length) {
                 if (row.charAt(x) !== '#') { x++; continue; }
                 var x0 = x;
@@ -10838,7 +11320,7 @@
     function guiResize() {
         if (!RT || !RT.el) return;
         var w = RT.el.clientWidth || 960, h = RT.el.clientHeight || 560;
-        var s = guiScale(w, h, optLoad().guiScale), gw = Math.floor(w / s), gh = Math.floor(h / s);
+        var s = guiScale(w, h, optLoad().guiScale), gw = Math.ceil(w / s), gh = Math.ceil(h / s);   // Window.setGuiScale rounds up
         if (s === RT.gs && gw === RT.gw && gh === RT.gh) return;
         RT.gs = s; RT.gw = gw; RT.gh = gh;
         RT.el.style.setProperty('--gs', String(s));
@@ -10987,13 +11469,13 @@
        button_highlighted (hovered or focused: the white frame) and
        button_disabled; the label white, or 0xA0A0A0 on a dead button. */
     function mnButton(cx, b, state) {
-        mnNine(cx, guiSprites()[state === 2 ? 'btn_d' : state === 1 ? 'btn_h' : 'btn'], b.x, b.y, b.w, b.h, 3);
+        mnNine(cx, guiSprites()[state === 2 ? 'btn_d' : state === 1 ? 'btn_h' : 'btn'], b.x, b.y, b.w, b.h, state === 2 ? 1 : 3);   // button_disabled's border is 1
         var lbl = b.label == null ? '' : b.label;
         if (lbl !== '') mnLabel(cx, lbl, b.x + 2, b.y, b.x + b.w - 2, b.y + b.h, state === 2 ? MC_GREY : MC_WHITE);
     }
-    function mnMenuBg(cx, W, H, list) {   // the menu background, or the darker list one
+    function mnMenuBg(cx, W, H, list, top) {   // the menu background, or the darker list one; from `top` down where a tab bar sits above it
         cx.fillStyle = cx.createPattern(guiSprites()[list ? 'mlbg' : 'mbg'].cv, 'repeat');
-        cx.fillRect(0, 0, W, H);
+        cx.fillRect(0, top || 0, W, H - (top || 0));
     }
     /* A scrolling list's frame: dirt inside, and the two shadow gradients the
        game bleeds over the top and bottom edges so entries fade out rather
@@ -11001,7 +11483,7 @@
     function mnListFrame(cx, x, y, w, h) {   // menu_list_background over the list's rectangle
         cx.save();
         cx.beginPath(); cx.rect(x, y, w, h); cx.clip();
-        if (RT.menu && RT.menu.inworld) { cx.fillStyle = 'rgba(0, 0, 0, 0.3)'; cx.fillRect(x, y, w, h); }
+        if (RT.menu && RT.menu.inworld) { cx.fillStyle = 'rgba(0, 0, 0, 0.439)'; cx.fillRect(x, y, w, h); }
         else mnMenuBg(cx, x + w, y + h, true);
         cx.restore();
     }
@@ -11088,6 +11570,19 @@
     }
     /* The edition strip sits under the wordmark, overlapping it by 7px, in a
        128×14 box — vanilla's edition.png geometry. */
+    /* LogoRenderer: 256x44 of the wordmark (the top of its 256x64) at the given
+       spot, the edition's 128x14 centred 37 below; the game's own art from
+       mc-tex, or the drawn ones */
+    function mnDrawLogo(cx, x, y, k, noEdition) {
+        var L = texLogo();
+        if (L) {
+            cx.drawImage(MTEX.logoImg, L.logo[0], L.logo[1], L.logo[2], Math.round(L.logo[3] * 44 / 64), x, y, 256 * k, 44 * k);
+            if (!noEdition) cx.drawImage(MTEX.logoImg, L.edition[0], L.edition[1], L.edition[2], Math.round(L.edition[3] * 14 / 16), x + 64 * k, y + 37 * k, 128 * k, 14 * k);
+            return;
+        }
+        cx.drawImage(mnLogo(), x, y, MN_LOGO_W * k, MN_LOGO_H * k);
+        if (!noEdition) mnEdition(cx, x + 128 * k, y + 37 * k);
+    }
     function mnEdition(cx, cxp, y) {
         var t = 'JAVA EDITION';
         mfCenter(cx, t, cxp, y + 3, '#d8d8d8');
@@ -11161,14 +11656,14 @@
        centred at (0, -8) so the anchor sits on the text's baseline box. */
     function mnSplash(cx, m, w) {
         if (!m.splash) return;
-        var t = mfWidth(m.splash);
+        var t = mfWidth(m.splash) + 1;
         var pulse = 1.8 - Math.abs(Math.sin((Date.now() % 1000) / 1000 * Math.PI * 2) * 0.1);
         var f = pulse * 100 / (t + 32);
         cx.save();
         cx.translate(w / 2 + 123, 69);
         cx.rotate(-Math.PI / 9);
         cx.scale(f, f);
-        mfText(cx, m.splash, -Math.floor(t / 2), -8, MC_YELLOW);
+        mfText(cx, m.splash, -(t >> 1), -8, MC_YELLOW);
         cx.restore();
     }
 
@@ -11273,8 +11768,8 @@
         var el = RT.el, cw = Math.max(160, el.clientWidth || 960), ch = Math.max(120, el.clientHeight || 560);
         if (m.cv.width !== cw || m.cv.height !== ch) { m.cv.width = cw; m.cv.height = ch; }
         m.scale = guiScale(cw, ch, optLoad().guiScale);
-        m.W = Math.floor(cw / m.scale);
-        m.H = Math.floor(ch / m.scale);
+        m.W = Math.ceil(cw / m.scale);
+        m.H = Math.ceil(ch / m.scale);
         m.dirty = true;
         guiResize();
     }
@@ -11384,9 +11879,13 @@
             var h = -1;
             for (var i = 0; i < mm.widgets.length; i++) {
                 var b = mm.widgets[i];
-                if (b.enabled !== false && gx >= b.x && gx < b.x + b.w && gy >= b.y && gy < b.y + b.h) { h = i; break; }
+                if (b.enabled !== false && gx >= b.x && gx < b.x + b.w && gy >= b.y && gy < b.y + b.h && (!b.clip || (gy >= b.clip[1] && gy < b.clip[1] + b.clip[3]))) { h = i; break; }
             }
             if (h !== mm.hover) { mm.hover = h; mm.dirty = true; }
+            if (mnTipTarget(mm, gx, gy)) mm.dirty = true;   // a tooltip follows the pointer
+            // a list entry with an icon draws its play arrow differently with the pointer on the icon itself, so crossing that edge is a repaint too
+            var ob = h >= 0 ? mm.widgets[h] : null, oi = !!(ob && (ob.world || ob.si != null) && gx - ob.x < 32);
+            if (oi !== !!mm.onIcon) { mm.onIcon = oi; mm.dirty = true; }
             mm.mx = gx; mm.my = gy;
         });
         ui.addEventListener('mouseleave', function () {
@@ -11496,7 +11995,7 @@
         m.anim = false;
         var W = m.W, H = m.H;
         if (m.inworld) { cx.fillStyle = cx.createPattern(guiSprites().iwbg.cv, 'repeat'); cx.fillRect(0, 0, W, H); }   // over the blurred world
-        else if (scr.bg === 'dirt') mnMenuBg(cx, W, H);
+        else if (scr.bg === 'dirt') mnMenuBg(cx, W, H, false, scr.bgTop || 0);
         else if (scr.bg === 'scrim') { cx.fillStyle = 'rgba(0, 0, 0, 0.62)'; cx.fillRect(0, 0, W, H); }
         var ga = 1;
         if (scr.bg === 'pano') {
@@ -11513,6 +12012,11 @@
         if (scr.paint) scr.paint(cx, m, W, H);
         for (var i = 0; i < m.widgets.length; i++) {
             var b = m.widgets[i];
+            /* A widget scrolled half out of its area must be cut off at the
+               area's edge. These are drawn after the screen's own paint, so
+               without a clip a partly-scrolled entry lands on top of the
+               title, the search box and the edge shadows. */
+            if (b.clip) { cx.save(); cx.beginPath(); cx.rect(b.clip[0], b.clip[1], b.clip[2], b.clip[3]); cx.clip(); }
             if (b.k === 'btn' || b.k === 'icon') {
                 var st = b.enabled === false ? 2 : (i === m.hover || i === m.focus) ? 1 : 0;
                 b.st = st;
@@ -11522,19 +12026,10 @@
                     else if (b.draw) b.draw(cx, b, st);
                 }
             } else if (b.k === 'input') mnInput(cx, m, b, i);
-            else if (b.k === 'draw' && b.draw) {
-                /* A row scrolled half out of its list must be cut off at the
-                   list's edge. These are drawn after the screen's own paint, so
-                   without a clip a partly-scrolled entry lands on top of the
-                   title, the search box and the edge shadows. */
-                if (b.clip) {
-                    cx.save();
-                    cx.beginPath(); cx.rect(b.clip[0], b.clip[1], b.clip[2], b.clip[3]); cx.clip();
-                    b.draw(cx, b, i === m.hover, i === m.focus);
-                    cx.restore();
-                } else b.draw(cx, b, i === m.hover, i === m.focus);
-            }
+            else if (b.k === 'draw' && b.draw) b.draw(cx, b, i === m.hover, i === m.focus);
+            if (b.clip) cx.restore();
         }
+        mnTipPaint(cx, m, W, H);
         if (m.msg) {   // a transient line under the buttons: "Deleting…", an error
             mfCenter(cx, m.msg, W / 2, H - 42, MC_RED);
         }
@@ -11548,10 +12043,48 @@
        from focus, an underscore where the text ends and a bar in the text's own
        colour inside it; a selection is the game's OR_REVERSE highlight; an empty
        box shows its hint in dark grey, a search box's in grey italics. */
+    /* a widget's Tooltip, as MenuTooltipPositioner places it: 12 right of the
+       pointer (or left of it past the right edge), 3 below it and then under
+       the widget by a share of its height that shrinks the lower the pointer
+       sits in it; above the widget when that would run off the bottom. A
+       greyed widget still tells you why. */
+    function mnTipTarget(m, gx, gy) {
+        var b = m.hover >= 0 ? m.widgets[m.hover] : null;
+        if (b && b.tip) return b;
+        for (var i = 0; i < m.widgets.length; i++) {
+            var q = m.widgets[i];
+            if (q.tip && q.enabled === false && gx >= q.x && gx < q.x + q.w && gy >= q.y && gy < q.y + q.h && (!q.clip || (gy >= q.clip[1] && gy < q.clip[1] + q.clip[3]))) return q;
+        }
+        return null;
+    }
+    function mnTipPaint(cx, m, W, H) {
+        if (m.mx == null || m.hover === -1 && m.my == null) return;
+        var b = mnTipTarget(m, m.mx, m.my);
+        if (!b) return;
+        var lines = [];
+        String(b.tip).split('\n').forEach(function (t) { mfWrap(t, 170).forEach(function (l) { lines.push(l); }); });
+        var w = 0;
+        lines.forEach(function (l) { w = Math.max(w, mfWidth(l) + 1); });
+        var h = lines.length === 1 ? 8 : 10 * lines.length;
+        var mx = Math.floor(m.mx), my = Math.floor(m.my), tx = mx + 12, ty = my + 3;
+        if (tx + w > W - 5) tx = Math.max(mx - 12 - w, 9);
+        function off(y, wy, wh) { var i = Math.min(Math.abs(y - wy), wh); return Math.round((wh - 3) + (5 - (wh - 3)) * (i / wh)); }
+        var i2 = h + 6, j = b.y + b.h + 3 + off(0, 0, b.h);
+        if (j + i2 <= H - 5) ty += off(ty, b.y, b.h); else ty -= i2 + off(ty, b.y + b.h, b.h);
+        // the tooltip's sheet: 0xF0100010 with its corners cut, a purple frame a pixel in
+        var X = tx - 4, Y = ty - 4, Wd = w + 8, Hd = h + 8;
+        cx.fillStyle = 'rgba(16, 0, 16, 0.941)';
+        cx.fillRect(X + 1, Y, Wd - 2, Hd); cx.fillRect(X, Y + 1, 1, Hd - 2); cx.fillRect(X + Wd - 1, Y + 1, 1, Hd - 2);
+        var g = cx.createLinearGradient(0, Y + 1, 0, Y + Hd - 1);
+        g.addColorStop(0, 'rgba(80, 0, 255, 0.314)'); g.addColorStop(1, 'rgba(40, 0, 127, 0.314)');
+        cx.fillStyle = g;
+        cx.fillRect(X + 1, Y + 1, Wd - 2, 1); cx.fillRect(X + 1, Y + Hd - 2, Wd - 2, 1); cx.fillRect(X + 1, Y + 2, 1, Hd - 4); cx.fillRect(X + Wd - 2, Y + 2, 1, Hd - 4);
+        lines.forEach(function (l, k) { mfText(cx, l, tx, ty + (k ? 2 + 10 * k : 0), '#ffffff'); });
+    }
     function mnInput(cx, m, b, i) {
         var el = m.ui.children[i], focus = el && document.activeElement === el;
         mnNine(cx, guiSprites()[focus ? 'field_h' : 'field'], b.x, b.y, b.w, b.h, 1);
-        var v = b.value || '', tx = b.x + 4, ty = b.y + ((b.h - 8) >> 1), col = b.enabled === false ? '#707070' : '#e0e0e0';
+        var v = b.value || '', tx = b.x + 4, ty = b.y + ((b.h - 8) >> 1), col = b.color || (b.enabled === false ? '#707070' : '#e0e0e0');
         var room = b.w - 8, s0 = el && el.selectionStart != null ? el.selectionStart : v.length, s1 = el && el.selectionEnd != null ? el.selectionEnd : s0;
         var caret = el && el.selectionDirection === 'backward' ? s0 : s1, skip = 0;
         while (skip < caret && mfWidth(v.slice(skip, caret)) > room - 6) skip++;
@@ -11579,7 +12112,7 @@
         }
         cx.restore();
         if (focus && m) m.anim = true;   // the cursor blinks on its own
-        if (b.title) mfText(cx, b.title, b.x, b.y - 12, MC_GREY);
+        if (b.title) mfText(cx, b.title, b.x, b.y - 13, MC_WHITE, true);
     }
 
     /* ── the world store ─────────────────────────────────────
@@ -11631,7 +12164,7 @@
             list[0].hrs = old.hrs || 0;
             list[0].cheats = true;   // it predates the switch and had every command; do not take them away
             list[0].played = Date.now();
-            list[0].ver = RT && RT.ver ? RT.ver : '26.2';
+            list[0].ver = RT && RT.ver ? RT.ver : '26.3';
             old.wid = list[0].id;
             try { localStorage.setItem(WS_PRE + list[0].id, JSON.stringify(old)); } catch (e) {}
         }
@@ -11670,7 +12203,7 @@
         var w = { id: wsNewId(), name: o.name, folder: wsFolder(o.name), seed: o.seed, gm: o.gm, diff: o.diff,
             cheats: !!o.cheats, hardcore: !!o.hardcore, structures: o.structures !== false, bonus: !!o.bonus,
             type: o.type || 'Default', created: Date.now(), played: Date.now(), hrs: 0,
-            ver: RT && RT.ver ? RT.ver : '26.2' };
+            ver: RT && RT.ver ? RT.ver : '26.3' };
         l.unshift(w);
         if (!wsWrite(l)) return null;   // storage full or blocked: say so rather than opening a world that was never saved
         wsSyncFS();
@@ -11707,32 +12240,68 @@
     function wsInfoLine(w) {
         var s = w.hardcore ? 'Hardcore Mode!' : (MN_GM[w.gm] || MN_GM[0]);
         if (w.cheats) s += ', Cheats';
-        return s + ', Version: ' + (w.ver || '26.2');
+        return s + ', Version: ' + (w.ver || '26.3');
     }
 
     /* ── screen: loading ─────────────────────────────────────
-       What sits in front of the panorama world being generated. Vanilla's
-       equivalent is the publisher's splash, which is theirs; this is the
-       wordmark we drew ourselves over the same geometry of progress bar. */
+       What sits in front of the panorama world being generated: the game's
+       LoadingOverlay, as 26.3 draws it, when mc-tex holds the Mojang Studios
+       logo. The brand red (0xEF323D) fills the screen; the logo's two halves
+       (the texture's top and bottom) stand side by side, each a quarter of
+       min(0.75 W, H) tall and twice that wide, centred; the bar sits at
+       0.8325 H, as wide as the logo, ten tall, a white outline round a white
+       fill two in that follows the progress at a twentieth a frame. Nothing is
+       written. Without the logo, the wordmark drawn in this file sits over the
+       same bar, as it did before the jar's textures came.
+
+       The same screen is "Saving world" on the way back to the title:
+       GenericMessageScreen's FocusableTextWidget, the line in a black box
+       with a 0xA0A0A0 rim, 12 of padding, centred (its top H/2 - 4) over the
+       menu background. */
     MN_SCR.loading = {
         bg: 'flat', live: true,
         layout: function () { return []; },
         paint: function (cx, m, W, H) {
+            if (m.mode === 'saving') {
+                cx.fillStyle = '#000000'; cx.fillRect(0, 0, W, H);
+                mnMenuBg(cx, W, H);
+                var t = 'Saving world', tw = mfWidth(t) + 1, bw2 = tw + 24, bx2 = (W >> 1) - (bw2 >> 1), by2 = (H >> 1) - 4;
+                mnRect(cx, bx2, by2, bw2, 33, '#000000');
+                mnRect(cx, bx2, by2, bw2, 1, '#a0a0a0'); mnRect(cx, bx2, by2 + 32, bw2, 1, '#a0a0a0'); mnRect(cx, bx2, by2, 1, 33, '#a0a0a0'); mnRect(cx, bx2 + bw2 - 1, by2, 1, 33, '#a0a0a0');
+                mfText(cx, t, bx2 + 12, by2 + 12, MC_WHITE);
+                return;
+            }
+            var logo = texMojang(), prog = Math.max(0, Math.min(1, m.prog || 0));
+            m.lprog = Math.max(0, Math.min(1, (m.lprog || 0) * 0.95 + prog * 0.05));   // LoadingOverlay.currentProgress
+            m.anim = true;
+            if (logo) {
+                cx.fillStyle = '#ef323d'; cx.fillRect(0, 0, W, H);
+                var d1 = Math.min(W * 0.75, H) * 0.25, i1 = (d1 * 0.5) | 0, j1 = (d1 * 2) | 0, hh = d1 | 0, lx = (W * 0.5) | 0, ly = (H * 0.5) | 0;
+                var sw = logo.width, sh = logo.height >> 1;
+                cx.imageSmoothingEnabled = true;   // the logo is drawn at a scale of its own, as the game's is
+                cx.drawImage(logo, 0, 0, sw, sh, lx - j1, ly - i1, j1, hh);
+                cx.drawImage(logo, 0, sh, sw, sh, lx, ly - i1, j1, hh);
+                cx.imageSmoothingEnabled = false;
+                var k1 = (H * 0.8325) | 0, x0 = lx - j1, x1 = lx + j1, y0 = k1 - 5, y1 = k1 + 5, fill = Math.ceil((x1 - x0 - 2) * m.lprog);
+                cx.fillStyle = '#ffffff';
+                cx.fillRect(x0 + 2, y0 + 2, Math.max(0, fill - 2), y1 - 2 - (y0 + 2));
+                cx.fillRect(x0 + 1, y0, x1 - 1 - (x0 + 1), 1); cx.fillRect(x0 + 1, y1, x1 - 1 - (x0 + 1), 1);
+                cx.fillRect(x0, y0, 1, y1 + 1 - y0); cx.fillRect(x1, y0, 1, y1 + 1 - y0);
+                return;
+            }
             cx.fillStyle = '#0f0f13';
             cx.fillRect(0, 0, W, H);
             /* At 1:1. Halving pixel art with smoothing off just throws away
                every other column and the wordmark comes out gap-toothed. */
-            var lg = mnLogo(), half = W < MN_LOGO_W + 24;
-            var lw = half ? MN_LOGO_W >> 1 : MN_LOGO_W, lh = half ? MN_LOGO_H >> 1 : MN_LOGO_H;
+            var half = W < MN_LOGO_W + 24, lw = half ? MN_LOGO_W >> 1 : MN_LOGO_W;
             cx.save();
             cx.globalAlpha = 0.28 + 0.72 * Math.min(1, m.t / 0.5);
-            cx.drawImage(lg, Math.round(W / 2 - lw / 2), Math.round(H / 2 - 46), lw, lh);
+            mnDrawLogo(cx, Math.round(W / 2 - lw / 2), Math.round(H / 2 - 46), half ? 0.5 : 1, true);
             cx.restore();
             var bw = 200, bx = Math.round((W - bw) / 2), by = Math.round(H / 2 + 12);
             mnRect(cx, bx - 1, by - 1, bw + 2, 7, '#ffffff');
             mnRect(cx, bx, by, bw, 5, '#0f0f13');
-            mnRect(cx, bx, by, Math.round(bw * Math.max(0, Math.min(1, m.prog || 0))), 5, '#4be04b');
-            mfCenter(cx, m.stage || 'Loading…', W / 2, by + 16, '#8a8a94');
+            mnRect(cx, bx, by, Math.round(bw * prog), 5, '#4be04b');
         }
     };
 
@@ -11757,20 +12326,20 @@
                 { k: 'icon', aria: 'Accessibility Settings', icon: 'ic_acc' }));
             /* The copyright line is a real button in the game — it opens the
                credits, and underlines itself on hover. So is this one. */
-            var note = MN_COPY, nw = mfWidth(note);
+            var note = MN_COPY, nw = mfWidth(note) + 1;
             w.push({ k: 'draw', id: 'copy', x: W - nw - 2, y: H - 10, w: nw, h: 10, enabled: true,
                 aria: note, on: function (mm) { mnGo(mm, 'credits'); },
                 draw: function (cx2, b, hover, focus) {
                     mfText(cx2, note, b.x, b.y, MC_WHITE);
-                    if (hover || focus) mnRect(cx2, b.x, b.y + 9, nw, 1, MC_WHITE);
+                    // the underline runs from a pixel before the text to its full advance, with its shadow under it
+                    if (hover || focus) { mnRect(cx2, b.x, b.y + 9, nw + 1, 1, mfShadow(MC_WHITE)); mnRect(cx2, b.x - 1, b.y + 8, nw + 1, 1, MC_WHITE); }
                 } });
             return w;
         },
         paint: function (cx, m, W, H) {
-            cx.drawImage(mnLogo(), Math.round(W / 2 - 128), 30);
-            mnEdition(cx, W / 2, 67);
+            mnDrawLogo(cx, Math.round(W / 2 - 128), 30, 1);
             mnSplash(cx, m, W);
-            mfText(cx, 'Minecraft ' + ((RT && RT.ver) || '26.2'), 2, H - 10, MC_WHITE);
+            mfText(cx, 'Minecraft ' + ((RT && RT.ver) || '26.3'), 2, H - 10, MC_WHITE);
         }
     };
     var MN_COPY = 'A fan recreation. Not Mojang, not affiliated.';
@@ -11794,7 +12363,7 @@
         layout: function (m, W, H) {
             var w = [], cxp = W / 2 | 0;
             w.push({ k: 'input', id: 'q', x: cxp - 100, y: 22, w: 200, h: 20, value: m.d.q || '',
-                hint: 'Search…', search: true, enabled: true, aria: 'search for worlds',
+                hint: 'search for worlds', search: true, enabled: true, aria: 'search for worlds',   // selectWorld.search, lower case
                 set: function (mm, v) { mm.d.q = v; mm.d.scroll = 0; } });
             var top = 48, bot = H - 64, rows = MN_SCR.world.rows(m);
             var maxScroll = Math.max(0, rows.length * MN_ROWH - (bot - top) + 8);
@@ -11867,11 +12436,11 @@
         var m = RT.menu, w = b.world, sel = m.d.sel === w.id;
         if (sel) {
             var lf = m.widgets[m.focus] && m.widgets[m.focus].world;
-            mnRect(cx, b.x - 2, b.y - 2, b.w + 4, b.h + 4, lf ? '#ffffff' : '#808080');
-            mnRect(cx, b.x - 1, b.y - 1, b.w + 2, b.h + 2, '#000000');
+            mnRect(cx, b.x - 2, b.y - 2, 270, b.h + 4, lf ? '#ffffff' : '#808080');   // the entry's own 270-wide rectangle
+            mnRect(cx, b.x - 1, b.y - 1, 268, b.h + 2, '#000000');
         }
         mnWorldIcon(cx, w, b.x, b.y);
-        if (hover) { cx.fillStyle = 'rgba(144, 144, 144, 0.63)'; cx.fillRect(b.x, b.y, 32, 32); mnJoinArrow(cx, b.x, b.y); }
+        if (hover) { cx.fillStyle = 'rgba(144, 144, 144, 0.63)'; cx.fillRect(b.x, b.y, 32, 32); mnJoinArrow(cx, b.x, b.y, !!m.onIcon); }
         var tx = b.x + 35;
         mfText(cx, w.name, tx, b.y + 1, MC_WHITE, false);
         mfText(cx, w.folder + ' (' + wsDate(w.played) + ')', tx, b.y + 12, '#808080', false);
@@ -11902,9 +12471,8 @@
         mnRect(cx, x, y, 32, 1, '#000000'); mnRect(cx, x, y + 31, 32, 1, '#000000');
         mnRect(cx, x, y, 1, 32, '#000000'); mnRect(cx, x + 31, y, 1, 32, '#000000');
     }
-    function mnJoinArrow(cx, x, y) {
-        cx.fillStyle = '#ffffff';
-        for (var i = 0; i < 7; i++) cx.fillRect(x + 11 + i, y + 15 - i, 2, 1 + i * 2);
+    function mnJoinArrow(cx, x, y, onIcon) {   // world_list/join, or join_highlighted with the pointer on the icon itself
+        cx.drawImage(guiSprites()[onIcon ? 'wl_join_h' : 'wl_join'].cv, x, y);
     }
 
     /* — shared widget shapes —
@@ -11932,9 +12500,9 @@
                    (its frame white while focused) and the 8-wide handle at
                    x + value x (w - 8), a little button, white-framed under the
                    pointer; the label over both */
-                mnNine(cx, guiSprites()[focus ? 'slider_h' : 'slider'], b.x, b.y, b.w, b.h, 1);
+                mnNine(cx, guiSprites().slider, b.x, b.y, b.w, b.h, 1);   // the lit track is the game's arrow-key state, which has no way in here
                 var kx = b.x + Math.floor(Math.max(0, Math.min(1, frac)) * (b.w - 8));
-                mnNine(cx, guiSprites()[hover || focus ? 'btn_h' : 'btn'], kx, b.y, 8, b.h, 3);
+                mnNine(cx, guiSprites()[hover || focus ? 'slider_kh' : 'slider_k'], kx, b.y, 8, b.h, 2);
                 mnLabel(cx, b.label, b.x + 2, b.y, b.x + b.w - 2, b.y + b.h, MC_WHITE);
             } };
     }
@@ -11975,14 +12543,16 @@
     /* the list background between the header and footer separators */
     function mnListBg(cx, m, x, y, w, h) {
         cx.save(); cx.beginPath(); cx.rect(x, y, w, h); cx.clip();
-        if (m && m.inworld) { cx.fillStyle = 'rgba(0, 0, 0, 0.3)'; cx.fillRect(x, y, w, h); }
+        if (m && m.inworld) { cx.fillStyle = 'rgba(0, 0, 0, 0.439)'; cx.fillRect(x, y, w, h); }
         else mnMenuBg(cx, x + w, y + h, true);
         cx.restore();
         mnSep(cx, x, y - 2, w, true); mnSep(cx, x, y + h, w, false);
     }
-    function mnSep(cx, x, y, w, head) {   // header_separator: light over dark; footer_separator: dark over light
-        mnRect(cx, x, y, w, 1, head ? 'rgba(255, 255, 255, 0.25)' : 'rgba(0, 0, 0, 0.55)');
-        mnRect(cx, x, y + 1, w, 1, head ? 'rgba(0, 0, 0, 0.55)' : 'rgba(255, 255, 255, 0.25)');
+    function mnSep(cx, x, y, w, head) {   // header_separator and footer_separator, 32x2, tiled across
+        cx.save(); cx.beginPath(); cx.rect(x, y, w, 2); cx.clip();
+        cx.fillStyle = cx.createPattern(guiSprites()[head ? 'hsep' : 'fsep'].cv, 'repeat-x');
+        cx.translate(x, y); cx.fillRect(0, 0, w, 2);
+        cx.restore();
     }
     /* A screen that is a title, some wrapped prose and one button back. Used
        by everything the game shows as an informational panel. */
@@ -12029,7 +12599,7 @@
         return { diff: c.hardcore ? 3 : c.diff, cheats: c.hardcore ? false : (c.cheats == null ? c.gm === 1 : !!c.cheats), bonus: c.hardcore ? false : !!c.bonus };
     }
     MN_SCR.create = {
-        bg: 'dirt',
+        bg: 'dirt', bgTop: 24,   // CreateWorldScreen: tab_header_background (clear) over the tab row, the menu background under it
         enter: function (m) { if (!m.d.cw) m.d.cw = mnCreateDefaults(); },
         layout: function (m, W, H) {
             var c = m.d.cw || (m.d.cw = mnCreateDefaults());
@@ -12041,50 +12611,52 @@
                     on: (function (n) { return function (mm) { mm.d.cw.tab = n; mm.sig = ''; }; })(i),
                     draw: mnTab });
             }
-            var y = 42, eff = mnCreateEff(c);
+            /* GridLayoutTab: each tab's grid (rows 8 apart) aligned at (1/2, 1/6) in
+               the area between the 24-pixel tab bar and the 33-pixel footer; a
+               labelled box is 33 tall (the label 9, a 4 gap, the box 20) */
+            var eff = mnCreateEff(c), area = H - 24 - 33, y;
             if (c.tab === 0) {
-                w.push({ k: 'input', id: 'nm', x: cxp - 104, y: y + 12, w: 208, h: 20, value: c.name, max: 64,
+                y = 24 + Math.floor((area - 117) / 6);
+                w.push({ k: 'input', id: 'nm', x: cxp - 104, y: y + 13, w: 208, h: 20, value: c.name, max: 64,
                     enabled: true, aria: 'World Name', title: 'World Name',
                     set: function (mm, v) { mm.d.cw.name = v; } });
-                y += 44;
-                // the mode's one-line description sits under the button, so the
-                // buttons below it drop by the height of a line
-                w.push(mnCycle('gm', cxp - 105, y, 210, 20, 'Game Mode',
+                w.push(mnCycle('gm', cxp - 105, y + 41, 210, 20, 'Game Mode',
                     ['Survival', 'Hardcore', 'Creative'], c.hardcore ? 1 : c.gm === 1 ? 2 : 0,
                     function (mm, n) {
                         mm.d.cw.hardcore = n === 1;
                         mm.d.cw.gm = n === 2 ? 1 : 0;   // the difficulty, cheats and bonus-chest CHOICES are left alone
                     }));
-                y += 40;
-                w.push(mnCycle('df', cxp - 105, y, 210, 20, 'Difficulty', MN_DIFF, eff.diff,
+                w.push(mnCycle('df', cxp - 105, y + 69, 210, 20, 'Difficulty', MN_DIFF, eff.diff,
                     function (mm, n) { mm.d.cw.diff = n; }, { enabled: !c.hardcore }));
-                y += 28;
-                // untouched, the switch follows the mode (ON for Creative); once you set it, it stays set
-                w.push(mnCycle('ch', cxp - 105, y, 210, 20, 'Allow Commands', ['OFF', 'ON'], eff.cheats ? 1 : 0,
+                // untouched, the switch follows the mode (ON for Creative); once you set it, it stays set.
+                // selectWorld.allowCommands reads "Allow Cheats" in the game's own language file
+                w.push(mnCycle('ch', cxp - 105, y + 97, 210, 20, 'Allow Cheats', ['OFF', 'ON'], eff.cheats ? 1 : 0,
                     function (mm, n) { mm.d.cw.cheats = !!n; }, { enabled: !c.hardcore }));
             } else if (c.tab === 1) {
+                y = 24 + Math.floor((area - 113) / 6);
                 w.push(mnCycle('wt', cxp - 155, y, 150, 20, 'World Type', MN_WTYPE, c.type,
                     function (mm, n) { mm.d.cw.type = n; }));
                 w.push(mnBtn('cust', cxp + 5, y, 150, 20, 'Customize', function () {}, { enabled: false }));
-                y += 40;
-                w.push({ k: 'input', id: 'sd', x: cxp - 154, y: y, w: 308, h: 20, value: c.seed, max: 32,
+                w.push({ k: 'input', id: 'sd', x: cxp - 154, y: y + 41, w: 308, h: 20, value: c.seed, max: 32,
                     enabled: true, aria: 'Seed for the world generator', title: 'Seed for the world generator',
                     hint: 'Leave blank for a random seed',
                     set: function (mm, v) { mm.d.cw.seed = v; } });
-                y += 30;
                 /* Vanilla's other switch here is Generate Structures, which is
                    not offered because this generator has no structures to
-                   generate — trees and ore blobs are terrain. A switch that
-                   changes nothing is worse than a switch that is not there. */
-                w.push(mnCycle('bc', cxp - 155, y, 310, 20, 'Bonus Chest', ['OFF', 'ON'], eff.bonus ? 1 : 0,
-                    function (mm, n) { mm.d.cw.bonus = !!n; }, { enabled: !c.hardcore }));
+                   generate: trees and ore blobs are terrain. A switch that
+                   changes nothing is worse than a switch that is not there.
+                   SwitchGrid: the name on the left (painted below), a 44-wide
+                   ON/OFF button at the row's right */
+                w.push(mnBtn('bc', cxp - 155 + 266, y + 73, 44, 20, eff.bonus ? 'ON' : 'OFF', function (mm) { mm.d.cw.bonus = !eff.bonus; },
+                    { enabled: !c.hardcore, aria: 'Bonus Chest: ' + (eff.bonus ? 'ON' : 'OFF') }));
             } else {
+                y = 24 + Math.floor((area - 76) / 6);
                 w.push(mnBtn('gr', cxp - 105, y, 210, 20, 'Game Rules', function (mm) { mnGo(mm, 'rules'); }));
                 w.push(mnBtn('ex', cxp - 105, y + 28, 210, 20, 'Experiments', function () {}, { enabled: false }));
                 w.push(mnBtn('dp', cxp - 105, y + 56, 210, 20, 'Data Packs', function (mm) { mnGo(mm, 'packs'); }));
             }
-            w.push(mnBtn('go', cxp - 155, H - 28, 150, 20, 'Create New World', function (mm) { mnCreate(mm); }));
-            w.push(mnBtn('cancel', cxp + 5, H - 28, 150, 20, 'Cancel', function (mm) { mnBack(mm); }));
+            w.push(mnBtn('go', cxp - 154, H - 27, 150, 20, 'Create New World', function (mm) { mnCreate(mm); }));
+            w.push(mnBtn('cancel', cxp + 4, H - 27, 150, 20, 'Cancel', function (mm) { mnBack(mm); }));
             return w;
         },
         /* The tabbed screen carries no drawn title — the tab bar is the header,
@@ -12093,10 +12665,9 @@
         paint: function (cx, m, W, H) {
             var tw = mnTabW(W), tx0 = (W - 3 * tw) >> 1;
             mnSep(cx, 0, 22, tx0, true); mnSep(cx, tx0 + 3 * tw, 22, W - tx0 - 3 * tw, true);   // out from either end of the tab row
-            mnSep(cx, 0, H - 38, W, false);   // over the footer
+            mnSep(cx, 0, H - 35, W, false);   // over the 33-pixel footer
             var c = m.d.cw;
-            // the grey line under Game Mode that says what the mode is, as the real screen has it
-            if (c && c.tab === 0) mfText(cx, MN_GM_INFO[c.hardcore ? 1 : c.gm === 1 ? 2 : 0], (W / 2 | 0) - 105, 42 + 44 + 24, MC_GREY);
+            if (c && c.tab === 1) mfText(cx, 'Bonus Chest', (W / 2 | 0) - 155, 24 + Math.floor((H - 57 - 113) / 6) + 73 + 6, c.hardcore ? MC_GREY : MC_WHITE);
         }
     };
     /* MenuTabBar: tabs as wide as roundUpToEven((min(400, W) - 28) / 3), the row
@@ -12111,7 +12682,7 @@
         cx.save(); cx.beginPath(); cx.rect(b.x + 1, b.y, b.w - 2, b.h); cx.clip();
         mfText(cx, b.label, lx, ly, MC_WHITE);
         cx.restore();
-        if (on) { var uw = Math.min(tw - 1, b.w - 4); mnRect(cx, b.x + (b.w >> 1) - (uw >> 1), b.y + 22, uw, 1, MC_WHITE); }
+        if (on) { var uw = Math.min(tw, b.w - 4); mnRect(cx, b.x + ((b.w - uw) >> 1), b.y + 22, uw, 1, MC_WHITE); }   // Font.width wide
     }
     function mnCreate(m) {
         var c = m.d.cw, seed;
@@ -12287,11 +12858,11 @@
         }
         mnRect(cx, b.x, b.y, 32, 32, '#2a2a30');
         mfCenter(cx, '?', b.x + 16, b.y + 12, '#6a6a76', false);
-        if (hover) { cx.fillStyle = 'rgba(144, 144, 144, 0.63)'; cx.fillRect(b.x, b.y, 32, 32); mnJoinArrow(cx, b.x, b.y); }
+        if (hover) { cx.fillStyle = 'rgba(144, 144, 144, 0.63)'; cx.fillRect(b.x, b.y, 32, 32); mnJoinArrow(cx, b.x, b.y, !!m.onIcon); }
         var tx = b.x + 35;
         mfText(cx, s.n, tx, b.y + 1, MC_WHITE, false);
         var pinging = (m.d.pingT || 0) < 1.2;
-        if (pinging) mfText(cx, 'Pinging…', tx, b.y + 12, '#808080', false);
+        if (pinging) mfText(cx, 'Pinging...', tx, b.y + 12, '#808080', false);
         else if (s.ping < 0) mfText(cx, "Can't resolve hostname", tx, b.y + 12, MC_RED, false);
         else {
             var mo = String(s.motd).split('\n');
@@ -12522,9 +13093,9 @@
     ];
     MN_SCR.lang = {
         bg: 'dirt',
-        wheel: function (m, dy) { m.d.lscroll = mnScroll((m.d.lscroll || 0) + (dy > 0 ? 16 : -16), MN_LANGS.length * 18 + 8, m.H - 72); },
+        wheel: function (m, dy) { m.d.lscroll = mnScroll((m.d.lscroll || 0) + (dy > 0 ? 16 : -16), MN_LANGS.length * 18 + 8, m.H - 85); },
         layout: function (m, W, H) {
-            var w = [], cxp = W / 2 | 0, top = 32, bot = H - 40, o = optLoad();
+            var w = [], cxp = W / 2 | 0, top = 32, bot = H - 53, o = optLoad();   // a 53-pixel footer: the warning over the buttons
             for (var i = 0; i < MN_LANGS.length; i++) {
                 var y = top + 4 - (m.d.lscroll || 0) + i * 18;
                 if (y < top || y + 16 > bot) continue;
@@ -12538,14 +13109,14 @@
                         mfCenter(cx, MN_LANGS[b.li].n, b.x + b.w / 2, b.y + 4, cur ? MC_YELLOW : MC_WHITE);
                     } });
             }
-            w.push(mnBtn('done', cxp - 100, H - 32, 200, 20, 'Done', function (mm) { mnBack(mm); }));
+            w.push(mnBtn('done', cxp - 100, H - 28, 200, 20, 'Done', function (mm) { mnBack(mm); }));
             return w;
         },
         paint: function (cx, m, W, H) {
-            mnListFrame(cx, 0, 32, W, H - 72);
+            mnListFrame(cx, 0, 32, W, H - 85);
             mfCenter(cx, 'Language', W / 2, 15, MC_WHITE);
-            mnListEdges(cx, 0, 32, W, H - 72);
-            mfCenter(cx, 'The menu is written in English. The rest is a promise.', W / 2, H - 44, MC_GREY);
+            mnListEdges(cx, 0, 32, W, H - 85);
+            mfCenter(cx, 'The menu is written in English. The rest is a promise.', W / 2, H - 45, MC_GREY);
         }
     };
     MN_SCR.realms = mnText('Minecraft Realms', [
@@ -12572,8 +13143,8 @@
     });
     MN_SCR.packs = mnText('Select Resource Packs', [
         'Available: none.',
-        'The textures in this game are drawn at boot by code in this file, so there is ' +
-        'nothing on disk for a pack to replace.'
+        'The game\'s own textures load from mc-tex beside it, built from the client by the mc-tex tool. ' +
+        'There are no packs to choose between.'
     ]);
     MN_SCR.skin = mnText('Skin Customization', function () {
         var sk = window.MCHOST && window.MCHOST.skin && window.MCHOST.skin();
@@ -12582,9 +13153,10 @@
     });
     MN_SCR.credits = mnText('Credits & Attribution', [
         'Minecraft is made by Mojang Studios. This is not that.',
-        'This is a recreation of its title screen, written from scratch for a personal site: ' +
-        'the font, the wordmark, the widgets and the world behind them are all drawn by code in this file.',
-        'No Mojang assets are used, and nothing here is sold.'
+        'This is a recreation written for a personal site. The code is its own; the textures, the font, ' +
+        'the wordmark and the interface sprites are Mojang\'s, read out of this computer\'s own Minecraft client for this personal build, ' +
+        'and whatever that client lacks is drawn by code in this file.',
+        'Nothing here is sold.'
     ], 'Back');
     MN_SCR.keys = mnText('Key Binds', [
         'Movement  WASD · Jump  Space · Sneak  Shift · Sprint  double-tap W',
@@ -12594,8 +13166,135 @@
     ]);
     MN_SCR.rules = mnText('Game Rules', [
         'Rules are set per world once it is running.',
-        'Open the world and use /gamerule — the parser is real and it lists what it accepts.'
+        'Open the world and use /gamerule: the parser is real and it lists what it accepts.'
     ]);
+
+    /* ── screen: World Options ───────────────────────────────
+       WorldOptionsScreen: a HeaderAndFooterLayout (33 and 33) whose contents
+       are a ScrollableLayout holding two grids, each in a cell padded 8 with 8
+       between them, columns and rows 8 apart. General: its heading, Default
+       Game Mode and Personal Game Mode across both columns (308), Allow
+       Cheats beside Difficulty (130, its lock 20 beside), Edit Game Rules...
+       beside Restrictions...; Multiplayer: its heading, LAN beside the port
+       box, Command Access beside Force Game Mode. A heading is a
+       FocusableTextWidget, 17 tall, bold and underlined. The content band
+       wears the in-world list background; Apply Changes and Cancel sit in
+       the footer, 8 apart. */
+    var WOPTS_H = 242;   // the content: 8 + (17+8+20+8+20+8+20+8+20) + 8, then 8, then 8 + (17+8+20+8+20) + 8
+    function mnHeading(cx, text, cxp, y) {   // bold and underlined, centred: the underline a pixel out either side on row 8, shadowed
+        var tw = mfWidthBold(text) + 1, x = Math.floor(cxp) - (tw >> 1);
+        mnRect(cx, x, y + 9, tw, 1, mfShadow(MC_WHITE)); mnRect(cx, x - 1, y + 8, tw, 1, MC_WHITE);
+        mfTextBold(cx, text, x, y, MC_WHITE);
+    }
+    function mnLockBtn(cx, b, locked, hi) {
+        var n = (locked ? 'lock_on' : 'lock_off') + (b.enabled === false ? '_d' : hi ? '_h' : '');
+        cx.drawImage(guiSprites()[n].cv, b.x, b.y);
+    }
+    MN_SCR.wopts = {
+        bg: 'dirt',
+        enter: woptsEnter,
+        wheel: function (m, dy) { m.d.wscroll = mnScroll((m.d.wscroll || 0) + (dy > 0 ? 10 : -10), WOPTS_H, m.H - 66); },
+        layout: function (m, W, H) {
+            var d = m.d.wo, cxp = W >> 1, top = 33, span = H - 66, w = [];
+            var sc = m.d.wscroll = mnScroll(m.d.wscroll || 0, WOPTS_H, span), clip = [0, top, W, span];
+            var y0 = top + 8 - sc, y1 = y0 + 153, hard = !!S.hardcore, lockedNow = !!S.diffLocked, dOff = lockedNow || hard;
+            var pok = lanPortOk(d.port), changed = JSON.stringify(d) !== m.d.wo0;
+            w.push(mnCycle('gm', cxp - 154, y0 + 25, 308, 20, 'Default Game Mode', GM_NAME, d.gm, function (mm, n) { mm.d.wo.gm = n; },
+                { clip: clip, tip: 'Changes the default game mode of the world.' }));
+            w.push(mnCycle('pgm', cxp - 154, y0 + 53, 308, 20, 'Personal Game Mode', GM_NAME, d.pgm, function (mm, n) { mm.d.wo.pgm = n; },
+                { clip: clip, tip: 'Changes your game mode in this world.' }));
+            w.push(mnCycle('ch', cxp - 154, y0 + 81, 150, 20, 'Allow Cheats', ['OFF', 'ON'], d.cheats ? 1 : 0, function (mm, n) { mm.d.wo.cheats = !!n; },
+                { clip: clip, enabled: !hard, tip: hard ? 'Cannot allow commands in a hardcore world.' : 'Allows the use of commands in this world.' }));
+            w.push(mnCycle('df', cxp + 4, y0 + 81, 130, 20, 'Difficulty', DIFF_NAME, d.diff, function (mm, n) { mm.d.wo.diff = n; },
+                { clip: clip, enabled: !dOff, tip: lockedNow ? 'Difficulty is locked.' : hard ? 'Cannot change the difficulty in a hardcore world.' : null }));
+            w.push({ k: 'draw', id: 'lock', x: cxp + 134, y: y0 + 81, w: 20, h: 20, enabled: !dOff, aria: 'Lock World Difficulty', clip: clip,
+                draw: function (cx, b, hover, focus) { mnLockBtn(cx, b, m.d.wo.lock, hover || focus); },
+                on: function (mm) { mm.d.wo.lock = !mm.d.wo.lock; } });
+            w.push(mnBtn('gr', cxp - 154, y0 + 109, 150, 20, 'Edit Game Rules...', function (mm) { mnGo(mm, 'rules'); },
+                { clip: clip, enabled: !hard, tip: hard ? 'Cannot change game rules in a hardcore world.' : null }));
+            w.push(mnBtn('rs', cxp + 4, y0 + 109, 150, 20, 'Restrictions...', function (mm) { mnGo(mm, 'restrict'); }, { clip: clip }));
+            w.push(mnCycle('lan', cxp - 154, y1 + 25, 150, 20, 'LAN', ['OFF', 'ON'], d.lan ? 1 : 0, function (mm, n) { mm.d.wo.lan = !!n; },
+                { clip: clip, tip: d.lan ? 'Players on the same network can join.' : 'Nobody can join.' }));
+            w.push({ k: 'input', id: 'port', x: cxp + 4, y: y1 + 25, w: 150, h: 20, value: d.port, max: 5, enabled: !!d.lan, aria: 'Port Number',
+                hint: 'Port Number', color: pok ? null : '#ff5555', tip: pok ? 'Port Number' : LAN_BAD, clip: clip,
+                set: function (mm, v) { mm.d.wo.port = v; } });
+            var scopeOff = !d.lan;
+            w.push(mnCycle('guest', cxp - 154, y1 + 53, 150, 20, 'Command Access', ['OFF', 'ON'], d.guest ? 1 : 0, function (mm, n) { mm.d.wo.guest = !!n; },
+                { clip: clip, enabled: !scopeOff && d.cheats,
+                  tip: scopeOff ? 'Cannot change the command access of players joining your world when the world\'s multiplayer scope is set to "Off".'
+                      : !d.cheats ? 'Cannot change the command access of players joining your world when commands are not allowed.'
+                      : 'Controls whether players that join your world can use commands or not.' }));
+            w.push(mnCycle('force', cxp + 4, y1 + 53, 150, 20, 'Force Game Mode', ['OFF', 'ON'], d.force ? 1 : 0, function (mm, n) { mm.d.wo.force = !!n; },
+                { clip: clip, enabled: !scopeOff && !hard && !d.guest,
+                  tip: scopeOff ? 'Cannot change this setting when the world\'s multiplayer scope is set to "Off".'
+                      : hard ? 'Cannot change this setting in a hardcore world.'
+                      : d.guest ? 'Other players can set their own game mode through commands.'
+                      : d.force ? 'Other players will be forced to play the world\'s default game mode.'
+                      : 'Other players will retain their current game mode regardless of the world\'s default game mode.' }));
+            w.push(mnBtn('apply', cxp - 154, H - 27, 150, 20, 'Apply Changes', function (mm) { woptsApply(mm); }, { enabled: changed && (!d.lan || pok) }));
+            w.push(mnBtn('cancel', cxp + 4, H - 27, 150, 20, 'Cancel', function (mm) { mnBack(mm); }));
+            return w;
+        },
+        paint: function (cx, m, W, H) {
+            var top = 33, bot = H - 33, span = bot - top, sc = m.d.wscroll || 0, cxp = W >> 1, y0 = top + 8 - sc;
+            mnListFrame(cx, 0, top, W, span);   // inworld_menu_list_background over the content band
+            cx.save(); cx.beginPath(); cx.rect(0, top, W, span); cx.clip();
+            mnHeading(cx, 'General', cxp, y0 + 4);
+            mnHeading(cx, 'Multiplayer', cxp, y0 + 153 + 4);
+            cx.restore();
+            if (WOPTS_H > span) {   // the layout's scroller at its right edge: 6 wide, the thumb as tall as the view's share, 32 at least
+                var sx = cxp + 162 - 6, th = Math.max(32, Math.min(span - 8, Math.floor(span * span / WOPTS_H))), ty = top + Math.floor((span - th) * sc / (WOPTS_H - span));
+                mnNine(cx, guiSprites().sb_bg, sx, top, 6, span, 1);
+                mnNine(cx, guiSprites().sb, sx, ty, 6, th, 1);
+            }
+            mnSep(cx, 0, top - 2, W, true); mnSep(cx, 0, bot, W, false);
+            mfCenter(cx, 'World Options', W / 2, 12, MC_WHITE);
+        }
+    };
+    /* RestrictionsScreen: what this player may do in chat, one line each,
+       centred in the content band under a 10-pixel spacer; Done in the footer */
+    MN_SCR.restrict = {
+        bg: 'dirt',
+        layout: function (m, W, H) { return [mnBtn('done', (W >> 1) - 100, H - 27, 200, 20, 'Done', function (mm) { mnBack(mm); })]; },
+        paint: function (cx, m, W, H) {
+            var lines = ['You can send chat messages', 'You can send commands', 'You can receive system messages from the server', 'You can receive messages from players'];
+            var top = 33, span = H - 66, bh = 10 + 8 + lines.length * 9, y = top + ((span - bh) >> 1) + 10 + 4;
+            lines.forEach(function (l, k) { mfCenter(cx, l, W / 2, y + k * 9, MC_WHITE); });
+            mnSep(cx, 0, top - 2, W, true); mnSep(cx, 0, H - 33, W, false);
+            mfCenter(cx, 'Restrictions', W / 2, 12, MC_WHITE);
+        }
+    };
+    /* PopupScreen: a 250-wide dialog over the dimmed screen below, its title
+       in bold, its lines and its buttons 12 apart, the buttons 6 apart and no
+       wider than 150, all centred; popup/background 18 out all round */
+    function mnPopup(m, p) { m.d.popup = p; mnGo(m, 'popup'); }
+    function mnPopupGeo(m, W, H) {
+        var p = m.d.popup, cw = 250 - 36, tl = mfWrap(p.title, cw - 20), rows = [];   // bold is wider: wrapped a little short of the width
+        var lw = 0, lh = tl.length * 9;
+        tl.forEach(function (l) { lw = Math.max(lw, mfWidthBold(l) + 1); });
+        p.msgs.forEach(function (msg) { var ml = mfWrap(msg, cw); ml.forEach(function (l) { lw = Math.max(lw, mfWidth(l) + 1); }); rows.push(ml); lh += 12 + ml.length * 9; });
+        var n = p.buttons.length, bw = Math.min(150, Math.floor((cw - 6 * (n - 1)) / n)), rw = n * bw + 6 * (n - 1);
+        lw = Math.max(lw, rw); lh += 12 + 20;
+        return { tl: tl, rows: rows, bw: bw, rw: rw, lw: lw, lh: lh, x: (W - lw) >> 1, y: (H - lh) >> 1 };
+    }
+    MN_SCR.popup = {
+        bg: 'dirt',
+        layout: function (m, W, H) {
+            var p = m.d.popup, g = mnPopupGeo(m, W, H), w = [], by = g.y + g.lh - 20, bx = g.x + ((g.lw - g.rw) >> 1);
+            p.buttons.forEach(function (b, i) { w.push(mnBtn('pb' + i, bx + i * (g.bw + 6), by, g.bw, 20, b.t, b.on)); });
+            return w;
+        },
+        paint: function (cx, m, W, H) {
+            var g = mnPopupGeo(m, W, H), grad = cx.createLinearGradient(0, 0, 0, H);
+            grad.addColorStop(0, 'rgba(16, 16, 16, 0.753)'); grad.addColorStop(1, 'rgba(16, 16, 16, 0.816)');
+            cx.fillStyle = grad; cx.fillRect(0, 0, W, H);
+            mnNine(cx, guiSprites().popup_bg, g.x - 18, g.y - 18, g.lw + 36, g.lh + 36, 6);
+            var y = g.y;
+            g.tl.forEach(function (l) { mfTextBold(cx, l, g.x + ((g.lw - (mfWidthBold(l) + 1)) >> 1), y, MC_WHITE); y += 9; });
+            g.rows.forEach(function (ml) { y += 12; ml.forEach(function (l) { mfCenter(cx, l, g.x + g.lw / 2, y, MC_WHITE); y += 9; }); });
+        },
+        esc: function (m) { mnBack(m); }
+    };
 
     /* ── skeleton + wiring ──────────────────────────────────── */
     function render() {
@@ -12634,7 +13333,7 @@
             '<div class="mc-debug" style="display:none"></div>' +
             '<div class="mc-sleepov" style="display:none"></div>' +
             '<div class="mc-pause" style="display:none"><i class="mc-iwbg"></i>' +
-              '<div class="mc-iwl mc-pmain"></div><div class="mc-iwl mc-lan" style="display:none"></div><div class="mc-iwl mc-plink" style="display:none"></div>' +
+              '<div class="mc-iwl mc-pmain"></div><div class="mc-iwl mc-friends" style="display:none"></div><div class="mc-iwl mc-plink" style="display:none"></div>' +
               '<div class="mc-iwl mc-advs" style="display:none"></div><div class="mc-iwl mc-stats" style="display:none"></div>' +
               '<div class="mc-ptip mc-iwtip"></div></div>' +
             '<div class="mc-death" style="display:none"><div class="mc-iwl mc-dmain"></div><div class="mc-iwl mc-dquit" style="display:none"></div><div class="mc-ptip mc-iwtip"></div></div>' +
@@ -12663,7 +13362,10 @@
         if (!RT) return;
         RT.chatLog = RT.chatLog || [];
         String(text).split('\n').forEach(function (line) {
-            RT.chatLog.push({ t: line, c: cls || '', at: RT.now || 0 });
+            var m = { t: line, c: cls || '', at: RT.now || 0 };
+            RT.chatLog.push(m);
+            // addMessage while scrolled up: the view keeps its place (a line of scroll per line added) and the scrollbar turns red
+            if (RT.chatScroll > 0) { RT.chatNewSince = true; RT.chatScroll += segsWrap(chatSegs(m), CHAT_W).length; }
         });
         while (RT.chatLog.length > CHAT_MAX) RT.chatLog.shift();
         paintChat();
@@ -12927,29 +13629,36 @@
 
     cmd('time', '/time <set|add|query> <value>', 'Changes or queries the world time', function (rd, raw) {
         var sub = rd.word().toLowerCase();
-        var TIMES = { day: 0.05, noon: 0.25, sunset: 0.48, night: 0.55, midnight: 0.75, sunrise: 0.95 };
+        var TIMES = { day: 1000, noon: 6000, night: 13000, midnight: 18000 };   // the day timeline's markers
         if (sub === 'query') {
-            var q = rd.word().toLowerCase() || 'daytime';
-            var ticks = Math.floor(S.t / CYCLE * 24000);
-            if (q === 'day') return chatSay('The time is ' + Math.floor(S.hrs * 3600000 / CYCLE));
-            return chatSay('The time is ' + ticks);
+            var q = rd.word().toLowerCase() || 'time', q2 = rd.word().toLowerCase();
+            var ticks = Math.floor(S.t / CYCLE * 24000), day = S.day || 0;
+            if (q === 'day' && q2 === 'repetition') return chatSay('Timeline minecraft:day is at repetition ' + day);
+            if (q === 'day' || q === 'daytime') return chatSay('Timeline minecraft:day is at ' + ticks + ' tick(s)');
+            return chatSay('Clock minecraft:overworld is at ' + (day * 24000 + ticks) + ' tick(s)');
         }
         if (sub !== 'set' && sub !== 'add') return usageErr('time', raw, rd.i);
         var v = rd.word();
         if (!v) return usageErr('time', raw, rd.i);
-        var frac = TIMES[v.toLowerCase()];
-        var ticks2;
-        if (frac !== undefined) ticks2 = Math.round(frac * 24000);
-        else {
+        var mark = TIMES[v.toLowerCase()], ticks2, cur = (S.day || 0) * 24000 + Math.floor(S.t / CYCLE * 24000);
+        if (mark !== undefined) {   // a marker: forward to its next occurrence, the day count kept (moveToTimeMarker)
+            if (sub !== 'set') return chatSyntax('Expected integer', raw, rd.i - v.length);
+            var dd = mark - cur % 24000;
+            if (dd <= 0) dd += 24000;
+            ticks2 = cur + dd;
+        } else {
             var n = parseInt2(v.replace(/t$/, ''));
             if (n === null) return chatSyntax('Expected integer', raw, rd.i - v.length);
+            if (sub === 'set' && n < 0) return chatErr('Integer must not be less than 0, found ' + n);
             ticks2 = n;
         }
-        if (sub === 'set') S.t = ((ticks2 % 24000) + 24000) % 24000 / 24000 * CYCLE;
-        else S.t = (S.t + ticks2 / 24000 * CYCLE) % CYCLE;
+        // the game's clock is one running count of ticks: set replaces it, day and all, add moves it on, never below zero
+        var total = Math.max(0, sub === 'set' ? ticks2 : cur + ticks2);
+        S.day = Math.floor(total / 24000);
+        S.t = (total - S.day * 24000) / 24000 * CYCLE;
         var now = Math.floor(S.t / CYCLE * 24000);
         chatSay(sub === 'set' ? 'Set the time to ' + now : 'Added ' + ticks2 + ' to the time');
-    }, function (a) { return a === 0 ? ['set', 'add', 'query'] : a === 1 ? ['day', 'noon', 'sunset', 'night', 'midnight', 'sunrise'] : []; });
+    }, function (a) { return a === 0 ? ['set', 'add', 'query'] : a === 1 ? ['day', 'noon', 'night', 'midnight'] : []; });
 
     cmd('weather', '/weather <clear|rain|thunder> [duration]', 'Sets the weather', function (rd, raw) {
         var w = rd.word().toLowerCase();
@@ -13384,13 +14093,38 @@
     function chatWrapped() {   // every message, split to the chat's width, oldest first
         var log = RT.chatLog || [], out = [];
         for (var i = 0; i < log.length; i++) {
-            var m = log[i], segs = chatSegs(m);
-            if (segs.length === 1) {
-                var parts = mfWrap(segs[0].t, CHAT_W);
-                for (var p = 0; p < parts.length; p++) out.push({ m: m, segs: [{ t: parts[p], c: segs[0].c }], key: i + ':' + p });
-            } else out.push({ m: m, segs: segs, key: i + ':0' });
+            var m = log[i], rows = segsWrap(chatSegs(m), CHAT_W);   // split as the game splits a message, continuation lines indented a space
+            for (var p = 0; p < rows.length; p++) out.push({ m: m, segs: rows[p], key: i + ':' + p });
         }
         return out;
+    }
+    /* a line of runs broken to a width on spaces (a word wider than the line
+       split where it must be), each run keeping its colour and marks, and the
+       lines after the first indented a space, as wrapComponents does */
+    function segsWrap(segs, max) {
+        var rows = [], cur = [], curW = 0;
+        function fresh() { return cur.length <= (rows.length ? 1 : 0); }   // nothing on the line but its indent
+        function flush() { rows.push(cur); cur = [{ t: ' ', c: '#ffffff' }]; curW = mfWidth(' ') + 1; }
+        function take(t, sg) { cur.push({ t: t, c: sg.c, ul: sg.ul, it: sg.it }); curW += mfWidth(t) + 1; }
+        segs.forEach(function (sg) {
+            var rest = String(sg.t);
+            while (rest) {
+                if (curW + mfWidth(rest) + 1 <= max) { take(rest, sg); break; }   // a run that fits stays one run
+                // the longest run of whole words that fits; a word too wide for a fresh line is cut where it must be
+                var cut = -1, i = 0, sp;
+                while ((sp = rest.indexOf(' ', i)) >= 0) { if (curW + mfWidth(rest.slice(0, sp)) + 1 <= max) cut = sp; else break; i = sp + 1; }
+                if (cut < 0 && !fresh()) { flush(); rest = rest.replace(/^ /, ''); continue; }
+                if (cut < 0) {
+                    cut = rest.length;
+                    while (cut > 1 && curW + mfWidth(rest.slice(0, cut)) + 1 > max) cut--;
+                    take(rest.slice(0, cut), sg); rest = rest.slice(cut); flush(); continue;
+                }
+                take(rest.slice(0, cut), sg); rest = rest.slice(cut + 1); flush();
+            }
+        });
+        if (cur.length > (rows.length ? 1 : 0)) rows.push(cur);
+        if (!rows.length) rows.push([{ t: '', c: '#ffffff' }]);
+        return rows;
     }
     function chatFade(age) {   // ChatComponent.getTimeFactor, in seconds
         var d = (1 - age / CHAT_FADE) * 10;
@@ -13402,9 +14136,10 @@
         var wrap = RT.el.querySelector('.mc-chat');
         if (!wrap) return;
         var open = !!RT.chat, now = RT.now || 0, lines = chatWrapped(), max = open ? 20 : 10;
-        if (!open) RT.chatScroll = 0;
+        if (!open) RT.chatScroll = 0;   // resetChatScroll on the screen closing
         var scroll = Math.max(0, Math.min(RT.chatScroll || 0, Math.max(0, lines.length - max)));
         RT.chatScroll = scroll;
+        if (!scroll) RT.chatNewSince = false;   // scrollChat: back at the bottom, the bar is blue again
         var vis = [];
         for (var j = 0; j < max; j++) {
             var L = lines[lines.length - 1 - scroll - j];
@@ -13423,10 +14158,24 @@
                     x += mfWidth(s.t) + 1;
                 });
                 // a system message (anything a player did not type) carries the grey tag bar down its left edge
-                var tag = String(L.m.t).charAt(0) === '<' ? '' : '<i class="mc-ctag"></i>';
+                var t0 = String(L.m.t), tag = t0.charAt(0) === '<' || /^\[[^\]]+\] /.test(t0) || /^\* /.test(t0) ? '' : '<i class="mc-ctag"></i>';   // what the player said, through /say or /me too, carries no tag
                 return '<div class="mc-cline' + (L.m.c ? ' ' + L.m.c : '') + '" data-k="' + L.key + '" style="top:calc(var(--px) * ' + (RT.gh - 40 - (j + 1) * 9) + ')">' + tag + html + '</div>';
             }).join('');
         }
+        /* ChatComponent's scrollbar, open with more lines than it shows: up from the
+           bottom line by the scrolled share of the drawn height, as tall as that
+           height's share of the whole, 0x3333AA (0xCC3333 once a message has come
+           in while scrolled) at 96 of 255 (170 in the case its sums never reach) */
+        var bar = wrap.querySelector('.mc-cscroll'), drawn = vis.length, total = lines.length;
+        if (open && total && drawn !== total) {
+            if (!bar) { bar = document.createElement('i'); bar.className = 'mc-cscroll'; wrap.appendChild(bar); }
+            var i5 = drawn * 9, k5 = Math.floor(i5 * i5 / (total * 9)), j5 = Math.floor(scroll * i5 / total) - (RT.gh - 40), al = (j5 > 0 ? 170 / 255 : 96 / 255).toFixed(3);
+            bar.style.height = 'calc(var(--px) * ' + k5 + ')';
+            bar.style.top = 'calc(var(--px) * ' + (-j5 - k5) + ')';
+            bar.style.setProperty('--csc', (RT.chatNewSince ? 'rgba(204, 51, 51, ' : 'rgba(51, 51, 170, ') + al + ')');
+            bar.style.setProperty('--csl', 'rgba(204, 204, 204, ' + al + ')');
+            bar.style.display = '';
+        } else if (bar) bar.style.display = 'none';
         wrap.classList.toggle('open', open);
         chatAlpha();
     }
@@ -13458,7 +14207,8 @@
             if (!cmd) {
                 cmd = CMDS[stripNs(t).toLowerCase()];
                 var known = cmd && cmdAllowed(cmd);
-                if (known && cmd.usage) String(cmd.usage).replace(/[<\[][^>\]]*[>\]]/g, ' ').split(/\s+/).forEach(function (w) { if (w && w.charAt(0) !== '/') lits[w] = 1; });
+                // the literals: the usage's bare words and the choices in a <a|b> group; an argument's placeholder is one word
+                if (known && cmd.usage) String(cmd.usage).replace(/[<\[]([^>\]]*)[>\]]/g, function (m0, g1) { return /\|/.test(g1) && !/\s/.test(g1) ? ' ' + g1.split('|').join(' ') + ' ' : ' '; }).split(/\s+/).forEach(function (w) { if (w && w.charAt(0) !== '/') lits[w] = 1; });
                 out.push({ t: t, c: known ? '#aaaaaa' : '#ff5555' });
                 if (!known) { out.push({ t: toks.slice(i + 1).join(''), c: '#ff5555' }); break; }
                 continue;
@@ -13566,7 +14316,7 @@
        as the real pause menu does. /help and /seed need no permission in a
        singleplayer world (SeedCommand is registered without one on the
        integrated server), so they stay. */
-    function cheatsOn() { return !(S && S.cheats === false) || !!(RT && RT.lan && RT.lan.cheats); }
+    function cheatsOn() { return !(S && S.cheats === false); }   // Allow Cheats is the world's setting, from creation or World Options
     function cmdAllowed(c) { return !!c && (c.free || cheatsOn()); }
     function cmdNames() { return Object.keys(CMDS).filter(function (n) { return cmdAllowed(CMDS[n]); }).sort(); }
     function runCommand(body, raw) {
@@ -13744,9 +14494,20 @@
         var box = RT.el.querySelector('.mc-effects');
         if (!box) return;
         var ids = Object.keys(S.eff || {}).filter(function (id) { return EFFECTS[id] && !EFFECTS[id].instant; });
-        box.style.display = ids.length && !RT.panel ? '' : 'none';
+        // only the inventory screens hide them (those list effects themselves when there is room); other screens dim them under their gradient
+        var hide = RT.panel && (RT.panel.kind === 'inv' || RT.panel.kind === 'creative');
+        box.style.display = ids.length && !hide ? '' : 'none';
         var kids = hudIcons(box, ids.length), good = 0, bad = 0;
-        ids.sort().reverse();
+        /* Gui: Ordering.natural().reverse() over MobEffectInstance.compareTo, which
+           goes by ambient, infinite, time left and colour, except that two effects
+           both past 32147 ticks, or both ambient, go by ambient and colour alone */
+        ids.sort(function (a, b) {
+            var ea = S.eff[a], eb = S.eff[b], ia = ea.t >= 1e8, ib = eb.t >= 1e8;
+            var da = ia ? -1 : Math.round(ea.t * 20), db = ib ? -1 : Math.round(eb.t * 20);
+            var aa = ea.amb ? 1 : 0, ab = eb.amb ? 1 : 0, ca = parseInt(EFFECTS[a].c.slice(1), 16), cb = parseInt(EFFECTS[b].c.slice(1), 16);
+            if ((da > 32147 && db > 32147) || (aa && ab)) return (aa - ab) || (ca - cb);
+            return (aa - ab) || ((ia ? 1 : 0) - (ib ? 1 : 0)) || (da - db) || (ca - cb);
+        }).reverse();
         for (var i = 0; i < ids.length; i++) {
             var id = ids[i], e = S.eff[id], neg = !!EFF_BAD[id], n = neg ? ++bad : ++good;
             var el = kids[i];
@@ -13768,8 +14529,28 @@
         return m + ':' + ('0' + (s % 60)).slice(-2);
     }
 
+    /* everything built from the textures, or from the drawings in their absence,
+       dropped so that a late or changed mc-tex is taken up by the next game */
+    function texReset() {
+        MF = null; GSPR = null; SGA = null; ICON = {}; NINE = {}; HAND_MODEL = {}; XP_LVL = {}; ADV_STONE = null; MN_ICON = {};
+        if (MF_FACE) {
+            try { document.fonts.forEach(function (f) { if (f.family === MF_FAMILY || f.family === SGA_FAMILY) document.fonts.delete(f); }); } catch (e) {}
+            MF_FACE = null;
+        }
+    }
+    var INIT_WAIT = null, TEX_GEN = -1;
     function init(el, opts) {
-        var root = el.querySelector('.mc');
+        if (!MTEX.done) {   // the textures are still on their way: build nothing until they are here, but show that something is
+            var tk = INIT_WAIT = {}, waitEl = el.querySelector('.mc');
+            if (waitEl && !waitEl.querySelector('.mc-texwait')) waitEl.insertAdjacentHTML('beforeend', '<div class="mc-texwait" style="position:absolute;inset:0;background:#0f0f13;z-index:20"><div style="position:absolute;left:50%;top:50%;width:200px;height:5px;margin:-3px 0 0 -101px;border:1px solid #fff"></div></div>');
+            MTEX.waitFor(function () { if (INIT_WAIT === tk) { INIT_WAIT = null; init(el, opts); } });
+            return;
+        }
+        INIT_WAIT = null;
+        var root = el.querySelector('.mc'), waiting = root.querySelector('.mc-texwait');
+        if (waiting) waiting.parentNode.removeChild(waiting);
+        if (TEX_GEN !== MTEX.gen) { texReset(); TEX_GEN = MTEX.gen; }   // the files came, or came late: nothing cached from the drawings survives
+        BOOT_SKIN = (opts && opts.skin) || null;   // the atlas paints the arm from it before RT exists
         /* The launcher has been passing { version, installation, skin } since
            it was written; nothing ever read it. The title screen puts the
            version it was launched with in the bottom-left corner, which is
@@ -13791,14 +14572,9 @@
         normalizeCmdState();
         buildAtlas();
         texInit();
+        ATLASW = buildWorldAtlas();
         mfWebFont();
         guiSprites();
-        if (!document.getElementById('mc-atlas-css')) {   // HUD icons sample the atlas via CSS
-            var st = document.createElement('style');
-            st.id = 'mc-atlas-css';
-            st.textContent = '.mc-ico{background-image:url(' + ATLAS.toDataURL() + ')}';
-            document.head.appendChild(st);
-        }
         var cv = root.querySelector('.mc-cv');
         var G = glInit(cv);
         if (!G) { root.innerHTML = '<p style="padding:24px">WebGL fell out of the world. (This machine refused a 3D context.)</p>'; return; }
@@ -13814,13 +14590,13 @@
             target: null, panel: null, cur: null, craft: [null, null, null, null, null, null, null, null, null], craftW: 2,
             cTab: 0, cScroll: 0, cSearch: '', cList: [], cDrag: 0, panelDirty: 0,
             qc: null, lastClk: null, av: null, skin: (opts && opts.skin) || null,   // drag-split state, the inventory figure, the launcher's skin
-            lan: null, lanUI: null,                                                  // Open to LAN: the published session, and the screen while it is up
+            lan: null, lanOpts: null,                                                // the LAN scope (with its port) and the settings for other players, for the session
             hover: null,                                                             // the panel slot under the pointer
             paused: false, dead: S.hp <= 0, ready: false, lit: false, expectUnlock: false,
             worldMs: 0, playT: 0, baseHrs: S.hrs || 0, lastT: 0, secT: 0, hudT: 0, saveT: 0,
             fps: 0, fpsN: 0, fpsT: 0, f3: false, musT: 25, tipTk: 0, tipKey: null, devFree: !!devModes, raf: 0, timers: [],
             gs: 0, gw: 0, gh: 0, hudTk: 0, hudTickT: 0, pops: [0, 0, 0, 0, 0, 0, 0, 0, 0],
-            built: false, ver: launched || '26.2', inst: (opts && opts.installation) || null
+            built: false, ver: launched || '26.3', inst: (opts && opts.installation) || null
         };
         buildSkyGeo(G);
         if (S.hp <= 0) {   // died mid-save: respawn silently at the last bed/world spawn (and clear the dead flag, or input stays frozen all session)
@@ -13942,7 +14718,11 @@
             /* While a menu is up there is no world to drive. Several branches
                below (movement, q, F3, the double-tap flags) never check for
                one, so the whole handler stands down rather than each of them. */
-            if (RT.menu) { e.stopPropagation(); return; }
+            if (RT.menu) {
+                // a key the menu's own proxies did not take (nothing of theirs is focused): Escape still backs out of a screen over the world
+                if (e.key === 'Escape' && RT.menu.inworld && RT.menu.scr !== 'title') { mnBack(RT.menu); e.preventDefault(); }
+                e.stopPropagation(); return;
+            }
             var k = e.key.toLowerCase();
             if (e.key === 'Escape') {
                 if (RT.chat) { closeChat(true); e.stopPropagation(); e.preventDefault(); }
@@ -14262,7 +15042,7 @@
             armorPts: function () { return armorPoints(); },
             spawnMob: function (k, dx, dz, sz) { var nf = mkFoe(k, S.px + (dx || 3), S.py + 2, S.pz + (dz || 0)); if (k === 'slime' && sz) { nf.sz = sz; applySlimeSize(nf); } RT.foes.push(nf); return nf; },
             foeCount: function (k) { var n = 0; for (var i = 0; i < RT.foes.length; i++) if (!k || RT.foes[i].k === k) n++; return n; },
-            tiles: function () { return tileN; },   // atlas is 16×16: anything over 256 wraps and corrupts
+            tiles: function () { return tileN; },   // the atlas is 32×32: anything over 1024 wraps and corrupts
             /* The only honest answer to "is that mob animating?" is its actual
                geometry, so this hands back the built vertices per part: their
                centroids move iff the animation moves them. Same trick as hand(). */
@@ -14370,7 +15150,10 @@
                     ghost: RT.rbGhost ? rbId(RT.rbGhost) : null, lx: RT.panel ? RT.panel.lx : null, fresh: Object.keys(S.rbNew || {}) };
             },
             rbLearnAll: function () { return rbLearn(rbAll().map(function (r) { return r.key; })); },
+            items: function () { return Object.keys(I).map(function (k) { var d = I[k]; return k + ':' + (d.tile != null ? 't' : '') + (d.place != null ? 'p' : '') + (d.egg ? 'e' : ''); }).concat(Object.keys(ICON_ART).map(function (k) { return k + ':art'; })); },
             orbs: function () { return RT.orbs.map(function (o) { return [Math.round(o.x * 10) / 10, Math.round(o.y * 10) / 10, Math.round(o.z * 10) / 10, o.v]; }).concat([[S.px, S.py, S.pz]]); },
+            toast: function (msg) { toast(msg); },   // a system toast, to look at
+            atlasURL: function (world) { return (world ? ATLASW : ATLAS).toDataURL(); },   // the atlases, to look at
             spawnXp: function (dx, dz, v) { var gy = Math.floor(S.py) + 1; while (gy > 0 && !getB(Math.floor(S.px + dx), gy - 1, Math.floor(S.pz + dz))) gy--; spawnXp(S.px + dx, gy + 0.1, S.pz + dz, v || 3); }
         };
         if (has('mobs')) setTimeout(function () {
@@ -14397,6 +15180,7 @@
 
     /* ── lifecycle + export ─────────────────────────────────── */
     function close() {
+        INIT_WAIT = null;   // a start still waiting on the textures never happens
         if (!RT) return 0;
         // every world played this session, not just the one open when it closed
         var hrs = ((RT.bankT || 0) + RT.playT) / 3600;
@@ -14443,7 +15227,7 @@
         // the font specimen in .claude/comp-tools/mc-menu.html measures these
         // read-only introspection for .claude/comp-tools: the harnesses DRIVE the
         // real controls and only ever use this to see what happened afterwards
-        __proof: { text: mfText, adv: mfAdvance, width: mfWidth, logo: mnLogo, webfont: mfWebFont, ttf: mfFontBytes, family: MF_FAMILY,
+        __proof: { text: mfText, adv: mfAdvance, width: mfWidth, logo: mnLogo, drawLogo: mnDrawLogo, whenTex: function (f) { MTEX.waitFor(f); }, webfont: mfWebFont, ttf: mfFontBytes, family: MF_FAMILY,
             probe: function (x, y, z) { return getB(x, y, z); },
             save: function () { return S ? { seed: S.seed, wtype: S.wtype, py: S.py, gm: S.gm, diff: S.diff, wid: S.wid, cheats: S.cheats } : null; },
             menu: function () {

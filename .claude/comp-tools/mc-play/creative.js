@@ -25,12 +25,12 @@ const ok = (c, msg, extra) => { console.log((c ? 'PASS ' : 'FAIL ') + msg + (ext
     await H('clickName("Difficulty: Peaceful")'); await g.wait('window.__h.byName("Difficulty: Easy")');
     await H('clickName("Game Mode: Survival")'); await g.wait('window.__h.byName("Game Mode: Hardcore")');
     ok(!!(await g.ev(() => { const b = window.__h.byName('Difficulty: Hard'); return b && b.disabled; })), 'Hardcore shows Difficulty: Hard, greyed');
-    ok(!!(await g.ev(() => { const b = window.__h.byName('Allow Commands: OFF'); return b && b.disabled; })), 'Hardcore shows Allow Commands: OFF, greyed');
+    ok(!!(await g.ev(() => { const b = window.__h.byName('Allow Cheats: OFF'); return b && b.disabled; })), 'Hardcore shows Allow Cheats: OFF, greyed');
     await H('clickName("Game Mode: Hardcore")'); await g.wait('window.__h.byName("Game Mode: Creative")');
     ok(!!(await H('byName("Difficulty: Easy")')), 'leaving Hardcore for Creative brings back the Easy you chose', await H('names()'));
-    ok(!!(await g.ev(() => { const b = window.__h.byName('Allow Commands: ON'); return b && !b.disabled; })), 'an untouched Allow Commands follows the mode: ON for Creative, still yours to flip');
+    ok(!!(await g.ev(() => { const b = window.__h.byName('Allow Cheats: ON'); return b && !b.disabled; })), 'an untouched Allow Cheats follows the mode: ON for Creative, still yours to flip');
     await H('clickName("Game Mode: Creative")'); await g.wait('window.__h.byName("Game Mode: Survival")');
-    ok(!!(await g.ev(() => { const b = window.__h.byName('Allow Commands: OFF'); return b && !b.disabled; })), 'back on Survival the switch is OFF again and live');
+    ok(!!(await g.ev(() => { const b = window.__h.byName('Allow Cheats: OFF'); return b && !b.disabled; })), 'back on Survival the switch is OFF again and live');
     await H('clickName("Game Mode: Survival")'); await g.wait('window.__h.byName("Game Mode: Hardcore")');
     await H('clickName("Game Mode: Hardcore")'); await g.wait('window.__h.byName("Game Mode: Creative")');
     await H('clickName("Create New World")');
@@ -52,7 +52,7 @@ const ok = (c, msg, extra) => { console.log((c ? 'PASS ' : 'FAIL ') + msg + (ext
     await g.ev(() => window.__h.type(window.__h.byName('World Name'), 'plain'));
     await H('clickName("Create New World")');
     await g.wait('(function(){var s=window.__h.screens(); return s.load===false && s.pause===true;})()', 120000);
-    ok((await H('save()')).cheats === false, 'a default world has Allow Commands: OFF', await H('save()'));
+    ok((await H('save()')).cheats === false, 'a default world has Allow Cheats: OFF', await H('save()'));
     await resume(); await g.sleep(200);
     // suggestions: typing /gam offers nothing in a world without cheats
     await H('key("t")'); await g.sleep(50);
@@ -76,53 +76,68 @@ const ok = (c, msg, extra) => { console.log((c ? 'PASS ' : 'FAIL ') + msg + (ext
     await H('chatRun("/help")'); await g.sleep(150);
     lines = await chatLines();
     ok(/Showing 4 commands/.test(lines.map(l => l.t).join('|')), '/help lists the four level-0 commands the world has', lines.slice(-5).map(l => l.t));
-    // the pause menu: Open to LAN
+    // the pause menu: World Options..., where the LAN scope and the world's cheats live in 26.3
     await pressEsc(); await g.sleep(150);
     ok(await pauseShown(), 'Escape pauses again');
-    ok(await g.ev(() => !document.querySelector('.mc-lanbtn').disabled), 'Open to LAN is live before publishing');
-    await clickBtn('.mc-lanbtn'); await g.sleep(80);
-    const lanUI = await g.ev(() => ({ shown: document.querySelector('.mc-lan').style.display !== 'none', main: document.querySelector('.mc-pmain').style.display, gm: document.querySelector('.mc-langm').textContent, ch: document.querySelector('.mc-lanch').textContent, port: document.querySelector('.mc-lanport').value, hint: document.querySelector('.mc-lanport').placeholder }));
-    ok(lanUI.shown && lanUI.main === 'none' && lanUI.gm === 'Game Mode: Survival' && lanUI.ch === 'Allow Commands: OFF' && lanUI.port === '' && /^\d{4,5}$/.test(lanUI.hint), 'the LAN screen opens with the world\'s mode and cheats and a picked port as the hint', lanUI);
+    ok(await g.ev(() => { const o = document.querySelector('.mc-optbtn'), w = document.querySelector('.mc-woptbtn'); return !!(o && w) && !w.disabled && Math.round(w.getBoundingClientRect().left - o.getBoundingClientRect().left) === Math.round(106 * +getComputedStyle(document.querySelector('.mc')).getPropertyValue('--gs')); }), 'Options... and World Options... share a row, 106 apart');
+    await clickBtn('.mc-woptbtn'); await g.wait('!!window.__h.byName("Apply Changes")', 5000); await g.sleep(60);
+    const wo = (await H('names()')).map(n => n.replace(/ \(off\)$/, ''));
+    const woMenu = await g.ev(() => window.MC.__proof.menu());
+    ok(woMenu && woMenu.scr === 'wopts' && (await g.ev(() => document.querySelector('.mc-pause').style.display === 'none')), 'World Options... opens the canvas screen over the paused world', woMenu && woMenu.scr);
+    ok(['Default Game Mode: Survival', 'Personal Game Mode: Survival', 'Allow Cheats: OFF', 'Difficulty: Normal', 'Lock World Difficulty', 'Edit Game Rules...', 'Restrictions...', 'LAN: OFF', 'Port Number', 'Command Access: OFF', 'Force Game Mode: OFF', 'Apply Changes', 'Cancel'].every(n => wo.includes(n)), 'it lists the general and multiplayer settings with the world\'s values', wo);
+    ok(await g.ev(() => window.__h.byName('Apply Changes').disabled && window.__h.byName('Port Number').disabled && window.__h.byName('Command Access: OFF').disabled), 'Apply Changes waits for a change; the port and guest settings wait for LAN', wo);
     // Escape backs out to the menu, not the world
     await g.ev(() => { document.querySelector('.mc').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); });
-    await g.sleep(80);
-    ok(await g.ev(() => document.querySelector('.mc-lan').style.display === 'none' && document.querySelector('.mc-pmain').style.display !== 'none' && document.querySelector('.mc-pause').style.display !== 'none'), 'Escape on the LAN screen returns to the Game Menu');
-    await clickBtn('.mc-lanbtn'); await g.sleep(80);
-    await clickBtn('.mc-langm'); await g.sleep(30);
-    ok((await g.ev(() => document.querySelector('.mc-langm').textContent)) === 'Game Mode: Spectator', 'Game Mode cycles in the game\'s order: Spectator after Survival');
-    await clickBtn('.mc-langm'); await g.sleep(30);
-    ok((await g.ev(() => document.querySelector('.mc-langm').textContent)) === 'Game Mode: Creative', 'then Creative');
-    await clickBtn('.mc-lanch'); await g.sleep(30);
-    ok((await g.ev(() => document.querySelector('.mc-lanch').textContent)) === 'Allow Commands: ON', 'Allow Commands toggles ON');
-    await g.ev(() => { const p = document.querySelector('.mc-lanport'); p.value = '80'; p.dispatchEvent(new Event('input', { bubbles: true })); });
-    await g.sleep(30);
-    ok(await g.ev(() => document.querySelector('.mc-lanstart').disabled && /1024/.test(document.querySelector('.mc-lanmsg').textContent)), 'a bad port greys Start LAN World and says why');
-    await g.ev(() => { const p = document.querySelector('.mc-lanport'); p.value = '25565'; p.dispatchEvent(new Event('input', { bubbles: true })); });
-    await g.sleep(30);
-    await clickBtn('.mc-lanstart'); await g.sleep(200);
-    ok(!(await pauseShown()), 'Start LAN World returns to the game');
+    await g.sleep(120);
+    ok(await g.ev(() => !window.MC.__proof.menu() && document.querySelector('.mc-pmain').style.display !== 'none' && document.querySelector('.mc-pause').style.display !== 'none'), 'Escape on World Options returns to the Game Menu');
+    await clickBtn('.mc-woptbtn');
+    const seen = async (cond) => { try { await g.wait(cond, 3000); return true; } catch (e) { return false; } };   // the canvas screen repaints a frame or two after a click
+    const clickW = async (n) => { await seen('!!window.__h.byName(' + JSON.stringify(n) + ')'); return H('clickName(' + JSON.stringify(n) + ')'); };   // and builds its proxies a frame after it opens
+    await clickW('Default Game Mode: Survival');
+    ok(await seen('!!window.__h.byName("Default Game Mode: Creative")'), 'Default Game Mode cycles in GameType\'s order: Creative after Survival', { names: (await H('names()')).slice(0, 4), menu: await g.ev(() => { const m = window.MC.__proof.menu(); return m && { scr: m.scr, w: m.w.slice(0, 3), hover: m.hover, focus: m.focus }; }), ui: await g.ev(() => { const u = document.querySelector('.mc-mui'); const c = u.children[0]; const r = c && c.getBoundingClientRect(); return { disp: u.style.display, n: u.children.length, first: c && { aria: c.getAttribute('aria-label'), i: c.getAttribute('data-i'), rect: r && [r.left, r.top, r.width, r.height], dis: c.disabled } }; }) });
+    await clickW('Default Game Mode: Creative');
+    ok(await seen('!!window.__h.byName("Default Game Mode: Adventure")'), 'then Adventure');
+    await clickW('Default Game Mode: Adventure');
+    await clickW('Default Game Mode: Spectator');
+    ok(await seen('!!window.__h.byName("Default Game Mode: Survival")'), 'and round to Survival');
+    await clickW('Allow Cheats: OFF');
+    ok(await seen('!!window.__h.byName("Allow Cheats: ON") && !window.__h.byName("Apply Changes").disabled'), 'Allow Cheats toggles ON and Apply Changes comes alive');
+    await clickW('LAN: OFF');
+    ok(await seen('!!window.__h.byName("LAN: ON") && !window.__h.byName("Port Number").disabled'), 'LAN: ON opens the port box');
+    await g.ev(() => { const p = window.__h.byName('Port Number'); p.value = '80'; p.dispatchEvent(new Event('input', { bubbles: true })); });
+    ok(await seen('window.__h.byName("Apply Changes").disabled'), 'a bad port greys Apply Changes');
+    await g.ev(() => { const p = window.__h.byName('Port Number'); p.value = '25565'; p.dispatchEvent(new Event('input', { bubbles: true })); });
+    ok(await seen('!window.__h.byName("Apply Changes").disabled'), 'a good one brings it back');
+    await clickW('Apply Changes');
+    ok(await seen('!window.MC.__proof.menu() && document.querySelector(".mc-pmain").style.display !== "none"'), 'Apply Changes returns to the Game Menu, as setScreen(lastScreen) does');
     lines = await chatLines();
-    ok(lines[lines.length - 1].t === 'Local game hosted on port 25565', 'chat announces the port', lines.slice(-1));
+    ok(lines[lines.length - 1].t === 'This world is now open to LAN. The port number is 25565', 'chat announces the LAN scope and its port', lines.slice(-1));
+    await resume(); await g.sleep(150);
     await H('chatRun("/gamemode creative")'); await g.sleep(150);
     const sv2 = await H('save()');
-    ok(sv2.gm === 1 && sv2.cheats === false, '/gamemode creative now works, while the world itself still records cheats OFF', sv2);
+    ok(sv2.gm === 1 && sv2.cheats === true, '/gamemode creative now works, and the world records Allow Cheats ON', sv2);
     ok(await g.ev(() => document.querySelector('.mc').classList.contains('mc-nohud')), 'the HUD switched to creative');
     await pressEsc(); await g.sleep(150);
-    ok(await g.ev(() => document.querySelector('.mc-lanbtn').disabled), 'Open to LAN greys once the world is out');
-    // Save and Quit: the LAN cheats end with the session; the mode you were in stays saved
+    await clickBtn('.mc-woptbtn'); await g.wait('!!window.__h.byName("Apply Changes")', 5000); await g.sleep(60);
+    const wo2 = (await H('names()')).map(n => n.replace(/ \(off\)$/, ''));
+    ok(wo2.includes('LAN: ON') && wo2.includes('Personal Game Mode: Creative') && (await g.ev(() => window.__h.byName('Port Number').value)) === '25565', 'World Options shows the LAN scope, its port and the new mode', wo2);
+    await clickW('Cancel'); await g.sleep(150);
+    // Save and Quit: the LAN scope ends with the session; the cheats and the mode are the world's now
     await clickBtn('.mc-totitle'); await g.wait('window.__h.byName("Singleplayer")', 120000);
     await H('clickName("Singleplayer")'); await g.wait('window.__h.byName("Create New World")');
     const names2 = await H('names()');
-    ok(/^plain\. Creative Mode, Version/.test(names2[1]), 'the list shows the world as Creative Mode, without Cheats', names2[1]);
+    ok(/^plain\. Creative Mode, Cheats, Version/.test(names2[1]), 'the list shows the world as Creative Mode with Cheats', names2[1]);
     await g.ev((n) => window.__h.clickName(n), names2[1]); await g.sleep(100);
     await g.wait('!window.__h.byName("Play Selected World").disabled');
     await H('clickName("Play Selected World")');
     await g.wait('(function(){var s=window.__h.screens(); return s.load===false && s.pause===true;})()', 120000);
-    ok(await g.ev(() => !document.querySelector('.mc-lanbtn').disabled), 'Open to LAN is live again in the new session');
+    await clickBtn('.mc-woptbtn'); await g.wait('!!window.__h.byName("Apply Changes")', 5000); await g.sleep(60);
+    const wo3 = (await H('names()')).map(n => n.replace(/ \(off\)$/, ''));
+    ok(wo3.includes('LAN: OFF') && wo3.includes('Allow Cheats: ON'), 'a new session starts with LAN off and the world\'s cheats kept', wo3);
+    await clickW('Cancel'); await g.sleep(150);
     await resume(); await g.sleep(200);
     await H('chatRun("/gamemode survival")'); await g.sleep(150);
-    lines = await chatLines();
-    ok((await H('save()')).gm === 1 && /Unknown or incomplete command/.test(lines[lines.length - 2].t), 'after re-entering, commands are gone again and the world is still creative', { gm: (await H('save()')).gm, last: lines.slice(-2).map(l => l.t) });
+    ok((await H('save()')).gm === 0, 'after re-entering, commands still work: Allow Cheats is the world\'s setting', await H('save()'));
     // ── C. closing the window throws nothing
     await pressEsc(); await g.sleep(100);
     await g.ev(() => { const b = document.querySelector('.win[data-app="minecraft"] .cap.close'); b.click(); });
