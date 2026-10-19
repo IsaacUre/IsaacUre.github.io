@@ -1186,7 +1186,7 @@ button.cr-iu-skip { position: absolute; right: 1rem; bottom: 1rem; z-index: 11; 
 .ghp-top { position: relative; display: flex; align-items: center; gap: 8px; height: 64px; padding: 0 16px; background: #fff; border-bottom: 1px solid #d1d9e0b3; }
 .ghp-burger { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 6px; color: #59636e; }
 .ghp-burger:hover { background: #818b981a; }
-.cr-ghp .ghp-logo { color: #1f2328; font-weight: 700; font-size: 18px; letter-spacing: -.01em; margin-right: auto; }
+.cr-ghp .ghp-logo { display: inline-flex; color: #1f2328; margin-right: auto; }
 .cr-ghp .ghp-logo:hover { text-decoration: none; }
 .ghp-mktg { display: none; align-items: center; gap: 2px; margin-right: auto; }
 .cr-ghp .ghp-mitem { display: inline-flex; align-items: center; gap: 4px; padding: 8px; border-radius: 6px; color: #1f2328; font-size: 16px; font-weight: 500; white-space: nowrap; }
@@ -1243,12 +1243,17 @@ button.cr-iu-skip { position: absolute; right: 1rem; bottom: 1rem; z-index: 11; 
 .cr-ghp .ghp-hlink { color: #1f2328; }
 .cr-ghp .ghp-hlink:hover { color: #0969da; text-decoration: none; }
 .ghp-badges { display: flex; flex-wrap: wrap; gap: 8px; }
+.cr-ghp .ghp-ach { position: relative; display: block; width: 64px; height: 64px; }
+.ghp-badgeimg { display: block; width: 64px; height: 64px; }
+.ghp-ach .ghp-badge { display: none; }
+.ghp-ach.ghp-nopic .ghp-badgeimg { display: none; }
+.ghp-ach.ghp-nopic .ghp-badge { display: grid; }
 .ghp-badge { --ring: #afb8c1; position: relative; display: grid; place-items: center; width: 64px; height: 64px; border-radius: 50%; color: #25292e; background: radial-gradient(circle at 35% 30%, #fff 0, #eff2f5 70%); box-shadow: inset 0 0 0 3px var(--ring), 0 1px 2px #1f232826; }
 .ghp-badge .ghp-oct { width: 26px; height: 26px; }
 .ghp-badge.t-gold { --ring: #d4a72c; color: #7d4e00; }
 .ghp-badge.t-silver { --ring: #8c959f; color: #424a53; }
 .ghp-tier { position: absolute; right: -6px; bottom: 0; padding: 0 6px; font-size: 12px; font-weight: 600; line-height: 18px; color: #424a53; background: #f6f8fa; border: 1px solid #d1d9e0; border-radius: 2em; }
-.t-gold .ghp-tier { color: #7d4e00; background: #fff8c5; border-color: #d4a72c; }
+.ghp-tier.t-gold { color: #7d4e00; background: #fff8c5; border-color: #d4a72c; }
 .ghp-orgs { display: flex; flex-wrap: wrap; gap: 4px; }
 .ghp-org img { display: block; width: 32px; height: 32px; border-radius: 6px; box-shadow: 0 0 0 1px #1f232826; }
 .ghp-block-report { margin-top: 16px; padding-top: 16px; border-top: 1px solid #d1d9e0b3; font-size: 14px; font-weight: 500; }
@@ -1285,20 +1290,20 @@ button.cr-iu-skip { position: absolute; right: 1rem; bottom: 1rem; z-index: 11; 
 .ghp-cmeta .ghp-oct, .ghp-rmeta .ghp-oct { margin-right: 4px; }
 .ghp-lang { display: inline-flex; align-items: center; gap: 4px; }
 .ghp-ldot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; border: 1px solid #1f23280d; }
-/* the contribution calendar, GitHub's own geometry: 11px days, 4px apart */
+/* the contribution calendar, GitHub's own geometry: 10px days, 3px apart (the whole year fits beside the year list) */
 .ghp-calrow { display: flex; gap: 16px; margin-bottom: 24px; }
 .ghp-calmain { flex: 1 1 auto; min-width: 0; }
 .ghp-calbox { padding: 8px 0 4px; border: 1px solid #d1d9e0; border-radius: 6px; }
 .ghp-calscroll { display: flex; overflow-x: auto; overflow-y: hidden; padding: 0 12px; }
-.ghp-calgrid { margin-left: auto; margin-right: auto; border-collapse: separate; border-spacing: 4px; font-size: 12px; line-height: 1; color: #1f2328; }
+.ghp-calgrid { margin-left: auto; margin-right: auto; border-collapse: separate; border-spacing: 3px; font-size: 12px; line-height: 1; color: #1f2328; }
 .ghp-calgrid td { padding: 0; }
 .ghp-calhead { height: 15px; }
 .ghp-monl { position: relative; }
 .ghp-monl span[aria-hidden] { position: absolute; top: 0; left: 0; }
 .ghp-dayl { position: relative; width: 29px; min-width: 29px; }
 .ghp-dayl span[aria-hidden] { position: absolute; left: 0; bottom: -2px; }
-.ghp-calgrid tbody tr { height: 11px; }
-.ghp-calgrid tbody td { width: 11px; min-width: 11px; height: 11px; }
+.ghp-calgrid tbody tr { height: 10px; }
+.ghp-calgrid tbody td { width: 10px; min-width: 10px; height: 10px; }
 .ghp-day { border-radius: 2px; outline: 1px solid #1f23280d; outline-offset: -1px; }
 .ghp-calfoot { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 4px 16px; padding: 4px 16px 0; font-size: 12px; }
 .ghp-legend { display: inline-flex; align-items: center; gap: 4px; color: #59636e; }
@@ -1376,6 +1381,17 @@ button.cr-iu-skip { position: absolute; right: 1rem; bottom: 1rem; z-index: 11; 
 .ghp-blankbox h3 { margin: 0 0 4px; font-size: 20px; font-weight: 600; }
 .ghp-blankbox p { margin: 0 0 8px; color: #59636e; }
 .ghp-bigic { width: 24px; height: 24px; margin-bottom: 8px; color: #59636e; }
+/* ?tab=achievements and the star list pages */
+.ghp-achgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 16px; margin: 0; padding: 0; list-style: none; }
+.ghp-achcard { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 24px 16px; border: 1px solid #d1d9e0; border-radius: 6px; }
+.cr-ghp .ghp-ach.ghp-achbig, .cr-ghp .ghp-achbig .ghp-badgeimg { width: 96px; height: 96px; }
+.cr-ghp .ghp-ach:hover { text-decoration: none; }
+.ghp-achbig .ghp-badge { width: 96px; height: 96px; }
+.ghp-achname { margin: 0; font-size: 16px; font-weight: 600; }
+.cr-ghp .ghp-tier.ghp-tierin { position: static; }
+.cr-ghp .ghp-crumb { font-size: 14px; color: #0969da; }
+.ghp-listh { margin: 8px 0 16px; font-size: 24px; font-weight: 600; }
+.ghp-listempty h2 { margin: 0; font-size: 20px; font-weight: 600; }
 .ghp-pkghead { margin: 16px 0 24px; text-align: center; }
 .ghp-pkghead h2 { margin: 0 0 4px; font-size: 20px; font-weight: 600; }
 .ghp-pkghead p { margin: 0; color: #59636e; }
@@ -1390,8 +1406,12 @@ button.cr-iu-skip { position: absolute; right: 1rem; bottom: 1rem; z-index: 11; 
 .ghp-pager { display: flex; justify-content: center; gap: 8px; margin-top: 16px; }
 .cr-ghp .ghp-pager span.ghp-btn { color: #818b98; cursor: default; }
 /* the live/saved line, and GitHub's footer */
-.ghp-status { margin: 24px 0 0; padding-top: 12px; font-size: 12px; color: #59636e; border-top: 1px solid #d1d9e0b3; }
-.ghp-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 16px; max-width: 1280px; margin: 40px auto 0; padding: 32px 16px 40px; font-size: 12px; color: #59636e; border-top: 1px solid #d1d9e0b3; }
+.ghp-foot { display: flex; flex-direction: column-reverse; align-items: center; justify-content: center; gap: 16px; max-width: 1280px; margin: 40px auto 0; padding: 40px 16px 24px; font-size: 12px; color: #59636e; }
+.ghp-footl { display: flex; align-items: center; gap: 8px; }
+.cr-ghp .ghp-footmark { display: inline-flex; color: #59636e; }
+.cr-ghp .ghp-footmark:hover { color: #1f2328; }
+.ghp-footnav { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 16px; }
+@container (min-width: 1012px) { .ghp-foot { flex-direction: row; justify-content: center; gap: 24px; } }
 .cr-ghp .ghp-flink { color: #59636e; }
 .cr-ghp a.ghp-flink:hover { color: #0969da; }
 

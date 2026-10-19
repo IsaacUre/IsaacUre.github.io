@@ -3418,8 +3418,7 @@ webPage('isaacure.com/comp', {
    revisit costs nothing, and nothing more is asked once GitHub reports the
    limit. The last answer is kept in localStorage (in incognito, in that
    window's memory only, until it closes). Whatever GitHub has not sent is the
-   saved copy below, and the line at the bottom of the page says so, with the
-   date.
+   saved copy below, drawn as it is: the page says nothing github.com does not.
    Icons are Octicons (MIT License, Copyright (c) 2026 GitHub Inc.). The
    Octocat mark and GitHub's achievement artwork are deliberately not
    reproduced: the header has a wordmark and the badges are plain medallions. */
@@ -3428,22 +3427,34 @@ var GHP_API = 'https://api.github.com';
 var GHP_CALAPI = 'https://github-contributions-api.jogruber.de/v4/';
 var GHP_TZ = 'America/Chicago';          // GitHub dates IsaacUre's commits and PRs in it (checked day by day against the live calendar)
 var GHP_TTL = 15 * 60 * 1000;            // a part this young is not asked for again
-var GHP_OCT = {"book":[16,"M0 1.75A.75.75 0 0 1 .75 1h4.253c1.227 0 2.317.59 3 1.501A3.743 3.743 0 0 1 11.006 1h4.245a.75.75 0 0 1 .75.75v10.5a.75.75 0 0 1-.75.75h-4.507a2.25 2.25 0 0 0-1.591.659l-.622.621a.75.75 0 0 1-1.06 0l-.622-.621A2.25 2.25 0 0 0 5.258 13H.75a.75.75 0 0 1-.75-.75Zm7.251 10.324.004-5.073-.002-2.253A2.25 2.25 0 0 0 5.003 2.5H1.5v9h3.757a3.75 3.75 0 0 1 1.994.574ZM8.755 4.75l-.004 7.322a3.752 3.752 0 0 1 1.992-.572H14.5v-9h-3.495a2.25 2.25 0 0 0-2.25 2.25Z"],"repo":[16,"M2 2.5A2.5 2.5 0 0 1 4.5 0h8.75a.75.75 0 0 1 .75.75v12.5a.75.75 0 0 1-.75.75h-2.5a.75.75 0 0 1 0-1.5h1.75v-2h-8a1 1 0 0 0-.714 1.7.75.75 0 1 1-1.072 1.05A2.495 2.495 0 0 1 2 11.5Zm10.5-1h-8a1 1 0 0 0-1 1v6.708A2.486 2.486 0 0 1 4.5 9h8ZM5 12.25a.25.25 0 0 1 .25-.25h3.5a.25.25 0 0 1 .25.25v3.25a.25.25 0 0 1-.4.2l-1.45-1.087a.249.249 0 0 0-.3 0L5.4 15.7a.25.25 0 0 1-.4-.2Z"],"table":[16,"M0 1.75C0 .784.784 0 1.75 0h12.5C15.216 0 16 .784 16 1.75v12.5A1.75 1.75 0 0 1 14.25 16H1.75A1.75 1.75 0 0 1 0 14.25ZM6.5 6.5v8h7.75a.25.25 0 0 0 .25-.25V6.5Zm8-1.5V1.75a.25.25 0 0 0-.25-.25H6.5V5Zm-13 1.5v7.75c0 .138.112.25.25.25H5v-8ZM5 5V1.5H1.75a.25.25 0 0 0-.25.25V5Z"],"package":[16,"m8.878.392 5.25 3.045c.54.314.872.89.872 1.514v6.098a1.75 1.75 0 0 1-.872 1.514l-5.25 3.045a1.75 1.75 0 0 1-1.756 0l-5.25-3.045A1.75 1.75 0 0 1 1 11.049V4.951c0-.624.332-1.201.872-1.514L7.122.392a1.75 1.75 0 0 1 1.756 0ZM7.875 1.69l-4.63 2.685L8 7.133l4.755-2.758-4.63-2.685a.248.248 0 0 0-.25 0ZM2.5 5.677v5.372c0 .09.047.171.125.216l4.625 2.683V8.432Zm6.25 8.271 4.625-2.683a.25.25 0 0 0 .125-.216V5.677L8.75 8.432Z"],"star":[16,"M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.751.751 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Zm0 2.445L6.615 5.5a.75.75 0 0 1-.564.41l-3.097.45 2.24 2.184a.75.75 0 0 1 .216.664l-.528 3.084 2.769-1.456a.75.75 0 0 1 .698 0l2.77 1.456-.53-3.084a.75.75 0 0 1 .216-.664l2.24-2.183-3.096-.45a.75.75 0 0 1-.564-.41L8 2.694Z"],"people":[16,"M2 5.5a3.5 3.5 0 1 1 5.898 2.549 5.508 5.508 0 0 1 3.034 4.084.75.75 0 1 1-1.482.235 4 4 0 0 0-7.9 0 .75.75 0 0 1-1.482-.236A5.507 5.507 0 0 1 3.102 8.05 3.493 3.493 0 0 1 2 5.5ZM11 4a3.001 3.001 0 0 1 2.22 5.018 5.01 5.01 0 0 1 2.56 3.012.749.749 0 0 1-.885.954.752.752 0 0 1-.549-.514 3.507 3.507 0 0 0-2.522-2.372.75.75 0 0 1-.574-.73v-.352a.75.75 0 0 1 .416-.672A1.5 1.5 0 0 0 11 5.5.75.75 0 0 1 11 4Zm-5.5-.5a2 2 0 1 0-.001 3.999A2 2 0 0 0 5.5 3.5Z"],"repo-forked":[16,"M5 5.372v.878c0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75v-.878a2.25 2.25 0 1 1 1.5 0v.878a2.25 2.25 0 0 1-2.25 2.25h-1.5v2.128a2.251 2.251 0 1 1-1.5 0V8.5h-1.5A2.25 2.25 0 0 1 3.5 6.25v-.878a2.25 2.25 0 1 1 1.5 0ZM5 3.25a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Zm6.75.75a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm-3 8.75a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Z"],"location":[16,"m12.596 11.596-3.535 3.536a1.5 1.5 0 0 1-2.122 0l-3.535-3.536a6.5 6.5 0 1 1 9.192-9.193 6.5 6.5 0 0 1 0 9.193Zm-1.06-8.132v-.001a5 5 0 1 0-7.072 7.072L8 14.07l3.536-3.534a5 5 0 0 0 0-7.072ZM8 9a2 2 0 1 1-.001-3.999A2 2 0 0 1 8 9Z"],"link":[16,"m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"],"organization":[16,"M1.75 16A1.75 1.75 0 0 1 0 14.25V1.75C0 .784.784 0 1.75 0h8.5C11.216 0 12 .784 12 1.75v12.5c0 .085-.006.168-.018.25h2.268a.25.25 0 0 0 .25-.25V8.285a.25.25 0 0 0-.111-.208l-1.055-.703a.749.749 0 1 1 .832-1.248l1.055.703c.487.325.779.871.779 1.456v5.965A1.75 1.75 0 0 1 14.25 16h-3.5a.766.766 0 0 1-.197-.026c-.099.017-.2.026-.303.026h-3a.75.75 0 0 1-.75-.75V14h-1v1.25a.75.75 0 0 1-.75.75Zm-.25-1.75c0 .138.112.25.25.25H4v-1.25a.75.75 0 0 1 .75-.75h2.5a.75.75 0 0 1 .75.75v1.25h2.25a.25.25 0 0 0 .25-.25V1.75a.25.25 0 0 0-.25-.25h-8.5a.25.25 0 0 0-.25.25ZM3.75 6h.5a.75.75 0 0 1 0 1.5h-.5a.75.75 0 0 1 0-1.5ZM3 3.75A.75.75 0 0 1 3.75 3h.5a.75.75 0 0 1 0 1.5h-.5A.75.75 0 0 1 3 3.75Zm4 3A.75.75 0 0 1 7.75 6h.5a.75.75 0 0 1 0 1.5h-.5A.75.75 0 0 1 7 6.75ZM7.75 3h.5a.75.75 0 0 1 0 1.5h-.5a.75.75 0 0 1 0-1.5ZM3 9.75A.75.75 0 0 1 3.75 9h.5a.75.75 0 0 1 0 1.5h-.5A.75.75 0 0 1 3 9.75ZM7.75 9h.5a.75.75 0 0 1 0 1.5h-.5a.75.75 0 0 1 0-1.5Z"],"git-pull-request":[16,"M1.5 3.25a2.25 2.25 0 1 1 3 2.122v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 1.5 3.25Zm5.677-.177L9.573.677A.25.25 0 0 1 10 .854V2.5h1A2.5 2.5 0 0 1 13.5 5v5.628a2.251 2.251 0 1 1-1.5 0V5a1 1 0 0 0-1-1h-1v1.646a.25.25 0 0 1-.427.177L7.177 3.427a.25.25 0 0 1 0-.354ZM3.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm8.25.75a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Z"],"repo-push":[16,"M2 2.5A2.5 2.5 0 0 1 4.5 0h8.75a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0V1.5h-8a1 1 0 0 0-1 1v6.708A2.493 2.493 0 0 1 4.5 9h2.25a.75.75 0 0 1 0 1.5H4.5a1 1 0 0 0 0 2h4.75a.75.75 0 0 1 0 1.5H4.5A2.5 2.5 0 0 1 2 11.5Zm12.23 7.79h-.001l-1.224-1.224v6.184a.75.75 0 0 1-1.5 0V9.066L10.28 10.29a.75.75 0 0 1-1.06-1.061l2.505-2.504a.75.75 0 0 1 1.06 0L15.29 9.23a.751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018Z"],"three-bars":[16,"M1 2.75A.75.75 0 0 1 1.75 2h12.5a.75.75 0 0 1 0 1.5H1.75A.75.75 0 0 1 1 2.75Zm0 5A.75.75 0 0 1 1.75 7h12.5a.75.75 0 0 1 0 1.5H1.75A.75.75 0 0 1 1 7.75ZM1.75 12h12.5a.75.75 0 0 1 0 1.5H1.75a.75.75 0 0 1 0-1.5Z"],"search":[16,"M10.68 11.74a6 6 0 0 1-7.922-8.982 6 6 0 0 1 8.982 7.922l3.04 3.04a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215ZM11.5 7a4.499 4.499 0 1 0-8.997 0A4.499 4.499 0 0 0 11.5 7Z"],"triangle-down":[16,"m4.427 7.427 3.396 3.396a.25.25 0 0 0 .354 0l3.396-3.396A.25.25 0 0 0 11.396 7H4.604a.25.25 0 0 0-.177.427Z"],"law":[16,"M8.75.75V2h.985c.304 0 .603.08.867.231l1.29.736c.038.022.08.033.124.033h2.234a.75.75 0 0 1 0 1.5h-.427l2.111 4.692a.75.75 0 0 1-.154.838l-.53-.53.529.531-.001.002-.002.002-.006.006-.006.005-.01.01-.045.04c-.21.176-.441.327-.686.45C14.556 10.78 13.88 11 13 11a4.498 4.498 0 0 1-2.023-.454 3.544 3.544 0 0 1-.686-.45l-.045-.04-.016-.015-.006-.006-.004-.004v-.001a.75.75 0 0 1-.154-.838L12.178 4.5h-.162c-.305 0-.604-.079-.868-.231l-1.29-.736a.245.245 0 0 0-.124-.033H8.75V13h2.5a.75.75 0 0 1 0 1.5h-6.5a.75.75 0 0 1 0-1.5h2.5V3.5h-.984a.245.245 0 0 0-.124.033l-1.289.737c-.265.15-.564.23-.869.23h-.162l2.112 4.692a.75.75 0 0 1-.154.838l-.53-.53.529.531-.001.002-.002.002-.006.006-.016.015-.045.04c-.21.176-.441.327-.686.45C4.556 10.78 3.88 11 3 11a4.498 4.498 0 0 1-2.023-.454 3.544 3.544 0 0 1-.686-.45l-.045-.04-.016-.015-.006-.006-.004-.004v-.001a.75.75 0 0 1-.154-.838L2.178 4.5H1.75a.75.75 0 0 1 0-1.5h2.234a.249.249 0 0 0 .125-.033l1.288-.737c.265-.15.564-.23.869-.23h.984V.75a.75.75 0 0 1 1.5 0Zm2.945 8.477c.285.135.718.273 1.305.273s1.02-.138 1.305-.273L13 6.327Zm-10 0c.285.135.718.273 1.305.273s1.02-.138 1.305-.273L3 6.327Z"],"zap":[16,"M9.504.43a1.516 1.516 0 0 1 2.437 1.713L10.415 5.5h2.123c1.57 0 2.346 1.909 1.22 3.004l-7.34 7.142a1.249 1.249 0 0 1-.871.354h-.302a1.25 1.25 0 0 1-1.157-1.723L5.633 10.5H3.462c-1.57 0-2.346-1.909-1.22-3.004L9.503.429Zm1.047 1.074L3.286 8.571A.25.25 0 0 0 3.462 9H6.75a.75.75 0 0 1 .694 1.034l-1.713 4.188 6.982-6.793A.25.25 0 0 0 12.538 7H9.25a.75.75 0 0 1-.683-1.06l2.008-4.418.003-.006a.036.036 0 0 0-.004-.009l-.006-.006-.008-.001c-.003 0-.006.002-.009.004Z"],"mail":[16,"M1.75 2h12.5c.966 0 1.75.784 1.75 1.75v8.5A1.75 1.75 0 0 1 14.25 14H1.75A1.75 1.75 0 0 1 0 12.25v-8.5C0 2.784.784 2 1.75 2ZM1.5 12.251c0 .138.112.25.25.25h12.5a.25.25 0 0 0 .25-.25V5.809L8.38 9.397a.75.75 0 0 1-.76 0L1.5 5.809v6.442Zm13-8.181v-.32a.25.25 0 0 0-.25-.25H1.75a.25.25 0 0 0-.25.25v.32L8 7.88Z"],"check":[16,"M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"],"repo-template":[16,"M13.25 8a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-.75.75h-2.5a.75.75 0 0 1 0-1.5h1.75v-2h-.75a.75.75 0 0 1 0-1.5h.75v-.25a.75.75 0 0 1 .75-.75ZM5 12.25a.25.25 0 0 1 .25-.25h3.5a.25.25 0 0 1 .25.25v3.25a.25.25 0 0 1-.4.2l-1.45-1.087a.249.249 0 0 0-.3 0L5.4 15.7a.25.25 0 0 1-.4-.2ZM2.75 8a.75.75 0 0 1 .75.75v.268c.083-.012.166-.018.25-.018h.5a.75.75 0 0 1 0 1.5h-.5a.25.25 0 0 0-.25.25v.75c0 .28.114.532.3.714a.75.75 0 1 1-1.05 1.072A2.495 2.495 0 0 1 2 11.5V8.75A.75.75 0 0 1 2.75 8ZM11 .75a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0V1.5h-.75A.75.75 0 0 1 11 .75Zm-5 0A.75.75 0 0 1 6.75 0h2.5a.75.75 0 0 1 0 1.5h-2.5A.75.75 0 0 1 6 .75Zm0 9A.75.75 0 0 1 6.75 9h2.5a.75.75 0 0 1 0 1.5h-2.5A.75.75 0 0 1 6 9.75ZM4.992.662a.75.75 0 0 1-.636.848c-.436.063-.783.41-.846.846a.751.751 0 0 1-1.485-.212A2.501 2.501 0 0 1 4.144.025a.75.75 0 0 1 .848.637ZM2.75 4a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 2.75 4Zm10.5 0a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5a.75.75 0 0 1 .75-.75Z"],"x":[16,"M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.749.749 0 0 1 1.275.326.749.749 0 0 1-.215.734L9.06 8l3.22 3.22a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L8 9.06l-3.22 3.22a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"]};
-/* the saved copy, 2026-09-24 18:09 UTC; public fields only */
+var GHP_OCT = {"book":[16,"M0 1.75A.75.75 0 0 1 .75 1h4.253c1.227 0 2.317.59 3 1.501A3.743 3.743 0 0 1 11.006 1h4.245a.75.75 0 0 1 .75.75v10.5a.75.75 0 0 1-.75.75h-4.507a2.25 2.25 0 0 0-1.591.659l-.622.621a.75.75 0 0 1-1.06 0l-.622-.621A2.25 2.25 0 0 0 5.258 13H.75a.75.75 0 0 1-.75-.75Zm7.251 10.324.004-5.073-.002-2.253A2.25 2.25 0 0 0 5.003 2.5H1.5v9h3.757a3.75 3.75 0 0 1 1.994.574ZM8.755 4.75l-.004 7.322a3.752 3.752 0 0 1 1.992-.572H14.5v-9h-3.495a2.25 2.25 0 0 0-2.25 2.25Z"],"repo":[16,"M2 2.5A2.5 2.5 0 0 1 4.5 0h8.75a.75.75 0 0 1 .75.75v12.5a.75.75 0 0 1-.75.75h-2.5a.75.75 0 0 1 0-1.5h1.75v-2h-8a1 1 0 0 0-.714 1.7.75.75 0 1 1-1.072 1.05A2.495 2.495 0 0 1 2 11.5Zm10.5-1h-8a1 1 0 0 0-1 1v6.708A2.486 2.486 0 0 1 4.5 9h8ZM5 12.25a.25.25 0 0 1 .25-.25h3.5a.25.25 0 0 1 .25.25v3.25a.25.25 0 0 1-.4.2l-1.45-1.087a.249.249 0 0 0-.3 0L5.4 15.7a.25.25 0 0 1-.4-.2Z"],"table":[16,"M0 1.75C0 .784.784 0 1.75 0h12.5C15.216 0 16 .784 16 1.75v12.5A1.75 1.75 0 0 1 14.25 16H1.75A1.75 1.75 0 0 1 0 14.25ZM6.5 6.5v8h7.75a.25.25 0 0 0 .25-.25V6.5Zm8-1.5V1.75a.25.25 0 0 0-.25-.25H6.5V5Zm-13 1.5v7.75c0 .138.112.25.25.25H5v-8ZM5 5V1.5H1.75a.25.25 0 0 0-.25.25V5Z"],"package":[16,"m8.878.392 5.25 3.045c.54.314.872.89.872 1.514v6.098a1.75 1.75 0 0 1-.872 1.514l-5.25 3.045a1.75 1.75 0 0 1-1.756 0l-5.25-3.045A1.75 1.75 0 0 1 1 11.049V4.951c0-.624.332-1.201.872-1.514L7.122.392a1.75 1.75 0 0 1 1.756 0ZM7.875 1.69l-4.63 2.685L8 7.133l4.755-2.758-4.63-2.685a.248.248 0 0 0-.25 0ZM2.5 5.677v5.372c0 .09.047.171.125.216l4.625 2.683V8.432Zm6.25 8.271 4.625-2.683a.25.25 0 0 0 .125-.216V5.677L8.75 8.432Z"],"star":[16,"M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.751.751 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Zm0 2.445L6.615 5.5a.75.75 0 0 1-.564.41l-3.097.45 2.24 2.184a.75.75 0 0 1 .216.664l-.528 3.084 2.769-1.456a.75.75 0 0 1 .698 0l2.77 1.456-.53-3.084a.75.75 0 0 1 .216-.664l2.24-2.183-3.096-.45a.75.75 0 0 1-.564-.41L8 2.694Z"],"people":[16,"M2 5.5a3.5 3.5 0 1 1 5.898 2.549 5.508 5.508 0 0 1 3.034 4.084.75.75 0 1 1-1.482.235 4 4 0 0 0-7.9 0 .75.75 0 0 1-1.482-.236A5.507 5.507 0 0 1 3.102 8.05 3.493 3.493 0 0 1 2 5.5ZM11 4a3.001 3.001 0 0 1 2.22 5.018 5.01 5.01 0 0 1 2.56 3.012.749.749 0 0 1-.885.954.752.752 0 0 1-.549-.514 3.507 3.507 0 0 0-2.522-2.372.75.75 0 0 1-.574-.73v-.352a.75.75 0 0 1 .416-.672A1.5 1.5 0 0 0 11 5.5.75.75 0 0 1 11 4Zm-5.5-.5a2 2 0 1 0-.001 3.999A2 2 0 0 0 5.5 3.5Z"],"repo-forked":[16,"M5 5.372v.878c0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75v-.878a2.25 2.25 0 1 1 1.5 0v.878a2.25 2.25 0 0 1-2.25 2.25h-1.5v2.128a2.251 2.251 0 1 1-1.5 0V8.5h-1.5A2.25 2.25 0 0 1 3.5 6.25v-.878a2.25 2.25 0 1 1 1.5 0ZM5 3.25a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Zm6.75.75a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm-3 8.75a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Z"],"location":[16,"m12.596 11.596-3.535 3.536a1.5 1.5 0 0 1-2.122 0l-3.535-3.536a6.5 6.5 0 1 1 9.192-9.193 6.5 6.5 0 0 1 0 9.193Zm-1.06-8.132v-.001a5 5 0 1 0-7.072 7.072L8 14.07l3.536-3.534a5 5 0 0 0 0-7.072ZM8 9a2 2 0 1 1-.001-3.999A2 2 0 0 1 8 9Z"],"link":[16,"m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"],"organization":[16,"M1.75 16A1.75 1.75 0 0 1 0 14.25V1.75C0 .784.784 0 1.75 0h8.5C11.216 0 12 .784 12 1.75v12.5c0 .085-.006.168-.018.25h2.268a.25.25 0 0 0 .25-.25V8.285a.25.25 0 0 0-.111-.208l-1.055-.703a.749.749 0 1 1 .832-1.248l1.055.703c.487.325.779.871.779 1.456v5.965A1.75 1.75 0 0 1 14.25 16h-3.5a.766.766 0 0 1-.197-.026c-.099.017-.2.026-.303.026h-3a.75.75 0 0 1-.75-.75V14h-1v1.25a.75.75 0 0 1-.75.75Zm-.25-1.75c0 .138.112.25.25.25H4v-1.25a.75.75 0 0 1 .75-.75h2.5a.75.75 0 0 1 .75.75v1.25h2.25a.25.25 0 0 0 .25-.25V1.75a.25.25 0 0 0-.25-.25h-8.5a.25.25 0 0 0-.25.25ZM3.75 6h.5a.75.75 0 0 1 0 1.5h-.5a.75.75 0 0 1 0-1.5ZM3 3.75A.75.75 0 0 1 3.75 3h.5a.75.75 0 0 1 0 1.5h-.5A.75.75 0 0 1 3 3.75Zm4 3A.75.75 0 0 1 7.75 6h.5a.75.75 0 0 1 0 1.5h-.5A.75.75 0 0 1 7 6.75ZM7.75 3h.5a.75.75 0 0 1 0 1.5h-.5a.75.75 0 0 1 0-1.5ZM3 9.75A.75.75 0 0 1 3.75 9h.5a.75.75 0 0 1 0 1.5h-.5A.75.75 0 0 1 3 9.75ZM7.75 9h.5a.75.75 0 0 1 0 1.5h-.5a.75.75 0 0 1 0-1.5Z"],"git-pull-request":[16,"M1.5 3.25a2.25 2.25 0 1 1 3 2.122v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 1.5 3.25Zm5.677-.177L9.573.677A.25.25 0 0 1 10 .854V2.5h1A2.5 2.5 0 0 1 13.5 5v5.628a2.251 2.251 0 1 1-1.5 0V5a1 1 0 0 0-1-1h-1v1.646a.25.25 0 0 1-.427.177L7.177 3.427a.25.25 0 0 1 0-.354ZM3.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm8.25.75a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Z"],"repo-push":[16,"M2 2.5A2.5 2.5 0 0 1 4.5 0h8.75a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0V1.5h-8a1 1 0 0 0-1 1v6.708A2.493 2.493 0 0 1 4.5 9h2.25a.75.75 0 0 1 0 1.5H4.5a1 1 0 0 0 0 2h4.75a.75.75 0 0 1 0 1.5H4.5A2.5 2.5 0 0 1 2 11.5Zm12.23 7.79h-.001l-1.224-1.224v6.184a.75.75 0 0 1-1.5 0V9.066L10.28 10.29a.75.75 0 0 1-1.06-1.061l2.505-2.504a.75.75 0 0 1 1.06 0L15.29 9.23a.751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018Z"],"three-bars":[16,"M1 2.75A.75.75 0 0 1 1.75 2h12.5a.75.75 0 0 1 0 1.5H1.75A.75.75 0 0 1 1 2.75Zm0 5A.75.75 0 0 1 1.75 7h12.5a.75.75 0 0 1 0 1.5H1.75A.75.75 0 0 1 1 7.75ZM1.75 12h12.5a.75.75 0 0 1 0 1.5H1.75a.75.75 0 0 1 0-1.5Z"],"search":[16,"M10.68 11.74a6 6 0 0 1-7.922-8.982 6 6 0 0 1 8.982 7.922l3.04 3.04a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215ZM11.5 7a4.499 4.499 0 1 0-8.997 0A4.499 4.499 0 0 0 11.5 7Z"],"triangle-down":[16,"m4.427 7.427 3.396 3.396a.25.25 0 0 0 .354 0l3.396-3.396A.25.25 0 0 0 11.396 7H4.604a.25.25 0 0 0-.177.427Z"],"law":[16,"M8.75.75V2h.985c.304 0 .603.08.867.231l1.29.736c.038.022.08.033.124.033h2.234a.75.75 0 0 1 0 1.5h-.427l2.111 4.692a.75.75 0 0 1-.154.838l-.53-.53.529.531-.001.002-.002.002-.006.006-.006.005-.01.01-.045.04c-.21.176-.441.327-.686.45C14.556 10.78 13.88 11 13 11a4.498 4.498 0 0 1-2.023-.454 3.544 3.544 0 0 1-.686-.45l-.045-.04-.016-.015-.006-.006-.004-.004v-.001a.75.75 0 0 1-.154-.838L12.178 4.5h-.162c-.305 0-.604-.079-.868-.231l-1.29-.736a.245.245 0 0 0-.124-.033H8.75V13h2.5a.75.75 0 0 1 0 1.5h-6.5a.75.75 0 0 1 0-1.5h2.5V3.5h-.984a.245.245 0 0 0-.124.033l-1.289.737c-.265.15-.564.23-.869.23h-.162l2.112 4.692a.75.75 0 0 1-.154.838l-.53-.53.529.531-.001.002-.002.002-.006.006-.016.015-.045.04c-.21.176-.441.327-.686.45C4.556 10.78 3.88 11 3 11a4.498 4.498 0 0 1-2.023-.454 3.544 3.544 0 0 1-.686-.45l-.045-.04-.016-.015-.006-.006-.004-.004v-.001a.75.75 0 0 1-.154-.838L2.178 4.5H1.75a.75.75 0 0 1 0-1.5h2.234a.249.249 0 0 0 .125-.033l1.288-.737c.265-.15.564-.23.869-.23h.984V.75a.75.75 0 0 1 1.5 0Zm2.945 8.477c.285.135.718.273 1.305.273s1.02-.138 1.305-.273L13 6.327Zm-10 0c.285.135.718.273 1.305.273s1.02-.138 1.305-.273L3 6.327Z"],"zap":[16,"M9.504.43a1.516 1.516 0 0 1 2.437 1.713L10.415 5.5h2.123c1.57 0 2.346 1.909 1.22 3.004l-7.34 7.142a1.249 1.249 0 0 1-.871.354h-.302a1.25 1.25 0 0 1-1.157-1.723L5.633 10.5H3.462c-1.57 0-2.346-1.909-1.22-3.004L9.503.429Zm1.047 1.074L3.286 8.571A.25.25 0 0 0 3.462 9H6.75a.75.75 0 0 1 .694 1.034l-1.713 4.188 6.982-6.793A.25.25 0 0 0 12.538 7H9.25a.75.75 0 0 1-.683-1.06l2.008-4.418.003-.006a.036.036 0 0 0-.004-.009l-.006-.006-.008-.001c-.003 0-.006.002-.009.004Z"],"mail":[16,"M1.75 2h12.5c.966 0 1.75.784 1.75 1.75v8.5A1.75 1.75 0 0 1 14.25 14H1.75A1.75 1.75 0 0 1 0 12.25v-8.5C0 2.784.784 2 1.75 2ZM1.5 12.251c0 .138.112.25.25.25h12.5a.25.25 0 0 0 .25-.25V5.809L8.38 9.397a.75.75 0 0 1-.76 0L1.5 5.809v6.442Zm13-8.181v-.32a.25.25 0 0 0-.25-.25H1.75a.25.25 0 0 0-.25.25v.32L8 7.88Z"],"check":[16,"M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"],"repo-template":[16,"M13.25 8a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-.75.75h-2.5a.75.75 0 0 1 0-1.5h1.75v-2h-.75a.75.75 0 0 1 0-1.5h.75v-.25a.75.75 0 0 1 .75-.75ZM5 12.25a.25.25 0 0 1 .25-.25h3.5a.25.25 0 0 1 .25.25v3.25a.25.25 0 0 1-.4.2l-1.45-1.087a.249.249 0 0 0-.3 0L5.4 15.7a.25.25 0 0 1-.4-.2ZM2.75 8a.75.75 0 0 1 .75.75v.268c.083-.012.166-.018.25-.018h.5a.75.75 0 0 1 0 1.5h-.5a.25.25 0 0 0-.25.25v.75c0 .28.114.532.3.714a.75.75 0 1 1-1.05 1.072A2.495 2.495 0 0 1 2 11.5V8.75A.75.75 0 0 1 2.75 8ZM11 .75a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0V1.5h-.75A.75.75 0 0 1 11 .75Zm-5 0A.75.75 0 0 1 6.75 0h2.5a.75.75 0 0 1 0 1.5h-2.5A.75.75 0 0 1 6 .75Zm0 9A.75.75 0 0 1 6.75 9h2.5a.75.75 0 0 1 0 1.5h-2.5A.75.75 0 0 1 6 9.75ZM4.992.662a.75.75 0 0 1-.636.848c-.436.063-.783.41-.846.846a.751.751 0 0 1-1.485-.212A2.501 2.501 0 0 1 4.144.025a.75.75 0 0 1 .848.637ZM2.75 4a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 2.75 4Zm10.5 0a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5a.75.75 0 0 1 .75-.75Z"],"mark-github":[24,"M10.226 17.284c-2.965-.36-5.054-2.493-5.054-5.256 0-1.123.404-2.336 1.078-3.144-.292-.741-.247-2.314.09-2.965.898-.112 2.111.36 2.83 1.01.853-.269 1.752-.404 2.853-.404 1.1 0 1.999.135 2.807.382.696-.629 1.932-1.1 2.83-.988.315.606.36 2.179.067 2.942.72.854 1.101 2 1.101 3.167 0 2.763-2.089 4.852-5.098 5.234.763.494 1.28 1.572 1.28 2.807v2.336c0 .674.561 1.056 1.235.786 4.066-1.55 7.255-5.615 7.255-10.646C23.5 6.188 18.334 1 11.978 1 5.62 1 .5 6.188.5 12.545c0 4.986 3.167 9.12 7.435 10.669.606.225 1.19-.18 1.19-.786V20.63a2.9 2.9 0 0 1-1.078.224c-1.483 0-2.359-.808-2.987-2.313-.247-.607-.517-.966-1.034-1.033-.27-.023-.359-.135-.359-.27 0-.27.45-.471.898-.471.652 0 1.213.404 1.797 1.235.45.651.921.943 1.483.943.561 0 .92-.202 1.437-.719.382-.381.674-.718.944-.943",24],"x":[16,"M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.749.749 0 0 1 1.275.326.749.749 0 0 1-.215.734L9.06 8l3.22 3.22a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L8 9.06l-3.22 3.22a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"]};
+/* the saved copy, 2026-10-19 20:06 UTC; public fields only. Its calendar is the one
+   github.com drew that day (377 contributions, every day checked), and its
+   months are every month of activity since the account's first repository. */
 var GHP_SNAP = {
-    asOf: '2026-09-24T18:09:53Z',
+    asOf: '2026-10-19T20:06:22Z',
     user: { login: 'IsaacUre', name: null, bio: null, company: null, blog: '', location: null, twitter_username: null, followers: 0, following: 0, public_repos: 2, avatar_url: 'https://avatars.githubusercontent.com/u/98616888?v=4', created_at: '2022-01-28T20:01:53Z' },
     repos: [
-        { name: 'IsaacUre.github.io', fork: false, description: 'Website', language: 'JavaScript', stargazers_count: 0, forks_count: 0, license: null, archived: false, mirror: false, template: false, pushed_at: '2026-09-24T17:32:56Z', created_at: '2026-04-01T21:39:53Z' },
+        { name: 'IsaacUre.github.io', fork: false, description: 'Website', language: 'JavaScript', stargazers_count: 0, forks_count: 0, license: null, archived: false, mirror: false, template: false, pushed_at: '2026-10-18T07:56:49Z', created_at: '2026-04-01T21:39:53Z' },
         { name: 'Background-Auto-Sync-for-Anki-Addon', fork: true, description: 'This addon will automatically synchronize your collection with AnkiWeb', language: 'Python', stargazers_count: 0, forks_count: 0, license: 'GNU General Public License v3.0', archived: false, mirror: false, template: false, pushed_at: '2026-09-01T19:34:14Z', created_at: '' }
     ],
     parents: { 'Background-Auto-Sync-for-Anki-Addon': 'athulkrishna2015/Background-Auto-Sync-for-Anki-Addon' },
     orgs: [],
     stars: [],
-    cal: { src: 'saved', start: '2025-09-21', counts: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,20,2,0,0,0,0,0,0,0,0,0,0,0,0,5,4,0,0,0,0,0,0,0,6,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,2,0,0,0,0,17,10,6,0,0,0,0,0,0,0,0,0,9,5,0,0,20,16,0,24,6,0,2,0,0,0,8,9,0,6,0,0,0,24,5,0,0,0,0,0,0,0,0,0,0,0,11,37,0,0,0,2,14,4,8,4,0,0,0,0,4,0,0,0,0,0,0,0,0,0,0,0,0,1,0,16,2,6,12,0,0,0,0,0,0,0,0,6,0,6,0,0,0,0,0,0,4], levels: null, total: 345 },
-    act: { '2026-09': { commits: { 'IsaacUre/IsaacUre.github.io': 26 }, prs: { 'IsaacUre/IsaacUre.github.io': { merged: 26, open: 0, closed: 0 } }, created: [] } },
-    // no API has these; they are what the profile showed on the day of the copy
-    achievements: [['Pair Extraordinaire', 'x4', 'gold', 'people'], ['Pull Shark', 'x3', 'silver', 'git-pull-request'], ['YOLO', '', 'plain', 'zap']],
+    cal: { src: 'saved', start: '2025-10-19', counts: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,20,2,0,0,0,0,0,0,0,0,0,0,0,0,5,4,0,0,0,0,0,0,0,6,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,2,0,0,0,0,17,10,6,0,0,0,0,0,0,0,0,0,9,5,0,0,20,16,0,24,6,0,2,0,0,0,8,9,0,6,0,0,0,24,5,0,0,0,0,0,0,0,0,0,0,0,11,37,0,0,0,2,14,4,8,4,0,0,0,0,4,0,0,0,0,0,0,0,0,0,0,0,0,1,0,16,2,6,12,0,0,0,0,0,0,0,0,6,0,6,0,0,0,0,0,0,12,16,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,4,3,0,1,0], levels: null, total: 377 },
+    act: {
+        '2026-10': { commits: { 'IsaacUre/IsaacUre.github.io': 4 }, prs: { 'IsaacUre/IsaacUre.github.io': { merged: 4, open: 0, closed: 0 } }, created: [] },
+        '2026-09': { commits: { 'IsaacUre/IsaacUre.github.io': 38 }, prs: { 'IsaacUre/IsaacUre.github.io': { merged: 38, open: 0, closed: 0 } }, created: [] },
+        '2026-08': { commits: { 'IsaacUre/IsaacUre.github.io': 42 }, prs: { 'IsaacUre/IsaacUre.github.io': { merged: 42, open: 0, closed: 0 } }, created: [] },
+        '2026-07': { commits: { 'IsaacUre/IsaacUre.github.io': 67 }, prs: { 'IsaacUre/IsaacUre.github.io': { merged: 65, open: 1, closed: 1 } }, created: [] },
+        '2026-06': { commits: { 'IsaacUre/IsaacUre.github.io': 22 }, prs: { 'IsaacUre/IsaacUre.github.io': { merged: 15, open: 0, closed: 0 } }, created: [] },
+        '2026-05': { commits: {}, prs: {}, created: [] },
+        '2026-04': { commits: { 'IsaacUre/IsaacUre.github.io': 24 }, prs: { 'IsaacUre/IsaacUre.github.io': { merged: 12, open: 0, closed: 0 } }, created: ['IsaacUre/IsaacUre.github.io'] }
+    },
+    // no API has these; they are what the profile showed on the day of the copy. [name, tier, tier colour, octicon if the picture fails, slug, picture]
+    achievements: [['Pair Extraordinaire', 'x4', 'gold', 'people', 'pair-extraordinaire', 'https://github.githubassets.com/assets/pair-extraordinaire-gold-5335a3b8ae7d.png'],
+                   ['Pull Shark', 'x3', 'silver', 'git-pull-request', 'pull-shark', 'https://github.githubassets.com/assets/pull-shark-silver-0643f87ac9fd.png'],
+                   ['YOLO', '', 'plain', 'zap', 'yolo', 'https://github.githubassets.com/assets/yolo-default-be0bbff04951.png']],
     lists: [['old', 0]]
 };
 var GHP = null;                           // the open profile view's state
@@ -3464,9 +3475,10 @@ var GHP_LEVEL = ['#eff2f5', '#aceebb', '#4ac26b', '#2da44e', '#116329'];
 var GHP_HALLOWEEN = ['#eff2f5', '#f0db3d', '#ffd642', '#f68c41', '#1f2328'];   // reported to replace the greens on Oct 31 only
 
 /* —— small helpers —— */
-function ghpIc(n, cls) {
-    var o = GHP_OCT[n];
-    return o ? '<svg class="ghp-oct' + (cls ? ' ' + cls : '') + '" viewBox="0 0 ' + o[0] + ' 16" width="' + o[0] + '" height="16" aria-hidden="true"><path d="' + o[1] + '"></path></svg>' : '';
+function ghpIc(n, cls, size) {             // an Octicon from its own artboard (16, or the 24 an entry names), drawn size px tall
+    var o = GHP_OCT[n]; if (!o) return '';
+    var h = o[2] || 16, s = size || h;
+    return '<svg class="ghp-oct' + (cls ? ' ' + cls : '') + '" viewBox="0 0 ' + o[0] + ' ' + h + '" width="' + Math.round(o[0] * s / h) + '" height="' + s + '" aria-hidden="true"><path d="' + o[1] + '"></path></svg>';
 }
 function ghpName(s) { return typeof s === 'string' && /^[A-Za-z0-9._-]{1,100}$/.test(s); }                    // a login or repo name safe to put in a URL
 function ghpFull(s) { return typeof s === 'string' && /^[A-Za-z0-9-]{1,39}\/[A-Za-z0-9._-]{1,100}$/.test(s); } // owner/repo
@@ -3500,7 +3512,6 @@ function ghpOrd(n) { return n + ((n % 100 >= 11 && n % 100 <= 13) ? 'th' : (['th
 function ghpMonthStart(mk) { return mk + '-01'; }
 function ghpMonthEnd(mk) { var d = ghpD(mk + '-01'); d.setUTCMonth(d.getUTCMonth() + 1); d.setUTCDate(0); return d.toISOString().slice(0, 10); }
 function ghpPrevMonth(mk) { var d = ghpD(mk + '-01'); d.setUTCMonth(d.getUTCMonth() - 1); return d.toISOString().slice(0, 7); }
-function ghpMonthName(mk) { return GHP_MON[+mk.slice(5) - 1] + ' ' + mk.slice(0, 4); }
 function ghpStale(t) { return !t || Date.now() - t >= GHP_TTL; }
 function ghpHalted() { return GHP_LIMIT > Date.now(); }
 function ghpAgo(iso) {                    // github.com's <relative-time> (5.3.1, format auto, P30D): floor, then round at 55 s, 55 min, 21 h / 12 h
@@ -3525,11 +3536,6 @@ function ghpAgo(iso) {                    // github.com's <relative-time> (5.3.1
     if (dt.getUTCFullYear() !== now.getUTCFullYear()) o.year = 'numeric';   // the element's year test is UTC
     try { return 'on ' + new Intl.DateTimeFormat('en', o).format(dt); }
     catch (e) { return 'on ' + GHP_MON[dt.getMonth()].slice(0, 3) + ' ' + dt.getDate() + (o.year ? ', ' + dt.getFullYear() : ''); }
-}
-function ghpWhen(t) {                     // "at 6:05 PM" today, "on Sep 24 at 6:05 PM" before; the viewer's clock, like fmtTime
-    var w = new Date(t), n = new Date();
-    if (w.toDateString() === n.toDateString()) return 'at ' + fmtTime(w);
-    return 'on ' + GHP_MON[w.getMonth()].slice(0, 3) + ' ' + w.getDate() + (w.getFullYear() !== n.getFullYear() ? ', ' + w.getFullYear() : '') + ' at ' + fmtTime(w);
 }
 
 /* —— the data: what the page draws from ——
@@ -3680,7 +3686,6 @@ function ghpSettle(st) {                  // everything asked so far has answere
 }
 function ghpFetch(st) {                   // asks for every part older than 15 minutes, and nothing else
     var d = st.d, base = GHP_API + '/users/' + GHP_USER;
-    st.asked = true;
     if (ghpStale(d.at.user)) ghpGet(st, base, true, function (err, u, t) {
         if (err || !ghpMine(u)) return;
         d.user = ghpPickUser(u); d.at.user = t; st.got = true;
@@ -3740,9 +3745,8 @@ function ghpCalendar(st, year) {          // year: one year from the list on the
         var cal = err ? null : ghpCalParse(j, year);
         if (year) {                       // kept either way, but only the year still picked is drawn
             if (cal) st.years[year] = cal;
-            if (st.year !== year) return;
-            if (!cal) st.yearFail = year;
-            ghpPaint(st, ['cal']); return;
+            if (st.year === year && cal) ghpPaint(st, ['cal']);   // a year that failed leaves the calendar as it was; clicking it again asks again
+            return;
         }
         st.calWait = false;
         if (cal) { st.d.cal = cal; st.d.at.cal = t; st.got = true; ghpPaint(st, ['cal']); }
@@ -3776,7 +3780,7 @@ function ghpAfterRepos(st) {              // this month's activity, and the whol
     });
 }
 function ghpLiveMonth(st, mk) {           // a live answer's month heads the feed; the saved copy's older month gives way to it
-    if (st.months[0] !== mk) { st.months = [mk]; st.moreFail = null; }
+    if (st.months[0] !== mk) st.months = [mk];
 }
 /* IsaacUre's contributions between two of IsaacUre's local days, by GitHub's
    rules: commits on the default branch whose author resolves to IsaacUre, pull
@@ -3853,27 +3857,23 @@ function ghpStars(st) {                   // the starred list, newest star first
 function ghpSocial(st) {                  // ?tab=followers / following: the people, when there are any
     var tab = st.tab;
     if ((tab !== 'followers' && tab !== 'following') || st.social || !nnum(st.d.user[tab])) return;
-    st.social = { list: null, fail: false };
+    st.social = { list: null };
     ghpGet(st, GHP_API + '/users/' + GHP_USER + '/' + tab + '?per_page=50', true, function (err, list) {
-        if (err || !Array.isArray(list)) st.social.fail = true;
-        else st.social.list = list.filter(function (p) { return p && ghpName(p.login); }).map(function (p) { return { login: p.login, avatar_url: ghpAvatar(p.avatar_url) }; });
+        if (!err && Array.isArray(list)) st.social.list = list.filter(function (p) { return p && ghpName(p.login); }).map(function (p) { return { login: p.login, avatar_url: ghpAvatar(p.avatar_url) }; });
         ghpPaint(st, ['social']);
     });
 }
 function ghpMore(st) {                    // "Show more activity": one month further back
     var d = st.d, mk = ghpPrevMonth(st.months[st.months.length - 1]);
     if (mk < String(d.user.created_at || '').slice(0, 7) || st.moreBusy) return;
-    st.moreFail = null;
     if (d.act[mk] && !ghpStale(d.act[mk].t)) { st.months.push(mk); ghpPaint(st, ['act']); return; }
     st.moreBusy = true; ghpPaint(st, ['act']);
     function go() {
         ghpRange(st, ghpMonthStart(mk), ghpMonthEnd(mk), function (out) {
             st.moreBusy = false;
-            if (out.partial) st.moreFail = mk;   // not the same as empty: the button stays, to try again
-            else {
-                d.act[mk] = out.act[mk] || ghpNoAct(); d.act[mk].t = out.t; st.got = true;
-                if (ghpPrevMonth(st.months[st.months.length - 1]) === mk) st.months.push(mk);   // unless the feed has moved on meanwhile
-            }
+            if (!out.partial) { d.act[mk] = out.act[mk] || ghpNoAct(); d.act[mk].t = out.t; st.got = true; }
+            // GitHub did not answer: the saved month, if the copy has one; if not, the button stays, to try again
+            if (d.act[mk] && ghpPrevMonth(st.months[st.months.length - 1]) === mk) st.months.push(mk);   // unless the feed has moved on meanwhile
             ghpPaint(st, ['act']);
         });
     }
@@ -3883,13 +3883,24 @@ function ghpMore(st) {                    // "Show more activity": one month fur
 }
 
 /* —— drawing —— */
-function ghpTab(url) {
+function ghpTab(url) {                    // which view an address is: a tab, or 'list:<name>' for one of the star lists
+    var l = /^(?:https?:\/\/)?(?:www\.)?github\.com\/+stars\/+[^/]+\/+lists\/+([^/?#]+)/i.exec(url || '');
+    if (l) { var n = ghpListName(l[1]); if (n) return 'list:' + n; }
     var m = /[?&]tab=([a-z]+)/i.exec(url || ''), t = m ? m[1].toLowerCase() : 'overview';
-    return GHP_TABS.some(function (x) { return x[0] === t; }) || t === 'followers' || t === 'following' ? t : 'overview';
+    return GHP_TABS.some(function (x) { return x[0] === t; }) || t === 'followers' || t === 'following' || t === 'achievements' ? t : 'overview';
 }
-function ghpHref(tab) { return 'github.com/' + GHP_USER + (tab === 'overview' ? '' : '?tab=' + tab); }
+function ghpListName(s) {                 // a star list's name as the saved copy spells it, or null
+    var n; try { n = decodeURIComponent(s); } catch (e) { n = s; }
+    var hit = GHP_SNAP.lists.filter(function (l) { return l[0].toLowerCase() === n.toLowerCase(); })[0];
+    return hit ? hit[0] : null;
+}
+function ghpHref(tab) {
+    if (tab.indexOf('list:') === 0) return 'github.com/stars/' + GHP_USER + '/lists/' + encodeURIComponent(tab.slice(5));
+    return 'github.com/' + GHP_USER + (tab === 'overview' ? '' : '?tab=' + tab);
+}
 function ghpTitleFor(u, tab) {           // "login (Name)" on every tab, as github.com has it
     var who = u.login + (u.name ? ' (' + u.name + ')' : '');
+    if (tab.indexOf('list:') === 0) return u.login + '\'s list / ' + tab.slice(5) + ' · GitHub';
     if (tab === 'overview') return who + ' · GitHub';
     var t = GHP_TABS.filter(function (x) { return x[0] === tab; })[0];
     return who + ' / ' + (tab === 'stars' ? 'Starred' : t ? t[1] : ghpCap(tab)) + ' · GitHub';
@@ -3899,11 +3910,11 @@ function ghpHeader() {
     var nav = [['Platform', 'https://github.com/features'], ['Solutions', 'https://github.com/solutions'], ['Resources', 'https://github.com/resources'], ['Open Source', 'https://github.com/open-source'], ['Enterprise', 'https://github.com/enterprise']];
     return '<header class="ghp-top">' +
         '<button class="ghp-burger" type="button" aria-label="Toggle navigation">' + ghpIc('three-bars') + '</button>' +
-        crLink('github.com', 'GitHub', 'ghp-logo') +
+        crLink('github.com', ghpIc('mark-github', '', 32) + '<span class="sr-only">Homepage</span>', 'ghp-logo') +
         '<nav class="ghp-mktg" aria-label="Global">' + nav.map(function (n) { return ghpExt(n[1], esc(n[0]) + ghpIc('triangle-down', 'ghp-caret'), 'ghp-mitem'); }).join('') + ghpExt('https://github.com/pricing', 'Pricing', 'ghp-mitem') + '</nav>' +
         '<label class="ghp-search">' + ghpIc('search') + '<input class="ghp-q" type="text" placeholder="Search" spellcheck="false" autocomplete="off" aria-label="Search or jump to"><kbd>/</kbd></label>' +
         ghpExt('https://github.com/login?return_to=https%3A%2F%2Fgithub.com%2F' + GHP_USER, 'Sign in', 'ghp-signin') +
-        ghpExt('https://github.com/signup?source=header', 'Sign up', 'ghp-signup') +
+        ghpExt('https://github.com/signup?ref_cta=Sign+up&ref_loc=header+logged+out&ref_page=%2F%3Cuser-name%3E&source=header', 'Sign up', 'ghp-signup') +
     '</header>';
 }
 function ghpCount(d, tab) {
@@ -3914,7 +3925,8 @@ function ghpCount(d, tab) {
 function ghpTabsInner(d, tab) {
     return GHP_TABS.map(function (t) {
         var n = t[0] === 'overview' ? '' : ghpCount(d, t[0]);
-        return crLink(ghpHref(t[0]), ghpIc(t[2]) + '<span>' + t[1] + '</span>' + (n && n !== '0' ? '<span class="ghp-counter">' + n + '</span>' : ''), 'ghp-tab' + (t[0] === tab ? ' on' : ''));
+        var on = t[0] === tab || (t[0] === 'stars' && tab.indexOf('list:') === 0);   // a star list sits under Stars
+        return crLink(ghpHref(t[0]), ghpIc(t[2]) + '<span>' + t[1] + '</span>' + (n && n !== '0' ? '<span class="ghp-counter">' + n + '</span>' : ''), 'ghp-tab' + (on ? ' on' : ''));
     }).join('');
 }
 function ghpSideInner(d) {
@@ -3937,9 +3949,11 @@ function ghpSideInner(d) {
     if (u.twitter_username) det.push(ghpIc('link') + ghpExt('https://x.com/' + u.twitter_username, '@' + esc(u.twitter_username), 'ghp-dlink'));
     if (det.length) h += '<ul class="ghp-details">' + det.map(function (x) { return '<li>' + x + '</li>'; }).join('') + '</ul>';
     if (d.achievements && d.achievements.length) {
-        h += '<div class="ghp-sec"><h2 class="ghp-sech">' + ghpExt('https://github.com/' + GHP_USER + '?tab=achievements', 'Achievements', 'ghp-hlink') + '</h2><div class="ghp-badges">' +
+        h += '<div class="ghp-sec"><h2 class="ghp-sech">' + crLink(ghpHref('achievements'), 'Achievements', 'ghp-hlink') + '</h2><div class="ghp-badges">' +
             d.achievements.map(function (a) {
-                return '<span class="ghp-badge t-' + a[2] + '" title="Achievement: ' + esc(a[0]) + '" aria-label="Achievement: ' + esc(a[0]) + '">' + ghpIc(a[3]) + (a[1] ? '<span class="ghp-tier">' + esc(a[1]) + '</span>' : '') + '</span>';
+                return crLink('github.com/' + GHP_USER + '?achievement=' + a[4] + '&tab=achievements',
+                    '<img class="ghp-badgeimg" referrerpolicy="no-referrer" src="' + esc(a[5]) + '" width="64" height="64" alt="Achievement: ' + esc(a[0]) + '">' +
+                    '<span class="ghp-badge t-' + a[2] + '" aria-hidden="true">' + ghpIc(a[3]) + '</span>' + (a[1] ? '<span class="ghp-tier t-' + a[2] + '">' + esc(a[1]) + '</span>' : ''), 'ghp-ach');
             }).join('') + '</div></div>';
     }
     if (d.orgs && d.orgs.length) {
@@ -3947,7 +3961,7 @@ function ghpSideInner(d) {
             return ghpExt('https://github.com/' + o.login, o.avatar_url ? '<img alt="@' + esc(o.login) + '" width="32" height="32" referrerpolicy="no-referrer" src="' + esc(o.avatar_url) + '">' : esc(o.login), 'ghp-org');
         }).join('') + '</div></div>';
     }
-    h += '<div class="ghp-block-report">' + ghpExt('https://github.com/contact/report-abuse?report=' + GHP_USER, 'Block or report user', 'ghp-mlink') + '</div>';
+    h += '<div class="ghp-block-report">' + ghpExt('https://github.com/contact/report-abuse?report=' + GHP_USER + '+%28user%29', 'Block or report user', 'ghp-mlink') + '</div>';
     return h;
 }
 function ghpLang(l) {
@@ -3968,7 +3982,7 @@ function ghpPopInner(d) {
             crLink('github.com/' + GHP_USER + '/' + r.name, '<span class="ghp-repo">' + esc(r.name) + '</span>', 'ghp-cname') +
             '<span class="ghp-label">' + ghpVis(r) + '</span></div>' +
             (p ? '<p class="ghp-forked">Forked from ' + crLink('github.com/' + p, esc(p), 'ghp-mlink') + '</p>' : '') +
-            (r.description ? '<p class="ghp-cdesc">' + esc(r.description) + '</p>' : '') +
+            (r.description ? '<p class="ghp-cdesc">' + esc(r.description.length > 200 ? r.description.slice(0, 197) + '...' : r.description) + '</p>' : '')   // cards cut at 200, as github.com's do +
             (meta.length ? '<p class="ghp-cmeta">' + meta.join('') + '</p>' : '') + '</li>';
     }).join('') + '</ol>';
 }
@@ -4005,7 +4019,7 @@ function ghpCalGrid(cal) {                // GitHub's table: Sunday-first rows, 
 }
 function ghpCalInner(d, st) {
     // the heading, the highlighted year and the grid always describe the same calendar: a picked year shows once it has loaded
-    var want = st && st.year, year = want && st.years[want] ? want : null, cal = year ? st.years[year] : d.cal;
+    var want = st && st.year, year = want && st.years[want] ? want : null, cal = year ? st.years[year] : d.cal;   // until it loads, the last year stays
     var heading = ghpPlural(nnum(cal.total), 'contribution', 'contributions') + (year ? ' in ' + year : ' in the last year');
     var created = nnum(String(d.user.created_at || '').slice(0, 4)) || 2022, thisYear = +ghpToday().slice(0, 4), years = '';
     for (var y = thisYear; y >= created; y--) {
@@ -4016,8 +4030,6 @@ function ghpCalInner(d, st) {
             '<h2 class="ghp-h2 ghp-calh">' + heading + '</h2>' +
             '<div class="ghp-calbox"><div class="ghp-calscroll">' + ghpCalGrid(cal) + '</div>' +
             '<div class="ghp-calfoot">' + ghpExt('https://docs.github.com/articles/why-are-my-contributions-not-showing-up-on-my-profile', 'Learn how we count contributions', 'ghp-mlink') + legend + '</div></div>' +
-            (want && !year && !st.yearFail ? '<p class="ghp-note">Loading ' + esc(want) + '…</p>' : '') +
-            (st && st.yearFail ? '<p class="ghp-note">The ' + esc(String(st.yearFail)) + ' calendar did not load. Try again in a minute.</p>' : '') +
         '</div><ul class="ghp-years" aria-label="Contribution years">' + years + '</ul></div>';
 }
 function ghpActInner(d, st) {
@@ -4050,16 +4062,11 @@ function ghpActInner(d, st) {
                     }).join('') + '</ul></details></div>';
             }
         }
-        if (!a) h += '<p class="ghp-noact">' + (st && st.pending ? 'Loading…' : 'This month did not load from GitHub. Try again in a minute.') + '</p>';
-        else h += items ? '<div class="ghp-tl">' + items + '</div>' : '<p class="ghp-noact">' + esc(d.user.login) + ' had no activity during this period.</p>';
+        if (a) h += items ? '<div class="ghp-tl">' + items + '</div>' : '<p class="ghp-noact">' + esc(d.user.login) + ' had no activity during this period.</p>';
         h += '</div>';
     });
-    if (st && st.moreFail) {
-        h += '<p class="ghp-note">' + (ghpHalted() ? 'GitHub\'s hourly limit for this network ran out before ' + ghpMonthName(st.moreFail) + ' loaded. It resets at ' + fmtTime(new Date(GHP_LIMIT)) + '.'
-            : ghpMonthName(st.moreFail) + ' did not load from GitHub. Try again in a minute.') + '</p>';
-    }
     var oldest = months[months.length - 1], done = ghpPrevMonth(oldest) < String(d.user.created_at || '').slice(0, 7);
-    if (!done) h += '<button type="button" class="ghp-btn ghp-block ghp-more"' + (st && st.moreBusy ? ' disabled' : '') + '>' + (st && st.moreBusy ? 'Loading…' : 'Show more activity') + '</button>';
+    if (!done) h += '<button type="button" class="ghp-btn ghp-block ghp-more"' + (st && st.moreBusy ? ' disabled' : '') + '>' + (st && st.moreBusy ? 'Loading...' : 'Show more activity') + '</button>';
     return h;
 }
 function ghpRepoRows(d, st) {
@@ -4127,7 +4134,7 @@ function ghpListsInner(d, st) {           // star lists: no API has them, so the
     return '<div class="ghp-listhead"><h2 class="ghp-h2">Lists (' + lists.length + ')</h2>' +
         ghpMenu('lsort', 'Sort', s, GHP_LSORT, 'Sort by', 'Sort<span class="sr-only"> ' + esc(ghpOpt(GHP_LSORT, s)) + '</span>') + '</div>' +
         '<div class="ghp-listgrid">' + lists.map(function (l) {
-            return ghpExt('https://github.com/stars/' + GHP_USER + '/lists/' + encodeURIComponent(l[0]), '<h3 class="ghp-listname">' + esc(l[0]) + '</h3>' + (nnum(l[1]) ? '<span>' + ghpPlural(nnum(l[1]), 'repository', 'repositories') + '</span>' : ''), 'ghp-listcard');
+            return crLink(ghpHref('list:' + l[0]), '<h3 class="ghp-listname">' + esc(l[0]) + '</h3>' + (nnum(l[1]) ? '<span>' + ghpPlural(nnum(l[1]), 'repository', 'repositories') + '</span>' : ''), 'ghp-listcard');
         }).join('') + '</div>';
 }
 function ghpStarBtns(d, f) {              // Type, then Language (only when the stars have languages), then Sort by
@@ -4160,7 +4167,7 @@ function ghpStarRows(d, st) {
             (q ? ' matching <b>' + esc(f.q.trim()) + '</b>' : '') + (f.lang !== 'all' ? ' written in <b>' + esc(f.lang) + '</b>' : '') +
             '</span><button type="button" class="ghp-clear ghp-sclear">' + ghpIc('x') + 'Clear filter</button></div>';
     }
-    if (!all.length && !h) return '<p class="ghp-blank">' + esc(d.user.login) + ' doesn\'t have any starred repositories yet.</p>';
+    if (!all.length && !h) return '<p class="ghp-blank">' + esc(d.user.login) + ' doesn’t have any starred repositories yet.</p>';
     if (!list.length) return h + '<h3 class="ghp-blank">That\'s it. You\'ve reached the end of ' + esc(d.user.login) + '\'s stars.</h3>';
     return h + '<ul class="ghp-rlist">' + list.map(function (r) {
         var full = r.owner + '/' + r.name, meta = [];
@@ -4181,16 +4188,29 @@ function ghpStarsInner(d, st) {
 function ghpSocialInner(d, tab, st) {     // what github.com shows at ?tab=followers and ?tab=following
     var n = nnum(d.user[tab]), be = 'https://docs.github.com/get-started/quickstart/be-social', s = st && st.social;
     if (!n) return '<div class="ghp-blankbox">' + (tab === 'followers'
-        ? '<h3>' + esc(d.user.login) + ' doesn\'t have any followers yet.</h3><p>' + ghpExt(be, 'Learn more about being social on GitHub.', 'ghp-accent') + '</p>'
-        : '<h3>' + esc(d.user.login) + ' isn\'t following anybody.</h3><p>' + ghpExt(be, 'Learn more', 'ghp-accent') + ' about being social on GitHub.</p>') + '</div>';
-    if (!s || (!s.list && !s.fail)) return '<p class="ghp-blank ghp-muted">Loading…</p>';
-    if (s.fail) return '<p class="ghp-blank">GitHub did not answer. Try again in a minute.</p>';
+        ? '<h3>' + esc(d.user.login) + ' doesn’t have any followers yet.</h3><p>' + ghpExt(be, 'Learn more about being social on GitHub.', 'ghp-accent') + '</p>'
+        : '<h3>' + esc(d.user.login) + ' isn’t following anybody.</h3><p>' + ghpExt(be, 'Learn more', 'ghp-accent') + ' about being social on GitHub.</p>') + '</div>';
+    if (!s || !s.list) return '';
     return '<ul class="ghp-people">' + s.list.map(function (p) {
         return '<li class="ghp-person">' + crLink('github.com/' + p.login, p.avatar_url ? '<img class="ghp-pav" alt="@' + esc(p.login) + '" width="50" height="50" referrerpolicy="no-referrer" src="' + esc(p.avatar_url) + '">' : '', 'ghp-pavl') +
             crLink('github.com/' + p.login, esc(p.login), 'ghp-plogin') + '</li>';
     }).join('') + '</ul>' + (n > s.list.length ? '<div class="ghp-pager"><span class="ghp-btn" aria-disabled="true">Previous</span>' + ghpExt('https://github.com/' + GHP_USER + '?page=2&tab=' + tab, 'Next', 'ghp-btn') + '</div>' : '');
 }
+function ghpAchInner(d) {                 // ?tab=achievements: the badges again, larger; their details are a fragment GitHub loads, which no API serves
+    return '<h2 class="ghp-h2 ghp-achh">Earned achievements</h2><ul class="ghp-achgrid">' + (d.achievements || []).map(function (a) {
+        return '<li class="ghp-achcard"><span class="ghp-ach ghp-achbig"><img class="ghp-badgeimg" referrerpolicy="no-referrer" src="' + esc(a[5]) + '" width="96" height="96" alt="Achievement: ' + esc(a[0]) + '">' +
+            '<span class="ghp-badge t-' + a[2] + '" aria-hidden="true">' + ghpIc(a[3]) + '</span></span><h3 class="ghp-achname">' + esc(a[0]) + '</h3>' +
+            (a[1] ? '<span class="ghp-tier ghp-tierin t-' + a[2] + '">' + esc(a[1]) + '</span>' : '') + '</li>';
+    }).join('') + '</ul>';
+}
+function ghpListInner(d, name) {          // /stars/<login>/lists/<name>
+    var l = (d.lists || []).filter(function (x) { return x[0] === name; })[0] || [name, 0];
+    return '<div class="ghp-listpage">' + crLink(ghpHref('stars'), 'Stars', 'ghp-crumb') + '<h1 class="ghp-listh">' + esc(l[0]) + '</h1>' +
+        (nnum(l[1]) ? '' : '<div class="ghp-blankbox ghp-listempty"><h2>Nothing starred yet</h2></div>') + '</div>';
+}
 function ghpBody(d, tab, st) {
+    if (tab.indexOf('list:') === 0) return ghpListInner(d, tab.slice(5));
+    if (tab === 'achievements') return ghpAchInner(d);
     if (tab === 'repositories') return ghpReposInner(d, st);
     if (tab === 'stars') return '<div id="ghpStars">' + ghpStarsInner(d, st) + '</div>';
     if (tab === 'followers' || tab === 'following') return '<div id="ghpSocial">' + ghpSocialInner(d, tab, st) + '</div>';
@@ -4202,34 +4222,20 @@ function ghpBody(d, tab, st) {
         }).join('') + '</ul>';
     return '<div id="ghpPop">' + ghpPopInner(d) + '</div><div id="ghpCal">' + ghpCalInner(d, st) + '</div><div id="ghpAct">' + ghpActInner(d, st) + '</div>';
 }
-function ghpStatusInner(d, st, tab) {     // the one line that says which of this tab is live and which is the saved copy, and from when
-    var first = st ? st.months[0] : ghpFirstMonth(d), ts = [d.at.user, d.at.orgs];   // the sidebar, then what this tab draws
-    if (tab === 'overview') ts.push(d.at.repos, d.at.cal, d.act[first] ? d.act[first].t : 0);
-    else if (tab === 'repositories') ts.push(d.at.repos);
-    else if (tab === 'stars') ts.push(d.at.stars);
-    var now = st ? st.t0 : Date.now();    // as of when this view chose what to ask: it asks once, so nothing goes stale while it is open
-    var oldest = Math.min.apply(null, ts), fresh = ts.filter(function (t) { return !!t && now - t < GHP_TTL; }).length;
-    var open = ' ' + ghpExt('https://github.com/' + GHP_USER, 'Open on GitHub', 'ghp-mlink ghp-accent');
-    if (fresh === ts.length) return 'Live from GitHub, fetched ' + ghpWhen(oldest) + '.' + open;
-    var copy = 'the copy saved ' + ghpWhen(oldest || Date.parse(GHP_SNAP.asOf)), some = fresh ? 'parts of this page are ' : 'this is ';
-    if (st && st.pending) return ghpCap(some) + copy + '. Asking GitHub for the live profile…';
-    if (ghpHalted()) return 'GitHub\'s hourly limit for this network ran out, so ' + some + copy + '. It resets at ' + fmtTime(new Date(GHP_LIMIT)) + '.' + open;
-    if (!st || !st.asked) return ghpCap(some) + copy + '.' + open;
-    return (fresh ? 'Parts of this page did not load from GitHub, so they are ' : 'GitHub did not answer, so this is ') + copy + '.' + open;
-}
 function ghpFoot() {
     var links = [['Terms', 'https://docs.github.com/site-policy/github-terms/github-terms-of-service'], ['Privacy', 'https://docs.github.com/site-policy/privacy-policies/github-privacy-statement'], ['Security', 'https://github.com/security'], ['Status', 'https://www.githubstatus.com/'], ['Community', 'https://github.community/'], ['Docs', 'https://docs.github.com/'], ['Contact', 'https://support.github.com?tags=dotcom-footer']];
-    return '<footer class="ghp-foot"><span>© ' + ghpToday().slice(0, 4) + ' GitHub, Inc.</span>' + links.map(function (l) { return ghpExt(l[1], l[0], 'ghp-flink'); }).join('') +
-        '<span class="ghp-flink">Manage cookies</span><span class="ghp-flink">Do not share my personal information</span></footer>';
+    return '<footer class="ghp-foot"><h2 class="sr-only">Footer</h2><div class="ghp-footl">' + crLink('github.com', ghpIc('mark-github', '', 24) + '<span class="sr-only">GitHub Homepage</span>', 'ghp-footmark') +
+        '<span>© ' + ghpToday().slice(0, 4) + ' GitHub, Inc.</span></div><nav class="ghp-footnav" aria-label="Footer">' + links.map(function (l) { return ghpExt(l[1], l[0], 'ghp-flink'); }).join('') +
+        '<span class="ghp-flink">Manage cookies</span><span class="ghp-flink">Do not share my personal information</span></nav></footer>';
 }
 function ghpPage(d, tab, st) {
     return '<div class="cr-ghp">' + ghpHeader() +
         '<div class="ghp-tabs"><nav class="ghp-tabsin" id="ghpTabs" aria-label="User profile">' + ghpTabsInner(d, tab) + '</nav></div>' +
         '<div class="ghp-layout"><aside class="ghp-side" id="ghpSide">' + ghpSideInner(d) + '</aside>' +
-        '<main class="ghp-main" id="ghpMain">' + ghpBody(d, tab, st) + '<p class="ghp-status" id="ghpStatus">' + ghpStatusInner(d, st, tab) + '</p></main></div>' +
+        '<main class="ghp-main" id="ghpMain">' + ghpBody(d, tab, st) + '</main></div>' +
         ghpFoot() + '<div class="ghp-tip" id="ghpTip" hidden></div></div>';
 }
-function ghpPaint(st, parts) {            // redraws the named sections of the open view, then the status line
+function ghpPaint(st, parts) {            // redraws the named sections of the open view
     if (!ghpAlive(st)) return;
     var v = st.view, d = st.d;
     function put(id, html) { var el = v.querySelector('#' + id); if (el) el.innerHTML = html; }
@@ -4244,7 +4250,6 @@ function ghpPaint(st, parts) {            // redraws the named sections of the o
         else if (p === 'lists') put('ghpLists', ghpListsInner(d, st));
         else if (p === 'social') put('ghpSocial', ghpSocialInner(d, st.tab, st));
     });
-    put('ghpStatus', ghpStatusInner(d, st, st.tab));
     if (find.appId === 'chrome' && findOpenNow()) { var sy = v.scrollTop, sx = v.scrollLeft; runFind(); v.scrollTop = sy; v.scrollLeft = sx; }   // re-mark what an answer or a keystroke redrew, without moving the page
 }
 function ghpCalEnd(st) { var s = st.view.querySelector('.ghp-calscroll'); if (s) s.scrollLeft = s.scrollWidth; }   // the recent end, like the real one
@@ -4260,7 +4265,8 @@ function ghpBar(st, id, html) {           // a filter bar's menus redraw to show
 
 webPage('github.com/IsaacUre', {
     live: true,                                               // keeps ?tab= in the address, like github.com
-    claim: /^github\.com\/+isaacure\/*(?:[?#].*)?$/,          // ...and those addresses land here, not on the generic GitHub page
+    // ...and those addresses (and the saved star lists' pages) land here, not on the generic GitHub page
+    claim: new RegExp('^github\\.com\\/+(?:isaacure\\/*|stars\\/+isaacure\\/+lists\\/+(?:' + GHP_SNAP.lists.map(function (l) { return encodeURIComponent(l[0]).toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }).join('|') + ')\\/*)(?:[?#].*)?$'),
     title: function (q, url) { return ghpTitleFor(ghpUserNow(), ghpTab(url)); },
     fav: { ch: 'G', c: '#1f2328' }, searchable: true,
     get stitle() { return ghpTitleFor(ghpUserNow(), 'overview'); },
@@ -4275,7 +4281,7 @@ webPage('github.com/IsaacUre', {
     },
     init: function (view) {
         var d = ghpData();
-        var st = { view: view, url: liveUrl(), d: d, priv: !!(CR && CR.incog), t0: Date.now(), pending: 0, got: false, years: {}, months: [ghpFirstMonth(d)], parentAsked: Object.create(null),
+        var st = { view: view, url: liveUrl(), d: d, priv: !!(CR && CR.incog), pending: 0, got: false, years: {}, months: [ghpFirstMonth(d)], parentAsked: Object.create(null),
                    filter: { q: '', type: 'all', lang: 'all', sort: 'updated' }, sfilter: ghpClone(GHP_SF0), lsort: 'name-asc' };
         st.tab = ghpTab(st.url);
         GHP = st;
@@ -4287,7 +4293,7 @@ webPage('github.com/IsaacUre', {
             var y = t.closest('.ghp-year');
             if (y) {
                 var yr = +y.getAttribute('data-year'), cur = +ghpToday().slice(0, 4);
-                st.yearFail = null; st.year = yr === cur ? null : String(yr);
+                st.year = yr === cur ? null : String(yr);
                 if (st.year && !st.years[st.year]) ghpCalendar(st, st.year);
                 ghpPaint(st, ['cal']); return;
             }
@@ -4344,6 +4350,10 @@ webPage('github.com/IsaacUre', {
             tip.classList.toggle('ghp-tipb', below);
             tip.style.top = (below ? (a.bottom - b.top) / z + 6 : (a.top - b.top) / z - 6) + 'px';
         });
+        view.addEventListener('error', function (e) {   // an achievement picture GitHub no longer serves: its medallion instead (error does not bubble)
+            var im = e.target;
+            if (im && im.classList && im.classList.contains('ghp-badgeimg')) im.closest('.ghp-ach').classList.add('ghp-nopic');
+        }, true);
         view.addEventListener('mouseout', function (e) { if (tip && e.target.closest && e.target.closest('.ghp-day')) tip.hidden = true; });
         view.addEventListener('toggle', function (e) {   // a menu opens inside the view: right-aligned to its button as on GitHub, unless that runs off the left edge (toggle does not bubble)
             var m = e.target, b = m.classList && m.classList.contains('ghp-menu') && m.open && m.querySelector('.ghp-menubox');
