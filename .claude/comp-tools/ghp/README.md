@@ -61,9 +61,22 @@ NODE_PATH=/opt/node22/lib/node_modules node .claude/comp-tools/ghp/drive_more.js
 ```
 
 It drives the home page, search, IsaacUre/IsaacUre.github.io (the root, a folder,
-a file, a picture, a file past the API's 1 MB, a Markdown file, the commit list),
-someone else's profile, an organization and the 404s, and checks the limits:
-rate limited, offline, few requests left this hour, and search's own limit.
+a file, a picture, a file past the API's 1 MB, an empty file, a Markdown file, the
+commit list and its pages, a folder's history, one commit, a commit's tree,
+submodules), someone else's profile, an organization, Incognito, the 404s and
+"File not found", the pages the copy does not draw, and a phone's width. It
+checks the limits too: rate limited, offline, few requests left this hour, and
+search's own limit.
+
+- Every answer says 59 requests are left this hour (a fresh hour), except the
+  few-left check's, which says 35 (so 5 rows get their last commit and 30 stay
+  in reserve).
+- A branch named `feat/x`: asked for as `feat`, the contents API answers 404
+  with its own words for a missing ref, "No commit found for the ref feat".
+- `mods/` is a folder of two submodules, one on GitHub and one elsewhere.
+- torvalds has a profile README (`readme.md`), a September of 250 commits over
+  seven repositories in the `busy` scenario, and a repo list that answers 1.5 s
+  late in the `slowRepos` one.
 
 - IsaacUre/IsaacUre.github.io's answers are the real ones, trimmed to what the
   pages read: `data/repo.json`. To refresh it, save the API's answers outside the
