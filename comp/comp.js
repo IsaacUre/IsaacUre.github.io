@@ -5182,7 +5182,7 @@ function ghxAbout(st) {
     if (topics.length) h += '<div class="ghx-topics">' + topics.map(function (t) { return ghpExt('https://github.com/topics/' + t, esc(t), 'ghx-topic'); }).join('') + '</div>';
     h += (st.readme || R.license ? '<h3 class="sr-only">Resources</h3>' : '') + '<ul class="ghx-sblist">';
     if (st.readme) h += '<li>' + ghpIc('book') + '<a class="ghx-mlink" href="#readme-ov-file" data-ghx-jump="readme">Readme</a></li>';
-    if (R.license) h += '<li>' + ghpIc('law') + '<a class="ghx-mlink" href="#license" data-ghx-jump="readme">' + esc(R.license.spdx_id && R.license.spdx_id !== 'NOASSERTION' ? R.license.name : 'License') + '</a></li>';
+    if (R.license) h += '<li>' + ghpIc('law') + '<a class="ghx-mlink" href="#license" data-ghx-jump="readme">' + esc(R.license.spdx_id && R.license.spdx_id !== 'NOASSERTION' ? R.license.spdx_id + ' license' : 'License') + '</a></li>';   // "MIT license", as the README's tab
     h += '<li>' + ghpIc('pulse') + ghpExt('https://github.com/' + o + '/' + r + '/activity', 'Activity', 'ghx-mlink') + '</li>';
     h += '<li><h3 class="sr-only">Stars</h3>' + ghpIc('star') + '<span><b>' + nnum(R.stargazers_count).toLocaleString() + '</b> stars</span></li>';
     h += '<li><h3 class="sr-only">Watchers</h3>' + ghpIc('eye') + '<span><b>' + nnum(R.subscribers_count).toLocaleString() + '</b> watching</span></li>';
