@@ -3350,7 +3350,6 @@ input.mc-mw::selection { background: transparent; }
 .cr-hnch { font-size: 11px; opacity: .65; display: flex; gap: 8px; }
 .cr-hncb { font-size: 12.5px; }
 .cr-hncb.op { background: rgba(255,102,0,.06); padding: 6px 10px; }
-/* github */
 /* weather */
 .cr-wx { max-width: 640px; }
 .cr-wxnow { display: flex; align-items: center; gap: 18px; padding: 16px 0; }
@@ -5738,6 +5737,7 @@ button.nn-drow b + i { display: inline-block; margin-left: 10px; }
 .ghx-goto kbd { font: 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; border: 1px solid #d1d9e0; border-radius: 4px; padding: 0 5px; line-height: 16px; }
 @container (min-width: 768px) { .ghx-goto { display: inline-flex; } }
 .ghx-codemenu { position: relative; }
+@container (max-width: 543px) { .ghx-brow { position: relative; } .ghx-codemenu { position: static; } .ghx-codebox { left: 0; right: auto; } }
 .ghx-codemenu > summary { list-style: none; }
 .ghx-codemenu > summary::-webkit-details-marker { display: none; }
 .cr-ghp .ghx-codebtn { color: #fff; background: #1f883d; border-color: #1f232826; font-weight: 500; }
@@ -5758,11 +5758,11 @@ button.nn-drow b + i { display: inline-block; margin-left: 10px; }
 .ghx-latest { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 12px 16px; font-size: 14px; background: #f6f8fa; border-bottom: 1px solid #d1d9e0; border-radius: 6px 6px 0 0; }
 .ghx-avs { display: inline-flex; flex: none; }
 .ghx-avs .ghx-av + .ghx-av { margin-left: -6px; }
-.ghx-lwho { flex: none; white-space: nowrap; }
+.ghx-lwho { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cr-ghp .ghx-who { color: #1f2328; }
 .ghx-who b, b.ghx-who { font-weight: 600; }
-.ghx-lmsg { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ghx-lmeta { flex: none; font-size: 12px; color: #59636e; white-space: nowrap; }
+.ghx-lmsg { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ghx-lmeta { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 12px; color: #59636e; white-space: nowrap; }
 .cr-ghp .ghx-sha { font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #59636e; }
 .cr-ghp .ghx-hist { display: inline-flex; flex: none; align-items: center; gap: 4px; padding: 0 4px; font-size: 14px; color: #1f2328; white-space: nowrap; }
 .cr-ghp .ghx-hist:hover { color: #0969da; text-decoration: none; }
@@ -5896,9 +5896,10 @@ button.nn-drow b + i { display: inline-block; margin-left: 10px; }
 .ghx-crow { display: flex; gap: 16px; padding: 8px 16px; border-top: 1px solid #d1d9e0b3; }
 .ghx-crow:first-child { border-top: 0; }
 .ghx-cmain { flex: 1 1 auto; min-width: 0; }
-.ghx-ctitle { margin: 0 0 4px; font-size: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ghx-ctitle { display: flex; align-items: center; margin: 0 0 4px; font-size: 16px; font-weight: 600; }
+.ghx-ctext { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cr-ghp .ghx-ctl { color: #1f2328; }
-.cr-ghp .ghx-ellip { margin-left: 4px; padding: 0 5px; font-size: 12px; line-height: 12px; color: #1f2328; background: #818b981f; border: 0; border-radius: 1px; }
+.cr-ghp .ghx-ellip { flex: none; margin-left: 4px; padding: 0 5px; font-size: 12px; line-height: 12px; color: #1f2328; background: #818b981f; border: 0; border-radius: 1px; }
 .ghx-cby { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: 12px; color: #59636e; }
 .ghx-cside { display: flex; flex: none; align-items: center; gap: 8px; }
 .cr-ghp .ghx-csha { font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #59636e; }
@@ -5908,8 +5909,11 @@ button.nn-drow b + i { display: inline-block; margin-left: 10px; }
 .ghx-404 { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 80px 16px; text-align: center; }
 .ghx-404h { margin: 0; font-size: 96px; font-weight: 700; line-height: 1; color: #1f2328; }
 .ghx-404p { margin: 0; font-size: 20px; color: #59636e; }
-.ghx-404q { display: flex; align-items: center; gap: 8px; width: 320px; max-width: 100%; height: 32px; padding: 0 8px; color: #59636e; border: 1px solid #d1d9e0; border-radius: 6px; }
-.ghx-404q input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; font-size: 14px; }
+.ghx-404art { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.ghx-404form p { margin: 0 0 8px; color: #59636e; }
+.ghx-404row { display: flex; gap: 8px; justify-content: center; }
+.ghx-404in { width: 280px; max-width: 60vw; height: 32px; padding: 0 12px; font: inherit; color: #1f2328; border: 1px solid #d1d9e0; border-radius: 6px; }
+.ghx-404links { margin: 0; font-size: 12px; color: #59636e; }
 /* github.com, logged out: dark */
 .cr-ghp.ghx-dark { background: #0d1117; color: #f0f6fc; }
 .ghx-dark .ghp-top { background: transparent; border-bottom-color: #3d444db3; }
@@ -5917,6 +5921,9 @@ button.nn-drow b + i { display: inline-block; margin-left: 10px; }
 .cr-ghp.ghx-dark .ghp-signup { color: #f0f6fc; border-color: #f0f6fc; }
 .ghx-dark .ghp-search { background: transparent; border-color: #3d444d; color: #9198a1; }
 .ghx-dark .ghp-search input { color: #f0f6fc; }
+.ghx-dark .ghp-search input::placeholder, .ghx-dark .ghp-search kbd { color: #9198a1; }
+.ghx-dark .ghp-search kbd { border-color: #3d444d; }
+.cr-ghp.ghx-dark.ghp-navopen .ghp-mktg .ghp-mitem { color: #1f2328; }   /* the open menu is a white panel: its items take the light page's colour back */
 .ghx-dark .ghp-burger, .ghx-dark .ghp-caret { color: #9198a1; }
 .ghx-homepage { max-width: 1280px; margin: 0 auto; padding: 0 16px 64px; }
 .ghx-hero { padding: 96px 0 64px; text-align: center; }
@@ -5990,6 +5997,7 @@ button.nn-drow b + i { display: inline-block; margin-left: 10px; }
 @container (min-width: 1012px) { .ghx-otabs { padding: 0 32px; } }
 .ghx-orepos { margin-top: 24px; }
 .ghx-orepos .ghp-rbar { justify-content: flex-end; }
+@container (max-width: 543px) { .ghx-orepos .ghp-rbar { position: relative; } .ghx-orepos .ghp-menu { position: static; } }   /* a phone: the menus open inside the page */
 .cr-ghp .ghx-viewall { display: inline-block; margin-top: 16px; font-weight: 600; color: #0969da; }
 .ghx-olangs { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 12px; }
 /* search */
@@ -6001,6 +6009,9 @@ button.nn-drow b + i { display: inline-block; margin-left: 10px; }
 .cr-ghp .ghx-stype.on { background: #818b981a; font-weight: 600; }
 .ghx-stype .ghp-oct { color: #59636e; }
 .ghx-stype .ghp-counter { margin-left: auto; }
+.cr-ghp .ghx-sadv { background: none; border: 0; text-align: left; cursor: pointer; }
+.ghx-sadvh { margin-top: 24px; }
+.cr-ghp .ghx-sadvl { margin-top: 8px; color: #0969da; }
 .ghx-shead { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
 .ghx-sresults { margin: 0; font-size: 14px; font-weight: 600; }
 .ghx-sms { font-weight: 400; }
@@ -6021,12 +6032,6 @@ button.nn-drow b + i { display: inline-block; margin-left: 10px; }
 .cr-ghp .ghx-pgon { background: #0969da; color: #fff; }
 .cr-ghp .ghx-pgoff { color: #818b98; }
 .ghx-pggap { padding: 0 4px; color: #59636e; }
-/* the 404 */
-.ghx-404art { display: flex; flex-direction: column; align-items: center; gap: 12px; }
-.ghx-404form p { margin: 0 0 8px; color: #59636e; }
-.ghx-404row { display: flex; gap: 8px; justify-content: center; }
-.ghx-404in { width: 280px; max-width: 60vw; height: 32px; padding: 0 12px; font: inherit; color: #1f2328; border: 1px solid #d1d9e0; border-radius: 6px; }
-.ghx-404links { margin: 0; font-size: 12px; color: #59636e; }
 .cr-ghp .ghx-hlinkl { color: #0969da; }
 .ghx-imgbody { padding: 16px; text-align: center; background: #f6f8fa; }
 .ghx-imgbody img { max-width: 100%; }
@@ -6076,3 +6081,9 @@ button.nn-drow b + i { display: inline-block; margin-left: 10px; }
 .ghx-dhunk td { background: #ddf4ff; color: #59636e; }
 .ghx-dnote { margin: 0; padding: 16px; text-align: center; color: #59636e; }
 .ghx-dview .ghx-seg { display: inline-flex; align-items: center; }
+/* a path the ref does not have ("404 - page not found"), and a history's "History for" line */
+.ghx-nopath { padding: 32px 16px; text-align: center; }
+.ghx-nph { margin: 0 0 8px; font-size: 24px; font-weight: 600; }
+.ghx-nopath p { margin: 0 0 16px; color: #59636e; }
+.ghx-nopath code { padding: 2px 4px; font: 85% ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: #818b981f; border-radius: 6px; }
+.ghx-hfor { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; font-size: 14px; color: #59636e; }

@@ -3693,7 +3693,7 @@ function ghpGot(st, gh, fn, err, j, r, t, url) {
         }
     }
     if (!ghpAlive(st)) return;            // navigated away: nothing more is drawn or fetched
-    try { fn(err, j, t); } catch (e) { st.bug = String(e && e.message || e); }
+    try { fn(err, j, t); } catch (e) { st.bug = String(e && e.message || e); if (window.console) console.error(e); }   // a drawing bug stays visible
     if (!st.pending) ghpSettle(st);
 }
 function ghpSettle(st) {                  // everything asked so far has answered
@@ -4284,7 +4284,7 @@ function ghpStarSearch(st, page) {
     clearTimeout(st.sgWait);
     var f = st.sfilter, q = f.q.trim(), sort = f.sort;
     page = page || 1;
-    if ((st.d.stars || []).length || !q || f.type !== 'all' || f.lang !== 'all') { st.sg = null; return; }
+    if (!st.d.stars || st.d.stars.length || !q || f.type !== 'all' || f.lang !== 'all') { st.sg = null; return; }
     var key = ghpSgKey(f, page);
     if (st.sg && st.sg.key === key) return;
     var g = st.sg = { key: key, page: page };
@@ -4328,7 +4328,7 @@ function ghpListInner(d, name) {          // /stars/<login>/lists/<name>
         (nnum(l[1]) ? '' : '<div class="ghp-blankbox ghp-listempty"><h2>Nothing starred yet</h2></div>') + '</div>';
 }
 function ghpReadmeInner(d) {              // a <login>/<login> repository's README, as GitHub rendered it (IsaacUre has none)
-    return d.readme ? '<div class="ghp-preadme"><div class="ghp-preadmeh">' + esc(d.user.login) + '/README.md</div>' + d.readme + '</div>' : '';
+    return d.readme ? '<div class="ghp-preadme"><div class="ghp-preadmeh">' + crLink('github.com/' + d.user.login + '/' + d.user.login, esc(d.user.login), 'ghp-mlink') + '/' + esc(d.readmeName || 'README.md') + '</div>' + d.readme + '</div>' : '';
 }
 function ghpBody(d, tab, st) {
     if (tab.indexOf('list:') === 0) return ghpListInner(d, tab.slice(5));
@@ -4388,6 +4388,7 @@ function ghpBar(st, id, html) {           // a filter bar's menus redraw to show
 
 function ghpWire(view, st) {              // a profile view's clicks, keys and the calendar's tooltip; once a view, after its page is drawn
     var tip = view.querySelector('#ghpTip'), root = view.querySelector('.cr-ghp');
+    ghxNoTab(view);
     view.addEventListener('click', function (e) {
         var t = e.target;
         if (ghxAnchor(e, view)) return;   // a profile README's own links
@@ -4912,6 +4913,7 @@ function liveTitle(url, title) {
         for (var i = 0; i < h.length; i++) if (h[i].u === url) { h[i].t = title; break; }
         crjSet('hist', h);
     }
+    else (CR.privTitles || (CR.privTitles = Object.create(null)))[url] = title;   // never history or storage
     crTabs();
 }
 /* the little proof-of-life chip live pages wear */
@@ -5486,20 +5488,20 @@ var GHX_COAUTHOR = { 'noreply@anthropic.com': ['claude', 81847] };
 /* —— fetching —— */
 function ghxMem() { return CR && CR.incog ? (CR.ghxPriv || (CR.ghxPriv = Object.create(null))) : GHX_MEM; }
 function ghxAlive(st) { return st.view.isConnected && (!CR || st.cr === CR); }
-/* fn(err, value, lastPage): value is parsed JSON, or text with { html: true } / { raw: true }; lastPage is the Link header's rel="last" page, 0 if none */
+/* fn(err, value, lastPage): value is parsed JSON, or text with { html: true }; lastPage is the Link header's rel="last" page, 0 if none.
+   A 404's value is its { message }, when GitHub sent one */
 function ghxGet(st, url, opt, fn) {
     opt = opt || {};
-    var mem = ghxMem(), key = (CR && CR.incog ? 'p' : 'n') + (opt.html ? 'h' : opt.raw ? 'r' : 'j') + ' ' + url, hit = mem[key];
+    var mem = ghxMem(), key = (CR && CR.incog ? 'p' : 'n') + (opt.html ? 'h' : 'j') + ' ' + url, hit = mem[key];
     st.pending++;
     function done(e, v, last) {
         Promise.resolve().then(function () {
             st.pending--;
             if (!ghxAlive(st)) return;
-            try { fn(e, v, last || 0); } catch (x) { st.bug = String(x && x.message || x); }
-            if (!st.pending && st.settle) st.settle();
+            try { fn(e, v, last || 0); } catch (x) { st.bug = String(x && x.message || x); if (window.console) console.error(x); }   // a drawing bug stays visible
         });
     }
-    if (hit && Date.now() - hit.t < GHX_TTL) { done(null, hit.v, hit.last); return; }
+    if (hit && Date.now() - hit.t < GHX_TTL) { done(hit.e || null, hit.v, hit.last); return; }
     if (ghxLimited(url)) { done('limit'); return; }
     if (GHX_FLY[key]) { GHX_FLY[key].push(done); return; }
     GHX_FLY[key] = [done];
@@ -5509,7 +5511,7 @@ function ghxGet(st, url, opt, fn) {
     function fin(e, v, last) {
         clearTimeout(tmr);
         var w = GHX_FLY[key] || []; delete GHX_FLY[key];
-        if (!e) { mem[key] = { t: Date.now(), v: v, last: last }; var ks = Object.keys(mem); if (ks.length > 160) delete mem[ks[0]]; }
+        if (!e || e === 'http404') { mem[key] = { t: Date.now(), v: v, last: last, e: e || null }; var ks = Object.keys(mem); if (ks.length > 160) delete mem[ks[0]]; }   // a 404 is an answer too (no README, no such page)
         w.forEach(function (g) { g(e, v, last); });
     }
     if (navigator.onLine === false) { fin('offline'); return; }
@@ -5522,13 +5524,13 @@ function ghxGet(st, url, opt, fn) {
                 var wait = nnum(r.headers.get('x-ratelimit-reset')) * 1000 - Date.now(), until = Date.now() + Math.min(3600000, Math.max(60000, wait));
                 if (search) GHX_SLIMIT = until; else GHP_LIMIT = until;
             }
+            if (r.status === 404) return r.json().then(function (b) { fin('http404', b && typeof b.message === 'string' ? { message: b.message } : null, last); }, function () { fin('http404', null, last); });   // its words say what is missing
             fin('http' + r.status); return;
         }
-        return (opt.html || opt.raw ? r.text() : r.json()).then(function (v) { fin(null, v, last); });
+        return (opt.html ? r.text() : r.json()).then(function (v) { fin(null, v, last); });
     }).catch(function () { fin('net'); });
 }
-function ghxCount(list, last) { return last ? null : Array.isArray(list) ? list.length : 0; }   // with per_page=1 a "last" page number IS the count
-function ghxN(list, last) { return last || (Array.isArray(list) ? list.length : 0); }
+function ghxN(list, last) { return last || (Array.isArray(list) ? list.length : 0); }   // with per_page=1 a "last" page number IS the count
 
 /* —— little formatters, github.com's own ——*/
 function ghxBytes(n) {                    // "12 Bytes", "12 KB", "35.7 KB", "1.2 MB": three significant figures, a trailing .0 dropped
@@ -5538,8 +5540,8 @@ function ghxBytes(n) {                    // "12 Bytes", "12 KB", "35.7 KB", "1.
     do { n /= 1024; i++; } while (n >= 1024 && i < 2);
     return String(+n.toPrecision(3)).replace(/\.0$/, '') + ' ' + u[i];
 }
-function ghxLines(text) {                 // "196 lines (181 loc)": GitHub counts a last line without a newline too, and writes "1 lines"
-    var ls = String(text).split('\n'); if (ls.length > 1 && ls[ls.length - 1] === '') ls.pop();
+function ghxLines(text) {                 // "196 lines (181 loc)": GitHub counts a last line without a newline too, writes "1 lines", and an empty file "0 lines (0 loc)"
+    var ls = String(text).split('\n'); if (ls[ls.length - 1] === '') ls.pop();
     var loc = ls.filter(function (l) { return /\S/.test(l); }).length;
     return ls.length + ' lines (' + loc + ' loc)';
 }
@@ -5553,7 +5555,6 @@ function ghxAv(url, size, alt, cls) {
 }
 function ghxAvId(id, size, alt, cls) { return ghxAv('https://avatars.githubusercontent.com/u/' + nnum(id) + '?v=4', size, alt, cls); }
 function ghxLogin(s) { return typeof s === 'string' && /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/.test(s); }
-function ghxOwnerRepo(s) { return ghpFull(s); }
 
 /* the people on a commit: its author, then the Co-authored-by trailers github.com can tie to an account */
 function ghxPeople(c) {
@@ -5578,10 +5579,21 @@ function ghxWho(people, rel) {            // "IsaacUre and claude", "a, b and c"
 }
 function ghxAvs(people, size) { return '<span class="ghx-avs">' + people.slice(0, 3).map(function (p) { return p.avatar ? ghxAv(p.avatar, size, p.login || p.name) : ''; }).join('') + '</span>'; }
 function ghxTitleLine(msg) { return String(msg || '').split('\n')[0]; }
-function ghxMsgHtml(o, r, msg) {          // a commit title: "(#177)" links its pull request, the rest links the commit
+function ghxMsgHtml(o, r, msg) {          // a commit title as text, with "(#177)" linking its pull request
     var t = esc(ghxTitleLine(msg));
     return t.replace(/\(#(\d+)\)/g, function (m, n) { return '(' + ghpExt('https://github.com/' + o + '/' + r + '/pull/' + n, '#' + n, 'ghx-prref') + ')'; });
 }
+function ghxMsgLinks(o, r, sha, msg, cls) { // the same, as links side by side (never one inside another): the text opens the commit, "#177" its pull request
+    var t = ghxTitleLine(msg), out = '', at = 0, m, re = /\(#(\d+)\)/g, c = 'github.com/' + o + '/' + r + '/commit/' + sha;
+    while ((m = re.exec(t))) {
+        out += crLink(c, esc(t.slice(at, m.index) + '('), cls) + ghpExt('https://github.com/' + o + '/' + r + '/pull/' + m[1], '#' + m[1], 'ghx-prref');
+        at = m.index + m[0].length - 1;
+    }
+    return out + (at < t.length ? crLink(c, esc(t.slice(at)), cls) : '');
+}
+function ghxIsSha(ref) { return /^[0-9a-f]{40}$/i.test(ref || ''); }
+function ghxRefLabel(ref) { return ghxIsSha(ref) ? ref.slice(0, 7) : ref; }   // a commit is shown by its short sha
+function ghxRefPath(ref) { return (ghxIsSha(ref) ? '' : 'refs/heads/') + ghxEnc(ref); }   // raw/<sha>/... but raw/refs/heads/<branch>/...
 
 /* —— the repository header: context crumbs and tabs, then the title row ——
    github.com's order, logged out: the owner / repo crumbs and the repository
@@ -5599,7 +5611,7 @@ function ghxRepoTabs(o, r, R, tab, counts) {
     items.push(['security', 'Security and quality', 'shield', base + '/security']);
     items.push(['insights', 'Insights', 'graph', base + '/pulse']);
     return '<nav class="ghx-rtabs" aria-label="Repository">' + items.map(function (t) {
-        var inner = ghpIc(t[2]) + '<span>' + t[1] + '</span>' + (t[4] ? '<span class="ghp-counter">' + nnum(t[4]).toLocaleString() + '</span>' : '');
+        var inner = ghpIc(t[2]) + '<span>' + t[1] + '</span>' + (t[4] ? '<span class="ghp-counter">' + (nnum(t[4]) >= 5000 ? '5k+' : ghpAbbr(t[4])) + '</span>' : '');   // "2.9k", "5k+"
         return t[0] === 'code' ? crLink(t[3], inner, 'ghp-tab' + (tab === 'code' ? ' on' : '')) : ghpExt(t[3], inner, 'ghp-tab');
     }).join('') + '</nav>';
 }
@@ -5626,6 +5638,10 @@ function ghxSortEntries(list) {           // folders first, then files, each by 
         return x < y ? -1 : x > y ? 1 : 0;
     });
 }
+function ghxEntry(e) {                    // a folder listing's entry, the fields the rows read; the API calls a submodule "file" in a listing
+    var sub = e.type === 'submodule' || (e.type === 'file' && e.download_url == null && /\/git\/trees\//.test(e.git_url || ''));
+    return { name: e.name, path: e.path, type: sub ? 'submodule' : e.type, sha: typeof e.sha === 'string' ? e.sha : '', html_url: ghxSafeUrl(e.html_url, false) };
+}
 function ghxEntryIcon(e) {
     if (e.type === 'dir') return ghpIc('file-directory-fill', 'ghx-diric');
     if (e.type === 'submodule') return ghpIc('file-submodule', 'ghx-fileic');
@@ -5637,26 +5653,30 @@ function ghxHref(st, kind, path) {        // the in-browser address of a folder 
 }
 function ghxLatestBar(st, c, count, histPath) {
     var o = st.owner, r = st.repo;
-    if (!c) return '<div class="ghx-latest ghx-skel"><span class="ghx-skb" style="width:20px;height:20px;border-radius:50%"></span><span class="ghx-skb" style="width:30%"></span><span class="ghx-skb" style="width:12%;margin-left:auto"></span></div>';
+    if (!c) return st.headFail ? '' : '<div class="ghx-latest ghx-skel"><span class="ghx-skb" style="width:20px;height:20px;border-radius:50%"></span><span class="ghx-skb" style="width:30%"></span><span class="ghx-skb" style="width:12%;margin-left:auto"></span></div>';
     var ppl = ghxPeople(c), when = c.commit && c.commit.author && c.commit.author.date, sha = String(c.sha || '').slice(0, 7);
     var hist = histPath === null ? crLink('github.com/' + o + '/' + r + '/commits/' + ghxEnc(st.ref) + '/', ghpIc('history') + '<span><b>' + nnum(count).toLocaleString() + '</b> Commits</span>', 'ghx-hist')
         : crLink('github.com/' + o + '/' + r + '/commits/' + ghxEnc(st.ref) + '/' + ghxEnc(histPath), ghpIc('history') + '<span>History</span>', 'ghx-hist');
     return '<div class="ghx-latest">' + ghxAvs(ppl, 20) + '<span class="ghx-lwho">' + ghxWho(ppl, o + '/' + r) + '</span>' +
-        '<span class="ghx-lmsg">' + crLink('github.com/' + o + '/' + r + '/commit/' + c.sha, ghxMsgHtml(o, r, c.commit && c.commit.message), 'ghx-mlink') + '</span>' +
+        '<span class="ghx-lmsg">' + ghxMsgLinks(o, r, c.sha, c.commit && c.commit.message, 'ghx-mlink') + '</span>' +
         '<span class="ghx-lmeta">' + crLink('github.com/' + o + '/' + r + '/commit/' + c.sha, sha, 'ghx-sha') + ' · <time datetime="' + esc(when || '') + '">' + ghpAgo(when) + '</time></span>' + hist + '</div>';
 }
 function ghxRows(st, list, parent) {
-    var o = st.owner, r = st.repo, info = st.info || {};
+    var o = st.owner, r = st.repo, info = st.info || Object.create(null);
     var rows = parent !== undefined ? '<tr class="ghx-row"><td class="ghx-cname" colspan="3">' + crLink(parent === '' ? 'github.com/' + o + '/' + r + '/tree/' + ghxEnc(st.ref) : ghxHref(st, 'tree', parent), '<span class="ghx-up">..</span>', 'ghx-flink') + '</td></tr>' : '';
     if (!list) {
+        if (st.listFail) return rows;     // no answer: nothing is claimed, and nothing keeps loading
         for (var i = 0; i < 6; i++) rows += '<tr class="ghx-row ghx-skel"><td class="ghx-cname"><span class="ghx-skb" style="width:' + (30 + (i * 17) % 40) + '%"></span></td><td class="ghx-cmsg"><span class="ghx-skb" style="width:60%"></span></td><td class="ghx-cdate"><span class="ghx-skb" style="width:70%"></span></td></tr>';
         return rows;
     }
     return rows + ghxSortEntries(list).map(function (e) {
-        var c = info[e.path], href = e.type === 'dir' ? ghxHref(st, 'tree', e.path) : e.type === 'submodule' && e.html_url ? null : ghxHref(st, 'blob', e.path);
-        var name = href ? crLink(href, esc(e.name), 'ghx-flink') : ghpExt(e.html_url, esc(e.name), 'ghx-flink');
+        var c = info[e.path], sub = e.type === 'submodule', name;
+        if (sub) {                        // "name @ 1a2b3c4": a submodule on GitHub opens there; one hosted elsewhere keeps its blob address, as github.com does
+            var gh = /^https:\/\/github\.com\/(.+)$/i.exec(e.html_url || ''), label = esc(e.name) + ' @ ' + esc(e.sha.slice(0, 7));
+            name = gh ? crLink('github.com/' + gh[1], label, 'ghx-flink') : e.html_url ? ghpExt(e.html_url, label, 'ghx-flink') : crLink(ghxHref(st, 'blob', e.path), label, 'ghx-flink');
+        } else name = crLink(e.type === 'dir' ? ghxHref(st, 'tree', e.path) : ghxHref(st, 'blob', e.path), esc(e.name), 'ghx-flink');
         return '<tr class="ghx-row"><td class="ghx-cname">' + ghxEntryIcon(e) + name + '</td>' +
-            '<td class="ghx-cmsg">' + (c ? crLink('github.com/' + o + '/' + r + '/commit/' + c.sha, ghxMsgHtml(o, r, c.commit && c.commit.message), 'ghx-mlink ghx-cmsgl') : c === undefined && st.infoBusy ? '<span class="ghx-skb" style="width:60%"></span>' : '') + '</td>' +
+            '<td class="ghx-cmsg">' + (c ? ghxMsgLinks(o, r, c.sha, c.commit && c.commit.message, 'ghx-mlink ghx-cmsgl') : c === undefined && st.infoBusy ? '<span class="ghx-skb" style="width:60%"></span>' : '') + '</td>' +
             '<td class="ghx-cdate">' + (c && c.commit && c.commit.author ? '<time datetime="' + esc(c.commit.author.date) + '">' + ghpAgo(c.commit.author.date) + '</time>' : c === undefined && st.infoBusy ? '<span class="ghx-skb" style="width:70%"></span>' : '') + '</td></tr>';
     }).join('');
 }
@@ -5664,10 +5684,10 @@ function ghxTable(st, list, parent, bar) {
     return '<div class="ghx-box">' + bar + '<table class="ghx-files"><caption class="sr-only">Folders and files</caption><thead class="sr-only"><tr><th>Name</th><th>Last commit message</th><th>Last commit date</th></tr></thead><tbody id="ghxRows">' +
         ghxRows(st, list, parent) + '</tbody></table></div>';
 }
-function ghxInfo(st, list, dirPath) {     // each row's last commit, one request a row, kept by the folder's head commit so a revisit costs nothing
+function ghxInfo(st, list) {              // each row's last commit, a request a row, kept 15 minutes like every answer
     var o = st.owner, r = st.repo;
-    st.info = st.info || {};
-    var cap = GHX_CORE == null ? GHX_ROWS : Math.max(0, Math.min(GHX_ROWS, GHX_CORE - 15));   // keep the hour's last requests for the pages themselves
+    st.info = st.info || Object.create(null);
+    var cap = GHX_CORE == null ? GHX_ROWS : Math.max(0, Math.min(GHX_ROWS, GHX_CORE - 30));   // keep 30 of the hour's requests for the next pages themselves
     var todo = ghxSortEntries(list).slice(0, cap), i = 0, running = 0;
     st.infoBusy = todo.length > 0;
     function next() {
@@ -5678,7 +5698,7 @@ function ghxInfo(st, list, dirPath) {     // each row's last commit, one request
                     running--;
                     st.info[e.path] = !err && Array.isArray(cs) && cs[0] ? cs[0] : null;
                     if (i >= todo.length && !running) st.infoBusy = false;
-                    ghxPaintRows(st); next();
+                    ghxPaint(st, ['rows']); next();
                 });
             })(todo[i++]);
         }
@@ -5688,6 +5708,10 @@ function ghxInfo(st, list, dirPath) {     // each row's last commit, one request
 function ghxPaintRows(st) { var tb = st.view.querySelector('#ghxRows'); if (tb && st.list) tb.innerHTML = ghxRows(st, st.list, st.parent); }
 
 /* —— the sidebar: About, Releases, Packages, Contributors, Languages —— */
+function ghxSbN(n) {                      // About's counts: 72, 1.4k, 194.0k (the .0 kept); rounding, and a million and up, are unverified
+    n = nnum(n);
+    return n < 1000 ? String(n) : n < 1e6 ? (n / 1000).toFixed(1) + 'k' : (n / 1e6).toFixed(1) + 'm';
+}
 function ghxAbout(st) {
     var R = st.R, o = st.owner, r = st.repo; if (!R) return '';
     var h = '<div class="ghx-sbsec"><h2 class="ghx-sbh">About</h2>';
@@ -5696,12 +5720,13 @@ function ghxAbout(st) {
     var topics = (Array.isArray(R.topics) ? R.topics : []).filter(function (t) { return /^[a-z0-9-]{1,50}$/.test(t); });
     if (topics.length) h += '<div class="ghx-topics">' + topics.map(function (t) { return ghpExt('https://github.com/topics/' + t, esc(t), 'ghx-topic'); }).join('') + '</div>';
     h += (st.readme || R.license ? '<h3 class="sr-only">Resources</h3>' : '') + '<ul class="ghx-sblist">';
+    var spdx = R.license && R.license.spdx_id && R.license.spdx_id !== 'NOASSERTION' && /^[\w.+-]+$/.test(R.license.spdx_id) ? R.license.spdx_id : '';
     if (st.readme) h += '<li>' + ghpIc('book') + '<a class="ghx-mlink" href="#readme-ov-file" data-ghx-jump="readme">Readme</a></li>';
-    if (R.license) h += '<li>' + ghpIc('law') + '<a class="ghx-mlink" href="#license" data-ghx-jump="readme">' + esc(R.license.spdx_id && R.license.spdx_id !== 'NOASSERTION' ? R.license.spdx_id + ' license' : 'License') + '</a></li>';   // "MIT license", as the README's tab
+    if (R.license) h += '<li>' + ghpIc('law') + '<a class="ghx-mlink" href="#' + (spdx || 'License') + '-1-ov-file" data-ghx-jump="readme">' + esc(spdx ? spdx + ' license' : 'License') + '</a></li>';   // "MIT license", as the README's tab
     h += '<li>' + ghpIc('pulse') + ghpExt('https://github.com/' + o + '/' + r + '/activity', 'Activity', 'ghx-mlink') + '</li>';
-    h += '<li><h3 class="sr-only">Stars</h3>' + ghpIc('star') + '<span><b>' + nnum(R.stargazers_count).toLocaleString() + '</b> stars</span></li>';
-    h += '<li><h3 class="sr-only">Watchers</h3>' + ghpIc('eye') + '<span><b>' + nnum(R.subscribers_count).toLocaleString() + '</b> watching</span></li>';
-    h += '<li><h3 class="sr-only">Forks</h3>' + ghpIc('repo-forked') + ghpExt('https://github.com/' + o + '/' + r + '/forks', '<b>' + nnum(R.forks_count).toLocaleString() + '</b> forks', 'ghx-mlink') + '</li></ul>';
+    h += '<li><h3 class="sr-only">Stars</h3>' + ghpIc('star') + '<span><b>' + ghxSbN(R.stargazers_count) + '</b> stars</span></li>';
+    h += '<li><h3 class="sr-only">Watchers</h3>' + ghpIc('eye') + '<span><b>' + ghxSbN(R.subscribers_count) + '</b> watching</span></li>';
+    h += '<li><h3 class="sr-only">Forks</h3>' + ghpIc('repo-forked') + ghpExt('https://github.com/' + o + '/' + r + '/forks', '<b>' + ghxSbN(R.forks_count) + '</b> forks', 'ghx-mlink') + '</li></ul>';
     h += ghpExt('https://github.com/contact/report-content?content_url=' + encodeURIComponent('https://github.com/' + o + '/' + r) + '&report=' + encodeURIComponent(o) + '+%28user%29', 'Report repository', 'ghx-mlink ghx-report');
     return h + '</div>';
 }
@@ -5764,6 +5789,7 @@ function ghxSanitize(html, st) {          // GitHub sanitizes its own output; th
             if (!GHX_TAGS[tag]) { walk(n, dst); continue; }
             var el = tag === 'SVG' || tag === 'PATH' ? document.createElementNS('http://www.w3.org/2000/svg', tag.toLowerCase()) : document.createElement(tag.toLowerCase());
             if (tag === 'INPUT' && !/^checkbox$/i.test(n.getAttribute('type') || '')) continue;
+            var here = false;
             for (var i = 0; i < n.attributes.length; i++) {
                 var at = n.attributes[i], k = at.name.toLowerCase(), v = at.value;
                 if (!GHX_ATTR[k]) continue;
@@ -5772,14 +5798,19 @@ function ghxSanitize(html, st) {          // GitHub sanitizes its own output; th
                 if (k === 'href') {
                     var abs = ghxSafeUrl(v, false); if (!abs) continue;
                     var rel = /^https:\/\/github\.com\/(.+)$/i.exec(abs);
-                    if (rel && st) { el.setAttribute('data-href', 'github.com/' + rel[1]); el.className = (el.className ? el.className + ' ' : '') + 'cr-l'; continue; }   // github.com links stay in this Chrome
-                    if (/^#/.test(abs)) { el.setAttribute('href', abs); continue; }
-                    el.setAttribute('href', abs); el.setAttribute('target', '_blank'); el.setAttribute('rel', 'noopener noreferrer'); continue;
+                    el.setAttribute('href', abs);   // a real address, so Tab reaches it
+                    if (rel && st && ghxDrawable('github.com/' + rel[1])) { el.setAttribute('data-href', 'github.com/' + rel[1]); here = true; continue; }   // a github.com page this copy draws opens here
+                    if (!/^#/.test(abs)) { el.setAttribute('target', '_blank'); el.setAttribute('rel', 'noopener noreferrer'); }
+                    continue;
                 }
                 if (k === 'src') { var s = ghxSafeUrl(v, true); if (!s) continue; el.setAttribute('src', s); el.setAttribute('referrerpolicy', 'no-referrer'); el.setAttribute('loading', 'lazy'); continue; }
-                if (k === 'srcset') { if (!/^(https:\/\/[^\s,]+(\s+[\d.]+[wx])?\s*,?\s*)+$/.test(v)) continue; }
+                if (k === 'srcset') {             // each candidate on its own: one long repeated pattern took exponential time
+                    var cands = v.split(',').filter(function (c) { return /\S/.test(c); });
+                    if (!cands.length || !cands.every(function (c) { return /^\s*https:\/\/[^\s,]+(\s+[\d.]+[wx])?\s*$/.test(c); })) continue;
+                }
                 el.setAttribute(k, v);
             }
+            if (here) el.className = (el.className ? el.className + ' ' : '') + 'cr-l';
             if (tag === 'INPUT') el.setAttribute('disabled', '');
             dst.appendChild(el);
             walk(n, el);
@@ -5868,13 +5899,50 @@ function ghxB64(s) {                      // the contents API's base64 (with new
 }
 
 /* —— a repository: root and folders —— */
-function ghxRouteRepo(parts) {            // ['owner','repo', 'tree'|'blob'|'commits', ref, ...path]
-    var o = parts[0], r = parts[1], kind = parts[2] || '', ref = parts[3] ? decodeURIComponent(parts[3]) : '', path = parts.slice(4).map(function (p) { try { return decodeURIComponent(p); } catch (e) { return p; } }).join('/');
-    if (kind === '' || kind === 'tree') return { kind: path ? 'tree' : 'root', o: o, r: r, ref: ref, path: path };
-    if (kind === 'blob' && path) return { kind: 'blob', o: o, r: r, ref: ref, path: path };
-    if (kind === 'commits') return { kind: 'commits', o: o, r: r, ref: ref, path: path };
-    if (kind === 'commit' && ref) return { kind: 'commit', o: o, r: r, ref: ref };
-    return { kind: 'other', o: o, r: r, sub: parts.slice(2).join('/') };
+/* ['owner', 'repo', 'tree'|'blob'|'commits'|'commit', ref, ...path]. The ref is taken as one
+   segment; a branch with a slash in it is sorted out once GitHub has answered (ghxSplit). 'other'
+   is a page of github.com this copy does not draw (Issues, Releases, Actions...). */
+function ghxRouteRepo(parts) {
+    var o = parts[0], r = parts[1], kind = parts[2] || '', segs = [];
+    for (var i = 3; i < parts.length; i++) { try { segs.push(decodeURIComponent(parts[i])); } catch (e) { return { kind: 'other', o: o, r: r }; } }   // a broken %-escape: github.com answers 400
+    if (segs.join('/').split('/').some(function (x) { return x === '.' || x === '..'; })) return { kind: 'other', o: o, r: r };   // a decoded ../ never reaches the API's path
+    var rt = { kind: '', o: o, r: r, segs: segs, refN: 1, ref: segs.length ? segs[0] : '', path: segs.slice(1).join('/') };
+    if (kind === '' || kind === 'tree') rt.kind = rt.path ? 'tree' : 'root';
+    else if (kind === 'blob' && rt.path) rt.kind = 'blob';
+    else if (kind === 'commits') rt.kind = 'commits';
+    else if (kind === 'commit' && rt.ref && segs.length === 1) rt.kind = 'commit';
+    else return { kind: 'other', o: o, r: r };
+    return rt;
+}
+function ghxSplit(st, n) {                 // the route's first n segments are the ref
+    var rt = st.route;
+    rt.refN = n; rt.ref = rt.segs.slice(0, n).join('/'); rt.path = rt.segs.slice(n).join('/');
+    if (rt.kind === 'tree' && !rt.path) rt.kind = 'root';
+    st.ref = rt.ref;
+}
+function ghxShift(st) {                    // GitHub has no such ref, and segments are left over: the branch may have a slash in it, so one more segment joins the ref (three at most)
+    var rt = st.route, n = (rt.refN || 1) + 1;
+    if (!rt.segs || rt.kind === 'commit' || n > 4 || n > rt.segs.length - (rt.kind === 'blob' ? 1 : 0)) return false;
+    ghxSplit(st, n);
+    st.list = st.head = st.file = st.commits = st.readme = st.mdHtml = null; st.info = null; st.listFail = st.headFail = st.fileFail = st.commitsFail = false;
+    liveTitle(st.url, ghxRepoTitle(st)); ghxPaint(st, 'all'); ghxLoad(st);
+    return true;
+}
+function ghxLoad(st) {                     // what the route's kind asks GitHub for, once the repository is known
+    var k = st.route.kind;
+    if (k === 'root') ghxRepoMeta(st);
+    if (k === 'root' || k === 'tree') ghxFolder(st);
+    else if (k === 'blob') ghxBlob(st);
+    else if (k === 'commits') ghxCommits(st);
+    else if (k === 'commit') ghxCommit(st);
+}
+function ghxNoRef(v) { return !!(v && /^No commit found for the ref /.test(v.message || '')); }   // the contents API's words when it is the ref that is missing, not the path
+function ghxNoPath(st) {                   // the ref has no such path: github.com keeps the repository and says so
+    st.nopath = true; liveTitle(st.url, ghxRepoTitle(st)); ghxPaint(st, 'all');
+}
+function ghxDrawable(addr) {              // a github.com address this copy draws (anything else opens on github.com itself)
+    var parts = ghxPartsOf(addr), k = ghxKind(parts);
+    return k === 'home' || k === 'search' || k === 'account' || k === 'repo';
 }
 function ghxRepoCounts(st) {              // the Issues and Pull requests counters: open PRs counted, issues are what is left of open_issues_count
     ghxGet(st, GHP_API + '/repos/' + st.owner + '/' + st.repo + '/pulls?state=open&per_page=1', null, function (err, l, last) {
@@ -5905,7 +5973,7 @@ function ghxRepoMeta(st) {                // the sidebar's parts and the branch 
 }
 function ghxBranchRow(st, inFolder) {
     var o = st.owner, r = st.repo;
-    var sel = '<button type="button" class="ghp-btn ghx-btnsm ghx-branch" aria-label="' + esc(st.ref) + ' branch">' + ghpIc('git-branch') + '<span class="ghx-bname">' + esc(st.ref) + '</span>' + ghpIc('triangle-down', 'ghp-caret') + '</button>';
+    var sel = '<button type="button" class="ghp-btn ghx-btnsm ghx-branch" aria-label="' + esc(ghxRefLabel(st.ref)) + ' branch">' + ghpIc('git-branch') + '<span class="ghx-bname">' + esc(ghxRefLabel(st.ref)) + '</span>' + ghpIc('triangle-down', 'ghp-caret') + '</button>';
     if (inFolder) return sel;
     return '<div class="ghx-brow" id="ghxBranchRow">' + sel +
         (st.nbranches != null ? ghpExt('https://github.com/' + o + '/' + r + '/branches', ghpIc('git-branch') + '<b>' + st.nbranches.toLocaleString() + '</b> Branch' + (st.nbranches === 1 ? '' : 'es'), 'ghx-count') : '') +
@@ -5915,12 +5983,12 @@ function ghxBranchRow(st, inFolder) {
             '<div class="ghx-cbh">' + ghpIc('terminal') + 'Clone</div><div class="ghx-cbtabs"><span class="on">HTTPS</span><span>GitHub CLI</span></div>' +
             '<div class="ghx-cburl"><input type="text" readonly value="https://github.com/' + esc(o + '/' + r) + '.git" aria-label="https://github.com/' + esc(o + '/' + r) + '.git"><button type="button" class="ghx-copy" aria-label="Copy url to clipboard" data-copy="https://github.com/' + esc(o + '/' + r) + '.git">' + ghpIc('copy') + '</button></div>' +
             '<p class="ghx-muted ghx-small">Clone using the web URL.</p>' +
-            ghpExt('https://github.com/' + o + '/' + r + '/archive/refs/heads/' + encodeURIComponent(st.ref) + '.zip', ghpIc('file-zip') + 'Download ZIP', 'ghx-cbrow') + '</div></details></div>';
+            ghpExt('https://github.com/' + o + '/' + r + '/archive/' + ghxRefPath(st.ref) + '.zip', ghpIc('file-zip') + 'Download ZIP', 'ghx-cbrow') + '</div></details></div>';
 }
 function ghxReadmeBox(st) {
     if (!st.readme) return '';
     return '<div class="ghx-box ghx-readme" id="readme"><div class="ghx-rmtabs"><span class="ghx-rmtab on">' + ghpIc('book') + 'README</span>' +
-        (st.R && st.R.license ? '<span class="ghx-rmtab">' + ghpIc('law') + esc(st.R.license.spdx_id && st.R.license.spdx_id !== 'NOASSERTION' ? st.R.license.spdx_id + ' license' : 'License') + '</span>' : '') + '</div>' +
+        (st.R && st.R.license && st.route.kind === 'root' ? '<span class="ghx-rmtab">' + ghpIc('law') + esc(st.R.license.spdx_id && st.R.license.spdx_id !== 'NOASSERTION' ? st.R.license.spdx_id + ' license' : 'License') + '</span>' : '') + '</div>' +
         '<div class="ghx-rmbody">' + st.readme + '</div></div>';
 }
 function ghxFolderCrumbs(st, path, isFile) {
@@ -5937,6 +6005,11 @@ function ghxFolderCrumbs(st, path, isFile) {
 function ghxRepoBody(st) {
     var k = st.route.kind;
     var head = '<div id="ghxHead">' + ghxRepoHead(st) + '</div>';
+    if (st.nopath) {                       // github.com's words for a path the ref does not have; a folder keeps its branch and crumbs
+        return head + '<div class="ghx-wrap">' + (k === 'tree' ? ghxFolderCrumbs(st, st.route.path, false) : '') +
+            '<div class="ghx-nopath"><h2 class="ghx-nph">404 - page not found</h2><p>The <code>' + esc(ghxRefLabel(st.ref)) + '</code> branch of <code>' + esc(st.repo) + '</code> does not contain the path <code>' + esc(st.route.path) + '</code>.</p>' +
+            '<p>' + crLink('github.com/' + st.owner + '/' + st.repo, 'Return to the repository overview', 'ghx-hlinkl') + '</p></div></div>';
+    }
     if (k === 'root') {
         return head + '<div class="ghx-wrap"><div class="ghx-grid"><div class="ghx-main">' + ghxBranchRow(st) +
             ghxTable(st, st.list, undefined, '<div id="ghxBar">' + ghxLatestBar(st, st.head, st.ncommits, null) + '</div>') +
@@ -5950,7 +6023,7 @@ function ghxRepoBody(st) {
     if (k === 'blob') return head + '<div class="ghx-wrap">' + ghxFolderCrumbs(st, st.route.path, true) + '<div id="ghxBar" class="ghx-blobbar">' + ghxLatestBar(st, st.head, 0, st.route.path) + '</div><div id="ghxBlob">' + ghxBlobInner(st) + '</div></div>';
     if (k === 'commits') return head + '<div class="ghx-wrap" id="ghxCommits">' + ghxCommitsInner(st) + '</div>';
     if (k === 'commit') return head + '<div class="ghx-wrap" id="ghxCommit">' + ghxCommitInner(st) + '</div>';
-    return head + '<div class="ghx-wrap">' + ghx404Inner() + '</div>';
+    return '';
 }
 function ghxPaint(st, parts) {
     if (!ghxAlive(st)) return;
@@ -5973,6 +6046,8 @@ function ghxPaint(st, parts) {
 function ghxRepoTitle(st) {
     var o = st.owner, r = st.repo, R = st.R, k = st.route.kind, full = o + '/' + r;
     if (st.missing) return 'Page not found · GitHub';
+    if (st.nopath) return 'File not found · GitHub';
+    if (k === 'root' && ghxIsSha(st.route.ref)) return 'GitHub - ' + (R ? R.full_name : full) + ' at ' + st.route.ref + ' · GitHub';   // a commit's tree; a branch's other than the default is unverified
     if (k === 'root') return 'GitHub - ' + (R ? R.full_name : full) + (R && R.description ? ': ' + R.description : '') + ' · GitHub';
     if (k === 'tree') return r + '/' + st.route.path + ' at ' + st.ref + ' · ' + full + ' · GitHub';
     if (k === 'blob') return r + '/' + st.route.path + ' at ' + st.ref + ' · ' + full + ' · GitHub';
@@ -5986,34 +6061,41 @@ function ghxRepoInit(st) {
         if (err === 'http404' || err === 'http451' || (!err && (!R || R.private !== false))) { st.missing = true; liveTitle(st.url, ghxRepoTitle(st)); ghxPaint(st, 'all'); return; }
         if (err) return;                  // no answer: the page stays as drawn
         st.R = R; st.owner = R.owner && ghxLogin(R.owner.login) ? R.owner.login : o; st.repo = ghpName(R.name) ? R.name : r;
-        if (!st.ref) st.ref = ghpName(R.default_branch) || /^[\w./-]+$/.test(R.default_branch || '') ? R.default_branch : 'main';
+        var db = typeof R.default_branch === 'string' && /^[\w./-]+$/.test(R.default_branch) ? R.default_branch : 'main', dn = db.split('/').length;
+        if (!st.ref) st.ref = st.route.ref = db;
+        else if (dn > 1 && k !== 'commit' && st.route.segs.length > dn - (k === 'blob' ? 0 : 1) && st.route.segs.slice(0, dn).join('/') === db) ghxSplit(st, dn);   // the default branch has a slash in it: it costs no request to know
         liveTitle(st.url, ghxRepoTitle(st));
         ghxRepoCounts(st);
-        if (k === 'root') ghxRepoMeta(st);
         ghxPaint(st, 'all');
-        if (k === 'root' || k === 'tree') ghxFolder(st);
-        else if (k === 'blob') ghxBlob(st);
-        else if (k === 'commits') ghxCommits(st);
-        else if (k === 'commit') ghxCommit(st);
+        ghxLoad(st);
     });
 }
 function ghxFolder(st) {
-    var o = st.owner, r = st.repo, path = st.route.kind === 'tree' ? st.route.path : '', api = GHP_API + '/repos/' + o + '/' + r;
-    st.parent = st.route.kind === 'tree' ? path.split('/').slice(0, -1).join('/') : undefined;
-    ghxGet(st, api + '/contents' + (path ? '/' + ghxEnc(path) : '') + '?ref=' + encodeURIComponent(st.ref), null, function (err, list) {
-        if (err === 'http404' && st.route.kind === 'tree') { st.missing = true; liveTitle(st.url, ghxRepoTitle(st)); ghxPaint(st, 'all'); return; }
-        if (err || !Array.isArray(list)) return;
-        st.list = list.filter(function (e) { return e && typeof e.name === 'string' && typeof e.path === 'string' && /^(dir|file|symlink|submodule)$/.test(e.type); });
+    var o = st.owner, r = st.repo, rt = st.route, path = rt.kind === 'tree' ? rt.path : '', ref = st.ref, api = GHP_API + '/repos/' + o + '/' + r;
+    st.parent = rt.kind === 'tree' ? path.split('/').slice(0, -1).join('/') : undefined;
+    ghxGet(st, api + '/contents' + (path ? '/' + ghxEnc(path) : '') + '?ref=' + encodeURIComponent(ref), null, function (err, list) {
+        if (st.ref !== ref) return;           // the ref has since been read differently (ghxShift)
+        if (err === 'http404') {
+            if (ghxNoRef(list) && ghxShift(st)) return;   // no such ref: a branch with a slash in it takes one more segment
+            if (ghxNoRef(list) || (rt.kind !== 'tree' && rt.segs.length)) { st.missing = true; liveTitle(st.url, ghxRepoTitle(st)); ghxPaint(st, 'all'); }   // no such ref at all
+            else if (rt.kind === 'tree') ghxNoPath(st);
+            else { st.listFail = true; ghxPaint(st, ['rows']); }   // the default branch with nothing in it: an empty repository, whose page is not drawn here
+            return;
+        }
+        if (!err && list && !Array.isArray(list) && list.type === 'file') { crNav(ghxHref(st, 'blob', path), { replace: true }); return; }   // tree/<a file>: github.com serves the file
+        if (err || !Array.isArray(list)) { st.listFail = true; ghxPaint(st, ['rows']); return; }
+        st.list = list.filter(function (e) { return e && typeof e.name === 'string' && typeof e.path === 'string' && /^(dir|file|symlink|submodule)$/.test(e.type); }).map(ghxEntry);
         ghxPaint(st, ['rows']);
-        ghxInfo(st, st.list, path);
+        ghxInfo(st, st.list);
         var rd = st.list.filter(function (e) { return e.type === 'file' && /^readme(\.(md|markdown|mdown|txt|rst|org|adoc))?$/i.test(e.name); })[0];
-        if (rd) ghxGet(st, api + '/contents/' + ghxEnc(rd.path) + '?ref=' + encodeURIComponent(st.ref), { html: true }, function (e2, html) {
-            if (e2 || typeof html !== 'string') return;
+        if (rd) ghxGet(st, api + '/contents/' + ghxEnc(rd.path) + '?ref=' + encodeURIComponent(ref), { html: true }, function (e2, html) {
+            if (e2 || typeof html !== 'string' || st.ref !== ref) return;
             st.readme = ghxMarkdown(html, st); ghxPaint(st, ['readme', 'side']);
         });
     });
-    ghxGet(st, api + '/commits?per_page=1&sha=' + encodeURIComponent(st.ref) + (path ? '&path=' + encodeURIComponent(path) : ''), null, function (err, cs, last) {
-        if (err || !Array.isArray(cs) || !cs[0]) return;
+    ghxGet(st, api + '/commits?per_page=1&sha=' + encodeURIComponent(ref) + (path ? '&path=' + encodeURIComponent(path) : ''), null, function (err, cs, last) {
+        if (st.ref !== ref) return;
+        if (err || !Array.isArray(cs) || !cs[0]) { st.headFail = true; ghxPaint(st, ['bar']); return; }
         st.head = cs[0]; st.ncommits = ghxN(cs, last); ghxPaint(st, ['bar']);
     });
 }
@@ -6022,7 +6104,7 @@ function ghxFolder(st) {
 function ghxBlobInner(st) {
     var f = st.file, path = st.route.path, o = st.owner, r = st.repo;
     var isMd = /\.(md|markdown|mdown|mkdn)$/i.test(path);
-    var raw = 'https://github.com/' + o + '/' + r + '/raw/refs/heads/' + ghxEnc(st.ref) + '/' + ghxEnc(path);
+    var raw = 'https://github.com/' + o + '/' + r + '/raw/' + ghxRefPath(st.ref) + '/' + ghxEnc(path);
     var tabs = (isMd ? '<button type="button" class="ghx-seg' + (st.blobMode !== 'code' ? ' on' : '') + '" data-ghx-mode="preview">Preview</button>' : '') +
         '<button type="button" class="ghx-seg' + (!isMd || st.blobMode === 'code' ? ' on' : '') + '" data-ghx-mode="code">Code</button>' +
         ghpExt('https://github.com/' + o + '/' + r + '/blame/' + ghxEnc(st.ref) + '/' + ghxEnc(path), 'Blame', 'ghx-seg');
@@ -6031,7 +6113,7 @@ function ghxBlobInner(st) {
         ghpExt(raw, 'Raw', 'ghp-btn ghx-btnsm') + '<button type="button" class="ghx-iconbtn ghx-copy" aria-label="Copy raw file" data-copy-raw="1">' + ghpIc('copy') + '</button>' +
         ghpExt(raw, ghpIc('download') + '<span class="sr-only">Download raw file</span>', 'ghx-iconbtn') + '</div>';
     var body;
-    if (!f) body = '<div class="ghx-fbody ghx-skel"><span class="ghx-skb" style="width:40%"></span><span class="ghx-skb" style="width:65%"></span><span class="ghx-skb" style="width:52%"></span></div>';
+    if (!f) body = st.fileFail ? '' : '<div class="ghx-fbody ghx-skel"><span class="ghx-skb" style="width:40%"></span><span class="ghx-skb" style="width:65%"></span><span class="ghx-skb" style="width:52%"></span></div>';
     else if (f.img) body = '<div class="ghx-fbody ghx-imgbody"><img src="' + esc('https://raw.githubusercontent.com/' + o + '/' + r + '/' + ghxEnc(st.ref) + '/' + ghxEnc(path)) + '" alt="' + esc(path.split('/').pop()) + '" referrerpolicy="no-referrer"></div>';
     else if (f.big) body = '<div class="ghx-fbody ghx-binary">' + ghpExt(raw, 'View raw', 'ghx-mlink') + '<p class="ghx-muted">(Sorry about that, but we can’t show files that are this big right now.)</p></div>';
     else if (f.text == null) body = '<div class="ghx-fbody ghx-binary">' + ghpExt(raw, 'View raw', 'ghx-mlink') + '</div>';
@@ -6040,33 +6122,44 @@ function ghxBlobInner(st) {
     return '<div class="ghx-box ghx-file">' + head + body + '</div>';
 }
 function ghxBlob(st) {
-    var o = st.owner, r = st.repo, path = st.route.path, api = GHP_API + '/repos/' + o + '/' + r;
-    ghxGet(st, api + '/contents/' + ghxEnc(path) + '?ref=' + encodeURIComponent(st.ref), null, function (err, f) {
-        if (err === 'http404' || (!err && (!f || Array.isArray(f) || f.type !== 'file'))) { st.missing = true; liveTitle(st.url, ghxRepoTitle(st)); ghxPaint(st, 'all'); return; }
-        if (err) return;
-        var text = f.encoding === 'base64' && f.content ? ghxB64(f.content) : null;
+    var o = st.owner, r = st.repo, path = st.route.path, ref = st.ref, api = GHP_API + '/repos/' + o + '/' + r;
+    ghxGet(st, api + '/contents/' + ghxEnc(path) + '?ref=' + encodeURIComponent(ref), null, function (err, f) {
+        if (st.ref !== ref) return;
+        if (err === 'http404') {
+            if (!ghxNoRef(f)) ghxNoPath(st);
+            else if (!ghxShift(st)) { st.missing = true; liveTitle(st.url, ghxRepoTitle(st)); ghxPaint(st, 'all'); }   // no such ref, with a slash or without
+            return;
+        }
+        if (!err && Array.isArray(f)) { crNav(ghxHref(st, 'tree', path), { replace: true }); return; }   // blob/<a folder>: github.com serves the folder
+        if (err || !f || f.type !== 'file') { st.fileFail = true; ghxPaint(st, ['blob']); return; }
+        var text = f.encoding === 'base64' ? (f.content ? ghxB64(f.content) : '') : null;   // an empty file is text: "0 lines (0 loc) · 0 Bytes"
         if (text != null && /\u0000/.test(text.slice(0, 8000))) text = null;   // a binary file: GitHub offers "View raw"
         st.file = { size: nnum(f.size), text: text, img: /\.(png|jpe?g|gif|webp|bmp|ico|avif)$/i.test(path), big: f.encoding === 'none' };   // past 1 MB the API sends no content
         ghxPaint(st, ['blob']);
-        if (/\.(md|markdown|mdown|mkdn)$/i.test(path)) ghxGet(st, api + '/contents/' + ghxEnc(path) + '?ref=' + encodeURIComponent(st.ref), { html: true }, function (e2, html) {
-            if (e2 || typeof html !== 'string') return;
+        if (/\.(md|markdown|mdown|mkdn)$/i.test(path)) ghxGet(st, api + '/contents/' + ghxEnc(path) + '?ref=' + encodeURIComponent(ref), { html: true }, function (e2, html) {
+            if (e2 || typeof html !== 'string' || st.ref !== ref) return;
             st.mdHtml = ghxMarkdown(html, st); ghxPaint(st, ['blob']);
         });
     });
-    ghxGet(st, api + '/commits?per_page=1&sha=' + encodeURIComponent(st.ref) + '&path=' + encodeURIComponent(path), null, function (err, cs) {
-        if (err || !Array.isArray(cs) || !cs[0]) return;
+    ghxGet(st, api + '/commits?per_page=1&sha=' + encodeURIComponent(ref) + '&path=' + encodeURIComponent(path), null, function (err, cs) {
+        if (st.ref !== ref) return;
+        if (err || !Array.isArray(cs) || !cs[0]) { st.headFail = true; ghxPaint(st, ['bar']); return; }
         st.head = cs[0]; ghxPaint(st, ['bar']);
     });
 }
 
 /* —— the commit list —— */
 function ghxCommitsInner(st) {
-    var o = st.owner, r = st.repo, cs = st.commits;
-    var h = '<div class="ghx-chead"><h1 class="ghx-ch">Commits</h1></div><div class="ghx-cfilters">' +
-        '<button type="button" class="ghp-btn ghx-btnsm">' + ghpIc('git-branch') + esc(st.ref || '') + ghpIc('triangle-down', 'ghp-caret') + '</button>' +
+    var o = st.owner, r = st.repo, cs = st.commits, path = st.route.path, acc = '';
+    // a file's or a folder's history names it ("History for IsaacUre.github.io / comp on main"); the whole branch's has the branch button
+    var which = path ? '<nav class="ghx-hfor" aria-label="Breadcrumbs">History for ' + crLink('github.com/' + o + '/' + r + '/commits', esc(r), 'ghx-hlinkl') +
+            path.split('/').map(function (s) { acc += (acc ? '/' : '') + s; return ' / ' + crLink('github.com/' + o + '/' + r + '/commits/' + ghxEnc(st.ref) + '/' + ghxEnc(acc), esc(s), 'ghx-hlinkl'); }).join('') +
+            ' on ' + crLink('github.com/' + o + '/' + r + '/tree/' + ghxEnc(st.ref), esc(ghxRefLabel(st.ref)), 'ghx-hlinkl') + '</nav>'
+        : '<button type="button" class="ghp-btn ghx-btnsm">' + ghpIc('git-branch') + esc(ghxRefLabel(st.ref || '')) + ghpIc('triangle-down', 'ghp-caret') + '</button>';
+    var h = '<div class="ghx-chead"><h1 class="ghx-ch">Commits</h1></div><div class="ghx-cfilters">' + which +
         '<span class="ghx-grow"></span><button type="button" class="ghp-btn ghx-btnsm">' + ghpIc('people') + 'All users' + ghpIc('triangle-down', 'ghp-caret') + '</button>' +
         '<button type="button" class="ghp-btn ghx-btnsm">' + ghpIc('clock') + 'All time' + ghpIc('triangle-down', 'ghp-caret') + '</button></div>';
-    if (!cs) return h + '<div class="ghx-box ghx-skel" style="padding:16px"><span class="ghx-skb" style="width:70%"></span><span class="ghx-skb" style="width:45%"></span></div>';
+    if (!cs) return h + (st.commitsFail ? '' : '<div class="ghx-box ghx-skel" style="padding:16px"><span class="ghx-skb" style="width:70%"></span><span class="ghx-skb" style="width:45%"></span></div>');
     var groups = [], cur = null;
     cs.forEach(function (c) {
         var day = ghxDay(c.commit && c.commit.committer && c.commit.committer.date || c.commit && c.commit.author && c.commit.author.date);
@@ -6078,7 +6171,7 @@ function ghxCommitsInner(st) {
             var ppl = ghxPeople(c), when = c.commit && c.commit.author && c.commit.author.date, sha = String(c.sha || '').slice(0, 7), ver = c.commit && c.commit.verification && c.commit.verification.verified;
             var hasBody = /\n\s*\S/.test(String(c.commit && c.commit.message || '').replace(/^[^\n]*/, ''));
             var body = String(c.commit && c.commit.message || '').replace(/^[^\n]*\n?/, '').replace(/^\s+|\s+$/g, ''), open = hasBody && st.cbody && st.cbody[c.sha];
-            return '<li class="ghx-crow"><div class="ghx-cmain"><p class="ghx-ctitle">' + crLink('github.com/' + o + '/' + r + '/commit/' + c.sha, ghxMsgHtml(o, r, c.commit && c.commit.message), 'ghx-ctl') +
+            return '<li class="ghx-crow"><div class="ghx-cmain"><p class="ghx-ctitle"><span class="ghx-ctext">' + crLink('github.com/' + o + '/' + r + '/commit/' + c.sha, esc(ghxTitleLine(c.commit && c.commit.message)), 'ghx-ctl') + '</span>' +   // one link, as the list has it
                 (hasBody ? '<button type="button" class="ghx-ellip" data-sha="' + esc(c.sha) + '" aria-expanded="' + !!open + '" aria-label="Show description for ' + esc(sha) + '">…</button>' : '') + '</p>' +
                 (open ? '<pre class="ghx-cbodytext">' + esc(body) + '</pre>' : '') +
                 '<div class="ghx-cby">' + ghxAvs(ppl, 16) + ghxWho(ppl, o + '/' + r) + ' authored <time datetime="' + esc(when || '') + '">' + ghpAgo(when) + '</time></div></div>' +
@@ -6087,16 +6180,21 @@ function ghxCommitsInner(st) {
                 crLink('github.com/' + o + '/' + r + '/tree/' + c.sha, ghpIc('code') + '<span class="sr-only">Browse repository at this point</span>', 'ghx-iconbtn') + '</div></li>';
         }).join('') + '</ul></div>';
     }).join('');
-    var page = st.cpage || 1, more = cs.length === 35;
-    return h + '<div class="ghx-pager">' + (page > 1 ? crLink(st.cbase + (page > 2 ? '?page=' + (page - 1) : ''), 'Previous', 'ghp-btn ghx-btnsm') : '<span class="ghp-btn ghx-btnsm" aria-disabled="true">Previous</span>') +
-        (more ? crLink(st.cbase + '?page=' + (page + 1), 'Next', 'ghp-btn ghx-btnsm') : '<span class="ghp-btn ghx-btnsm" aria-disabled="true">Next</span>') + '</div>';
+    // github.com pages it by the head commit and an offset: page 1's Next is ?after=<head sha>+34 (later pages' links are read the same way, unverified)
+    var page = st.cpage || 1, cur = st.csha || (cs[0] && cs[0].sha) || '';
+    function at(p) { return st.cbase + (p > 1 ? '?after=' + cur + '+' + (35 * (p - 1) - 1) : ''); }
+    return h + '<div class="ghx-pager">' + (page > 1 ? crLink(at(page - 1), 'Previous', 'ghp-btn ghx-btnsm') : '<span class="ghp-btn ghx-btnsm" aria-disabled="true">Previous</span>') +
+        (st.cmore && cur ? crLink(at(page + 1), 'Next', 'ghp-btn ghx-btnsm') : '<span class="ghp-btn ghx-btnsm" aria-disabled="true">Next</span>') + '</div>';
 }
 function ghxCommits(st) {
-    var o = st.owner, r = st.repo, m = /[?&]page=(\d+)/.exec(st.url), page = m ? Math.max(1, Math.min(400, +m[1])) : 1;
-    st.cpage = page; st.cbase = 'github.com/' + o + '/' + r + '/commits/' + ghxEnc(st.ref) + (st.route.path ? '/' + ghxEnc(st.route.path) : '');
-    ghxGet(st, GHP_API + '/repos/' + o + '/' + r + '/commits?per_page=35&page=' + page + '&sha=' + encodeURIComponent(st.ref) + (st.route.path ? '&path=' + encodeURIComponent(st.route.path) : ''), null, function (err, cs) {
-        if (err || !Array.isArray(cs)) return;
-        st.commits = cs.filter(function (c) { return c && typeof c.sha === 'string' && c.commit; }); ghxPaint(st, ['commits']);
+    var o = st.owner, r = st.repo, ref = st.ref, m = /[?&]after=([0-9a-f]{40})\+(\d+)/i.exec(st.url), page = m ? Math.max(1, Math.min(400, Math.floor((+m[2] + 1) / 35) + 1)) : 1;
+    st.cpage = page; st.csha = m ? m[1] : ''; st.cbase = 'github.com/' + o + '/' + r + '/commits/' + ghxEnc(ref) + (st.route.path ? '/' + ghxEnc(st.route.path) : '');
+    ghxGet(st, GHP_API + '/repos/' + o + '/' + r + '/commits?per_page=35&page=' + page + '&sha=' + encodeURIComponent(m ? m[1] : ref) + (st.route.path ? '&path=' + encodeURIComponent(st.route.path) : ''), null, function (err, cs, last) {
+        if (st.ref !== ref) return;
+        if (err === 'http404' && ghxShift(st)) return;
+        if (err || !Array.isArray(cs)) { st.commitsFail = true; ghxPaint(st, ['commits']); return; }
+        st.commits = cs.filter(function (c) { return c && typeof c.sha === 'string' && c.commit; }); st.cmore = last > page;   // no rel="last" on the last page
+        ghxPaint(st, ['commits']);
     });
 }
 
@@ -6189,13 +6287,13 @@ function ghxHome() {
         return '<section class="ghx-hsec"><h2 class="ghx-hh2">' + h2 + '</h2>' + (p ? '<p class="ghx-hp">' + p + '</p>' : '') +
             (items ? '<div class="ghx-hitems">' + items.map(function (it) { return '<div class="ghx-hitem"><h3 class="ghx-hh3">' + it[0] + '</h3>' + (it[1] ? '<p class="ghx-hip">' + it[1] + '</p>' : '') + (it[2] ? ghpExt('https://github.com' + it[3], it[2] + ' ' + ghpIc('arrow-right'), 'ghx-hlink') : '') + '</div>'; }).join('') + '</div>' : '') + (extra || '') + '</section>';
     }
-    function form() {
-        return '<div class="ghx-hform"><label class="sr-only" for="ghxHmail">Enter your email</label><input id="ghxHmail" type="email" placeholder="Enter your email" autocomplete="off">' +
+    function form(n) {
+        return '<div class="ghx-hform"><label class="sr-only" for="ghxHmail' + n + '">Enter your email</label><input id="ghxHmail' + n + '" type="email" placeholder="Enter your email" autocomplete="off">' +
             ghpExt('https://github.com/signup?source=form-home-signup', 'Sign up for GitHub', 'ghx-hcta') + '</div>' + ghpExt('https://github.com/features/ai/github-app', 'Download GitHub Copilot app', 'ghx-hcta2');
     }
     var logos = ['American Airlines', 'Duolingo', 'Ernst and Young', 'Ford', 'InfoSys', 'Mercado Libre', 'Mercedes-Benz', 'Shopify', 'Philips', 'Société Générale', 'Spotify', 'Vodafone'];
     return '<div class="ghx-homepage">' +
-        '<section class="ghx-hero" id="hero"><h1 class="ghx-hh1">The future of building happens together</h1><p class="ghx-hlead">Tools and trends evolve, but collaboration endures. With GitHub, developers, agents, and code come together on one platform.</p>' + form() + '</section>' +
+        '<section class="ghx-hero" id="hero"><h1 class="ghx-hh1">The future of building happens together</h1><p class="ghx-hlead">Tools and trends evolve, but collaboration endures. With GitHub, developers, agents, and code come together on one platform.</p>' + form(1) + '</section>' +
         '<section class="ghx-hsec"><h2 class="sr-only">GitHub features</h2><div class="ghx-htabs" role="tablist">' + ['Code', 'Plan', 'Collaborate', 'Automate', 'Secure'].map(function (t, i) { return '<span role="tab" class="ghx-htab' + (i ? '' : ' on') + '">' + t + '</span>'; }).join('') + '</div>' +
             '<div class="ghx-hpanel"><h3 class="ghx-hh3">Code</h3><p class="ghx-hip">Write, test, and fix code quickly with GitHub Copilot, from simple boilerplate to complex features.</p></div></section>' +
         '<section class="ghx-hsec ghx-hlogos"><h2 class="sr-only">GitHub customers</h2><ul>' + logos.map(function (l) { return '<li>' + esc(l) + '</li>'; }).join('') + '</ul></section>' +
@@ -6226,7 +6324,7 @@ function ghxHome() {
             '<div class="ghx-hcards">' + [['Technology', 'Figma streamlines development and strengthens security', '/customer-stories/figma'], ['Automotive', 'Mercedes-Benz standardizes source code and automates onboarding', '/customer-stories/mercedes-benz'], ['Financial services', 'Mercado Libre cuts coding time by 50%', '/customer-stories/mercado-libre']].map(function (c) {
                 return ghpExt('https://github.com' + c[2], '<i>' + c[0] + '</i><b>' + c[1] + '</b><span>Read customer story</span>', 'ghx-hcard');
             }).join('') + '</div><p class="ghx-hrow">' + ghpExt('https://github.com/customer-stories', 'Explore customer stories', 'ghx-hlink') + ghpExt('https://github.com/solutions', 'View all solutions', 'ghx-hlink') + '</p></section>' +
-        '<section class="ghx-hsec ghx-hend"><h2 class="ghx-hh2">Millions of developers and businesses call GitHub home</h2><p class="ghx-hp">Whether you’re scaling your development process or just learning how to code, GitHub is where you belong. Join the world’s most widely adopted developer platform to build the technologies that shape what’s next.</p>' + form() + '</section></div>';
+        '<section class="ghx-hsec ghx-hend"><h2 class="ghx-hh2">Millions of developers and businesses call GitHub home</h2><p class="ghx-hp">Whether you’re scaling your development process or just learning how to code, GitHub is where you belong. Join the world’s most widely adopted developer platform to build the technologies that shape what’s next.</p>' + form(2) + '</section></div>';
 }
 function ghxHomeFoot() {                  // github.com's own, larger footer
     var cols = [['Platform', [['Features', '/features'], ['Enterprise', '/enterprise'], ['Copilot', '/features/copilot'], ['AI', '/features/ai'], ['Security', '/security'], ['Pricing', '/pricing'], ['Team', '/team'], ['Resources', '/resources'], ['Roadmap', '/github/roadmap'], ['Compare GitHub', '/resources/articles/devops-tools-comparison']]],
@@ -6244,27 +6342,33 @@ function ghxHomeFoot() {                  // github.com's own, larger footer
 
 /* —— someone else's month of activity, by GitHub's search API (10 searches a minute, anonymous) ——
    Commits: the commit search covers default branches, as the contribution
-   rules do; when a month has more than one page of them, each repository's
-   own count is asked for separately, so the per-repository numbers are
-   exact. Pull requests and issues: the issue search, with their state now. */
+   rules do. A month of more than one page is read page by page (100 a page,
+   up to the 1,000 the search serves), so the per-repository numbers are the
+   search's own; past 1,000, the repositories found are each counted on their
+   own. Pull requests and issues: the issue search, with their state now. */
 function ghxMonth(st, login, mk, cb) {
     var from = ghpMonthStart(mk), to = ghpMonthEnd(mk), act = ghpNoAct(), left = 3, partial = false, S = GHP_API + '/search/';
     act.issues = {};
     function fin() { if (--left === 0) cb({ act: act, partial: partial, t: Date.now() }); }
     function repoOf(u) { var m = /\/repos\/([^/]+\/[^/]+)$/.exec(u || ''); return m && ghpFull(m[1]) ? m[1] : null; }
-    ghxGet(st, S + 'commits?q=' + encodeURIComponent('author:' + login + ' author-date:' + from + '..' + to) + '&per_page=100', null, function (err, j) {
-        if (err || !j || !Array.isArray(j.items)) { partial = true; fin(); return; }
-        j.items.forEach(function (c) { var f = c && c.repository && c.repository.full_name; if (ghpFull(f) && c.repository.private !== true) act.commits[f] = (act.commits[f] || 0) + 1; });
-        if (nnum(j.total_count) <= j.items.length) { fin(); return; }
-        var repos = Object.keys(act.commits).slice(0, 5), n = repos.length;
-        if (!n) { fin(); return; }
-        repos.forEach(function (f) {
-            ghxGet(st, S + 'commits?q=' + encodeURIComponent('author:' + login + ' repo:' + f + ' author-date:' + from + '..' + to) + '&per_page=1', null, function (e2, j2) {
-                if (!e2 && j2) act.commits[f] = nnum(j2.total_count); else partial = true;
-                if (--n === 0) fin();
+    var q = S + 'commits?q=' + encodeURIComponent('author:' + login + ' author-date:' + from + '..' + to) + '&per_page=100';
+    (function page(n) {
+        ghxGet(st, q + (n > 1 ? '&page=' + n : ''), null, function (err, j) {
+            if (err || !j || !Array.isArray(j.items)) { partial = true; fin(); return; }
+            j.items.forEach(function (c) { var f = c && c.repository && c.repository.full_name; if (ghpFull(f) && c.repository.private !== true) act.commits[f] = (act.commits[f] || 0) + 1; });
+            var total = nnum(j.total_count);
+            if (j.items.length === 100 && n * 100 < Math.min(total, 1000)) { page(n + 1); return; }
+            if (total <= 1000) { fin(); return; }
+            var repos = Object.keys(act.commits).slice(0, 8), k = repos.length;   // beyond what the search serves: each repository's own count
+            if (!k) { fin(); return; }
+            repos.forEach(function (f) {
+                ghxGet(st, S + 'commits?q=' + encodeURIComponent('author:' + login + ' repo:' + f + ' author-date:' + from + '..' + to) + '&per_page=1', null, function (e2, j2) {
+                    if (!e2 && j2) act.commits[f] = nnum(j2.total_count); else partial = true;
+                    if (--k === 0) fin();
+                });
             });
         });
-    });
+    })(1);
     ghxGet(st, S + 'issues?q=' + encodeURIComponent('author:' + login + ' is:pr created:' + from + '..' + to) + '&per_page=100', null, function (err, j) {
         if (err || !j || !Array.isArray(j.items)) { partial = true; fin(); return; }
         j.items.forEach(function (p) {
@@ -6321,10 +6425,8 @@ function ghxLinkMenu(label, head, items) { // a filter menu whose choices are gi
 }
 function ghxOrgBody(st) {
     var o = st.login, O = st.O, repos = st.repos;
-    var pop = '', list = '', side = '';
+    var list = '', side = '';   // no Pinned or Popular section: no anonymous API says whether an organization has pins, or which
     if (repos) {
-        var d = { user: { login: o }, repos: repos, pop: st.pop || null, parents: st.parents || Object.create(null) };
-        pop = ghpPopInner(d);
         var by = repos.slice().sort(function (a, b) { return a.pushed_at < b.pushed_at ? 1 : a.pushed_at > b.pushed_at ? -1 : 0; });
         var ORGR = 'https://github.com/orgs/' + o + '/repositories', ol = [];
         repos.forEach(function (r) { if (r.language && ol.indexOf(r.language) < 0) ol.push(r.language); }); ol.sort();
@@ -6340,13 +6442,13 @@ function ghxOrgBody(st) {
         var tl = Object.keys(langs).sort(function (a, b) { return langs[b] - langs[a]; }).slice(0, 5), tt = Object.keys(topics).sort(function (a, b) { return topics[b] - topics[a]; }).slice(0, 3);
         if (tl.length) side += '<div class="ghx-sbsec"><h4 class="ghx-sbh">Top languages</h4><div class="ghx-olangs">' + tl.map(function (l) { return ghpExt('https://github.com/orgs/' + o + '/repositories?language=' + encodeURIComponent(l.toLowerCase()) + '&type=all', ghpLang(l), 'ghx-mlink'); }).join('') + '</div></div>';
         if (tt.length) side += '<div class="ghx-sbsec"><h4 class="ghx-sbh">Most used topics</h4><div class="ghx-topics">' + tt.map(function (t) { return ghpExt('https://github.com/search?q=' + encodeURIComponent('topic:' + t + ' org:' + o + ' fork:true') + '&type=repositories', esc(t), 'ghx-topic'); }).join('') + '</div></div>';
-    } else {
+    } else if (!st.reposFail) {
         list = '<div class="ghx-box ghx-skel" style="padding:16px"><span class="ghx-skb" style="width:60%"></span><span class="ghx-skb" style="width:30%"></span></div>';
     }
     var ppl = st.people;
     var people = '<div class="ghx-sbsec"><h4 class="ghx-sbh">' + ghpExt('https://github.com/orgs/' + o + '/people', 'People', 'ghx-sbhl') + '</h4>' + (ppl ? ppl.length ? '<ul class="ghx-contrib">' + ppl.slice(0, 30).map(function (p) { return '<li>' + crLink('github.com/' + p.login, ghxAv(p.avatar_url, 32, '@' + p.login), 'ghx-contav') + '</li>'; }).join('') + '</ul>'
         : '<p class="ghx-muted ghx-small">This organization has no public members. You must be a member to see who’s a part of this organization.</p>' : '') + '</div>';
-    return '<div id="ghxOrg">' + ghxOrgHead(O, o) + '<div class="ghx-wrap"><div class="ghx-grid"><div class="ghx-main"><div id="ghpPop">' + pop + '</div>' + list + '</div><aside class="ghx-side">' + people + side + '</aside></div></div></div>';
+    return '<div id="ghxOrg">' + ghxOrgHead(O, o) + '<div class="ghx-wrap"><div class="ghx-grid"><div class="ghx-main">' + list + '</div><aside class="ghx-side">' + people + side + '</aside></div></div></div>';
 }
 function ghxOrgInit(st, O) {
     var o = st.login;
@@ -6354,10 +6456,7 @@ function ghxOrgInit(st, O) {
     liveTitle(st.url, (O.name || O.login) + ' · GitHub');
     ghxPaintOrg(st);
     ghxGet(st, GHP_API + '/orgs/' + o + '/repos?per_page=100&sort=pushed', null, function (err, list) {
-        if (err || !Array.isArray(list)) return;
-        if (list.length === 100) ghxGet(st, GHP_API + '/search/repositories?q=' + encodeURIComponent('org:' + o + ' fork:true') + '&sort=stars&per_page=6', null, function (e2, j) {
-            if (!e2 && j && Array.isArray(j.items)) { st.pop = ghpPickRepos(j.items.filter(ghpPublic)); ghxPaintOrg(st); }
-        });
+        if (err || !Array.isArray(list)) { st.reposFail = true; ghxPaintOrg(st); return; }
         st.repos = list.filter(ghpPublic).map(function (r) { var p = ghpPickRepo(r); p.topics = Array.isArray(r.topics) ? r.topics.filter(function (t) { return /^[a-z0-9-]{1,50}$/.test(t); }) : []; p.licenseId = r.license && /^[\w.+-]+$/.test(r.license.spdx_id || '') && r.license.spdx_id !== 'NOASSERTION' ? r.license.spdx_id : null; return p; });
         ghxPaintOrg(st);
     });
@@ -6365,12 +6464,16 @@ function ghxOrgInit(st, O) {
         st.people = !err && Array.isArray(list) ? list.filter(function (p) { return p && ghxLogin(p.login); }) : st.people; ghxPaintOrg(st);
     });
 }
-function ghxPaintOrg(st) { if (!ghxAlive(st)) return; var el = st.view.querySelector('#ghxOrg'); if (el) el.outerHTML = ghxOrgBody(st); }
+function ghxPaintOrg(st) {
+    if (!ghxAlive(st)) return;
+    var el = st.view.querySelector('#ghxOrg'); if (el) el.outerHTML = ghxOrgBody(st);
+    if (find.appId === 'chrome' && findOpenNow()) { var sy = st.view.scrollTop; runFind(); st.view.scrollTop = sy; }   // re-mark what the answer redrew
+}
 
 /* —— someone else's profile: IsaacUre's page, drawn from live answers only (nothing saved, no saved copy) —— */
 function ghxUser(st, U) {
-    var d = { user: ghpPickUser(U, true), repos: null, reposAll: false, pop: null, parents: Object.create(null), orgs: [], stars: null, starsMore: false, starsN: null,
-              cal: null, act: {}, at: {}, achievements: null, lists: null, spark: Object.create(null), readme: null };
+    var d = { user: ghpPickUser(U, true), repos: null, reposAll: false, pop: [], parents: Object.create(null), orgs: [], stars: null, starsMore: false, starsN: null,   // pop: no section, since no anonymous API says what they pinned
+              cal: null, act: {}, at: {}, achievements: null, lists: null, spark: Object.create(null), readme: null, readmeName: null };
     var tab = ghpTab(st.url);
     var ps = { view: st.view, url: st.url, cr: CR, login: d.user.login, other: true, d: d, priv: !!(CR && CR.incog), pending: 0, got: false, years: {}, months: [new Date().toISOString().slice(0, 7)],
                parentAsked: Object.create(null), sparkAsked: Object.create(null), filter: { q: '', type: 'all', lang: 'all', sort: 'updated' }, sfilter: ghpClone(GHP_SF0), lsort: 'name-asc',
@@ -6387,11 +6490,8 @@ function ghxUserFetch(st) {
     ghxGet(st, api + '/repos?per_page=100&sort=pushed', null, function (err, list) {
         if (err || !Array.isArray(list)) return;
         d.repos = ghpPickRepos(list.filter(ghpPublic)); d.reposAll = list.length < 100;
-        ghpPaint(st, ['pop', 'list', 'act']); ghpBar(st, 'ghpRepoBar', ghpRepoBtns(d, st.filter)); ghpParents(st);
-        if (!d.reposAll) ghxGet(st, GHP_API + '/search/repositories?q=' + encodeURIComponent('user:' + login + ' fork:true') + '&sort=stars&per_page=6', null, function (e2, j) {   // the six most starred of all of them
-            if (e2 || !j || !Array.isArray(j.items)) return;
-            d.pop = ghpPickRepos(j.items.filter(ghpPublic)); ghpPaint(st, ['pop']);
-        });
+        if (d.reposAll) Object.keys(d.act).forEach(function (mk) { ghxCreated(st, mk, d.act[mk]); });   // months that answered before the list did
+        ghpPaint(st, ['list', 'act']); ghpBar(st, 'ghpRepoBar', ghpRepoBtns(d, st.filter)); ghpParents(st);
     });
     ghxGet(st, api + '/orgs', null, function (err, l) { if (!err && Array.isArray(l)) { d.orgs = ghpPickOrgs(l); ghpPaint(st, ['side']); } });
     ghxGet(st, api + '/starred?per_page=1', null, function (err, l, last) { if (!err && Array.isArray(l)) { d.starsN = ghxN(l, last); ghpPaint(st, ['tabs']); } });
@@ -6401,7 +6501,10 @@ function ghxUserFetch(st) {
         ghpPaint(st, ['stars']); ghpBar(st, 'ghpStarBar', ghpStarBtns(d, st.sfilter));
     });
     ghxGet(st, GHP_API + '/repos/' + login + '/' + login + '/readme', { html: true }, function (err, html) {   // a profile README, if there is one
-        if (!err && typeof html === 'string') { d.readme = ghxMarkdown(html, st); ghpPaint(st, ['readme']); }
+        if (err || typeof html !== 'string') return;
+        var dp = /^\s*<div\b[^>]*\bdata-path="([^"]+)"/.exec(html);   // the file's own name: readme.md, README.md, README.rst...
+        d.readmeName = dp ? dp[1].replace(/&amp;/g, '&').split('/').pop() : null;
+        d.readme = ghxMarkdown(html, st); ghpPaint(st, ['readme']);
     });
     ghpCalendar(st, null);
     if (st.tab === 'overview') ghxMonthFor(st, st.months[0], function () { ghpPaint(st, ['act']); });
@@ -6411,9 +6514,13 @@ function ghxMonthFor(st, mk, cb) {        // someone else's month of activity in
     ghxMonth(st, st.login, mk, function (out) {
         if (out.partial) { cb(false); return; }
         var a = out.act; a.t = out.t;
-        if (st.d.reposAll) (st.d.repos || []).forEach(function (r) { if (!r.fork && String(r.created_at).slice(0, 7) === mk) a.created.push(st.login + '/' + r.name); });   // only from a repo list that is the whole of it
+        if (st.d.reposAll) ghxCreated(st, mk, a);   // only from a repo list that is the whole of it
         st.d.act[mk] = a; cb(true);
     });
+}
+function ghxCreated(st, mk, a) {          // the month's "Created N repositories", from their repo list
+    if (a.created.length) return;
+    (st.d.repos || []).forEach(function (r) { if (!r.fork && String(r.created_at).slice(0, 7) === mk) a.created.push(st.login + '/' + r.name); });
 }
 function ghxMore(st) {                    // their "Show more activity": the month before
     var d = st.d, mk = ghpPrevMonth(st.months[st.months.length - 1]);
@@ -6435,19 +6542,25 @@ function ghxCountShort(n) {               // "648k", "1.6M": the search results 
     if (n < 1e6) return (n < 1e4 ? (n / 1000).toFixed(1).replace(/\.0$/, '') : Math.round(n / 1000)) + 'k';
     return (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
 }
-function ghxMark(text, q) {               // the query's words in <em>, as the results highlight them
+function ghxMark(text, q) {               // the query's words in <em>, as the results highlight them; split first, so a match never lands inside an &amp;
     var words = String(q).split(/\s+/).filter(function (w) { return /^[\w.-]+$/.test(w); });
-    var s = esc(text);
-    if (!words.length) return s;
-    return s.replace(new RegExp('(' + words.map(function (w) { return w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }).join('|') + ')', 'gi'), '<em>$1</em>');
+    if (!words.length) return esc(text);
+    var re = new RegExp('(' + words.map(function (w) { return w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }).join('|') + ')', 'gi');
+    return String(text).split(re).map(function (s, i) { return i % 2 ? '<em>' + esc(s) + '</em>' : esc(s); }).join('');   // the matches land at the odd places
 }
+/* the sidebar's Advanced list, in its order: the first ten add their qualifier to the search box, Public and Private are searches of their own */
+var GHX_SADV = [['Owner', 'owner:'], ['Size', 'size:'], ['Number of followers', 'followers:'], ['Number of forks', 'forks:'], ['Number of stars', 'stars:'], ['Date created', 'created:'],
+    ['Date pushed', 'pushed:'], ['Topic', 'topic:'], ['License', 'license:'], ['Archived', 'archived:'], ['Public', 'is:public', 1], ['Private', 'is:private', 1]];
 var GHX_STYPES = [['code', 'Code', 'code'], ['repositories', 'Repositories', 'repo'], ['issues', 'Issues', 'issue-opened'], ['pullrequests', 'Pull requests', 'git-pull-request'], ['discussions', 'Discussions', 'comment-discussion'], ['users', 'Users', 'people']];
 function ghxSearchInner(st) {
-    var q = st.q, g = st.sres;
+    var q = st.q || '', g = st.sres;
     var side = '<nav class="ghx-sside" aria-label="Filter by"><h2 class="ghx-sbh">Filter by</h2><ul>' + GHX_STYPES.map(function (t) {
         var inner = ghpIc(t[2]) + '<span>' + t[1] + '</span>' + (t[0] === 'repositories' && g ? '<span class="ghp-counter">' + ghxCountShort(g.total) + '</span>' : '');
         return '<li>' + (t[0] === 'repositories' ? crLink(ghxSearchHref(q), inner, 'ghx-stype on') : ghpExt('https://github.com/search?q=' + encodeURIComponent(q) + '&type=' + t[0], inner, 'ghx-stype')) + '</li>';
-    }).join('') + '<li>' + ghpExt('https://github.com/search?q=' + encodeURIComponent(q) + '&type=commits', ghpIc('kebab-horizontal') + '<span>More</span>', 'ghx-stype') + '</li></ul></nav>';
+    }).join('') + '<li>' + ghpExt('https://github.com/search?q=' + encodeURIComponent(q) + '&type=commits', ghpIc('kebab-horizontal') + '<span>More</span>', 'ghx-stype') + '</li></ul>' +
+        '<h3 class="ghx-sbh ghx-sadvh">Advanced</h3><ul>' + GHX_SADV.map(function (a) {
+            return '<li>' + (a[2] ? crLink(ghxSearchHref((q ? q + ' ' : '') + a[1]), '<span>' + a[0] + '</span>', 'ghx-stype') : '<button type="button" class="ghx-stype ghx-sadv" data-q="' + a[1] + '"><span>' + a[0] + '</span></button>') + '</li>';
+        }).join('') + '</ul>' + ghpExt('https://github.com/search/advanced', 'Advanced search', 'ghx-stype ghx-sadvl') + '</nav>';
     var main = '';
     if (g) {
         main = '<div class="ghx-shead"><h2 class="ghx-sresults"><span>' + ghxCountShort(g.total) + ' results</span> <span class="ghx-muted ghx-sms">(' + nnum(g.ms) + ' ms)</span></h2>' +
@@ -6457,21 +6570,26 @@ function ghxSearchInner(st) {
                 if (r.language) meta.push(ghpLang(r.language));
                 if (r.stargazers_count) meta.push(ghpExt('https://github.com/' + full + '/stargazers', ghpIc('star') + ghpAbbr(r.stargazers_count), 'ghx-mlink'));
                 if (r.pushed_at) meta.push('<span>Updated <time datetime="' + esc(r.pushed_at) + '">' + ghpAgo(r.pushed_at) + '</time></span>');
-                return '<li class="ghx-sitem"><div class="ghx-smain"><div class="ghx-sname">' + ghxAvId(r.ownerId, 20, r.owner, 'ghx-sav') + crLink('github.com/' + full, ghxMark(full, q), 'ghx-slink') + '</div>' +
-                    (r.description ? '<p class="ghx-sdesc">' + ghxMark(r.description, q) + '</p>' : '') +
+                var dsc = r.description || '';
+                return '<li class="ghx-sitem"><div class="ghx-smain"><div class="ghx-sname">' + ghxAvId(r.ownerId, 20, r.owner, 'ghx-sav') + crLink('github.com/' + full, ghxMark(full, q), 'ghx-slink') +
+                    (r.archived ? '<span class="ghp-label">Public archive</span>' : '') + '</div>' +
+                    (dsc ? '<p class="ghx-sdesc">' + ghxMark(dsc.length > 140 ? dsc.slice(0, 137) + '…' : dsc, q) + '</p>' : '') +   // a long one cut at 137, as the results cut it
                     (r.topics && r.topics.length ? '<div class="ghx-topics">' + r.topics.map(function (t) { return ghpExt('https://github.com/topics/' + t, esc(t), 'ghx-topic'); }).join('') + '</div>' : '') +
                     '<p class="ghx-smeta">' + meta.join('') + '</p></div>' +
-                    ghpExt('https://github.com/login?return_to=' + encodeURIComponent('https://github.com/' + full), ghpIc('star') + 'Star', 'ghp-btn ghx-btnsm ghx-sstar') + '</li>';
+                    ghpExt('https://github.com/login?return_to=' + encodeURIComponent('https://' + st.url.replace(/^(?:https?:\/\/)?(?:www\.)?/i, '').split('#')[0]), ghpIc('star') + 'Star', 'ghp-btn ghx-btnsm ghx-sstar') + '</li>';   // signing in comes back to these results
             }).join('') + '</ul>' + ghxSearchPager(st);
     }
     return '<div class="ghx-swrap">' + side + '<div class="ghx-smainc" id="ghxSearch">' + main + '</div></div>';
 }
-function ghxSearchPager(st) {             // Previous 1 2 3 4 5 … 100 Next: the search API serves the first 1,000, ten a page
+function ghxSearchPager(st) {             // Previous 1 2 3 4 5 6 7 … 100 Next: the search API serves the first 1,000, ten a page
     var last = Math.min(100, Math.ceil(nnum(st.sres.total) / 10)), p = st.spage;
     if (last < 2) return '';
-    function href(n) { return ghxSearchHref(st.q) + (n > 1 ? '&p=' + n : ''); }
-    var nums = [], i;
-    for (i = 1; i <= last; i++) if (i <= 5 && p <= 4 || i === 1 || i === last || Math.abs(i - p) <= 2) nums.push(i);
+    function href(n) { return ghxSearchHref(st.q) + '&p=' + n; }   // page 1's link carries its p too
+    var nums = [], i, lo, hi;                                         // nine places: 1-7 near the start, the last seven near the end, two either side between
+    if (last <= 9) { lo = 1; hi = last; } else if (p <= 5) { lo = 1; hi = 7; } else if (p >= last - 4) { lo = last - 6; hi = last; } else { lo = p - 2; hi = p + 2; }
+    for (i = lo; i <= hi; i++) nums.push(i);
+    if (lo > 1) nums.unshift(1);
+    if (hi < last) nums.push(last);
     var h = p > 1 ? crLink(href(p - 1), 'Previous', 'ghx-pg') : '<span class="ghx-pg ghx-pgoff">Previous</span>', prev = 0;
     nums.forEach(function (n) { if (n - prev > 1) h += '<span class="ghx-pggap">…</span>'; h += n === p ? '<em class="ghx-pg ghx-pgon" aria-current="page">' + n + '</em>' : crLink(href(n), String(n), 'ghx-pg'); prev = n; });
     return '<nav class="ghx-pgs" aria-label="Pagination">' + h + (p < last ? crLink(href(p + 1), 'Next', 'ghx-pg') : '<span class="ghx-pg ghx-pgoff">Next</span>') + '</nav>';
@@ -6486,9 +6604,10 @@ function ghxSearchInit(st) {
         st.sres = { total: nnum(j.total_count), ms: Date.now() - t0, items: j.items.filter(ghpPublic).filter(function (r) { return r.owner && ghxLogin(r.owner.login); }).map(function (r) {
             var p = ghpPickRepo(r); p.owner = r.owner.login; p.ownerId = nnum(r.owner.id); p.topics = (Array.isArray(r.topics) ? r.topics : []).filter(function (t) { return /^[a-z0-9-]{1,50}$/.test(t); }); return p;
         }) };
-        ghxPaint(st, 'all');
+        ghxPaint(st, 'all'); ghxFillQ(st);
     });
 }
+function ghxFillQ(st) { var b = st.view.querySelector('.ghp-q'); if (b && !b.value) b.value = st.q; }   // the header's box holds the search, as github.com's does
 
 /* —— the 404: GitHub's picture says "404" and "This is not the web page you are looking for"; the words are drawn here instead of it —— */
 function ghx404Inner() {
@@ -6503,23 +6622,33 @@ function ghxQuery(name) {
     try { return decodeURIComponent(m[1].replace(/\+/g, ' ')); } catch (e) { return m[1]; }
 }
 function ghxPartsOf(url) {                // the path's segments, without query or hash; /orgs/<name> is <name>'s page, as github.com sends it there
-    var p = String(url || '').replace(/^(?:https?:\/\/)?(?:www\.)?github\.com/i, '').split(/[?#]/)[0], parts = p.split('/').filter(Boolean);
+    var p = String(url || '').replace(/^(?:https?:\/\/)?(?:www\.)?github\.com/i, '').split(/[?#]/)[0], parts = [];
+    p.split('/').forEach(function (x) {   // . and .. (or %2e) resolved the way the address bar resolves them
+        var l = x.toLowerCase();
+        if (!x || l === '.' || l === '%2e') return;
+        if (l === '..' || l === '.%2e' || l === '%2e.' || l === '%2e%2e') parts.pop(); else parts.push(x);
+    });
     return parts.length === 2 && parts[0].toLowerCase() === 'orgs' ? parts.slice(1) : parts;
 }
+/* "elsewhere": a real github.com page the copy does not draw. It says nothing about it (no 404, which would be a claim): the header and footer
+   with nothing between, and the address for a title, as a page without one has */
 function ghxKind(parts) {
     if (!parts.length) return 'home';
     var a = parts[0].toLowerCase();
     if (a === 'search' && parts.length === 1) return 'search';
-    if (GHX_RESERVED[a] || !ghxLogin(parts[0])) return '404';
+    if (Object.prototype.hasOwnProperty.call(GHX_RESERVED, a)) return 'elsewhere';   // one of github.com's own pages
+    if (!ghxLogin(parts[0])) return '404';
     if (parts.length === 1) return 'account';
-    return ghpName(parts[1]) ? 'repo' : '404';
+    if (!ghpName(parts[1])) return '404';
+    return ghxRouteRepo(parts).kind === 'other' ? 'elsewhere' : 'repo';   // a repository's issues, pulls, actions...: pages this copy does not draw
 }
-var GHX_HOME_TITLE = 'GitHub · Change is constant. GitHub keeps you ahead.';
+var GHX_HOME_TITLE = 'GitHub · Change is constant. GitHub keeps you ahead. · GitHub · GitHub';   // sic: github.com's own <title>
 function ghxTitleGuess(url) {             // the tab's title before GitHub has answered
     var parts = ghxPartsOf(url), k = ghxKind(parts);
     if (k === 'home') return GHX_HOME_TITLE;
     if (k === 'search') return 'Repository search results · GitHub';
     if (k === '404') return 'Page not found · GitHub';
+    if (k === 'elsewhere') return String(url || '').replace(/^(?:https?:\/\/)?(?:www\.)?/i, '').split('#')[0];
     if (k === 'account') return parts[0] + ' · GitHub';
     return parts[0] + '/' + parts[1] + ' · GitHub';
 }
@@ -6532,8 +6661,9 @@ function ghxBody(st) {                    // the page for what the router knows 
 }
 function ghxPage(st) {
     var path = st.path, home = st.kind === 'home' && !st.missing;
+    var ps = String(path).split('/'), sfx = { tree: '%2Ffiles%2Fdisambiguate', blob: '%2Fblob%2Fshow', commits: '%2Fcommits%2Fshow', commit: '%2Fcommit%2Fshow' }[ps[2]] || '';   // by the address's kind, as github.com's are
     var signup = home ? 'https://github.com/signup?ref_cta=Sign+up&ref_loc=header+logged+out&ref_page=%2F&source=header-home'
-        : st.kind === 'repo' && !st.missing ? 'https://github.com/signup?ref_cta=Sign+up&ref_loc=header+logged+out&ref_page=%2F%3Cuser-name%3E%2F%3Crepo-name%3E&source=header-repo' : null;
+        : st.kind === 'repo' && !st.missing ? 'https://github.com/signup?ref_cta=Sign+up&ref_loc=header+logged+out&ref_page=%2F%3Cuser-name%3E%2F%3Crepo-name%3E' + sfx + '&source=header-repo&source_repo=' + encodeURIComponent(ps[0] + '/' + ps[1]) : null;
     return '<div class="cr-ghp ghx' + (home ? ' ghx-dark' : '') + '">' + ghpHeader(home ? null : 'github.com/' + path + (st.query || ''), signup) + '<div id="ghxBody">' + ghxBody(st) + '</div>' + (home ? ghxHomeFoot() : ghpFoot()) + '</div>';
 }
 function ghxAnchor(e, view) {             // a #link inside rendered Markdown: GitHub's ids carry a user-content- prefix, and the address does not change
@@ -6544,10 +6674,16 @@ function ghxAnchor(e, view) {             // a #link inside rendered Markdown: G
     var el = view.querySelector('[id="user-content-' + id + '"]') || view.querySelector('[id="' + id + '"]'); if (el) el.scrollIntoView();
     return true;
 }
+var GHX_MENUS = 'details.ghx-codemenu[open], details.ghp-menu[open]';   // the page's own menus; a README's <details> stay as the reader left them
+function ghxRefocus(view, sel) { try { var b = view.querySelector(sel); if (b) b.focus(); } catch (x) {} }   // a redrawn button keeps the focus it had
+function ghxNoTab(view) {                 // a middle-click on a #link stays on the page: in the copy it is a jump, not an address
+    view.addEventListener('auxclick', function (e) { if (e.target.closest && e.target.closest('a[href^="#"]')) e.preventDefault(); });
+}
 function ghxWire(view, st) {              // the header's box and menu, Copy, the Code menu, a file's Preview / Code, the commit list's "…", the 404's search
+    ghxNoTab(view);
     view.addEventListener('keydown', function (e) {
         var t = e.target;
-        if (e.key === 'Escape') { var om = view.querySelector('details[open]'); if (om) { om.open = false; var sm = om.querySelector('summary'); if (sm) sm.focus(); e.preventDefault(); } return; }
+        if (e.key === 'Escape') { var om = view.querySelector(GHX_MENUS); if (om) { om.open = false; var sm = om.querySelector('summary'); if (sm) sm.focus(); e.preventDefault(); } return; }
         if (e.key !== 'Enter' || !t.classList) return;
         if (t.classList.contains('ghp-q') || t.classList.contains('ghx-404in')) { var q = t.value.trim(); if (q) crNav(ghxSearchHref(q)); }
     });
@@ -6555,15 +6691,18 @@ function ghxWire(view, st) {              // the header's box and menu, Copy, th
         var t = e.target;
         if (ghxAnchor(e, view)) return;
         if (t.closest('.ghp-burger')) { var r = view.querySelector('.cr-ghp'); if (r) r.classList.toggle('ghp-navopen'); return; }
+        var av = t.closest('.ghx-sadv');
+        if (av) { var hb = view.querySelector('.ghp-q'); if (hb) { var hv = hb.value.replace(/\s+$/, ''); hb.value = (hv ? hv + ' ' : '') + av.getAttribute('data-q'); hb.focus(); } return; }
         if (t.closest('.ghx-404go')) { var i4 = view.querySelector('.ghx-404in'), q4 = i4 && i4.value.trim(); if (q4) crNav(ghxSearchHref(q4)); return; }
         var cp = t.closest('.ghx-copy');
         if (cp) {
-            var text = cp.hasAttribute('data-copy-raw') ? (st.file && st.file.text) || '' : cp.getAttribute('data-copy') || '';
+            if (cp.hasAttribute('data-copy-raw') && !(st.file && st.file.text != null)) return;   // a picture, a file past 1 MB or one still on its way: nothing to copy
+            var text = cp.hasAttribute('data-copy-raw') ? st.file.text : cp.getAttribute('data-copy') || '';
             try { if (navigator.clipboard) navigator.clipboard.writeText(text).catch(function () {}); } catch (x) {}
             return;
         }
         var md = t.closest('[data-ghx-mode]');
-        if (md) { st.blobMode = md.getAttribute('data-ghx-mode'); ghxPaint(st, ['blob']); return; }
+        if (md) { var mode = md.getAttribute('data-ghx-mode'); st.blobMode = mode; ghxPaint(st, ['blob']); ghxRefocus(view, '[data-ghx-mode="' + mode + '"]'); return; }
         var fd = t.closest('[data-ghx-fold]');
         if (fd) { var fi = fd.getAttribute('data-ghx-fold'); st.dshut = st.dshut || {}; st.dshut[fi] = !st.dshut[fi]; ghxPaint(st, ['commit']); return; }
         var df = t.closest('[data-ghx-diff]');
@@ -6571,8 +6710,8 @@ function ghxWire(view, st) {              // the header's box and menu, Copy, th
         var jp = t.closest('[data-ghx-jump]');
         if (jp) { e.preventDefault(); var rd = view.querySelector('#readme'); if (rd) rd.scrollIntoView(); return; }
         var el = t.closest('.ghx-ellip');
-        if (el) { var sha = el.getAttribute('data-sha'); st.cbody = st.cbody || {}; st.cbody[sha] = !st.cbody[sha]; ghxPaint(st, ['commits']); return; }
-        var open = view.querySelectorAll('details[open]');
+        if (el) { var sha = el.getAttribute('data-sha'); st.cbody = st.cbody || {}; st.cbody[sha] = !st.cbody[sha]; ghxPaint(st, ['commits']); ghxRefocus(view, '.ghx-ellip[data-sha="' + sha + '"]'); return; }
+        var open = view.querySelectorAll(GHX_MENUS);
         for (var k = 0; k < open.length; k++) if (!open[k].contains(t)) open[k].open = false;
     });
 }
@@ -6580,17 +6719,17 @@ webPage('github.com', {
     live: true,                                               // any path: a repository, a folder, a file, its commits, a person, an organization, a search
     title: function (q, url) { return ghxTitleGuess(url); },
     fav: { ic: 'ic-github' }, searchable: true,
-    stitle: GHX_HOME_TITLE, sdesc: 'Tools and trends evolve, but collaboration endures. With GitHub, developers, agents, and code come together on one platform.', skey: 'github git code repos',
+    stitle: 'GitHub · Change is constant. GitHub keeps you ahead.', sdesc: 'Tools and trends evolve, but collaboration endures. With GitHub, developers, agents, and code come together on one platform.', skey: 'github git code repos',
     render: function () {
         var url = liveUrl(), parts = ghxPartsOf(url), kind = ghxKind(parts), q = /\?[^#]*/.exec(url);
-        return ghxPage({ kind: kind, path: parts.join('/'), query: q ? q[0] : '', missing: kind === '404' });
+        return ghxPage({ kind: kind, path: parts.join('/'), query: q ? q[0] : '', missing: kind === '404', q: kind === 'search' ? ghxQuery('q') || '' : '' });
     },
     init: function (view) {
         var url = liveUrl(), parts = ghxPartsOf(url), kind = ghxKind(parts), qs = /\?[^#]*/.exec(url);
         var st = { view: view, url: url, cr: CR, pending: 0, kind: kind, path: parts.join('/'), query: qs ? qs[0] : '', missing: kind === '404' };
         st.bodyFn = null;
-        if (kind === 'home' || kind === '404') { ghxWire(view, st); return; }
-        if (kind === 'search') { ghxWire(view, st); ghxSearchInit(st); return; }
+        if (kind === 'home' || kind === '404' || kind === 'elsewhere') { ghxWire(view, st); return; }
+        if (kind === 'search') { ghxWire(view, st); ghxSearchInit(st); ghxFillQ(st); return; }
         if (kind === 'repo') {
             st.owner = parts[0]; st.repo = parts[1]; st.route = ghxRouteRepo(parts); st.ref = st.route.ref; st.bodyFn = ghxRepoBody;
             ghxWire(view, st); ghxRepoInit(st); return;
@@ -6599,7 +6738,7 @@ webPage('github.com', {
         ghxGet(st, GHP_API + '/users/' + parts[0], null, function (err, U) {
             var orgOnly = /^(?:https?:\/\/)?(?:www\.)?github\.com\/+orgs\//i.test(url);   // /orgs/<name> is a page for organizations only
             if (err === 'http404' || (!err && (!U || !ghxLogin(U.login) || (orgOnly && U.type !== 'Organization')))) { st.missing = true; liveTitle(url, 'Page not found · GitHub'); ghxPaint(st, 'all'); ghxWire(view, st); return; }
-            if (err) return;                  // no answer: the page stays as drawn
+            if (err) { ghxWire(view, st); return; }   // no answer: the page stays as drawn, its header still working
             if (U.type === 'Organization') {
                 st.login = U.login; st.bodyFn = ghxOrgBody; st.path = U.login;
                 ghxPaint(st, 'all'); ghxWire(view, st);
@@ -6740,6 +6879,7 @@ function crQOf(url) {
 }
 function crTitleOf(url) {
     if (/^view-source:/i.test(String(url))) return String(url);   // the URL is the tab title, like the real thing
+    if (CR && CR.incog && CR.privTitles && CR.privTitles[String(url)]) return CR.privTitles[String(url)];   // a private page's, kept on the window only
     if (LIVE_TITLES[String(url)]) return LIVE_TITLES[String(url)];   // a live page told us its real name
     var s = crSite(url);
     if (s === WEB.__err || s === WEB.__frame) return String(url).replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0];
@@ -7124,6 +7264,7 @@ function crIncogSwap() {
     CR.held = CR.incog ? null : { tabs: CR.tabs, active: CR.active, closed: CR.closed };
     CR.incog = !CR.incog;
     CR.ghpPriv = null;                                    // the private window's GitHub answer goes with it
+    CR.ghxPriv = null; CR.privTitles = null;              // and every other GitHub answer, and the titles its pages learned
     GHP = null;                                           // and its view, which the title and search results would read
     if (held && held.tabs && held.tabs.length) {
         CR.tabs = held.tabs; CR.active = Math.min(Math.max(held.active, 0), held.tabs.length - 1); CR.closed = held.closed;
