@@ -3982,7 +3982,7 @@ function ghpPopInner(d) {
             crLink('github.com/' + GHP_USER + '/' + r.name, '<span class="ghp-repo">' + esc(r.name) + '</span>', 'ghp-cname') +
             '<span class="ghp-label">' + ghpVis(r) + '</span></div>' +
             (p ? '<p class="ghp-forked">Forked from ' + crLink('github.com/' + p, esc(p), 'ghp-mlink') + '</p>' : '') +
-            (r.description ? '<p class="ghp-cdesc">' + esc(r.description.length > 200 ? r.description.slice(0, 197) + '...' : r.description) + '</p>' : '')   // cards cut at 200, as github.com's do +
+            (r.description ? '<p class="ghp-cdesc">' + esc(r.description.length > 200 ? r.description.slice(0, 197) + '...' : r.description) + '</p>' : '') +   // cards cut at 200, as github.com's do
             (meta.length ? '<p class="ghp-cmeta">' + meta.join('') + '</p>' : '') + '</li>';
     }).join('') + '</ol>';
 }
