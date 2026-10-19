@@ -16,6 +16,9 @@ name and ends with `N/N passed`.
 
 - `api.github.com`: answers shaped like the real ones. Commits and pull requests
   are this repo's real history, from `data/mockdata.json`.
+  The participation lines are a week newer than the saved copy's, so a check
+  can tell the live line from the saved one. The Stars tab's search (per_page=30)
+  answers with two repositories and 648025 in all, or none for `zzzzqq`.
 - `github-contributions-api.jogruber.de`: the calendar mirror, from
   `data/ghsnap.json`.
 - `github.githubassets.com`: a 1x1 PNG for the achievement pictures, or a 404
@@ -42,7 +45,10 @@ does not answer. `data/` must describe the same moment:
    `https://github.com/users/IsaacUre/contributions` and compare the heading
    and every non-zero day. On 2026-10-19 they matched on every day (377).
 4. Put the new counts, months and total into `GHP_SNAP` in both copies, as the
-   same patch.
+   same patch. `GHP_SNAP.spark` is
+   `api.github.com/repos/IsaacUre/<repo>/stats/participation`'s `all`, and
+   `GHP_SNAP.years` is each earlier year's non-zero days, read off
+   `https://github.com/users/IsaacUre/contributions?from=YYYY-01-01&to=YYYY-12-31`.
 
 `gen_mock.py` counts what GitHub counts: commits on the default branch whose
 author is IsaacUre, pull requests IsaacUre opened (any state), and one for

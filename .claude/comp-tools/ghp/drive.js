@@ -25,10 +25,10 @@ function jogLast() {
   SNAP.counts.forEach(c => { out.push({ date: d.toISOString().slice(0, 10), count: c, level: c ? Math.ceil(4 * c / M) : 0 }); d.setUTCDate(d.getUTCDate() + 1); });
   return { total: { lastYear: SNAP.total }, contributions: out };
 }
-function jogYear(y) {
-  const out = []; let d = new Date(y + '-01-01T00:00:00Z');
-  while (d.getUTCFullYear() === +y) { out.push({ date: d.toISOString().slice(0, 10), count: 0, level: 0 }); d.setUTCDate(d.getUTCDate() + 1); }
-  return { total: { [y]: 0 }, contributions: out };
+function jogYear(y) {                    // github.com on 2026-10-19: one contribution in 2022 (January 28th), none in 2023, 2024 or 2025
+  const out = []; let d = new Date(y + '-01-01T00:00:00Z'), total = 0;
+  while (d.getUTCFullYear() === +y) { const day = d.toISOString().slice(0, 10), c = day === '2022-01-28' ? 1 : 0; total += c; out.push({ date: day, count: c, level: c ? 4 : 0 }); d.setUTCDate(d.getUTCDate() + 1); }
+  return { total: { [y]: total }, contributions: out };
 }
 const USER = { login: 'IsaacUre', id: 98616888, avatar_url: 'https://avatars.githubusercontent.com/u/98616888?v=4', type: 'User', name: null, company: null, blog: '', location: null, email: null, hireable: null, bio: null, twitter_username: null, public_repos: 2, public_gists: 0, followers: 0, following: 0, created_at: '2022-01-28T20:01:53Z', updated_at: '2026-06-17T19:59:31Z' };
 const REPOS = [
@@ -36,6 +36,11 @@ const REPOS = [
   { name: 'Background-Auto-Sync-for-Anki-Addon', full_name: 'IsaacUre/Background-Auto-Sync-for-Anki-Addon', private: false, visibility: 'public', fork: true, description: 'This addon will automatically synchronize your collection with AnkiWeb', language: 'Python', stargazers_count: 0, forks_count: 0, license: { key: 'gpl-3.0', name: 'GNU General Public License v3.0', spdx_id: 'GPL-3.0' }, archived: false, is_template: false, mirror_url: null, pushed_at: '2026-09-01T19:34:14Z', created_at: '2026-09-01T19:30:00Z', updated_at: '2026-09-01T19:34:14Z' },
   { name: 'secret-decoy-repo', full_name: 'IsaacUre/secret-decoy-repo', private: true, visibility: 'private', fork: false, description: 'MUST NOT RENDER', language: 'C', stargazers_count: 9, forks_count: 0, license: null, archived: false, pushed_at: '2026-09-20T00:00:00Z', created_at: '2026-09-02T00:00:00Z' }
 ];
+// the live participation answers: a week newer than the saved copy's line, so a test can tell them apart
+const SPARK_SITE = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 44, 15, 11, 3, 0, 0, 0, 0, 0, 0, 1, 17, 4, 8, 34, 10, 15, 0, 24, 16, 2, 0, 18, 0, 6, 14, 0, 0, 4, 9];
+const SPARK_FORK = Array.from({ length: 52 }, (x, i) => i === 44 ? 3 : 0);
+const savedSpark = tag => JSON.parse('[' + /spark: \{ 'IsaacUre\.github\.io': \[([\d,]+)\] \}/.exec(fs.readFileSync(__dirname + '/../../../' + tag + '/comp.js', 'utf8'))[1] + ']');   // the saved copy's line, read from the file
+const sparkPts = w => { const max = Math.max(...w, 1); return w.map((v, i) => i * 3 + ',' + (1 + Math.round(26 * v / max))).join(' '); };
 const OCT_COMMITS = [1, 2, 3].map(i => ({ sha: 'oct' + i, author: { login: 'IsaacUre' }, commit: { author: { date: '2026-10-0' + (i + 1) + 'T15:00:00Z' } } }));
 const OCT_PRS = [{ number: 999, user: { login: 'IsaacUre' }, created_at: '2026-10-02T15:10:00Z', state: 'closed', merged_at: '2026-10-02T15:20:00Z' }];
 const STARS = [
@@ -60,7 +65,13 @@ function ghMock(mode, log) {
     }
     if (p === '/users/IsaacUre/orgs') return mode.failOrgs ? json({ message: 'Server Error' }, 500) : json([]);
     if (p === '/users/IsaacUre/starred') return mode.failStars ? json({ message: 'Bad Gateway' }, 502) : json(mode.stars || []);
+    if (p === '/search/repositories' && q.get('per_page') === '30') {   // the Stars tab's search, which for someone with no stars covers every repository
+      if (q.get('q') === 'zzzzqq') return json({ total_count: 0, incomplete_results: false, items: [] });
+      return json({ total_count: 648025, incomplete_results: false, items: q.get('page') === '2' ? [STARS[1]] : STARS });
+    }
     if (p === '/search/repositories') return json({ total_count: 0, incomplete_results: false, items: [] });   // the SERP's own GitHub box, not this page
+    if (p === '/repos/IsaacUre/IsaacUre.github.io/stats/participation') return mode.spark202 ? json({}, 202) : json({ all: SPARK_SITE, owner: SPARK_SITE });
+    if (p === '/repos/IsaacUre/Background-Auto-Sync-for-Anki-Addon/stats/participation') return mode.spark202 ? json({}, 202) : json({ all: SPARK_FORK, owner: SPARK_FORK.map(() => 0) });
     if (p === '/repos/IsaacUre/Background-Auto-Sync-for-Anki-Addon') return json(Object.assign({}, REPOS[1], { parent: { full_name: 'athulkrishna2015/Background-Auto-Sync-for-Anki-Addon' } }));
     if (p === '/repos/IsaacUre/IsaacUre.github.io') return json(Object.assign({}, REPOS[0], { owner: { login: 'IsaacUre' } }));
     if (p === '/repos/IsaacUre/IsaacUre.github.io/readme') return json({ content: Buffer.from('# IsaacUre.github.io\nWebsite').toString('base64') });
@@ -135,7 +146,8 @@ async function run(browser, base, tag) {
   let { page } = A;
   await settle(A);
   await clean(A, tag + ' A');
-  check(tag + ' A header: the Octocat mark, no wordmark', (await A.page.$eval('.ghp-logo', e => e.innerText.trim())) === 'Homepage' && !!(await A.page.$('.ghp-logo svg')) && (await A.page.$eval('.ghp-logo .sr-only', e => e.textContent)) === 'Homepage');
+  check(tag + ' A header: the Octocat mark, no wordmark, named by aria-label', (await A.page.$eval('.ghp-logo', e => e.innerText.trim())) === '' && !!(await A.page.$('.ghp-logo svg')) && (await A.page.$eval('.ghp-logo', e => e.getAttribute('aria-label'))) === 'Homepage');
+  check(tag + ' A footer mark named by aria-label, no hidden text for Find', (await A.page.$eval('.ghp-footmark', e => e.getAttribute('aria-label'))) === 'GitHub Homepage' && !/Homepage/.test(await txt(A.page, '#crView')));
   check(tag + ' A footer: the mark, then the copyright and the links', !!(await A.page.$('.ghp-footmark svg')) && /© 2026 GitHub, Inc\. Terms Privacy Security Status Community Docs Contact Manage cookies Do not share my personal information/.test(await txt(A.page, '.ghp-foot')));
   check(tag + ' A achievements are GitHub\'s pictures', (await A.page.$$eval('.ghp-badgeimg', e => e.map(x => x.getAttribute('src')))).join(' ') === 'https://github.githubassets.com/assets/pair-extraordinaire-gold-5335a3b8ae7d.png https://github.githubassets.com/assets/pull-shark-silver-0643f87ac9fd.png https://github.githubassets.com/assets/yolo-default-be0bbff04951.png'
     && (await A.page.$$eval('.ghp-side .ghp-tier', e => e.map(x => x.textContent))).join(',') === 'x4,x3' && !(await A.page.$('.ghp-nopic')));
@@ -143,6 +155,10 @@ async function run(browser, base, tag) {
   check(tag + ' A tab title', (await txt(page, '.cr-tab.on .cr-tabt')) === 'IsaacUre · GitHub');
   check(tag + ' A login shown, no invented name', (await txt(page, '.ghp-names')) === 'IsaacUre');
   check(tag + ' A avatar is the real URL', (await page.$eval('.ghp-av', e => e.getAttribute('src'))) === USER.avatar_url);
+  check(tag + ' A avatar opens the full-size picture', (await page.$eval('.ghp-avlink', e => e.getAttribute('href'))) === USER.avatar_url);
+  const backTo = async (pg, want) => (await pg.$eval('.ghp-signin', a => a.getAttribute('href'))) === 'https://github.com/login?return_to=' + want && (await pg.$eval('.ghp-follow', a => a.getAttribute('href'))) === 'https://github.com/login?return_to=' + want;
+  check(tag + ' A Sign in and Follow come back to the overview', await backTo(page, 'https%3A%2F%2Fgithub.com%2FIsaacUre'));
+  check(tag + ' A favicon is GitHub\'s mark', (await page.$eval('.cr-tab.on svg.cr-fav use', u => u.getAttribute('href'))) === '#ic-github');
   check(tag + ' A no followers line at 0/0', !(await page.$('.ghp-follows')));
   check(tag + ' A Follow button', /^Follow$/.test(await txt(page, '.ghp-follow')));
   check(tag + ' A achievements x3', (await page.$$('.ghp-side .ghp-ach')).length === 3);
@@ -198,8 +214,15 @@ async function run(browser, base, tag) {
   check(tag + ' E no Star buttons on the rows', !(await page.$('.ghp-ritem .ghp-btn')) && !items.some(s => /\bStar\b/.test(s)));
   check(tag + ' E fork row has license + updated (' + (items[1] || '').slice(-40) + ')', /GNU General Public License v3\.0/.test(items[1] || '') && /Updated (\d+ weeks? ago|last week|last month|on Sep 1)/.test(items[1] || ''));
   check(tag + ' E site row: Updated 2 days ago (Oct 18 07:56Z, clock Oct 19 23:06Z)', /Updated 2 days ago/.test(items[0] || ''));
+  check(tag + ' E Sign in and Follow come back to ?tab=repositories', await backTo(page, 'https%3A%2F%2Fgithub.com%2FIsaacUre%3Ftab%3Drepositories'));
+  await settle(A);
+  const lines = await page.$$eval('.ghp-ritem', els => els.map(e => { const p = e.querySelector('.ghp-rside svg.ghp-spark polyline'); return p ? p.getAttribute('points') : null; }));
+  check(tag + ' E each row has its past-year line, from the live answer', lines[0] === sparkPts(SPARK_SITE) && lines[1] === sparkPts(SPARK_FORK) && gh(A.log).filter(x => /stats\/participation$/.test(x)).length === 2);
+  check(tag + ' E the lines\' ids are unique', await page.evaluate(() => { const ids = [...document.querySelectorAll('.ghp-spark [id]')].map(e => e.id); return ids.length === 4 && new Set(ids).size === 4; }));
   await page.fill('#ghpRepoBar .ghp-rq', 'anki'); await page.waitForTimeout(150);
   check(tag + ' E filter narrows to the fork', (await page.$$('.ghp-ritem')).length === 1 && /1 result for repositories matching anki/.test(await txt(page, '.ghp-results')));
+  await page.fill('#ghpRepoBar .ghp-rq', 'zzzzqq'); await page.waitForTimeout(150);
+  check(tag + ' E no match: GitHub\'s words, curly apostrophe', /IsaacUre doesn’t have any repositories that match\.$/.test(await txt(page, '#ghpRepoList')));
   await page.click('.ghp-clear'); await page.waitForTimeout(150);
   check(tag + ' E clear filter restores 2', (await page.$$('.ghp-ritem')).length === 2);
   await page.click('.ghp-menu:has-text("Type") > summary'); await page.click('.ghp-mopt[data-v="forks"]'); await page.waitForTimeout(150);
@@ -222,16 +245,18 @@ async function run(browser, base, tag) {
   await page.click('.ghp-listcard'); await page.waitForTimeout(400);
   check(tag + ' L star list page', (await page.$eval('#crUrl', e => e.value)) === 'github.com/stars/IsaacUre/lists/old' && (await txt(page, '.cr-tab.on .cr-tabt')) === "IsaacUre's list / old · GitHub"
     && (await txt(page, '.ghp-main')) === 'Stars old Nothing starred yet' && (await txt(page, '.ghp-tab.on')) === 'Stars');
+  check(tag + ' L Sign in and Follow come back to the list', await backTo(page, 'https%3A%2F%2Fgithub.com%2Fstars%2FIsaacUre%2Flists%2Fold'));
   await page.click('.ghp-crumb'); await page.waitForTimeout(400);
   check(tag + ' L its Stars link goes back', (await page.$eval('#crUrl', e => e.value)) === 'github.com/IsaacUre?tab=stars');
   await page.click('.ghp-side .ghp-hlink'); await page.waitForTimeout(400);
   check(tag + ' L achievements tab', (await page.$eval('#crUrl', e => e.value)) === 'github.com/IsaacUre?tab=achievements' && (await txt(page, '.cr-tab.on .cr-tabt')) === 'IsaacUre / Achievements · GitHub'
     && (await txt(page, '.ghp-main')) === 'Earned achievements Pair Extraordinaire x4 Pull Shark x3 YOLO' && (await page.$$('.ghp-achcard .ghp-badgeimg')).length === 3);
+  check(tag + ' L Sign in and Follow come back to the achievements', await backTo(page, 'https%3A%2F%2Fgithub.com%2FIsaacUre%3Ftab%3Dachievements'));
   await page.screenshot({ path: OUT + '/' + tag + '-achievements.png' });
   await page.click('.ghp-side .ghp-ach >> nth=1'); await page.waitForTimeout(400);
   check(tag + ' L a badge opens its achievement', (await page.$eval('#crUrl', e => e.value)) === 'github.com/IsaacUre?achievement=pull-shark&tab=achievements' && !!(await page.$('.ghp-achgrid')));
   await page.click('.ghp-tab:has-text("Projects")'); await page.waitForTimeout(300);
-  check(tag + ' E projects', /There aren't any projects yet/.test(await txt(page, '.ghp-main')) && (await txt(page, '.cr-tab.on .cr-tabt')) === 'IsaacUre / Projects · GitHub');
+  check(tag + ' E projects: the count, then the empty state (' + (await txt(page, '.ghp-main')) + ')', (await txt(page, '.ghp-main')) === "Search results 0 open and 0 closed projects found. There aren't any projects yet" && (await txt(page, '.cr-tab.on .cr-tabt')) === 'IsaacUre / Projects · GitHub');
   await page.click('.ghp-tab:has-text("Packages")'); await page.waitForTimeout(300);
   const pk = await txt(page, '.ghp-main');
   const regLinks = await page.$$eval('.ghp-regs a', e => e.map(a => a.getAttribute('href')));
@@ -253,6 +278,9 @@ async function run(browser, base, tag) {
   check(tag + ' E search result description from the live count', /IsaacUre has 2 repositories available\. Follow their code on GitHub\./.test(await txt(page, '#crView')));
   await nav(page, 'github.com/IsaacUre/IsaacUre.github.io');
   check(tag + ' E repo path goes to the live repo page', !(await page.$('.cr-ghp')) && !!(await page.$('.cr-lg')));
+  await settle(A); await clean(A, tag + ' E the repo page');
+  check(tag + ' E the repo page\'s title is GitHub\'s', (await txt(page, '.cr-tab.on .cr-tabt')) === 'GitHub - IsaacUre/IsaacUre.github.io: Website · GitHub');
+  await nav(page, 'github.com'); await settle(A); await clean(A, tag + ' E github.com');
   check(tag + ' A-E no console errors ' + JSON.stringify(A.errors), A.errors.length === 0);
   // G. persistence: a reload within the TTL spends nothing
   const seed = await page.evaluate(() => localStorage.getItem('comp_ghp'));
@@ -301,7 +329,8 @@ async function run(browser, base, tag) {
     repos: [{ name: 'IsaacUre.github.io', description: '<img src=x onerror="window.__pwned=4">', pushed_at: '"><img src=x onerror=window.__pwned=5>' }, { name: '../../evil' }],
     orgs: [{ login: 'x"><img src=x>', avatar_url: 'https://evil.example/a.png' }], stars: 'nope', parents: { constructor: 'a/b', 'IsaacUre.github.io': '<b>' },
     cal: { src: 'github', start: '2025-09-21', counts: [1, 2, 3], levels: ['"><img src=x onerror="window.__pwned=2">', 9, -3] },
-    act: { '2026-09': { commits: { 'IsaacUre/IsaacUre.github.io': '<b>9</b>', '<img>': 3 }, prs: 'x', created: ['<img src=x>'], t: now }, '__proto__': { t: now }, 'bad': {} } });
+    act: { '2026-09': { commits: { 'IsaacUre/IsaacUre.github.io': '<b>9</b>', '<img>': 3 }, prs: 'x', created: ['<img src=x>'], t: now }, '__proto__': { t: now }, 'bad': {} },
+    spark: { 'IsaacUre.github.io': { w: Array(52).fill('"><img src=x onerror="window.__pwned=6">'), t: now }, '<img src=x>': { w: Array(52).fill(1), t: now }, 'Background-Auto-Sync-for-Anki-Addon': { w: [1, 2], t: now } } });
   let X = await openAt(browser, base, 'github.com/IsaacUre', { offline: true }, { seed: evil });
   await X.page.waitForTimeout(1200);
   const xv = await X.page.evaluate(() => ({ pw: window.__pwned, imgs: document.querySelectorAll('#crView img[src="x"]').length, lv: [...document.querySelectorAll('.ghp-day')].map(e => e.getAttribute('data-level')), av: document.querySelector('.ghp-av').getAttribute('src'), nm: document.querySelector('.ghp-fullname') && document.querySelector('.ghp-fullname').textContent }));
@@ -310,6 +339,11 @@ async function run(browser, base, tag) {
   check(tag + ' X avatar falls back to GitHub\'s, name shown as text', xv.av === USER.avatar_url && /^<img src=x/.test(xv.nm || ''));
   check(tag + ' X no page errors ' + JSON.stringify(X.errors), X.errors.filter(e => /PAGEERROR/.test(e)).length === 0);
   await X.ctx.close();
+  let X3 = await openAt(browser, base, 'github.com/IsaacUre?tab=repositories', { offline: true }, { seed: evil });
+  await X3.page.waitForTimeout(1200);
+  const x3 = await X3.page.evaluate(() => ({ pw: window.__pwned, imgs: document.querySelectorAll('#crView img[src="x"]').length, pts: [...document.querySelectorAll('.ghp-spark polyline')].map(p => p.getAttribute('points')) }));
+  check(tag + ' X3 a tampered line draws flat, runs nothing; a short one is dropped (' + JSON.stringify({ pw: x3.pw, imgs: x3.imgs, n: x3.pts.length }) + ')', x3.pw === undefined && x3.imgs === 0 && x3.pts.length === 1 && x3.pts[0] === sparkPts(Array(52).fill(0)));
+  await X3.ctx.close();
   const junk = JSON.stringify({ v: 1, at: { cal: now, user: now + 365 * 86400000, repos: 'soon' }, cal: { start: 5, counts: 'nope' }, user: { login: 'someoneelse' }, repos: 'x', act: 7 });
   let X2 = await openAt(browser, base, 'github.com/IsaacUre', {}, { seed: junk });
   await settle(X2);
@@ -370,7 +404,17 @@ async function run(browser, base, tag) {
   const beforeCount = C.log.length; await C.page.waitForTimeout(800);
   await C.page.click('.ghp-tab:has-text("Repositories")'); await C.page.waitForTimeout(500);
   check(tag + ' C stops asking GitHub, across views too (' + beforeCount + ' then ' + C.log.length + ')', C.log.length === beforeCount && beforeCount <= 4);
+  const cl = await C.page.$$eval('.ghp-ritem .ghp-spark polyline', e => e.map(p => p.getAttribute('points')));
+  check(tag + ' C the saved line, for the one repository the copy has it for', cl.length === 1 && cl[0] === sparkPts(savedSpark(tag)));
   await C.ctx.close();
+  let C2 = await openAt(browser, base, 'github.com/IsaacUre', { limited: true });
+  await settle(C2);
+  for (let i = 0; i < 9; i++) { await C2.page.click('.ghp-more'); await C2.page.waitForTimeout(150); }
+  const c2 = await C2.page.$$eval('.ghp-month', e => e.map(m => m.innerText.replace(/\s+/g, ' ').trim()));
+  check(tag + ' C2 limited: Show more runs on through the calendar\'s empty months (' + c2.slice(-4).join(' | ') + ')', c2.length === 10 && /^April 2026 Created 24 commits in 1 repository/.test(c2[6])
+    && c2[7] === 'March 2026 IsaacUre had no activity during this period.' && c2[9] === 'January 2026 IsaacUre had no activity during this period.' && !!(await C2.page.$('.ghp-more:not([disabled])')));
+  await clean(C2, tag + ' C2');
+  await C2.ctx.close();
 
   // D. offline
   let D = await openAt(browser, base, 'github.com/IsaacUre', { offline: true });
@@ -411,7 +455,8 @@ async function run(browser, base, tag) {
     check(tag + ' N incognito: page works and asks GitHub (' + (n1 - n0) + ')', (await txt(N.page, '.ghp-calh')) === HEAD && n1 > n0);
     await N.page.click('.ghp-tab:has-text("Repositories")'); await N.page.waitForTimeout(500);
     await N.page.click('.ghp-tab:has-text("Overview")'); await N.page.waitForTimeout(500);
-    check(tag + ' N incognito: tab clicks cost nothing more (' + (N.log.length - n1) + ')', N.log.length === n1);
+    const nl = gh(N.log.slice(n1));
+    check(tag + ' N incognito: tab clicks cost nothing more than the Repositories tab\'s lines (' + nl.join(' ') + ')', nl.length === 2 && nl.every(x => /stats\/participation$/.test(x)));
     await N.page.click('.ghp-tab:has-text("Repositories")'); await N.page.waitForTimeout(400);
     check(tag + ' N incognito: tab title follows the tab', (await txt(N.page, '.cr-tab.on .cr-tabt')) === 'IsaacUre / Repositories · GitHub');
     check(tag + ' N incognito: nothing saved', (await N.page.evaluate(() => localStorage.getItem('comp_ghp'))) === null);
@@ -549,6 +594,7 @@ async function run(browser, base, tag) {
   await R11.page.click('#ghpRepoBar .ghp-menu:has-text("Type") > summary'); await R11.page.waitForTimeout(150);
   const r11 = await R11.page.evaluate(() => { const b = document.querySelector('.ghp-menu[open] .ghp-menubox').getBoundingClientRect(), v = document.querySelector('#crView').getBoundingClientRect(); return { bl: Math.round(b.left), br: Math.round(b.right), vl: Math.round(v.left), vr: Math.round(v.right) }; });
   check(tag + ' R11 Type menu inside a phone-width view (' + JSON.stringify(r11) + ')', r11.bl >= r11.vl && r11.br <= r11.vr);
+  check(tag + ' R11 no past-year line at phone width', await R11.page.$$eval('.ghp-rside', e => e.length > 0 && e.every(x => getComputedStyle(x).display === 'none')));
   await R11.ctx.close();
   let R12 = await openAt(browser, base, 'github.com/IsaacUre', {}, { size: { width: 1060, height: 900 } });
   await settle(R12);
@@ -587,10 +633,65 @@ async function run(browser, base, tag) {
   check(tag + ' H no console errors ' + JSON.stringify(H.errors), H.errors.length === 0);
   await H.ctx.close();
 
+  // M. back to the month the account was made: the calendar's one contribution there is in nothing public, so the feed ends before it
+  let M = await openAt(browser, base, 'github.com/IsaacUre', {});
+  await settle(M);
+  for (let i = 0; i < 70 && await M.page.$('.ghp-more'); i++) { await M.page.click('.ghp-more'); await M.page.waitForTimeout(60); }
+  const mm = await M.page.$$eval('.ghp-month', e => e.map(m => m.innerText.replace(/\s+/g, ' ').trim()));
+  check(tag + ' M the feed ends at February 2022, no button (' + mm.length + ', ' + mm[mm.length - 1] + ')', mm.length === 57 && mm[mm.length - 1] === 'February 2022 IsaacUre had no activity during this period.' && !(await M.page.$('.ghp-more')) && !mm.some(x => /January 2022/.test(x)));
+  check(tag + ' M no console errors ' + JSON.stringify(M.errors), M.errors.length === 0);
+  await M.ctx.close();
+
+  // H2. the calendar mirror down: a past year still switches, drawn as github.com drew it
+  let H2 = await openAt(browser, base, 'github.com/IsaacUre', { jogDown: true }, { big: true });
+  await settle(H2);
+  await H2.page.evaluate(() => { const w = document.querySelector('.win[data-app="chrome"]'); if (w) w.classList.add('maxi'); }); await H2.page.waitForTimeout(400);
+  await H2.page.click('.ghp-year[data-year="2025"]'); await settle(H2);
+  check(tag + ' H2 mirror down: 2025 still switches', (await txt(H2.page, '.ghp-calh')) === '0 contributions in 2025' && (await txt(H2.page, '.ghp-year.on')) === '2025');
+  await H2.page.click('.ghp-year[data-year="2022"]'); await settle(H2);
+  check(tag + ' H2 mirror down: 2022 has its one contribution', (await txt(H2.page, '.ghp-calh')) === '1 contribution in 2022' && (await H2.page.$$('.ghp-day[data-tip="1 contribution on January 28th."]')).length === 1 && (await H2.page.$$('.ghp-day:not([data-level="0"])')).length === 1);
+  await H2.page.click('.ghp-year[data-year="2026"]'); await H2.page.waitForTimeout(300);
+  check(tag + ' H2 and back to the last year', (await txt(H2.page, '.ghp-calh')) === HEAD);
+  await H2.ctx.close();
+  let H3 = await openAt(browser, base, 'github.com/IsaacUre', {}, { big: true });
+  await settle(H3);
+  await H3.page.evaluate(() => { const w = document.querySelector('.win[data-app="chrome"]'); if (w) w.classList.add('maxi'); }); await H3.page.waitForTimeout(400);
+  await H3.page.click('.ghp-year[data-year="2022"]'); await settle(H3);
+  check(tag + ' H3 mirror up: 2022 from its answer', (await txt(H3.page, '.ghp-calh')) === '1 contribution in 2022' && H3.jlog.some(l => /y=2022/.test(l.url)));
+  await H3.ctx.close();
+
+  // Q. a search on the Stars tab of someone with no stars runs over every repository, as on github.com
+  let Q = await openAt(browser, base, 'github.com/IsaacUre?tab=stars', {});
+  await settle(Q);
+  const q0 = Q.log.length;
+  await Q.page.click('#ghpSq'); await Q.page.keyboard.type('kernel', { delay: 60 }); await settle(Q); await Q.page.waitForTimeout(300);
+  const qs = Q.log.slice(q0).filter(l => l.path === '/search/repositories');
+  check(tag + ' Q one search, after the last keystroke (' + qs.map(l => l.url.split('?')[1]).join(' ') + ')', qs.length === 1 && /[?&]q=kernel&per_page=30&page=1$/.test(qs[0].url));
+  check(tag + ' Q GitHub\'s results line and rows (' + (await txt(Q.page, '#ghpStarList')).slice(0, 80) + ')', /^648025 stars matching kernel Clear filter torvalds \/ linux Linux kernel source tree/.test(await txt(Q.page, '#ghpStarList')) && (await Q.page.$$('#ghpStarList .ghp-ritem')).length === 2);
+  check(tag + ' Q Previous off, Next on', (await txt(Q.page, '#ghpStarList .ghp-pager')) === 'Previous Next' && !(await Q.page.$('#ghpStarList .ghp-pager .ghp-sgpage[data-p="0"]')) && !!(await Q.page.$('#ghpStarList .ghp-pager .ghp-sgpage[data-p="2"]')));
+  await Q.page.click('#ghpStarList .ghp-sgpage[data-p="2"]'); await settle(Q); await Q.page.waitForTimeout(200);
+  check(tag + ' Q Next: page 2', Q.log.some(l => /q=kernel&per_page=30&page=2$/.test(l.url)) && (await Q.page.$$('#ghpStarList .ghp-ritem')).length === 1 && !!(await Q.page.$('#ghpStarList .ghp-sgpage[data-p="1"]')));
+  await Q.page.click('#ghpStarBar .ghp-menu:has-text("Sort by") > summary'); await Q.page.click('#ghpStarBar .ghp-mopt[data-v="stars"]'); await settle(Q); await Q.page.waitForTimeout(200);
+  check(tag + ' Q Sort by: Most stars asks again, sorted, from page 1', Q.log.some(l => /q=kernel&sort=stars&per_page=30&page=1$/.test(l.url)) && /^648025 stars matching kernel/.test(await txt(Q.page, '#ghpStarList')));
+  await Q.page.click('.ghp-sclear'); await Q.page.waitForTimeout(200);
+  check(tag + ' Q Clear filter: the empty state again', (await txt(Q.page, '#ghpStarList')) === 'IsaacUre doesn’t have any starred repositories yet.' && (await Q.page.$eval('#ghpSq', e => e.value)) === '');
+  await Q.page.fill('#ghpSq', 'zzzzqq'); await settle(Q); await Q.page.waitForTimeout(300);
+  check(tag + ' Q nothing anywhere: 0 stars and the end line', (await txt(Q.page, '#ghpStarList')) === "0 stars matching zzzzqq Clear filter That's it. You've reached the end of IsaacUre's stars.");
+  check(tag + ' Q no console errors ' + JSON.stringify(Q.errors), Q.errors.length === 0);
+  await clean(Q, tag + ' Q');
+  await Q.ctx.close();
+  let Q2 = await openAt(browser, base, 'github.com/IsaacUre?tab=stars', { limited: true });
+  await settle(Q2);
+  await Q2.page.fill('#ghpSq', 'kernel'); await settle(Q2); await Q2.page.waitForTimeout(700);
+  check(tag + ' Q2 limited: the plain empty state', (await txt(Q2.page, '#ghpStarList')) === 'IsaacUre doesn’t have any starred repositories yet.');
+  await Q2.ctx.close();
+
   // K. an achievement picture GitHub no longer serves: a medallion in its place
   let K = await openAt(browser, base, 'github.com/IsaacUre', { noAssets: true });
   await settle(K); await K.page.waitForTimeout(300);
   check(tag + ' K pictures that 404 fall back to medallions', (await K.page.$$('.ghp-side .ghp-ach.ghp-nopic')).length === 3 && await K.page.$eval('.ghp-side .ghp-ach .ghp-badge', e => getComputedStyle(e).display === 'grid'));
+  await K.page.click('.ghp-side .ghp-hlink'); await K.page.waitForTimeout(30);
+  check(tag + ' K ...and stay medallions on the next view, from its first frame', (await K.page.$$('.ghp-ach.ghp-nopic')).length === 6 && (await K.page.$$('.ghp-ach:not(.ghp-nopic)')).length === 0);
   await K.ctx.close();
 }
 (async () => {
