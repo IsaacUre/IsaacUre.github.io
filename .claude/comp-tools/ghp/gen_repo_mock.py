@@ -5,7 +5,7 @@ which never get committed). Only the fields the pages read are kept, and every
 e-mail is dropped.
 
 usage: python3 gen_repo_mock.py <dir of saved answers> <out json>
-The dir holds what fetch_repo_api.sh saves (see README.md)."""
+The dir holds the answers README.md lists."""
 import json, os, re, sys
 
 SRC, OUT = sys.argv[1], sys.argv[2]
@@ -67,6 +67,10 @@ out = {
     'releasesLast': last_page('h_rel.txt'),
     'pullsOpen': [{'number': p['number']} for p in load('pullsopen1.json')], 'pullsOpenLast': last_page('h_pulls.txt'),
 }
+C = load('commit_cc69.json')               # one commit's page: /commits/<sha>, with its files and patches
+cm = commit(C); cm['parents'] = [{'sha': p['sha']} for p in C['parents']]; cm['stats'] = {k: C['stats'][k] for k in ('additions', 'deletions', 'total')}
+cm['files'] = [{k: f[k] for k in ('filename', 'status', 'additions', 'deletions', 'changes', 'patch', 'previous_filename') if k in f} for f in C['files']]
+out['commit'] = cm
 s = json.dumps(out, ensure_ascii=False, indent=1)
 # no e-mail but the two kinds GitHub itself publishes in commit trailers
 for m in re.finditer(r'[\w.+-]+@[\w-]+(?:\.[\w-]+)+', s):

@@ -2269,7 +2269,7 @@ body.no-crt .screen::after { display: none; }
 .ghx-slink em, .ghx-sdesc em { font-style: normal; font-weight: 600; }
 .ghx-sdesc { margin: 4px 0 0; color: #1f2328; }
 .ghx-smeta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 8px 0 0; font-size: 12px; color: #59636e; }
-.ghx-sdot { color: #818b98; }
+.cr-ghp .ghx-smeta .ghx-mlink { display: inline-flex; align-items: center; gap: 4px; }
 .cr-ghp .ghx-sstar { flex: none; align-self: flex-start; }
 .ghx-pgs { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 4px; margin: 24px 0; }
 .cr-ghp .ghx-pg { min-width: 32px; height: 32px; padding: 0 10px; display: inline-flex; align-items: center; justify-content: center; font-style: normal; color: #1f2328; border-radius: 6px; }
@@ -2287,3 +2287,48 @@ body.no-crt .screen::after { display: none; }
 .ghx-imgbody { padding: 16px; text-align: center; background: #f6f8fa; }
 .ghx-imgbody img { max-width: 100%; }
 .ghx-binary p { margin: 8px 0 0; }
+/* one commit */
+.ghx-cmhead { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 16px; }
+.ghx-cmh { margin: 0; font-size: 20px; font-weight: 400; line-height: 1.5; }
+.ghx-cmsha, .ghx-cmmeta .ghx-sha, .ghx-dpath, .ghx-dstat, .ghx-cmbody, .ghx-diff { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; }
+.ghx-cmsha { font-weight: 600; }
+.ghx-cmbox { padding: 16px; }
+.ghx-cmby { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; color: #59636e; }
+.ghx-cmtitle { margin: 12px 0 0; font-size: 16px; font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; }
+.ghx-cmbody { margin: 8px 0 0; font-size: 12px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; color: #1f2328; }
+.ghx-cmmeta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #d1d9e0b3; font-size: 12px; color: #59636e; }
+.ghx-cmsum { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 16px 0; font-weight: 600; }
+.ghx-add { color: #1a7f37; }
+.ghx-del { color: #d1242f; }
+.ghx-cmgrid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.ghx-ftree { display: none; }
+@container (min-width: 1012px) { .ghx-cmgrid { grid-template-columns: 296px minmax(0, 1fr); } .ghx-ftree { display: block; align-self: start; position: sticky; top: 16px; } }
+.ghx-fthead { display: flex; align-items: center; gap: 4px; margin-bottom: 8px; }
+.ghx-fth { flex: 1; margin: 0; font-size: 14px; font-weight: 600; }
+.ghx-ftree ul { margin: 0; padding: 0 0 0 16px; list-style: none; }
+.ghx-ftree > ul { padding-left: 0; }
+.ghx-ftrow, .cr-ghp .ghx-ftfile { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 4px 8px; font-size: 14px; color: #1f2328; border-radius: 6px; }
+.ghx-ftrow span, .ghx-ftfile span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cr-ghp .ghx-ftfile:hover { background: #818b981a; text-decoration: none; }
+.ghx-ftfile .ghp-oct:last-child { margin-left: auto; flex: none; }
+.ghx-ds-added { color: #1a7f37; }
+.ghx-ds-removed { color: #d1242f; }
+.ghx-ds-modified { color: #9a6700; }
+.ghx-ds-renamed { color: #59636e; }
+.ghx-dfile { margin-bottom: 16px; overflow: hidden; }
+.ghx-dfhead { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 4px 8px; background: #f6f8fa; border-bottom: 1px solid #d1d9e0; }
+.ghx-dshut .ghx-dfhead { border-bottom: 0; }
+.ghx-dpath { min-width: 0; font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
+.ghx-dstat { flex: none; font-size: 12px; }
+.ghx-dwrap { overflow-x: auto; }
+.ghx-diff { width: 100%; border-collapse: collapse; font-size: 12px; line-height: 20px; }
+.ghx-dn { width: 1%; min-width: 40px; padding: 0 8px; text-align: right; color: #59636e; white-space: nowrap; vertical-align: top; user-select: none; }
+.ghx-dn::before { content: attr(data-n); }
+.ghx-dc { padding: 0 10px; white-space: pre; }
+.ghx-dadd .ghx-dc { background: #dafbe1; }
+.ghx-dadd .ghx-dn { background: #aceebb; }
+.ghx-ddel .ghx-dc { background: #ffebe9; }
+.ghx-ddel .ghx-dn { background: #ffcecb; }
+.ghx-dhunk td { background: #ddf4ff; color: #59636e; }
+.ghx-dnote { margin: 0; padding: 16px; text-align: center; color: #59636e; }
+.ghx-dview .ghx-seg { display: inline-flex; align-items: center; }

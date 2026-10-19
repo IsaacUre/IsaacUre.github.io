@@ -71,6 +71,7 @@ function mock(mode, log) {
       if (EXTRA[path]) return json(EXTRA[path]);
       return json({ message: 'Not Found' }, 404);
     }
+    if (p.indexOf(R + '/commits/') === 0) return p.slice((R + '/commits/').length) === RM.commit.sha ? json(RM.commit) : json({ message: 'No commit found for SHA' }, 422);
     if (p === R + '/commits') {
       const path = q.get('path'), per = +(q.get('per_page') || 30);
       if (path) return json(RM.bypath[path] ? [RM.bypath[path]] : []);
@@ -117,7 +118,7 @@ async function openAt(browser, base, url, mode, opts) {
   const ctx = await browser.newContext({ viewport: opts.size || { width: 1440, height: 900 }, ignoreHTTPSErrors: true });
   const page = await ctx.newPage();
   const log = [], errors = [], net = { busy: 0, last: Date.now() };
-  page.on('console', m => { if (m.type() === 'error' && !/favicon|fonts\.g|ERR_INTERNET|ERR_FAILED|ERR_TUNNEL|ERR_PROXY|ERR_NAME|avatars\.githubusercontent|wikipedia|algolia|duckduckgo|status of 404/i.test(m.text())) errors.push(m.text()); });
+  page.on('console', m => { if (m.type() === 'error' && !/favicon|fonts\.g|ERR_INTERNET|ERR_FAILED|ERR_TUNNEL|ERR_PROXY|ERR_NAME|avatars\.githubusercontent|wikipedia|algolia|duckduckgo|status of 404|status of 422/i.test(m.text())) errors.push(m.text()); });
   page.on('pageerror', e => errors.push('PAGEERROR ' + e.message));
   page.on('response', r => { if (r.status() === 404 && !mode.expect404 && !/\/readme$/.test(new URL(r.url()).pathname)) errors.push('404 ' + r.url()); });
   const track = h => async route => { net.busy++; net.last = Date.now(); try { await h(route); } finally { net.busy--; net.last = Date.now(); } };
@@ -237,10 +238,37 @@ async function run(browser, base, tag) {
   check(tag + ' R a commit row (' + (await txt(p, '.ghx-crow')).slice(0, 110) + ')', /^comp \+ tcomp: the GitHub profile looks like github\.com, with no "live" marker \(#179\)… IsaacUre and claude authored /.test(await txt(p, '.ghx-crow')));
   await p.click('.ghx-crow .ghx-ellip'); await p.waitForTimeout(200);
   check(tag + ' R … opens the description', /Same patch in comp\/ and tcomp\/|Co-authored-by|---------/.test(await txt(p, '.ghx-crow .ghx-cbodytext')));
-  check(tag + ' R a commit opens on github.com itself', (await p.$eval('.ghx-crow .ghx-ctl', a => a.getAttribute('href'))) === 'https://github.com/IsaacUre/IsaacUre.github.io/commit/' + RM.commits35[0].sha);
+  check(tag + ' R a commit opens here', (await p.$eval('.ghx-crow .ghx-ctl', a => a.getAttribute('data-href'))) === 'github.com/IsaacUre/IsaacUre.github.io/commit/' + RM.commits35[0].sha);
   check(tag + ' R Next page', (await txt(p, '.ghx-pager')) === 'Previous Next' && !!(await p.$('.ghx-pager .cr-l[data-href$="?page=2"]')));
   await clean(R, tag + ' R commits', '.ghx-ctitle, .ghx-cbodytext, #ghxBar');
   await p.screenshot({ path: OUT + '/' + tag + '-commits.png' });
+  // one commit
+  await nav(p, 'github.com/IsaacUre/IsaacUre.github.io/commit/' + RM.commit.sha); await settle(R);
+  check(tag + ' C title', (await title(p)) === 'test2: the desk as Windows Terminal windows on a Windows 11 desk (#178) · IsaacUre/IsaacUre.github.io@cc69f74 · GitHub');
+  check(tag + ' C heading and Browse files', (await txt(p, '.ghx-cmhead')) === 'Commit cc69f74 Browse files' && (await p.$eval('.ghx-cmhead .cr-l', b => b.getAttribute('data-href'))) === 'github.com/IsaacUre/IsaacUre.github.io/tree/' + RM.commit.sha);
+  const cb = await txt(p, '.ghx-cmbox');
+  check(tag + ' C who, the title, its description, the parent (' + cb.slice(0, 90) + ' … ' + cb.slice(-40) + ')', /^IsaacUre and claude authored .+? test2: the desk as Windows Terminal windows on a Windows 11 desk \(#178\) Every window is Windows Terminal's/.test(cb) && / 1 parent 4d05dde commit cc69f74$/.test(cb));
+  check(tag + ' C the parent opens here', (await p.$eval('.ghx-cmmeta .cr-l', a => a.getAttribute('data-href'))) === 'github.com/IsaacUre/IsaacUre.github.io/commit/' + RM.commit.parents[0].sha);
+  check(tag + ' C 4 files changed +875 −538', (await txt(p, '.ghx-cmsum')) === '4 files changed +875 −538 Lines changed: 875 additions & 538 deletions');
+  check(tag + ' C the file tree (' + (await txt(p, '.ghx-ftree')) + ')', (await txt(p, '.ghx-ftree')) === 'File tree .claude/test2/rig README.md probe.js CLAUDE.md test2 index.html');
+  const d0 = await txt(p, '#ghxDiff0 .ghx-dfhead');
+  check(tag + ' C a file\'s header (' + d0 + ')', d0 === '.claude/test2/rig/README.md +30 −21 Lines changed: 30 additions & 21 deletions');
+  const h0 = await p.$eval('#ghxDiff0 .ghx-dhunk .ghx-dc', e => e.textContent), r1 = await p.$eval('#ghxDiff0 .ghx-dhunk + tr', tr => [...tr.querySelectorAll('.ghx-dn')].map(x => x.getAttribute('data-n')));
+  check(tag + ' C the hunk header and the line numbers', h0 === '@@ -12,30 +12,39 @@ be there.' && r1.join(',') === '12,12');
+  const rows = await p.$$eval('#ghxDiff0 tbody tr', trs => trs.map(t => t.className));
+  check(tag + ' C added and removed rows', rows.filter(c => c === 'ghx-dadd').length === 30 && rows.filter(c => c === 'ghx-ddel').length === 21);
+  check(tag + ' C a file with no patch: GitHub\'s words', (await txt(p, '#ghxDiff3 .ghx-dnote')) === 'Large diffs are not rendered by default.');
+  await p.click('#ghxDiff0 .ghx-dcoll'); await p.waitForTimeout(150);
+  check(tag + ' C Collapse file', !(await p.$('#ghxDiff0 table')) && (await p.$eval('#ghxDiff0 .ghx-dcoll', b => b.getAttribute('aria-label'))) === 'Expand file');
+  await p.click('#ghxDiff0 .ghx-dcoll'); await p.waitForTimeout(150);
+  check(tag + ' C ...and open again', !!(await p.$('#ghxDiff0 table')));
+  const st0 = await p.$eval('#crView', v => v.scrollTop);
+  await p.click('.ghx-ftfile:has-text("CLAUDE.md")'); await p.waitForTimeout(300);
+  check(tag + ' C the tree jumps to its file', (await p.$eval('#crView', v => v.scrollTop)) > st0 + 200 && (await url(p)) === 'github.com/IsaacUre/IsaacUre.github.io/commit/' + RM.commit.sha);
+  await clean(R, tag + ' C', '.ghx-cmbox, .ghx-diffs');
+  await p.screenshot({ path: OUT + '/' + tag + '-commit.png' });
+  await nav(p, 'github.com/IsaacUre/IsaacUre.github.io/commit/0000000'); await settle(R);
+  check(tag + ' C a sha GitHub has not got: the 404', (await title(p)) === 'Page not found · GitHub' && /^404/.test(await txt(p, '#ghxBody')));
   check(tag + ' R no console errors ' + JSON.stringify(R.errors), R.errors.length === 0);
   await R.ctx.close();
 
@@ -302,6 +330,8 @@ async function run(browser, base, tag) {
   check(tag + ' O Escape closes it', !(await O.page.$('.ghp-menu[open]')));
   await clean(O, tag + ' O');
   await O.page.screenshot({ path: OUT + '/' + tag + '-org.png' });
+  await nav(O.page, 'github.com/orgs/anthropics'); await settle(O);
+  check(tag + ' O /orgs/anthropics is the same page', (await title(O.page)) === 'Anthropic · GitHub' && !!(await O.page.$('.ghx-ohead')));
   check(tag + ' O no console errors ' + JSON.stringify(O.errors), O.errors.length === 0);
   await O.ctx.close();
 
@@ -311,10 +341,14 @@ async function run(browser, base, tag) {
   check(tag + ' N an unknown name: GitHub\'s 404', (await title(N.page)) === 'Page not found · GitHub' && /^404 “This is not the web page you are looking for” Find code, projects, and people on GitHub: Search Contact Support — GitHub Status — @githubstatus$/.test(await txt(N.page, '#ghxBody')));
   await N.page.fill('.ghx-404in', 'kernel'); await N.page.keyboard.press('Enter'); await N.page.waitForTimeout(400);
   check(tag + ' N its search searches', (await url(N.page)) === 'github.com/search?q=kernel&type=repositories');
+  await nav(N.page, 'github.com/orgs/torvalds'); await settle(N);
+  check(tag + ' N /orgs/<a person>: the 404', (await title(N.page)) === 'Page not found · GitHub' && /^404/.test(await txt(N.page, '#ghxBody')));
   await nav(N.page, 'github.com/IsaacUre/no-such-repo'); await settle(N);
   check(tag + ' N an unknown repository: the 404', (await title(N.page)) === 'Page not found · GitHub' && /^404/.test(await txt(N.page, '#ghxBody')));
   await nav(N.page, 'github.com/IsaacUre/IsaacUre.github.io/tree/main/no-such-folder'); await settle(N);
-  check(tag + ' N an unknown folder: the 404', /^404/.test(await txt(N.page, '#ghxBody')));
+  check(tag + ' N an unknown folder: the 404, and its title', /^404/.test(await txt(N.page, '#ghxBody')) && (await title(N.page)) === 'Page not found · GitHub');
+  await nav(N.page, 'github.com/IsaacUre/IsaacUre.github.io/blob/main/no-such-file.txt'); await settle(N);
+  check(tag + ' N an unknown file: the 404, and its title', /^404/.test(await txt(N.page, '#ghxBody')) && (await title(N.page)) === 'Page not found · GitHub');
   await clean(N, tag + ' N');
   await N.page.screenshot({ path: OUT + '/' + tag + '-404.png' });
   await N.ctx.close();

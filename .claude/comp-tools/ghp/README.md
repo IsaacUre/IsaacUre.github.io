@@ -75,7 +75,8 @@ rate limited, offline, few requests left this hour, and search's own limit.
   `h_branches.txt`, `tags1.json` and `h_tags.txt`, `languages.json`,
   `contributors.json` and `h_contrib.txt`, `releases1.json` and `h_rel.txt`,
   `pullsopen1.json` and `h_pulls.txt`, and `pathc/<path with / as _>.json` from
-  `/commits?per_page=1&sha=main&path=<path>` for each root and `comp/` entry), then
+  `/commits?per_page=1&sha=main&path=<path>` for each root and `comp/` entry, and
+  `commit_cc69.json` from `/commits/cc69f743fd696ea1a3d21111541381712f3505fb`), then
   `python3 .claude/comp-tools/ghp/gen_repo_mock.py <that dir> .claude/comp-tools/ghp/data/repo.json`.
   It drops every e-mail and refuses to write one.
 - torvalds' and anthropics' answers are made up, in the API's shape.
