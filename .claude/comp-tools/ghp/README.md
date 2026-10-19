@@ -53,3 +53,29 @@ does not answer. `data/` must describe the same moment:
 `gen_mock.py` counts what GitHub counts: commits on the default branch whose
 author is IsaacUre, pull requests IsaacUre opened (any state), and one for
 creating each repository, all by America/Chicago day.
+
+## The rest of github.com: drive_more.js
+
+```
+NODE_PATH=/opt/node22/lib/node_modules node .claude/comp-tools/ghp/drive_more.js /tmp/shots [comp|tcomp]
+```
+
+It drives the home page, search, IsaacUre/IsaacUre.github.io (the root, a folder,
+a file, a picture, a file past the API's 1 MB, a Markdown file, the commit list),
+someone else's profile, an organization and the 404s, and checks the limits:
+rate limited, offline, few requests left this hour, and search's own limit.
+
+- IsaacUre/IsaacUre.github.io's answers are the real ones, trimmed to what the
+  pages read: `data/repo.json`. To refresh it, save the API's answers outside the
+  repo (`repo.json`, `contents_root.json` from `/contents?ref=main`,
+  `contents_comp.json`, `file_claude.json` and `file_claude.html` (the second with
+  `Accept: application/vnd.github.html+json`), `file_compindex.json`,
+  `commits1.json` and `h_commits1.txt` (headers, `curl -D`) from
+  `/commits?per_page=1&sha=main`, `commits35.json`, `branches1.json` and
+  `h_branches.txt`, `tags1.json` and `h_tags.txt`, `languages.json`,
+  `contributors.json` and `h_contrib.txt`, `releases1.json` and `h_rel.txt`,
+  `pullsopen1.json` and `h_pulls.txt`, and `pathc/<path with / as _>.json` from
+  `/commits?per_page=1&sha=main&path=<path>` for each root and `comp/` entry), then
+  `python3 .claude/comp-tools/ghp/gen_repo_mock.py <that dir> .claude/comp-tools/ghp/data/repo.json`.
+  It drops every e-mail and refuses to write one.
+- torvalds' and anthropics' answers are made up, in the API's shape.
