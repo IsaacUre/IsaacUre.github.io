@@ -2482,6 +2482,7 @@ webPage('google.com/search', {
     render: function (q) {
         if (serpGone(q)) return crErrPage('offline', 'www.google.com');
         q = q || '';
+        if (navigator.onLine !== false && !(CR && CR.incog)) liveCachePut('serp:' + q, 1);   // drawn once while online: a tab switch or Back offline draws it again from the cache (a calculator or a conversion asks nothing), as Chrome keeps the page
         var has = !!q.trim();
         var ql = q.toLowerCase();
         var local = '';
@@ -4422,7 +4423,7 @@ function serpSection(label, err, rowsHtml) {
    card and the rows into their own slots — no fragile string re-splitting. */
 function serpWikiUrl(q) { return 'https://en.wikipedia.org/w/api.php?format=json&origin=*&action=query&list=search&srlimit=6&srinfo=totalhits|suggestion&srprop=snippet&srsearch=' + encodeURIComponent(q); }
 /* offline, with nothing cached to draw the page from (a tab switch or Back redraws it; Chrome would not reload it) */
-function serpGone(q) { return navigator.onLine === false && (!!(CR && CR.incog) || !liveCacheGet(serpWikiUrl(q || ''))); }
+function serpGone(q) { q = q || ''; return navigator.onLine === false && (!!(CR && CR.incog) || (!liveCacheGet('serp:' + q) && !liveCacheGet(serpWikiUrl(q)))); }
 function serpWiki(q, feat, done) {
     liveGet(serpWikiUrl(q), function (err, j, r) {
         if (err || !j || !j.query || !j.query.search) { done('', '', null); return; }
@@ -5335,7 +5336,7 @@ function wkWire(f, d, p) {
     wkSearchWire(d, '#vector-sticky-search-form input');
     /* Special:Search's own form: a GET of its fields (the scriptless sandbox blocks a real submit) */
     var sInp = p.special === 'Search' && d.querySelector('#searchText input'), sBtn = sInp && d.querySelector('#search input[type="submit"]');
-    function sGo(e) { e.preventDefault(); crNav(WK + '/w/index.php?search=' + encodeURIComponent(sInp.value) + '&title=Special:Search&profile=' + encodeURIComponent((d.querySelector('#search input[name="profile"]') || {}).value || 'default') + '&fulltext=1'); }
+    function sGo(e) { e.preventDefault(); crNav(WK + '/w/index.php?search=' + encodeURIComponent(sInp.value) + '&title=Special:Search&profile=' + encodeURIComponent((d.querySelector('#search input[name="profile"]') || {}).value || 'default') + Array.prototype.map.call(d.querySelectorAll('#search input[type="hidden"][name^="ns"]'), function (i) { return '&' + encodeURIComponent(i.name) + '=1'; }).join('') + '&fulltext=1'); }
     if (sInp) sInp.addEventListener('keydown', function (e) { if (e.key === 'Enter') sGo(e); });
     if (sBtn) sBtn.addEventListener('click', sGo);
 }
@@ -5854,7 +5855,7 @@ function wkSearchShow(view, url, q, res, offset, limit, thumbs, profile, nsp) {
         '<div class="oo-ui-layout oo-ui-labelElement oo-ui-fieldLayout oo-ui-fieldLayout-align-top oo-ui-actionFieldLayout"><div class="oo-ui-fieldLayout-body"><div class="oo-ui-fieldLayout-field">' +
         '<div class="oo-ui-actionFieldLayout-input"><div id="searchText" class="oo-ui-widget oo-ui-widget-enabled oo-ui-inputWidget oo-ui-textInputWidget oo-ui-textInputWidget-type-search oo-ui-searchInputWidget oo-ui-iconElement oo-ui-indicatorElement"><input type="search" tabindex="0" name="search" value="' + esc(q) + '" title="Search Wikipedia" autocapitalize="none" class="oo-ui-inputWidget-input"><span class="oo-ui-iconElement-icon oo-ui-icon-search"></span><span class="oo-ui-indicatorElement-indicator oo-ui-indicator-clear"></span></div></div>' +
         '<span class="oo-ui-actionFieldLayout-button"><span class="oo-ui-widget oo-ui-widget-enabled oo-ui-inputWidget oo-ui-buttonElement oo-ui-buttonElement-framed oo-ui-labelElement oo-ui-flaggedElement-progressive oo-ui-flaggedElement-primary oo-ui-buttonInputWidget"><input type="submit" tabindex="0" value="Search" class="oo-ui-inputWidget-input oo-ui-buttonElement-button"></span></span></div></div></div>' + info +
-        '<input type="hidden" name="title" value="Special:Search"><input type="hidden" name="profile" value="' + esc(profile) + '"><input type="hidden" name="fulltext" value="1"></div>' +
+        '<input type="hidden" name="title" value="Special:Search"><input type="hidden" name="profile" value="' + esc(profile) + '">' + (nsp ? nsp.split('&').map(function (p) { return '<input type="hidden" name="' + esc(p.split('=')[0]) + '" value="1">'; }).join('') : '') + '<input type="hidden" name="fulltext" value="1"></div>' +
         '<div class="mw-search-visualclear"></div><div class="mw-search-profile-tabs"><div class="search-types"><ul>' +
         '<li class="' + (profile === 'default' ? 'current' : 'normal') + '"><a href="' + esc(sUrl({ profile: 'default', ns: 'ns0=1' })) + '" title="Search in (Main)">Content pages</a></li>' +
         '<li class="' + (profile === 'images' ? 'current' : 'normal') + '"><a href="' + esc(sUrl({ profile: 'images', ns: 'ns6=1' })) + '" title="Search for files">Multimedia</a></li>' +
@@ -6092,7 +6093,8 @@ function hnList(view, url, r) {
    budget); an item Algolia has not indexed yet is built from the site's API
    alone. A deleted comment with live replies stays as its [deleted] row. */
 function hnFbItem(id, cb, nocache) { liveGet(HN_FB + 'item/' + nnum(id) + '.json', function (e, it) { cb(e ? undefined : it); }, nocache); }
-var HN_ORDER = Object.create(null);                      // story id → { t, kidsOf, gone }: a thread's lookups, kept out of LIVE_CACHE (they would push everything else out)
+var HN_ORDER = Object.create(null);                      // 's' + story id → { t, kidsOf, gone } (a thread's lookups), 'f' + id → { t, tree } (one drawn from the site's API alone); kept out of LIVE_CACHE (they would push everything else out). String keys: Object.keys lists integer keys in numeric order, not the order they went in
+function hnOrderPut(k, v) { delete HN_ORDER[k]; var ks = Object.keys(HN_ORDER); if (ks.length > 19) delete HN_ORDER[ks[0]]; HN_ORDER[k] = v; }   // insertion order: the oldest goes first, a re-saved entry moves to the end
 function hnRank(kids, order) {
     if (!Array.isArray(order) || !order.length) return kids || [];
     var pos = Object.create(null); order.forEach(function (id, i) { pos[nnum(id)] = i; });
@@ -6106,8 +6108,9 @@ function hnFbTree(it, budget, cb) {
     var left = ids.length, got = new Array(ids.length);
     ids.forEach(function (id, i) {
         hnFbItem(id, function (k) {
+            if (k === undefined) budget.miss = true;   // a lookup that failed (not the site's own null): the tree is short, so it is not kept
             if (!k || k.type !== 'comment') { got[i] = null; if (!--left) done(); return; }
-            hnFbTree(k, budget, function (sub) { if (k.deleted || k.dead) { sub.author = null; sub.text = null; sub.dead = !k.deleted; } got[i] = sub; if (!--left) done(); });
+            hnFbTree(k, budget, function (sub) { if (k.deleted || k.dead) { if (k.deleted) sub.author = null; sub.text = null; sub.dead = !k.deleted; } got[i] = sub; if (!--left) done(); });   // the site keeps a dead comment's name on its row, a deleted one's not
         }, true);
     });
     function done() { node.children = got.filter(Boolean); cb(node); }
@@ -6120,29 +6123,35 @@ function hnItem(view, url, r) {
         if (!view.isConnected) return;
         if (fb === null) { hnShow(view, url, 'item', 'Hacker News', hnTop('') + '<tr id="pagespace" title="" style="height:10px"></tr><tr><td>No such item.</td></tr>' + hnFoot()); return; }   // only the site's own null means there is no such item
         if (alg && alg.id && !algErr) { order(alg); return; }
-        if (fb && fb.id) { hnFbTree(fb, { n: 150 }, function (tree) { draw(tree); }); return; }   // Algolia has not got it yet
+        if (fb && fb.id) {   // Algolia has not got it yet: the site's API alone, memoised per thread like order()'s lookups, so Back and Forward do not ask again
+            var fk = 'f' + nnum(fb.id), fp = !!(CR && CR.incog), fm = !fp && HN_ORDER[fk];
+            if (fm && Date.now() - fm.t < 300000) { draw(fm.tree); return; }
+            var bud = { n: 150 };
+            hnFbTree(fb, bud, function (tree) { if (!fp && !bud.miss) hnOrderPut(fk, { t: Date.now(), tree: tree }); draw(tree); });
+            return;
+        }
         hnFail(view, url, fbErr || algErr || 'empty', algResp);
     }
     /* the site's API for each comment, in display order (breadth first, up to 250): the
        order of its replies (kids), and whether it is dead or deleted, which Algolia's tree
        does not say. Memoised per thread for five minutes, outside LIVE_CACHE. */
     function order(j) {
-        var sid = nnum(j.id), priv = !!(CR && CR.incog), m = !priv && HN_ORDER[sid];
+        var sid = 's' + nnum(j.id), priv = !!(CR && CR.incog), m = !priv && HN_ORDER[sid];
         function apply(kidsOf, gone) {
-            (function mark(kids) { (kids || []).forEach(function (k) { if (!k) return; var g = gone[nnum(k.id)]; if (g) { k.author = null; k.text = null; k.dead = g === 'dead'; } mark(k.children); }); })(j.children);
+            (function mark(kids) { (kids || []).forEach(function (k) { if (!k) return; var g = gone[nnum(k.id)]; if (g) { if (g === 'deleted') k.author = null; k.text = null; k.dead = g === 'dead'; } mark(k.children); }); })(j.children);
             j.kids = fb && fb.kids; j.kidsOf = kidsOf; draw(j);
         }
         if (m && Date.now() - m.t < 300000) { apply(m.kidsOf, m.gone); return; }
         var want = [], budget = 250, q = hnRank(j.children, fb && fb.kids).slice();
         while (q.length && want.length < budget) { var k = q.shift(); if (k && k.type === 'comment' && (k.author || (k.children && k.children.length))) { want.push(k); q.push.apply(q, k.children || []); } }
-        var left = want.length + 1, kidsOf = Object.create(null), gone = Object.create(null);
+        var left = want.length + 1, kidsOf = Object.create(null), gone = Object.create(null), miss = 0;
         function go() {
             if (--left) return;
-            if (!priv) { var ks = Object.keys(HN_ORDER); if (ks.length > 19) delete HN_ORDER[ks[0]]; HN_ORDER[sid] = { t: Date.now(), kidsOf: kidsOf, gone: gone }; }
+            if (!priv && !miss) hnOrderPut(sid, { t: Date.now(), kidsOf: kidsOf, gone: gone });   // only a round every lookup answered: a failed one is asked again on the next draw, Reload included
             if (!view.isConnected) return;
             apply(kidsOf, gone);
         }
-        want.forEach(function (k) { hnFbItem(k.id, function (it) { if (it && it.kids) kidsOf[nnum(k.id)] = it.kids; if (it && (it.dead || it.deleted)) gone[nnum(k.id)] = it.deleted ? 'deleted' : 'dead'; go(); }, true); });
+        want.forEach(function (k) { hnFbItem(k.id, function (it) { if (it === undefined) miss++; if (it && it.kids) kidsOf[nnum(k.id)] = it.kids; if (it && (it.dead || it.deleted)) gone[nnum(k.id)] = it.deleted ? 'deleted' : 'dead'; go(); }, true); });
         go();
     }
     function draw(j) {
@@ -6169,7 +6178,7 @@ function hnItem(view, url, r) {
             var navs = '<span class="navs">' + (depth > 1 ? nav(c.root, 'root') : '') + (c.parent ? nav(c.parent, 'parent') : '') + (c.prev ? nav(c.prev, 'prev') : '') + (c.next ? nav(c.next, 'next') : '') +
                 ' <a class="togg clicky" id="' + id + '" n="' + (1 + hnCount(k.children)) + '" href="javascript:void(0)">[–]</a><span class="onstory"></span></span>';
             var age = '<span class="age" title="' + esc(hnIso(k.created_at_i)) + '"><a href="item?id=' + id + '">' + hnAge(k.created_at_i) + '</a></span> <span id="unv_' + id + '"></span>';
-            var head = c.gone ? age + navs : '<a href="user?id=' + esc(k.author) + '" class="hnuser">' + esc(k.author) + '</a> ' + age + navs;
+            var head = !k.author ? age + navs : '<a href="user?id=' + esc(k.author) + '" class="hnuser">' + esc(k.author) + '</a> ' + age + navs;   // a [dead] row keeps its name and age, a [deleted] one has only the age
             var body = c.gone ? (k.dead ? '[dead]' : '[deleted]') + '<div class="reply"><p><font size="1"></font></p></div>'
                 : '<div class="commtext c00">' + wkClean(k.text) + '</div><div class="reply"><p><font size="1"><u><a href="reply?id=' + id + '&amp;goto=item%3Fid%3D' + cid + '%23' + id + '">reply</a></u></font></p></div>';
             return '<tr class="athing comtr" id="' + id + '"><td><table border="0"><tr><td class="ind" indent="' + depth + '"><img src="https://news.ycombinator.com/s.gif" height="1" width="' + (depth * 40) + '"></td>' +
@@ -7931,6 +7940,7 @@ function crDinoBoot(view) {
         x.fillRect(39, yy - 6, 3, 4 + step * 2);
     }
     function tick() {                                                 // one frame of logic + paint (rAF-free, so tests can step it)
+        var w = Math.min(600, (cv.parentNode && cv.parentNode.clientWidth) || 600); if (w !== cv.width) cv.width = w; W = cv.width;   // the box can change width after mount (Maximize, a phone turned): the bitmap follows it, as the Runner's adjustDimensions does, so nothing is stretched or squeezed
         x.fillStyle = '#fff'; x.fillRect(0, 0, W, H);
         x.fillStyle = '#535353';
         for (var gx = 0; gx < W; gx += 11) x.fillRect(gx + (Math.floor(d.t) * 2) % 11 * -1, G + 8, 6, 1);   // scrolling ground

@@ -42,9 +42,14 @@ Three of the front page's stories are 34, 100 and 400 days old, for the age
 wording; the thread's story has its replies in the site's order (`kids`), which
 differs from Algolia's, a deleted comment with a live reply under it, a dead
 comment with a live reply, and a dead leaf (Algolia carries both with their
-text; only the site's API says they are dead). `fbDown` makes the site's API
-time out, for the error page. The Wikipedia article carries a TemplateStyles
-block with the sanitizer's escapes and two red links (one to a talk page).
+text; only the site's API says they are dead; a dead row keeps its name, as the
+site's does, a deleted one loses it). Story 9001 is in the site's API only, not
+Algolia's, for the path that builds a thread from the site's API alone. `fbDown`
+makes the site's API time out, for the error page; `kidsDown` makes only the
+comments (the 2xxx items) answer 503, for the memo check: a round that failed
+is asked again on Reload, a round that answered is not asked again on Back.
+The Wikipedia article carries a TemplateStyles block with the sanitizer's
+escapes and two red links (one to a talk page).
 
 Two things the mocks do on purpose: a document request to either site (a page
 the copy does not draw, typed in) comes back with `X-Frame-Options: DENY`, as

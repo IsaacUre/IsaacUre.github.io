@@ -22,7 +22,7 @@ function hnmock(mode, log) {
     if (host === 'hacker-news.firebaseio.com') {
       let m;
       if ((m = /^\/v0\/(topstories|newstories|askstories|showstories|jobstories)\.json$/.exec(p))) return json(D.lists[m[1]]);
-      if ((m = /^\/v0\/item\/(\d+)\.json$/.exec(p))) { if (mode.fbDown) return route.abort('timedout'); return json(D.items[m[1]] || null); }
+      if ((m = /^\/v0\/item\/(\d+)\.json$/.exec(p))) { if (mode.fbDown) return route.abort('timedout'); if (mode.kidsDown && /^2\d{3}$/.test(m[1])) return route.fulfill({ status: 503, headers: { 'access-control-allow-origin': '*' }, body: 'busy' }); return json(D.items[m[1]] || null); }   // kidsDown: the comments (2xxx) answer 503, the stories still answer
       if ((m = /^\/v0\/user\/([^/]+)\.json$/.exec(p))) return json(D.users[decodeURIComponent(m[1])] || null);
       return json(null);
     }

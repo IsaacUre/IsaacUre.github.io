@@ -570,6 +570,81 @@
    "text": "<p>Still here under it.</p>",
    "parent": 2008,
    "kids": []
+  },
+  "9001": {
+   "id": 9001,
+   "type": "story",
+   "by": "fixture_user_9",
+   "time": 1792410600,
+   "title": "Harness story 9: fresh, not in Algolia yet",
+   "score": 2,
+   "descendants": 6,
+   "kids": [
+    9002,
+    9003,
+    9004
+   ],
+   "url": "https://example.com/fixtures/9"
+  },
+  "9002": {
+   "id": 9002,
+   "type": "comment",
+   "by": "fixture_user_2",
+   "time": 1792410700,
+   "text": "<p>One.</p>",
+   "parent": 9001,
+   "kids": [
+    9005
+   ]
+  },
+  "9003": {
+   "id": 9003,
+   "type": "comment",
+   "by": "fixture_user_3",
+   "time": 1792410800,
+   "text": "<p>Two.</p>",
+   "parent": 9001,
+   "kids": [
+    9006
+   ]
+  },
+  "9004": {
+   "id": 9004,
+   "type": "comment",
+   "by": "fixture_user_4",
+   "time": 1792410900,
+   "text": "<p>Three.</p>",
+   "parent": 9001,
+   "kids": []
+  },
+  "9005": {
+   "id": 9005,
+   "type": "comment",
+   "by": "fixture_user_5",
+   "time": 1792411000,
+   "text": "<p>Four.</p>",
+   "parent": 9002,
+   "kids": [
+    9007
+   ]
+  },
+  "9006": {
+   "id": 9006,
+   "type": "comment",
+   "by": "fixture_user_6",
+   "time": 1792411100,
+   "text": "<p>Five.</p>",
+   "parent": 9003,
+   "kids": []
+  },
+  "9007": {
+   "id": 9007,
+   "type": "comment",
+   "by": "fixture_user_7",
+   "time": 1792411150,
+   "text": "<p>Six.</p>",
+   "parent": 9005,
+   "kids": []
   }
  },
  "users": {

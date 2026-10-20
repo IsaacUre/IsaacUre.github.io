@@ -168,6 +168,10 @@ async function run(browser, base, tag) {
   await fr.click('.search-types a[title="Search for files"]'); fr = await wk(C); await settle(C);
   check(tag + ' C the Multimedia tab searches files and is marked current', /profile=images/.test(await url(C.page)) && C.log.some(u => /list=search.*srnamespace=6/.test(u)) && !!fr && (await txt(fr, '.search-types li.current')) === 'Multimedia');
   check(tag + ' C the pager and Did you mean keep the profile', !!fr && await fr.$$eval('.searchdidyoumean a, .mw-search-pager-bottom a', l => l.length >= 1 && l.every(a => /profile=images/.test(a.getAttribute('href')))));
+  await nav(C.page, 'en.wikipedia.org/w/index.php?search=harness&title=Special:Search&profile=advanced&ns2=1&ns4=1&fulltext=1'); fr = await wk(C); await settle(C);
+  check(tag + ' C the Advanced tab searches the namespaces asked for, which its form carries as hidden fields', C.log.some(u => /list=search.*srnamespace=2(%7C|\|)4/.test(u)) && !!fr && (await txt(fr, '.search-types li.current')) === 'Advanced' && await fr.$$eval('#search input[type="hidden"]', l => l.map(i => i.name + '=' + i.value).join('&') === 'title=Special:Search&profile=advanced&ns2=1&ns4=1&fulltext=1'));
+  await fr.click('#searchText input'); await C.page.keyboard.press('Control+A'); await C.page.keyboard.type('third'); await C.page.keyboard.press('Enter'); fr = await wk(C); await settle(C);
+  check(tag + ' C and a new search from that form keeps them', (await url(C.page)) === 'en.wikipedia.org/w/index.php?search=third&title=Special:Search&profile=advanced&ns2=1&ns4=1&fulltext=1' && C.log.some(u => /list=search.*srsearch=third/.test(u)) && C.log.filter(u => /list=search.*srsearch=third/.test(u)).every(u => /srnamespace=2(%7C|\|)4/.test(u)));
   await nav(C.page, 'en.wikipedia.org/wiki/Special:Random'); fr = await wk(C); await settle(C);
   check(tag + ' C Special:Random lands on an article', (await url(C.page)) === 'en.wikipedia.org/wiki/Second_test_article' && !!fr);
   await nav(C.page, 'en.wikipedia.org'); fr = await wk(C); await settle(C);

@@ -101,6 +101,10 @@ async function run(browser, base, tag) {
   await A.ctx.setOffline(true); await A.page.click('#crPlus'); await A.page.waitForTimeout(200); await A.page.click('.cr-tab[data-ti="0"]'); await A.page.waitForTimeout(400);
   check(tag + ' A offline, a loaded results tab keeps its page and its title on a tab switch', (await title(A.page)) === 'harness one two three four five - Google Search' && await A.page.$$eval('.cr-res', l => l.length >= 3) && !(await has(A.page, '.cr-neterror')));
   await A.ctx.setOffline(false);
+  await nav(A.page, 'google.com/search?q=2%2B2'); await settle(A);
+  await A.ctx.setOffline(true); await A.page.click('#crPlus'); await A.page.waitForTimeout(200); await A.page.click('.cr-tab[data-ti="0"]'); await A.page.waitForTimeout(400);
+  check(tag + ' A offline, a calculator tab (nothing of it ever fetched) keeps its answer and its title too', (await title(A.page)) === '2+2 - Google Search' && !!(await A.page.$('.cr-ansbox')) && !(await has(A.page, '.cr-neterror')));
+  await A.ctx.setOffline(false);
   await nav(A.page, 'google.com/search?q=weather+houston'); await settle(A);
   check(tag + ' A the weather card: Open-Meteo\'s words for the code, its name as the source, and no no-results line beside it', /Partly cloudy/.test(await txt(A.page, '.cr-wxans .cr-anssub')) && (await txt(A.page, '.cr-wxans .cr-kpmore')) === 'Open-Meteo' && !/Full forecast/.test(await txt(A.page, '#crView')) && !(await has(A.page, '.cr-serpnone')));
   await A.page.click('.cr-wxans .cr-kpmore'); await A.page.waitForTimeout(700);
@@ -118,6 +122,10 @@ async function run(browser, base, tag) {
   check(tag + ' B chrome://dino: the offline page with the game\'s instruction, no code, the runner up', (await txt(B.page, '.cr-neterror[data-kind="dino"] h1')) === 'Press space to play' && (await txt(B.page, '.cr-neterror .error-code')) === '' && !(await has(B.page, '.cr-neterror #suggestions-list')) && await B.page.$eval('.cr-neterror #control-buttons', b => b.hidden) && !!(await B.page.$('.cr-neterror .interstitial-wrapper > .runner-container > canvas#crDinoCv')) && (await title(B.page)) === 'chrome://dino');
   await B.page.keyboard.press('Space'); await B.page.waitForTimeout(200);
   check(tag + ' B Space starts the run', await B.page.evaluate(() => !!(window.__crDino && window.__crDino.state.run)));
+  await B.page.setViewportSize({ width: 500, height: 700 }); await B.page.waitForTimeout(300);
+  check(tag + ' B the runner\'s bitmap follows its box when the view narrows: drawn at its own width, nothing stretched', await B.page.evaluate(() => { const c = document.querySelector('#crDinoCv'), rc = c && c.parentNode; return !!c && c.width < 600 && c.width === Math.min(600, rc.clientWidth) && Math.abs(c.getBoundingClientRect().width - c.width) < 1.5; }));
+  await B.page.setViewportSize({ width: 1440, height: 900 }); await B.page.waitForTimeout(300);
+  check(tag + ' B and back to 600 when it widens again', await B.page.evaluate(() => { const c = document.querySelector('#crDinoCv'); return !!c && c.width === 600 && Math.abs(c.getBoundingClientRect().width - 600) < 1.5; }));
   await clean(B, tag + ' B dino');
   await B.ctx.close();
   let T = await openAt(browser, base, 'en.wikipedia.org/wiki/Anything', { netfail: true });

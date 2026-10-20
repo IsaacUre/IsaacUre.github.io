@@ -16,7 +16,7 @@ async function openAt(browser, base, url, mode) {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, ignoreHTTPSErrors: true });
   const page = await ctx.newPage();
   const log = [], errors = [], net = { busy: 0, last: Date.now() };
-  page.on('console', m => { if (m.type() === 'error' && !/favicon|fonts\.g|ERR_INTERNET|ERR_FAILED|ERR_TUNNEL|ERR_PROXY|ERR_NAME|ERR_BLOCKED|net::|X-Frame-Options|frame-ancestors|status of 404|status of 500|Blocked script execution in 'about:srcdoc'/i.test(m.text())) errors.push(m.text()); });   // the last: Playwright's own click helper being refused by the scriptless frame
+  page.on('console', m => { if (m.type() === 'error' && !/favicon|fonts\.g|ERR_INTERNET|ERR_FAILED|ERR_TUNNEL|ERR_PROXY|ERR_NAME|ERR_BLOCKED|net::|X-Frame-Options|frame-ancestors|status of 404|status of 500|status of 503|Blocked script execution in 'about:srcdoc'/i.test(m.text())) errors.push(m.text()); });   // the last: Playwright's own click helper being refused by the scriptless frame
   page.on('pageerror', e => errors.push('PAGEERROR ' + e.message));
   const track = h => async route => { net.busy++; net.last = Date.now(); try { await h(route); } finally { net.busy--; net.last = Date.now(); } };
   await ctx.route(u => /(^|\.)(ycombinator\.com|firebaseio\.com|algolia\.com)$/.test(u.host), track(hnmock(mode, log)));
@@ -82,7 +82,7 @@ async function run(browser, base, tag) {
   check(tag + ' B thread title and the fat item', (await title(B.page)) === 'Harness story 1: a made-up headline | Hacker News' && !!fr && await fr.$eval('table.fatitem tr.athing', tr => tr.id === '1001' && !tr.querySelector('.rank')) && (await txt(fr, 'table.fatitem .subtext')) === '13 points by fixture_user_1 1 hour ago | hide | past | favorite | 7 comments');
   check(tag + ' B the comments in the site\'s order, nested by indent, the deleted and the dead ones as their rows, the dead leaf gone', !!fr && await fr.$$eval('tr.comtr', l => l.map(x => x.id).join(',') === '2004,2001,2002,2003,2008,2009,2005,2006' && l.map(x => x.querySelector('td.ind').getAttribute('indent')).join(',') === '0,0,1,2,0,1,0,1' && l[2].querySelector('td.ind img').getAttribute('width') === '40'));
   check(tag + ' B a deleted comment with a reply: [deleted] in the site\'s markup, no name, no arrow, no reply link', !!fr && (await txt(fr, 'tr[id="2005"] div.comment')) === '[deleted]' && !(await has(fr, 'tr[id="2005"] .commtext')) && !!(await fr.$('tr[id="2005"] div.comment > div.reply > p > font')) && !(await has(fr, 'tr[id="2005"] .hnuser')) && !(await has(fr, 'tr[id="2005"] .votearrow')) && !(await has(fr, 'tr[id="2005"] .reply a')) && (await txt(fr, 'tr[id="2006"] .commtext')) === 'A reply under a deleted comment.');
-  check(tag + ' B a dead comment with a reply reads [dead]; a dead leaf is not drawn', !!fr && (await txt(fr, 'tr[id="2008"] div.comment')) === '[dead]' && !(await has(fr, 'tr[id="2008"] .hnuser')) && (await txt(fr, 'tr[id="2009"] .commtext')) === 'Still here under it.' && !(await has(fr, 'tr[id="2007"]')));
+  check(tag + ' B a dead comment with a reply reads [dead] under its name (the site keeps it; only a deleted one loses it), no arrow; a dead leaf is not drawn', !!fr && (await txt(fr, 'tr[id="2008"] div.comment')) === '[dead]' && (await txt(fr, 'tr[id="2008"] .hnuser')) === 'fixture_user_5' && !(await has(fr, 'tr[id="2008"] .votearrow')) && (await txt(fr, 'tr[id="2009"] .commtext')) === 'Still here under it.' && !(await has(fr, 'tr[id="2007"]')));
   check(tag + ' B a comment as the site writes it', !!fr && (await txt(fr, 'tr[id="2001"] .comhead')) === 'fixture_user_2 50 minutes ago | prev | next [–]' && await fr.$$eval('tr[id="2001"] .navs a', l => l.map(a => a.textContent + '>' + a.getAttribute('href')).join(' ') === 'prev>#2004 next>#2008 [–]>javascript:void(0)') && await fr.$$eval('tr[id="2003"] .navs a', l => l.map(a => a.textContent + '>' + a.getAttribute('href')).join(' ') === 'root>#2001 parent>#2002 next>#2008 [–]>javascript:void(0)') && await fr.$$eval('tr[id="2006"] .navs a', l => l.map(a => a.textContent).join(' ') === 'parent [–]') && await fr.$eval('tr[id="2001"] .commtext', c => c.classList.contains('c00') && c.querySelectorAll('p').length === 2 && c.querySelector('a').getAttribute('href') === 'https://example.com/x') && (await txt(fr, 'tr[id="2001"] .reply')) === 'reply');
   check(tag + ' B the reply form', !!fr && await fr.$eval('table.fatitem form textarea', t => t.getAttribute('rows') === '8' && t.getAttribute('cols') === '80') && (await fr.$eval('table.fatitem form input[type=submit]', i => i.value)) === 'add comment');
   await fr.click('tr[id="2001"] a.togg'); await B.page.waitForTimeout(150);
@@ -122,13 +122,29 @@ async function run(browser, base, tag) {
   let C = await openAt(browser, base, 'news.ycombinator.com', { offline: true });
   await settle(C);
   check(tag + ' C offline: an error page', !!(await C.page.$('#crView .cr-neterror')) && !(await C.page.$('iframe.cr-wk')));
-  await C.ctx.close();
+  const C0 = C; await C.ctx.close();
   C = await openAt(browser, base, 'news.ycombinator.com/item?id=1031', { fbDown: true });
   await settle(C, 14000);
   check(tag + ' C the site\'s API failing is an error page, not No such item.', !!(await C.page.$('#crView .cr-neterror')) && !(await C.page.$('iframe.cr-wk')));
-  const errs = [].concat(A.errors, B.errors, C.errors);
-  check(tag + ' no page errors' + (errs.length ? ' (' + errs.slice(0, 3).join(' · ') + ')' : ''), !errs.length);
   await C.ctx.close();
+  // D. the thread memo: a round the site's API failed is not kept, and a thread drawn from the site's API alone is
+  const dm = { kidsDown: true };
+  let Dd = await openAt(browser, base, 'news.ycombinator.com/item?id=1001', dm);
+  fr = await hn(Dd); await settle(Dd, 14000);
+  check(tag + ' D the site\'s API failing for the comments: the thread still draws, from Algolia alone', !!fr && await fr.$$eval('tr.comtr', l => l.length >= 8) && Dd.log.some(u => /firebaseio\.com\/v0\/item\/2\d{3}\.json/.test(u)));
+  dm.kidsDown = false;
+  const d0 = Dd.log.filter(u => /firebaseio\.com\/v0\/item\/2\d{3}\.json/.test(u)).length;
+  await Dd.page.click('#crReload'); fr = await hn(Dd); await settle(Dd);
+  check(tag + ' D Reload with the API back asks it again (the failed round was not kept) and draws the site\'s order, the dead ones marked', Dd.log.filter(u => /firebaseio\.com\/v0\/item\/2\d{3}\.json/.test(u)).length > d0 && !!fr && await fr.$$eval('tr.comtr', l => l.map(x => x.id + (x.querySelector('.commtext') ? '' : '(gone)')).join(',') === '2004,2001,2002,2003,2008(gone),2009,2005(gone),2006'));
+  await nav(Dd.page, 'news.ycombinator.com/item?id=9001'); fr = await hn(Dd); await settle(Dd);
+  check(tag + ' D a story Algolia has not got yet: the site\'s API alone, in its order', (await title(Dd.page)) === 'Harness story 9: fresh, not in Algolia yet | Hacker News' && !!fr && await fr.$$eval('tr.comtr', l => l.map(x => x.id).join(',') === '9002,9005,9007,9003,9006,9004' && l.map(x => x.querySelector('td.ind').getAttribute('indent')).join(',') === '0,1,2,0,1,0'));
+  await nav(Dd.page, 'news.ycombinator.com/item?id=1001'); fr = await hn(Dd); await settle(Dd);
+  const d1 = Dd.log.filter(u => /firebaseio\.com\/v0\/item\//.test(u)).length;
+  await Dd.page.click('#crBack'); fr = await hn(Dd); await settle(Dd);
+  check(tag + ' D Back to it draws from the memo, without asking the API again', (await url(Dd.page)) === 'news.ycombinator.com/item?id=9001' && !!fr && await fr.$$eval('tr.comtr', l => l.length === 6) && Dd.log.filter(u => /firebaseio\.com\/v0\/item\//.test(u)).length === d1);
+  const errs = [].concat(A.errors, B.errors, C0.errors, C.errors, Dd.errors);
+  check(tag + ' no page errors' + (errs.length ? ' (' + errs.slice(0, 3).join(' · ') + ')' : ''), !errs.length);
+  await Dd.ctx.close();
 }
 (async () => {
   const browser = await chromium.launch();
