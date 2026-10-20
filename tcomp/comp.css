@@ -2004,6 +2004,7 @@ button.cr-iu-skip { position: absolute; right: 1rem; bottom: 1rem; z-index: 11; 
 .ghp-burger:hover { background: #818b981a; }
 .cr-ghp .ghp-logo { display: inline-flex; color: #1f2328; margin-right: auto; }
 .cr-ghp .ghp-logo:hover { text-decoration: none; }
+.ghp-drawer { display: none; }   /* the menu: the nav and the search, as github.com's header holds them */
 .ghp-mktg { display: none; align-items: center; gap: 2px; margin-right: auto; }
 .cr-ghp .ghp-mitem { display: inline-flex; align-items: center; gap: 4px; padding: 8px; border-radius: 6px; color: #1f2328; font-size: 16px; font-weight: 500; white-space: nowrap; }
 .cr-ghp .ghp-mitem:hover { text-decoration: none; color: #59636e; }
@@ -2016,7 +2017,9 @@ button.cr-iu-skip { position: absolute; right: 1rem; bottom: 1rem; z-index: 11; 
 .cr-ghp .ghp-signin { color: #1f2328; font-size: 16px; font-weight: 500; padding: 5px 8px; white-space: nowrap; }
 .cr-ghp .ghp-signup { display: none; color: #1f2328; font-size: 16px; font-weight: 500; padding: 4px 12px; border: 1px solid #d1d9e0; border-radius: 6px; white-space: nowrap; }
 .cr-ghp .ghp-signin:hover, .cr-ghp .ghp-signup:hover { text-decoration: none; color: #59636e; }
-.ghp-navopen .ghp-mktg { display: flex; position: absolute; z-index: 25; top: 64px; left: 0; right: 0; flex-direction: column; align-items: stretch; padding: 8px 16px; background: #fff; border-bottom: 1px solid #d1d9e0; box-shadow: 0 8px 24px #424a5333; }
+.ghp-navopen .ghp-drawer { display: flex; position: absolute; z-index: 25; top: 64px; left: 0; right: 0; flex-direction: column; align-items: stretch; padding: 8px 16px 16px; background: #fff; border-bottom: 1px solid #d1d9e0; box-shadow: 0 8px 24px #424a5333; }
+.ghp-navopen .ghp-mktg { display: flex; flex-direction: column; align-items: stretch; margin: 0; }
+.ghp-navopen .ghp-search { display: flex; flex: none; margin-top: 8px; }
 /* the tab row */
 .ghp-tabs { margin-top: 24px; box-shadow: inset 0 -1px 0 #d1d9e0b3; }
 .ghp-tabsin { display: flex; align-items: center; gap: 8px; min-height: 48px; max-width: 1280px; margin: 0 auto; padding: 0 16px; overflow-x: auto; overflow-y: hidden; }
@@ -2086,8 +2089,9 @@ button.cr-iu-skip { position: absolute; right: 1rem; bottom: 1rem; z-index: 11; 
     .ghp-tabsin { padding: 0 32px 0 calc(32px + 296px + 24px); }
     .ghp-burger { display: none; }
     .cr-ghp .ghp-logo { margin-right: 16px; }
-    .ghp-mktg, .ghp-navopen .ghp-mktg { display: flex; position: static; flex-direction: row; padding: 0; border: 0; box-shadow: none; }
-    .ghp-search { display: flex; }
+    .ghp-drawer, .ghp-navopen .ghp-drawer { display: flex; flex: 1 1 auto; flex-direction: row; align-items: center; gap: 8px; min-width: 0; position: static; padding: 0; background: none; border: 0; box-shadow: none; }
+    .ghp-mktg, .ghp-navopen .ghp-mktg { display: flex; flex-direction: row; align-items: center; margin-right: auto; }
+    .ghp-search, .ghp-navopen .ghp-search { display: flex; flex: 0 1 240px; margin-top: 0; }
     .cr-ghp .ghp-signup { display: inline-block; }
 }
 /* overview: popular repositories */
@@ -5758,15 +5762,19 @@ button.nn-drow b + i { display: inline-block; margin-left: 10px; }
 .ghx-latest { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 12px 16px; font-size: 14px; background: #f6f8fa; border-bottom: 1px solid #d1d9e0; border-radius: 6px 6px 0 0; }
 .ghx-avs { display: inline-flex; flex: none; }
 .ghx-avs .ghx-av + .ghx-av { margin-left: -6px; }
-.ghx-lwho { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ghx-lwho { flex: none; white-space: nowrap; }
 .cr-ghp .ghx-who { color: #1f2328; }
 .ghx-who b, b.ghx-who { font-weight: 600; }
 .ghx-lmsg { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ghx-lmeta { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 12px; color: #59636e; white-space: nowrap; }
+.ghx-lmeta { flex: none; font-size: 12px; color: #59636e; white-space: nowrap; }
 .cr-ghp .ghx-sha { font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #59636e; }
 .cr-ghp .ghx-hist { display: inline-flex; flex: none; align-items: center; gap: 4px; padding: 0 4px; font-size: 14px; color: #1f2328; white-space: nowrap; }
 .cr-ghp .ghx-hist:hover { color: #0969da; text-decoration: none; }
 .ghx-hist b { font-weight: 600; }
+.cr-ghp .ghx-histi { display: none; flex: none; align-items: center; justify-content: center; width: 28px; height: 28px; color: #1f2328; border-radius: 6px; }
+.cr-ghp .ghx-histi:hover { background: #818b981a; }
+@container (max-width: 1011px) { .cr-ghp .ghx-hist { display: none; } .cr-ghp .ghx-histi { display: inline-flex; } }   /* github.com: "N Commits" is d-none d-lg-flex, an icon link in its place */
+@container (max-width: 543px) { .ghx-lmeta { display: none; } }                                                     /* and the sha and time d-none d-sm-flex */
 .ghx-files { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 14px; }
 .ghx-row td { height: 40px; padding: 0 16px; border-top: 1px solid #d1d9e0b3; vertical-align: middle; }
 .ghx-files tbody .ghx-row:first-child td { border-top: 0; }
@@ -5923,7 +5931,13 @@ button.nn-drow b + i { display: inline-block; margin-left: 10px; }
 .ghx-dark .ghp-search input { color: #f0f6fc; }
 .ghx-dark .ghp-search input::placeholder, .ghx-dark .ghp-search kbd { color: #9198a1; }
 .ghx-dark .ghp-search kbd { border-color: #3d444d; }
-.cr-ghp.ghx-dark.ghp-navopen .ghp-mktg .ghp-mitem { color: #1f2328; }   /* the open menu is a white panel: its items take the light page's colour back */
+@container (max-width: 1011px) {   /* the open menu is a white panel: what is in it takes the light page's colours back */
+    .cr-ghp.ghx-dark.ghp-navopen .ghp-mktg .ghp-mitem { color: #1f2328; }
+    .cr-ghp.ghx-dark.ghp-navopen .ghp-drawer .ghp-search { background: #fff; border-color: #d1d9e0; color: #59636e; }
+    .cr-ghp.ghx-dark.ghp-navopen .ghp-drawer .ghp-search input { color: #1f2328; }
+    .cr-ghp.ghx-dark.ghp-navopen .ghp-drawer .ghp-search input::placeholder, .cr-ghp.ghx-dark.ghp-navopen .ghp-drawer .ghp-search kbd { color: #59636e; }
+    .cr-ghp.ghx-dark.ghp-navopen .ghp-drawer .ghp-search kbd { border-color: #d1d9e0; }
+}
 .ghx-dark .ghp-burger, .ghx-dark .ghp-caret { color: #9198a1; }
 .ghx-homepage { max-width: 1280px; margin: 0 auto; padding: 0 16px 64px; }
 .ghx-hero { padding: 96px 0 64px; text-align: center; }
@@ -6081,9 +6095,17 @@ button.nn-drow b + i { display: inline-block; margin-left: 10px; }
 .ghx-dhunk td { background: #ddf4ff; color: #59636e; }
 .ghx-dnote { margin: 0; padding: 16px; text-align: center; color: #59636e; }
 .ghx-dview .ghx-seg { display: inline-flex; align-items: center; }
-/* a path the ref does not have ("404 - page not found"), and a history's "History for" line */
-.ghx-nopath { padding: 32px 16px; text-align: center; }
-.ghx-nph { margin: 0 0 8px; font-size: 24px; font-weight: 600; }
-.ghx-nopath p { margin: 0 0 16px; color: #59636e; }
-.ghx-nopath code { padding: 2px 4px; font: 85% ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: #818b981f; border-radius: 6px; }
+/* "404 - page not found" (a path the ref has not got, or no such ref), "No commits history", and a history's "History for" line */
+.ghx-blank { display: flex; flex-direction: column; align-items: center; padding: 32px; text-align: center; }   /* Primer's Blankslate */
+.ghx-blankb { margin: 16px 0; border: 1px solid #d1d9e0; border-radius: 6px; }
+.ghx-cnone { margin-top: 8px; }
+.ghx-cnone .ghx-blank { padding: 80px 40px; }
+.ghx-blankv { margin-bottom: 8px; color: #59636e; }
+.ghx-blankh { margin: 0 0 4px; font-size: 20px; font-weight: 600; line-height: 1.5; }
+.ghx-blankd { margin: 0; color: #59636e; }
+.ghx-blankd strong { color: #1f2328; font-weight: 600; }
+.ghx-blanka { margin-top: 16px; }
+.ghx-brname { display: inline-block; padding: 0 6px; font: 12px/20px ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; color: #0969da; background: #ddf4ff; border-radius: 6px; }
+.cr-ghp .ghx-btnp { padding: 0 12px; color: #fff; background: #1f883d; border: 1px solid #1f232826; }
+.cr-ghp .ghx-btnp:hover { background: #1c8139; text-decoration: none; }
 .ghx-hfor { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; font-size: 14px; color: #59636e; }

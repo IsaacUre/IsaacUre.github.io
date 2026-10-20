@@ -50,6 +50,8 @@ const EXTRA = { 'images/x.png': { type: 'file', name: 'x.png', path: 'images/x.p
 const SUBSHA = 'abcdef1234567890abcdef1234567890abcdef12', SUBSHA2 = '1234567abcdef1234567abcdef1234567abcdef1';
 const MODS = [{ type: 'file', name: 'lib', path: 'mods/lib', sha: SUBSHA, size: 0, download_url: null, git_url: 'https://api.github.com/repos/torvalds/linux/git/trees/' + SUBSHA, html_url: 'https://github.com/torvalds/linux/tree/' + SUBSHA },
   { type: 'file', name: 'ext', path: 'mods/ext', sha: SUBSHA2, size: 0, download_url: null, git_url: 'https://api.github.com/repos/IsaacUre/IsaacUre.github.io/git/trees/' + SUBSHA2, html_url: 'https://gitlab.com/someone/ext/-/tree/' + SUBSHA2 }];
+// the repository's refs, as git/matching-refs lists them: a branch with a slash, a Dependabot branch five segments deep, a tag
+const BRANCHES = ['main', 'feat/x', 'dependabot/npm_and_yarn/packages/web/axios-1.6.0'], TAGS = ['mc-sounds-archive'];
 const TREADME = '<div id="readme" class="md" data-path="readme.md"><article class="markdown-body entry-content container-lg" itemprop="text"><p>Hello from a profile README</p></article></div>';
 function tcal() {                          // a made-up last year for torvalds (1,368 in all)
   const out = []; let d = new Date('2025-10-19T00:00:00Z'), total = 0;
@@ -74,6 +76,9 @@ function mock(mode, log) {
     if (p === R) return json(RM.repo);
     if (q.get('ref') === 'feat') return json({ message: 'No commit found for the ref feat' }, 404);   // the branch is feat/x: "feat" alone is no ref (the contents API's words for it)
     if (q.get('sha') === 'feat') return json({ message: 'Not Found' }, 404);                         // (and the commits API's)
+    const mr = /^\/repos\/IsaacUre\/IsaacUre\.github\.io\/git\/matching-refs\/(heads|tags)\/(.+)$/.exec(p);
+    if (mr) { const pre = decodeURIComponent(mr[2]); return json((mr[1] === 'heads' ? BRANCHES : TAGS).filter(b => b.indexOf(pre) === 0).map(b => ({ ref: 'refs/' + mr[1] + '/' + b, object: { type: 'commit' } }))); }
+    if (mode.contentsFail && p.indexOf(R + '/contents') === 0) return json({ message: 'Server Error' }, 500);
     if (p === R + '/contents') return json(RM.contents['']);
     if (p.indexOf(R + '/contents/') === 0) {
       const path = decodeURIComponent(p.slice((R + '/contents/').length));
@@ -86,7 +91,11 @@ function mock(mode, log) {
     }
     if (p.indexOf(R + '/commits/') === 0) return p.slice((R + '/commits/').length) === RM.commit.sha ? json(RM.commit) : json({ message: 'No commit found for SHA' }, 422);
     if (p === R + '/commits') {
-      const path = q.get('path'), per = +(q.get('per_page') || 30);
+      const path = q.get('path'), per = +(q.get('per_page') || 30), sh = q.get('sha') || '';
+      if (/^[0-9a-f]{4,39}$/.test(sh) && !path) {   // a short sha: the commit it names, or the API's 404
+        const c = [RM.commit, RM.head].filter(x => x.sha.indexOf(sh) === 0)[0];
+        return c ? json([c]) : json({ message: 'Not Found' }, 404);
+      }
       if (path) return json(RM.bypath[path] ? [RM.bypath[path]] : []);
       if (per === 1) return json([RM.head], 200, last(RM.ncommits, R + '/commits'));
       const pg = +(q.get('page') || 1), pages = Math.ceil(RM.ncommits / 35);   // rel="last" on every page but the last, as the API has it
@@ -118,6 +127,9 @@ function mock(mode, log) {
     if (p === '/search/commits') {
       const s = q.get('q') || '';
       if (/repo:/.test(s)) return json({ total_count: 140, items: [] });
+      if (mode.busier && /2026-09-01\.\.2026-09-30/.test(s)) {   // 950 commits: past what is read page by page
+        return json({ total_count: 950, items: Array.from({ length: 100 }, (x, i) => ({ repository: { full_name: 'torvalds/r' + (i % 7), private: false } })) });
+      }
       if (mode.busy && /2026-09-01\.\.2026-09-30/.test(s)) {   // a month of 250 commits over 7 repositories: three pages of the search
         const pg = +(q.get('page') || 1), n = Math.max(0, Math.min(100, 250 - (pg - 1) * 100));
         return json({ total_count: 250, items: Array.from({ length: n }, (x, i) => ({ repository: { full_name: 'torvalds/r' + (((pg - 1) * 100 + i) % 7), private: false } })) });
@@ -205,6 +217,10 @@ async function run(browser, base, tag) {
     await nav(H.page, 'github.com/search?q=kernel&type=repositories&p=' + p0); await settle(H);
     check(tag + ' S pager at page ' + p0 + ' (' + (await txt(H.page, '.ghx-pgs')) + ')', (await txt(H.page, '.ghx-pgs')) === want);
   }
+  await nav(H.page, 'github.com/search?q=amp&type=repositories'); await settle(H);
+  const sa = await txt(H.page, '.ghx-sitem:nth-child(3) .ghx-sdesc');
+  check(tag + ' S a word inside an &amp; is never marked (' + sa.slice(0, 40) + ')', /^Notes & patches for the kernel/.test(sa) && !/&amp;/.test(sa) && !(await H.page.$('.ghx-sitem:nth-child(3) .ghx-sdesc em')));
+  await nav(H.page, 'github.com/search?q=kernel&type=repositories&p=97'); await settle(H);
   await H.page.click('.ghx-sadv[data-q="owner:"]'); await H.page.waitForTimeout(100);
   check(tag + ' S Owner adds its qualifier to the box', (await H.page.$eval('.ghp-q', i => [i.value, document.activeElement === i].join())) === 'kernel owner:,true');
   check(tag + ' H/S no console errors ' + JSON.stringify(H.errors), H.errors.length === 0);
@@ -245,6 +261,8 @@ async function run(browser, base, tag) {
   check(tag + ' R folder rows: .., then its files', (await p.$$eval('#ghxRows .ghx-cname', e => e.map(x => x.textContent.trim()))).join(',') === '..,comp.css,comp.js,index.html');
   check(tag + ' R folder crumbs', /IsaacUre\.github\.io \/ comp \//.test(await txt(p, '.ghx-bcs')));
   check(tag + ' R folder: Sign up is a folder\'s', (await signup()) === SU + '%2Ffiles%2Fdisambiguate' + SR);
+  check(tag + ' R folder: no title row (the overview\'s only)', !(await p.$('.ghx-titlerow')) && !!(await p.$('.ghx-rtabs')));
+  check(tag + ' R folder: the history link and its narrow twin', (await txt(p, '#ghxBar .ghx-hist')) === 'History' && (await p.$eval('#ghxBar .ghx-histi', b => [b.getAttribute('aria-label'), b.getAttribute('title'), getComputedStyle(b).display].join('|'))) === 'View commit history for this file.|History|none');
   await clean(R, tag + ' R folder');
   // a file
   await p.click('#ghxRows .ghx-flink:text-is("index.html")'); await settle(R);
@@ -253,6 +271,7 @@ async function run(browser, base, tag) {
   check(tag + ' R file: address, title, lines and size (' + fm + ')', (await url(p)) === 'github.com/IsaacUre/IsaacUre.github.io/blob/main/comp/index.html' && (await title(p)) === 'IsaacUre.github.io/comp/index.html at main · IsaacUre/IsaacUre.github.io · GitHub'
     && fm.indexOf(lines.length + ' lines (') === 0 && / · \d+(\.\d)? KB$/.test(fm));
   check(tag + ' R file: Sign up is a file\'s', (await signup()) === SU + '%2Fblob%2Fshow' + SR);
+  check(tag + ' R file: no title row', !(await p.$('.ghx-titlerow')));
   check(tag + ' R file: one row a line, coloured', (await p.$$('.ghx-code tr')).length === lines.length && (await p.$$('.ghx-code .pl-ent')).length > 10);
   check(tag + ' R file: Code, Blame, Raw; no Preview for HTML', (await txt(p, '.ghx-segs')) === 'Code Blame' && (await p.$eval('.ghx-fhead a.ghp-btn', a => a.getAttribute('href'))) === 'https://github.com/IsaacUre/IsaacUre.github.io/raw/refs/heads/main/comp/index.html');
   await clean(R, tag + ' R file');
@@ -270,7 +289,29 @@ async function run(browser, base, tag) {
   check(tag + ' R an empty file: 0 lines (0 loc) · 0 Bytes, no View raw', (await txt(p, '.ghx-fmeta')) === '0 lines (0 loc) · 0 Bytes' && !(await p.$('.ghx-binary')));
   // a commit's tree and file, by its sha
   await nav(p, 'github.com/IsaacUre/IsaacUre.github.io/tree/' + RM.commit.sha); await settle(R);
-  check(tag + ' R a sha\'s tree: title and label (' + (await title(p)) + ')', (await title(p)) === 'GitHub - IsaacUre/IsaacUre.github.io at ' + RM.commit.sha + ' · GitHub' && /^cc69f74 /.test(await txt(p, '#ghxBranchRow')) && (await signup()) === SU + '%2Ffiles%2Fdisambiguate' + SR);
+  check(tag + ' R a sha\'s tree: title and label (' + (await title(p)) + ')', (await title(p)) === 'GitHub - IsaacUre/IsaacUre.github.io at ' + RM.commit.sha + ' · GitHub' && /^cc69f74 /.test(await txt(p, '#ghxBranchRow')) && (await signup()) === SU + '%2Ffiles%2Fdisambiguate' + SR && !!(await p.$('.ghx-titlerow')));
+  const zip = async () => p.$eval('.ghx-codebox a.ghx-cbrow', a => a.getAttribute('href')).catch(() => null);
+  check(tag + ' R a sha\'s ZIP is the sha\'s', (await zip()) === 'https://github.com/IsaacUre/IsaacUre.github.io/archive/' + RM.commit.sha + '.zip');
+  // refs: the default branch, another branch, a tag, a short sha, a branch five segments deep
+  const refCase = async (u, t, lbl, al, z) => {
+    await nav(p, 'github.com/IsaacUre/IsaacUre.github.io/' + u); await settle(R);
+    const got = [await title(p), await txt(p, '.ghx-bname'), await p.$eval('.ghx-branch', b => b.getAttribute('aria-label')).catch(() => null), await zip()];
+    check(tag + ' R ' + u + ': ' + JSON.stringify(got), got[0] === t && got[1] === lbl && got[2] === al && got[3] === z);
+  };
+  const ZB = 'https://github.com/IsaacUre/IsaacUre.github.io/archive/';
+  await refCase('tree/main', 'GitHub - IsaacUre/IsaacUre.github.io: Website · GitHub', 'main', 'main branch', ZB + 'refs/heads/main.zip');
+  await refCase('tree/feat/x', 'GitHub - IsaacUre/IsaacUre.github.io at feat/x · GitHub', 'feat/x', 'feat/x branch', ZB + 'refs/heads/feat/x.zip');
+  await refCase('tree/mc-sounds-archive', 'GitHub - IsaacUre/IsaacUre.github.io at mc-sounds-archive · GitHub', 'mc-sounds-archive', 'mc-sounds-archive tag', ZB + 'refs/tags/mc-sounds-archive.zip');
+  await refCase('tree/cc69f74', 'GitHub - IsaacUre/IsaacUre.github.io at ' + RM.commit.sha + ' · GitHub', 'cc69f74', 'cc69f74 branch', ZB + RM.commit.sha + '.zip');
+  await refCase('tree/dependabot/npm_and_yarn/packages/web/axios-1.6.0', 'GitHub - IsaacUre/IsaacUre.github.io at dependabot/npm_and_yarn/packages/web/axios-1.6.0 · GitHub', 'dependabot/npm_and_yarn/packages/web/axios-1.6.0', 'dependabot/npm_and_yarn/packages/web/axios-1.6.0 branch', ZB + 'refs/heads/dependabot/npm_and_yarn/packages/web/axios-1.6.0.zip');
+  check(tag + ' R refs are looked up, never guessed at', !R.log.some(l => /[?&]ref=(feat|dependabot|dependabot%2Fnpm_and_yarn)(&|$)/.test(l.url)));
+  await nav(p, 'github.com/IsaacUre/IsaacUre.github.io/blob/mc-sounds-archive/CLAUDE.md'); await settle(R);
+  check(tag + ' R a tag\'s file: Raw is refs/tags', (await p.$eval('.ghx-fhead a.ghp-btn', a => a.getAttribute('href'))) === 'https://github.com/IsaacUre/IsaacUre.github.io/raw/refs/tags/mc-sounds-archive/CLAUDE.md');
+  await nav(p, 'github.com/IsaacUre/IsaacUre.github.io/blob/cc69f74/comp/index.html'); await settle(R);
+  check(tag + ' R a short sha\'s file: the whole sha in its title and Raw (' + (await title(p)) + ')', (await title(p)) === 'IsaacUre.github.io/comp/index.html at ' + RM.commit.sha + ' · IsaacUre/IsaacUre.github.io · GitHub' && (await p.$eval('.ghx-fhead a.ghp-btn', a => a.getAttribute('href'))) === 'https://github.com/IsaacUre/IsaacUre.github.io/raw/' + RM.commit.sha + '/comp/index.html');
+  await nav(p, 'github.com/IsaacUre/IsaacUre.github.io/commits/feat/x?after=' + RM.commits35[0].sha + '+34'); await settle(R);
+  check(tag + ' R a slash branch\'s second page of commits (' + (await title(p)) + ')', (await title(p)) === 'Commits · IsaacUre/IsaacUre.github.io · GitHub' && !(await p.$('.ghx-hfor')) && (await txt(p, '.ghx-cfilters .ghx-btnsm')) === 'feat/x' && (await p.$$('.ghx-crow')).length === 35
+    && R.log.some(l => l.url.indexOf('/commits?per_page=35&page=2&sha=' + RM.commits35[0].sha) > 0 && !/[?&]path=/.test(l.url)));
   await nav(p, 'github.com/IsaacUre/IsaacUre.github.io/blob/' + RM.commit.sha + '/comp/index.html'); await settle(R);
   check(tag + ' R a sha\'s file: Raw has no refs/heads', (await p.$eval('.ghx-fhead a.ghp-btn', a => a.getAttribute('href'))) === 'https://github.com/IsaacUre/IsaacUre.github.io/raw/' + RM.commit.sha + '/comp/index.html');
   // tree/<a file> is the file, blob/<a folder> the folder
@@ -305,6 +346,7 @@ async function run(browser, base, tag) {
   check(tag + ' R …: the focus stays on it', await p.evaluate(sha => { const a = document.activeElement; return !!a && a.classList.contains('ghx-ellip') && a.getAttribute('data-sha') === sha && a.getAttribute('aria-expanded') === 'true'; }, esha));
   check(tag + ' R a commit opens here', (await p.$eval('.ghx-crow .ghx-ctl', a => a.getAttribute('data-href'))) === 'github.com/IsaacUre/IsaacUre.github.io/commit/' + RM.commits35[0].sha);
   check(tag + ' R commits: Sign up is the commit list\'s', (await signup()) === SU + '%2Fcommits%2Fshow' + SR);
+  check(tag + ' R commits: no title row', !(await p.$('.ghx-titlerow')));
   check(tag + ' R Next is ?after=<head>+34, Previous is not a link', (await txt(p, '.ghx-pager')) === 'Previous Next' && (await p.$eval('.ghx-pager .cr-l', b => b.getAttribute('data-href'))) === 'github.com/IsaacUre/IsaacUre.github.io/commits/main?after=' + RM.commits35[0].sha + '+34' && (await p.$$('.ghx-pager .cr-l')).length === 1);
   await p.click('.ghx-pager .cr-l:text-is("Next")'); await settle(R);
   check(tag + ' R page 2 asks for page 2 from the head', R.log.some(l => l.url.indexOf('/commits?per_page=35&page=2&sha=' + RM.commits35[0].sha) > 0) && (await p.$eval('.ghx-pager .cr-l:text-is("Previous")', b => b.getAttribute('data-href'))) === 'github.com/IsaacUre/IsaacUre.github.io/commits/main');
@@ -320,6 +362,7 @@ async function run(browser, base, tag) {
   await nav(p, 'github.com/IsaacUre/IsaacUre.github.io/commit/' + RM.commit.sha); await settle(R);
   check(tag + ' C title', (await title(p)) === 'test2: the desk as Windows Terminal windows on a Windows 11 desk (#178) · IsaacUre/IsaacUre.github.io@cc69f74 · GitHub');
   check(tag + ' C Sign up is a commit\'s', (await signup()) === SU + '%2Fcommit%2Fshow' + SR);
+  check(tag + ' C no title row', !(await p.$('.ghx-titlerow')));
   check(tag + ' C heading and Browse files', (await txt(p, '.ghx-cmhead')) === 'Commit cc69f74 Browse files' && (await p.$eval('.ghx-cmhead .cr-l', b => b.getAttribute('data-href'))) === 'github.com/IsaacUre/IsaacUre.github.io/tree/' + RM.commit.sha);
   const cb = await txt(p, '.ghx-cmbox');
   check(tag + ' C who, the title, its description, the parent (' + cb.slice(0, 90) + ' … ' + cb.slice(-40) + ')', /^IsaacUre and claude authored .+? test2: the desk as Windows Terminal windows on a Windows 11 desk \(#178\) Every window is Windows Terminal's/.test(cb) && / 1 parent 4d05dde commit cc69f74$/.test(cb));
@@ -405,6 +448,12 @@ async function run(browser, base, tag) {
   const u3 = await txt(U3.page, '#ghpAct'), pagesAsked = U3.log.filter(l => /search\/commits/.test(l.url) && /2026-09-01\.\.2026-09-30/.test(decodeURIComponent(l.url))).map(l => new URL(l.url).searchParams.get('page') || '1');
   check(tag + ' U3 a busy month: 250 commits in 7 repositories, three pages asked (' + pagesAsked.join(',') + ')', /September 2026 Created 250 commits in 7 repositories/.test(u3) && /torvalds\/r0 36 commits/.test(u3) && pagesAsked.join(',') === '1,2,3');
   await U3.ctx.close();
+  // a month of 950 commits: one page and five repositories' own counts, eight searches at most
+  let U6 = await openAt(browser, base, 'github.com/torvalds', { busier: true });
+  await settle(U6); await U6.page.click('.ghp-more'); await settle(U6);
+  const sep = U6.log.filter(l => /\/search\//.test(l.path) && /2026-09-01\.\.2026-09-30/.test(decodeURIComponent(l.url)));
+  check(tag + ' U6 a busier month costs eight searches at most (' + sep.length + ')', sep.length <= 8 && sep.filter(l => /\/search\/commits/.test(l.path) && !/repo:/.test(decodeURIComponent(l.url))).length === 1 && /September 2026 Created/.test(await txt(U6.page, '#ghpAct')));
+  await U6.ctx.close();
   // their repo list answers after the month did: the month still has the repository they created
   let U4 = await openAt(browser, base, 'github.com/torvalds', { slowRepos: true });
   await settle(U4); await U4.page.waitForTimeout(1800); await settle(U4);
@@ -460,18 +509,29 @@ async function run(browser, base, tag) {
   await nav(N.page, 'github.com/IsaacUre/no-such-repo'); await settle(N);
   check(tag + ' N an unknown repository: the 404', (await title(N.page)) === 'Page not found · GitHub' && /^404/.test(await txt(N.page, '#ghxBody')));
   await nav(N.page, 'github.com/IsaacUre/IsaacUre.github.io/tree/main/no-such-folder'); await settle(N);
-  check(tag + ' N an unknown folder: "File not found", under the repository (' + (await txt(N.page, '.ghx-nopath')) + ')', (await txt(N.page, '.ghx-nopath')) === '404 - page not found The main branch of IsaacUre.github.io does not contain the path no-such-folder. Return to the repository overview'
-    && (await title(N.page)) === 'File not found · GitHub' && !!(await N.page.$('.ghx-titlerow')));
+  check(tag + ' N an unknown folder: "File not found", under the repository (' + (await txt(N.page, '.ghx-blank')) + ')', (await txt(N.page, '.ghx-blank')) === '404 - page not found The main branch of IsaacUre.github.io does not contain the path no-such-folder. Return to the repository overview'
+    && (await title(N.page)) === 'File not found · GitHub' && !(await N.page.$('.ghx-titlerow')) && !!(await N.page.$('.ghx-rtabs')) && !!(await N.page.$('.ghx-filepane')) && (await txt(N.page, '.ghx-bname')) === 'main'
+    && !!(await N.page.$('.ghx-blank .ghx-brname')) && (await N.page.$$('.ghx-blank strong')).length === 2 && !!(await N.page.$('.ghx-blankv svg')));
   await N.page.screenshot({ path: OUT + '/' + tag + '-nopath.png' });
   await nav(N.page, 'github.com/IsaacUre/IsaacUre.github.io/blob/main/no-such-file.txt'); await settle(N);
-  check(tag + ' N an unknown file: "File not found"', (await txt(N.page, '.ghx-nopath')) === '404 - page not found The main branch of IsaacUre.github.io does not contain the path no-such-file.txt. Return to the repository overview' && (await title(N.page)) === 'File not found · GitHub');
-  await N.page.click('.ghx-nopath .cr-l'); await settle(N);
+  check(tag + ' N an unknown file: "File not found"', !(await N.page.$('.ghx-bcrow')) && (await txt(N.page, '.ghx-blank')) === '404 - page not found The main branch of IsaacUre.github.io does not contain the path no-such-file.txt. Return to the repository overview' && (await title(N.page)) === 'File not found · GitHub');
+  await N.page.click('.ghx-blank .cr-l'); await settle(N);
   check(tag + ' N ...and Return goes to the repository', (await url(N.page)) === 'github.com/IsaacUre/IsaacUre.github.io');
   // a branch with a slash in it: the ref takes one more segment when GitHub says 404
   await nav(N.page, 'github.com/IsaacUre/IsaacUre.github.io/tree/feat/x/comp'); await settle(N);
   check(tag + ' N a branch with a slash (' + (await title(N.page)) + ')', (await title(N.page)) === 'IsaacUre.github.io/comp at feat/x · IsaacUre/IsaacUre.github.io · GitHub' && (await N.page.$$('#ghxRows .ghx-row')).length === 4 && (await txt(N.page, '.ghx-bname')) === 'feat/x');
   await nav(N.page, 'github.com/IsaacUre/IsaacUre.github.io/tree/feat/x/no-such-folder'); await settle(N);
-  check(tag + ' N ...and a path that branch has not got', (await txt(N.page, '.ghx-nopath')).indexOf('The feat/x branch of IsaacUre.github.io does not contain the path no-such-folder.') > 0);
+  check(tag + ' N ...and a path that branch has not got', (await txt(N.page, '.ghx-blank')).indexOf('The feat/x branch of IsaacUre.github.io does not contain the path no-such-folder.') > 0);
+  await nav(N.page, 'github.com/IsaacUre/IsaacUre.github.io/tree/nosuchbranch/x'); await settle(N);
+  check(tag + ' N no such ref, a folder: "Cannot find a valid ref in" (' + (await txt(N.page, '.ghx-blank')) + ')', (await title(N.page)) === 'File not found · GitHub' && (await txt(N.page, '.ghx-blank')) === '404 - page not found Cannot find a valid ref in nosuchbranch/x Go to default branch'
+    && (await txt(N.page, '.ghx-bname')) === 'nosuchbranch/x' && (await N.page.$eval('.ghx-branch', b => b.getAttribute('aria-label'))) === 'nosuchbranch/x branch' && (await N.page.$eval('.ghx-bcroot', b => b.getAttribute('data-href'))) === 'github.com/IsaacUre/IsaacUre.github.io/tree/nosuchbranch/x'
+    && (await N.page.$eval('.ghx-blank .cr-l', b => b.getAttribute('data-href'))) === 'github.com/IsaacUre/IsaacUre.github.io?files=1' && (await N.page.$eval('.ghp-signup', a => a.getAttribute('href'))).indexOf('%2Ffiles%2Fdisambiguate&source=header-repo') > 0);
+  await nav(N.page, 'github.com/IsaacUre/IsaacUre.github.io/blob/nosuch/branch/file.md'); await settle(N);
+  check(tag + ' N no such ref, a file: the words alone', (await title(N.page)) === 'File not found · GitHub' && (await txt(N.page, '.ghx-blank')) === '404 - page not found Cannot find a valid ref in nosuch/branch/file.md Go to default branch' && !(await N.page.$('.ghx-bcrow')));
+  await nav(N.page, 'github.com/IsaacUre/IsaacUre.github.io/tree/nosuchbranch'); await settle(N);
+  check(tag + ' N no such ref and nothing after it: github.com\'s own 404', (await title(N.page)) === 'Page not found · GitHub' && /^404 “This is not the web page/.test(await txt(N.page, '#ghxBody')));
+  await nav(N.page, 'github.com/IsaacUre/IsaacUre.github.io/commits/nosuchbranch'); await settle(N);
+  check(tag + ' N no such ref\'s commits: "No commits history" (' + (await txt(N.page, '.ghx-cnone')) + ')', (await title(N.page)) === 'Commits · IsaacUre/IsaacUre.github.io · GitHub' && (await txt(N.page, '.ghx-cnone')) === 'No commits history There isn\'t any commit history to show here' && (await txt(N.page, '.ghx-cfilters .ghx-btnsm')) === 'nosuchbranch');
   // pages the copy does not draw: no 404 claimed, nothing asked
   for (const [u, kind] of [['github.com/features', 'one of GitHub\'s own pages'], ['github.com/IsaacUre/IsaacUre.github.io/issues', 'a repository\'s issues'], ['github.com/IsaacUre/IsaacUre.github.io/blob/main/comp%2F..%2FCLAUDE.md', 'an encoded ..'], ['github.com/IsaacUre/IsaacUre.github.io/tree/ma%ZZin', 'a stray %']]) {
     const n0 = N.log.length, e0 = N.errors.length;
@@ -514,6 +574,11 @@ async function run(browser, base, tag) {
   check(tag + ' P the Code menu opens inside the page (' + (await inside(P, '.ghx-codebox')) + ')', (await inside(P, '.ghx-codebox')) === 'in');
   await P.page.screenshot({ path: OUT + '/' + tag + '-phone-code.png' });
   await P.page.keyboard.press('Escape');
+  const pbar = await P.page.evaluate(() => { const q = s => document.querySelector(s), w = q('.ghx-lwho'), m = q('.ghx-lmeta'), h = q('.ghx-hist'), i = q('.ghx-histi'), g = q('.ghx-lmsg');
+    return { who: w.scrollWidth <= w.clientWidth, meta: getComputedStyle(m).display, hist: getComputedStyle(h).display, histi: getComputedStyle(i).display, label: i.getAttribute('aria-label'), msg: g.clientWidth }; });
+  check(tag + ' P the commit bar: names whole, no sha or time, the history icon (' + JSON.stringify(pbar) + ')', pbar.who && pbar.meta === 'none' && pbar.hist === 'none' && pbar.histi !== 'none' && pbar.label === 'View commit history for this file.' && pbar.msg > 40);
+  await P.page.focus('#ghxBar .ghx-lwho a, #ghxBar .ghx-lwho .cr-l'); for (let k = 0; k < 6; k++) await P.page.keyboard.press('Tab');
+  check(tag + ' P tabbing through the bar never scrolls the names away', await P.page.$eval('.ghx-lwho', w => w.scrollLeft === 0));
   await nav(P.page, 'github.com/IsaacUre/IsaacUre.github.io/tree/main/comp'); await settle(P);
   check(tag + ' P a folder does not scroll sideways', await noSide(P));
   await nav(P.page, 'github.com/IsaacUre/IsaacUre.github.io/commits/main'); await settle(P);
@@ -525,8 +590,12 @@ async function run(browser, base, tag) {
     if (m === 'Type') await P.page.screenshot({ path: OUT + '/' + tag + '-phone-type.png' });
     await P.page.keyboard.press('Escape'); await P.page.waitForTimeout(100);
   }
+  await nav(P.page, 'github.com/search?q=kernel&type=repositories'); await settle(P);
+  await P.page.click('.ghx-sadv[data-q="owner:"]'); await P.page.waitForTimeout(150);
+  check(tag + ' P Owner on a phone opens the menu, its box holding the qualifier', await P.page.evaluate(() => { const b = document.querySelector('.ghp-q'); return document.querySelector('.cr-ghp').classList.contains('ghp-navopen') && b.getClientRects().length > 0 && b.value === 'kernel owner:' && document.activeElement === b; }));
   await nav(P.page, 'github.com'); await settle(P);
   await P.page.click('.ghp-burger'); await P.page.waitForTimeout(150);
+  check(tag + ' P the menu holds the search box, readable on the dark home', await P.page.evaluate(() => { const b = document.querySelector('.ghp-drawer .ghp-q'); return !!b && b.getClientRects().length > 0 && getComputedStyle(b).color === 'rgb(31, 35, 40)'; }));
   await P.page.screenshot({ path: OUT + '/' + tag + '-phone-home.png' });
   check(tag + ' P the dark home\'s menu is readable', (await P.page.$eval('.ghp-mktg .ghp-mitem', e => getComputedStyle(e).color)) === 'rgb(31, 35, 40)');
   check(tag + ' P no console errors ' + JSON.stringify(P.errors), P.errors.length === 0);
@@ -534,11 +603,26 @@ async function run(browser, base, tag) {
   let W = await openAt(browser, base, 'github.com/IsaacUre/IsaacUre.github.io', {});
   await settle(W);
   check(tag + ' W a desktop still shows the bar\'s names and time whole', await W.page.$$eval('.ghx-lwho, .ghx-lmeta', e => e.length === 2 && e.every(x => x.scrollWidth <= x.clientWidth)));
+  const wd = [await W.page.$eval('.ghx-hist', h => getComputedStyle(h).display), await W.page.$eval('.ghx-histi', h => getComputedStyle(h).display)];
+  check(tag + ' W a desktop shows "247 Commits", not the icon (' + wd.join(', ') + ')', wd[0] !== 'none' && wd[1] === 'none');
+  await W.ctx.close();
+  W = await openAt(browser, base, 'github.com/search?q=kernel&type=repositories', {}, { small: true });   // Chrome's own size: a 978px page, its box in the menu
+  await settle(W);
+  await W.page.click('.ghx-sadv[data-q="size:"]'); await W.page.waitForTimeout(150);
+  check(tag + ' W Size in an unmaximised window: the box shows, holding it', await W.page.evaluate(() => { const b = document.querySelector('.ghp-q'); return b.getClientRects().length > 0 && b.value === 'kernel size:' && document.activeElement === b; }));
   await W.ctx.close();
   let D = await openAt(browser, base, 'github.com', {});
   await settle(D);
   check(tag + ' D the dark header\'s placeholder and / key are the dark greys', (await D.page.$eval('.ghp-q', i => getComputedStyle(i, '::placeholder').color)) === 'rgb(145, 152, 161)' && (await D.page.$eval('.ghp-search kbd', k => getComputedStyle(k).color + ' ' + getComputedStyle(k).borderTopColor)) === 'rgb(145, 152, 161) rgb(61, 68, 77)');
   await D.ctx.close();
+
+  // B3. the repository answers, its listing does not: no placeholder stays
+  let B3 = await openAt(browser, base, 'github.com/IsaacUre/IsaacUre.github.io', { contentsFail: true, expect404: true });
+  await settle(B3);
+  check(tag + ' B3 a failed listing leaves no placeholders (root)', !!(await B3.page.$('.ghx-titlerow')) && !(await B3.page.$('#ghxRows .ghx-skel, #ghxRows .ghx-skb')));
+  await nav(B3.page, 'github.com/IsaacUre/IsaacUre.github.io/tree/main/comp'); await settle(B3);
+  check(tag + ' B3 ...and a folder keeps only its ..', !(await B3.page.$('#ghxRows .ghx-skel, #ghxRows .ghx-skb')) && (await B3.page.$$eval('#ghxRows .ghx-row', e => e.map(x => x.textContent.trim()).join(','))) === '..');
+  await B3.ctx.close();
 
   // L. rate limited / offline: nothing is claimed
   for (const m of ['limited', 'offline']) {

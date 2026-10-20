@@ -3479,8 +3479,8 @@ function ghpHeader(back, signup) {        // signup: the Sign up link's own addr
     return '<header class="ghp-top">' +
         '<button class="ghp-burger" type="button" aria-label="Toggle navigation">' + ghpIc('three-bars') + '</button>' +
         crLink('github.com', ghpIc('mark-github', '', 32), 'ghp-logo').replace('<button ', '<button aria-label="Homepage" ') +
-        '<nav class="ghp-mktg" aria-label="Global">' + nav.map(function (n) { return ghpExt(n[1], esc(n[0]) + ghpIc('triangle-down', 'ghp-caret'), 'ghp-mitem'); }).join('') + ghpExt('https://github.com/pricing', 'Pricing', 'ghp-mitem') + '</nav>' +
-        '<label class="ghp-search">' + ghpIc('search') + '<input class="ghp-q" type="text" placeholder="Search" spellcheck="false" autocomplete="off" aria-label="Search or jump to"><kbd>/</kbd></label>' +
+        '<div class="ghp-drawer"><nav class="ghp-mktg" aria-label="Global">' + nav.map(function (n) { return ghpExt(n[1], esc(n[0]) + ghpIc('triangle-down', 'ghp-caret'), 'ghp-mitem'); }).join('') + ghpExt('https://github.com/pricing', 'Pricing', 'ghp-mitem') + '</nav>' +
+        '<label class="ghp-search">' + ghpIc('search') + '<input class="ghp-q" type="text" placeholder="Search" spellcheck="false" autocomplete="off" aria-label="Search or jump to"><kbd>/</kbd></label></div>' +   // one menu for both, as github.com's header has it
         ghpExt(ghpSignin(back), 'Sign in', 'ghp-signin') +
         ghpExt(signup || 'https://github.com/signup?ref_cta=Sign+up&ref_loc=header+logged+out&ref_page=%2F%3Cuser-name%3E&source=header', 'Sign up', 'ghp-signup') +
     '</header>';
@@ -4956,6 +4956,8 @@ webPage('news.ycombinator.com', {
    profile's own). */
 /* each language's colour, from github-linguist's languages.yml (linguist-languages 9.5.0, MIT): the dot next to a language everywhere on GitHub */
 var GH_LANG = {"1C Enterprise":"#814CCC","2-Dimensional Array":"#38761D","4D":"#004289","ABAP":"#E8274B","ABAP CDS":"#555e25","ActionScript":"#882B0F","Ada":"#02f88c","Adblock Filter List":"#800000","Adobe Font Metrics":"#fa0f00","Agda":"#315665","AGS Script":"#B9D9FF","AIDL":"#34EB6B","Aiken":"#640ff8","AL":"#3AA2B5","Aleo":"#154BF9","ALGOL":"#D1E0DB","Alloy":"#64C800","Alpine Abuild":"#0D597F","Altium Designer":"#A89663","AMPL":"#E6EFBB","AngelScript":"#C7D7DC","Answer Set Programming":"#A9CC29","Ant Build System":"#A9157E","Antlers":"#ff269e","ANTLR":"#9DC3FF","ApacheConf":"#d12127","Apex":"#1797c0","API Blueprint":"#2ACCA8","APL":"#5A8164","Apollo Guidance Computer":"#0B3D91","AppleScript":"#101F1F","Arc":"#aa2afe","AsciiDoc":"#73a0c5","ASP.NET":"#9400ff","AspectJ":"#a957b0","Assembly":"#6E4C13","Astro":"#ff5a03","Asymptote":"#ff0000","ATS":"#1ac620","Augeas":"#9CC134","AutoHotkey":"#6594b9","AutoIt":"#1C3552","Avro IDL":"#0040FF","Awk":"#c30e9b","B":"#da7666","B (Formal Method)":"#8aa8c5","B4X":"#00e4ff","Ballerina":"#FF5000","BAML":"#a855f7","BASIC":"#ff0000","Batchfile":"#C1F12E","BBCode":"#CAFF42","Beef":"#a52f4e","Berry":"#15A13C","BibTeX":"#778899","Bicep":"#519aba","Bikeshed":"#5562ac","BIRD2":"#b6d7e4","Bison":"#6A463F","BitBake":"#00bce4","Blade":"#f7523f","BlitzBasic":"#00FFAE","BlitzMax":"#cd6400","Blueprint":"#3584E4","Bluespec":"#12223c","Bluespec BH":"#12223c","Boo":"#d4bec1","Boogie":"#c80fa0","BQN":"#2b7067","Brainfuck":"#2F2530","BrighterScript":"#66AABB","Brightscript":"#662D91","Browserslist":"#ffd539","Bru":"#F4AA41","BuildStream":"#006bff","C":"#555555","C#":"#7355dd","C++":"#f34b7d","C3":"#2563eb","Cabal Config":"#483465","Caddyfile":"#22b638","Cadence":"#00ef8b","Cairo":"#ff4a48","Cairo Zero":"#ff4a48","CameLIGO":"#3be133","Cangjie":"#00868B","CAP CDS":"#0092d1","Carbon":"#222222","Ceylon":"#dfa535","Chapel":"#8dc63f","ChucK":"#3f8000","Circom":"#707575","Cirru":"#ccccff","Clarion":"#db901e","Clarity":"#5546ff","Classic ASP":"#6a40fd","Clean":"#3F85AF","Click":"#E4E6F3","CLIPS":"#00A300","Clojure":"#db5855","Closure Templates":"#0d948f","Cloud Firestore Security Rules":"#FFA000","Clue":"#0009b5","CMake":"#DA3434","CodeQL":"#140f46","CoffeeScript":"#244776","ColdFusion":"#ed2cd6","ColdFusion CFC":"#ed2cd6","COLLADA":"#F1A42B","Common Lisp":"#3fb68b","Common Workflow Language":"#B5314C","Component Pascal":"#B0CE4E","Cooklang":"#E15A29","CQL":"#006091","crontab":"#ead7ac","Crystal":"#000100","CSON":"#244776","Csound":"#1a1a1a","Csound Document":"#1a1a1a","Csound Score":"#1a1a1a","CSS":"#663399","CSV":"#237346","Cuda":"#3A4E3A","CUE":"#5886E1","Curry":"#531242","CWeb":"#00007a","Cylc":"#00b3fd","Cypher":"#34c0eb","Cython":"#fedf5b","D":"#ba595e","D2":"#526ee8","Dafny":"#FFEC25","Darcs Patch":"#8eff23","Dart":"#00B4AB","Daslang":"#d3d3d3","DataWeave":"#003a52","Debian Package Control File":"#D70751","DenizenScript":"#FBEE96","Dhall":"#dfafff","DirectX 3D File":"#aace60","DM":"#447265","Dockerfile":"#384d54","Dogescript":"#cca760","Dotenv":"#e5d559","Dune":"#89421e","Dylan":"#6c616e","E":"#ccce35","Earthly":"#2af0ff","Easybuild":"#069406","eC":"#913960","Ecere Projects":"#913960","ECL":"#8a1267","ECLiPSe":"#001d9d","Ecmarkup":"#eb8131","Edge":"#0dffe0","EdgeQL":"#31A7FF","EditorConfig":"#fff1f2","Eiffel":"#4d6977","EJS":"#a91e50","Elixir":"#6e4a7e","Elm":"#60B5CC","Elvish":"#55BB55","Elvish Transcript":"#55BB55","Emacs Lisp":"#c065db","EmberScript":"#FFF4F3","EQ":"#a78649","Erlang":"#B83998","Euphoria":"#FF790B","F#":"#b845fc","F*":"#572e30","Factor":"#636746","Fancy":"#7b9db4","Fantom":"#14253c","Faust":"#c37240","Fennel":"#fff3d7","FIGlet Font":"#FFDDBB","Filebench WML":"#F6B900","FIRRTL":"#2f632f","fish":"#4aae47","FlatBuffers":"#ed284a","Flix":"#d44a45","Fluent":"#ffcc33","FLUX":"#88ccff","Forth":"#341708","Fortran":"#4d41b1","Fortran Free Form":"#4d41b1","FPP":"#d37327","FreeBASIC":"#141AC9","FreeMarker":"#0050b2","Frege":"#00cafe","Futhark":"#5f021f","G-code":"#D08CF2","Game Maker Language":"#71b417","GAML":"#FFC766","GAMS":"#f49a22","GAP":"#0000cc","GCC Machine Description":"#FFCFAB","GDScript":"#355570","GDShader":"#478CBF","GEDCOM":"#003058","Gemfile.lock":"#701516","Gemini":"#ff6900","Genero 4gl":"#63408e","Genero per":"#d8df39","Genie":"#fb855d","Genshi":"#951531","Gentoo Ebuild":"#9400ff","Gentoo Eclass":"#9400ff","Gerber Image":"#d20b00","Gherkin":"#5B2063","Git Attributes":"#F44D27","Git Commit":"#F44D27","Git Config":"#F44D27","Git Revision List":"#F44D27","Gleam":"#ffaff3","Glimmer JS":"#F5835F","Glimmer TS":"#3178c6","GLSL":"#5686a5","Glyph":"#c1ac7f","Gno":"#226c57","Gnuplot":"#f0a9f0","Go":"#00ADD8","Go Checksums":"#00ADD8","Go Module":"#00ADD8","Go Template":"#00ADD8","Go Workspace":"#00ADD8","Godot Resource":"#355570","Golo":"#88562A","Gosu":"#82937f","Grace":"#615f8b","Gradle":"#02303a","Gradle Kotlin DSL":"#02303a","Grammatical Framework":"#ff0000","GraphQL":"#e10098","Graphviz (DOT)":"#2596be","Groovy":"#4298b8","Groovy Server Pages":"#4298b8","GSC":"#FF6800","GtkRC":"#7fe719","Hack":"#878787","Haml":"#ece2a9","Handlebars":"#f7931e","HAProxy":"#106da9","Harbour":"#0e60e3","Hare":"#9d7424","Haskell":"#5e5086","Haxe":"#df7900","HCL":"#844FBA","HIP":"#4F3A4F","HiveQL":"#dce200","HLSL":"#aace60","HOCON":"#9ff8ee","HolyC":"#ffefaf","hoon":"#00b171","Hosts File":"#308888","HTML":"#e34c26","HTML+ECR":"#2e1052","HTML+EEX":"#6e4a7e","HTML+ERB":"#701516","HTML+PHP":"#4f5d95","HTML+Razor":"#512be4","HTTP":"#005C9C","Hurl":"#FF0288","HXML":"#f68712","Hy":"#7790B2","iCalendar":"#ec564c","IDL":"#a3522f","Idris":"#b30000","Ignore List":"#000000","IGOR Pro":"#0000cc","IL Assembly":"#512BD4","ImageJ Macro":"#99AAFF","Imba":"#16cec6","ImHex Pattern Language":"#3a6be0","INI":"#d1dbe0","Inno Setup":"#264b99","Io":"#a9188d","Ioke":"#078193","Isabelle":"#FEFE00","Isabelle ROOT":"#FEFE00","ISPC":"#2D68B1","J":"#9EEDFF","Jac":"#FC792D","Jai":"#ab8b4b","Janet":"#0886a5","JAR Manifest":"#b07219","Jasmin":"#d03600","JASS":"#FF0303","Java":"#b07219","Java Properties":"#2A6277","Java Server Pages":"#2A6277","Java Template Engine":"#2A6277","JavaScript":"#f1e05a","JavaScript+ERB":"#f1e05a","JCL":"#d90e09","Jest Snapshot":"#15c213","JetBrains MPS":"#21D789","JFlex":"#DBCA00","Jinja":"#a52a22","Jison":"#56b3cb","Jison Lex":"#56b3cb","Jolie":"#843179","jq":"#c7254e","JSON":"#292929","JSON with Comments":"#292929","JSON5":"#267CB9","JSONiq":"#40d47e","JSONLD":"#0c479c","Jsonnet":"#0064bd","Julia":"#a270ba","Julia REPL":"#a270ba","Jupyter Notebook":"#DA5B0B","Just":"#384d54","Kaitai Struct":"#773b37","KakouneScript":"#6f8042","KCL":"#7ABABF","KDL":"#ffb3b3","KerboScript":"#41adf0","KFramework":"#4195c5","KiCad Layout":"#2f4aab","KiCad Legacy Layout":"#2f4aab","KiCad Schematic":"#2f4aab","Koka":"#215166","KoLmafia ASH":"#B9D9B9","Kotlin":"#A97BFF","KRL":"#28430A","kvlang":"#1da6e0","LabVIEW":"#fede06","Lambdapi":"#8027a3","Langium":"#2c8c87","Lark":"#2980B9","Lasso":"#999999","Latte":"#f2a542","Leo":"#C4FFC2","Less":"#1d365d","Lex":"#DBCA00","LFE":"#4C3023","LigoLANG":"#0e74ff","LilyPond":"#9ccc7c","Liquid":"#67b8de","Liquidsoap":"#990066","Literate Agda":"#315665","Literate CoffeeScript":"#244776","Literate Haskell":"#5e5086","LiveCode Script":"#0c5ba5","LiveScript":"#499886","LLVM":"#185619","Lobster":"#f95428","Logtalk":"#295b9a","LOLCODE":"#cc9900","LookML":"#652B81","LSL":"#3d9970","Lua":"#000080","Luau":"#00A2FF","M3U":"#179C7D","Macaulay2":"#d8ffff","Makefile":"#427819","Mako":"#7e858d","Markdown":"#083fa1","Marko":"#42bff2","Mask":"#f97732","Mathematical Programming System":"#0530ad","MATLAB":"#e16737","Max":"#c4a79c","MAXScript":"#00a6a6","mcfunction":"#E22837","mdsvex":"#5f9ea0","MDX":"#fcb32c","Mercury":"#ff2b2b","Mermaid":"#ff3670","Meson":"#007800","Metal":"#8f14e9","MeTTa":"#6a5acd","MiniScript":"#4B4A56","MiniYAML":"#ff1111","MiniZinc":"#06a9e6","Mint":"#02b046","Mirah":"#c7a938","mIRC Script":"#3d57c3","MLIR":"#5EC8DB","Modelica":"#de1d31","Modula-2":"#10253f","Modula-3":"#223388","Mojo":"#ff4c1f","Monkey C":"#8D6747","MoonBit":"#b92381","MoonScript":"#ff4585","Motoko":"#fbb03b","Motorola 68K Assembly":"#005daa","Move":"#4a137a","MQL4":"#62A8D6","MQL5":"#4A76B8","MTML":"#b7e1f4","mupad":"#244963","Mustache":"#724b3b","nanorc":"#2d004d","Nasal":"#1d2c4e","NCL":"#28431f","Nearley":"#990000","Nemerle":"#3d3c6e","nesC":"#94B0C7","NetLinx":"#0aa0ff","NetLinx+ERB":"#747faa","NetLogo":"#ff6375","NewLisp":"#87AED7","Nextflow":"#3ac486","Nginx":"#009639","Nickel":"#E0C3FC","Nim":"#ffc200","Nit":"#009917","Nix":"#7e7eff","NMODL":"#00356B","Noir":"#2f1f49","NPM Config":"#cb3837","Nu":"#c9df40","NumPy":"#9C8AF9","Nunjucks":"#3d8137","Nushell":"#4E9906","NWScript":"#111522","OASv2-json":"#85ea2d","OASv2-yaml":"#85ea2d","OASv3-json":"#85ea2d","OASv3-yaml":"#85ea2d","Objective-C":"#438eff","Objective-C++":"#6866fb","Objective-J":"#ff0c5a","ObjectScript":"#424893","OCaml":"#ef7a08","Odin":"#60AFFE","Omgrofl":"#cabbff","OMNeT++ MSG":"#a0e0a0","OMNeT++ NED":"#08607c","ooc":"#b0b77e","Opal":"#f7ede0","Open Policy Agent":"#7d9199","OpenAPI Specification v2":"#85ea2d","OpenAPI Specification v3":"#85ea2d","OpenCL":"#ed2e2d","OpenEdge ABL":"#5ce600","OpenQASM":"#AA70FF","OpenSCAD":"#e5cd45","Option List":"#476732","Org":"#77aa99","OverpassQL":"#cce2aa","OverPy":"#78b355","Oxygene":"#cdd0e3","Oz":"#fab738","P4":"#7055b5","Pact":"#F7A8B8","Pan":"#cc0000","Papyrus":"#6600cc","Parrot":"#f3ca0a","Pascal":"#E3F171","Pawn":"#dbb284","PDDL":"#0d00ff","PEG.js":"#234d6b","Pep8":"#C76F5B","Perl":"#0298c3","PHP":"#4F5D95","PicoLisp":"#6067af","PigLatin":"#fcd7de","Pike":"#005390","Pip Requirements":"#FFD343","pkg-config":"#2b5e82","Pkl":"#6b9543","PlantUML":"#fbbd16","PLpgSQL":"#336790","PLSQL":"#dad8d8","PogoScript":"#d80074","Polar":"#ae81ff","Portugol":"#f8bd00","PostCSS":"#dc3a0c","PostScript":"#da291c","POV-Ray SDL":"#6bac65","Power Query":"#d38e0d","PowerBuilder":"#8f0f8d","PowerShell":"#012456","Praat":"#c8506d","Prisma":"#0c344b","Pro*C":"#bb8368","Processing":"#0096D8","Procfile":"#3B2F63","Prolog":"#74283c","Promela":"#de0000","Propeller Spin":"#7fa2a7","Pug":"#a86454","Puppet":"#302B6D","PureBasic":"#5a6986","PureScript":"#1D222D","Pyret":"#ee1e10","Python":"#3572A5","Python console":"#3572A5","Python traceback":"#3572A5","q":"#0040cd","Q#":"#fed659","QML":"#44a51c","Qt Script":"#00b841","Quake":"#882233","QuakeC":"#975777","Quartus Simulation IP":"#58C42E","QuickBASIC":"#008080","Quint":"#9d6ce5","R":"#198CE7","Racket":"#3c5caa","Ragel":"#9d5200","Raku":"#0000fb","RAML":"#77d9fb","Rascal":"#fffaa0","RAScript":"#2C97FA","RBS":"#701516","RDoc":"#701516","Reason":"#ff5847","ReasonLIGO":"#ff5847","Rebol":"#358a5b","Record Jar":"#0673ba","Red":"#f50000","Redscript":"#f44336","Regular Expression":"#009a00","ReScript":"#ed5051","reStructuredText":"#141414","REXX":"#d90e09","Rez":"#FFDAB3","Rhai":"#FBA63B","Ring":"#2D54CB","Riot":"#A71E49","RMarkdown":"#198ce7","RobotFramework":"#00c0b5","Roc":"#7c38f5","Rocq Prover":"#d0b68c","Roff":"#ecdebe","Roff Manpage":"#ecdebe","RON":"#a62c00","ROS Interface":"#22314e","Rouge":"#cc0088","RouterOS Script":"#DE3941","RPGLE":"#2BDE21","Ruby":"#701516","RUNOFF":"#665a4e","Rust":"#dea584","Sail":"#259dd5","Salt":"#57bcad","SAS":"#B34936","Sass":"#a53b70","Scala":"#c22d40","Scaml":"#bd181a","Scenic":"#fdc700","Scheme":"#1e4aec","Scilab":"#ca0f21","SCSS":"#c6538c","sed":"#64b970","Self":"#0579aa","ShaderLab":"#222c37","Shell":"#89e051","ShellCheck Config":"#cecfcb","Shen":"#120F14","Simple File Verification":"#C9BFED","Singularity":"#64E6AD","SIP":"#4E8D83","Slang":"#1fbec9","Slash":"#007eff","Slice":"#003fa2","Slim":"#2b2b2b","Slint":"#2379F4","Smalltalk":"#596706","Smarty":"#f0c040","Smithy":"#c44536","SmPL":"#c94949","Snakemake":"#419179","Solidity":"#AA6746","SourcePawn":"#f69e1d","SPARQL":"#0C4597","SpiceDB Schema":"#a5318a","SQF":"#3F3F3F","SQL":"#e38c00","SQLPL":"#e38c00","Squirrel":"#800000","SRecode Template":"#348a34","Stan":"#b2011d","Standard ML":"#dc566d","Starlark":"#76d275","Stata":"#1a5f91","STL":"#373b5e","StringTemplate":"#3fb34f","Stylus":"#ff6347","SubRip Text":"#9e0101","SugarSS":"#2fcc9f","SuperCollider":"#46390b","SurrealQL":"#ff00a0","Survex data":"#ffcc99","Svelte":"#ff3e00","SVG":"#ff9900","Sway":"#00F58C","Sweave":"#198ce7","Swift":"#F05138","SystemVerilog":"#DAE1C2","Tact":"#48b5ff","Talon":"#333333","Tcl":"#e4cc98","Teal":"#00B1BC","templ":"#66D0DD","Terra":"#00004c","Terraform Template":"#7b42bb","TeX":"#3D6117","TextGrid":"#c8506d","Textile":"#ffe7ac","TextMate Properties":"#df66e4","Thrift":"#D12127","TI Program":"#A0AA87","TL-Verilog":"#C40023","TLA":"#4b0079","TMDL":"#f0c913","Toit":"#c2c9fb","Tolk":"#30A1F5","TOML":"#9c4221","Tor Config":"#59316b","Tree-sitter Query":"#8ea64c","TSQL":"#e38c00","TSV":"#237346","TSX":"#3178c6","Turing":"#cf142b","Twig":"#c1d026","TXL":"#0178b8","TypeScript":"#3178c6","TypeSpec":"#4A3665","Typst":"#239dad","ucode":"#00b8d4","Unified Parallel C":"#4e3617","Unity3D Asset":"#222c37","Uno":"#9933cc","UnrealScript":"#a54c4d","Untyped Plutus Core":"#36adbd","UrWeb":"#ccccee","V":"#4f87c4","Vala":"#a56de2","Valve Data Format":"#f26025","VBA":"#867db1","VBScript":"#15dcdc","vCard":"#ee2647","VCL":"#148AA8","Velocity Template Language":"#507cff","Vento":"#ff0080","Verilog":"#b2b7f8","Verse":"#518ef8","Vespa Schema Definition":"#61D790","VHDL":"#adb2cb","Vim Help File":"#199f4b","Vim script":"#199f4b","Vim Snippet":"#199f4b","Visual Basic .NET":"#945db7","Visual Basic 6.0":"#2c6353","Volt":"#1F1F1F","Vue":"#41b883","Vyper":"#9F4CF2","WDL":"#42f1f4","Web Ontology Language":"#5b70bd","WebAssembly":"#04133b","WebAssembly Interface Type":"#6250e7","WGSL":"#1a5e9a","Whiley":"#d5c397","Wikitext":"#fc5757","Windows Registry Entries":"#52d5ff","wisp":"#7582D1","Witcher Script":"#ff0000","Wolfram Language":"#dd1100","Wollok":"#a23738","World of Warcraft Addon Data":"#f7e43f","Wren":"#383838","X10":"#4B6BEF","xBase":"#403a40","XC":"#99DA07","Xmake":"#22a079","XML":"#0060ac","XML Property List":"#0060ac","Xojo":"#81bd41","Xonsh":"#285EEF","XQuery":"#5232e7","XSLT":"#EB8CEB","Xtend":"#24255d","Yacc":"#4B6C4B","YAML":"#cb171e","YARA":"#220000","YASnippet":"#32AB90","Yul":"#794932","ZAP":"#0d665e","ZenScript":"#00BCD1","Zephir":"#118f9e","Zig":"#ec915c","ZIL":"#dc75e5","Zimpl":"#d67711","Zmodel":"#ff7100"};
+GHP_OCT['alert-24'] = [24, ['M13 17.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0Zm-.25-8.25a.75.75 0 0 0-1.5 0v4.5a.75.75 0 0 0 1.5 0v-4.5Z', 'M9.836 3.244c.963-1.665 3.365-1.665 4.328 0l8.967 15.504c.963 1.667-.24 3.752-2.165 3.752H3.034c-1.926 0-3.128-2.085-2.165-3.752Zm3.03.751a1.002 1.002 0 0 0-1.732 0L2.168 19.499A1.002 1.002 0 0 0 3.034 21h17.932a1.002 1.002 0 0 0 .866-1.5L12.866 3.994Z'], 24];
+GHP_OCT['git-commit-24'] = [24, 'M16.944 11h4.306a.75.75 0 0 1 0 1.5h-4.306a5.001 5.001 0 0 1-9.888 0H2.75a.75.75 0 0 1 0-1.5h4.306a5.001 5.001 0 0 1 9.888 0Zm-1.444.75a3.5 3.5 0 1 0-7 0 3.5 3.5 0 0 0 7 0Z', 24];   // github.com's Blankslate pictures (Octicons, MIT)
 var GHX_TTL = 15 * 60 * 1000;
 var GHX_MEM = Object.create(null);        // 'n'/'p' + accept + url -> { t, v, last } (incognito keeps its own, on CR)
 var GHX_FLY = Object.create(null);
@@ -5078,13 +5080,21 @@ function ghxMsgLinks(o, r, sha, msg, cls) { // the same, as links side by side (
 }
 function ghxIsSha(ref) { return /^[0-9a-f]{40}$/i.test(ref || ''); }
 function ghxRefLabel(ref) { return ghxIsSha(ref) ? ref.slice(0, 7) : ref; }   // a commit is shown by its short sha
-function ghxRefPath(ref) { return (ghxIsSha(ref) ? '' : 'refs/heads/') + ghxEnc(ref); }   // raw/<sha>/... but raw/refs/heads/<branch>/...
+function ghxRefPath(st) {                 // where github.com serves the ref's raw files and ZIP: refs/heads/<branch>, refs/tags/<tag> or a commit's whole sha; null while that is not known
+    return st.refKind === 'heads' ? 'refs/heads/' + ghxEnc(st.ref) : st.refKind === 'tags' ? 'refs/tags/' + ghxEnc(st.ref) : st.refKind === 'sha' && st.refSha ? st.refSha : null;
+}
+function ghxTitleRef(st) { return st.refKind === 'sha' && st.refSha ? st.refSha : st.ref; }   // titles name a commit by its whole sha, even one typed short
+function ghxBrName(name) { return '<span class="ghx-brname">' + esc(name) + '</span>'; }   // Primer's BranchName
+function ghxBlank(icon, head, desc, action, cls) {   // Primer's Blankslate: a 32px picture, a heading, a line, a button
+    return '<div class="ghx-blank' + (cls ? ' ' + cls : '') + '"><span class="ghx-blankv">' + ghpIc(icon, '', 32) + '</span><h2 class="ghx-blankh">' + head + '</h2><p class="ghx-blankd">' + desc + '</p>' +
+        (action ? '<div class="ghx-blanka">' + action + '</div>' : '') + '</div>';
+}
 
 /* —— the repository header: context crumbs and tabs, then the title row ——
    github.com's order, logged out: the owner / repo crumbs and the repository
-   tabs sit under the site header, then the title row (owner avatar, name,
-   Public, and the Notifications / Fork / Star buttons, which all ask you to
-   sign in). */
+   tabs sit under the site header, then, on the overview only (the root, at any
+   ref), the title row (owner avatar, name, Public, and the Notifications /
+   Fork / Star buttons, which all ask you to sign in). */
 function ghxRepoTabs(o, r, R, tab, counts) {
     var base = 'https://github.com/' + o + '/' + r, items = [['code', 'Code', 'code', 'github.com/' + o + '/' + r]];
     if (!R || R.has_issues !== false) items.push(['issues', 'Issues', 'issue-opened', base + '/issues', counts && counts.issues]);
@@ -5104,8 +5114,10 @@ function ghxRepoHead(st) {
     var o = st.owner, r = st.repo, R = st.R;
     var ret = 'https://github.com/login?return_to=' + encodeURIComponent('/' + o + '/' + r);
     var forked = R && R.fork && R.parent && ghpFull(R.parent.full_name) ? '<span class="ghx-forkof">forked from ' + crLink('github.com/' + R.parent.full_name, esc(R.parent.full_name), 'ghx-mlink') + '</span>' : '';
-    return '<div class="ghx-ctx"><div class="ghx-crumbs">' + crLink('github.com/' + o, esc(o), 'ghx-crumb') + '<span class="ghx-sep">/</span>' + crLink('github.com/' + o + '/' + r, esc(r), 'ghx-crumb ghx-crumbr') + '</div>' +
-        ghxRepoTabs(o, r, R, 'code', st.counts) + '</div>' +
+    var ctx = '<div class="ghx-ctx"><div class="ghx-crumbs">' + crLink('github.com/' + o, esc(o), 'ghx-crumb') + '<span class="ghx-sep">/</span>' + crLink('github.com/' + o + '/' + r, esc(r), 'ghx-crumb ghx-crumbr') + '</div>' +
+        ghxRepoTabs(o, r, R, 'code', st.counts) + '</div>';
+    if (st.route.kind !== 'root' || st.resolving || st.nopath || st.noref != null) return ctx;
+    return ctx +
         '<div class="ghx-wrap"><div class="ghx-titlerow"><div class="ghx-title">' + (R ? ghxAv(R.owner && R.owner.avatar_url, 24, o, 'ghx-ownav') : '') +
         '<strong class="ghx-rname">' + crLink('github.com/' + o + '/' + r, esc(R ? R.name : r), '') + '</strong>' +
         '<span class="ghp-label">' + (R && R.archived ? 'Public archive' : R && R.is_template ? 'Public template' : 'Public') + '</span>' + forked + '</div>' +
@@ -5140,8 +5152,9 @@ function ghxLatestBar(st, c, count, histPath) {
     var o = st.owner, r = st.repo;
     if (!c) return st.headFail ? '' : '<div class="ghx-latest ghx-skel"><span class="ghx-skb" style="width:20px;height:20px;border-radius:50%"></span><span class="ghx-skb" style="width:30%"></span><span class="ghx-skb" style="width:12%;margin-left:auto"></span></div>';
     var ppl = ghxPeople(c), when = c.commit && c.commit.author && c.commit.author.date, sha = String(c.sha || '').slice(0, 7);
-    var hist = histPath === null ? crLink('github.com/' + o + '/' + r + '/commits/' + ghxEnc(st.ref) + '/', ghpIc('history') + '<span><b>' + nnum(count).toLocaleString() + '</b> Commits</span>', 'ghx-hist')
-        : crLink('github.com/' + o + '/' + r + '/commits/' + ghxEnc(st.ref) + '/' + ghxEnc(histPath), ghpIc('history') + '<span>History</span>', 'ghx-hist');
+    var hh = 'github.com/' + o + '/' + r + '/commits/' + ghxEnc(st.ref) + '/' + (histPath === null ? '' : ghxEnc(histPath)), hl = histPath === null ? nnum(count).toLocaleString() + ' Commits' : 'History';
+    var hist = crLink(hh, ghpIc('history') + '<span>' + (histPath === null ? '<b>' + nnum(count).toLocaleString() + '</b> Commits' : 'History') + '</span>', 'ghx-hist') +   // under 1012px wide only its icon, named as github.com names it
+        crLink(hh, ghpIc('history'), 'ghx-histi').replace('<button ', '<button aria-label="View commit history for this file." title="' + esc(hl) + '" ');
     return '<div class="ghx-latest">' + ghxAvs(ppl, 20) + '<span class="ghx-lwho">' + ghxWho(ppl, o + '/' + r) + '</span>' +
         '<span class="ghx-lmsg">' + ghxMsgLinks(o, r, c.sha, c.commit && c.commit.message, 'ghx-mlink') + '</span>' +
         '<span class="ghx-lmeta">' + crLink('github.com/' + o + '/' + r + '/commit/' + c.sha, sha, 'ghx-sha') + ' · <time datetime="' + esc(when || '') + '">' + ghpAgo(when) + '</time></span>' + hist + '</div>';
@@ -5190,7 +5203,7 @@ function ghxInfo(st, list) {              // each row's last commit, a request a
     }
     next();
 }
-function ghxPaintRows(st) { var tb = st.view.querySelector('#ghxRows'); if (tb && st.list) tb.innerHTML = ghxRows(st, st.list, st.parent); }
+function ghxPaintRows(st) { var tb = st.view.querySelector('#ghxRows'); if (tb && (st.list || st.listFail)) tb.innerHTML = ghxRows(st, st.list, st.parent); }   // a failed listing loses its placeholders too
 
 /* —— the sidebar: About, Releases, Packages, Contributors, Languages —— */
 function ghxSbN(n) {                      // About's counts: 72, 1.4k, 194.0k (the .0 kept); rounding, and a million and up, are unverified
@@ -5385,7 +5398,7 @@ function ghxB64(s) {                      // the contents API's base64 (with new
 
 /* —— a repository: root and folders —— */
 /* ['owner', 'repo', 'tree'|'blob'|'commits'|'commit', ref, ...path]. The ref is taken as one
-   segment; a branch with a slash in it is sorted out once GitHub has answered (ghxSplit). 'other'
+   segment; a branch with a slash in it is sorted out once GitHub has answered (ghxResolveRef). 'other'
    is a page of github.com this copy does not draw (Issues, Releases, Actions...). */
 function ghxRouteRepo(parts) {
     var o = parts[0], r = parts[1], kind = parts[2] || '', segs = [];
@@ -5405,13 +5418,48 @@ function ghxSplit(st, n) {                 // the route's first n segments are t
     if (rt.kind === 'tree' && !rt.path) rt.kind = 'root';
     st.ref = rt.ref;
 }
-function ghxShift(st) {                    // GitHub has no such ref, and segments are left over: the branch may have a slash in it, so one more segment joins the ref (three at most)
-    var rt = st.route, n = (rt.refN || 1) + 1;
-    if (!rt.segs || rt.kind === 'commit' || n > 4 || n > rt.segs.length - (rt.kind === 'blob' ? 1 : 0)) return false;
-    ghxSplit(st, n);
-    st.list = st.head = st.file = st.commits = st.readme = st.mdHtml = null; st.info = null; st.listFail = st.headFail = st.fileFail = st.commitsFail = false;
-    liveTitle(st.url, ghxRepoTitle(st)); ghxPaint(st, 'all'); ghxLoad(st);
-    return true;
+/* which of the address's segments are the ref, and what kind of ref it is. github.com knows its branches; the copy asks
+   git/matching-refs for the branches, then the tags, that begin with the first segment, and takes the longest that is a
+   whole run of segments, so tree/feat/x/comp is feat/x's comp. The default branch and a whole sha cost no request; a
+   short sha is made whole, as github.com's titles and links have it. done() once it is known; a name that is none of
+   them is github.com's "Cannot find a valid ref" (ghxNoRefAt) instead. */
+function ghxResolveRef(st, db, done) {
+    var rt = st.route, segs = rt.segs, api = GHP_API + '/repos/' + st.owner + '/' + st.repo, max = segs.length - (rt.kind === 'blob' ? 1 : 0);   // a file's address keeps a segment for its name
+    function take(n, kind, sha) { ghxSplit(st, n); st.refKind = kind; st.refSha = sha || null; done(); }
+    function whole(name) { var n = name.split('/').length; return n <= max && segs.slice(0, n).join('/') === name ? n : 0; }
+    function longest(list, pre) {
+        var best = 0;
+        (Array.isArray(list) ? list : []).forEach(function (x) { var f = x && typeof x.ref === 'string' && x.ref.indexOf(pre) === 0 ? x.ref.slice(pre.length) : ''; if (f) best = Math.max(best, whole(f)); });
+        return best;
+    }
+    if (rt.kind === 'commit') { done(); return; }                                   // commit/<sha>: the commit answers for itself
+    if (!segs.length) { st.ref = rt.ref = db; st.refKind = 'heads'; done(); return; }   // the bare address: the default branch
+    if (ghxIsSha(segs[0])) { take(1, 'sha', segs[0].toLowerCase()); return; }
+    if (whole(db)) { take(whole(db), 'heads'); return; }                            // git keeps no other branch under the default branch's name
+    ghxGet(st, api + '/git/matching-refs/heads/' + encodeURIComponent(segs[0]), null, function (e1, heads) {
+        var n = e1 ? 0 : longest(heads, 'refs/heads/');
+        if (n) { take(n, 'heads'); return; }
+        ghxGet(st, api + '/git/matching-refs/tags/' + encodeURIComponent(segs[0]), null, function (e2, tags) {
+            var m = e2 ? 0 : longest(tags, 'refs/tags/');
+            if (m) { take(m, 'tags'); return; }
+            if (e1 || e2) { take(1, null); return; }                                // no answer: the first segment, and the links that need the ref's kind wait
+            if (!/^[0-9a-f]{4,39}$/i.test(segs[0])) { ghxNoRefAt(st); return; }
+            ghxGet(st, api + '/commits?per_page=1&sha=' + encodeURIComponent(segs[0]), null, function (e3, cs) {   // a short sha
+                var c = !e3 && Array.isArray(cs) && cs[0], full = c && typeof c.sha === 'string' ? c.sha.toLowerCase() : '';
+                if (ghxIsSha(full) && full.indexOf(segs[0].toLowerCase()) === 0) take(1, 'sha', full);
+                else if (e3 && e3 !== 'http404' && e3 !== 'http422') take(1, null);
+                else ghxNoRefAt(st);
+            });
+        });
+    });
+}
+function ghxNoRefAt(st) {                  // no branch, tag or commit by that name
+    var rt = st.route;
+    st.resolving = false;
+    if (rt.kind === 'commits') { ghxSplit(st, 1); st.commits = []; st.cmore = false; }   // github.com's list for it: "No commits history"
+    else if (rt.segs.length > 1) st.noref = rt.segs.join('/');                           // "Cannot find a valid ref in" the rest of the address
+    else st.missing = true;                                                               // tree/<name> and nothing after it: github.com's own 404
+    liveTitle(st.url, ghxRepoTitle(st)); ghxPaint(st, 'all');
 }
 function ghxLoad(st) {                     // what the route's kind asks GitHub for, once the repository is known
     var k = st.route.kind;
@@ -5421,7 +5469,7 @@ function ghxLoad(st) {                     // what the route's kind asks GitHub 
     else if (k === 'commits') ghxCommits(st);
     else if (k === 'commit') ghxCommit(st);
 }
-function ghxNoRef(v) { return !!(v && /^No commit found for the ref /.test(v.message || '')); }   // the contents API's words when it is the ref that is missing, not the path
+function ghxNoRef(v) { return !!(v && /^No commit found for the ref /.test(v.message || '')); }   // the contents API's words when it is the ref that is missing, not the path (once the refs could not be asked for)
 function ghxNoPath(st) {                   // the ref has no such path: github.com keeps the repository and says so
     st.nopath = true; liveTitle(st.url, ghxRepoTitle(st)); ghxPaint(st, 'all');
 }
@@ -5458,7 +5506,8 @@ function ghxRepoMeta(st) {                // the sidebar's parts and the branch 
 }
 function ghxBranchRow(st, inFolder) {
     var o = st.owner, r = st.repo;
-    var sel = '<button type="button" class="ghp-btn ghx-btnsm ghx-branch" aria-label="' + esc(ghxRefLabel(st.ref)) + ' branch">' + ghpIc('git-branch') + '<span class="ghx-bname">' + esc(ghxRefLabel(st.ref)) + '</span>' + ghpIc('triangle-down', 'ghp-caret') + '</button>';
+    var lbl = st.noref != null ? st.noref : ghxRefLabel(st.ref), tag = st.refKind === 'tags' && st.noref == null;
+    var sel = '<button type="button" class="ghp-btn ghx-btnsm ghx-branch" aria-label="' + esc(lbl) + (tag ? ' tag' : ' branch') + '">' + ghpIc(tag ? 'tag' : 'git-branch') + '<span class="ghx-bname">' + esc(lbl) + '</span>' + ghpIc('triangle-down', 'ghp-caret') + '</button>';
     if (inFolder) return sel;
     return '<div class="ghx-brow" id="ghxBranchRow">' + sel +
         (st.nbranches != null ? ghpExt('https://github.com/' + o + '/' + r + '/branches', ghpIc('git-branch') + '<b>' + st.nbranches.toLocaleString() + '</b> Branch' + (st.nbranches === 1 ? '' : 'es'), 'ghx-count') : '') +
@@ -5468,7 +5517,7 @@ function ghxBranchRow(st, inFolder) {
             '<div class="ghx-cbh">' + ghpIc('terminal') + 'Clone</div><div class="ghx-cbtabs"><span class="on">HTTPS</span><span>GitHub CLI</span></div>' +
             '<div class="ghx-cburl"><input type="text" readonly value="https://github.com/' + esc(o + '/' + r) + '.git" aria-label="https://github.com/' + esc(o + '/' + r) + '.git"><button type="button" class="ghx-copy" aria-label="Copy url to clipboard" data-copy="https://github.com/' + esc(o + '/' + r) + '.git">' + ghpIc('copy') + '</button></div>' +
             '<p class="ghx-muted ghx-small">Clone using the web URL.</p>' +
-            ghpExt('https://github.com/' + o + '/' + r + '/archive/' + ghxRefPath(st.ref) + '.zip', ghpIc('file-zip') + 'Download ZIP', 'ghx-cbrow') + '</div></details></div>';
+            (ghxRefPath(st) ? ghpExt('https://github.com/' + o + '/' + r + '/archive/' + ghxRefPath(st) + '.zip', ghpIc('file-zip') + 'Download ZIP', 'ghx-cbrow') : '') + '</div></details></div>';
 }
 function ghxReadmeBox(st) {
     if (!st.readme) return '';
@@ -5487,13 +5536,20 @@ function ghxFolderCrumbs(st, path, isFile) {
 }
 
 /* —— painting —— */
+function ghxFilePane() { return '<div class="ghx-filepane"><button type="button" class="ghx-iconbtn ghx-expand" aria-label="Expand file tree">' + ghpIc('sidebar-collapse') + '</button><span class="ghx-filesh">Files</span></div>'; }
 function ghxRepoBody(st) {
     var k = st.route.kind;
-    var head = '<div id="ghxHead">' + ghxRepoHead(st) + '</div>';
-    if (st.nopath) {                       // github.com's words for a path the ref does not have; a folder keeps its branch and crumbs
-        return head + '<div class="ghx-wrap">' + (k === 'tree' ? ghxFolderCrumbs(st, st.route.path, false) : '') +
-            '<div class="ghx-nopath"><h2 class="ghx-nph">404 - page not found</h2><p>The <code>' + esc(ghxRefLabel(st.ref)) + '</code> branch of <code>' + esc(st.repo) + '</code> does not contain the path <code>' + esc(st.route.path) + '</code>.</p>' +
-            '<p>' + crLink('github.com/' + st.owner + '/' + st.repo, 'Return to the repository overview', 'ghx-hlinkl') + '</p></div></div>';
+    var head = '<div id="ghxHead">' + ghxRepoHead(st) + '</div>', o = st.owner, r = st.repo;
+    if (st.resolving) return head;        // which segments are the ref: one answer away
+    if (st.noref != null) {               // no branch, tag or commit by that name: github.com's words; a folder's address keeps the Files pane and a branch button named after the rest of it
+        return head + '<div class="ghx-wrap">' + (k === 'blob' ? '' : ghxFilePane() + '<div class="ghx-bcrow">' + ghxBranchRow(st, true) + '<nav class="ghx-bcs" aria-label="Breadcrumbs">' +
+                crLink('github.com/' + o + '/' + r + '/tree/' + ghxEnc(st.noref), esc(r), 'ghx-bc ghx-bcroot') + '<span class="ghx-bsep">/</span></nav></div>') +
+            ghxBlank('alert-24', '404 - page not found', 'Cannot find a valid ref in ' + ghxBrName(st.noref), crLink('github.com/' + o + '/' + r + '?files=1', 'Go to default branch', 'ghp-btn ghx-btnp'), 'ghx-blankb') + '</div>';
+    }
+    if (st.nopath) {                       // github.com's words for a path the ref does not have; a folder keeps its Files pane, branch and crumbs
+        return head + '<div class="ghx-wrap">' + (k === 'tree' ? ghxFilePane() + ghxFolderCrumbs(st, st.route.path, false) : '') +
+            ghxBlank('alert-24', '404 - page not found', 'The ' + ghxBrName(ghxRefLabel(st.ref)) + ' branch of <strong>' + esc(r) + '</strong> does not contain the path <strong>' + esc(st.route.path) + '.</strong>',
+                crLink('github.com/' + o + '/' + r, 'Return to the repository overview', 'ghp-btn ghx-btnp'), 'ghx-blankb') + '</div>';
     }
     if (k === 'root') {
         return head + '<div class="ghx-wrap"><div class="ghx-grid"><div class="ghx-main">' + ghxBranchRow(st) +
@@ -5501,7 +5557,7 @@ function ghxRepoBody(st) {
             '<div id="ghxReadme">' + ghxReadmeBox(st) + '</div></div><aside class="ghx-side" id="ghxSide">' + ghxSide(st) + '</aside></div></div>';
     }
     if (k === 'tree') {
-        return head + '<div class="ghx-wrap"><div class="ghx-filepane"><button type="button" class="ghx-iconbtn ghx-expand" aria-label="Expand file tree">' + ghpIc('sidebar-collapse') + '</button><span class="ghx-filesh">Files</span></div>' +
+        return head + '<div class="ghx-wrap">' + ghxFilePane() +
             ghxFolderCrumbs(st, st.route.path, false) + ghxTable(st, st.list, st.parent, '<div id="ghxBar">' + ghxLatestBar(st, st.head, 0, st.route.path) + '</div>') +
             '<div id="ghxReadme">' + ghxReadmeBox(st) + '</div></div>';
     }
@@ -5531,11 +5587,12 @@ function ghxPaint(st, parts) {
 function ghxRepoTitle(st) {
     var o = st.owner, r = st.repo, R = st.R, k = st.route.kind, full = o + '/' + r;
     if (st.missing) return 'Page not found · GitHub';
-    if (st.nopath) return 'File not found · GitHub';
-    if (k === 'root' && ghxIsSha(st.route.ref)) return 'GitHub - ' + (R ? R.full_name : full) + ' at ' + st.route.ref + ' · GitHub';   // a commit's tree; a branch's other than the default is unverified
+    if (st.nopath || st.noref != null) return 'File not found · GitHub';
+    if (st.resolving) return (R ? R.full_name : full) + ' · GitHub';
+    if (k === 'root' && R && st.db && st.ref !== st.db) return 'GitHub - ' + R.full_name + ' at ' + ghxTitleRef(st) + ' · GitHub';   // another branch, a tag or a commit
     if (k === 'root') return 'GitHub - ' + (R ? R.full_name : full) + (R && R.description ? ': ' + R.description : '') + ' · GitHub';
-    if (k === 'tree') return r + '/' + st.route.path + ' at ' + st.ref + ' · ' + full + ' · GitHub';
-    if (k === 'blob') return r + '/' + st.route.path + ' at ' + st.ref + ' · ' + full + ' · GitHub';
+    if (k === 'tree') return r + '/' + st.route.path + ' at ' + ghxTitleRef(st) + ' · ' + full + ' · GitHub';
+    if (k === 'blob') return r + '/' + st.route.path + ' at ' + ghxTitleRef(st) + ' · ' + full + ' · GitHub';
     if (k === 'commits') return (st.route.path ? 'History for ' + st.route.path + ' - ' + full : 'Commits · ' + full) + ' · GitHub';
     if (k === 'commit' && st.cm) return ghxTitleLine(st.cm.commit && st.cm.commit.message) + ' · ' + full + '@' + st.cm.sha.slice(0, 7) + ' · GitHub';
     return full + ' · GitHub';
@@ -5546,24 +5603,28 @@ function ghxRepoInit(st) {
         if (err === 'http404' || err === 'http451' || (!err && (!R || R.private !== false))) { st.missing = true; liveTitle(st.url, ghxRepoTitle(st)); ghxPaint(st, 'all'); return; }
         if (err) return;                  // no answer: the page stays as drawn
         st.R = R; st.owner = R.owner && ghxLogin(R.owner.login) ? R.owner.login : o; st.repo = ghpName(R.name) ? R.name : r;
-        var db = typeof R.default_branch === 'string' && /^[\w./-]+$/.test(R.default_branch) ? R.default_branch : 'main', dn = db.split('/').length;
-        if (!st.ref) st.ref = st.route.ref = db;
-        else if (dn > 1 && k !== 'commit' && st.route.segs.length > dn - (k === 'blob' ? 0 : 1) && st.route.segs.slice(0, dn).join('/') === db) ghxSplit(st, dn);   // the default branch has a slash in it: it costs no request to know
+        st.db = typeof R.default_branch === 'string' && /^[\w./-]+$/.test(R.default_branch) ? R.default_branch : 'main';
+        var now = true, known = false;
+        ghxResolveRef(st, st.db, function () {
+            known = true; if (now) return;
+            st.resolving = false; liveTitle(st.url, ghxRepoTitle(st)); ghxPaint(st, 'all'); ghxLoad(st);
+        });
+        now = false; st.resolving = !known;
         liveTitle(st.url, ghxRepoTitle(st));
         ghxRepoCounts(st);
         ghxPaint(st, 'all');
-        ghxLoad(st);
+        if (known) ghxLoad(st);
     });
 }
 function ghxFolder(st) {
     var o = st.owner, r = st.repo, rt = st.route, path = rt.kind === 'tree' ? rt.path : '', ref = st.ref, api = GHP_API + '/repos/' + o + '/' + r;
     st.parent = rt.kind === 'tree' ? path.split('/').slice(0, -1).join('/') : undefined;
     ghxGet(st, api + '/contents' + (path ? '/' + ghxEnc(path) : '') + '?ref=' + encodeURIComponent(ref), null, function (err, list) {
-        if (st.ref !== ref) return;           // the ref has since been read differently (ghxShift)
+        if (st.ref !== ref) return;           // an answer for a page since redrawn
         if (err === 'http404') {
-            if (ghxNoRef(list) && ghxShift(st)) return;   // no such ref: a branch with a slash in it takes one more segment
-            if (ghxNoRef(list) || (rt.kind !== 'tree' && rt.segs.length)) { st.missing = true; liveTitle(st.url, ghxRepoTitle(st)); ghxPaint(st, 'all'); }   // no such ref at all
+            if (ghxNoRef(list)) ghxNoRefAt(st);
             else if (rt.kind === 'tree') ghxNoPath(st);
+            else if (rt.segs.length) { st.missing = true; liveTitle(st.url, ghxRepoTitle(st)); ghxPaint(st, 'all'); }
             else { st.listFail = true; ghxPaint(st, ['rows']); }   // the default branch with nothing in it: an empty repository, whose page is not drawn here
             return;
         }
@@ -5589,19 +5650,19 @@ function ghxFolder(st) {
 function ghxBlobInner(st) {
     var f = st.file, path = st.route.path, o = st.owner, r = st.repo;
     var isMd = /\.(md|markdown|mdown|mkdn)$/i.test(path);
-    var raw = 'https://github.com/' + o + '/' + r + '/raw/' + ghxRefPath(st.ref) + '/' + ghxEnc(path);
+    var rp = ghxRefPath(st), raw = rp ? 'https://github.com/' + o + '/' + r + '/raw/' + rp + '/' + ghxEnc(path) : '';   // no address is guessed for a ref of unknown kind
     var tabs = (isMd ? '<button type="button" class="ghx-seg' + (st.blobMode !== 'code' ? ' on' : '') + '" data-ghx-mode="preview">Preview</button>' : '') +
         '<button type="button" class="ghx-seg' + (!isMd || st.blobMode === 'code' ? ' on' : '') + '" data-ghx-mode="code">Code</button>' +
         ghpExt('https://github.com/' + o + '/' + r + '/blame/' + ghxEnc(st.ref) + '/' + ghxEnc(path), 'Blame', 'ghx-seg');
     var meta = f && f.text != null ? '<span class="ghx-fmeta">' + ghxLines(f.text) + ' · ' + ghxBytes(f.size) + '</span>' : f ? '<span class="ghx-fmeta">' + ghxBytes(f.size) + '</span>' : '';
     var head = '<div class="ghx-fhead"><div class="ghx-segs">' + tabs + '</div>' + meta + '<span class="ghx-grow"></span>' +
-        ghpExt(raw, 'Raw', 'ghp-btn ghx-btnsm') + '<button type="button" class="ghx-iconbtn ghx-copy" aria-label="Copy raw file" data-copy-raw="1">' + ghpIc('copy') + '</button>' +
-        ghpExt(raw, ghpIc('download') + '<span class="sr-only">Download raw file</span>', 'ghx-iconbtn') + '</div>';
+        (raw ? ghpExt(raw, 'Raw', 'ghp-btn ghx-btnsm') : '') + '<button type="button" class="ghx-iconbtn ghx-copy" aria-label="Copy raw file" data-copy-raw="1">' + ghpIc('copy') + '</button>' +
+        (raw ? ghpExt(raw, ghpIc('download') + '<span class="sr-only">Download raw file</span>', 'ghx-iconbtn') : '') + '</div>';
     var body;
     if (!f) body = st.fileFail ? '' : '<div class="ghx-fbody ghx-skel"><span class="ghx-skb" style="width:40%"></span><span class="ghx-skb" style="width:65%"></span><span class="ghx-skb" style="width:52%"></span></div>';
-    else if (f.img) body = '<div class="ghx-fbody ghx-imgbody"><img src="' + esc('https://raw.githubusercontent.com/' + o + '/' + r + '/' + ghxEnc(st.ref) + '/' + ghxEnc(path)) + '" alt="' + esc(path.split('/').pop()) + '" referrerpolicy="no-referrer"></div>';
-    else if (f.big) body = '<div class="ghx-fbody ghx-binary">' + ghpExt(raw, 'View raw', 'ghx-mlink') + '<p class="ghx-muted">(Sorry about that, but we can’t show files that are this big right now.)</p></div>';
-    else if (f.text == null) body = '<div class="ghx-fbody ghx-binary">' + ghpExt(raw, 'View raw', 'ghx-mlink') + '</div>';
+    else if (f.img) body = '<div class="ghx-fbody ghx-imgbody"><img src="' + esc('https://raw.githubusercontent.com/' + o + '/' + r + '/' + (st.refKind === 'sha' && st.refSha ? st.refSha : ghxEnc(st.ref)) + '/' + ghxEnc(path)) + '" alt="' + esc(path.split('/').pop()) + '" referrerpolicy="no-referrer"></div>';
+    else if (f.big) body = '<div class="ghx-fbody ghx-binary">' + (raw ? ghpExt(raw, 'View raw', 'ghx-mlink') : '') + '<p class="ghx-muted">(Sorry about that, but we can’t show files that are this big right now.)</p></div>';
+    else if (f.text == null) body = '<div class="ghx-fbody ghx-binary">' + (raw ? ghpExt(raw, 'View raw', 'ghx-mlink') : '') + '</div>';
     else if (isMd && st.blobMode !== 'code') body = '<div class="ghx-fbody ghx-mdbody">' + (st.mdHtml || '<div class="ghx-skel"><span class="ghx-skb" style="width:50%"></span></div>') + '</div>';
     else body = '<div class="ghx-fbody ghx-codewrap">' + ghxCode(f.text, path) + '</div>';
     return '<div class="ghx-box ghx-file">' + head + body + '</div>';
@@ -5610,11 +5671,7 @@ function ghxBlob(st) {
     var o = st.owner, r = st.repo, path = st.route.path, ref = st.ref, api = GHP_API + '/repos/' + o + '/' + r;
     ghxGet(st, api + '/contents/' + ghxEnc(path) + '?ref=' + encodeURIComponent(ref), null, function (err, f) {
         if (st.ref !== ref) return;
-        if (err === 'http404') {
-            if (!ghxNoRef(f)) ghxNoPath(st);
-            else if (!ghxShift(st)) { st.missing = true; liveTitle(st.url, ghxRepoTitle(st)); ghxPaint(st, 'all'); }   // no such ref, with a slash or without
-            return;
-        }
+        if (err === 'http404') { if (ghxNoRef(f)) ghxNoRefAt(st); else ghxNoPath(st); return; }
         if (!err && Array.isArray(f)) { crNav(ghxHref(st, 'tree', path), { replace: true }); return; }   // blob/<a folder>: github.com serves the folder
         if (err || !f || f.type !== 'file') { st.fileFail = true; ghxPaint(st, ['blob']); return; }
         var text = f.encoding === 'base64' ? (f.content ? ghxB64(f.content) : '') : null;   // an empty file is text: "0 lines (0 loc) · 0 Bytes"
@@ -5645,6 +5702,7 @@ function ghxCommitsInner(st) {
         '<span class="ghx-grow"></span><button type="button" class="ghp-btn ghx-btnsm">' + ghpIc('people') + 'All users' + ghpIc('triangle-down', 'ghp-caret') + '</button>' +
         '<button type="button" class="ghp-btn ghx-btnsm">' + ghpIc('clock') + 'All time' + ghpIc('triangle-down', 'ghp-caret') + '</button></div>';
     if (!cs) return h + (st.commitsFail ? '' : '<div class="ghx-box ghx-skel" style="padding:16px"><span class="ghx-skb" style="width:70%"></span><span class="ghx-skb" style="width:45%"></span></div>');
+    if (!cs.length) return h + '<div class="ghx-box ghx-cnone">' + ghxBlank('git-commit-24', 'No commits history', 'There isn&#39;t any commit history to show here', '') + '</div>';   // a ref with no such history, or no such ref
     var groups = [], cur = null;
     cs.forEach(function (c) {
         var day = ghxDay(c.commit && c.commit.committer && c.commit.committer.date || c.commit && c.commit.author && c.commit.author.date);
@@ -5676,7 +5734,7 @@ function ghxCommits(st) {
     st.cpage = page; st.csha = m ? m[1] : ''; st.cbase = 'github.com/' + o + '/' + r + '/commits/' + ghxEnc(ref) + (st.route.path ? '/' + ghxEnc(st.route.path) : '');
     ghxGet(st, GHP_API + '/repos/' + o + '/' + r + '/commits?per_page=35&page=' + page + '&sha=' + encodeURIComponent(m ? m[1] : ref) + (st.route.path ? '&path=' + encodeURIComponent(st.route.path) : ''), null, function (err, cs, last) {
         if (st.ref !== ref) return;
-        if (err === 'http404' && ghxShift(st)) return;
+        if (err === 'http404') { st.commits = []; st.cmore = false; ghxPaint(st, ['commits']); return; }   // no such ref: "No commits history", as github.com has it
         if (err || !Array.isArray(cs)) { st.commitsFail = true; ghxPaint(st, ['commits']); return; }
         st.commits = cs.filter(function (c) { return c && typeof c.sha === 'string' && c.commit; }); st.cmore = last > page;   // no rel="last" on the last page
         ghxPaint(st, ['commits']);
@@ -5827,10 +5885,11 @@ function ghxHomeFoot() {                  // github.com's own, larger footer
 
 /* —— someone else's month of activity, by GitHub's search API (10 searches a minute, anonymous) ——
    Commits: the commit search covers default branches, as the contribution
-   rules do. A month of more than one page is read page by page (100 a page,
-   up to the 1,000 the search serves), so the per-repository numbers are the
-   search's own; past 1,000, the repositories found are each counted on their
-   own. Pull requests and issues: the issue search, with their state now. */
+   rules do. A month of up to 500 is read page by page (100 a page), so the
+   per-repository numbers are the search's own; past that, the repositories on
+   its first page are each counted on their own. Either way a month costs at
+   most eight searches, inside the ten a minute GitHub allows without signing
+   in. Pull requests and issues: the issue search, with their state now. */
 function ghxMonth(st, login, mk, cb) {
     var from = ghpMonthStart(mk), to = ghpMonthEnd(mk), act = ghpNoAct(), left = 3, partial = false, S = GHP_API + '/search/';
     act.issues = {};
@@ -5842,9 +5901,9 @@ function ghxMonth(st, login, mk, cb) {
             if (err || !j || !Array.isArray(j.items)) { partial = true; fin(); return; }
             j.items.forEach(function (c) { var f = c && c.repository && c.repository.full_name; if (ghpFull(f) && c.repository.private !== true) act.commits[f] = (act.commits[f] || 0) + 1; });
             var total = nnum(j.total_count);
-            if (j.items.length === 100 && n * 100 < Math.min(total, 1000)) { page(n + 1); return; }
-            if (total <= 1000) { fin(); return; }
-            var repos = Object.keys(act.commits).slice(0, 8), k = repos.length;   // beyond what the search serves: each repository's own count
+            if (total <= 500 && j.items.length === 100 && n * 100 < total) { page(n + 1); return; }   // five pages at most: with the two issue searches, seven
+            if (total <= 500) { fin(); return; }
+            var repos = Object.keys(act.commits).slice(0, 5), k = repos.length;   // a busier month: each repository's own count, five at most
             if (!k) { fin(); return; }
             repos.forEach(function (f) {
                 ghxGet(st, S + 'commits?q=' + encodeURIComponent('author:' + login + ' repo:' + f + ' author-date:' + from + '..' + to) + '&per_page=1', null, function (e2, j2) {
@@ -6177,7 +6236,11 @@ function ghxWire(view, st) {              // the header's box and menu, Copy, th
         if (ghxAnchor(e, view)) return;
         if (t.closest('.ghp-burger')) { var r = view.querySelector('.cr-ghp'); if (r) r.classList.toggle('ghp-navopen'); return; }
         var av = t.closest('.ghx-sadv');
-        if (av) { var hb = view.querySelector('.ghp-q'); if (hb) { var hv = hb.value.replace(/\s+$/, ''); hb.value = (hv ? hv + ' ' : '') + av.getAttribute('data-q'); hb.focus(); } return; }
+        if (av) {
+            var hb = view.querySelector('.ghp-q'), gr = view.querySelector('.cr-ghp'); if (!hb) return;
+            if (!hb.getClientRects().length && gr) gr.classList.add('ghp-navopen');   // a narrow page: the box is in the menu, as github.com's is
+            var hv = hb.value.replace(/\s+$/, ''); hb.value = (hv ? hv + ' ' : '') + av.getAttribute('data-q'); hb.focus(); return;
+        }
         if (t.closest('.ghx-404go')) { var i4 = view.querySelector('.ghx-404in'), q4 = i4 && i4.value.trim(); if (q4) crNav(ghxSearchHref(q4)); return; }
         var cp = t.closest('.ghx-copy');
         if (cp) {
