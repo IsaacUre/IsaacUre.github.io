@@ -28,6 +28,7 @@ function mock(mode, log) {
         { ns: 0, title: 'Harness topic two', pageid: 2, snippet: 'Another <span class="searchmatch">harness</span> page', size: 100, wordcount: 10, timestamp: '2026-10-01T00:00:00Z' }] } });
       return json({ batchcomplete: true, query: {} });
     }
+    if (host === 'en.wikipedia.org' && /^\/api\/rest_v1\/page\/summary\//.test(p) && !/harness/i.test(p)) return json({ type: 'https://mediawiki.org/wiki/HyperSwitch/errors/not_found', title: 'Not found.' }, 404);
     if (host === 'en.wikipedia.org' && /^\/api\/rest_v1\/page\/summary\//.test(p)) return json({ type: 'standard', title: 'Harness topic', description: 'a fixture', extract: 'A harness topic is a made-up subject for the checks.', wikibase_item: null });
     if (host === 'api.github.com' && p === '/search/repositories' && !/harness/.test(q.get('q') || '')) return json({ total_count: 0, items: [] });
     if (host === 'api.github.com' && p === '/search/repositories') return json({ total_count: 1, items: [{ full_name: 'octocat/harness', html_url: 'https://github.com/octocat/harness', description: 'A made-up repository', stargazers_count: 42, language: 'JavaScript' }] });
@@ -53,7 +54,12 @@ async function openAt(browser, base, url, mode) {
   await page.route(u => !/^localhost(:|$)/.test(u.host), track(mock(mode, log)));
   await page.goto(base + '?dev=cr:' + encodeURIComponent(url) + '&_=' + Date.now());
   await page.waitForSelector('.tb-btn.app');
-  if (mode.offline) { await ctx.setOffline(true); await page.evaluate(() => { const w = document.querySelector('.win[data-app="chrome"]'); if (w) w.classList.add('maxi'); }); await page.click('#crUrl'); await page.fill('#crUrl', url); await page.keyboard.press('Enter'); }   // the machine goes offline, then the page is asked for again
+  if (mode.offline) {   // the first load fails as a timeout (the machine is still "online"); then it goes offline and the page is asked for again
+    await page.waitForSelector('#crView .cr-neterror', { timeout: 15000 }).catch(() => {});
+    await ctx.setOffline(true); await page.evaluate(() => { const w = document.querySelector('.win[data-app="chrome"]'); if (w) w.classList.add('maxi'); });
+    await page.click('#crUrl'); await page.fill('#crUrl', url); await page.keyboard.press('Enter');
+    await page.waitForFunction(() => document.activeElement !== document.querySelector('#crUrl'), null, { timeout: 3000 }).catch(() => {});   // Enter hands focus to the page, as Chrome does
+  }
   await page.evaluate(() => { const w = document.querySelector('.win[data-app="chrome"]'); if (w) w.classList.add('maxi'); });
   await page.waitForTimeout(300);
   return { ctx, page, log, errors, net };
