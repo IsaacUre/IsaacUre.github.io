@@ -578,7 +578,7 @@
    "time": 1792410600,
    "title": "Harness story 9: fresh, not in Algolia yet",
    "score": 2,
-   "descendants": 6,
+   "descendants": 7,
    "kids": [
     9002,
     9003,
@@ -615,7 +615,10 @@
    "time": 1792410900,
    "text": "<p>Three.</p>",
    "parent": 9001,
-   "kids": []
+   "kids": [
+    9008
+   ],
+   "dead": true
   },
   "9005": {
    "id": 9005,
@@ -644,6 +647,15 @@
    "time": 1792411150,
    "text": "<p>Six.</p>",
    "parent": 9005,
+   "kids": []
+  },
+  "9008": {
+   "id": 9008,
+   "type": "comment",
+   "by": "fixture_user_8",
+   "time": 1792411160,
+   "text": "<p>A reply under the dead one.</p>",
+   "parent": 9004,
    "kids": []
   }
  },

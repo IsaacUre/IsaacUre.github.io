@@ -105,6 +105,20 @@ async function run(browser, base, tag) {
   await A.ctx.setOffline(true); await A.page.click('#crPlus'); await A.page.waitForTimeout(200); await A.page.click('.cr-tab[data-ti="0"]'); await A.page.waitForTimeout(400);
   check(tag + ' A offline, a calculator tab (nothing of it ever fetched) keeps its answer and its title too', (await title(A.page)) === '2+2 - Google Search' && !!(await A.page.$('.cr-ansbox')) && !(await has(A.page, '.cr-neterror')));
   await A.ctx.setOffline(false);
+  await nav(A.page, 'view-source:google.com/search?q=harness+marker'); await settle(A);
+  await A.ctx.setOffline(true); await nav(A.page, 'google.com/search?q=harness+marker'); await settle(A);
+  check(tag + ' A offline, a results page only ever seen as view-source: is Chrome\'s page (that view asked no source, so it vouches for nothing)', !!(await A.page.$('#crView .cr-neterror[data-kind="offline"]')) && !(await has(A.page, '.cr-serp')) && (await title(A.page)) === 'www.google.com');
+  await A.ctx.setOffline(false);
+  await A.page.click('#crMore'); await A.page.waitForTimeout(150);
+  if (await A.page.$('[data-crm="incog"]')) {   // a private window: its own marks, kept on the window
+    await A.page.click('[data-crm="incog"]'); await A.page.waitForTimeout(300);
+    await nav(A.page, 'google.com/search?q=3*7'); await settle(A);
+    await A.ctx.setOffline(true); await A.page.click('#crPlus'); await A.page.waitForTimeout(200); await A.page.click('.cr-tab[data-ti="0"]'); await A.page.waitForTimeout(400);
+    check(tag + ' A incognito, offline: a calculator tab keeps its answer and title on a tab switch too', (await title(A.page)) === '3*7 - Google Search' && !!(await A.page.$('.cr-ansbox')) && !(await has(A.page, '.cr-neterror')));
+    await nav(A.page, 'google.com/search?q=harness+private'); await settle(A);
+    check(tag + ' A incognito, offline: a fresh search is Chrome\'s page', !!(await A.page.$('#crView .cr-neterror[data-kind="offline"]')) && (await title(A.page)) === 'www.google.com');
+    await A.ctx.setOffline(false);
+  }
   await nav(A.page, 'google.com/search?q=weather+houston'); await settle(A);
   check(tag + ' A the weather card: Open-Meteo\'s words for the code, its name as the source, and no no-results line beside it', /Partly cloudy/.test(await txt(A.page, '.cr-wxans .cr-anssub')) && (await txt(A.page, '.cr-wxans .cr-kpmore')) === 'Open-Meteo' && !/Full forecast/.test(await txt(A.page, '#crView')) && !(await has(A.page, '.cr-serpnone')));
   await A.page.click('.cr-wxans .cr-kpmore'); await A.page.waitForTimeout(700);

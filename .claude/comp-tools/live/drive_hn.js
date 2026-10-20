@@ -137,11 +137,13 @@ async function run(browser, base, tag) {
   await Dd.page.click('#crReload'); fr = await hn(Dd); await settle(Dd);
   check(tag + ' D Reload with the API back asks it again (the failed round was not kept) and draws the site\'s order, the dead ones marked', Dd.log.filter(u => /firebaseio\.com\/v0\/item\/2\d{3}\.json/.test(u)).length > d0 && !!fr && await fr.$$eval('tr.comtr', l => l.map(x => x.id + (x.querySelector('.commtext') ? '' : '(gone)')).join(',') === '2004,2001,2002,2003,2008(gone),2009,2005(gone),2006'));
   await nav(Dd.page, 'news.ycombinator.com/item?id=9001'); fr = await hn(Dd); await settle(Dd);
-  check(tag + ' D a story Algolia has not got yet: the site\'s API alone, in its order', (await title(Dd.page)) === 'Harness story 9: fresh, not in Algolia yet | Hacker News' && !!fr && await fr.$$eval('tr.comtr', l => l.map(x => x.id).join(',') === '9002,9005,9007,9003,9006,9004' && l.map(x => x.querySelector('td.ind').getAttribute('indent')).join(',') === '0,1,2,0,1,0'));
+  check(tag + ' D a story Algolia has not got yet: the site\'s API alone, in its order, its dead comment [dead] under its name', (await title(Dd.page)) === 'Harness story 9: fresh, not in Algolia yet | Hacker News' && !!fr && await fr.$$eval('tr.comtr', l => l.map(x => x.id).join(',') === '9002,9005,9007,9003,9006,9004,9008' && l.map(x => x.querySelector('td.ind').getAttribute('indent')).join(',') === '0,1,2,0,1,0,1') && (await txt(fr, 'tr[id="9004"] div.comment')) === '[dead]' && (await txt(fr, 'tr[id="9004"] .hnuser')) === 'fixture_user_4' && !(await has(fr, 'tr[id="9004"] .votearrow')) && (await txt(fr, 'tr[id="9008"] .commtext')) === 'A reply under the dead one.');
+  const k2 = () => Dd.log.filter(u => /firebaseio\.com\/v0\/item\/2\d{3}\.json/.test(u)).length, d2 = k2();
   await nav(Dd.page, 'news.ycombinator.com/item?id=1001'); fr = await hn(Dd); await settle(Dd);
+  check(tag + ' D a round that answered is kept: back on the thread, none of its comments is asked for again', k2() === d2 && !!fr && await fr.$$eval('tr.comtr', l => l.length === 8));
   const d1 = Dd.log.filter(u => /firebaseio\.com\/v0\/item\//.test(u)).length;
   await Dd.page.click('#crBack'); fr = await hn(Dd); await settle(Dd);
-  check(tag + ' D Back to it draws from the memo, without asking the API again', (await url(Dd.page)) === 'news.ycombinator.com/item?id=9001' && !!fr && await fr.$$eval('tr.comtr', l => l.length === 6) && Dd.log.filter(u => /firebaseio\.com\/v0\/item\//.test(u)).length === d1);
+  check(tag + ' D Back to the other draws from its memo, without asking the API again', (await url(Dd.page)) === 'news.ycombinator.com/item?id=9001' && !!fr && await fr.$$eval('tr.comtr', l => l.length === 7) && Dd.log.filter(u => /firebaseio\.com\/v0\/item\//.test(u)).length === d1);
   const errs = [].concat(A.errors, B.errors, C0.errors, C.errors, Dd.errors);
   check(tag + ' no page errors' + (errs.length ? ' (' + errs.slice(0, 3).join(' · ') + ')' : ''), !errs.length);
   await Dd.ctx.close();

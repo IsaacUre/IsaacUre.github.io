@@ -44,10 +44,12 @@ differs from Algolia's, a deleted comment with a live reply under it, a dead
 comment with a live reply, and a dead leaf (Algolia carries both with their
 text; only the site's API says they are dead; a dead row keeps its name, as the
 site's does, a deleted one loses it). Story 9001 is in the site's API only, not
-Algolia's, for the path that builds a thread from the site's API alone. `fbDown`
-makes the site's API time out, for the error page; `kidsDown` makes only the
-comments (the 2xxx items) answer 503, for the memo check: a round that failed
-is asked again on Reload, a round that answered is not asked again on Back.
+Algolia's, for the path that builds a thread from the site's API alone (it has a
+dead comment with a live reply too). `fbDown` makes the site's API time out, for
+the error page; `kidsDown` makes only the comments (the 2xxx items) answer 503,
+for the memo checks: a round that failed is asked again on Reload, a round that
+answered is not asked again when the thread is drawn again, and story 9001's
+tree is not asked again on Back.
 The Wikipedia article carries a TemplateStyles block with the sanitizer's
 escapes and two red links (one to a talk page).
 

@@ -2968,7 +2968,6 @@ webPage('google.com/search', {
     render: function (q) {
         if (serpGone(q)) return crErrPage('offline', 'www.google.com');
         q = q || '';
-        if (navigator.onLine !== false && !(CR && CR.incog)) liveCachePut('serp:' + q, 1);   // drawn once while online: a tab switch or Back offline draws it again from the cache (a calculator or a conversion asks nothing), as Chrome keeps the page
         var has = !!q.trim();
         var ql = q.toLowerCase();
         var local = '';
@@ -2991,6 +2990,7 @@ webPage('google.com/search', {
         // sections at all: three spinners under a finished answer is a lie, and
         // github's anonymous search budget is 10/min.
         var offline = has && !!serpOffline(q);   // only skip the live sections when an answer actually exists
+        if (navigator.onLine !== false && (!has || offline)) (CR && CR.incog ? (CR.privSerp || (CR.privSerp = {})) : SERP_SEEN)[q] = 1;   // a page that asks no source (empty, a calculator, a conversion), drawn once while online: a tab switch or Back offline draws it again, as Chrome keeps the page; one that asks sources is vouched for by its own Wikipedia entry (serpGone)
         var sections = has && !offline ? (local +
             '<div class="cr-serpslot" id="crSerpKp"></div>' +
             '<div class="cr-serpsec cr-serpfeatslot" id="crSerpFeat"></div>' +
@@ -4937,7 +4937,8 @@ function serpSection(label, err, rowsHtml) {
    card and the rows into their own slots — no fragile string re-splitting. */
 function serpWikiUrl(q) { return 'https://en.wikipedia.org/w/api.php?format=json&origin=*&action=query&list=search&srlimit=6&srinfo=totalhits|suggestion&srprop=snippet&srsearch=' + encodeURIComponent(q); }
 /* offline, with nothing cached to draw the page from (a tab switch or Back redraws it; Chrome would not reload it) */
-function serpGone(q) { q = q || ''; return navigator.onLine === false && (!!(CR && CR.incog) || (!liveCacheGet('serp:' + q) && !liveCacheGet(serpWikiUrl(q)))); }
+var SERP_SEEN = Object.create(null);                      // query → 1: a results page that asks no source, drawn once while online (a private window's live on the window, CR.privSerp)
+function serpGone(q) { q = q || ''; if (navigator.onLine !== false) return false; var seen = CR && CR.incog ? CR.privSerp : SERP_SEEN; return !(seen && seen[q]) && (!!(CR && CR.incog) || !liveCacheGet(serpWikiUrl(q))); }
 function serpWiki(q, feat, done) {
     liveGet(serpWikiUrl(q), function (err, j, r) {
         if (err || !j || !j.query || !j.query.search) { done('', '', null); return; }
@@ -5850,7 +5851,7 @@ function wkWire(f, d, p) {
     wkSearchWire(d, '#vector-sticky-search-form input');
     /* Special:Search's own form: a GET of its fields (the scriptless sandbox blocks a real submit) */
     var sInp = p.special === 'Search' && d.querySelector('#searchText input'), sBtn = sInp && d.querySelector('#search input[type="submit"]');
-    function sGo(e) { e.preventDefault(); crNav(WK + '/w/index.php?search=' + encodeURIComponent(sInp.value) + '&title=Special:Search&profile=' + encodeURIComponent((d.querySelector('#search input[name="profile"]') || {}).value || 'default') + Array.prototype.map.call(d.querySelectorAll('#search input[type="hidden"][name^="ns"]'), function (i) { return '&' + encodeURIComponent(i.name) + '=1'; }).join('') + '&fulltext=1'); }
+    function sGo(e) { e.preventDefault(); crNav(WK + '/w/index.php?search=' + encodeURIComponent(sInp.value) + '&title=Special:Search&profile=' + encodeURIComponent((d.querySelector('#search input[name="profile"]') || {}).value || 'default') + '&fulltext=1' + Array.prototype.map.call(d.querySelectorAll('#search input[type="hidden"][name^="ns"]'), function (i) { return '&' + encodeURIComponent(i.name) + '=1'; }).join('')); }
     if (sInp) sInp.addEventListener('keydown', function (e) { if (e.key === 'Enter') sGo(e); });
     if (sBtn) sBtn.addEventListener('click', sGo);
 }
@@ -6369,7 +6370,7 @@ function wkSearchShow(view, url, q, res, offset, limit, thumbs, profile, nsp) {
         '<div class="oo-ui-layout oo-ui-labelElement oo-ui-fieldLayout oo-ui-fieldLayout-align-top oo-ui-actionFieldLayout"><div class="oo-ui-fieldLayout-body"><div class="oo-ui-fieldLayout-field">' +
         '<div class="oo-ui-actionFieldLayout-input"><div id="searchText" class="oo-ui-widget oo-ui-widget-enabled oo-ui-inputWidget oo-ui-textInputWidget oo-ui-textInputWidget-type-search oo-ui-searchInputWidget oo-ui-iconElement oo-ui-indicatorElement"><input type="search" tabindex="0" name="search" value="' + esc(q) + '" title="Search Wikipedia" autocapitalize="none" class="oo-ui-inputWidget-input"><span class="oo-ui-iconElement-icon oo-ui-icon-search"></span><span class="oo-ui-indicatorElement-indicator oo-ui-indicator-clear"></span></div></div>' +
         '<span class="oo-ui-actionFieldLayout-button"><span class="oo-ui-widget oo-ui-widget-enabled oo-ui-inputWidget oo-ui-buttonElement oo-ui-buttonElement-framed oo-ui-labelElement oo-ui-flaggedElement-progressive oo-ui-flaggedElement-primary oo-ui-buttonInputWidget"><input type="submit" tabindex="0" value="Search" class="oo-ui-inputWidget-input oo-ui-buttonElement-button"></span></span></div></div></div>' + info +
-        '<input type="hidden" name="title" value="Special:Search"><input type="hidden" name="profile" value="' + esc(profile) + '">' + (nsp ? nsp.split('&').map(function (p) { return '<input type="hidden" name="' + esc(p.split('=')[0]) + '" value="1">'; }).join('') : '') + '<input type="hidden" name="fulltext" value="1"></div>' +
+        '<input type="hidden" name="title" value="Special:Search"><input type="hidden" name="profile" value="' + esc(profile) + '"><input type="hidden" name="fulltext" value="1">' + (nsp ? nsp.split('&').map(function (p) { return '<input type="hidden" name="' + esc(p.split('=')[0]) + '" value="1">'; }).join('') : '') + '</div>' +   // the namespaces after fulltext, where core's form has its checkboxes (a GET lists the fields in tree order)
         '<div class="mw-search-visualclear"></div><div class="mw-search-profile-tabs"><div class="search-types"><ul>' +
         '<li class="' + (profile === 'default' ? 'current' : 'normal') + '"><a href="' + esc(sUrl({ profile: 'default', ns: 'ns0=1' })) + '" title="Search in (Main)">Content pages</a></li>' +
         '<li class="' + (profile === 'images' ? 'current' : 'normal') + '"><a href="' + esc(sUrl({ profile: 'images', ns: 'ns6=1' })) + '" title="Search for files">Multimedia</a></li>' +
@@ -8626,7 +8627,7 @@ function crIncogSwap() {
     CR.held = CR.incog ? null : { tabs: CR.tabs, active: CR.active, closed: CR.closed };
     CR.incog = !CR.incog;
     CR.ghpPriv = null;                                    // the private window's GitHub answer goes with it
-    CR.ghxPriv = null; CR.privTitles = null; CR.privSrc = null; CR.privWk = null;   // and every other GitHub answer, the titles its pages learned, the documents it drew, its appearance choices
+    CR.ghxPriv = null; CR.privTitles = null; CR.privSrc = null; CR.privWk = null; CR.privSerp = null;   // and every other GitHub answer, the titles its pages learned, the documents it drew, its appearance choices, the results pages it drew
     GHP = null;                                           // and its view, which the title and search results would read
     if (held && held.tabs && held.tabs.length) {
         CR.tabs = held.tabs; CR.active = Math.min(Math.max(held.active, 0), held.tabs.length - 1); CR.closed = held.closed;
