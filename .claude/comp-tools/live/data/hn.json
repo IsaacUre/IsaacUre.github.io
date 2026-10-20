@@ -1,0 +1,557 @@
+{
+"now": 1792411200,
+"lists": {
+"topstories": [
+1001,
+1002,
+1003,
+1004,
+1005,
+1006,
+1007,
+1008,
+1009,
+1010,
+1011,
+1012,
+1013,
+1014,
+1015,
+1016,
+1017,
+1018,
+1019,
+1020,
+1021,
+1022,
+1023,
+1024,
+1025,
+1026,
+1027,
+1028,
+1029,
+1030,
+1031,
+1032,
+1033,
+1034,
+1035
+],
+"newstories": [
+1035,
+1034,
+1033,
+1032,
+1031,
+1030,
+1029,
+1028,
+1027,
+1026,
+1025,
+1024,
+1023,
+1022,
+1021,
+1020,
+1019,
+1018,
+1017,
+1016,
+1015,
+1014,
+1013,
+1012,
+1011,
+1010,
+1009,
+1008,
+1007,
+1006,
+1005,
+1004,
+1003,
+1002,
+1001
+],
+"askstories": [
+1006,
+1012,
+1018,
+1024,
+1030
+],
+"showstories": [
+1003,
+1005
+],
+"jobstories": [
+1010
+]
+},
+"items": {
+"1001": {
+"id": 1001,
+"type": "story",
+"by": "fixture_user_1",
+"time": 1792407480,
+"title": "Harness story 1: a made-up headline",
+"score": 13,
+"descendants": 7,
+"kids": [],
+"url": "https://example.com/fixtures/1"
+},
+"1002": {
+"id": 1002,
+"type": "story",
+"by": "fixture_user_2",
+"time": 1792403880,
+"title": "Harness story 2: a made-up headline",
+"score": 23,
+"descendants": 14,
+"kids": [],
+"url": "https://github.com/octocat/fixture-2"
+},
+"1003": {
+"id": 1003,
+"type": "story",
+"by": "fixture_user_3",
+"time": 1792400280,
+"title": "Harness story 3: a made-up headline",
+"score": 33,
+"descendants": 21,
+"kids": [],
+"url": "https://example.com/fixtures/3"
+},
+"1004": {
+"id": 1004,
+"type": "story",
+"by": "fixture_user_4",
+"time": 1792396680,
+"title": "Harness story 4: a made-up headline",
+"score": 43,
+"descendants": 28,
+"kids": [],
+"url": "https://example.com/fixtures/4"
+},
+"1005": {
+"id": 1005,
+"type": "story",
+"by": "fixture_user_0",
+"time": 1792393080,
+"title": "Harness story 5: a made-up headline",
+"score": 53,
+"descendants": 35,
+"kids": [],
+"url": "https://example.com/fixtures/5"
+},
+"1006": {
+"id": 1006,
+"type": "story",
+"by": "fixture_user_1",
+"time": 1792389480,
+"title": "Ask HN: harness question 6?",
+"score": 63,
+"descendants": 2,
+"kids": [],
+"text": "<p>Made-up text for the harness.</p>"
+},
+"1007": {
+"id": 1007,
+"type": "story",
+"by": "fixture_user_2",
+"time": 1792385880,
+"title": "Harness story 7: a made-up headline",
+"score": 73,
+"descendants": 9,
+"kids": [],
+"url": "https://example.com/fixtures/7"
+},
+"1008": {
+"id": 1008,
+"type": "story",
+"by": "fixture_user_3",
+"time": 1792382280,
+"title": "Harness story 8: a made-up headline",
+"score": 83,
+"descendants": 16,
+"kids": [],
+"url": "https://example.com/fixtures/8"
+},
+"1009": {
+"id": 1009,
+"type": "story",
+"by": "fixture_user_4",
+"time": 1792378680,
+"title": "Harness story 9: a made-up headline",
+"score": 93,
+"descendants": 23,
+"kids": [],
+"url": "https://example.com/fixtures/9"
+},
+"1010": {
+"id": 1010,
+"type": "job",
+"by": "ycombinator",
+"time": 1792406200,
+"title": "Fixture Co (YC W26) is hiring a harness engineer",
+"url": "https://example.com/jobs/10",
+"score": 1
+},
+"1011": {
+"id": 1011,
+"type": "story",
+"by": "fixture_user_1",
+"time": 1792371480,
+"title": "Harness story 11: a made-up headline",
+"score": 113,
+"descendants": 37,
+"kids": [],
+"url": "https://example.com/fixtures/11"
+},
+"1012": {
+"id": 1012,
+"type": "story",
+"by": "fixture_user_2",
+"time": 1792367880,
+"title": "Ask HN: harness question 12?",
+"score": 123,
+"descendants": 4,
+"kids": [],
+"text": "<p>Made-up text for the harness.</p>"
+},
+"1013": {
+"id": 1013,
+"type": "story",
+"by": "fixture_user_3",
+"time": 1792364280,
+"title": "Harness story 13: a made-up headline",
+"score": 133,
+"descendants": 11,
+"kids": [],
+"url": "https://example.com/fixtures/13"
+},
+"1014": {
+"id": 1014,
+"type": "story",
+"by": "fixture_user_4",
+"time": 1792360680,
+"title": "Harness story 14: a made-up headline",
+"score": 143,
+"descendants": 18,
+"kids": [],
+"url": "https://example.com/fixtures/14"
+},
+"1015": {
+"id": 1015,
+"type": "story",
+"by": "fixture_user_0",
+"time": 1792357080,
+"title": "Harness story 15: a made-up headline",
+"score": 153,
+"descendants": 25,
+"kids": [],
+"url": "https://example.com/fixtures/15"
+},
+"1016": {
+"id": 1016,
+"type": "story",
+"by": "fixture_user_1",
+"time": 1792353480,
+"title": "Harness story 16: a made-up headline",
+"score": 163,
+"descendants": 32,
+"kids": [],
+"url": "https://example.com/fixtures/16"
+},
+"1017": {
+"id": 1017,
+"type": "story",
+"by": "fixture_user_2",
+"time": 1792349880,
+"title": "Harness story 17: a made-up headline",
+"score": 173,
+"descendants": 39,
+"kids": [],
+"url": "https://example.com/fixtures/17"
+},
+"1018": {
+"id": 1018,
+"type": "story",
+"by": "fixture_user_3",
+"time": 1792346280,
+"title": "Ask HN: harness question 18?",
+"score": 183,
+"descendants": 6,
+"kids": [],
+"text": "<p>Made-up text for the harness.</p>"
+},
+"1019": {
+"id": 1019,
+"type": "story",
+"by": "fixture_user_4",
+"time": 1792342680,
+"title": "Harness story 19: a made-up headline",
+"score": 193,
+"descendants": 13,
+"kids": [],
+"url": "https://example.com/fixtures/19"
+},
+"1020": {
+"id": 1020,
+"type": "story",
+"by": "fixture_user_0",
+"time": 1792339080,
+"title": "Harness story 20: a made-up headline",
+"score": 203,
+"descendants": 0,
+"kids": [],
+"url": "https://example.com/fixtures/20"
+},
+"1021": {
+"id": 1021,
+"type": "story",
+"by": "fixture_user_1",
+"time": 1792335480,
+"title": "Harness story 21: a made-up headline",
+"score": 213,
+"descendants": 27,
+"kids": [],
+"url": "https://example.com/fixtures/21"
+},
+"1022": {
+"id": 1022,
+"type": "story",
+"by": "fixture_user_2",
+"time": 1792331880,
+"title": "Harness story 22: a made-up headline",
+"score": 223,
+"descendants": 34,
+"kids": [],
+"url": "https://example.com/fixtures/22"
+},
+"1023": {
+"id": 1023,
+"type": "story",
+"by": "fixture_user_3",
+"time": 1792328280,
+"title": "Harness story 23: a made-up headline",
+"score": 233,
+"descendants": 1,
+"kids": [],
+"url": "https://example.com/fixtures/23"
+},
+"1024": {
+"id": 1024,
+"type": "story",
+"by": "fixture_user_4",
+"time": 1792324680,
+"title": "Ask HN: harness question 24?",
+"score": 243,
+"descendants": 8,
+"kids": [],
+"text": "<p>Made-up text for the harness.</p>"
+},
+"1025": {
+"id": 1025,
+"type": "story",
+"by": "fixture_user_0",
+"time": 1792321080,
+"title": "Harness story 25: a made-up headline",
+"score": 253,
+"descendants": 15,
+"kids": [],
+"url": "https://example.com/fixtures/25"
+},
+"1026": {
+"id": 1026,
+"type": "story",
+"by": "fixture_user_1",
+"time": 1792317480,
+"title": "Harness story 26: a made-up headline",
+"score": 263,
+"descendants": 22,
+"kids": [],
+"url": "https://example.com/fixtures/26"
+},
+"1027": {
+"id": 1027,
+"type": "story",
+"by": "fixture_user_2",
+"time": 1792313880,
+"title": "Harness story 27: a made-up headline",
+"score": 273,
+"descendants": 29,
+"kids": [],
+"url": "https://example.com/fixtures/27"
+},
+"1028": {
+"id": 1028,
+"type": "story",
+"by": "fixture_user_3",
+"time": 1792310280,
+"title": "Harness story 28: a made-up headline",
+"score": 283,
+"descendants": 36,
+"kids": [],
+"url": "https://example.com/fixtures/28"
+},
+"1029": {
+"id": 1029,
+"type": "story",
+"by": "fixture_user_4",
+"time": 1792306680,
+"title": "Harness story 29: a made-up headline",
+"score": 293,
+"descendants": 3,
+"kids": [],
+"url": "https://example.com/fixtures/29"
+},
+"1030": {
+"id": 1030,
+"type": "story",
+"by": "fixture_user_0",
+"time": 1792303080,
+"title": "Ask HN: harness question 30?",
+"score": 303,
+"descendants": 10,
+"kids": [],
+"text": "<p>Made-up text for the harness.</p>"
+},
+"1031": {
+"id": 1031,
+"type": "story",
+"by": "fixture_user_1",
+"time": 1792299480,
+"title": "Harness story 31: a made-up headline",
+"score": 313,
+"descendants": 17,
+"kids": [],
+"url": "https://example.com/fixtures/31"
+},
+"1032": {
+"id": 1032,
+"type": "story",
+"by": "fixture_user_2",
+"time": 1792295880,
+"title": "Harness story 32: a made-up headline",
+"score": 323,
+"descendants": 24,
+"kids": [],
+"url": "https://example.com/fixtures/32"
+},
+"1033": {
+"id": 1033,
+"type": "story",
+"by": "fixture_user_3",
+"time": 1792292280,
+"title": "Harness story 33: a made-up headline",
+"score": 333,
+"descendants": 31,
+"kids": [],
+"url": "https://example.com/fixtures/33"
+},
+"1034": {
+"id": 1034,
+"type": "story",
+"by": "fixture_user_4",
+"time": 1792288680,
+"title": "Harness story 34: a made-up headline",
+"score": 343,
+"descendants": 38,
+"kids": [],
+"url": "https://example.com/fixtures/34"
+},
+"1035": {
+"id": 1035,
+"type": "story",
+"by": "fixture_user_0",
+"time": 1792285080,
+"title": "Harness story 35: a made-up headline",
+"score": 353,
+"descendants": 5,
+"kids": [],
+"url": "https://example.com/fixtures/35"
+}
+},
+"users": {
+"fixture_user_1": {
+"id": "fixture_user_1",
+"created": 1262304000,
+"karma": 4321,
+"about": "A made-up profile for the harness. <a href=\"https://example.com\" rel=\"nofollow\">example.com</a>",
+"submitted": [
+1001,
+1002
+]
+}
+},
+"thread": {
+"id": 1001,
+"created_at": "2026-10-19T10:58:00.000Z",
+"created_at_i": 1792407480,
+"type": "story",
+"author": "fixture_user_1",
+"title": "Harness story 1: a made-up headline",
+"url": "https://example.com/fixtures/1",
+"text": null,
+"points": 13,
+"parent_id": null,
+"story_id": null,
+"children": [
+{
+"id": 2001,
+"created_at_i": 1792408200,
+"type": "comment",
+"author": "fixture_user_2",
+"text": "<p>First fixture comment, with a <a href=\"https://example.com/x\" rel=\"nofollow\">link</a>.</p><p>Second paragraph.</p>",
+"parent_id": 1001,
+"story_id": 1001,
+"children": [
+{
+"id": 2002,
+"created_at_i": 1792408800,
+"type": "comment",
+"author": "fixture_user_3",
+"text": "A reply, one level in.",
+"parent_id": 2001,
+"story_id": 1001,
+"children": [
+{
+"id": 2003,
+"created_at_i": 1792409400,
+"type": "comment",
+"author": "fixture_user_4",
+"text": "Two levels in.",
+"parent_id": 2002,
+"story_id": 1001,
+"children": []
+}
+]
+}
+]
+},
+{
+"id": 2004,
+"created_at_i": 1792410600,
+"type": "comment",
+"author": "fixture_user_1",
+"text": "<pre><code>a code block</code></pre>",
+"parent_id": 1001,
+"story_id": 1001,
+"children": []
+},
+{
+"id": 2005,
+"created_at_i": 1792410700,
+"type": "comment",
+"author": null,
+"text": null,
+"parent_id": 1001,
+"story_id": 1001,
+"children": []
+}
+]
+}
+}
