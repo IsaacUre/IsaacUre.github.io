@@ -86,6 +86,7 @@ function ghMock(mode, log) {
       const page = +(q.get('page') || 1), per = +(q.get('per_page') || 30), src = mode.october ? OCT_PRS.concat(MD.pulls) : MD.pulls;
       return json(src.slice((page - 1) * per, page * per));
     }
+    if (p.indexOf('/repos/IsaacUre/IsaacUre.github.io/') === 0) return json([]);   // the repository page's other parts (drive_more.js checks those)
     return json({ message: 'Not Found' }, 404);
   };
 }
@@ -277,7 +278,7 @@ async function run(browser, base, tag) {
   await nav(page, 'google.com/search?q=isaacure');
   check(tag + ' E search result description from the live count', /IsaacUre has 2 repositories available\. Follow their code on GitHub\./.test(await txt(page, '#crView')));
   await nav(page, 'github.com/IsaacUre/IsaacUre.github.io');
-  check(tag + ' E repo path goes to the live repo page', !(await page.$('.cr-ghp')) && !!(await page.$('.cr-lg')));
+  check(tag + ' E repo path goes to the repository page', !!(await page.$('.cr-ghp.ghx')) && !(await page.$('#ghpCal')));
   await settle(A); await clean(A, tag + ' E the repo page');
   check(tag + ' E the repo page\'s title is GitHub\'s', (await txt(page, '.cr-tab.on .cr-tabt')) === 'GitHub - IsaacUre/IsaacUre.github.io: Website · GitHub');
   await nav(page, 'github.com'); await settle(A); await clean(A, tag + ' E github.com');
