@@ -43,8 +43,17 @@ to try things on before they move to `/comp/`.
   in `Videos\Captures`, `minecraft worlds backup` under
   `D:\archive\old laptop (2016-2019)\games`, the seed line at the end of
   `the secret.txt` on D:, NINTH NIGHT's folder under
-  `C:\Program Files\URE Softworks`, and the Cookie Clicker chip on
-  Chrome's Wikipedia page.
+  `C:\Program Files\URE Softworks`. (The Cookie Clicker chip that sat on
+  Chrome's invented Wikipedia landing page is gone from both: that page is
+  now Wikipedia's real Main Page.)
+- Chrome's web is the same in both copies: Wikipedia (Vector 2022, drawn
+  from the action API into a sandboxed frame with the skin's own
+  stylesheet), Hacker News (its own markup, from the Firebase and Algolia
+  APIs), the results page, Chrome's own error pages (Chromium's markup and
+  strings) and a plain frame for everything else, Open-Meteo included.
+  `comp.js` says above each piece where its markup and strings come from;
+  `.claude/comp-tools/live/` is their harness (its README says how to run
+  it). Change them as one patch to both copies.
 - The two directories are not interchangeable: `cp tcomp/* comp/` would
   bring everything back. Move a change across file by file, or as a
   patch. Both `index.html`s load their scripts and stylesheet by relative

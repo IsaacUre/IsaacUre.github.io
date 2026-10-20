@@ -877,7 +877,7 @@ mark.fnd.cur { background: #ff9632; color: #15151a; }
 .cr-bmchip:hover { background: #f1f3f4; }
 
 /* page view */
-.cr-view { flex: 1 1 auto; min-height: 0; overflow-y: auto; background: #fff; outline: 0;
+.cr-view { container: crview / size; flex: 1 1 auto; min-height: 0; overflow-y: auto; background: #fff; outline: 0;
     user-select: text; -webkit-user-select: text; }   /* pages are real enough to select — and to right-click → Search */
 .cr-view ::selection { background: #a8c7fa; }
 .cr-view::-webkit-scrollbar-thumb { background: rgba(0,0,0,.28); border: 2px solid transparent; background-clip: padding-box; border-radius: 6px; }
@@ -972,8 +972,8 @@ mark.fnd.cur { background: #ff9632; color: #15151a; }
 /* SERP */
 .cr-serp { padding: 14px 22px 30px; max-width: 660px; }
 /* wrap + min-width:0 so the row can actually shrink on a phone. Without them the
-   search box refuses to go below its content width and shoves the live chip
-   clean out of the page (62px of horizontal scroll at a 380px viewport). */
+   search box refuses to go below its content width and the row runs off the
+   page (it once did, by 62px at a 380px viewport). */
 .cr-serphead { display: flex; align-items: center; gap: 10px 18px; margin-bottom: 10px; flex-wrap: wrap; }
 .cr-serplogo { font-family: var(--f-pixel); font-size: .95rem; letter-spacing: 1px; flex: 0 0 auto; }
 .cr-serpbox { flex: 1 1 160px; min-width: 0; display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 16px; border-radius: 18px;
@@ -983,11 +983,6 @@ mark.fnd.cur { background: #ff9632; color: #15151a; }
 .cr-serptabs { display: flex; gap: 18px; font-size: .74rem; color: #5f6368; border-bottom: 1px solid #e8eaed; padding: 4px 2px 8px; margin-bottom: 8px; }
 .cr-serptabs span { cursor: pointer; }
 .cr-serptabs .on { color: #1a73e8; border-bottom: 2px solid #1a73e8; padding-bottom: 6px; margin-bottom: -9px; }
-.cr-serpstat { font-size: .7rem; color: #70757a; margin-bottom: 14px; }
-.cr-snip { border: 1px solid #dfe1e5; border-radius: 8px; padding: 12px 14px; margin-bottom: 16px; }
-.cr-snip b { font-size: .92rem; }
-.cr-snip p { font-size: .78rem; color: #4d5156; margin: 6px 0; line-height: 1.5; }
-.cr-snipl { color: #1a73e8; font-size: .74rem; }
 /* min-width:0 + wrap: a single unbroken token in a snippet (a long URL, a
    chemical name) otherwise widens the flex column and pushes the whole
    results page into horizontal scroll */
@@ -999,11 +994,6 @@ mark.fnd.cur { background: #ff9632; color: #15151a; }
 .cr-restitle2 { display: block; font-size: .95rem; color: #1a0dab; margin-top: 2px; }
 .cr-resdesc { font-size: .76rem; color: #4d5156; line-height: 1.5; margin-top: 2px; }
 .cr-res.dim { opacity: .8; }
-.cr-relwrap { margin-top: 22px; }
-.cr-relwrap > b { font-size: .84rem; }
-.cr-rels { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-.cr-rel { padding: 7px 12px; border-radius: 16px; background: #f1f3f4; font-size: .74rem; color: #1a73e8; }
-.cr-rel:hover { background: #e8eaed; }
 
 /* generic site bits */
 .cr-site { padding: 22px 26px 34px; }
@@ -1424,26 +1414,6 @@ button.cr-iu-skip { position: absolute; right: 1rem; bottom: 1rem; z-index: 11; 
 .cr-ghp .ghp-flink { color: #59636e; }
 .cr-ghp a.ghp-flink:hover { color: #0969da; }
 
-/* wikipedia */
-.cr-wiki { font-family: Georgia, serif; max-width: 760px; }
-.cr-wikihead { display: flex; align-items: center; gap: 12px; border-bottom: 3px double #a2a9b1; padding-bottom: 8px; margin-bottom: 12px; }
-.cr-wikiglobe { font-family: Georgia, serif; font-size: 2rem; width: 44px; height: 44px; border: 1px solid #a2a9b1; border-radius: 50%; display: grid; place-items: center; }
-.cr-wikihead h2 { font-weight: 400; font-size: 1.4rem; }
-.cr-wikihead i { font-size: .72rem; color: #54595d; }
-.cr-wikibody { display: flex; gap: 18px; align-items: flex-start; }
-.cr-wikitext { flex: 1 1 auto; font-size: .8rem; line-height: 1.6; color: #202122; }
-.cr-wikitext p { margin-bottom: 10px; }
-.cr-wikitext a, .cr-wikil { color: #3366cc; font-family: inherit; font-size: inherit; }
-.cr-wikitext h3 { font-weight: 400; font-size: 1.05rem; border-bottom: 1px solid #a2a9b1; margin: 14px 0 8px; }
-.cr-wikitoc { display: inline-flex; flex-direction: column; gap: 3px; border: 1px solid #a2a9b1; background: #f8f9fa; padding: 10px 16px; font-size: .74rem; margin-bottom: 10px; }
-.cr-wikitoc span { color: #3366cc; }
-.cr-wikibox { flex: 0 0 200px; border: 1px solid #a2a9b1; background: #f8f9fa; padding: 10px 12px; font-size: .7rem; }
-.cr-wikibox > b { display: block; text-align: center; font-size: .8rem; margin-bottom: 8px; }
-.cr-wikicar { width: 120px; height: 120px; display: block; margin: 0 auto 8px; image-rendering: pixelated; }
-.cr-wikibox dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 8px; }
-.cr-wikibox dt { font-weight: 700; }
-.cr-wikitext sup { font-size: .6em; color: #3366cc; }
-
 /* thresher */
 .cr-thr { max-width: 760px; }
 .cr-thrmast { text-align: center; border-bottom: 3px double #202124; padding-bottom: 10px; margin-bottom: 16px; }
@@ -1547,18 +1517,9 @@ button.cr-iu-skip { position: absolute; right: 1rem; bottom: 1rem; z-index: 11; 
 .cr-gmfoot { font-size: .7rem; color: #9aa0a6; padding: 14px 8px; }
 
 /* dino */
-.cr-dino { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100%; padding: 20px; background: #fff; }
-.cr-dinohud { width: min(600px, 100%); display: flex; justify-content: space-between; font-family: var(--f-term); font-size: 1rem; color: #535353; letter-spacing: 2px; }
-#crDinoCv { width: min(600px, 100%); image-rendering: pixelated; cursor: pointer; }
-.cr-dinotip { font-size: .72rem; color: #80868b; margin-top: 14px; }
+.cr-neterror #crDinoCv { cursor: pointer; image-rendering: pixelated; max-width: 100%; width: 600px; }
 
 /* error page */
-.cr-err { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; min-height: 100%; max-width: 460px; margin: 0 auto; padding: 24px; gap: 8px; }
-.cr-errdino { font-size: 2.2rem; filter: grayscale(1); }
-.cr-err h2 { font-size: 1.1rem; color: #202124; }
-.cr-err p { font-size: .8rem; color: #5f6368; line-height: 1.5; }
-.cr-errcode { font-family: var(--f-term); font-size: .82rem !important; color: #9aa0a6 !important; }
-.cr-errbtns { display: flex; gap: 10px; margin-top: 10px; }
 
 /* settings */
 .cr-setts { display: flex; min-height: 100%; }
@@ -1605,7 +1566,6 @@ button.cr-iu-skip { position: absolute; right: 1rem; bottom: 1rem; z-index: 11; 
 @media (max-width: 720px) {
     .cr-suggest { left: 60px; right: 40px; }
     .cr-scs { grid-template-columns: repeat(3, 84px); }
-    .cr-wikibody { flex-direction: column; }
     .cr-thrgrid { grid-template-columns: 1fr; }
     .cr-thrlead { border-right: 0; padding-right: 0; }
     .cr-setnav { flex-basis: 44px; }
@@ -1682,79 +1642,61 @@ button.cr-iu-skip { position: absolute; right: 1rem; bottom: 1rem; z-index: 11; 
 .bsod-qr i.on { background: #0b0d12; }
 .bsod-stop { font-size: .68rem; line-height: 1.5; color: #cfe6ff; }
 
-/* ═══════════════ Chrome: the live web ═══════════════ */
-.cr-lv { padding: 18px 22px 26px; max-width: 720px; margin: 0 auto; font-size: 13px; line-height: 1.65; }
-.cr-lv h2 { font-size: 20px; margin: 8px 0 6px; }
-.cr-lv h3 { font-size: 15px; margin: 16px 0 4px; }
-.cr-lv h4 { font-size: 13px; margin: 12px 0 3px; }
-.cr-lv p { margin: 6px 0; }
-.cr-lv ul, .cr-lv ol { margin: 6px 0 6px 20px; }
-.cr-lv blockquote { border-left: 3px solid #c9c8bf; margin: 8px 0; padding: 2px 10px; opacity: .85; }
-.cr-lv pre { background: #17181c; color: #d5e3d5; padding: 8px 10px; overflow-x: auto; font-family: var(--f-term); font-size: 13px; margin: 8px 0; }
-.cr-lv code { background: rgba(127,127,127,.16); padding: 0 4px; font-family: var(--f-term); }
-.cr-lva { color: #2a6fd6; text-decoration: none; cursor: pointer; background: none; border: 0; padding: 0; font: inherit; }
-.cr-lva:hover { text-decoration: underline; }
-.cr-lvchip { font-size: 10px; font-weight: 800; color: #1d7a34; background: rgba(29,122,52,.12); border: 1px solid rgba(29,122,52,.4); padding: 1px 6px; border-radius: 8px; letter-spacing: .06em; vertical-align: middle; }
-.cr-lvfoot { font-size: 11px; opacity: .55; margin-top: 18px; border-top: 1px dashed rgba(127,127,127,.35); padding-top: 8px; }
-.cr-lvload { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 70px 0 60px; text-align: center; }
-.cr-lvload i { font-size: 11px; opacity: .5; }
-.cr-lvspin { width: 22px; height: 22px; border: 3px solid rgba(127,127,127,.25); border-top-color: var(--accent, #d81e05); border-radius: 50%; animation: crlvspin .8s linear infinite; }
-@keyframes crlvspin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .cr-lvspin { animation: none; opacity: .5; } }
-.cr-lvsearch { display: flex; align-items: center; gap: 8px; border: 1px solid rgba(127,127,127,.5); padding: 8px 12px; margin: 14px 0 10px; }
-.cr-lvsearch input { flex: 1; border: 0; background: none; color: inherit; font: inherit; outline: none; }
-.cr-lvsearch.sm { margin: 0; padding: 3px 8px; flex: 1; max-width: 220px; }
-.cr-lvtry { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; }
-/* wikipedia */
-.cr-lwhead { text-align: center; padding: 18px 0 6px; }
-.cr-lwball { display: inline-flex; align-items: center; justify-content: center; width: 42px; height: 42px; border: 2px solid currentColor; border-radius: 50%; font-family: var(--f-pixel); font-size: 20px; }
-.cr-lwball.sm { width: 18px; height: 18px; font-size: 10px; border-width: 1px; }
-.cr-lwbar, .cr-hnbar, .cr-wxbar { display: flex; align-items: center; gap: 10px; border-bottom: 1px solid rgba(127,127,127,.35); padding-bottom: 8px; margin-bottom: 10px; }
-.cr-lwhome, .cr-hnhome, .cr-wxhome { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; }
-.cr-lwtitle { border-bottom: 1px solid rgba(127,127,127,.35); padding-bottom: 4px; font-family: Georgia, serif; }
-.cr-lwdesc { display: block; opacity: .65; margin: 2px 0 8px; }
-.cr-lwthumb { float: right; max-width: 200px; height: auto; margin: 0 0 10px 14px; border: 1px solid rgba(127,127,127,.4); padding: 3px; image-rendering: auto; }
-.cr-lwbody sup { font-size: 9px; opacity: .6; }
-.cr-wsugrow { display: block; width: 100%; text-align: left; padding: 6px 8px; }
-.cr-wsugrow:hover { background: rgba(127,127,127,.12); }
-/* hacker news */
-.cr-hn { max-width: 780px; }
-.cr-hny { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; background: #ff6600; color: #fff; font-family: var(--f-pixel); font-size: 10px; }
-.cr-hnrow { display: flex; gap: 8px; padding: 5px 0; }
-.cr-hnrank { opacity: .45; min-width: 22px; text-align: right; }
-.cr-hnmain { display: flex; flex-direction: column; }
-.cr-hntitle { font-weight: 600; text-align: left; }
-.cr-hndom { font-size: 11px; opacity: .5; font-style: normal; }
-.cr-hnsub { font-size: 11px; opacity: .6; }
-.cr-hncl:hover { text-decoration: underline; }
-.cr-hnstory { border-bottom: 1px solid rgba(127,127,127,.35); padding-bottom: 10px; margin-bottom: 10px; }
-.cr-hnc { margin: 10px 0 0 calc(var(--d) * 16px); border-left: 2px solid rgba(255,102,0,.35); padding-left: 10px; }
-.cr-hnch { font-size: 11px; opacity: .65; display: flex; gap: 8px; }
-.cr-hncb { font-size: 12.5px; }
-.cr-hncb.op { background: rgba(255,102,0,.06); padding: 6px 10px; }
-/* weather */
-.cr-wx { max-width: 640px; }
-.cr-wxnow { display: flex; align-items: center; gap: 18px; padding: 16px 0; }
-.cr-wxbig { font-size: 52px; line-height: 1; }
-.cr-wxnow h2 { font-size: 34px; margin: 0; }
-.cr-wxnow i { font-size: 11px; opacity: .55; }
-.cr-wxdays { display: flex; gap: 8px; flex-wrap: wrap; }
-.cr-wxday { display: flex; flex-direction: column; align-items: center; gap: 2px; border: 1px solid rgba(127,127,127,.4); padding: 8px 10px; min-width: 58px; }
-.cr-wxem { font-size: 20px; }
-.cr-wxday i { opacity: .55; font-style: normal; }
-/* the frame fallthrough */
-.cr-frame { display: flex; flex-direction: column; height: 100%; }
-.cr-framebar { display: flex; align-items: center; gap: 10px; padding: 6px 10px; font-size: 11.5px; background: rgba(127,127,127,.1); border-bottom: 1px solid rgba(127,127,127,.35); flex-wrap: wrap; }
-.cr-framenote { opacity: .55; }
-.cr-framewrap { position: relative; flex: 1; min-height: 0; }
-.cr-frameifr { width: 100%; height: 100%; border: 0; background: #fff; }
-.cr-frameload { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
-/* real aggregated search results */
+/* ═══════════════ Chrome: the web ═══════════════
+   Wikipedia and Hacker News are drawn in a frame of their own (.cr-wk), dressed by
+   their own stylesheets; any other site loads in a sandboxed frame (.cr-frame). */
+.cr-wk { display: block; width: 100%; height: 100%; border: 0; background: #fff; }
+.cr-wkwait { height: 100%; background: #fff; }
+.cr-fav.img { object-fit: contain; image-rendering: auto; }
+.cr-frame { height: 100%; }
+.cr-frameifr { display: block; width: 100%; height: 100%; border: 0; background: #fff; }
+/* Chrome's own error page: Chromium's neterror.css, interstitial_core.css and
+   interstitial_common.css, scoped under .cr-neterror; Windows' Segoe UI at 75% of the 125% root */
+.cr-neterror { min-height: 100%; box-sizing: border-box; background: #fff; color: rgb(95, 99, 104); font-family: 'Segoe UI', Tahoma, sans-serif; font-size: 15px; line-height: normal; word-wrap: break-word; text-align: left; }
+.cr-neterror a { color: rgb(88, 88, 88); text-decoration: none; }
+.cr-neterror .interstitial-wrapper { box-sizing: border-box; font-size: 1em; line-height: 1.6em; margin: 14cqh auto 0; max-width: 600px; width: 100%; position: relative; }
+/* the offline page: the runner where the icon was (neterror.css .offline rules) */
+.cr-neterror[data-kind="offline"] #main-message > p, .cr-neterror[data-kind="dino"] #main-message > p { display: none; }
+.cr-neterror[data-kind="offline"] .interstitial-wrapper, .cr-neterror[data-kind="dino"] .interstitial-wrapper { line-height: 1.55; margin: 0 auto; padding-top: 100px; }
+.cr-neterror .runner-container { direction: ltr; height: 150px; max-width: 600px; overflow: hidden; position: absolute; top: 35px; width: 100%; }
+.cr-neterror .runner-canvas { height: 150px; max-width: 600px; opacity: 1; overflow: hidden; position: absolute; top: 0; z-index: 10; }
+.cr-neterror h1 { color: rgb(32, 33, 36); font-size: 1.6em; font-weight: normal; line-height: 1.25em; margin: 0 0 16px; word-wrap: break-word; }
+.cr-neterror h1 span { font-weight: 500; }
+.cr-neterror p { margin: 1em 0; }
+.cr-neterror #main-message > p { display: inline; }
+.cr-neterror .icon { background-repeat: no-repeat; background-size: 100%; display: inline-block; height: 72px; width: 72px; margin: 0 0 40px; user-select: none; }
+.cr-neterror #suggestions-list a { color: rgb(26, 115, 232); }
+.cr-neterror #suggestions-list p { margin-block-end: 0; }
+.cr-neterror #suggestions-list ul { margin: 0 0 1em; padding-left: 40px; list-style: disc; }
+.cr-neterror .error-code { color: rgb(95, 99, 104); font-size: .8em; margin-top: 12px; text-transform: uppercase; }
+.cr-neterror .nav-wrapper { margin-top: 51px; }
+.cr-neterror .nav-wrapper::after { clear: both; content: ''; display: table; width: 100%; }
+.cr-neterror button { border: 0; border-radius: 20px; box-sizing: border-box; background: rgb(26, 115, 232); color: #fff; cursor: pointer; float: right; font: inherit; font-size: .875em; margin: 0; padding: 8px 16px; transition: box-shadow 150ms cubic-bezier(0.4, 0, 0.2, 1); user-select: none; }
+.cr-neterror button:active { background: rgb(25, 103, 210); outline: 0; }
+.cr-neterror .nav-wrapper .secondary-button { background: #fff; border: 1px solid rgb(154, 160, 166); color: rgb(95, 99, 104); float: none; margin: 0; padding: 8px 16px; }
+.cr-neterror .secondary-button:hover { background: rgb(248, 249, 250); border-color: rgb(128, 134, 139); text-decoration: none; }
+.cr-neterror .secondary-button:active { border-color: white; box-shadow: 0 1px 2px 0 rgba(60, 64, 67, .3), 0 2px 6px 2px rgba(60, 64, 67, .15); }
+.cr-neterror #details-button { box-shadow: none; min-width: 0; }
+.cr-neterror .suggested-left > #control-buttons { float: left; }
+.cr-neterror .suggested-left > #details-button { float: right; }
+.cr-neterror .suggested-left .secondary-button { margin-inline-end: 0; margin-inline-start: 16px; }
+.cr-neterror #details-button.singular { float: none; }
+.cr-neterror #details { margin: 0 0 50px; }
+.cr-neterror #details p:not(:first-of-type) { margin-top: 20px; }
+.cr-neterror .suggestions { margin-top: 18px; }
+.cr-neterror .suggestion-header { font-weight: bold; margin-bottom: 4px; }
+.cr-neterror .suggestion-body { color: #777; }
+.cr-neterror #main-frame-error:not(.showing-details) #details { display: none; }
+/* Details hides the message only on a short or a narrow view (neterror.css's media queries, on the tab's view) */
+@container crview ((min-width: 240px) and (max-width: 420px) and (min-height: 401px)) or ((min-height: 240px) and (max-height: 560px) and (min-width: 421px)) { .cr-neterror #main-frame-error.showing-details #main-content { display: none; } }
+@container crview (min-width: 421px) and (min-height: 500px) and (max-height: 560px) { .cr-neterror .interstitial-wrapper { margin-top: 10cqh; } }
+.cr-neterror [hidden] { display: none; }
+/* the results page */
 .cr-serpsec { margin: 6px 0 14px; }
+.cr-serpnone { font-size: 14px; color: #202124; margin: 8px 0 20px; }
+.cr-serpnone p { margin: 0 0 1em; }
+.cr-serpnone ul { margin: 0; padding-left: 24px; list-style: disc; }
 .cr-serph { font-size: 12px; font-weight: 700; color: #5f6368; margin: 14px 0 6px; text-transform: none; letter-spacing: .02em; }
-.cr-serploading { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #70757a; padding: 4px 0; }
-.cr-serploading .cr-lvspin { width: 14px; height: 14px; border-width: 2px; }
-.cr-serpnote { font-size: 12px; color: #70757a; padding: 2px 0 6px; }
 .cr-serpmeta { color: #5f6368; font-size: 12px; }
 .cr-serpfeatslot:empty { display: none; }
 .cr-serpfeat { border: 1px solid #dadce0; border-radius: 10px; padding: 12px 16px; margin: 4px 0 14px; background: #fff; }
@@ -1762,7 +1704,6 @@ button.cr-iu-skip { position: absolute; right: 1rem; bottom: 1rem; z-index: 11; 
 .cr-featt { font-size: 18px; color: #1a0dab; }
 .cr-featsrc { display: block; font-size: 11px; color: #5f6368; margin: 2px 0 6px; }
 .cr-featsnip { font-size: 13px; color: #3c4043; margin: 0 0 8px; line-height: 1.55; }
-.cr-featmore { color: #1a73e8; font-size: 12.5px; }
 .cr-res .cr-resdesc b, .cr-featsnip b { font-weight: 700; color: #202124; }
 /* intent-conditional slots collapse when their pack never fires */
 .cr-serpslot:empty { display: none; }

@@ -377,6 +377,14 @@ function openTaskView() {
         }
         var st = w.el.querySelectorAll('textarea'), dt = clone.querySelectorAll('textarea');
         for (var ti = 0; ti < st.length; ti++) if (dt[ti]) dt[ti].value = st[ti].value;
+        // a page drawn in a frame of its own (Wikipedia, Hacker News) changes its live
+        // document (theme, pinned contents, find marks): the clone's srcdoc is the page
+        // as first drawn, so the card is drawn from the document as it stands
+        var sf = w.el.querySelectorAll('iframe.cr-wk'), df = clone.querySelectorAll('iframe.cr-wk');
+        for (var fi = 0; fi < sf.length; fi++) {
+            var fd = null; try { fd = sf[fi].contentDocument; } catch (err) {}
+            if (df[fi] && fd && fd.documentElement) df[fi].srcdoc = '<!doctype html>' + fd.documentElement.outerHTML;
+        }
         var item = document.createElement('div'); item.className = 'tv-item'; item.setAttribute('data-id', id);
         item.tabIndex = 0; item.setAttribute('role', 'button');            // keyboard-reachable card
         item.setAttribute('aria-label', 'Switch to ' + a.title);
@@ -2905,9 +2913,12 @@ function crSet() { return crj('set', { bmbar: 1, engine: 'google' }); }
 function crEngine() { return crSet().engine === 'ure' ? 'URE Search' : 'Google'; }
 
 /* ── tiny favicon chips ── */
+var CR_NOFAV = Object.create(null);                      // site favicons that did not load (offline, blocked): Chrome's default globe from then on
 function crFav(f, cls) {
     if (!f) f = { ch: '?', c: '#9aa0a6' };
     if (f.ic) return ic(f.ic, 'cr-fav ' + (cls || ''));
+    if (f.img && CR_NOFAV[f.img]) f = { ch: '🌐', c: '#5f6368' };
+    if (f.img) return '<img class="cr-fav img ' + (cls || '') + '" src="' + esc(f.img) + '" alt="" referrerpolicy="no-referrer">';   // a site's own favicon
     return '<span class="cr-fav chip ' + (cls || '') + '" style="background:' + f.c + '">' + esc(f.ch) + '</span>';
 }
 function crLink(url, label, cls) { return '<button class="cr-l ' + (cls || '') + '" data-href="' + esc(url) + '">' + label + '</button>'; }
@@ -2953,13 +2964,12 @@ webPage('chrome://newtab', {
    page the live layer actually loads. The local curated corpus rides along as
    its own instant section. — */
 webPage('google.com/search', {
-    title: function (q) { return q + ' - ' + crEngine() + ' Search'; }, fav: { ch: 'G', c: '#4285f4' }, dynamic: true,
+    title: function (q) { return serpGone(q) ? 'www.google.com' : q + ' - ' + crEngine() + ' Search'; }, fav: { ch: 'G', c: '#4285f4' }, dynamic: true,
     render: function (q) {
+        if (serpGone(q)) return crErrPage('offline', 'www.google.com');
         q = q || '';
         var has = !!q.trim();
         var ql = q.toLowerCase();
-        var snippet = '';
-        if (/dino|dinosaur|t-?rex/.test(ql)) snippet = '<div class="cr-snip"><b>chrome://dino</b><p>You appear to be looking for the dinosaur. He is employed here.</p>' + crLink('chrome://dino', 'Play the dino game', 'cr-snipl') + '</div>';
         var local = '';
         if (has) {
             var corpus = Object.keys(WEB).map(function (k) { return WEB[k]; }).filter(function (s) { return s.searchable; });
@@ -2969,9 +2979,9 @@ webPage('google.com/search', {
                 return '<div class="cr-res">' + crLink(s.host, '<span class="cr-resurl">' + crFav(s.fav) + ' https://' + esc(s.host) + '</span><span class="cr-restitle">' + esc(s.stitle) + '</span>', '') +
                     '<span class="cr-resdesc">' + esc(s.sdesc) + '</span></div>';
             }).join('');
-            local = localRows ? '<div class="cr-serpsec"><h4 class="cr-serph">From isaacure.com</h4>' + localRows + '</div>' : '';
+            local = localRows ? '<div class="cr-serpsec">' + localRows + '</div>' : '';
         }
-        var load = function (id, label) { return '<div class="cr-serpsec" id="' + id + '"><h4 class="cr-serph">' + label + '</h4><div class="cr-serploading"><span class="cr-lvspin"></span> searching…</div></div>'; };
+        var load = function (id) { return '<div class="cr-serpsec" id="' + id + '"></div>'; };   // filled when its source answers
         // the live sections only exist when there's a query to fire them — an empty
         // SERP must not paint spinners that init() will never fill
         // intent-conditional slots stay EMPTY (not spinners) — a spinner that may
@@ -2980,31 +2990,27 @@ webPage('google.com/search', {
         // sections at all: three spinners under a finished answer is a lie, and
         // github's anonymous search budget is 10/min.
         var offline = has && !!serpOffline(q);   // only skip the live sections when an answer actually exists
-        var sections = has && !offline ? (snippet + local +
+        if (navigator.onLine !== false && (!has || offline)) (CR && CR.incog ? (CR.privSerp || (CR.privSerp = Object.create(null))) : SERP_SEEN)[q] = 1;   // a page that asks no source (empty, a calculator, a conversion), drawn once while online: a tab switch or Back offline draws it again, as Chrome keeps the page; one that asks sources is vouched for by its own Wikipedia entry (serpGone)
+        var sections = has && !offline ? (local +
             '<div class="cr-serpslot" id="crSerpKp"></div>' +
             '<div class="cr-serpsec cr-serpfeatslot" id="crSerpFeat"></div>' +
-            load('crSerpWiki', 'Wikipedia') +
+            load('crSerpWiki') +
             '<div class="cr-serpslot" id="crSerpImg"></div>' +
-            load('crSerpGH', 'Code · GitHub') +
+            load('crSerpGH') +
             '<div class="cr-serpslot" id="crSerpSO"></div>' +
-            load('crSerpHN', 'Discussion · Hacker News')) : (has ? snippet + local : '');
-        var rel = ['game boy', 'volkswagen golf gti', 'rice university', 'factorio', 'hades speedrun'].map(function (r) { return crLink('google.com/search?q=' + encodeURIComponent(r), '🔍 ' + esc(r), 'cr-rel'); }).join('');
+            load('crSerpHN')) : (has ? local : '');
         return '<div class="cr-serp">' +
             '<div class="cr-serphead">' + (crEngine() === 'Google' ? '<span class="cr-serplogo"><b style="color:#4285f4">G</b><b style="color:#ea4335">o</b><b style="color:#fbbc05">o</b><b style="color:#4285f4">g</b><b style="color:#34a853">l</b><b style="color:#ea4335">e</b></span>' : '<span class="cr-serplogo"><b style="color:#d81e05">URE</b></span>') +
-              '<label class="cr-serpbox">' + ic('ic-search') + '<input class="cr-serpq" value="' + esc(q) + '" spellcheck="false" autocomplete="off"></label>' + liveChip() + '</div>' +
+              '<label class="cr-serpbox">' + ic('ic-search') + '<input class="cr-serpq" value="' + esc(q) + '" spellcheck="false" autocomplete="off"></label></div>' +
             '<div class="cr-serptabs"><span class="on">All</span><span>Images</span><span>Videos</span><span>News</span><span>Maps</span></div>' +
-            '<p class="cr-serpstat" id="crSerpStat">' + (has ? 'Searching the real web for “' + esc(q) + '”…' : 'Type a query to search the real web.') + '</p>' +
-            '<div id="crSerpAns"></div><div id="crSerpDym"></div>' +
-            sections +
-            '<div class="cr-relwrap"><b>Related searches</b><div class="cr-rels">' + rel + '</div></div></div>';
+            '<div id="crSerpAns"></div><div id="crSerpDym"></div><div id="crSerpNone"></div>' +
+            sections + '</div>';
     },
     init: function (view) {
+        if (view.querySelector('.cr-neterror')) { crErrWire(view); return; }
         var q = view.querySelector('.cr-serpq');
         var query = q ? q.value : crQOf(crTab().url);
         if (q) q.addEventListener('keydown', function (e) { if (e.key === 'Enter' && q.value.trim()) crNav('google.com/search?q=' + encodeURIComponent(q.value.trim())); });
-        view.querySelectorAll('.cr-serptabs span').forEach(function (t) {
-            t.addEventListener('click', function () { if (!t.classList.contains('on')) toast(t.textContent + ' results: also pixels, but sideways.'); });
-        });
         if (!query || !query.trim()) return;                          // empty SERP: render() already left no spinners
         /* re-mark for Alt+F after each section lands: the sections arrive long
            after the page does, and a find bar opened in between would otherwise
@@ -3018,39 +3024,47 @@ webPage('google.com/search', {
         var off = serpOffline(query);
         if (off) {                                                    // answered offline: render() painted no live sections
             addAns(serpAnswer(off.label, off.big, off.sub));
-            var sOff = view.querySelector('#crSerpStat');
-            if (sOff) sOff.textContent = 'Answered without touching the network.';
             return;
         }
-        if (intent.kind === 'time') serpTime(intent.place, addAns);
-        else if (intent.kind === 'weather') serpWeatherCard(intent.place, addAns);
-        else if (intent.kind === 'define') serpDict(intent.word, addAns);
-        else if (intent.kind === 'map') serpMap(intent.place, addAns);
-
         /* the knowledge panel rides along for anything entity-shaped. map/weather
            must hand it the PLACE — "where is rice university" is not an article
            title, so passing the raw query bought a guaranteed 404 per search. */
         var kpTerm = (intent.kind === 'map' || intent.kind === 'weather') ? intent.place : query;
-        if (/^(general|code|map|weather)$/.test(intent.kind) && String(kpTerm).trim().split(/\s+/).length <= 5)
-            serpKnowledge(kpTerm, function (h) { fill('crSerpKp', h); });
-        if (intent.kind === 'code') serpSO(query, function (h) { fill('crSerpSO', h); });
-        if (/^(general|code)$/.test(intent.kind)) serpImages(query, function (h) { fill('crSerpImg', h); });
+        var wantKp = /^(general|code|map|weather)$/.test(intent.kind) && String(kpTerm).trim().split(/\s+/).length <= 5;
+        var wantCard = /^(time|weather|define|map)$/.test(intent.kind);
+        var wantSO = intent.kind === 'code', wantImg = /^(general|code)$/.test(intent.kind);
+        var left = 3 + (wantSO ? 1 : 0) + (wantImg ? 1 : 0) + (wantKp ? 1 : 0) + (wantCard ? 1 : 0), failed = false;   // set before any pack is asked: a cached answer calls back at once
+        function card(h) { addAns(h); done(); }
+        if (intent.kind === 'time') serpTime(intent.place, card);
+        else if (intent.kind === 'weather') serpWeatherCard(intent.place, card);
+        else if (intent.kind === 'define') serpDict(intent.word, card);
+        else if (intent.kind === 'map') serpMap(intent.place, card);
+        if (wantKp) serpKnowledge(kpTerm, function (h) { fill('crSerpKp', h); done(); });
+        if (wantSO) serpSO(query, function (h) { fill('crSerpSO', h); done(); });
+        if (wantImg) serpImages(query, function (h) { fill('crSerpImg', h); done(); });
 
         serpWiki(query, true, function (featHtml, restHtml, total, suggest) {
             if (!view.isConnected) return;
             fill('crSerpFeat', featHtml);
             fill('crSerpWiki', restHtml);
+            done(total === null);
             /* wikipedia suggests variants even for correctly-spelled queries
                ("Douglas Adams" → "douglas adam's"); only ask when the suggestion
                differs by more than case, spacing, and punctuation */
             function dymKey(s) { return String(s).toLowerCase().replace(/[^a-z0-9]/g, ''); }
             if (suggest && dymKey(suggest) !== dymKey(query))
                 fill('crSerpDym', '<p class="cr-dym">Did you mean ' + crLink('google.com/search?q=' + encodeURIComponent(suggest), esc(suggest), 'cr-dymlink') + '?</p>');
-            var st = view.querySelector('#crSerpStat');
-            if (st) st.textContent = total ? 'About ' + nnum(total).toLocaleString() + ' Wikipedia results — plus live GitHub and Hacker News' : 'Real results for “' + query + '”';
         });
-        serpGH(query, function (h) { fill('crSerpGH', h); });
-        serpHN(query, function (h) { fill('crSerpHN', h); });
+        serpGH(query, function (h, err) { fill('crSerpGH', h); done(err); });
+        serpHN(query, function (h, err) { fill('crSerpHN', h); done(err); });
+        /* every pack back, none of them failed, and none had anything: Google's own page for that */
+        function done(err) {
+            if (err) failed = true;
+            if (--left || failed || !view.isConnected) return;
+            if (view.querySelector('.cr-res, .cr-serpfeat, .cr-kp, .cr-ansbox, .cr-wxans, .cr-imgcell, #crSerpAns > *')) return;
+            var el = view.querySelector('#crSerpNone');
+            if (el) el.innerHTML = '<div class="cr-serpnone"><p role="heading" aria-level="3">Your search - <em>' + esc(query) + '</em> - did not match any documents.</p><p>Suggestions:</p><ul><li>Make sure that all words are spelled correctly.</li><li>Try different keywords.</li><li>Try more general keywords.</li><li>Try fewer keywords.</li></ul></div>';
+        }
     }
 });
 
@@ -4498,25 +4512,6 @@ webPage('github.com/IsaacUre', {
     }
 });
 
-/* — Wikipedia: the GTI article — */
-webPage('en.wikipedia.org/wiki/Volkswagen_Golf_GTI', {
-    title: 'Volkswagen Golf GTI - Wikipedia', fav: { ch: 'W', c: '#202122' }, searchable: true,
-    stitle: 'Volkswagen Golf GTI - Wikipedia', sdesc: 'The Volkswagen Golf GTI is a hot hatch. One particular silver MK8, designated “Argent”, has achieved local notability.', skey: 'gti golf volkswagen argent car hot hatch',
-    render: function () {
-        return '<div class="cr-site cr-wiki"><div class="cr-wikihead"><span class="cr-wikiglobe">W</span><span><h2>Volkswagen Golf GTI</h2><i>From Wikipedia, the free encyclopedia</i></span></div>' +
-            '<div class="cr-wikibody"><div class="cr-wikitext">' +
-              '<p>The <b>Volkswagen Golf GTI</b> is a <a>hot hatchback</a> produced since 1976. It is widely credited with defining the segment: practical enough for errands, quick enough to make errands optional.</p>' +
-              '<div class="cr-wikitoc"><b>Contents</b><span>1 History</span><span>2 MK8 (2020–present)</span><span>3 Notable examples</span><span>4 See also</span></div>' +
-              '<h3>MK8 (2020–present)</h3><p>The eighth generation pairs a 2.0L turbocharged inline-four with opinions about touch controls. Enthusiasts report the chassis forgives what the infotainment does not.</p>' +
-              '<h3>Notable examples</h3><p>A silver MK8 operating in the greater Houston area under the designation <b>“Argent”</b><sup>[1]</sup> is maintained by an undergraduate economist. It has appeared in one (1) arcade game, one (1) management sim, and one (1) CRPG as a party member.<sup>[citation needed]</sup></p>' +
-              '<h3>See also</h3><p>' + crLink('isaacure.com', 'isaacure.com', 'cr-wikil') + ' · ' + crLink('google.com/search?q=gti%20run', 'GTI RUN (video game)', 'cr-wikil') + '</p>' +
-            '</div>' +
-            '<div class="cr-wikibox"><b>Volkswagen Golf GTI</b>' + ic('ic-gti', 'cr-wikicar') +
-              '<dl><dt>Production</dt><dd>1976–present</dd><dt>Class</dt><dd>Hot hatch</dd><dt>Engine</dt><dd>2.0L turbo I4</dd><dt>Best example</dt><dd>Argent (silver, MK8)</dd><dt>Top speed</dt><dd>redacted per mom</dd></dl></div>' +
-            '</div></div>';
-    }
-});
-
 /* — The Thresher — */
 webPage('thresher.rice.edu', {
     title: 'The Rice Thresher', fav: { ch: 'T', c: '#00205b' }, searchable: true,
@@ -4601,24 +4596,19 @@ webPage('mail.google.com', {
 /* — chrome://dino — */
 webPage('chrome://dino', {
     title: 'chrome://dino', fav: { ic: 'ic-chrome' },
-    render: function () {
-        return '<div class="cr-dino"><div class="cr-dinohud"><span>HI ' + String(+recall('chrome_dino_hi', 0)).padStart(5, '0') + '</span><span id="crDinoScore">00000</span></div>' +
-            '<canvas id="crDinoCv" width="600" height="160"></canvas>' +
-            '<p class="cr-dinotip" id="crDinoTip">Press SPACE, ↑, or click to jump. The desert is procedurally hostile.</p></div>';
-    },
-    init: function (view) { crDinoBoot(view); }
+    render: function () { return crErrPage('dino', 'chrome://dino'); },   // Chromium's error page with the game's instruction and no error code (localized_error.cc show_game_instructions)
+    init: function (view) { var ne = view.querySelector('.cr-neterror'); if (ne) crDinoMount(ne); crDinoBoot(view); }
 });
 
-/* — error page — */
+/* — the error page: Chrome's own, for an address that is not a site — */
 webPage('__err', {
     title: 'Site can’t be reached', fav: { ch: '!', c: '#9aa0a6' },
     render: function (host) {
-        return '<div class="cr-err"><span class="cr-errdino">🦖</span><h2>This site can’t be reached</h2>' +
-            '<p><b>' + esc(host || 'that') + '</b> doesn’t exist on this machine’s tiny, curated internet.</p>' +
-            '<p class="cr-errcode">ERR_NAME_NOT_RESOLVED_ (it’s a museum)</p>' +
-            '<div class="cr-errbtns"><button class="cr-btn" id="crErrBack">Go back</button>' + crLink('chrome://dino', 'Play the dino instead', 'cr-btn ghost') + '</div></div>';
+        var u = String(crTab().url || '');
+        if (/^chrome:/i.test(u)) return crErrPage('invalid', u.replace(/^(chrome:\/\/[^\/?#]*)$/i, '$1/'));   // chrome://nothing: Chrome's page for an address it has no page for
+        return crErrPage('dns', host || '');
     },
-    init: function (view) { var b = view.querySelector('#crErrBack'); if (b) b.addEventListener('click', crBack); }
+    init: function (view) { crErrWire(view); }
 });
 
 /* — chrome://settings — */
@@ -4730,7 +4720,8 @@ webPage('__viewsource', {
         var target = String(crTab().url).replace(/^(view-source:)+/i, '');
         var s = crSite(target);
         if (s === WEB['__viewsource']) s = WEB.__err;   // never render ourselves — that way lies recursion
-        var html = s === WEB.__err ? s.render(String(target).split('/')[0]) : s.render(crQOf(target));
+        if (s === WEB.__frame || (s.source && !s.source(target))) return '<div class="cr-src"><ol></ol></div>';   // not drawn yet: init loads it, and the page lists itself when it lands
+        var html = s === WEB.__err ? s.render(String(target).split('/')[0]) : s.source ? s.source(target) : s.render(crQOf(target));
         var lines = html.replace(/></g, '>\n<').split('\n');
         return '<div class="cr-src"><ol>' + lines.map(function (ln) {
             var h = esc(ln)
@@ -4739,19 +4730,23 @@ webPage('__viewsource', {
                 .replace(/(&lt;\/?)([a-z][a-z0-9-]*)/gi, '$1<i class="st">$2</i>');
             return '<li>' + h + '</li>';
         }).join('') + '</ol></div>';
+    },
+    init: function (view) {
+        var target = String(crTab().url).replace(/^(view-source:)+/i, ''), s = crSite(target);
+        if (!s.source || s.source(target) || !s.init) return;
+        var box = document.createElement('div'); box.className = 'cr-vsbox'; box.hidden = true; view.appendChild(box);
+        s.init(box);                                           // liveUrl() strips view-source:, so the site loads the target here
     }
 });
 
-/* ════════════════════ the LIVE web ════════════════════
-   The museum grows windows. A handful of real sites are CORS-open
-   to any static page, so this Chrome genuinely browses them:
-   Wikipedia (any article), Hacker News (front page + threads),
-   GitHub (any profile or repo), Open-Meteo (real weather). Each
-   is fetched client-side and re-rendered in the house style —
-   no proxy, no server, no dependencies, same as everything else.
-   Everything NOT understood falls through to a sandboxed iframe
-   (__frame) that loads the honest-to-goodness site when it lets us.
-   ════════════════════════════════════════════════════════ */
+/* ════════════════════ the web ════════════════════
+   A few sites answer a static page's browser directly (their APIs allow any
+   origin), so this Chrome shows them from their own data: Wikipedia, Hacker
+   News, GitHub, and the sources behind the results page. Each is fetched in
+   the visitor's browser and drawn as the site draws it — no proxy, no server.
+   Any other real-looking address loads in a sandboxed frame (__frame); an
+   address that is not one gets Chrome's own error page (__err).
+   ═══════════════════════════════════════════════════════ */
 /* null prototype on every map keyed by user input or a fetched URL: a bare
    {} inherits constructor/toString/valueOf, so looking up those words returns a
    truthy non-entry and the caller then treats a Function as data. */
@@ -4771,8 +4766,8 @@ function nnum(n) { n = +n; return isFinite(n) ? n : 0; }
 /* fetch JSON with a timeout, an offline check, and the cache in front.
    incognito neither reads nor writes the cache — a private fetch must not leave
    its response body behind for a normal tab, nor reuse one it left there. */
-function liveGet(url, cb) {
-    var priv = !!(CR && CR.incog);
+function liveGet(url, cb, nocache) {
+    var priv = !!(CR && CR.incog) || !!nocache;
     if (!priv) { var hit = liveCacheGet(url); if (hit) { cb(null, hit); return; } }
     if (navigator.onLine === false) { cb('offline'); return; }
     var ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
@@ -4790,118 +4785,105 @@ function livePath(host) {
     var u = liveUrl();
     return u.toLowerCase().indexOf(host) === 0 ? u.slice(host.length).replace(/^\//, '') : '';
 }
-/* ── sanitizer: real HTML → the small tag set this browser trusts ──
-   Parsed in an inert document (scripts never run), then rebuilt node by
-   node against a whitelist. Nothing from the wire touches innerHTML.
-   Links come back as the sim's own cr-l buttons via linkFn. */
-var LIVE_TAGS = { P: 'p', B: 'b', STRONG: 'b', I: 'i', EM: 'i', UL: 'ul', OL: 'ol', LI: 'li', H2: 'h3', H3: 'h4', H4: 'h4', BLOCKQUOTE: 'blockquote', CODE: 'code', PRE: 'pre', BR: 'br', SUP: 'sup', SUB: 'sub' };
-var LIVE_DROP = { SCRIPT: 1, STYLE: 1, IFRAME: 1, OBJECT: 1, EMBED: 1, SVG: 1, MATH: 1, TABLE: 1, FIGURE: 1, IMG: 1, VIDEO: 1, AUDIO: 1, LINK: 1, META: 1, FORM: 1, INPUT: 1, BUTTON: 1, TEXTAREA: 1, SELECT: 1, CANVAS: 1, TEMPLATE: 1, NOSCRIPT: 1 };
-function liveSanitize(html, linkFn) {
-    var doc;
-    try { doc = new DOMParser().parseFromString(String(html || ''), 'text/html'); } catch (e) { return ''; }
-    var out = document.createElement('div');
-    (function walk(src, dst, depth) {
-        if (depth > 40) return;
-        for (var n = src.firstChild; n; n = n.nextSibling) {
-            if (n.nodeType === 3) { dst.appendChild(document.createTextNode(n.nodeValue)); continue; }
-            if (n.nodeType !== 1) continue;
-            var tag = n.nodeName.toUpperCase();
-            if (LIVE_DROP[tag]) {
-                /* A dropped node usually has nothing worth keeping — but Wikipedia
-                   ships every formula as <math> plus an <img> fallback, with the
-                   TeX sitting in alttext/alt. Dropping the subtree silently deleted
-                   it, so "defined as <formula> for <formula>" became "defined as
-                   for" on every maths article. Keep the text, drop the markup. */
-                var alt = n.getAttribute && (n.getAttribute('alttext') || n.getAttribute('alt'));
-                if (alt) {
-                    alt = String(alt).replace(/^\{\\displaystyle\s*/, '').replace(/\}$/, '').trim();
-                    // the <math> and its <img> fallback carry the SAME TeX, so
-                    // emitting both would print every formula twice
-                    var prev = dst.lastChild;
-                    var dupe = prev && prev.nodeType === 1 && prev.nodeName === 'CODE' && prev.textContent === alt;
-                    if (alt && alt.length < 400 && !dupe) {
-                        var code = document.createElement('code');
-                        code.appendChild(document.createTextNode(alt));
-                        dst.appendChild(code);
-                    }
-                }
-                continue;
-            }
-            if (tag === 'A') {
-                var to = linkFn ? linkFn(n.getAttribute('href') || '') : null;
-                if (!to) { walk(n, dst, depth + 1); continue; }        // unroutable link: keep its text
-                var a = document.createElement('a');
-                a.className = 'cr-l cr-lva';
-                a.setAttribute('data-href', to);
-                /* a bare <a> with no href is not a link to the keyboard or a
-                   screen reader — it is unfocusable and unannounced. Give it a
-                   real href for semantics; the delegated handler still routes
-                   the click inside the sim, and preventDefault stops the browser
-                   from actually leaving the page. */
-                a.setAttribute('href', 'https://' + String(to).replace(/^https?:\/\//i, ''));
-                walk(n, a, depth + 1);
-                dst.appendChild(a);
-                continue;
-            }
-            var mapped = LIVE_TAGS[tag];
-            if (mapped) {
-                var el = document.createElement(mapped);
-                walk(n, el, depth + 1);
-                dst.appendChild(el);
-            } else {
-                walk(n, dst, depth + 1);                               // unknown container: unwrap, keep the words
-            }
-        }
-    })(doc.body, out, 0);
-    return out.innerHTML;
-}
-/* shared live-page states, in the museum's voice */
-function liveSkeleton(label) {
-    return '<div class="cr-lv"><div class="cr-lvload"><span class="cr-lvspin"></span><p>Fetching the real ' + esc(label) + '…</p>' +
-        '<i>an actual network request is happening inside the fake computer</i></div></div>';
-}
-function liveFail(err, what, r) {
-    if (err === 'offline' || err === 'net') {
-        return '<div class="cr-err"><span class="cr-errdino">🦖</span><h2>The real internet didn’t answer</h2>' +
-            '<p>' + esc(what) + ' needs the outside world, and the outside world is ' + (err === 'offline' ? 'offline' : 'not picking up') + '.</p>' +
-            '<p class="cr-errcode">ERR_INTERNET_ACTUALLY_DISCONNECTED</p>' +
-            '<div class="cr-errbtns"><button class="cr-btn" id="crErrBack">Go back</button>' + crLink('chrome://dino', 'Play the dino — he was built for this', 'cr-btn ghost') + '</div></div>';
+/* ── Chrome's own error pages ──
+   The markup of Chromium's components/neterror (neterror.ts, getHtml), its
+   strings (error_page_strings.grdp), the suggestion set each error shows
+   (localized_error.cc), its icons (the two PNGs, 1x and 2x) and the styles of
+   neterror.css and the interstitial stylesheets (in comp.css under .cr-neterror).
+   kind: dns (ERR_NAME_NOT_RESOLVED), offline (ERR_INTERNET_DISCONNECTED),
+   timeout (ERR_CONNECTION_TIMED_OUT), empty (ERR_EMPTY_RESPONSE), http (a
+   status the server sent with no page of its own: "HTTP ERROR 500"). */
+var CR_NETERR_ICON = { generic: ['data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEgAAABIAQMAAABvIyEEAAAABlBMVEUAAABTU1OoaSf/AAAAAXRSTlMAQObYZgAAAENJREFUeF7tzbEJACEQRNGBLeAasBCza2lLEGx0CxFGG9hBMDDxRy/72O9FMnIFapGylsu1fgoBdkXfUHLrQgdfrlJN1BdYBjQQm3UAAAAASUVORK5CYII=', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAJAAAACQAQMAAADdiHD7AAAABlBMVEUAAABTU1OoaSf/AAAAAXRSTlMAQObYZgAAAFJJREFUeF7t0cENgDAMQ9FwYgxG6WjpaIzCCAxQxVggFuDiCvlLOeRdHR9yzjncHVoq3npu+wQUrUuJHylSTmBaespJyJQoObUeyxDQb3bEm5Au81c0pSCD8HYAAAAASUVORK5CYII='], offline: ['data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEgAAABIAQMAAABvIyEEAAAABlBMVEUAAABTU1OoaSf/AAAAAXRSTlMAQObYZgAAAGxJREFUeF7tyMEJwkAQRuFf5ipMKxYQiJ3Z2nSwrWwBA0+DQZcdxEOueaePp9+dQZFB7GpUcURSVU66yVNFj6LFICatThZB6r/ko/pbRpUgilY0Cbw5sNmb9txGXUKyuH7eV25x39DtJXUNPQGJtWFV+BT/QAAAAABJRU5ErkJggg==', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAJAAAACQBAMAAAAVaP+LAAAAGFBMVEUAAABTU1NNTU1TU1NPT09SUlJSUlJTU1O8B7DEAAAAB3RSTlMAoArVKvVgBuEdKgAAAJ1JREFUeF7t1TEOwyAMQNG0Q6/UE+RMXD9d/tC6womIFSL9P+MnAYOXeTIzMzMzMzMzaz8J9Ri6HoITmuHXhISE8nEh9yxDh55aCEUoTGbbQwjqHwIkRAEiIaG0+0AA9VBMaE89Rogeoww936MQrWdBr4GN/z0IAdQ6nQ/FIpRXDwHcA+JIJcQowQAlFUA0MfQpXLlVQfkzR4igS6ENjknm/wiaGhsAAAAASUVORK5CYII='] };
+function crErrPage(kind, host, code) {
+    var H = '<strong>' + esc(host || '') + '</strong>';
+    var diag = '<a href="#" id="diagnose-link">Running Windows Network Diagnostics</a>';
+    var help = function (t) { return '<a href="#buttons" class="cr-ne-help">' + t + '</a>'; };
+    var CONN = ['Check your Internet connection', 'Check any cables and reboot any routers, modems, or other network devices you may be using.'];
+    var DNS = ['Check your DNS settings', 'Contact your network administrator if you\'re not sure what this means.'];
+    var PROXY = ['If you use a proxy server...', 'Check your proxy settings or contact your network administrator to make sure the proxy server is working. If you don\'t believe you should be using a proxy server: You can disable any proxies configured for a connection from the settings page.'];
+    var heading = 'This site can’t be reached', summary = '', list = [], errcode = '', reload = true, details = [], icon = 'icon-generic';
+    /* offline (and chrome://dino): the heading is the game's instruction for the device
+       (neterror.ts updateInitialInstruction), "No internet" is the summary the page hides,
+       and there are no buttons (localized_error.cc: SHOW_NO_BUTTONS, no details) */
+    var play = navigator.maxTouchPoints === 0 ? 'Press space to play' : (window.matchMedia && window.matchMedia('(hover: hover)').matches ? 'Tap the dino or press space to play' : 'Tap the dino to play');
+    if (kind === 'offline') { heading = play; summary = 'No internet'; list = ['Checking the network cables, modem, and router', 'Reconnecting to Wi-Fi', diag]; errcode = 'ERR_INTERNET_DISCONNECTED'; reload = false; icon = 'icon-offline'; }
+    else if (kind === 'dino') { heading = play; reload = false; icon = 'icon-offline'; }
+    else if (kind === 'timeout') { summary = H + ' took too long to respond.'; list = ['Checking the connection', help('Checking the proxy and the firewall'), diag]; errcode = 'ERR_CONNECTION_TIMED_OUT'; details = [CONN, PROXY]; }
+    else if (kind === 'empty') { heading = 'This page isn’t working'; summary = H + ' didn’t send any data.'; errcode = 'ERR_EMPTY_RESPONSE'; }
+    else if (kind === 'invalid') { summary = 'The webpage at ' + H + ' might be temporarily down or it may have moved permanently to a new web address.'; errcode = 'ERR_INVALID_URL'; reload = false; }
+    else if (kind === 'http') {
+        var HS = '<span>' + esc(host || '') + '</span>';
+        heading = code === 403 ? 'Access to ' + HS + ' was denied' : code === 404 || code === 410 ? 'This ' + HS + ' page can’t be found' : 'This page isn’t working';
+        summary = code === 403 ? 'You don\'t have authorization to view this page.' : code === 404 ? 'No webpage was found for the web address: <strong>' + esc('https://' + liveUrl()) + '</strong>' : code === 410 ? 'It may have been moved or deleted.'
+            : code === 504 ? H + ' took too long to respond.' : code >= 500 && code <= 503 ? H + ' is currently unable to handle this request.' : 'If the problem continues, contact the site owner.';
+        reload = code !== 410 && code !== 501; errcode = 'HTTP ERROR ' + nnum(code);
     }
-    if (err === 'http403' && r && r.headers && r.headers.get('x-ratelimit-remaining') === '0') {
-        var reset = +r.headers.get('x-ratelimit-reset') * 1000;
-        return '<div class="cr-err"><span class="cr-errdino">⏳</span><h2>Rate limited</h2>' +
-            '<p>GitHub gives anonymous museums 60 requests an hour. They ran out.</p>' +
-            '<p class="cr-errcode">Resets ' + (reset ? 'around ' + fmtTime(new Date(reset)) : 'within the hour') + '</p>' +
-            '<div class="cr-errbtns"><button class="cr-btn" id="crErrBack">Go back</button></div></div>';
-    }
-    /* a 404 is not "strange" — it is the single most ordinary answer on the web,
-       and saying so is the difference between "you typo'd" and "this is broken" */
-    if (err === 'http404' || err === 'empty') {
-        return '<div class="cr-err"><span class="cr-errdino">🔎</span><h2>Nothing here by that name</h2>' +
-            '<p>' + esc(what) + ' has no page at that address. Check the spelling, or search for it instead.</p>' +
-            '<div class="cr-errbtns"><button class="cr-btn" id="crErrBack">Go back</button>' +
-            crLink('google.com/search?q=' + encodeURIComponent(String(liveUrl()).split('/').pop().replace(/_/g, ' ')), 'Search for it', 'cr-btn ghost') + '</div></div>';
-    }
-    return '<div class="cr-err"><span class="cr-errdino">🦖</span><h2>That didn’t load</h2>' +
-        '<p>' + esc(what) + ' answered strangely (' + esc(String(err)) + '). The real web does that sometimes.</p>' +
-        '<div class="cr-errbtns"><button class="cr-btn" id="crErrBack">Go back</button></div></div>';
+    else { summary = H + '’s server IP address could not be found.'; list = ['Checking the connection', help('Checking the proxy, firewall, and DNS configuration'), diag]; errcode = 'ERR_NAME_NOT_RESOLVED'; details = [CONN, DNS, PROXY]; }
+    return '<div class="cr-neterror" data-kind="' + kind + '"><div id="main-frame-error" class="interstitial-wrapper"><div id="main-content">' +
+        '<div class="icon ' + icon + '" style="background-image: url(' + CR_NETERR_ICON[icon === 'icon-offline' ? 'offline' : 'generic'][0] + '); background-image: image-set(url(' + CR_NETERR_ICON[icon === 'icon-offline' ? 'offline' : 'generic'][0] + ') 1x, url(' + CR_NETERR_ICON[icon === 'icon-offline' ? 'offline' : 'generic'][1] + ') 2x);"></div><div id="main-message"><h1><span>' + heading + '</span></h1>' +
+        (summary ? '<p>' + summary + '</p>' : '') +
+        (list.length ? '<div id="suggestions-list"><p>Try:</p><ul class="' + (list.length === 1 ? 'single-suggestion' : '') + '">' + list.map(function (s) { return '<li>' + s + '</li>'; }).join('') + '</ul></div>' : '') +
+        '<div class="error-code">' + errcode + '</div></div></div>' +
+        '<div id="buttons" class="nav-wrapper suggested-left"><div id="control-buttons"' + (reload ? '' : ' hidden') + '><button id="reload-button" class="blue-button text-button">Reload</button></div>' +   // suggested-left: Windows puts Reload left and Details right
+        (details.length ? '<button id="details-button" class="secondary-button text-button small-link' + (reload ? '' : ' singular') + '">Details</button>' : '') + '</div>' +
+        (details.length ? '<div id="details">' + details.map(function (d) { return '<div class="suggestions"><div class="suggestion-header">' + d[0] + '</div><div class="suggestion-body">' + d[1] + '</div></div>'; }).join('') + '</div>' : '') +
+        '</div></div>';
 }
-function liveWireBack(view) { var b = view.querySelector('#crErrBack'); if (b) b.addEventListener('click', crBack); }
-/* the geocoder came back empty (or unreachable) for a directly-typed city */
-function wxNoCity(name, err) {
-    if (err === 'offline' || err === 'net' || /^http/.test(String(err))) return liveFail(err, 'Open-Meteo');
-    return '<div class="cr-err"><span class="cr-errdino">🗺️</span><h2>No such place</h2>' +
-        '<p>The real atlas has no “<b>' + esc(name) + '</b>”. Check the spelling, or try a bigger nearby city.</p>' +
-        '<div class="cr-errbtns"><button class="cr-btn" id="crErrBack">Go back</button>' + crLink('open-meteo.com', 'Weather home', 'cr-btn ghost') + '</div></div>';
+/* the runner's canvas in the page, where the icon was (neterror.css .runner-container) */
+function crDinoMount(ne) {
+    var wrap = ne.querySelector('.interstitial-wrapper'); if (!wrap) return;
+    var rc = document.createElement('div'); rc.className = 'runner-container';
+    rc.innerHTML = '<canvas id="crDinoCv" class="runner-canvas" width="' + Math.min(600, wrap.clientWidth || 600) + '" height="150"></canvas>';
+    wrap.insertBefore(rc, wrap.firstChild);
+    var ic0 = ne.querySelector('.icon-offline'); if (ic0) ic0.style.visibility = 'hidden';
+}
+/* the page's two buttons, the help links, and the dinosaur: the offline page's
+   runner starts on Space or a jump, as Chrome's does */
+function crErrWire(view) {
+    var ne = view.querySelector('.cr-neterror'); if (!ne) return;
+    var rl = ne.querySelector('#reload-button'); if (rl) rl.addEventListener('click', function () { crPage(); });
+    var frame = ne.querySelector('#main-frame-error'), db = ne.querySelector('#details-button');
+    function toggle() { var on = frame.classList.toggle('showing-details'); if (db) db.textContent = on ? 'Hide details' : 'Details'; }
+    if (db) db.addEventListener('click', toggle);
+    Array.prototype.forEach.call(ne.querySelectorAll('.cr-ne-help'), function (a) { a.addEventListener('click', function (e) { e.preventDefault(); if (!frame.classList.contains('showing-details')) toggle(); }); });
+    var dg = ne.querySelector('#diagnose-link'); if (dg) dg.addEventListener('click', function (e) { e.preventDefault(); });
+    if (ne.getAttribute('data-kind') === 'offline') {
+        var start = function () {
+            document.removeEventListener('keydown', onKey);
+            if (!view.isConnected || ne.querySelector('.runner-container')) return;
+            crDinoMount(ne);
+            crDinoBoot(view);
+            CR.dinoHere = true;                                  // after the boot: its crDinoStop() clears the flag
+            if (CR.dinoJump) CR.dinoJump();                      // the Space that opened the runner starts the run, as the Runner's does
+        };
+        var onKey = function (e) {
+            if (!view.isConnected || !CR) { document.removeEventListener('keydown', onKey); return; }
+            if (activeApp !== 'chrome' || CR.el.classList.contains('mini')) return;
+            var a = document.activeElement; if (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return;
+            if (e.code === 'Space' || e.key === 'ArrowUp') { e.preventDefault(); start(); }
+        };
+        document.addEventListener('keydown', onKey);
+        var ic = ne.querySelector('.icon-offline'); if (ic) ic.addEventListener('click', start);
+    }
+}
+/* what a site that did not answer looks like: Chrome's page for it. err is
+   liveGet's word (offline, net, httpNNN, empty); host the site asked. */
+function liveFail(err, host, r) {
+    if (err === 'offline') return crErrPage('offline', host);
+    if (err === 'net') return crErrPage('timeout', host);
+    var m = /^http(\d{3})$/.exec(String(err || ''));
+    if (m) return crErrPage('http', host, +m[1]);
+    return crErrPage('empty', host);
 }
 /* fill a live view when the fetch lands — but only if the user is still there.
    crPage swaps the view node on every navigation, so a stale response writes
    into a detached div and vanishes. isConnected is the whole race guard. */
 function liveFill(view, url, html, title) {
     if (!view.isConnected) return;
+    if (view.classList.contains('cr-vsbox')) view = view.parentNode;   // a view-source: tab whose page did not load shows Chrome's page for that itself
     view.innerHTML = html;
-    liveWireBack(view);
-    liveTitle(url, title);
+    crErrWire(view);
+    liveTitle(url, title || String(url).replace(/^https?:\/\//i, '').split(/[\/?#]/)[0]);   // a page that did not load is titled by its host, as Chrome's error page is (localized_error.cc)
     if (find.appId === 'chrome' && findOpenNow()) runFind();
 }
 /* a live page tells the tab (and the history entry the nav just wrote) its real name */
@@ -4918,7 +4900,6 @@ function liveTitle(url, title) {
     crTabs();
 }
 /* the little proof-of-life chip live pages wear */
-function liveChip() { return '<span class="cr-lvchip" title="Fetched from the real site just now">● live</span>'; }
 
 /* ── real search: snippet plumbing ──
    a search snippet arrives as HTML (Wikipedia wraps matches in <span
@@ -4946,60 +4927,58 @@ function snipHighlight(html, q) {
 /* one SERP section: a header, then rows, an empty note, or an error note.
    fills a pre-placed #slot so the three sources can land in any order and the
    layout never jumps. every fill is guarded by the caller's view.isConnected. */
-function serpSection(label, err, rowsHtml, emptyMsg) {
-    var h = '<h4 class="cr-serph">' + esc(label) + '</h4>';
-    if (err === 'rate') return h + '<p class="cr-serpnote">' + esc(label) + ' allows only a few anonymous searches a minute — it just hit the limit. Try again shortly.</p>';
-    if (err === 'badq') return h + '<p class="cr-serpnote">' + esc(label) + ' couldn’t parse that query.</p>';
-    if (err) return h + '<p class="cr-serpnote">Couldn’t reach ' + esc(label) + ' (' + esc(String(err)) + ').</p>';
-    if (!rowsHtml) return h + '<p class="cr-serpnote">' + esc(emptyMsg || 'No results.') + '</p>';
-    return h + rowsHtml;
+function serpSection(label, err, rowsHtml) {
+    if (err || !rowsHtml) return '';                       // a source that did not answer, or had nothing, adds nothing
+    return (label ? '<h4 class="cr-serph">' + esc(label) + '</h4>' : '') + rowsHtml;
 }
 /* the three real sources. each takes the query + a done() it calls once, and is
    entirely self-contained so one source failing never blocks another. serpWiki
    returns (featuredCardHtml, restSectionHtml, totalHits) so the caller drops the
    card and the rows into their own slots — no fragile string re-splitting. */
+function serpWikiUrl(q) { return 'https://en.wikipedia.org/w/api.php?format=json&origin=*&action=query&list=search&srlimit=6&srinfo=totalhits|suggestion&srprop=snippet&srsearch=' + encodeURIComponent(q); }
+/* offline, with nothing cached to draw the page from (a tab switch or Back redraws it; Chrome would not reload it) */
+var SERP_SEEN = Object.create(null);                      // query → 1: a results page that asks no source, drawn once while online (a private window's live on the window, CR.privSerp)
+function serpGone(q) { q = q || ''; if (navigator.onLine !== false) return false; var seen = CR && CR.incog ? CR.privSerp : SERP_SEEN; return !(seen && seen[q]) && (!!(CR && CR.incog) || !liveCacheGet(serpWikiUrl(q))); }
 function serpWiki(q, feat, done) {
-    liveGet('https://en.wikipedia.org/w/api.php?format=json&origin=*&action=query&list=search&srlimit=6&srinfo=totalhits|suggestion&srprop=snippet&srsearch=' + encodeURIComponent(q), function (err, j, r) {
-        if (err || !j || !j.query || !j.query.search) { done('', serpSection('Wikipedia', err || 'empty'), null); return; }
+    liveGet(serpWikiUrl(q), function (err, j, r) {
+        if (err || !j || !j.query || !j.query.search) { done('', '', null); return; }
         var info = j.query.searchinfo || {}, hits = j.query.search, total = info.totalhits, sug = info.suggestion || '';
-        if (!hits.length) { done('', serpSection('Wikipedia', null, null), 0, sug); return; }
+        if (!hits.length) { done('', '', 0, sug); return; }
         var top = hits[0];
         var turl = 'en.wikipedia.org/wiki/' + top.title.replace(/ /g, '_');
         var featHtml = feat ? '<div class="cr-serpfeat">' + crLink(turl, '<span class="cr-featt">' + esc(top.title) + '</span>', 'cr-featlink') +
-            '<span class="cr-featsrc">Wikipedia</span><p class="cr-featsnip">' + snipHighlight(top.snippet, q) + '…</p>' +
-            crLink(turl, 'Read the full article →', 'cr-featmore') + '</div>' : '';
+            '<span class="cr-featsrc">Wikipedia</span><p class="cr-featsnip">' + snipHighlight(top.snippet, q) + '…</p></div>' : '';
         var list = feat ? hits.slice(1, 5) : hits.slice(0, 5);
         var rows = list.map(function (h) {
             var u = 'en.wikipedia.org/wiki/' + h.title.replace(/ /g, '_');
-            return serpRow(u, 'en.wikipedia.org › wiki › ' + esc(h.title), { ch: 'W', c: '#202122' }, h.title, snipHighlight(h.snippet, q) + '…');
+            return serpRow(u, 'en.wikipedia.org › wiki › ' + esc(h.title), WK_DEF.fav, h.title, snipHighlight(h.snippet, q) + '…');
         }).join('');
         // a single-hit query has no "rest" — show only the featured card, no contradictory empty note
-        done(featHtml, rows ? serpSection(feat ? 'More from Wikipedia' : 'Wikipedia', null, rows) : '', total, sug);
+        done(featHtml, serpSection('', null, rows), total, sug);
     });
 }
 function serpGH(q, done) {
     liveGet('https://api.github.com/search/repositories?per_page=4&sort=stars&q=' + encodeURIComponent(q), function (err, j, r) {
-        if (err) { done(serpSection('Code · GitHub', err === 'http403' || err === 'http429' ? 'rate' : err === 'http422' ? 'badq' : err)); return; }
-        if (!j || !j.items || !j.items.length) { done(serpSection('Code · GitHub', null, null, 'No repositories match.')); return; }
+        if (err || !j || !j.items || !j.items.length) { done('', !!err); return; }
         var rows = j.items.slice(0, 4).map(function (rp) {
             var meta = '★ ' + nnum(rp.stargazers_count).toLocaleString() + (rp.language ? ' · ' + esc(rp.language) : '');
             return serpRow('github.com/' + rp.full_name, 'github.com › ' + esc(rp.full_name), { ic: 'ic-github' }, rp.full_name,
                 (rp.description ? esc(rp.description) + ' ' : '') + '<span class="cr-serpmeta">' + meta + '</span>');
         }).join('');
-        done(serpSection('Code · GitHub', null, rows));
+        done(serpSection('', null, rows));
     });
 }
 function serpHN(q, done) {
     liveGet('https://hn.algolia.com/api/v1/search?tags=story&hitsPerPage=5&query=' + encodeURIComponent(q), function (err, j, r) {
-        if (err || !j || !j.hits) { done(serpSection('Discussion · Hacker News', err || 'empty')); return; }
+        if (err || !j || !j.hits) { done('', true); return; }
         var hits = j.hits.filter(function (h) { return h.title; });
-        if (!hits.length) { done(serpSection('Discussion · Hacker News', null, null, 'No discussions found.')); return; }
+        if (!hits.length) { done(''); return; }
         var rows = hits.slice(0, 4).map(function (h) {
             var item = 'news.ycombinator.com/item?id=' + h.objectID;
-            return serpRow(item, 'news.ycombinator.com › item', { ch: 'Y', c: '#ff6600' }, h.title,
+            return serpRow(item, 'news.ycombinator.com › item', WEB['news.ycombinator.com'].fav, h.title,
                 '<span class="cr-serpmeta">' + nnum(h.points) + ' points · ' + nnum(h.num_comments) + ' comments · ' + esc(h.author || '?') + '</span>');
         }).join('');
-        done(serpSection('Discussion · Hacker News', null, rows));
+        done(serpSection('Discussions and forums', null, rows));   // Google's own name for this block
     });
 }
 /* one result row, Google-shaped: url line, blue title, snippet */
@@ -5189,7 +5168,7 @@ function serpKnowledge(q, done) {
                 '<div class="cr-kpbody"><h3 class="cr-kptitle">' + esc(j.title) + '</h3>' +
                 (j.description ? '<span class="cr-kpdesc">' + esc(j.description) + '</span>' : '') +
                 '<p class="cr-kpext">' + esc(j.extract) + '</p>' + (factsHtml || '') +
-                crLink(turl, 'Wikipedia →', 'cr-kpmore') + '</div></div>');
+                crLink(turl, 'Wikipedia', 'cr-kpmore') + '</div></div>');
         }
         if (!j.wikibase_item) { paint(''); return; }
         var sparql = 'SELECT ?propLabel ?valLabel WHERE { VALUES ?p { ' + WD_PROPS + ' } wd:' + j.wikibase_item +
@@ -5223,7 +5202,7 @@ function serpDict(word, done) {
             return '<div class="cr-dblock"><i class="cr-dpos">' + esc(m.partOfSpeech || '') + '</i><ol>' + defs + '</ol></div>';
         }).join('');
         done('<div class="cr-dict"><div class="cr-dhead"><h3>' + esc(e.word) + '</h3>' + (phon ? '<span class="cr-dphon">' + esc(phon) + '</span>' : '') + '</div>' + blocks +
-            '<p class="cr-lvfoot">Definitions from the free Dictionary API.</p></div>');
+            '</div>');
     });
 }
 /* ── images pack: real Wikimedia Commons thumbnails ── */
@@ -5243,7 +5222,7 @@ function serpImages(q, done) {
                 out.push('<figure class="cr-imgcell"><img alt="" loading="lazy" referrerpolicy="no-referrer" src="' + esc(ii.thumburl) + '">' +
                     '<figcaption>' + esc(String(p.title || '').replace(/^File:/, '').replace(/\.[a-z]+$/i, '')) + '</figcaption></figure>');
             });
-        done(out.length ? '<h4 class="cr-serph">Images</h4><div class="cr-imgrow">' + out.join('') + '</div><p class="cr-serpnote">From Wikimedia Commons.</p>' : '');
+        done(out.length ? '<h4 class="cr-serph">Images</h4><div class="cr-imgrow">' + out.join('') + '</div>' : '');
     });
 }
 /* ── Stack Overflow answers, for code-shaped queries ── */
@@ -5255,7 +5234,7 @@ function serpSO(q, done) {
             return serpRow(u, 'stackoverflow.com › questions', { ch: 'S', c: '#f48024' }, snipText(it.title),
                 '<span class="cr-serpmeta">' + nnum(it.score) + ' votes · ' + nnum(it.answer_count) + ' answers' + (it.is_answered ? ' · ✓ accepted' : '') + '</span>');
         }).join('');
-        done(serpSection('Answers · Stack Overflow', null, rows));
+        done(serpSection('', null, rows));
     });
 }
 /* ── map card: real geocode + real OSM tiles stitched into a little map ── */
@@ -5308,7 +5287,7 @@ function serpWeatherCard(place, done) {
             done('<div class="cr-ansbox cr-wxans"><span class="cr-anslabel">Weather · ' + esc(g.name + (g.admin1 ? ', ' + g.admin1 : '')) + '</span>' +
                 '<div class="cr-ansbig">' + w[0] + ' ' + Math.round(c.temperature_2m) + '°F</div>' +
                 '<p class="cr-anssub">' + esc(w[1]) + ' · humidity ' + nnum(c.relative_humidity_2m) + '% · wind ' + Math.round(c.wind_speed_10m) + ' mph</p>' +
-                crLink('open-meteo.com/forecast?q=' + encodeURIComponent(g.name + '@' + g.latitude + ',' + g.longitude), 'Full forecast →', 'cr-kpmore') + '</div>');
+                crLink('open-meteo.com', 'Open-Meteo', 'cr-kpmore') + '</div>');
         });
     });
 }
@@ -5317,144 +5296,1467 @@ function serpRow(url, urlLine, fav, title, snipHtml) {
         '<span class="cr-resdesc">' + snipHtml + '</span></div>';
 }
 
-/* — Wikipedia, the whole thing — */
-function wikiTitleOf(path) {
-    var t = path.replace(/^wiki\//i, '').split('#')[0].split('?')[0];
-    try { t = decodeURIComponent(t); } catch (e) {}
-    return t.replace(/_/g, ' ');
+/* — Wikipedia —
+   en.wikipedia.org, drawn the way Wikipedia draws it. The page is the markup of
+   MediaWiki's Vector 2022 skin (its Mustache templates, components and
+   interface strings, read from the skin's and core's repositories), filled
+   from Wikipedia's own API in the visitor's browser: the article from
+   action=parse, the table of contents from its sections, the languages from
+   its langlinks, the categories as Wikipedia prints them, the <html> classes
+   and stylesheet links from the head Wikipedia itself serves for the page. It
+   is drawn in a frame of its own (srcdoc, scripts off) so Wikipedia's real
+   stylesheet, fetched from en.wikipedia.org/w/load.php exactly as the real
+   page fetches it, can style real html/body/@media rules; every link inside
+   routes back through this Chrome, and this window drives the dropdowns, the
+   table of contents, the appearance menu, pinning and the search suggestions
+   the way the skin's own scripts do. A few labels are set on-wiki
+   (MediaWiki:Sidebar and friends) rather than in any repository; those are
+   marked ONWIKI. Nothing from the wire reaches the frame unfiltered: wkClean
+   rebuilds the article against a blocklist (scripts, frames, forms, handlers,
+   foreign URLs) before it is serialized into the frame. */
+var WK = 'en.wikipedia.org';
+var WK_API = 'https://en.wikipedia.org/w/api.php?format=json&formatversion=2&origin=*&';
+var WK_REST = 'https://en.wikipedia.org/w/rest.php';
+/* wfUrlencode: what MediaWiki leaves unescaped in a title's URL */
+function wkEnc(t) {
+    return encodeURIComponent(String(t).replace(/ /g, '_'))
+        .replace(/%3A/gi, ':').replace(/%2F/gi, '/').replace(/%2C/gi, ',').replace(/%28/g, '(').replace(/%29/g, ')')
+        .replace(/%27/g, "'").replace(/%21/g, '!').replace(/%2A/g, '*').replace(/%3B/g, ';').replace(/%40/g, '@').replace(/%24/g, '$').replace(/%7E/g, '~');
 }
-webPage('en.wikipedia.org', {
-    live: true,
-    title: 'Wikipedia', fav: { ch: 'W', c: '#202122' }, searchable: true,
-    stitle: 'Wikipedia, the free encyclopedia', sdesc: 'The real one. Type any article URL and this fake browser will genuinely fetch it. The pixels are ours; the words are theirs.', skey: 'wikipedia encyclopedia article live real',
-    render: function () {
-        var path = livePath('en.wikipedia.org');
-        if (!path || /^wiki\/Main_Page$/i.test(path)) {
-            return '<div class="cr-lv cr-lw"><div class="cr-lwhead"><span class="cr-lwball">W</span><h2>Wikipedia</h2><p>The free encyclopedia — actually reachable from inside the museum ' + liveChip() + '</p></div>' +
-                '<label class="cr-lvsearch">' + ic('ic-search') + '<input class="cr-wq" placeholder="Search 6,800,000 real articles" spellcheck="false"></label>' +
-                '<div class="cr-wsug" id="crWSug"></div>' +
-                '<div class="cr-lvtry"><b>Try:</b>' +
-                    crLink('en.wikipedia.org/wiki/Volkswagen_Golf', 'Volkswagen Golf', 'cr-chip') +
-                    crLink('en.wikipedia.org/wiki/Game_Boy', 'Game Boy', 'cr-chip') +
-                    crLink('en.wikipedia.org/wiki/Rice_University', 'Rice University', 'cr-chip') +
-                    crLink('en.wikipedia.org/wiki/Cookie_Clicker', 'Cookie Clicker', 'cr-chip') +
-                '</div></div>';
+function wkTitleNorm(s) {
+    var t = String(s || '');
+    try { t = decodeURIComponent(t); } catch (e) {}
+    t = t.replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!t) return 'Main Page';
+    var m = t.match(/^([A-Za-z_ ]+):(.*)$/);             // the namespace keeps its case, the page's first letter goes up
+    if (m && /^(Talk|Wikipedia|WP|Help|Category|File|Image|Template|Portal|User|Special|Draft|Module|MediaWiki|Project)(\s*talk)?$/i.test(m[1].trim()))
+        return m[1].trim().replace(/^./, function (c) { return c.toUpperCase(); }) + ':' + m[2].trim().replace(/^./, function (c) { return c.toUpperCase(); });
+    return t.charAt(0).toUpperCase() + t.slice(1);
+}
+function wkQuery(q) {
+    var out = {};
+    String(q || '').split('&').forEach(function (kv) {
+        if (!kv) return;
+        var i = kv.indexOf('='), k = i < 0 ? kv : kv.slice(0, i), v = i < 0 ? '' : kv.slice(i + 1);
+        try { out[decodeURIComponent(k)] = decodeURIComponent(v.replace(/\+/g, ' ')); } catch (e) {}
+    });
+    return out;
+}
+/* what a Wikipedia URL asks for: a page to view, Special:Random, Special:Search,
+   or something this copy does not draw (an edit form, a history, a special
+   page), which goes to the real site in a window */
+function wkRoute(path) {
+    var p = String(path || ''), hash = '', q = '', i;
+    if ((i = p.indexOf('#')) >= 0) { hash = p.slice(i + 1); p = p.slice(0, i); }
+    if ((i = p.indexOf('?')) >= 0) { q = p.slice(i + 1); p = p.slice(0, i); }
+    var params = wkQuery(q), m;
+    var r = { kind: 'page', title: 'Main Page', action: 'view', hash: hash, params: params };
+    try { r.hash = decodeURIComponent(hash); } catch (e) {}
+    if ((!p || /^(wiki\/?|(w\/)?index\.php)$/.test(p)) && !params.title && (params.curid || params.oldid || params.diff)) return { kind: 'frame', title: '', action: params.action || 'view', hash: hash, params: params };   // ActionEntryPoint::parseTitle takes the page from curid, oldid or diff when no title is given
+    if (!p || /^wiki\/?$/.test(p)) return r;
+    if ((m = p.match(/^wiki\/(.+)$/))) r.title = wkTitleNorm(m[1]);
+    else if (/^(w\/)?index\.php$/.test(p)) {
+        if (params.search !== undefined) r.title = 'Special:Search';
+        else if (params.title) r.title = wkTitleNorm(params.title);
+        else return r;
+    }
+    else return { kind: 'frame', hash: hash, params: params };
+    r.action = params.action || 'view';                        // the query string counts on a /wiki/ path too
+    if (params.oldid || params.diff || params.curid) r.kind = 'frame';
+    if (/^Special:Random$/i.test(r.title)) r.kind = 'random';
+    else if ((m = r.title.match(/^Special:Search(?:\/(.*))?$/i))) {
+        r.kind = 'search';
+        r.q = params.search !== undefined ? params.search : (m[1] || '');
+        r.full = !!params.fulltext; r.offset = +params.offset || 0;
+    }
+    else if (/^(Special|Category|File|Image):/i.test(r.title) || r.action !== 'view') r.kind = 'frame';   // what action=parse cannot draw (a category's members, a file's page) is the real page
+    return r;
+}
+function wkPlural(n, one, many) { return n === 1 ? one : many; }
+function wkNum(n) { return nnum(n).toLocaleString('en-US'); }
+/* the strings. Core's and Vector's (languages/i18n/en.json, i18n/en.json),
+   WikimediaMessages' (i18n/wikimedia, codeofconduct), the extensions' that add
+   a menu item (CiteThisPage, UrlShortener, Collection, MobileFrontend, Wikibase);
+   ONWIKI marks the ones the English Wikipedia sets in its own MediaWiki:
+   namespace, which no repository holds. */
+var WK_MSG = {
+    tagline: 'From Wikipedia, the free encyclopedia',          // ONWIKI MediaWiki:Tagline (core: "From {{SITENAME}}")
+    nstabMain: 'Article',                                      // ONWIKI MediaWiki:Nstab-main (core: "Page")
+    talk: 'Talk',                                              // ONWIKI MediaWiki:Talk (core: "Discussion")
+    randompage: 'Random article',                              // ONWIKI MediaWiki:Randompage (core: "Random page")
+    contact: 'Contact us',                                     // ONWIKI MediaWiki:Sidebar
+    introduction: 'Learn to edit',                             // ONWIKI MediaWiki:Sidebar
+    contribute: 'Contribute',                                  // ONWIKI MediaWiki:Interaction
+    contents: 'Contents',                                      // ONWIKI MediaWiki:Sidebar
+    contactFooter: 'Contact Wikipedia',                        // ONWIKI MediaWiki:Contact-url / footer
+    copyright: 'Text is available under the <a href="/wiki/Wikipedia:Text_of_the_Creative_Commons_Attribution-ShareAlike_4.0_International_License" rel="license">Creative Commons Attribution-ShareAlike 4.0 License</a>; additional terms may apply. By using this site, you agree to the <a href="https://foundation.wikimedia.org/wiki/Special:MyLanguage/Policy:Terms_of_Use">Terms of Use</a> and <a href="https://foundation.wikimedia.org/wiki/Special:MyLanguage/Policy:Privacy_policy">Privacy Policy</a>. Wikipedia&#174; is a registered trademark of the <a href="https://wikimediafoundation.org/">Wikimedia Foundation, Inc.</a>, a non-profit organization.'   // ONWIKI MediaWiki:Wikimedia-copyright
+};
+var WK_LOGO = {   // operations/mediawiki-config, wmf-config/logos.php, the enwiki entries (the 25th-anniversary set, T414271)
+    icon: '/static/images/icons/enwiki-25.svg',
+    wordmark: { src: '/static/images/mobile/copyright/wikipedia-wordmark-en-25.svg', width: 140, height: 22 },
+    tagline: { src: '/static/images/mobile/copyright/wikipedia-tagline-en-25.svg', width: 140, height: 11 }
+};
+function wkIcon(n) { return '<span class="vector-icon mw-ui-icon-' + n + ' mw-ui-icon-wikimedia-' + n + ' cdx-button__icon"></span>'; }
+function wkAttr(k, v) { return v === undefined || v === null || v === false ? '' : ' ' + k + '="' + esc(String(v)) + '"'; }
+/* Dropdown/Open.mustache + Dropdown/Close.mustache, with VectorComponentDropdown's classes */
+function wkDropdown(o) {
+    var btn = 'cdx-button cdx-button--fake-button cdx-button--fake-button--enabled cdx-button--weight-quiet' + (o.labelCls ? ' ' + o.labelCls : (o.icon ? ' cdx-button--icon-only' : ''));
+    return '<div id="' + o.id + '" class="vector-dropdown' + (o.cls ? ' ' + o.cls : '') + '"' + wkAttr('title', o.tip) + '>' +
+        '<input type="checkbox" id="' + o.id + '-checkbox" role="button" aria-haspopup="true" data-event-name="ui.dropdown-' + o.id + '" class="vector-dropdown-checkbox' + (o.cbCls ? ' ' + o.cbCls : '') + '" aria-label="' + esc(o.ariaLabel || o.label) + '"' + wkAttr('aria-description', o.ariaDesc) + '>' +
+        '<label id="' + o.id + '-label" for="' + o.id + '-checkbox" class="vector-dropdown-label ' + btn + '" aria-hidden="true">' + (o.icon ? wkIcon(o.icon) : '') + '<span class="vector-dropdown-label-text">' + esc(o.label) + '</span></label>' +
+        '<div class="vector-dropdown-content">' + (o.inner || '') + '</div></div>';
+}
+/* Menu.mustache + MenuContents.mustache */
+function wkMenu(id, cls, label, items, after) {
+    return '<div id="' + id + '" class="vector-menu' + (cls ? ' ' + cls : '') + '">' +
+        (label ? '<div class="vector-menu-heading">' + label + '</div>' : '') +
+        '<div class="vector-menu-content"><ul class="vector-menu-content-list">' + (items || '') + '</ul>' + (after || '') + '</div></div>';
+}
+/* MenuListItem.mustache + Link.mustache (core's makeListItem adds mw-list-item last) */
+function wkLi(id, cls, href, text, attrs, icon) {
+    var a = '';
+    if (attrs) for (var k in attrs) a += wkAttr(k, attrs[k]);
+    return '<li' + wkAttr('id', id) + ' class="' + (cls ? cls + ' ' : '') + 'mw-list-item"><a' + (href === null ? '' : ' href="' + esc(href) + '"') + a + ' data-mw-interface>' + (icon ? wkIcon(icon) : '') + '<span>' + esc(text) + '</span></a></li>';
+}
+/* PinnableHeader.mustache (VectorComponentPinnableHeader) */
+function wkPinHeader(id, feature, label, pinned, tag) {
+    tag = tag || 'div';
+    return '<div class="vector-pinnable-header ' + id + '-pinnable-header vector-pinnable-header-' + (pinned ? 'pinned' : 'unpinned') + '" data-feature-name="' + feature + '" data-pinnable-element-id="' + id + '" data-pinned-container-id="' + id + '-pinned-container" data-unpinned-container-id="' + id + '-unpinned-container">' +
+        '<' + tag + ' class="vector-pinnable-header-label">' + esc(label) + '</' + tag + '>' +
+        '<button class="vector-pinnable-header-toggle-button vector-pinnable-header-pin-button" data-event-name="pinnable-header.' + id + '.pin" aria-label="Move ' + esc(label) + ' to sidebar">move to sidebar</button>' +
+        '<button class="vector-pinnable-header-toggle-button vector-pinnable-header-unpin-button" data-event-name="pinnable-header.' + id + '.unpin" aria-label="Hide ' + esc(label) + '">hide</button></div>';
+}
+/* a key the browser shows for an accesskey: Chrome on Windows says [alt-shift-x] */
+function wkAk(tip, key) { return tip ? tip + (key ? ' [alt-shift-' + key + ']' : '') : null; }
+/* the main menu: MediaWiki:Sidebar as the English Wikipedia sets it (ONWIKI), in
+   Vector's MainMenu.mustache. Tooltips are core's where core has one. */
+function wkMainMenu(pinned) {
+    var nav = wkMenu('p-navigation', 'mw-portlet mw-portlet-navigation', 'Navigation',
+        wkLi('n-mainpage-description', '', '/wiki/Main_Page', 'Main page', { title: wkAk('Visit the main page', 'z'), accesskey: 'z' }) +
+        wkLi('n-contents', '', '/wiki/Wikipedia:Contents', WK_MSG.contents) +
+        wkLi('n-currentevents', '', '/wiki/Portal:Current_events', 'Current events', { title: 'Find background information on current events' }) +
+        wkLi('n-randompage', '', '/wiki/Special:Random', WK_MSG.randompage, { title: wkAk('Load a random page', 'x'), accesskey: 'x' }) +
+        wkLi('n-aboutsite', '', '/wiki/Wikipedia:About', 'About Wikipedia') +
+        wkLi('n-contactpage', '', '/wiki/Wikipedia:Contact_us', WK_MSG.contact));
+    var inter = wkMenu('p-interaction', 'mw-portlet mw-portlet-interaction', WK_MSG.contribute,
+        wkLi('n-help', '', '/wiki/Help:Contents', 'Help', { title: 'The place to find out' }) +
+        wkLi('n-introduction', '', '/wiki/Help:Introduction', WK_MSG.introduction) +
+        wkLi('n-portal', '', '/wiki/Wikipedia:Community_portal', 'Community portal', { title: 'About the project, what you can do, where to find things' }) +
+        wkLi('n-recentchanges', '', '/wiki/Special:RecentChanges', 'Recent changes', { title: wkAk('A list of recent changes in the wiki', 'r'), accesskey: 'r' }) +
+        wkLi('n-upload', '', '/wiki/Wikipedia:File_upload_wizard', 'Upload file', { title: 'Upload files' }) +
+        wkLi('n-specialpages', '', '/wiki/Special:SpecialPages', 'Special pages'));
+    return '<div id="vector-main-menu" class="vector-main-menu vector-pinnable-element">' +
+        wkPinHeader('vector-main-menu', 'main-menu-pinned', 'Main menu', pinned) + nav + inter + '</div>';
+}
+/* the languages: core's SkinLanguageHelper rows (interlanguage-link interwiki-xx,
+   the title "Page – Language", lang/hreflang, ULS's data- attributes) */
+function wkLangItems(langs) {
+    return (langs || []).map(function (l) {
+        var code = String(l.lang || ''), bcp = code.replace(/_/g, '-');
+        return '<li class="interlanguage-link interwiki-' + esc(code) + ' mw-list-item"><a href="' + esc(l.url || ('https://' + code + '.wikipedia.org/wiki/' + wkEnc(l.title || ''))) + '" title="' + esc((l.title || '') + ' – ' + (l.langname || l.autonym || code)) + '" lang="' + esc(bcp) + '" hreflang="' + esc(bcp) + '" data-title="' + esc(l.title || '') + '" data-language-autonym="' + esc(l.autonym || '') + '" data-language-local-name="' + esc(l.langname || '') + '" class="interlanguage-link-target"><span>' + esc(l.autonym || l.langname || code) + '</span></a></li>';
+    }).join('');
+}
+/* LanguageDropdown.mustache with VectorComponentLanguageDropdown's classes */
+function wkLangButton(langs, exists) {
+    var n = (langs || []).length;
+    if (!exists) {                                             // a talk page or a missing one: the empty variant (VectorComponentLanguageDropdown)
+        return wkDropdown({ id: 'p-lang-btn', label: n ? n + wkPlural(n, ' language', ' languages') : 'Add languages', cls: 'mw-portlet mw-portlet-lang mw-portlet-lang-icon-only', icon: 'language',
+            labelCls: 'cdx-button--icon-only mw-portlet-lang-heading-empty', cbCls: 'mw-interlanguage-selector-empty',
+            ariaDesc: n ? 'Go to an article in another language. Available in ' + n + wkPlural(n, ' language', ' languages') : 'This article is only available in this language. Add the article for other languages',
+            inner: '<div class="mw-portlet-empty-language-selector-body">Page contents not supported in other languages.</div>' });
+    }
+    /* an article: the progressive button, "Add languages" when it has none (with
+       ULS's uls-after-portlet-link span after the empty list) */
+    return wkDropdown({ id: 'p-lang-btn', label: n ? n + wkPlural(n, ' language', ' languages') : 'Add languages', cls: 'mw-portlet mw-portlet-lang', icon: 'language-progressive',
+        labelCls: 'cdx-button--action-progressive mw-portlet-lang-heading-' + n, cbCls: 'mw-interlanguage-selector',
+        ariaDesc: n ? 'Go to an article in another language. Available in ' + n + wkPlural(n, ' language', ' languages') : 'This article is only available in this language. Add the article for other languages',
+        inner: '<div class="vector-menu-content"><ul class="vector-menu-content-list">' + wkLangItems(langs) + '</ul>' + (n ? '' : '<div class="after-portlet after-portlet-lang"><span class="uls-after-portlet-link"></span></div>') + '</div>' });
+}
+/* TableOfContents.mustache, __list and __line, from action=parse's sections */
+function wkTocTree(sections) {
+    var root = { kids: [] }, stack = [root];
+    (sections || []).forEach(function (s) {
+        var lvl = +s.toclevel || 1, node = { s: s, lvl: lvl, kids: [] };
+        while (stack.length > lvl) stack.pop();
+        while (stack.length < lvl) stack.push(stack[stack.length - 1].kids[stack[stack.length - 1].kids.length - 1] || stack[stack.length - 1]);
+        stack[stack.length - 1].kids.push(node); stack.push(node);
+    });
+    return root.kids;
+}
+function wkToc(sections, pinned) {
+    var tree = wkTocTree(sections);
+    var collapse = tree.length > 3 && (sections || []).length >= 28;   // VectorTableOfContentsCollapseAtCount, 28 on every Wikimedia wiki
+    function line(node) {
+        var s = node.s, top = node.lvl === 1, parent = node.kids.length > 0;
+        var anchor = s.anchor || '', link = s.linkAnchor || anchor;
+        return '<li id="toc-' + esc(anchor) + '" class="vector-toc-list-item vector-toc-level-' + node.lvl + (top && !collapse ? ' vector-toc-list-item-expanded' : '') + '">' +
+            '<a class="vector-toc-link" href="#' + esc(link) + '"><div class="vector-toc-text"><span class="vector-toc-numb">' + esc(s.number || '') + '</span><span>' + wkInline(s.line) + '</span></div></a>' +
+            (top && parent ? '<button aria-controls="toc-' + esc(anchor) + '-sublist" class="cdx-button cdx-button--weight-quiet cdx-button--icon-only vector-toc-toggle"><span class="vector-icon mw-ui-icon-wikimedia-expand"></span><span>Toggle ' + wkInline(s.line) + ' subsection</span></button>' : '') +
+            '<ul id="toc-' + esc(anchor) + '-sublist" class="vector-toc-list">' + node.kids.map(line).join('') + '</ul></li>';
+    }
+    return '<div id="vector-toc" class="vector-toc vector-pinnable-element">' + wkPinHeader('vector-toc', 'toc-pinned', 'Contents', pinned, 'h2') +
+        '<ul class="vector-toc-contents" id="mw-panel-toc-list"><li id="toc-mw-content-text" class="vector-toc-list-item vector-toc-level-1"><a href="#" class="vector-toc-link"><div class="vector-toc-text">Beginning</div></a></li>' +
+        tree.map(line).join('') + '</ul></div>';
+}
+/* a section heading's HTML (from the parser) with only its text-level markup */
+function wkInline(html) {
+    var d; try { d = new DOMParser().parseFromString('<div>' + String(html || '') + '</div>', 'text/html'); } catch (e) { return esc(String(html || '')); }
+    var out = '';
+    (function walk(n) {
+        for (var c = n.firstChild; c; c = c.nextSibling) {
+            if (c.nodeType === 3) out += esc(c.nodeValue);
+            else if (c.nodeType === 1 && /^(I|B|EM|STRONG|SPAN|SUB|SUP|CODE|S|U|SMALL|BDI)$/.test(c.nodeName)) { out += '<' + c.nodeName.toLowerCase() + '>'; walk(c); out += '</' + c.nodeName.toLowerCase() + '>'; }
+            else if (c.nodeType === 1) walk(c);
         }
-        return liveSkeleton('Wikipedia article');
-    },
-    init: function (view) {
-        var path = livePath('en.wikipedia.org');
-        if (!path || /^wiki\/Main_Page$/i.test(path)) { wikiWireSearch(view); return; }
-        var title = wikiTitleOf(path), url = liveUrl();
-        var api = 'https://en.wikipedia.org/w/api.php?format=json&origin=*&redirects=1&action=parse&prop=text&disableeditsection=1&page=' + encodeURIComponent(title);
-        var meta = 'https://en.wikipedia.org/w/api.php?format=json&origin=*&redirects=1&action=query&prop=pageimages|description&pithumbsize=280&titles=' + encodeURIComponent(title);
-        liveGet(api, function (err, j, r) {
-            if (err || !j || !j.parse) { liveFill(view, url, liveFail(err || 'empty', 'Wikipedia', r)); return; }
-            var realTitle = j.parse.title;
-            var body = liveSanitize(j.parse.text['*'], function (href) {
-                if (!href) return null;
-                if (/^#/.test(href)) return null;                              // in-page anchors: keep the words
-                var m = href.match(/^\/wiki\/([^:]*)$/);                       // namespaced pages (File:, Help:) stay text
-                if (m) return 'en.wikipedia.org/wiki/' + m[1];
-                if (/^https?:\/\//i.test(href)) return href.replace(/^https?:\/\//i, '');
-                return null;
-            });
-            var html = '<div class="cr-lv cr-lw"><div class="cr-lwbar">' + crLink('en.wikipedia.org', '<span class="cr-lwball sm">W</span> Wikipedia', 'cr-lwhome') + liveChip() + '</div>' +
-                '<h2 class="cr-lwtitle">' + esc(realTitle) + '</h2><div class="cr-lwmeta" id="crWMeta"></div><div class="cr-lwbody">' + body + '</div>' +
-                '<p class="cr-lvfoot">Text from the real <b>en.wikipedia.org</b>, CC BY-SA, restyled into pixels. Blue words are real articles — keep clicking.</p></div>';
-            liveFill(view, url, html, realTitle + ' — Wikipedia');
-            liveGet(meta, function (e2, j2) {                                  // the lead image + one-liner, if the article has them
-                if (e2 || !j2 || !view.isConnected) return;
-                var pages = j2.query && j2.query.pages, first = pages && pages[Object.keys(pages)[0]];
-                if (!first) return;
-                var slot = view.querySelector('#crWMeta'); if (!slot) return;
-                var mhtml = '';
-                if (first.description) mhtml += '<i class="cr-lwdesc">' + esc(first.description) + '</i>';
-                if (first.thumbnail && /^https:\/\/upload\.wikimedia\.org\//.test(first.thumbnail.source))
-                    mhtml += '<img class="cr-lwthumb" alt="" referrerpolicy="no-referrer" src="' + esc(first.thumbnail.source) + '">';
-                slot.innerHTML = mhtml;
-            });
+    })(d.body.firstChild);
+    return out;
+}
+/* the page tools: VectorComponentPageTools (Actions, which takes the -more
+   copies of the views, then General, the toolbox, then the portlets the sidebar
+   has after TOOLBOX: Collection's Print/export, Wikibase's In other projects) */
+/* Wikibase's link (SidebarHookHandler: t-wikibase in the wikibase-otherprojects
+   portlet, "In other projects") */
+function wkWikidataLi(q) { return wkLi('t-wikibase', 'wb-otherproject-link wb-otherproject-wikibase-dataitem', 'https://www.wikidata.org/wiki/Special:EntityPage/' + q, 'Wikidata item', { title: wkAk('Structured data on this page hosted by Wikidata', 'g'), accesskey: 'g' }); }
+function wkPageTools(p, pinned) {
+    var t = p.title, enc = wkEnc(t), idx = '/w/index.php?title=' + enc;
+    var open = '<div id="vector-page-tools" class="vector-page-tools vector-pinnable-element">' + wkPinHeader('vector-page-tools', 'page-tools-pinned', 'Tools', pinned);
+    var upload = wkLi('t-upload', '', '//en.wikipedia.org/wiki/Wikipedia:File_Upload_Wizard', 'Upload file', { title: wkAk('Upload files', 'u'), accesskey: 'u' });   // $wgUploadNavigationUrl, enwiki (T44263)
+    var print = wkLi('t-print', '', '#', 'Printable version', { title: wkAk('Printable version of this page', 'p'), accesskey: 'p' });
+    var shortener = function (full) { return wkLi('t-urlshortener', '', '/w/index.php?title=Special:UrlShortener&url=' + encodeURIComponent(full), 'Get shortened URL'); };
+    /* a special page: no views, no permalink or page information (Skin::buildNavUrls
+       adds those for an article), no Cite or Print/export (they need a revision);
+       upload, print and UrlShortener's link remain */
+    if (p.special) return open +
+        wkMenu('p-cactions', 'mw-portlet mw-portlet-cactions emptyPortlet', 'Actions', '') +
+        wkMenu('p-tb', 'mw-portlet mw-portlet-tb', 'General', upload + print + shortener('https://' + liveUrl())) + '</div>';
+    /* the views again, -more copies with core's icons, which the skin merges into
+       Actions and shows below the mobile width (VectorComponentPageTools::getMenus) */
+    var views = p.missing ? wkLi('ca-edit-more', 'vector-menu-item--collapsible', idx + '&action=edit', 'Create', { title: wkAk('Create this page', 'e'), accesskey: 'e' }, 'edit')
+        : wkLi('ca-view-more', 'selected vector-menu-item--collapsible', '/wiki/' + enc, 'Read', null, 'eye') +
+          (p.protectedEdit ? wkLi('ca-viewsource-more', 'vector-menu-item--collapsible', idx + '&action=edit', 'View source', { title: wkAk('This page is protected.\nYou can view its source', 'e'), accesskey: 'e' }, 'editLock')
+                           : wkLi('ca-edit-more', 'vector-menu-item--collapsible', idx + '&action=edit', 'Edit', { title: wkAk('Edit this page', 'e'), accesskey: 'e' }, 'edit')) +
+          wkLi('ca-history-more', 'vector-menu-item--collapsible', idx + '&action=history', 'View history', { title: wkAk('Past revisions of this page', 'h'), accesskey: 'h' }, 'history');
+    var tb = wkLi('t-whatlinkshere', '', '/wiki/Special:WhatLinksHere/' + enc, 'What links here', { title: wkAk('A list of all wiki pages that link here', 'j'), accesskey: 'j' }) +
+        (p.missing && wkNs(t).ns !== 14 ? '' : wkLi('t-recentchangeslinked', '', '/wiki/Special:RecentChangesLinked/' + enc, 'Related changes', { title: wkAk('Recent changes in pages linked from this page', 'k'), accesskey: 'k' })) +   // Skin::buildNavUrls: a page that exists, or a category
+        upload +
+        (p.missing ? print +
+            wkLi('t-info', '', idx + '&action=info', 'Page information', { title: 'More information about this page' }) +
+            shortener('https://en.wikipedia.org/wiki/' + enc) +
+            wkLi('t-urlshortener-qrcode', '', '/w/index.php?title=Special:QrCode&url=https%3A%2F%2Fen.wikipedia.org%2Fwiki%2F' + encodeURIComponent(enc), 'Download QR code') :
+            wkLi('t-permalink', '', idx + '&oldid=' + (p.revid || ''), 'Permanent link', { title: 'Permanent link to this revision of this page' }) +
+            wkLi('t-info', '', idx + '&action=info', 'Page information', { title: 'More information about this page' }) +
+            wkLi('t-cite', '', '/w/index.php?title=Special:CiteThisPage&page=' + enc + '&id=' + (p.revid || '') + '&wpFormIdentifier=titleform', 'Cite this page', { title: 'Information on how to cite this page' }) +
+            shortener('https://en.wikipedia.org/wiki/' + enc) +
+            wkLi('t-urlshortener-qrcode', '', '/w/index.php?title=Special:QrCode&url=https%3A%2F%2Fen.wikipedia.org%2Fwiki%2F' + encodeURIComponent(enc), 'Download QR code'));
+    var menus = wkMenu('p-cactions', 'mw-portlet mw-portlet-cactions emptyPortlet vector-has-collapsible-items', 'Actions', views) +
+        wkMenu('p-tb', 'mw-portlet mw-portlet-tb', 'General', tb) +
+        (p.missing ? '' : wkMenu('p-coll-print_export', 'mw-portlet mw-portlet-coll-print_export', 'Print/export',
+            wkLi('coll-download-as-rl', '', '/w/index.php?title=Special:DownloadAsPdf&page=' + enc + '&action=show-download-screen', 'Download as PDF', { title: 'Download this page as a PDF file' }) + print)) +
+        (p.wikibase ? wkMenu('p-wikibase-otherprojects', 'mw-portlet mw-portlet-wikibase-otherprojects', 'In other projects', wkWikidataLi(p.wikibase)) : '');
+    return open + menus + '</div>';
+}
+/* the Appearance menu as skins.vector.clientPreferences builds it client-side
+   (mw.util.addPortlet + Vector's portlet hook, Codex radios) */
+function wkAppearance(prefs, pinned) {
+    function radios(feature, opts, cur) {
+        return opts.map(function (o) {
+            var id = 'skin-client-pref-' + feature + '-value-' + o.v;
+            return '<div class="cdx-radio"><input name="skin-client-pref-' + feature + '-group" id="' + id + '" type="radio" value="' + o.v + '" data-event-name="' + id + '" class="cdx-radio__input"' + (cur === o.v ? ' checked' : '') + '><span class="cdx-radio__icon"></span><label class="cdx-label cdx-radio__label" for="' + id + '"><span class="cdx-label__label__text">' + o.t + '</span></label></div>';
+        }).join('');
+    }
+    function portlet(feature, label, opts, cur, beta) {
+        var id = 'skin-client-prefs-' + feature;
+        return '<div id="' + id + '" class="mw-portlet mw-portlet-' + id + ' mw-portlet-js vector-menu"><div class="vector-menu-heading">' + label + (beta ? ' <span><span>(beta)</span></span>' : '') + '</div>' +
+            '<div class="vector-menu-content"><ul class="vector-menu-content-list"><li class="mw-list-item mw-list-item-js"><div class=""><form>' + radios(feature, opts, cur) + '</form></div></li></ul></div></div>';
+    }
+    return '<div id="vector-appearance" class="vector-appearance vector-pinnable-element">' + wkPinHeader('vector-appearance', 'appearance-pinned', 'Appearance', pinned) +
+        portlet('vector-feature-custom-font-size', 'Text', [{ v: '0', t: 'Small' }, { v: '1', t: 'Standard' }, { v: '2', t: 'Large' }], prefs.fs) +
+        portlet('vector-feature-limited-width', 'Width', [{ v: '1', t: 'Standard' }, { v: '0', t: 'Wide' }], prefs.lw) +
+        portlet('skin-theme', 'Color', [{ v: 'os', t: 'Automatic' }, { v: 'day', t: 'Light' }, { v: 'night', t: 'Dark' }], prefs.theme, true) + '</div>';
+}
+/* the visitor's client preferences (what Wikipedia keeps in the
+   mwclientpreferences cookie), shared by both copies like every save here */
+function wkPrefs() {
+    var p = (CR && CR.incog ? CR.privWk : crj('wk', {})) || {};   // a private window's choices live on the window
+    return { fs: /^[012]$/.test(p.fs) ? p.fs : '1', lw: p.lw === '0' ? '0' : '1', theme: /^(os|day|night)$/.test(p.theme) ? p.theme : 'day', toc: p.toc === '0' ? '0' : '1', app: p.app === '0' ? '0' : '1' };
+}
+function wkPrefSet(k, v) { if (CR && CR.incog) { var q = CR.privWk || (CR.privWk = {}); q[k] = v; return; } var p = crj('wk', {}) || {}; p[k] = v; crjSet('wk', p); }
+/* the <html> class list: Wikipedia's own, from the head it serves for the page
+   (action=parse&prop=headhtml&useskin=vector-2022), with the visitor's client
+   preferences applied the way the skin's scripts apply them, and client-js in
+   place of client-nojs since this page behaves like the scripted one */
+function wkHtmlClass(headhtml, p, prefs) {
+    var m = String(headhtml || '').match(/<html[^>]*\sclass="([^"]*)"/), cls;
+    if (m) cls = m[1].split(/\s+/);
+    else {
+        var mainish = p.isMain || /^(Special|Category):/.test(p.title);
+        cls = ['client-nojs', 'vector-feature-language-in-header-enabled', 'vector-feature-language-in-main-menu-disabled', 'vector-feature-language-in-main-page-header-disabled',
+            'vector-feature-page-tools-pinned-disabled', 'vector-feature-toc-pinned-clientpref-1', 'vector-feature-main-menu-pinned-disabled', 'vector-feature-limited-width-clientpref-1',
+            'vector-feature-limited-width-content-' + (mainish ? 'disabled' : 'enabled'), 'vector-feature-custom-font-size-clientpref-' + (/^(Special|File|Category|Portal):/.test(p.title) ? '-excluded' : '1'),
+            'vector-feature-appearance-pinned-clientpref-1', 'skin-theme-clientpref-day', 'vector-sticky-header-enabled', (p.sections && p.sections.length ? 'vector-toc-available' : 'vector-toc-not-available'),
+            'skin-thumbsize-clientpref-standard', 'skin-underline-clientpref-browser'];
+    }
+    cls = cls.filter(Boolean).map(function (c) {
+        if (c === 'client-nojs') return 'client-js';
+        if (/^vector-feature-custom-font-size-clientpref-\d$/.test(c)) return 'vector-feature-custom-font-size-clientpref-' + prefs.fs;
+        if (/^vector-feature-limited-width-clientpref-\d$/.test(c)) return 'vector-feature-limited-width-clientpref-' + prefs.lw;
+        if (/^skin-theme-clientpref-/.test(c)) return 'skin-theme-clientpref-' + prefs.theme;
+        if (/^vector-feature-toc-pinned-clientpref-\d$/.test(c)) return 'vector-feature-toc-pinned-clientpref-' + prefs.toc;
+        if (/^vector-feature-appearance-pinned-clientpref-\d$/.test(c)) return 'vector-feature-appearance-pinned-clientpref-' + prefs.app;
+        return c;
+    });
+    if (cls.indexOf('vector-animations-ready') < 0) cls.push('vector-animations-ready');
+    if (cls.indexOf('vector-uls-disabled') < 0) cls.push('vector-uls-disabled');   // no UniversalLanguageSelector script here: Vector's own language list shows instead of ULS's panel
+    return cls.join(' ');
+}
+/* the stylesheets Wikipedia's own head links for this page (load.php, the
+   exact module set), falling back to the skin's base set */
+function wkStyleLinks(headhtml) {
+    var out = [], re = /<link rel="stylesheet" href="([^"]+)"/g, m;
+    while ((m = re.exec(String(headhtml || '')))) {
+        var h = m[1].replace(/&amp;/g, '&');
+        if (/^\/w\/load\.php\?/.test(h)) out.push('https://en.wikipedia.org' + h);
+        else if (/^https:\/\/en\.wikipedia\.org\/w\/load\.php\?/.test(h)) out.push(h);
+    }
+    if (!out.length) out = ['https://en.wikipedia.org/w/load.php?lang=en&modules=ext.cite.styles%7Cext.uls.interlanguage%7Cext.wikimediaBadges%7Cext.wikimediamessages.styles%7Cskins.vector.icons%2Cstyles%7Cskins.vector.search.codex.styles%7Cwikibase.client.init&only=styles&skin=vector-2022',
+        'https://en.wikipedia.org/w/load.php?lang=en&modules=site.styles&only=styles&skin=vector-2022'];
+    if (!out.some(function (u) { return /typeaheadSearch|codex\.typeahead/.test(u); })) out.push('https://en.wikipedia.org/w/load.php?lang=en&modules=mediawiki.codex.typeaheadSearch&only=styles&skin=vector-2022');
+    return out;
+}
+/* ── the article HTML, rebuilt against a blocklist before it enters the frame ──
+   The frame runs no scripts, so what matters is what could still act: a
+   navigation (meta, base, form), an embedding (iframe, object, link), a
+   fetch to somewhere other than Wikimedia (src, srcset, url() in a style), an
+   event handler. Everything else the parser emits is Wikipedia's own markup and
+   stays as it is, so Wikipedia's stylesheet can dress it. */
+var WK_DROP = /^(SCRIPT|IFRAME|OBJECT|EMBED|LINK|META|BASE|NOSCRIPT|TEMPLATE|FORM|INPUT|BUTTON|TEXTAREA|SELECT|OPTION|APPLET|FRAME|FRAMESET|AUDIO|VIDEO|SOURCE|TRACK|PORTAL|FENCEDFRAME|DIALOG)$/;
+function wkUrlOk(v) { return !/^\s*(javascript|data|vbscript|blob|file|about):/i.test(String(v)); }
+function wkSrcOk(v) {
+    v = String(v).trim();
+    return /^(\/\/|https:\/\/)(upload\.wikimedia\.org|maps\.wikimedia\.org|wikimedia\.org|commons\.wikimedia\.org|www\.wikidata\.org|[a-z-]+\.(m\.)?wikipedia\.org|en\.wikipedia\.org)\//i.test(v) || /^\/(w|static)\//.test(v);
+}
+function wkStyleOk(s) {
+    s = String(s);
+    var n = s.replace(/\\(?:([0-9a-f]{1,6})(?:\r\n|[ \t\r\n\f])?|\r\n|([^0-9a-f]))/gi, function (_, h, c) {   // the escapes decoded (TemplateStyles writes "\"" and "\a0 "): the tests read what the browser will
+        if (h) { var k = parseInt(h, 16); return k > 0 && k <= 0x10FFFF && (k < 0xD800 || k > 0xDFFF) ? String.fromCodePoint(k) : '\uFFFD'; }
+        return c === undefined || /[\n\r\f]/.test(c) ? '' : c;
+    });
+    if (/expression\s*\(|behavior\s*:|-moz-binding|@import|javascript:|image-set\s*\(|-webkit-image-set\s*\(|\bimage\s*\(|\bsrc\s*\(/i.test(n)) return false;   // no image() functions: only a plain url() to the sites' own hosts passes below
+    var rest = n.replace(/url\(\s*["']?(\/\/upload\.wikimedia\.org\/|https:\/\/upload\.wikimedia\.org\/|\/w\/|\/static\/)[^)]*\)/gi, '');
+    return !/url\s*\(/i.test(rest);
+}
+function wkClean(html) {
+    var doc;
+    try { doc = new DOMParser().parseFromString('<!doctype html><body>' + String(html || ''), 'text/html'); } catch (e) { return ''; }
+    var els = [], w = doc.createTreeWalker(doc.body, NodeFilter.SHOW_ELEMENT, null);
+    while (w.nextNode()) els.push(w.currentNode);
+    els.forEach(function (el) {
+        var tag = el.nodeName.toUpperCase();
+        if (WK_DROP.test(tag)) { el.remove(); return; }
+        if (tag === 'STYLE') { if (!wkStyleOk(el.textContent)) el.remove(); return; }
+        for (var i = el.attributes.length - 1; i >= 0; i--) {
+            var a = el.attributes[i], n = a.name.toLowerCase(), v = a.value;
+            if (/^on/.test(n) || n === 'srcdoc' || n === 'formaction' || n === 'ping' || n === 'target' || n === 'http-equiv') el.removeAttribute(a.name);
+            else if (n === 'href' || n === 'xlink:href' || n === 'action' || n === 'cite' || n === 'longdesc') { if (!wkUrlOk(v) || ((tag === 'IMAGE' || tag === 'USE' || tag === 'FEIMAGE') && !wkSrcOk(v))) el.removeAttribute(a.name); }   // an SVG image's href fetches like a src
+            else if (n === 'src' || n === 'poster' || n === 'data' || n === 'background') { if (!wkSrcOk(v)) el.removeAttribute(a.name); }
+            else if (n === 'srcset') { if (!v.split(',').every(function (c) { return wkSrcOk(c.trim().split(/\s+/)[0]); })) el.removeAttribute(a.name); }
+            else if (n === 'style') { if (!wkStyleOk(v)) el.removeAttribute(a.name); }
+        }
+    });
+    return doc.body.innerHTML;
+}
+/* ── the frame ──
+   srcdoc, sandboxed with scripts off; the parent keeps the document handle
+   and wires the page's behaviour onto it. */
+function wkFrame(view, html, wire, name) {
+    var f = document.createElement('iframe');
+    f.className = 'cr-wk'; f.setAttribute('sandbox', 'allow-same-origin'); f.setAttribute('title', name || 'Wikipedia');
+    f.addEventListener('load', function () {
+        if (!view.isConnected) return;
+        var d = f.contentDocument; if (!d || !d.body) return;
+        try { wire(f, d); } catch (e) { /* a page that half-wires still reads */ }
+        if (find.appId === 'chrome' && findOpenNow()) runFind();
+    });
+    f.srcdoc = html;
+    view.innerHTML = ''; view.appendChild(f);
+    return f;
+}
+/* the frame's document as the sim sees it: where a URL inside leads */
+function wkTarget(href, base) {
+    var u; try { u = new URL(href, base); } catch (e) { return null; }
+    if (!/^https?:$/.test(u.protocol)) return null;
+    var host = u.host.replace(/^www\./, '');
+    if (/^en\.wikipedia\.org$/.test(host)) return WK + u.pathname + u.search + u.hash;
+    if (/^en\.m\.wikipedia\.org$/.test(host)) return WK + u.pathname.replace(/^\/w\/index\.php$/, '/w/index.php') + u.search.replace(/[?&]mobileaction=[^&]*/, '') + u.hash;
+    return host + u.pathname + u.search + u.hash;
+}
+/* the pages a frame cannot show. Wikipedia sends X-Frame-Options: DENY
+   ($wgEditPageFrameOptions) on everything but a page view (Article::view: an
+   article, a Category: or File: page, ?oldid= without diff=) and Special:Search;
+   Hacker News sends it on every page. A link to one opens a window of its own. */
+function liveNoFrame(to) {
+    var s = String(to || ''), l = s.toLowerCase();
+    if (l.indexOf(WK + '/') === 0) {
+        var r = wkRoute(s.slice(WK.length + 1));
+        return r.kind === 'frame' && !(r.action === 'view' && r.params && !r.params.diff && (r.params.oldid || r.params.curid || /^(Category|File|Image):/i.test(r.title || '')));
+    }
+    if (l.indexOf(HN + '/') === 0) return hnRoute(s.slice(HN.length + 1)).kind === 'frame';
+    return false;
+}
+function liveOpen(to) { window.open('https://' + to, '_blank', 'noopener,noreferrer'); }
+/* a red link: on enwiki a reader who is not logged in may create no page outside the
+   talk namespaces ('*' createpage false, wmf-config core-Permissions.php), so EditPage
+   (displayPermissionStatus) sends a redlink=1 request on to the page's own view */
+function wkRedlink(to) {
+    var s = String(to || '');
+    if (s.toLowerCase().indexOf(WK + '/') !== 0) return to;
+    var r = wkRoute(s.slice(WK.length + 1)), n = r.title ? wkNs(r.title) : null;
+    return r.action === 'edit' && r.params && r.params.redlink && r.params.redlink !== '0' && n && !n.talk && n.ns >= 0 ? WK + '/wiki/' + wkEnc(r.title) : to;
+}
+/* scroll a frame to an id or a decoded fragment, the way a browser lands on #Foo */
+function wkJump(d, frag) {
+    if (!frag) { d.defaultView.scrollTo(0, 0); return; }
+    var id = frag; try { id = decodeURIComponent(frag); } catch (e) {}
+    var el = d.getElementById(id) || d.getElementById(id.replace(/ /g, '_'));
+    if (!el) { var ns = d.getElementsByName ? d.getElementsByName(id) : []; el = ns && ns[0]; }
+    if (el) el.scrollIntoView();
+}
+/* the behaviours a page drawn in a frame of its own gets from this window:
+   links route through the Chrome, the window underneath takes focus, the
+   shortcuts still work with a finger in the frame, the context menu is the
+   sim's, Back lands where the page was left. hooks: click(e) handles a click
+   itself (true), scroll(y) follows the scroll, escape() takes the Escape key. */
+function liveWireFrame(f, d, p, base, hooks) {
+    hooks = hooks || {};
+    var win = d.defaultView, tab = crTab(), tabUrl = tab.url, raf = 0;
+    function onScroll() {
+        raf = 0;
+        var y = win.scrollY || d.documentElement.scrollTop || 0;
+        (tab.fscroll || (tab.fscroll = {}))[tabUrl] = y;    // per URL: Back lands where this page was left
+        if (hooks.scroll) hooks.scroll(y);
+    }
+    p.onScroll = onScroll;
+    d.addEventListener('click', function (e) {
+        if (hooks.click && hooks.click(e)) return;
+        var a = e.target.closest ? e.target.closest('a[href], area[href]') : null;   // an image map's areas link too (ImageMap)
+        if (!a) return;
+        e.preventDefault();
+        var href = a.getAttribute('href') || '';
+        if (/^#/.test(href)) { wkJump(d, href.slice(1)); return; }
+        var to = wkRedlink(wkTarget(href, base)); if (!to) return;
+        if (liveNoFrame(to)) { liveOpen(to); return; }
+        if (e.ctrlKey || e.metaKey) { crBgTab(to, CR.active + 1); return; }
+        onScroll();
+        crNav(to);
+    });
+    d.addEventListener('auxclick', function (e) {
+        var a = e.button === 1 && e.target.closest ? e.target.closest('a[href], area[href]') : null;
+        if (!a) return;
+        e.preventDefault();
+        var to = wkRedlink(wkTarget(a.getAttribute('href') || '', base));
+        if (to && liveNoFrame(to)) liveOpen(to); else if (to) crBgTab(to, CR.active + 1);
+    });
+    d.addEventListener('mousedown', function () { if (activeApp !== 'chrome') focusWin('chrome'); });
+    d.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && hooks.escape) hooks.escape();
+        if (!(e.altKey || e.ctrlKey || e.metaKey || /^F\d+$/.test(e.key))) return;
+        var ev = new KeyboardEvent('keydown', e);
+        document.dispatchEvent(ev);
+        if (ev.defaultPrevented) e.preventDefault();
+    });
+    d.addEventListener('contextmenu', function (e) { wkCtx(e, f, d, base); });
+    /* this window's requestAnimationFrame, not the frame's: a callback the sandboxed
+       frame ran itself would count as its script and be blocked */
+    win.addEventListener('scroll', function () { if (!raf) raf = requestAnimationFrame(onScroll); }, { passive: true });
+    if (tab.fscroll && tab.fscroll[tabUrl]) win.scrollTo(0, tab.fscroll[tabUrl]);
+    else if (p.hash) wkJump(d, p.hash);
+    onScroll();
+}
+/* the behaviours Vector's scripts add, driven from here (skins.vector.js:
+   dropdownMenus, tableOfContents, pinnableElement, stickyHeader,
+   clientPreferences; skins.vector.search for the suggestions) */
+function wkWire(f, d, p) {
+    var html = d.documentElement, body = d.body;
+    var base = 'https://en.wikipedia.org/wiki/' + wkEnc(p.title || 'Main Page');
+    function closeDropdowns(keep) {
+        Array.prototype.forEach.call(d.querySelectorAll('.vector-dropdown-checkbox:checked'), function (cb) {
+            if (!keep || cb.closest('.vector-dropdown') !== keep) cb.checked = false;
         });
     }
-});
-function wikiWireSearch(view) {
-    var q = view.querySelector('.cr-wq'), box = view.querySelector('#crWSug'), tmr = 0;
-    if (!q) return;
-    q.addEventListener('input', function () {
-        clearTimeout(tmr);
-        var v = q.value.trim();
-        if (!v) { box.innerHTML = ''; return; }
-        tmr = setTimeout(function () {
-            liveGet('https://en.wikipedia.org/w/api.php?format=json&origin=*&action=opensearch&limit=8&search=' + encodeURIComponent(v), function (err, j) {
-                if (err || !j || !view.isConnected || q.value.trim() !== v) return;
-                box.innerHTML = (j[1] || []).map(function (t) {
-                    return crLink('en.wikipedia.org/wiki/' + t.replace(/ /g, '_'), '📄 ' + esc(t), 'cr-wsugrow');
-                }).join('') || '<p class="cr-empty">The real Wikipedia has nothing. Impressive, honestly.</p>';
+    var heads = null;
+    function headings() {
+        if (heads) return heads;
+        heads = Array.prototype.filter.call(d.querySelectorAll('#mw-content-text .mw-heading > h2[id], #mw-content-text .mw-heading > h3[id], #mw-content-text .mw-heading > h4[id], #mw-content-text .mw-heading > h5[id], #mw-content-text .mw-heading > h6[id], #mw-content-text h2[id], #mw-content-text h3[id]'), function (h) { return d.getElementById('toc-' + h.id); });
+        return heads;
+    }
+    liveWireFrame(f, d, p, base, {
+        click: function (e) {
+            /* searchToggle.js and stickyHeader.js: the collapsed header's search icon and the
+               sticky header's open their box in place; a click outside the box closes it */
+            Array.prototype.forEach.call(d.querySelectorAll('.vector-header-search-toggled'), function (h) {
+                var sb = h.querySelector('.vector-search-box');
+                if (sb && !sb.contains(e.target) && !e.target.closest('.cdx-typeahead-search .cdx-menu-item__content')) h.classList.remove('vector-header-search-toggled');
             });
-        }, 280);
-    });
-    q.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter' && q.value.trim()) crNav('en.wikipedia.org/wiki/' + q.value.trim().replace(/ /g, '_'));
-    });
-}
-
-/* — Hacker News, the real front page — */
-function hnAgo(ts) {
-    var m = Math.max(1, Math.round((Date.now() / 1000 - ts) / 60));
-    return m < 60 ? m + 'm ago' : m < 1440 ? Math.round(m / 60) + 'h ago' : Math.round(m / 1440) + 'd ago';
-}
-function hnHostOf(u) { try { return String(u || '').replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0]; } catch (e) { return ''; } }
-webPage('news.ycombinator.com', {
-    live: true,
-    title: 'Hacker News', fav: { ch: 'Y', c: '#ff6600' }, searchable: true,
-    stitle: 'Hacker News', sdesc: 'The actual front page, fetched live. Orange as ever. The comments are real people being confidently wrong in real time.', skey: 'hacker news hn tech front page live real',
-    render: function () {
-        return liveSkeleton(/item/.test(livePath('news.ycombinator.com')) ? 'Hacker News thread' : 'Hacker News front page');
-    },
-    init: function (view) {
-        var path = livePath('news.ycombinator.com'), url = liveUrl();
-        var idm = path.match(/^item\?id=(\d+)$/);
-        function head(extra) {
-            return '<div class="cr-hnbar">' + crLink('news.ycombinator.com', '<b class="cr-hny">Y</b> Hacker News', 'cr-hnhome') + (extra || '') + liveChip() + '</div>';
+            var stog = e.target.closest('.mw-header .search-toggle, .vector-sticky-header-search-toggle');
+            if (stog) {
+                e.preventDefault();
+                var hc = stog.closest('.vector-header-container'), hd = hc && hc.firstElementChild;
+                if (hd) { hd.classList.add('vector-header-search-toggled'); var si = hd.querySelector('.vector-search-box input[type="search"]'); if (si) setTimeout(function () { si.focus(); }); }
+                return true;
+            }
+            var a = e.target.closest ? e.target.closest('a[href], area[href]') : null;
+            if (a) {
+                var href = a.getAttribute('href') || '';
+                if (a.id === 't-print' || a.id === 't-print-more') { e.preventDefault(); toast('Saved as bloom.pdf to a printer that isn’t real.'); return true; }
+                var tl = a.closest('.vector-toc-link');
+                if (tl && /^#/.test(href)) { wkTocActivate(d, tl.closest('.vector-toc-list-item')); p.tocHold = Date.now() + 600; }   // a contents click marks its section at once (tableOfContents.js); the scroll it starts settles first
+                return false;
+            }
+            var tog = e.target.closest('.vector-toc-toggle');
+            if (tog) { var li = tog.closest('.vector-toc-list-item'); if (li) li.classList.toggle('vector-toc-list-item-expanded'); return true; }
+            var pin = e.target.closest('.vector-pinnable-header-toggle-button');
+            if (pin) { wkPinToggle(d, pin.closest('.vector-pinnable-header')); return true; }
+            closeDropdowns(e.target.closest('.vector-dropdown'));   // a click elsewhere closes an open menu
+            return false;
+        },
+        escape: function () { closeDropdowns(); wkSugClose(d); },
+        scroll: function (y) {
+            /* the sticky header past the title, the live table of contents */
+            var h1 = d.getElementById('firstHeading');
+            var past = h1 ? h1.getBoundingClientRect().bottom < 0 : y > 200;
+            body.classList.toggle('vector-sticky-header-visible', past);
+            body.classList.toggle('vector-below-page-title', past);
+            if (p.tocHold && Date.now() < p.tocHold) return;      // a contents click just chose the section; the scroll it starts must not re-choose
+            var hs = headings(), cur = null;
+            for (var i = 0; i < hs.length; i++) {               // the heading's box (its .mw-heading wrapper): scrolled to, it sits 75px down, Vector's scroll-margin-top
+                var box = hs[i].parentElement && hs[i].parentElement.classList.contains('mw-heading') ? hs[i].parentElement : hs[i];
+                if (box.getBoundingClientRect().top <= 90) cur = hs[i]; else break;
+            }
+            wkTocActivate(d, cur ? d.getElementById('toc-' + cur.id) : null);
         }
-        if (idm) {
-            liveGet('https://hn.algolia.com/api/v1/items/' + idm[1], function (err, j, r) {
-                if (err || !j) { liveFill(view, url, liveFail(err || 'empty', 'Hacker News', r)); return; }
-                var n = 0;
-                function cmts(kids, depth) {
-                    if (!kids || depth > 8 || n > 150) return '';
-                    return kids.map(function (k) {
-                        if (!k || k.type !== 'comment' || !k.author || n > 150) return '';
-                        n++;
-                        return '<div class="cr-hnc" style="--d:' + Math.min(depth, 7) + '"><div class="cr-hnch"><b>' + esc(k.author) + '</b><i>' + hnAgo(k.created_at_i) + '</i></div>' +
-                            '<div class="cr-hncb">' + liveSanitize(k.text, function (href) { return /^https?:\/\//i.test(href) ? href.replace(/^https?:\/\//i, '') : null; }) + '</div>' +
-                            cmts(k.children, depth + 1) + '</div>';
-                    }).join('');
-                }
-                var dom = hnHostOf(j.url);
-                var html = '<div class="cr-lv cr-hn">' + head() +
-                    '<div class="cr-hnstory"><h2>' + (j.url ? crLink(j.url.replace(/^https?:\/\//i, ''), esc(j.title), 'cr-hntitle') : esc(j.title || '(untitled)')) + (dom ? ' <i class="cr-hndom">(' + esc(dom) + ')</i>' : '') + '</h2>' +
-                    '<p class="cr-hnsub">' + nnum(j.points) + ' points · ' + esc(j.author || '?') + ' · ' + hnAgo(j.created_at_i) + '</p>' +
-                    (j.text ? '<div class="cr-hncb op">' + liveSanitize(j.text, function (href) { return /^https?:\/\//i.test(href) ? href.replace(/^https?:\/\//i, '') : null; }) + '</div>' : '') + '</div>' +
-                    cmts(j.children, 0) +
-                    (n > 150 ? '<p class="cr-lvfoot">Trimmed at 150 comments — the rest live on the real orange site.</p>' : '') + '</div>';
-                liveFill(view, url, html, (j.title || 'thread') + ' — Hacker News');
+    });
+    /* the appearance menu: the radios flip the html classes the skin's client
+       preferences flip, and the choice is kept like Wikipedia keeps it */
+    d.addEventListener('change', function (e) {
+        var inp = e.target;
+        if (!inp || !inp.classList || !inp.classList.contains('cdx-radio__input')) return;
+        var m = inp.name.match(/^skin-client-pref-(.+)-group$/); if (!m) return;
+        var feature = m[1], v = inp.value;
+        var pfx = feature === 'skin-theme' ? 'skin-theme-clientpref-' : feature + '-clientpref-';
+        Array.prototype.slice.call(html.classList).forEach(function (c) { if (c.indexOf(pfx) === 0) html.classList.remove(c); });
+        html.classList.add(pfx + v);
+        wkPrefSet(feature === 'skin-theme' ? 'theme' : feature === 'vector-feature-limited-width' ? 'lw' : 'fs', v);
+    });
+    wkSearchWire(d, '#searchInput');
+    wkSearchWire(d, '#vector-sticky-search-form input');
+    /* Special:Search's own form: a GET of its fields (the scriptless sandbox blocks a real submit) */
+    var sInp = p.special === 'Search' && d.querySelector('#searchText input'), sBtn = sInp && d.querySelector('#search input[type="submit"]');
+    function sGo(e) { e.preventDefault(); crNav(WK + '/w/index.php?search=' + encodeURIComponent(sInp.value) + '&title=Special:Search&profile=' + encodeURIComponent((d.querySelector('#search input[name="profile"]') || {}).value || 'default') + '&fulltext=1' + Array.prototype.map.call(d.querySelectorAll('#search input[type="hidden"][name^="ns"]'), function (i) { return '&' + encodeURIComponent(i.name) + '=1'; }).join('')); }
+    if (sInp) sInp.addEventListener('keydown', function (e) { if (e.key === 'Enter') sGo(e); });
+    if (sBtn) sBtn.addEventListener('click', sGo);
+}
+/* the contents' active entry: the item, its top-level parent expanded */
+function wkTocActivate(d, li) {
+    Array.prototype.forEach.call(d.querySelectorAll('.vector-toc-list-item-active, .vector-toc-level-1-active'), function (x) {
+        if (x !== li) { x.classList.remove('vector-toc-list-item-active'); x.classList.remove('vector-toc-level-1-active'); }
+    });
+    if (!li || li.id === 'toc-mw-content-text') return;
+    li.classList.add('vector-toc-list-item-active');
+    var top = li.classList.contains('vector-toc-level-1') ? li : li.closest('.vector-toc-level-1');
+    if (top) { top.classList.add('vector-toc-level-1-active'); top.classList.add('vector-toc-list-item-expanded'); }
+}
+/* pinning (pinnableElement.js): the element moves between its two containers,
+   the html class flips, the header's class flips */
+function wkPinToggle(d, header) {
+    if (!header) return;
+    var html = d.documentElement, ds = header.dataset, feature = ds.featureName;
+    var cp = 'vector-feature-' + feature + '-clientpref-', en = 'vector-feature-' + feature + '-';
+    var isClientPref = html.classList.contains(cp + '1') || html.classList.contains(cp + '0');
+    var on = isClientPref ? cp + '1' : en + 'enabled', off = isClientPref ? cp + '0' : en + 'disabled';
+    var pinned = html.classList.contains(on), next = !pinned;
+    html.classList.remove(next ? off : on); html.classList.add(next ? on : off);
+    header.classList.toggle('vector-pinnable-header-pinned', next); header.classList.toggle('vector-pinnable-header-unpinned', !next);
+    var unpinId = ds.unpinnedContainerId;
+    if (feature === 'toc-pinned' && !d.getElementById(unpinId)) unpinId = 'vector-page-titlebar-toc-unpinned-container';   // the contents' unpinned home is the titlebar dropdown (tableOfContents.js)
+    var el = d.getElementById(ds.pinnableElementId), into = d.getElementById(next ? ds.pinnedContainerId : unpinId);
+    if (el && into && el.parentElement !== into) into.appendChild(el);
+    if (feature === 'toc-pinned') wkPrefSet('toc', next ? '1' : '0');
+    if (feature === 'appearance-pinned') wkPrefSet('app', next ? '1' : '0');
+    var focus = next ? el && el.querySelector('.vector-pinnable-header-unpin-button') : (into && into.closest('.vector-dropdown') || {}).querySelector && into.closest('.vector-dropdown').querySelector('.vector-dropdown-checkbox');
+    if (focus && focus.focus) focus.focus();
+}
+/* the context menu for a right-click inside the frame: the same menus the
+   sim shows for a link, a selection, or the page, placed where the click was */
+function wkCtx(e, f, d, base) {
+    e.preventDefault();
+    if (!CR) return;
+    var r = f.getBoundingClientRect(), k = f.clientWidth ? r.width / f.clientWidth : 1;
+    var fake = { clientX: r.left + e.clientX * k, clientY: r.top + e.clientY * k, preventDefault: function () {}, target: f };
+    var host = CR.root, dark = !!CR.incog;
+    CR.el.querySelector('#crMenu').hidden = true; CR.el.querySelector('#crSuggest').hidden = true;
+    var inp = e.target.closest('input, textarea');
+    if (inp && !inp.readOnly && !inp.disabled) { bctxInput(host, fake, inp, null, dark); return; }
+    var a = e.target.closest('a[href], area[href]');
+    var href = a ? wkTarget(a.getAttribute('href') || '', base) : null;
+    if (href) {
+        openBctx(host, fake, [
+            { k: 'lnt', t: 'Open link in new tab' },
+            { k: 'lni', t: 'Open link in Incognito window' },
+            'sep',
+            { k: 'lcp', t: 'Copy link address' },
+            { k: 'lsv', t: 'Save link as…' }
+        ], function (act) {
+            var oh = wkRedlink(href);                           // Copy link address keeps the link's own address
+            if (act === 'lnt') { if (liveNoFrame(oh)) liveOpen(oh); else crBgTab(oh, CR.active + 1); }
+            else if (act === 'lni') { if (liveNoFrame(oh)) liveOpen(oh); else if (CR.incog) crNewTab(oh); else { crIncogSwap(); crNav(oh); } }
+            else if (act === 'lcp') { setClip(crFullURL(href)); crBubble('Link address copied'); }
+            else if (act === 'lsv') crSaveFile(crTitleOf(href), '<p>' + esc(crFullURL(href)) + '</p>');
+        }, dark);
+        return;
+    }
+    var sel = d.getSelection ? d.getSelection() : null, st = sel ? String(sel).trim() : '';
+    if (st) {
+        var short = st.length > 22 ? st.slice(0, 22) + '…' : st;
+        openBctx(host, fake, [
+            { k: 'scp', t: 'Copy' },
+            'sep',
+            { k: 'ssr', t: 'Search Google for “' + short + '”' },
+            'sep',
+            { k: 'spr', t: 'Print…' }
+        ], function (act) {
+            if (act === 'scp') { setClip(st); crBubble('Copied'); }
+            else if (act === 'ssr') crNewTab('google.com/search?q=' + encodeURIComponent(st));
+            else toast('Saved as bloom.pdf to a printer that isn’t real.');
+        }, dark);
+        return;
+    }
+    crCtxMenu(fake);
+}
+/* ── search suggestions (skins.vector.search → Codex TypeaheadSearch) ──
+   The REST title search Wikipedia's own box uses (rest.php/v1/search/title),
+   drawn as Codex draws its menu: a thumbnail or its placeholder, the title with
+   the typed part marked, the short description, and the "Search for pages
+   containing" row at the foot. */
+var WK_SUG_CACHE = Object.create(null);
+function wkSugClose(d) {
+    Array.prototype.forEach.call(d.querySelectorAll('.cdx-typeahead-search__menu'), function (m) { m.remove(); });
+    Array.prototype.forEach.call(d.querySelectorAll('.cdx-typeahead-search--expanded'), function (m) { m.classList.remove('cdx-typeahead-search--expanded'); });
+}
+function wkSplitMatch(title, q) {
+    var i = q ? title.toLowerCase().indexOf(q.toLowerCase()) : -1;
+    if (i < 0) return [title, '', ''];
+    return [title.slice(0, i), title.slice(i, i + q.length), title.slice(i + q.length)];
+}
+function wkSugMenu(q, pages, selIdx) {
+    var items = (pages || []).slice(0, 10).map(function (pg, i) {
+        var parts = wkSplitMatch(pg.title || '', q), id = 'cdx-typeahead-search-menu-item-' + i;
+        var th = pg.thumbnail && pg.thumbnail.url && wkSrcOk(pg.thumbnail.url) ?
+            '<span class="cdx-thumbnail cdx-menu-item__thumbnail"><span class="cdx-thumbnail__image" style="background-image: url(' + esc(String(pg.thumbnail.url).replace(/^\/\//, 'https://')) + ');"></span></span>' :
+            '<span class="cdx-thumbnail cdx-menu-item__thumbnail"><span class="cdx-thumbnail__placeholder"><span class="cdx-thumbnail__placeholder__icon"></span></span></span>';
+        var redirected = pg.matched_title && pg.matched_title !== pg.title ? ' <span class="cdx-menu-item__text__supporting-text"><bdi>(Redirected from ' + esc(pg.matched_title) + ')</bdi></span>' : '';
+        return '<li id="' + id + '" role="option" class="cdx-menu-item cdx-menu-item--enabled' + (pg.description ? ' cdx-menu-item--has-description' : '') + ' cdx-menu-item--hide-description-overflow' + (i === selIdx ? ' cdx-menu-item--highlighted' : '') + '" aria-disabled="false" data-sug="' + esc('/w/index.php?title=Special:Search&search=' + encodeURIComponent(pg.title || '')) + '">' +
+            '<a href="' + esc('/w/index.php?title=Special:Search&search=' + encodeURIComponent(pg.title || '')) + '" class="cdx-menu-item__content">' + th +
+            '<span class="cdx-menu-item__text"><span class="cdx-search-result-title"><bdi>' + esc(parts[0]) + '<span class="cdx-search-result-title__match">' + esc(parts[1]) + '</span>' + esc(parts[2]) + '</bdi></span>' + redirected +
+            (pg.description ? '<span class="cdx-menu-item__text__description"><bdi>' + esc(pg.description) + '</bdi></span>' : '') + '</span></a></li>';
+    }).join('');
+    var footHref = '/w/index.php?title=Special:Search&fulltext=1&search=' + encodeURIComponent(q);
+    var foot = '<li id="cdx-typeahead-search-menu-item-footer" role="option" class="cdx-menu-item cdx-menu-item--enabled' + (selIdx === (pages || []).length ? ' cdx-menu-item--highlighted' : '') + '" aria-disabled="false" data-sug="' + esc(footHref) + '">' +
+        '<a class="cdx-menu-item__content cdx-typeahead-search__search-footer" href="' + esc(footHref) + '">' +
+        '<span class="cdx-icon cdx-icon--medium cdx-menu-item__thumbnail cdx-typeahead-search__search-footer__icon"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><g><path d="M2 0h16v20H2zm2 2v16h12V2zm2 2h3v1H6zm0 2h3v1H6zm0 2h3v1H6zm0 3h8v1H6zm0 2h8v1H6zm0 2h8v1H6zm4-11h4v5h-4z"/></g></svg></span>' +
+        '<span class="cdx-menu-item__text cdx-typeahead-search__search-footer__text"><span>Search for pages containing <strong class="cdx-typeahead-search__search-footer__query">' + esc(q) + '</strong></span></span></a></li>';
+    return '<div class="cdx-menu cdx-typeahead-search__menu cdx-menu--has-footer" style="visibility: visible;"><ul class="cdx-menu__listbox" role="listbox" aria-label="Search results">' + items + foot + '</ul></div>';
+}
+function wkSearchWire(d, sel) {
+    var inp = d.querySelector(sel); if (!inp) return;
+    var form = inp.closest('form'), wrap = inp.closest('.cdx-search-input__input-wrapper') || form, ta = inp.closest('.cdx-typeahead-search');
+    var state = { q: '', pages: [], sel: -1, tmr: 0 };
+    function go(target) { wkSugClose(d); crNav(WK + target); }
+    function submit() {
+        var q = inp.value.trim(); if (!q) return;
+        if (state.sel >= 0) { var li = wrap.querySelectorAll('.cdx-menu-item')[state.sel]; if (li) { go(li.getAttribute('data-sug')); return; } }
+        go('/w/index.php?title=Special:Search&search=' + encodeURIComponent(q));
+    }
+    function paint() {
+        wkSugClose(d);
+        if (!state.q || !inp.isConnected) return;
+        var box = d.createElement('div'); box.innerHTML = wkSugMenu(state.q, state.pages, state.sel);
+        wrap.appendChild(box.firstChild);
+        if (ta) ta.classList.add('cdx-typeahead-search--expanded');
+        Array.prototype.forEach.call(wrap.querySelectorAll('.cdx-menu-item'), function (li, i) {
+            li.addEventListener('mousedown', function (e) { e.preventDefault(); });
+            li.addEventListener('mousemove', function () { if (state.sel !== i) { state.sel = i; Array.prototype.forEach.call(wrap.querySelectorAll('.cdx-menu-item'), function (x, j) { x.classList.toggle('cdx-menu-item--highlighted', j === i); }); } });
+        });
+    }
+    function fetchSug(q) {
+        var priv = !!(CR && CR.incog), hit = priv ? null : WK_SUG_CACHE[q];   // private keystrokes leave no crumbs
+        function keep(pages) { if (!priv) { WK_SUG_CACHE[q] = pages; if (Object.keys(WK_SUG_CACHE).length > 60) WK_SUG_CACHE = Object.create(null); } }
+        if (hit) { state.pages = hit; paint(); return; }
+        liveGet(WK_REST + '/v1/search/title?q=' + encodeURIComponent(q) + '&limit=10', function (err, j) {
+            if (err || !j || !j.pages) {                       // the action API's prefix search stands in when the REST one does not answer
+                liveGet(WK_API + 'action=query&generator=prefixsearch&gpssearch=' + encodeURIComponent(q) + '&gpslimit=10&prop=description|pageimages&piprop=thumbnail&pithumbsize=60&redirects=1', function (e2, j2) {
+                    if (e2 || !j2 || !j2.query || state.q !== q) return;
+                    var pages = (j2.query.pages || []).sort(function (a, b) { return nnum(a.index) - nnum(b.index); }).map(function (x) { return { title: x.title, description: x.description, thumbnail: x.thumbnail ? { url: x.thumbnail.source } : null }; });
+                    keep(pages); state.pages = pages; paint();
+                });
+                return;
+            }
+            if (state.q !== q) return;
+            keep(j.pages); state.pages = j.pages; paint();
+        });
+    }
+    inp.addEventListener('input', function () {
+        var q = inp.value.trim();
+        clearTimeout(state.tmr);
+        state.q = q; state.sel = -1;
+        if (!q) { wkSugClose(d); return; }
+        state.tmr = setTimeout(function () { if (state.q === q) fetchSug(q); }, 150);
+    });
+    inp.addEventListener('keydown', function (e) {
+        var n = wrap.querySelectorAll('.cdx-menu-item').length;
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            if (!n) return;
+            e.preventDefault();
+            state.sel = e.key === 'ArrowDown' ? (state.sel + 1 >= n ? -1 : state.sel + 1) : (state.sel - 1 < -1 ? n - 1 : state.sel - 1);
+            Array.prototype.forEach.call(wrap.querySelectorAll('.cdx-menu-item'), function (x, j) { x.classList.toggle('cdx-menu-item--highlighted', j === state.sel); });
+        } else if (e.key === 'Enter') { e.preventDefault(); submit(); }
+        else if (e.key === 'Escape') { wkSugClose(d); }
+    });
+    inp.addEventListener('blur', function () { setTimeout(function () { if (d.activeElement !== inp) wkSugClose(d); }, 150); });
+    inp.addEventListener('focus', function () { if (state.q && state.pages.length) paint(); });
+    if (form) form.addEventListener('submit', function (e) { e.preventDefault(); submit(); });
+    var btn = form && form.querySelector('.cdx-search-input__end-button');
+    if (btn) btn.addEventListener('click', function (e) { e.preventDefault(); submit(); });
+}
+/* ── the page ── */
+var WK_NS = { 'Talk': [1, 'main', true], 'User': [2, 'user'], 'User talk': [3, 'user', true], 'Wikipedia': [4, 'project'], 'WP': [4, 'project'], 'Project': [4, 'project'], 'Wikipedia talk': [5, 'project', true],
+    'File': [6, 'image'], 'Image': [6, 'image'], 'File talk': [7, 'image', true], 'MediaWiki': [8, 'mediawiki'], 'MediaWiki talk': [9, 'mediawiki', true], 'Template': [10, 'template'], 'Template talk': [11, 'template', true],
+    'Help': [12, 'help'], 'Help talk': [13, 'help', true], 'Category': [14, 'category'], 'Category talk': [15, 'category', true], 'Portal': [100, 'portal'], 'Portal talk': [101, 'portal', true],
+    'Draft': [118, 'draft'], 'Draft talk': [119, 'draft', true], 'Module': [828, 'module'], 'Module talk': [829, 'module', true], 'Special': [-1, 'special'] };
+var WK_NSTIP = { main: 'View the content page', user: 'View the user page', project: 'View the project page', image: 'View the file page', mediawiki: 'View the system message', template: 'View the template', help: 'View the help page', category: 'View the category page', special: 'This is a special page, and it cannot be edited' };   // tooltip-ca-nstab-*
+var WK_NSTAB = { main: 'Article', user: 'User page', project: 'Project page', image: 'File', mediawiki: 'Message', template: 'Template', help: 'Help page', category: 'Category', portal: 'Portal', draft: 'Draft', module: 'Module', special: 'Special page' };   // nstab-* (main and portal ONWIKI)
+function wkNs(title) {
+    var m = String(title).match(/^([^:]+):(.+)$/), ns = m && WK_NS[m[1].trim()];
+    if (!ns) return { ns: 0, id: 'main', talk: false, subject: title, talkTitle: 'Talk:' + title, root: String(title).split('/')[0] };
+    var rest = m[2].trim(), base = m[1].trim(), isTalk = !!ns[2];
+    var subjNs = isTalk ? base.replace(/ talk$/, '').replace(/^Talk$/, '') : base;
+    var subject = subjNs ? subjNs + ':' + rest : rest;
+    var talk = (subjNs ? subjNs + ' talk' : 'Talk') + ':' + rest;
+    return { ns: ns[0], id: ns[1], talk: isTalk, subject: subject, talkTitle: talk, root: rest.split('/')[0], prefix: base };
+}
+function wkCls(t) { return String(t).replace(/ /g, '_').replace(/[^\w:\-.]/g, function (c) { return '.' + c.charCodeAt(0).toString(16).toUpperCase(); }); }
+var WK_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+function wkDate(ts) {
+    var d = new Date(ts); if (isNaN(d)) return null;
+    function p2(n) { return (n < 10 ? '0' : '') + n; }
+    return { date: d.getUTCDate() + ' ' + WK_MONTHS[d.getUTCMonth()] + ' ' + d.getUTCFullYear(), time: p2(d.getUTCHours()) + ':' + p2(d.getUTCMinutes()) };
+}
+function wkSearchBox(primary, formId, loc) {
+    return '<div' + (primary ? ' id="p-search"' : '') + ' role="search" class="vector-search-box-vue ' + (primary ? ' vector-search-box-collapses' : '') + ' vector-search-box-show-thumbnail' + (primary ? ' vector-search-box-auto-expand-width' : '') + ' vector-search-box">' +
+        (primary ? '<a href="/wiki/Special:Search" class="cdx-button cdx-button--fake-button cdx-button--fake-button--enabled cdx-button--weight-quiet cdx-button--icon-only search-toggle" title="Search Wikipedia [alt-shift-f]" accesskey="f">' + wkIcon('search') + '<span>Search</span></a>' : '') +
+        '<div class="vector-typeahead-search-container"><div class="cdx-typeahead-search cdx-typeahead-search--show-thumbnail' + (primary ? ' cdx-typeahead-search--auto-expand-width' : '') + '">' +
+        '<form action="/w/index.php" id="' + formId + '" class="cdx-search-input cdx-search-input--has-end-button">' +
+        '<div ' + (primary ? 'id="simpleSearch" ' : '') + 'class="cdx-search-input__input-wrapper" data-search-loc="' + loc + '">' +
+        '<div class="cdx-text-input cdx-text-input--has-start-icon">' +
+        '<input class="cdx-text-input__input mw-searchInput" autocomplete="off" type="search" name="search" placeholder="Search Wikipedia" aria-label="Search Wikipedia" autocapitalize="sentences" spellcheck="false"' + (primary ? ' title="Search Wikipedia [alt-shift-f]" accesskey="f" id="searchInput"' : '') + '>' +
+        '<span class="cdx-text-input__icon cdx-text-input__start-icon"></span></div>' +
+        '<input type="hidden" name="title" value="Special:Search"></div>' +
+        '<button class="cdx-button cdx-search-input__end-button">Search</button></form></div></div></div>';
+}
+/* UserLinks.mustache for a logged-out reader (VectorComponentUserLinks): Donate,
+   Create account and Log in inline, with the same three behind a dropdown the
+   skin only shows below the tablet width (vector-user-links-dropdown--collapsible:
+   three items or fewer). Temporary accounts are on ($wgAutoCreateTempUser, known),
+   so core adds no Talk or Contributions for a reader who is not logged in. */
+function wkUserLinks(title, sticky) {
+    var ret = '&returnto=' + wkEnc(title), sfx = sticky ? '-sticky-header' : '', coll = sticky ? '' : 'vector-menu-item--collapsible';   // stickyHeader.js strips the collapsible class from its copy
+    var donate = 'https://donate.wikimedia.org/?wmf_source=donate&wmf_medium=sidebar&wmf_campaign=en.wikipedia.org&uselang=en';
+    var inline = wkLi('pt-sitesupport-2', 'vector-menu-item--collapsible', donate, 'Donate', { title: 'Support us', 'data-mw-donate-attempt': 'top_link' }) +
+        wkLi('pt-createaccount-2', 'vector-menu-item--collapsible', '/w/index.php?title=Special:CreateAccount' + ret, 'Create account', { title: 'You are encouraged to create an account and log in; however, it is not mandatory' }) +
+        wkLi('pt-login-2', 'vector-menu-item--collapsible', '/w/index.php?title=Special:UserLogin' + ret, 'Log in', { title: wkAk('You are encouraged to log in; however, it is not mandatory', 'o'), accesskey: 'o' });
+    var menu = wkLi('pt-sitesupport' + sfx, coll, donate, 'Donate', { title: 'Support us', 'data-mw-donate-attempt': 'top_link' }, 'heart') +
+        wkLi('pt-createaccount' + sfx, coll, '/w/index.php?title=Special:CreateAccount' + ret, 'Create account', { title: 'You are encouraged to create an account and log in; however, it is not mandatory' }, 'userAdd') +
+        wkLi('pt-login' + sfx, coll, '/w/index.php?title=Special:UserLogin' + ret, 'Log in', { title: wkAk('You are encouraged to log in; however, it is not mandatory', 'o'), accesskey: 'o' }, 'logIn');
+    var dropdown = wkDropdown({ id: 'vector-user-links-dropdown' + sfx, label: 'Personal tools', cls: 'vector-user-menu vector-button-flush-right vector-user-menu-logged-out vector-user-links-dropdown--collapsible', icon: 'userAvatar', tip: 'More options',
+        inner: wkMenu('p-personal' + sfx, 'mw-portlet mw-portlet-personal', '', menu) });
+    if (sticky) return dropdown;
+    return '<nav class="vector-user-links vector-user-links-wide" aria-label="Personal tools"><div class="vector-user-links-main">' +
+        wkMenu('p-vector-user-menu-preferences', 'mw-portlet emptyPortlet', '', '') + wkMenu('p-vector-user-menu-userpage', 'mw-portlet emptyPortlet', '', '') +
+        '<nav class="vector-appearance-landmark" aria-label="Appearance">' + wkDropdown({ id: 'vector-appearance-dropdown', label: 'Appearance', cls: '', icon: 'appearance', tip: 'Change the appearance of the page\'s font size, width, and color',
+            inner: '<div id="vector-appearance-unpinned-container" class="vector-unpinned-container">' + (WK_CUR.appPinned ? '' : wkAppearance(WK_CUR.prefs, false)) + '</div>' }) + '</nav>' +
+        wkMenu('p-vector-user-menu-notifications', 'mw-portlet emptyPortlet', '', '') +
+        wkMenu('p-vector-user-menu-overflow', 'mw-portlet', '', inline) + '</div>' + dropdown + '</nav>';
+}
+var WK_CUR = { prefs: null, appPinned: true };
+/* the whole document, skin.mustache down */
+function wkDocument(p) {
+    var prefs = wkPrefs(); WK_CUR.prefs = prefs; WK_CUR.appPinned = prefs.app === '1';
+    var ns = wkNs(p.title), enc = wkEnc(p.title), idx = '/w/index.php?title=' + enc;
+    var tocOn = !!(p.sections && p.sections.length) && !p.special;
+    var tocPinned = prefs.toc === '1';
+    var isArticle = !p.special && !p.missing;
+    var htmlClass = wkHtmlClass(p.headhtml, p, prefs);
+    if (!tocOn) htmlClass = htmlClass.replace('vector-toc-available', 'vector-toc-not-available');
+    var pageCls = p.special ? 'ns--1 ns-special mw-special-' + esc(p.special) : 'ns-' + ns.ns + ' ' + (ns.talk ? 'ns-talk' : 'ns-subject') + (p.protectedEdit ? '' : ' mw-editable');
+    var bodyClass = ['mediawiki', 'ltr', 'sitedir-ltr', 'mw-hide-empty-elt', 'action-view', 'skin-vector-2022', pageCls, 'page-' + wkCls(p.title), 'rootpage-' + wkCls(ns.prefix ? ns.prefix + ':' + ns.root : ns.root), p.isMain ? 'page-Main_Page' : '', 'skin--responsive', 'skin-vector', 'skin-vector-search-vue'].filter(Boolean).join(' ');
+    var links = wkStyleLinks(p.headhtml);
+    if (p.special) links.push('https://en.wikipedia.org/w/load.php?lang=en&modules=mediawiki.special.search.styles%7Coojs-ui-core.styles%7Coojs-ui.styles.indicators%7Coojs-ui.styles.icons-content%7Coojs-ui.styles.icons-interactions&only=styles&skin=vector-2022');
+    var display = p.display && /mw-page-title/.test(p.display) ? p.display : '<span class="mw-page-title-main">' + (p.display ? wkInline(p.display) : esc(p.title)) + '</span>';
+    /* the language button sits by the title, except on the Main Page, where the wiki puts
+       it at the foot of the content (language-in-main-page-header-disabled: SkinVector22
+       isLanguagesInContentAt('bottom'), skin.mustache after the categories) */
+    var langsTop = !p.special && (!p.isMain || /\bvector-feature-language-in-main-page-header-enabled\b/.test(htmlClass));
+    var langsBottom = p.isMain && !langsTop && /\bvector-feature-language-in-header-enabled\b/.test(htmlClass);
+    var langBtn = langsTop ? wkLangButton(p.langs, !p.missing && !ns.talk) : '';
+    var indicators = '<div class="mw-indicators">' + Object.keys(p.indicators || {}).map(function (k) { return '<div id="mw-indicator-' + esc(k) + '" class="mw-indicator">' + wkClean(p.indicators[k]) + '</div>'; }).join('') + '</div>';
+    /* tabs (SkinTemplate::buildContentNavigationUrls; Vector's vector-tab-noicon) */
+    var tabs = '';
+    if (p.special) tabs = '';                                  // Vector 2022 draws no tab for a special page
+    else {
+        var subjSel = !ns.talk, talkNew = p.talkExists === false;
+        /* nstab-mainpage on the Main Page (SkinTemplate::buildContentNavigationUrls); a selected tab is
+           never a red link (T294129), but a missing page's still links to the editor with redlink=1 */
+        var subjGone = p.missing && subjSel, subjLabel = /^Main Page$/i.test(ns.subject) ? 'Main Page' : WK_NSTAB[ns.id] || 'Page';
+        tabs = wkLi('ca-nstab-' + ns.id, (subjSel ? 'selected ' : '') + 'vector-tab-noicon', subjGone ? '/w/index.php?title=' + wkEnc(ns.subject) + '&action=edit&redlink=1' : '/wiki/' + wkEnc(ns.subject), subjLabel, { title: wkAk(WK_NSTIP[ns.id] ? WK_NSTIP[ns.id] + (subjGone ? ' (page does not exist)' : '') : null, 'c'), accesskey: 'c' }) +
+            wkLi('ca-talk', (ns.talk ? 'selected ' : '') + (talkNew && !ns.talk ? 'new ' : '') + 'vector-tab-noicon', talkNew ? '/w/index.php?title=' + wkEnc(ns.talkTitle) + '&action=edit&redlink=1' : '/wiki/' + wkEnc(ns.talkTitle), 'Talk', { rel: 'discussion', title: wkAk('Discussion about the content page' + (talkNew ? ' (page does not exist)' : ''), 't'), accesskey: 't' });
+    }
+    var views = '';
+    if (!p.special) {
+        views = p.missing ? wkLi('ca-edit', 'vector-menu-item--collapsible vector-tab-noicon', idx + '&action=edit', 'Create', { title: wkAk('Create this page', 'e'), accesskey: 'e' })
+            : wkLi('ca-view', 'selected vector-menu-item--collapsible vector-tab-noicon', '/wiki/' + enc, 'Read') +
+              (p.protectedEdit ? wkLi('ca-viewsource', 'vector-menu-item--collapsible vector-tab-noicon', idx + '&action=edit', 'View source', { title: wkAk('This page is protected.\nYou can view its source', 'e'), accesskey: 'e' })
+                               : wkLi('ca-edit', 'vector-menu-item--collapsible vector-tab-noicon', idx + '&action=edit', 'Edit', { title: wkAk('Edit this page', 'e'), accesskey: 'e' })) +
+              wkLi('ca-history', 'vector-menu-item--collapsible vector-tab-noicon', idx + '&action=history', 'View history', { title: wkAk('Past revisions of this page', 'h'), accesskey: 'h' });
+    }
+    var toc = tocOn ? wkToc(p.sections, tocPinned) : '';
+    var mainMenu = wkMainMenu(false);
+    var tools = wkPageTools(p, false);
+    var lm = p.lastmod ? wkDate(p.lastmod) : null;
+    var footerInfo = (lm && isArticle ? '<li id="footer-info-lastmod"> This page was last edited on ' + lm.date + ', at ' + lm.time + '<span class="anonymous-show">&#160;(UTC)</span>.</li>' : '') +   // ONWIKI MediaWiki:Lastmodifiedat adds the (UTC)
+        (p.missing ? '' : '<li id="footer-info-copyright">' + WK_MSG.copyright + '</li>');
+    var footerPlaces = '<li id="footer-places-privacy"><a href="https://foundation.wikimedia.org/wiki/Special:MyLanguage/Policy:Privacy_policy">Privacy policy</a></li>' +
+        '<li id="footer-places-about"><a href="/wiki/Wikipedia:About">About Wikipedia</a></li>' +
+        '<li id="footer-places-disclaimers"><a href="/wiki/Wikipedia:General_disclaimer">Disclaimers</a></li>' +
+        '<li id="footer-places-contact"><a href="//en.wikipedia.org/wiki/Wikipedia:Contact_us">' + WK_MSG.contactFooter + '</a></li>' +
+        '<li id="footer-places-wm-codeofconduct"><a href="https://foundation.wikimedia.org/wiki/Special:MyLanguage/Policy:Universal_Code_of_Conduct">Code of Conduct</a></li>' +
+        '<li id="footer-places-developers"><a href="https://developer.wikimedia.org">Developers</a></li>' +
+        '<li id="footer-places-statslink"><a href="https://stats.wikimedia.org/#/en.wikipedia.org">Statistics</a></li>' +
+        '<li id="footer-places-cookiestatement"><a href="https://foundation.wikimedia.org/wiki/Special:MyLanguage/Policy:Cookie_statement">Cookie statement</a></li>' +
+        '<li id="footer-places-mobileview"><a href="//en.m.wikipedia.org/w/index.php?title=' + enc + '&amp;mobileaction=toggle_view_mobile" class="noprint stopMobileRedirectToggle">Mobile view</a></li>';
+    var footerIcons = '<li id="footer-copyrightico"><a href="https://www.wikimedia.org/" class="cdx-button cdx-button--fake-button cdx-button--size-large cdx-button--fake-button--enabled"><picture><source media="(min-width: 500px)" srcset="/static/images/footer/wikimedia-button.svg" width="84" height="29"><img src="/static/images/footer/wikimedia.svg" width="25" height="25" alt="Wikimedia Foundation" lang="en" loading="lazy"></picture></a></li>' +
+        '<li id="footer-poweredbyico"><a href="https://www.mediawiki.org/" class="cdx-button cdx-button--fake-button cdx-button--size-large cdx-button--fake-button--enabled"><picture><source media="(min-width: 500px)" srcset="/w/resources/assets/poweredby_mediawiki.svg" width="88" height="31"><img src="/w/resources/assets/mediawiki_compact.svg" alt="Powered by MediaWiki" lang="en" width="25" height="25" loading="lazy"></picture></a></li>';
+    var stickyIcons = (ns.talk || p.special ? '' : '<a href="/wiki/' + wkEnc(ns.talkTitle) + '" class="cdx-button cdx-button--fake-button cdx-button--fake-button--enabled cdx-button--weight-quiet cdx-button--icon-only" id="ca-talk-sticky-header" tabindex="-1" data-event-name="talk-sticky-header">' + wkIcon('speechBubbles') + '<span></span></a>') +
+        (ns.talk ? '<a href="/wiki/' + wkEnc(ns.subject) + '" class="cdx-button cdx-button--fake-button cdx-button--fake-button--enabled cdx-button--weight-quiet cdx-button--icon-only" id="ca-subject-sticky-header" tabindex="-1" data-event-name="subject-sticky-header">' + wkIcon('article') + '<span></span></a>' : '') +
+        (p.missing || p.special ? '' : '<a href="' + idx + '&action=history" class="cdx-button cdx-button--fake-button cdx-button--fake-button--enabled cdx-button--weight-quiet cdx-button--icon-only" id="ca-history-sticky-header" tabindex="-1" data-event-name="history-sticky-header">' + wkIcon('wikimedia-history') + '<span></span></a>') +
+        (p.special ? '' : '<a href="' + idx + '&action=edit" class="cdx-button cdx-button--fake-button cdx-button--fake-button--enabled cdx-button--weight-quiet cdx-button--icon-only" id="' + (p.protectedEdit ? 'ca-viewsource-sticky-header' : 'ca-edit-sticky-header') + '" tabindex="-1" data-event-name="' + (p.protectedEdit ? 've-edit-protected-sticky-header' : 'wikitext-edit-sticky-header') + '">' + wkIcon(p.protectedEdit ? 'wikimedia-editLock' : 'wikimedia-wikiText') + '<span></span></a>');
+    var nL = (p.langs || []).length;
+    var html = '<!DOCTYPE html>\n<html class="' + esc(htmlClass) + '" lang="en" dir="ltr"><head><meta charset="UTF-8"><meta name="referrer" content="no-referrer">' +
+        '<title>' + esc(wkTabTitle(p)) + '</title><base href="https://en.wikipedia.org/wiki/' + enc + '">' +
+        links.map(function (u) { return '<link rel="stylesheet" href="' + esc(u) + '">'; }).join('') +
+        '<style>mark.fnd{background:#f6e05e;color:#15151a;border-radius:1px}mark.fnd.cur{background:#ff9632;color:#15151a}</style>' +
+        '</head><body class="' + bodyClass + '">' +
+        '<a class="mw-jump-link" href="#bodyContent">Jump to content</a>' +
+        '<div class="vector-header-container"><header class="vector-header mw-header no-font-mode-scale"><div class="vector-header-start">' +
+        '<nav class="vector-main-menu-landmark" aria-label="Site">' + wkDropdown({ id: 'vector-main-menu-dropdown', label: 'Main menu', cls: 'vector-main-menu-dropdown vector-button-flush-left vector-button-flush-right', icon: 'menu', tip: 'Main menu',
+            inner: '<div id="vector-main-menu-unpinned-container" class="vector-unpinned-container">' + mainMenu + '</div>' }) + '</nav>' +
+        '<a href="/wiki/Main_Page" class="mw-logo"><img class="mw-logo-icon" src="' + WK_LOGO.icon + '" alt="" aria-hidden="true" height="50" width="50">' +
+        '<span class="mw-logo-container skin-invert"><img class="mw-logo-wordmark" alt="Wikipedia" src="' + WK_LOGO.wordmark.src + '" style="width: ' + (WK_LOGO.wordmark.width / 16) + 'em; height: ' + (WK_LOGO.wordmark.height / 16) + 'em;">' +
+        '<img class="mw-logo-tagline" alt="The Free Encyclopedia" src="' + WK_LOGO.tagline.src + '" width="' + WK_LOGO.tagline.width + '" height="' + WK_LOGO.tagline.height + '" style="width: ' + (WK_LOGO.tagline.width / 16) + 'em; height: ' + (WK_LOGO.tagline.height / 16) + 'em;"></span></a></div>' +
+        '<div class="vector-header-end">' + wkSearchBox(true, 'searchform', 'header-moved') + wkUserLinks(p.title, false) + '</div></header></div>' +
+        '<div class="mw-page-container"><div class="mw-page-container-inner"><div class="vector-sitenotice-container"><div id="siteNotice"></div></div>' +
+        '<div class="vector-column-start"><div class="vector-main-menu-container"><div id="mw-navigation"><nav id="mw-panel" class="vector-main-menu-landmark" aria-label="Site"><div id="vector-main-menu-pinned-container" class="vector-pinned-container"></div></nav></div></div>' +
+        (tocOn ? '<div class="vector-sticky-pinned-container"><nav id="mw-panel-toc" aria-label="Contents" data-event-name="ui.sidebar-toc" class="mw-table-of-contents-container vector-toc-landmark"><div id="vector-toc-pinned-container" class="vector-pinned-container">' + (tocPinned ? toc : '') + '</div></nav></div>' : '') + '</div>' +
+        '<div class="mw-content-container"><main id="content" class="mw-body">' +
+        '<header class="mw-body-header vector-page-titlebar no-font-mode-scale">' +
+        (tocOn ? '<nav aria-label="Contents" class="vector-toc-landmark">' + wkDropdown({ id: 'vector-page-titlebar-toc', label: 'Toggle the table of contents', cls: 'vector-page-titlebar-toc vector-button-flush-left', icon: 'listBullet', tip: 'Table of Contents',
+            inner: '<div id="vector-page-titlebar-toc-unpinned-container" class="vector-unpinned-container">' + (tocPinned ? '' : toc) + '</div>' }) + '</nav>' : '') +
+        '<h1 id="firstHeading" class="firstHeading mw-first-heading">' + display + '</h1>' + (langsTop ? langBtn : indicators) + '</header>' +
+        '<div class="vector-page-toolbar"><div class="vector-page-toolbar-container"><div id="left-navigation"><nav aria-label="Namespaces">' +
+        '<div id="p-associated-pages" class="vector-menu vector-menu-tabs mw-portlet mw-portlet-associated-pages' + (tabs ? '' : ' emptyPortlet') + '"><div class="vector-menu-content"><ul class="vector-menu-content-list">' + tabs + '</ul></div></div></nav></div>' +
+        '<div id="right-navigation" class="vector-collapsible"><nav aria-label="Views"><div id="p-views" class="vector-menu vector-menu-tabs mw-portlet mw-portlet-views' + (views ? '' : ' emptyPortlet') + '"><div class="vector-menu-content"><ul class="vector-menu-content-list">' + views + '</ul></div></div></nav>' +
+        '<nav class="vector-page-tools-landmark" aria-label="Page tools">' + wkDropdown({ id: 'vector-page-tools-dropdown', label: 'Tools', cls: 'vector-page-tools-dropdown', icon: 'verticalEllipsis',
+            inner: '<div id="vector-page-tools-unpinned-container" class="vector-unpinned-container">' + tools + '</div>' }) + '</nav></div></div></div>' +
+        '<div class="vector-column-end no-font-mode-scale"><div class="vector-sticky-pinned-container"><nav class="vector-page-tools-landmark" aria-label="Page tools"><div id="vector-page-tools-pinned-container" class="vector-pinned-container"></div></nav>' +
+        '<nav class="vector-appearance-landmark" aria-label="Appearance"><div id="vector-appearance-pinned-container" class="vector-pinned-container">' + (WK_CUR.appPinned ? wkAppearance(prefs, true) : '') + '</div></nav></div></div>' +
+        '<div id="bodyContent" class="vector-body" aria-labelledby="firstHeading" data-mw-ve-target-container>' +
+        '<div class="vector-body-before-content">' + (langsTop ? indicators : '') + (isArticle ? '<div id="siteSub" class="noprint">' + WK_MSG.tagline + '</div>' : '') +
+        '<div id="contentSub">' + (p.redirectPage ? '<span id="redirectsub">Redirect page</span>' : '') + (p.redirectFrom ? '<span class="mw-redirectedfrom">(Redirected from <a href="/w/index.php?title=' + wkEnc(p.redirectFrom) + '&amp;redirect=no" class="mw-redirect" title="' + esc(p.redirectFrom) + '">' + esc(p.redirectFrom) + '</a>)</span>' : '') + '</div>' + (p.subtitle || '') + '</div>' +
+        '<div id="mw-content-text" class="mw-body-content">' + (p.html || '') + '</div>' + (p.cats || '') + (langsBottom ? wkLangButton(p.langs, true) : '') + '</div></main></div>' +
+        '<div class="mw-footer-container"><footer id="footer" class="mw-footer">' + (footerInfo ? '<ul id="footer-info">' + footerInfo + '</ul>' : '') + '<ul id="footer-places">' + footerPlaces + '</ul><ul id="footer-icons" class="noprint">' + footerIcons + '</ul></footer></div></div></div>' +
+        '<div class="vector-header-container vector-sticky-header-container no-font-mode-scale"><div id="vector-sticky-header" class="vector-sticky-header"><div class="vector-sticky-header-start">' +
+        '<div class="vector-sticky-header-icon-start vector-button-flush-left" aria-hidden="true"><button class="cdx-button cdx-button--weight-quiet cdx-button--icon-only vector-sticky-header-search-toggle" tabindex="-1" data-event-name="ui.vector-sticky-search-form.icon">' + wkIcon('search') + '<span>Search</span></button></div>' +
+        wkSearchBox(false, 'vector-sticky-search-form', 'header-moved') +
+        '<div class="vector-sticky-header-context-bar">' + (tocOn ? '<nav aria-label="Contents" class="vector-toc-landmark">' + wkDropdown({ id: 'vector-sticky-header-toc', label: 'Toggle the table of contents', cls: 'mw-portlet mw-portlet-sticky-header-toc vector-sticky-header-toc vector-button-flush-left', icon: 'listBullet',
+            inner: '<div id="vector-sticky-header-toc-unpinned-container" class="vector-unpinned-container"></div>' }) + '</nav>' : '') +
+        '<div class="vector-sticky-header-context-bar-primary" aria-hidden="true">' + display + '</div></div></div>' +
+        '<div class="vector-sticky-header-end" aria-hidden="true"><div class="vector-sticky-header-icons">' + stickyIcons + '</div><div class="vector-sticky-header-buttons">' +
+        (nL && !p.special && !p.missing && !ns.talk ? '<button class="cdx-button cdx-button--weight-quiet" id="p-lang-btn-sticky-header" tabindex="-1" data-event-name="ui.dropdown-p-lang-btn-sticky-header">' + wkIcon('wikimedia-language') + '<span>' + nL + wkPlural(nL, ' language', ' languages') + '</span></button>' : '') +
+        '</div><div class="vector-sticky-header-icon-end"><div class="vector-user-links">' + wkUserLinks(p.title, true) + '</div></div></div></div></div>' +
+        '</body></html>';
+    return html;
+}
+function wkTabTitle(p) {
+    if (p.isMain) return 'Wikipedia, the free encyclopedia';           // ONWIKI MediaWiki:Pagetitle-view-mainpage
+    return (p.special === 'Search' ? (p.q ? 'Search results for "' + p.q + '"' : 'Search') : p.title) + ' - Wikipedia';   // searchresults-title only for a term
+}
+/* what the info request adds once it lands: the last edit, the edit tab's
+   state, the talk tab's redness, the Wikidata item */
+function wkApplyInfo(d, p) {
+    if (!d || !p.info) return;
+    var i = p.info;
+    var lm = d.getElementById('footer-info-lastmod'), ul = d.getElementById('footer-info');
+    if (i.lastmod && !p.missing && !p.special) {
+        var t = wkDate(i.lastmod);
+        if (t) {
+            var txt = ' This page was last edited on ' + t.date + ', at ' + t.time + '<span class="anonymous-show">&#160;(UTC)</span>.';
+            if (lm) lm.innerHTML = txt;
+            else if (ul) { var li = d.createElement('li'); li.id = 'footer-info-lastmod'; li.innerHTML = txt; ul.insertBefore(li, ul.firstChild); }
+        }
+    }
+    if (i.protectedEdit && !p.protectedEdit) {
+        ['ca-edit', 'ca-edit-more', 'ca-edit-sticky-header'].forEach(function (id) {
+            var el = d.getElementById(id); if (!el) return;
+            el.id = id.replace('ca-edit', 'ca-viewsource');
+            var a = el.tagName === 'A' ? el : el.querySelector('a'); if (!a) return;
+            if (id === 'ca-edit-sticky-header') { var ic = a.querySelector('.vector-icon'); if (ic) ic.className = 'vector-icon mw-ui-icon-wikimedia-editLock mw-ui-icon-wikimedia-wikimedia-editLock'; return; }
+            var s = a.querySelector('span:last-child'); if (s) s.textContent = 'View source';
+            a.setAttribute('title', 'This page is protected.\nYou can view its source [alt-shift-e]');
+        });
+        d.body.classList.remove('mw-editable');
+    }
+    if (i.talkExists === false) {
+        var talk = d.getElementById('ca-talk'), ta = talk && talk.querySelector('a');
+        if (ta && !talk.classList.contains('selected')) {
+            talk.classList.add('new');
+            ta.setAttribute('href', '/w/index.php?title=' + wkEnc(wkNs(p.title).talkTitle) + '&action=edit&redlink=1');
+            ta.setAttribute('title', 'Discussion about the content page (page does not exist) [alt-shift-t]');
+        }
+    }
+    if (i.wikibase && !d.getElementById('t-wikibase')) {
+        var tools = d.getElementById('vector-page-tools');
+        if (tools) { var box = d.createElement('div'); box.innerHTML = wkMenu('p-wikibase-otherprojects', 'mw-portlet mw-portlet-wikibase-otherprojects', 'In other projects', wkWikidataLi(i.wikibase)); tools.appendChild(box.firstChild); }
+    }
+}
+/* ── loading ── */
+var WK_SRC = Object.create(null);                          // url → the document last drawn for it (view-source:, Save as…), session-only
+function wkSrcPut(url, doc) {
+    var priv = !!(CR && CR.incog), m = priv ? CR.privSrc : WK_SRC;
+    if (!m || Object.keys(m).length > 8) m = Object.create(null);
+    m[url] = doc;
+    if (priv) CR.privSrc = m; else WK_SRC = m;             // a private page's document stays on the private window
+}
+function wkSrcGet(url) {
+    var u = String(url || '').replace(/^https?:\/\//i, '').replace(/^www\./i, ''), m = CR && CR.incog ? CR.privSrc : WK_SRC;
+    return (m && m[u]) || '';
+}
+function wkShow(view, url, p) {
+    if (!view.isConnected) return;
+    var doc = wkDocument(p);
+    wkSrcPut(url, doc);
+    if (/^view-source:/i.test(crTab().url)) { crPage(); return; }   // loaded for a view-source tab: list it
+    wkFrame(view, doc, function (f, d) { p.doc = d; wkWire(f, d, p); wkApplyInfo(d, p); });
+    liveTitle(url, wkTabTitle(p));
+}
+function wkFail(view, url, err, r) { liveFill(view, url, liveFail(err, WK, r)); }
+function wkArticle(view, url, r) {
+    var follow = !(r.params && r.params.redirect === 'no'), rdq = follow ? '&redirects=1' : '';   // redirect=no shows the redirect page itself
+    var p = { title: r.title, hash: r.hash, isMain: /^Main Page$/i.test(r.title) };
+    var parseUrl = WK_API + 'action=parse' + rdq + '&useskin=vector-2022&disabletoc=1&disablelimitreport=1&prop=text%7Csections%7Clanglinks%7Ccategorieshtml%7Cdisplaytitle%7Crevid%7Cindicators%7Cheadhtml&page=' + encodeURIComponent(r.title);
+    function info(title) {
+        var ns = wkNs(title);
+        liveGet(WK_API + 'action=query' + rdq + '&prop=info%7Crevisions%7Cpageprops&inprop=protection&rvprop=timestamp&ppprop=wikibase_item&titles=' + encodeURIComponent(title + '|' + ns.talkTitle), function (err, j) {
+            if (err || !j || !j.query || !view.isConnected) return;
+            var pages = j.query.pages || [], me = null, talk = null;
+            pages.forEach(function (pg) { if (pg.title === title) me = pg; else if (pg.title === ns.talkTitle) talk = pg; });
+            if (!me && pages.length) me = pages.filter(function (pg) { return pg.title !== ns.talkTitle; })[0] || null;
+            p.info = {
+                lastmod: me && me.revisions && me.revisions[0] && me.revisions[0].timestamp,
+                protectedEdit: !!(me && (me.protection || []).some(function (pr) { return pr.type === 'edit' && pr.level && pr.level !== ''; })),
+                talkExists: talk ? !talk.missing : null,
+                wikibase: me && me.pageprops && me.pageprops.wikibase_item
+            };
+            if (p.doc) wkApplyInfo(p.doc, p);
+        });
+    }
+    info(r.title);
+    liveGet(parseUrl, function (err, j, resp) {
+        if (!view.isConnected) return;
+        if (!err && j && j.error && (j.error.code === 'missingtitle' || j.error.code === 'invalidtitle' || j.error.code === 'nosuchpageid')) {
+            p.missing = true;
+            if (j.error.code === 'invalidtitle') {
+                p.title = 'Bad title';
+                p.html = '<div class="mw-content-ltr" lang="en" dir="ltr"><p>The requested page title was invalid, empty, or an incorrectly linked inter-language or inter-wiki title. It may contain one or more characters that cannot be used in titles.</p></div>';
+                wkShow(view, url, p);
+                return;
+            }
+            /* the wiki's own words for a page that is not there, as a reader who is not logged
+               in sees them (Article::showMissingArticle: noarticletextanon, which the English
+               Wikipedia sets ONWIKI), rendered for this title by the wiki itself */
+            liveGet(WK_API + 'action=parse&prop=text&disablelimitreport=1&wrapoutputclass=&contentmodel=wikitext&title=' + encodeURIComponent(p.title) + '&text=' + encodeURIComponent('<div class="noarticletext mw-content-ltr" dir="ltr" lang="en">\n{{int:noarticletextanon}}\n</div>'), function (e2, j2, r2) {
+                if (!view.isConnected) return;
+                if (e2 || !j2 || !j2.parse) { wkFail(view, url, e2 || 'empty', r2); return; }
+                p.html = wkClean(j2.parse.text);
+                wkShow(view, url, p);
             });
             return;
         }
-        liveGet('https://hn.algolia.com/api/v1/search?tags=front_page&hitsPerPage=30', function (err, j, r) {
-            if (err || !j || !j.hits) { liveFill(view, url, liveFail(err || 'empty', 'Hacker News', r)); return; }
-            var rows = j.hits.map(function (h, i) {
-                var dom = hnHostOf(h.url);
-                var tl = h.url ? crLink(h.url.replace(/^https?:\/\//i, ''), esc(h.title), 'cr-hntitle') : crLink('news.ycombinator.com/item?id=' + h.objectID, esc(h.title), 'cr-hntitle');
-                return '<div class="cr-hnrow"><span class="cr-hnrank">' + (i + 1) + '.</span><div class="cr-hnmain"><span>' + tl + (dom ? ' <i class="cr-hndom">(' + esc(dom) + ')</i>' : '') + '</span>' +
-                    '<span class="cr-hnsub">' + nnum(h.points) + ' points · ' + esc(h.author) + ' · ' + hnAgo(h.created_at_i) + ' · ' + crLink('news.ycombinator.com/item?id=' + h.objectID, nnum(h.num_comments) + ' comments', 'cr-hncl') + '</span></div></div>';
-            }).join('');
-            liveFill(view, url, '<div class="cr-lv cr-hn">' + head() + rows +
-                '<p class="cr-lvfoot">The real front page, via the Algolia HN API. Story links go where they really go — most will open in a framed window.</p></div>',
-                'Hacker News');
+        if (err || !j || !j.parse) { wkFail(view, url, err || 'empty', resp); return; }
+        var P = j.parse;
+        if (P.title && P.title !== p.title) { p.title = P.title; info(P.title); }
+        p.html = wkClean(P.text);
+        p.sections = (P.sections || []).map(function (s) { var c = {}; for (var k in s) c[k] = s[k]; return c; });   // a copy: liveGet's cache hands out the same object, and the GTI splice renumbers
+        p.langs = P.langlinks || [];
+        p.cats = wkClean(P.categorieshtml || '');
+        p.display = P.displaytitle || '';
+        p.indicators = P.indicators || {};
+        p.revid = P.revid;
+        p.headhtml = P.headhtml || '';
+        var rd0 = P.redirects && P.redirects[0];
+        p.redirectFrom = rd0 && rd0.from;
+        if (rd0 && rd0.tofragment && !p.hash) p.hash = rd0.tofragment;   // a redirect to a section lands on it
+        p.redirectPage = !follow && /class="redirectMsg"/.test(P.text || '');
+        if (/^Volkswagen Golf GTI$/.test(p.title)) wkLoreGti(p);
+        wkShow(view, url, p);
+    });
+}
+/* Special:Random: one of Wikipedia's own, then the article */
+function wkRandom(view, url) {
+    liveGet(WK_API + 'action=query&list=random&rnnamespace=0&rnlimit=1&rnfilterredir=nonredirects', function (err, j, resp) {
+        if (!view.isConnected) return;
+        var t = j && j.query && j.query.random && j.query.random[0];
+        if (err || !t) { wkFail(view, url, err || 'empty', resp); return; }
+        crNav((/^view-source:/i.test(crTab().url) ? 'view-source:' : '') + WK + '/wiki/' + wkEnc(t.title), { replace: true });
+    });
+}
+/* Special:Search: Go first (a near match opens the page), the full-text list otherwise */
+function wkSearch(view, url, r) {
+    var q = String(r.q || '').trim(), limit = Math.min(500, Math.max(1, Math.floor(+(r.params && r.params.limit)) || 20)), offset = r.offset || 0;
+    var profile = (r.params && r.params.profile) || 'default';
+    var nsl = Object.keys(r.params || {}).filter(function (k) { return /^ns\d+$/.test(k); }).map(function (k) { return k.slice(2); }).sort(function (a, b) { return a - b; });   // in namespace order, as core's form lists its checkboxes
+    if (!nsl.length) nsl = ['0'];
+    var nsq = profile === 'images' ? '&srnamespace=6' : profile === 'all' ? '&srnamespace=*' : profile === 'advanced' ? '&srnamespace=' + nsl.join('|') : '';
+    var nsp = profile === 'advanced' ? nsl.map(function (n) { return 'ns' + n + '=1'; }).join('&') : '';   // the pager and Did you mean carry them (SpecialSearch::powerSearchOptions)
+    if (!q) { wkSearchShow(view, url, q, null, offset, limit, null, profile, nsp); return; }
+    if (!r.full) {
+        liveGet(WK_API + 'action=query&list=search&srwhat=nearmatch&srlimit=1&srsearch=' + encodeURIComponent(q), function (err, j) {
+            if (!view.isConnected) return;
+            var hit = j && j.query && j.query.search && j.query.search[0];
+            if (!err && hit) { crNav((/^view-source:/i.test(crTab().url) ? 'view-source:' : '') + WK + '/wiki/' + wkEnc(hit.title), { replace: true }); return; }
+            fullText();
+        });
+    } else fullText();
+    function fullText() {
+        liveGet(WK_API + 'action=query&list=search&srsearch=' + encodeURIComponent(q) + nsq + '&srlimit=' + limit + '&sroffset=' + offset + '&srprop=snippet%7Csize%7Cwordcount%7Ctimestamp%7Credirecttitle%7Credirectsnippet%7Csectiontitle%7Csectionsnippet&srinfo=totalhits%7Csuggestion%7Csuggestionsnippet%7Crewrittenquery', function (err, j, resp) {
+            if (!view.isConnected) return;
+            if (err || !j || !j.query) { wkFail(view, url, err || 'empty', resp); return; }
+            var res = j.query;
+            var titles = (res.search || []).map(function (h) { return h.title; });
+            if (!titles.length) { wkSearchShow(view, url, q, res, offset, limit, null, profile, nsp); return; }
+            liveGet(WK_API + 'action=query&prop=pageimages&piprop=thumbnail&pithumbsize=180&pilimit=50&titles=' + encodeURIComponent(titles.join('|')), function (e2, j2) {
+                if (!view.isConnected) return;
+                var thumbs = Object.create(null);
+                if (!e2 && j2 && j2.query) (j2.query.pages || []).forEach(function (pg) { if (pg.thumbnail && wkSrcOk(pg.thumbnail.source)) thumbs[pg.title] = pg.thumbnail; });
+                wkSearchShow(view, url, q, res, offset, limit, thumbs, profile, nsp);
+            });
         });
     }
+}
+function wkSearchShow(view, url, q, res, offset, limit, thumbs, profile, nsp) {
+    profile = profile || 'default';
+    var hits = res ? (res.search || []) : [], total = res && res.searchinfo ? nnum(res.searchinfo.totalhits) : 0;
+    var sUrl = function (params) { return '/w/index.php?search=' + encodeURIComponent(params.q != null ? params.q : q) + '&title=Special:Search&profile=' + (params.profile || profile) + '&fulltext=1' + (params.offset ? '&offset=' + params.offset : '') + (params.limit ? '&limit=' + params.limit : '') + (params.ns ? '&' + params.ns : !params.profile && nsp ? '&' + nsp : ''); };
+    var info = total > 0 && offset < total ? '<div class="results-info" data-mw-num-results-offset="' + offset + '" data-mw-num-results-total="' + total + '" data-mw-num-results-approximate-total="false">' +
+        (total === 1 ? 'Result <strong>1</strong> of <strong>1</strong>' : 'Results <strong>' + wkNum(offset + 1) + ' – ' + wkNum(offset + hits.length) + '</strong> of <strong>' + wkNum(total) + '</strong>') + '</div>' : '';
+    var form = '<div class="mw-search-form-wrapper"><form action="/w/index.php" id="search" method="get"><div id="mw-search-top-table">' +
+        '<div class="oo-ui-layout oo-ui-labelElement oo-ui-fieldLayout oo-ui-fieldLayout-align-top oo-ui-actionFieldLayout"><div class="oo-ui-fieldLayout-body"><div class="oo-ui-fieldLayout-field">' +
+        '<div class="oo-ui-actionFieldLayout-input"><div id="searchText" class="oo-ui-widget oo-ui-widget-enabled oo-ui-inputWidget oo-ui-textInputWidget oo-ui-textInputWidget-type-search oo-ui-searchInputWidget oo-ui-iconElement oo-ui-indicatorElement"><input type="search" tabindex="0" name="search" value="' + esc(q) + '" title="Search Wikipedia" autocapitalize="none" class="oo-ui-inputWidget-input"><span class="oo-ui-iconElement-icon oo-ui-icon-search"></span><span class="oo-ui-indicatorElement-indicator oo-ui-indicator-clear"></span></div></div>' +
+        '<span class="oo-ui-actionFieldLayout-button"><span class="oo-ui-widget oo-ui-widget-enabled oo-ui-inputWidget oo-ui-buttonElement oo-ui-buttonElement-framed oo-ui-labelElement oo-ui-flaggedElement-progressive oo-ui-flaggedElement-primary oo-ui-buttonInputWidget"><input type="submit" tabindex="0" value="Search" class="oo-ui-inputWidget-input oo-ui-buttonElement-button"></span></span></div></div></div>' + info +
+        '<input type="hidden" name="title" value="Special:Search"><input type="hidden" name="profile" value="' + esc(profile) + '"><input type="hidden" name="fulltext" value="1">' + (nsp ? nsp.split('&').map(function (p) { return '<input type="hidden" name="' + esc(p.split('=')[0]) + '" value="1">'; }).join('') : '') + '</div>' +   // the namespaces after fulltext, where core's form has its checkboxes (a GET lists the fields in tree order)
+        '<div class="mw-search-visualclear"></div><div class="mw-search-profile-tabs"><div class="search-types"><ul>' +
+        '<li class="' + (profile === 'default' ? 'current' : 'normal') + '"><a href="' + esc(sUrl({ profile: 'default', ns: 'ns0=1' })) + '" title="Search in (Main)">Content pages</a></li>' +
+        '<li class="' + (profile === 'images' ? 'current' : 'normal') + '"><a href="' + esc(sUrl({ profile: 'images', ns: 'ns6=1' })) + '" title="Search for files">Multimedia</a></li>' +
+        '<li class="' + (profile === 'all' ? 'current' : 'normal') + '"><a href="' + esc(sUrl({ profile: 'all' })) + '" title="Search all of content (including talk pages)">Everything</a></li>' +
+        '<li class="' + (profile === 'advanced' ? 'current' : 'normal') + '"><a href="' + esc(sUrl({ profile: 'advanced', ns: 'ns0=1' })) + '" title="Search in custom namespaces">Advanced</a></li></ul></div><div style="clear:both"></div></div></form></div>';
+    var body = form;
+    if (q) {
+        var notes = '';
+        if (res && res.searchinfo && res.searchinfo.suggestion) notes += '<div class="searchdidyoumean">Did you mean: <a href="' + esc(sUrl({ q: res.searchinfo.suggestion })) + '" title="' + esc(res.searchinfo.suggestion) + '">' + wkClean(res.searchinfo.suggestionsnippet || esc(res.searchinfo.suggestion)) + '</a></div>';
+        var exact = hits.filter(function (h) { return h.title.toLowerCase() === q.toLowerCase(); })[0];
+        if (exact) notes += '<p class="mw-search-exists">There is a page named "<a href="/wiki/' + wkEnc(exact.title) + '" title="' + esc(exact.title) + '">' + esc(exact.title) + '</a>" on Wikipedia.' + (hits.length > 1 ? ' See also the other search results found.' : '') + '</p>';
+        var list = hits.map(function (h, i) {
+            var t = wkDate(h.timestamp), th = thumbs && thumbs[h.title];
+            var size = h.size >= 1024 ? Math.round(nnum(h.size) / 1024) + ' KB' : nnum(h.size) + ' bytes';
+            var alt = h.redirecttitle ? ' <span class="searchalttitle">(redirect from <a href="/wiki/' + wkEnc(h.redirecttitle) + '" title="' + esc(h.redirecttitle) + '">' + wkClean(h.redirectsnippet || esc(h.redirecttitle)) + '</a>)</span>'
+                : h.sectiontitle ? ' <span class="searchalttitle">(section <a href="/wiki/' + wkEnc(h.title) + '#' + esc(String(h.sectiontitle).replace(/ /g, '_')) + '">' + wkClean(h.sectionsnippet || esc(h.sectiontitle)) + '</a>)</span>' : '';
+            var inner = '<div class="mw-search-result-heading"><a href="/wiki/' + wkEnc(h.title) + '" title="' + esc(h.title) + '" data-serp-pos="' + (offset + i) + '">' + esc(h.title) + '</a>' + alt + '</div>' +
+                (h.snippet ? '<div class="searchresult">' + wkClean(h.snippet) + '...</div>' : '') +
+                '<div class="mw-search-result-data">' + size + ' (' + wkNum(h.wordcount) + wkPlural(nnum(h.wordcount), ' word', ' words') + ')' + (t ? ' – ' + t.time + ', ' + t.date : '') + '</div>';
+            var grid = '<div class="searchResultImage"><div class="searchResultImage-thumbnail">' + (th ? '<a href="/wiki/' + wkEnc(h.title) + '" class="image"><img alt="Thumbnail for ' + esc(h.title) + '" src="' + esc(String(th.source).replace(/^\/\//, 'https://')) + '" width="' + nnum(th.width) + '" height="' + nnum(th.height) + '" loading="lazy"></a>' : '<div class="searchResultImage-thumbnail-placeholder"><span class="vector-icon mw-ui-icon-wikimedia-article"></span></div>') + '</div><div class="searchResultImage-text">' + inner + '</div></div>';
+            return '<li class="mw-search-result mw-search-result-ns-0">' + grid + '</li>';
+        }).join('');
+        var pager = '';
+        if (total > limit || offset) {
+            var prev = offset > 0, next = offset + limit < total, po = Math.max(0, offset - limit), no = offset + limit;
+            pager = 'View (' + (prev ? '<a href="' + esc(sUrl({ offset: po, limit: limit })) + '" title="Previous ' + limit + ' results" class="mw-prevlink">previous ' + limit + '</a>' : '<span class="mw-prevlink">previous ' + limit + '</span>') + ' | ' +
+                (next ? '<a href="' + esc(sUrl({ offset: no, limit: limit })) + '" title="Next ' + limit + ' results" class="mw-nextlink">next ' + limit + '</a>' : '<span class="mw-nextlink">next ' + limit + '</span>') + ') (' +
+                [20, 50, 100, 250, 500].map(function (n) { return '<a href="' + esc(sUrl({ offset: offset, limit: n })) + '" title="Show ' + n + ' results per page" class="mw-numlink">' + n + '</a>'; }).join(' | ') + ')';
+            pager = '<div class="mw-search-pager-bottom">' + pager + '</div>';
+        }
+        body += '<div class="searchresults' + (offset ? ' mw-searchresults-has-offset' : '') + '"><div class="mw-search-results-info">' + notes + '</div>' +
+            (hits.length ? '<div class="mw-search-results-container"><ul class="mw-search-results">' + list + '</ul></div>' : '<p class="mw-search-nonefound">There were no results matching the query.</p>') +
+            '<div class="mw-search-visualclear"></div>' + pager + '</div>';
+    }
+    var p = { title: 'Special:Search', display: q ? 'Search results' : 'Search', special: 'Search', q: q, html: '<div class="mw-content-ltr" lang="en" dir="ltr">' + body + '</div>', sections: [], langs: [], hash: '' };
+    wkShow(view, url, p);
+}
+/* the house's own footnote to the Golf GTI article: the car called Argent. The
+   real article loads whole; this adds its section before "See also", its two
+   rows to the infobox, and its two links to the list. */
+function wkLoreGti(p) {
+    var doc; try { doc = new DOMParser().parseFromString('<!doctype html><body>' + p.html, 'text/html'); } catch (e) { return; }
+    var see = doc.getElementById('See_also'), wrap = see && (see.closest('.mw-heading') || see);
+    var sec = doc.createElement('div'); sec.className = 'mw-heading mw-heading2'; sec.innerHTML = '<h2 id="Notable_examples">Notable examples</h2>';
+    var para = doc.createElement('p');
+    para.innerHTML = 'A silver MK8 operating in the greater Houston area under the designation <b>“Argent”</b> is maintained by an undergraduate economist. It has appeared in one (1) arcade game, one (1) management sim, and one (1) CRPG as a party member.<sup class="noprint Inline-Template Template-Fact" style="white-space:nowrap;">[<i><a href="/wiki/Wikipedia:Citation_needed" title="Wikipedia:Citation needed"><span title="This claim needs references to reliable sources.">citation needed</span></a></i>]</sup>';
+    var host = doc.querySelector('.mw-parser-output') || doc.body;
+    if (wrap && wrap.parentNode) { wrap.parentNode.insertBefore(sec, wrap); wrap.parentNode.insertBefore(para, wrap); }
+    else { host.appendChild(sec); host.appendChild(para); }
+    var ul = wrap ? wrap.nextElementSibling : null;
+    while (ul && ul.tagName !== 'UL' && ul.tagName !== 'DIV' && ul.tagName !== 'H2') ul = ul.nextElementSibling;
+    if (ul && ul.tagName === 'DIV') ul = ul.querySelector('ul');
+    if (ul && ul.tagName === 'UL') ul.insertAdjacentHTML('beforeend', '<li><a rel="nofollow" class="external text" href="https://isaacure.com/">isaacure.com</a></li><li><a rel="nofollow" class="external text" href="https://www.google.com/search?q=gti+run">GTI RUN (video game)</a></li>');
+    var ib = doc.querySelector('table.infobox tbody');
+    if (ib) ib.insertAdjacentHTML('beforeend', '<tr><th scope="row" class="infobox-label">Best example</th><td class="infobox-data">Argent (silver, MK8)</td></tr><tr><th scope="row" class="infobox-label">Top speed</th><td class="infobox-data">redacted per mom</td></tr>');
+    p.html = doc.body.innerHTML;
+    var at = -1;
+    (p.sections || []).forEach(function (s, i) { if (at < 0 && s.anchor === 'See_also') at = i; });
+    var lore = { toclevel: 1, level: '2', line: 'Notable examples', anchor: 'Notable_examples', linkAnchor: 'Notable_examples', number: '' };
+    if (at < 0) { var last = p.sections.filter(function (s) { return +s.toclevel === 1; }).pop(); lore.number = String((last ? +last.number : 0) + 1); p.sections.push(lore); return; }
+    lore.number = p.sections[at].number;
+    p.sections.splice(at, 0, lore);
+    for (var i = at + 1; i < p.sections.length; i++) {
+        var n = String(p.sections[i].number || ''), m = n.match(/^(\d+)(.*)$/);
+        if (m) p.sections[i].number = (+m[1] + 1) + m[2];
+    }
+}
+function wkLoad(view, r) {
+    var url = liveUrl();
+    if (r.kind === 'random') { wkRandom(view, url); return; }
+    if (r.kind === 'search') { wkSearch(view, url, r); return; }
+    wkArticle(view, url, r);
+}
+var WK_DEF = {
+    live: true,                                            // the whole path is the page: crParse keeps it
+    title: 'Wikipedia', fav: { img: 'https://en.wikipedia.org/static/favicon/wikipedia.ico' }, searchable: true,
+    stitle: 'Wikipedia, the free encyclopedia', sdesc: 'Wikipedia is a free online encyclopedia, created and edited by volunteers around the world and hosted by the Wikimedia Foundation.', skey: 'wikipedia encyclopedia article',
+    render: function () { var r = wkRoute(livePath(WK)); return r.kind === 'frame' ? WEB.__frame.render() : '<div class="cr-wkwait"></div>'; },
+    init: function (view) { var r = wkRoute(livePath(WK)); if (r.kind === 'frame') { WEB.__frame.init(view); return; } wkLoad(view, r); },
+    source: wkSrcGet
+};
+webPage('en.wikipedia.org', WK_DEF);
+webPage('en.wikipedia.org/wiki/Volkswagen_Golf_GTI', {
+    live: true, title: 'Volkswagen Golf GTI - Wikipedia', fav: WK_DEF.fav, searchable: true,
+    stitle: 'Volkswagen Golf GTI - Wikipedia', sdesc: 'The Volkswagen Golf GTI is a hot hatch. One particular silver MK8, designated “Argent”, has achieved local notability.', skey: 'gti golf volkswagen argent car hot hatch',
+    render: WK_DEF.render, init: WK_DEF.init, source: WK_DEF.source
+});
+
+/* — Hacker News —
+   news.ycombinator.com, drawn as Hacker News draws it: the site's own table
+   markup (hnmain, pagetop, athing, titleline, subtext, comment-tree, comtr,
+   commtext, the ids its pages carry), dressed by the site's own stylesheet,
+   news.css, fetched from news.ycombinator.com as the real page fetches it, in
+   a frame of its own with scripts off. The stories come from Hacker News' own
+   API (hacker-news.firebaseio.com: each list in its order, each item), a
+   thread from the Algolia HN API (one request for the whole tree), a profile
+   from the user record. What the site does for a signed-in reader (vote, hide,
+   reply, submit, login) and the pages this copy does not draw go to the real
+   site in a window. */
+var HN = 'news.ycombinator.com';
+var HN_FB = 'https://hacker-news.firebaseio.com/v0/';
+var HN_ALG = 'https://hn.algolia.com/api/v1/';
+var HN_LISTS = { news: ['topstories', 'Hacker News'], newest: ['newstories', 'New Links | Hacker News'], ask: ['askstories', 'Ask | Hacker News'], show: ['showstories', 'Show | Hacker News'], jobs: ['jobstories', 'Jobs | Hacker News'] };
+function hnRoute(path) {
+    var p = String(path || ''), q = '', i;
+    if ((i = p.indexOf('#')) >= 0) p = p.slice(0, i);
+    if ((i = p.indexOf('?')) >= 0) { q = p.slice(i + 1); p = p.slice(0, i); }
+    var params = wkQuery(q);
+    if (!p) p = 'news';
+    if (HN_LISTS[p]) return { kind: 'list', list: p, page: Math.max(1, +params.p || 1) };
+    if (p === 'item' && /^\d+$/.test(params.id || '')) return { kind: 'item', id: params.id };
+    if (p === 'user' && params.id) return { kind: 'user', id: params.id };
+    return { kind: 'frame' };
+}
+/* "3 hours ago", as the site writes it */
+function hnAge(ts) {
+    var m = Math.max(0, Math.floor((Date.now() / 1000 - nnum(ts)) / 60));
+    function n(v, w) { return v + ' ' + w + (v === 1 ? '' : 's') + ' ago'; }
+    if (m < 60) return n(m, 'minute');
+    if (m < 1440) return n(Math.floor(m / 60), 'hour');
+    var d = Math.floor(m / 1440);
+    if (d < 90) return n(d, 'day');
+    if (d < 365) return n(Math.floor(d / 30), 'month');
+    var t = new Date(nnum(ts) * 1000);                    // a year on: the date, as the site writes it (UTC, AP month names)
+    return 'on ' + ['Jan', 'Feb', 'March', 'April', 'May', 'June', 'July', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'][t.getUTCMonth()] + ' ' + t.getUTCDate() + ', ' + t.getUTCFullYear();
+}
+function hnIso(ts) { var d = new Date(nnum(ts) * 1000); return isNaN(d) ? '' : d.toISOString().slice(0, 19) + ' ' + nnum(ts); }
+/* the domain after the title: the host without www, and for GitHub the account too */
+function hnSite(url) {
+    var u; try { u = new URL(url); } catch (e) { return ''; }
+    var host = u.host.replace(/^www\./, '');
+    if (host === 'github.com') { var seg = u.pathname.split('/').filter(Boolean); if (seg.length) return host + '/' + seg[0].toLowerCase(); }
+    return host;
+}
+function hnPlural(n, w) { return nnum(n) + '&nbsp;' + w + (nnum(n) === 1 ? '' : 's'); }
+function hnTop(sel) {
+    function item(k, label) { return sel === k ? '<span class="topsel"><a href="' + k + '">' + label + '</a></span>' : '<a href="' + k + '">' + label + '</a>'; }
+    return '<tr><td bgcolor="#ff6600"><table border="0" cellpadding="0" cellspacing="0" width="100%" style="padding:2px"><tr>' +
+        '<td style="width:18px;padding-right:4px"><a href="https://news.ycombinator.com"><img src="https://news.ycombinator.com/y18.svg" width="18" height="18" style="border:1px white solid; display:block"></a></td>' +
+        '<td style="line-height:12pt; height:10px;"><span class="pagetop"><b class="hnname"><a href="news">Hacker News</a></b> ' +
+        item('newest', 'new') + ' | <a href="front">past</a> | <a href="newcomments">comments</a> | ' + item('ask', 'ask') + ' | ' + item('show', 'show') + ' | ' + item('jobs', 'jobs') + ' | <a href="submit">submit</a> </span></td>' +
+        '<td style="text-align:right;padding-right:4px;"><span class="pagetop"><a href="login?goto=' + esc(sel || 'news') + '">login</a></span></td></tr></table></td></tr>';
+}
+function hnFoot() {
+    return '<tr><td><img src="https://news.ycombinator.com/s.gif" height="10" width="0"><table width="100%" cellspacing="0" cellpadding="1"><tr><td bgcolor="#ff6600"></td></tr></table><br>' +
+        '<center><span class="yclinks"><a href="newsguidelines.html">Guidelines</a> | <a href="newsfaq.html">FAQ</a> | <a href="lists">Lists</a> | <a href="https://github.com/HackerNews/API">API</a> | <a href="security.html">Security</a> | <a href="https://www.ycombinator.com/legal/">Legal</a> | <a href="https://www.ycombinator.com/apply/">Apply to YC</a> | <a href="mailto:hn@ycombinator.com">Contact</a></span><br><br>' +
+        '<form method="get" action="https://hn.algolia.com/">Search: <input type="text" name="q" size="17" autocorrect="off" spellcheck="false" autocapitalize="off" autocomplete="false"></form></center></td></tr>';
+}
+/* a story's two rows: the title line and the subtext */
+function hnStoryRows(s, rank, goto, onItem) {
+    var id = nnum(s.id), job = s.type === 'job', url = s.url && /^https?:\/\//i.test(s.url) && wkUrlOk(s.url) ? s.url : '', site = url ? hnSite(url) : '';
+    var title = '<span class="titleline"><a href="' + esc(url || 'item?id=' + id) + '"' + (url ? ' rel="noreferrer"' : '') + '>' + esc(s.title || '') + '</a>' +
+        (site ? '<span class="sitebit comhead"> (<a href="from?site=' + esc(site.split('/')[0]) + '"><span class="sitestr">' + esc(site) + '</span></a>)</span>' : '') + '</span>';
+    var sub;
+    if (job) sub = '<span class="age" title="' + esc(hnIso(s.time)) + '"><a href="item?id=' + id + '">' + hnAge(s.time) + '</a></span> | <a href="hide?id=' + id + '&amp;goto=' + esc(encodeURIComponent(goto)) + '">hide</a>';
+    else sub = '<span class="subline"><span class="score" id="score_' + id + '">' + hnPlural(s.score, 'point').replace('&nbsp;', ' ') + '</span> by <a href="user?id=' + esc(s.by || '') + '" class="hnuser">' + esc(s.by || '') + '</a> ' +
+        '<span class="age" title="' + esc(hnIso(s.time)) + '"><a href="item?id=' + id + '">' + hnAge(s.time) + '</a></span> <span id="unv_' + id + '"></span> | <a href="hide?id=' + id + '&amp;goto=' + esc(encodeURIComponent(goto)) + '">hide</a>' +
+        (onItem ? ' | <a href="https://hn.algolia.com/?query=' + esc(encodeURIComponent(s.title || '')) + '&amp;type=story&amp;dateRange=all&amp;sort=byDate&amp;storyText=false&amp;prefix&amp;page=0" class="hnpast">past</a> | <a href="fave?id=' + id + '">favorite</a>' : '') +
+        ' | <a href="item?id=' + id + '">' + (nnum(s.descendants) ? hnPlural(s.descendants, 'comment') : 'discuss') + '</a></span>';
+    return '<tr class="athing submission" id="' + id + '">' +
+        '<td align="right" valign="top" class="title">' + (rank ? '<span class="rank">' + rank + '.</span>' : '') + '</td>' +
+        '<td valign="top" class="votelinks"><center>' + (job ? '' : '<a id="up_' + id + '" href="vote?id=' + id + '&amp;how=up&amp;goto=' + esc(encodeURIComponent(goto)) + '"><div class="votearrow" title="upvote"></div></a>') + '</center></td>' +
+        '<td class="title">' + title + '</td></tr>' +
+        '<tr><td colspan="2"></td><td class="subtext">' + sub + '</td></tr>';
+}
+function hnDocument(op, title, inner) {
+    return '<!DOCTYPE html><html lang="en" op="' + op + '"><head><meta charset="utf-8"><meta name="referrer" content="origin"><meta name="viewport" content="width=device-width, initial-scale=1.0">' +
+        '<base href="https://news.ycombinator.com/"><link rel="stylesheet" type="text/css" href="https://news.ycombinator.com/news.css"><link rel="icon" href="https://news.ycombinator.com/y18.svg">' +
+        '<title>' + esc(title) + '</title><style>mark.fnd{background:#f6e05e;color:#15151a;border-radius:1px}mark.fnd.cur{background:#ff9632;color:#15151a}</style></head>' +
+        '<body><center><table id="hnmain" border="0" cellpadding="0" cellspacing="0" width="85%" bgcolor="#f6f6ef">' + inner + '</table></center></body></html>';
+}
+function hnShow(view, url, op, title, inner, p) {
+    if (!view.isConnected) return;
+    var doc = hnDocument(op, title, inner);
+    wkSrcPut(url, doc);
+    if (/^view-source:/i.test(crTab().url)) { crPage(); return; }
+    wkFrame(view, doc, function (f, d) { hnWire(f, d, p || {}); }, 'Hacker News');
+    liveTitle(url, title);
+}
+function hnWire(f, d, p) {
+    liveWireFrame(f, d, p, 'https://news.ycombinator.com/', {
+        click: function (e) {
+            var tg = e.target.closest ? e.target.closest('a.togg') : null;
+            if (!tg) return false;
+            e.preventDefault();
+            /* as the site's recoll: flip this row, open every comment, then fold each
+               collapsed one (its text and arrow go, and every reply beneath it) */
+            var tr = tg.closest('tr.comtr'); if (!tr) return true;
+            tr.classList.toggle('coll');
+            var rows = Array.prototype.slice.call(tr.parentNode.querySelectorAll('tr.comtr'));
+            function ind(r) { return +r.querySelector('td.ind').getAttribute('indent'); }
+            rows.forEach(function (r) { r.classList.remove('noshow'); r.querySelector('div.comment').classList.remove('noshow'); r.querySelector('td.votelinks').classList.remove('nosee'); r.querySelector('a.togg').textContent = '[–]'; });
+            rows.forEach(function (r, i) {
+                if (!r.classList.contains('coll') || r.classList.contains('noshow')) return;
+                for (var j = i + 1, k = ind(r); j < rows.length && ind(rows[j]) > k; j++) rows[j].classList.add('noshow');
+                var a = r.querySelector('a.togg'); a.textContent = '[' + a.getAttribute('n') + ' more]';
+                r.querySelector('div.comment').classList.add('noshow'); r.querySelector('td.votelinks').classList.add('nosee');
+            });
+            return true;
+        }
+    });
+    /* the forms. The sandbox blocks a submit before any submit event, so the keys and
+       the buttons are taken instead: the footer's search goes to Algolia's site; a
+       comment from a reader not logged in goes to the login page, in a window */
+    var sq = d.querySelector('form[action="https://hn.algolia.com/"] input[name="q"]');
+    if (sq) sq.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); crNav('hn.algolia.com/?' + new URLSearchParams({ q: sq.value }).toString()); } });
+    var cb = d.querySelector('form[action="comment"] input[type="submit"]'), cg = d.querySelector('form[action="comment"] input[name="goto"]');
+    if (cb) cb.addEventListener('click', function (e) { e.preventDefault(); liveOpen(HN + '/login?goto=' + encodeURIComponent(cg ? cg.value : 'news')); });
+}
+function hnFail(view, url, err, r) { liveFill(view, url, liveFail(err, HN, r)); }
+/* a list page: the ids in the site's order, then each item */
+function hnList(view, url, r) {
+    var def = HN_LISTS[r.list], per = 30, start = (r.page - 1) * per;
+    liveGet(HN_FB + def[0] + '.json', function (err, ids, resp) {
+        if (!view.isConnected) return;
+        if (err || !Array.isArray(ids)) { hnFail(view, url, err || 'empty', resp); return; }
+        var slice = ids.slice(start, start + per), items = new Array(slice.length), left = slice.length;
+        if (!left) { hnShow(view, url, r.list, def[1], hnTop(r.list) + '<tr id="pagespace" title="" style="height:10px"></tr><tr><td><table border="0" cellpadding="0" cellspacing="0"></table></td></tr>' + hnFoot()); return; }
+        slice.forEach(function (id, i) {
+            liveGet(HN_FB + 'item/' + id + '.json', function (e2, it) {
+                items[i] = e2 || !it ? null : it;
+                if (--left) return;
+                if (!view.isConnected) return;
+                var goto = r.list + (r.page > 1 ? '?p=' + r.page : '');
+                var rows = items.map(function (s, k) { return s && s.title ? hnStoryRows(s, start + k + 1, goto) + '<tr class="spacer" style="height:5px"></tr>' : ''; }).join('');
+                var more = ids.length > start + per ? '<tr class="morespace" style="height:10px"></tr><tr><td colspan="2"></td><td class="title"><a href="' + r.list + '?p=' + (r.page + 1) + '" class="morelink" rel="next">More</a></td></tr>' : '';
+                hnShow(view, url, r.list, def[1], hnTop(r.list) + '<tr id="pagespace" title="" style="height:10px"></tr><tr><td><table border="0" cellpadding="0" cellspacing="0">' + rows + more + '</table></td></tr>' + hnFoot());
+            });
+        });
+    });
+}
+/* a thread. The text comes from the Algolia HN API (one request for the whole
+   tree); the order comes from Hacker News' own API, whose kids are "in ranked
+   display order" (the story's, and each comment's that has replies, up to a
+   budget); an item Algolia has not indexed yet is built from the site's API
+   alone. A deleted comment with live replies stays as its [deleted] row. */
+function hnFbItem(id, cb, nocache) { liveGet(HN_FB + 'item/' + nnum(id) + '.json', function (e, it) { cb(e ? undefined : it); }, nocache); }
+var HN_ORDER = Object.create(null);                      // 's' + story id → { t, kidsOf, gone } (a thread's lookups), 'f' + id → { t, tree } (one drawn from the site's API alone); kept out of LIVE_CACHE (they would push everything else out). String keys: Object.keys lists integer keys in numeric order, not the order they went in
+function hnOrderPut(k, v) { delete HN_ORDER[k]; var ks = Object.keys(HN_ORDER); if (ks.length > 19) delete HN_ORDER[ks[0]]; HN_ORDER[k] = v; }   // insertion order: the oldest goes first, a re-saved entry moves to the end
+function hnRank(kids, order) {
+    if (!Array.isArray(order) || !order.length) return kids || [];
+    var pos = Object.create(null); order.forEach(function (id, i) { pos[nnum(id)] = i; });
+    return (kids || []).slice().sort(function (a, b) { var x = a && nnum(a.id) in pos ? pos[nnum(a.id)] : 1e9, y = b && nnum(b.id) in pos ? pos[nnum(b.id)] : 1e9; return x - y; });
+}
+/* the site's API alone: the item and its kids, in their order, as the Algolia shape */
+function hnFbTree(it, budget, cb) {
+    var node = { id: it.id, type: it.type, author: it.by, text: it.text, title: it.title, url: it.url, points: it.score, created_at_i: it.time, parent_id: it.parent, story_id: it.id, children: [], kids: it.kids || [] };
+    var ids = (it.kids || []).slice(0, Math.max(0, budget.n)); budget.n -= ids.length;
+    if (!ids.length) { cb(node); return; }
+    var left = ids.length, got = new Array(ids.length);
+    ids.forEach(function (id, i) {
+        hnFbItem(id, function (k) {
+            if (k === undefined) budget.miss = true;   // a lookup that failed (not the site's own null): the tree is short, so it is not kept
+            if (!k || k.type !== 'comment') { got[i] = null; if (!--left) done(); return; }
+            hnFbTree(k, budget, function (sub) { if (k.deleted || k.dead) { if (k.deleted) sub.author = null; sub.text = null; sub.dead = !k.deleted; } got[i] = sub; if (!--left) done(); });   // the site keeps a dead comment's name on its row, a deleted one's not
+        }, true);
+    });
+    function done() { node.children = got.filter(Boolean); cb(node); }
+}
+function hnItem(view, url, r) {
+    var fb, fbErr, alg, algErr, algResp, left = 2;
+    liveGet(HN_FB + 'item/' + nnum(r.id) + '.json', function (e, it) { fbErr = e; fb = e ? undefined : it; if (!--left) build(); });
+    liveGet(HN_ALG + 'items/' + r.id, function (err, j, resp) { alg = j; algErr = err; algResp = resp; if (!--left) build(); });
+    function build() {
+        if (!view.isConnected) return;
+        if (fb === null) { hnShow(view, url, 'item', 'Hacker News', hnTop('') + '<tr id="pagespace" title="" style="height:10px"></tr><tr><td>No such item.</td></tr>' + hnFoot()); return; }   // only the site's own null means there is no such item
+        if (alg && alg.id && !algErr) { order(alg); return; }
+        if (fb && fb.id) {   // Algolia has not got it yet: the site's API alone, memoised per thread like order()'s lookups, so Back and Forward do not ask again
+            var fk = 'f' + nnum(fb.id), fp = !!(CR && CR.incog), fm = !fp && HN_ORDER[fk];
+            if (fm && Date.now() - fm.t < 300000) { draw(fm.tree); return; }
+            var bud = { n: 150 };
+            hnFbTree(fb, bud, function (tree) { if (!fp && !bud.miss) hnOrderPut(fk, { t: Date.now(), tree: tree }); draw(tree); });
+            return;
+        }
+        hnFail(view, url, fbErr || algErr || 'empty', algResp);
+    }
+    /* the site's API for each comment, in display order (breadth first, up to 250): the
+       order of its replies (kids), and whether it is dead or deleted, which Algolia's tree
+       does not say. Memoised per thread for five minutes, outside LIVE_CACHE. */
+    function order(j) {
+        var sid = 's' + nnum(j.id), priv = !!(CR && CR.incog), m = !priv && HN_ORDER[sid];
+        function apply(kidsOf, gone) {
+            (function mark(kids) { (kids || []).forEach(function (k) { if (!k) return; var g = gone[nnum(k.id)]; if (g) { if (g === 'deleted') k.author = null; k.text = null; k.dead = g === 'dead'; } mark(k.children); }); })(j.children);
+            j.kids = fb && fb.kids; j.kidsOf = kidsOf; draw(j);
+        }
+        if (m && Date.now() - m.t < 300000) { apply(m.kidsOf, m.gone); return; }
+        var want = [], budget = 250, q = hnRank(j.children, fb && fb.kids).slice();
+        while (q.length && want.length < budget) { var k = q.shift(); if (k && k.type === 'comment' && (k.author || (k.children && k.children.length))) { want.push(k); q.push.apply(q, k.children || []); } }
+        var left = want.length + 1, kidsOf = Object.create(null), gone = Object.create(null), miss = 0;
+        function go() {
+            if (--left) return;
+            if (!priv && !miss) hnOrderPut(sid, { t: Date.now(), kidsOf: kidsOf, gone: gone });   // only a round every lookup answered: a failed one is asked again on the next draw, Reload included
+            if (!view.isConnected) return;
+            apply(kidsOf, gone);
+        }
+        want.forEach(function (k) { hnFbItem(k.id, function (it) { if (it === undefined) miss++; if (it && it.kids) kidsOf[nnum(k.id)] = it.kids; if (it && (it.dead || it.deleted)) gone[nnum(k.id)] = it.deleted ? 'deleted' : 'dead'; go(); }, true); });
+        go();
+    }
+    function draw(j) {
+        var story = j.type === 'story' || j.type === 'job' || j.type === 'poll' ? j : null, cid = nnum(j.id), isCom = j.type === 'comment';
+        var count = 0, flat = [], kidsOf = j.kidsOf || {};
+        function walk(kids, depth, parent, root, order) {
+            var prev = null;
+            hnRank(kids, order).forEach(function (k) {
+                if (!k || k.type !== 'comment') return;
+                var gone = !k.author || !k.text;
+                if (gone && !hnCount(k.children)) return;
+                if (!gone) count++;
+                var id = nnum(k.id);
+                flat.push({ k: k, id: id, depth: depth, parent: parent, root: root, prev: prev, gone: gone });
+                prev = id;
+                walk(k.children, depth + 1, id, depth ? root : id, kidsOf[id] || k.kids);
+            });
+        }
+        walk(j.children, 0, null, null, j.kids);
+        flat.forEach(function (c, i) { var n = i + 1; while (n < flat.length && flat[n].depth > c.depth) n++; c.next = n < flat.length ? flat[n].id : null; });
+        function nav(to, label) { return ' | <a href="#' + to + '" class="clicky" aria-hidden="true">' + label + '</a>'; }
+        var comments = flat.map(function (c) {
+            var k = c.k, id = c.id, depth = c.depth;
+            var navs = '<span class="navs">' + (depth > 1 ? nav(c.root, 'root') : '') + (c.parent ? nav(c.parent, 'parent') : '') + (c.prev ? nav(c.prev, 'prev') : '') + (c.next ? nav(c.next, 'next') : '') +
+                ' <a class="togg clicky" id="' + id + '" n="' + (1 + hnCount(k.children)) + '" href="javascript:void(0)">[–]</a><span class="onstory"></span></span>';
+            var age = '<span class="age" title="' + esc(hnIso(k.created_at_i)) + '"><a href="item?id=' + id + '">' + hnAge(k.created_at_i) + '</a></span> <span id="unv_' + id + '"></span>';
+            var head = !k.author ? age + navs : '<a href="user?id=' + esc(k.author) + '" class="hnuser">' + esc(k.author) + '</a> ' + age + navs;   // a [dead] row keeps its name and age, a [deleted] one has only the age
+            var body = c.gone ? (k.dead ? '[dead]' : '[deleted]') + '<div class="reply"><p><font size="1"></font></p></div>'
+                : '<div class="commtext c00">' + wkClean(k.text) + '</div><div class="reply"><p><font size="1"><u><a href="reply?id=' + id + '&amp;goto=item%3Fid%3D' + cid + '%23' + id + '">reply</a></u></font></p></div>';
+            return '<tr class="athing comtr" id="' + id + '"><td><table border="0"><tr><td class="ind" indent="' + depth + '"><img src="https://news.ycombinator.com/s.gif" height="1" width="' + (depth * 40) + '"></td>' +
+                '<td valign="top" class="votelinks"><center>' + (c.gone ? '<img src="https://news.ycombinator.com/s.gif" height="1" width="14">' : '<a id="up_' + id + '" href="vote?id=' + id + '&amp;how=up&amp;goto=item%3Fid%3D' + cid + '"><div class="votearrow" title="upvote"></div></a>') + '</center></td>' +
+                '<td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">' + head + '</span></div><br>' +
+                '<div class="comment">' + body + '</div></td></tr></table></td></tr>';
+        }).join('');
+        var s = story ? { id: j.id, type: j.type, by: j.author, score: j.points, time: j.created_at_i, title: j.title, url: j.url, descendants: fb && fb.id && fb.descendants != null ? nnum(fb.descendants) : count } : null;   // the site's count, as the list page shows it
+        var plain = snipText(String(j.text || '').replace(/<p>/gi, ' <p>')).replace(/\s+/g, ' ').trim();
+        var name = j.title || (plain ? (plain.length > 80 ? plain.slice(0, 80) + '...' : plain) : 'Hacker News');   // item-page: the title, or the text ellipsized
+        function finish(onstory) {
+            if (!view.isConnected) return;
+            var top = s ? hnStoryRows(s, 0, 'item?id=' + cid, true)
+                : isCom ? '<tr class="athing" id="' + cid + '"><td class="ind"></td><td valign="top" class="votelinks"><center><a id="up_' + cid + '" href="vote?id=' + cid + '&amp;how=up&amp;goto=item%3Fid%3D' + cid + '"><div class="votearrow" title="upvote"></div></a></center></td>' +
+                    '<td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead"><a href="user?id=' + esc(j.author || '') + '" class="hnuser">' + esc(j.author || '') + '</a> <span class="age" title="' + esc(hnIso(j.created_at_i)) + '"><a href="item?id=' + cid + '">' + hnAge(j.created_at_i) + '</a></span> <span id="unv_' + cid + '"></span>' +
+                    '<span class="navs"> | <a href="item?id=' + nnum(j.parent_id) + '">parent</a> | <a href="' + (j.story_id && nnum(j.parent_id) === nnum(j.story_id) ? 'item?id=' + nnum(j.story_id) + '#' + cid : 'context?id=' + cid) + '" rel="nofollow">context</a> | <a href="fave?id=' + cid + '">favorite</a><span class="onstory">' + onstory + '</span></span></span></div><br>' +
+                    '<div class="comment"><div class="commtext c00">' + wkClean(j.text || '') + '</div></div></td></tr>' : '';
+            var text = !isCom && j.text ? '<tr style="height:2px"></tr><tr><td colspan="2"></td><td><div class="toptext">' + wkClean(j.text) + '</div></td></tr>' : '';
+            var form = '<tr style="height:10px"></tr><tr><td colspan="2"></td><td><form action="comment" method="post"><input type="hidden" name="parent" value="' + cid + '"><input type="hidden" name="goto" value="item?id=' + cid + '"><textarea name="text" rows="8" cols="80" wrap="virtual"></textarea><br><br><input type="submit" value="add comment"></form></td></tr>';
+            var inner = hnTop('') + '<tr id="pagespace" title="' + esc(name) + '" style="height:10px"></tr><tr><td><table class="fatitem" border="0">' + top + text + form + '</table><br><br>' +
+                '<table border="0" class="comment-tree">' + comments + '</table><br><br></td></tr>' + hnFoot();
+            hnShow(view, url, 'item', name + ' | Hacker News', inner, { hash: wkRoute('x#' + (String(url).split('#')[1] || '')).hash });
+        }
+        if (isCom && j.story_id && nnum(j.story_id) !== cid) hnFbItem(j.story_id, function (st) {   // "on: <the story>", its title cut to 50
+            var ot = st && st.title ? (st.title.length > 50 ? st.title.slice(0, 50) + '...' : st.title) : '';
+            finish(ot ? ' |  on: <a href="item?id=' + nnum(j.story_id) + '" title="' + esc(st.title) + '">' + esc(ot) + '</a>' : '');
+        });
+        else finish('');
+    }
+}
+function hnCount(kids) { var n = 0; (kids || []).forEach(function (k) { if (k && k.type === 'comment') n += (k.author && k.text ? 1 : 0) + hnCount(k.children); }); return n; }
+/* a profile */
+function hnUser(view, url, r) {
+    liveGet(HN_FB + 'user/' + encodeURIComponent(r.id) + '.json', function (err, u, resp) {
+        if (!view.isConnected) return;
+        if (!err && (!u || !u.id)) { hnShow(view, url, 'user', 'Hacker News', hnTop('') + '<tr id="pagespace" title="" style="height:10px"></tr><tr><td>No such user.</td></tr>' + hnFoot()); return; }
+        if (err || !u || !u.id) { hnFail(view, url, err || 'empty', resp); return; }
+        var created = new Date(nnum(u.created) * 1000), M = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+        var cs = isNaN(created) ? '' : M[created.getUTCMonth()] + ' ' + created.getUTCDate() + ', ' + created.getUTCFullYear();
+        var inner = hnTop('') + '<tr id="pagespace" title="Profile: ' + esc(u.id) + '" style="height:10px"></tr><tr><td><table border="0">' +
+            '<tr class="athing"><td valign="top">user:</td><td><a href="user?id=' + esc(u.id) + '" class="hnuser">' + esc(u.id) + '</a></td></tr>' +
+            '<tr><td valign="top">created:</td><td><a href="front?day=' + (isNaN(created) ? '' : created.toISOString().slice(0, 10)) + '">' + esc(cs) + '</a></td></tr>' +
+            '<tr><td valign="top">karma:</td><td>' + nnum(u.karma) + '</td></tr>' +
+            '<tr><td valign="top">about:</td><td>' + wkClean(u.about || '') + '</td></tr>' +
+            '<tr><td></td><td><a href="submitted?id=' + esc(u.id) + '"><u>submissions</u></a></td></tr>' +
+            '<tr><td></td><td><a href="threads?id=' + esc(u.id) + '"><u>comments</u></a></td></tr>' +
+            '<tr><td></td><td><a href="favorites?id=' + esc(u.id) + '"><u>favorites</u></a></td></tr></table><br><br></td></tr>' + hnFoot();
+        hnShow(view, url, 'user', 'Profile: ' + u.id + ' | Hacker News', inner);
+    });
+}
+webPage('news.ycombinator.com', {
+    live: true,
+    title: 'Hacker News', fav: { img: 'https://news.ycombinator.com/y18.svg' }, searchable: true,   // the icon the site's own <link rel="icon"> names
+    stitle: 'Hacker News', sdesc: 'Hacker News, from Y Combinator.', skey: 'hacker news hn tech front page',
+    render: function () { var r = hnRoute(livePath(HN)); return r.kind === 'frame' ? WEB.__frame.render() : '<div class="cr-wkwait"></div>'; },
+    init: function (view) {
+        var r = hnRoute(livePath(HN)), url = liveUrl();
+        if (r.kind === 'frame') { WEB.__frame.init(view); return; }
+        if (r.kind === 'list') hnList(view, url, r);
+        else if (r.kind === 'item') hnItem(view, url, r);
+        else hnUser(view, url, r);
+    },
+    source: wkSrcGet
 });
 
 /* — GitHub: the rest of github.com —
@@ -6855,80 +8157,20 @@ webPage('github.com', {
     }
 });
 
-/* — real weather, via Open-Meteo (no key, CORS open, bless them) — */
-var WMO = { 0: ['☀️', 'Clear'], 1: ['🌤', 'Mostly clear'], 2: ['⛅', 'Partly cloudy'], 3: ['☁️', 'Overcast'], 45: ['🌫', 'Fog'], 48: ['🌫', 'Rime fog'], 51: ['🌦', 'Drizzle'], 53: ['🌦', 'Drizzle'], 55: ['🌧', 'Heavy drizzle'], 61: ['🌧', 'Rain'], 63: ['🌧', 'Rain'], 65: ['🌧', 'Heavy rain'], 71: ['🌨', 'Snow'], 73: ['🌨', 'Snow'], 75: ['❄️', 'Heavy snow'], 80: ['🌦', 'Showers'], 81: ['🌧', 'Showers'], 82: ['⛈', 'Violent showers'], 95: ['⛈', 'Thunderstorm'], 96: ['⛈', 'Thunder + hail'], 99: ['⛈', 'Thunder + hail'] };
-function wmo(c) { return WMO[c] || ['🌡', 'Weather']; }
-webPage('open-meteo.com', {
-    live: true,
-    title: 'Open-Meteo', fav: { ch: '☀', c: '#f59f00' }, searchable: true,
-    stitle: 'Open-Meteo — real weather', sdesc: 'Actual current weather and a real 7-day forecast for any city on Earth, fetched live into the pixel desktop.', skey: 'weather forecast temperature live real',
-    render: function () { return liveSkeleton('weather'); },
-    init: function (view) {
-        var url = liveUrl();
-        var qm = url.match(/[?&]q=([^&]*)/);
-        var q = '';
-        try { q = qm ? decodeURIComponent(qm[1].replace(/\+/g, ' ')) : ''; }   // a hand-typed %zz must not throw init away and strand the skeleton
-        catch (e) { q = qm[1].replace(/\+/g, ' '); }
-        var at = q.match(/^(.*)@(-?[\d.]+),(-?[\d.]+)$/);
-        function show(name, lat, lon) {
-            liveGet('https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lon + '&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,relative_humidity_2m&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&temperature_unit=fahrenheit&wind_speed_unit=mph', function (err, j, r) {
-                if (err || !j || !j.current) { liveFill(view, url, liveFail(err || 'empty', 'Open-Meteo', r)); return; }
-                var c = j.current, w = wmo(c.weather_code);
-                var days = (j.daily && j.daily.time || []).map(function (d, i) {
-                    var dw = wmo(j.daily.weather_code[i]);
-                    return '<div class="cr-wxday"><b>' + esc(new Date(d + 'T12:00').toLocaleDateString(undefined, { weekday: 'short' })) + '</b><span class="cr-wxem">' + dw[0] + '</span>' +
-                        '<span>' + Math.round(j.daily.temperature_2m_max[i]) + '°</span><i>' + Math.round(j.daily.temperature_2m_min[i]) + '°</i></div>';
-                }).join('');
-                liveFill(view, url, '<div class="cr-lv cr-wx"><div class="cr-wxbar">' + crLink('open-meteo.com', '☀ Open-Meteo', 'cr-wxhome') +
-                    '<label class="cr-lvsearch sm">' + ic('ic-search') + '<input class="cr-wxq" placeholder="Another city" spellcheck="false"></label>' + liveChip() + '</div>' +
-                    '<div class="cr-wxnow"><span class="cr-wxbig">' + w[0] + '</span><div><h2>' + Math.round(c.temperature_2m) + '°F</h2><p>' + w[1] + ' · feels ' + Math.round(c.apparent_temperature) + '° · wind ' + Math.round(c.wind_speed_10m) + ' mph · humidity ' + nnum(c.relative_humidity_2m) + '%</p><i>' + esc(name) + ', right now, for real</i></div></div>' +
-                    '<div class="cr-wxdays">' + days + '</div>' +
-                    '<p class="cr-lvfoot">Live from <b>api.open-meteo.com</b>. If it says rain, blame the sky, not the pixels.</p></div>',
-                    name + ' weather — Open-Meteo');
-                var nq = view.querySelector('.cr-wxq');
-                if (nq) nq.addEventListener('keydown', function (e) { if (e.key === 'Enter' && nq.value.trim()) wxFind(nq.value.trim()); });
-            });
-        }
-        function wxFind(name) {
-            liveGet('https://geocoding-api.open-meteo.com/v1/search?count=1&name=' + encodeURIComponent(name), function (err, j) {
-                if (!view.isConnected) return;                 // the user moved on; don't crNav-hijack the now-active tab
-                if (err || !j || !j.results || !j.results.length) {
-                    /* on the skeleton (direct nav to a bad city) show a real page,
-                       not a spinner that never resolves; on a loaded page just toast */
-                    if (view.querySelector('.cr-lvload')) liveFill(view, url, wxNoCity(name, err));
-                    else toast('The real atlas has no “' + name + '”.');
-                    return;
-                }
-                var g = j.results[0];
-                // replace, don't push: this IS the same page, just resolved
-                crNav('open-meteo.com/forecast?q=' + encodeURIComponent(g.name + (g.admin1 ? ', ' + g.admin1 : '') + '@' + g.latitude + ',' + g.longitude), { replace: true });
-            });
-        }
-        if (at) show(at[1], +at[2], +at[3]);
-        else if (q) wxFind(q);
-        else show('Houston, Texas', 29.76, -95.36);
-    }
-});
+/* — the results page's weather card: the WMO weather codes, in Open-Meteo's own words
+   (open-meteo-website, src/lib/utils/meteo.ts). The site itself is a frame, like any other. — */
+var WMO = { 0: ['☀️', 'Clear sky'], 1: ['🌤', 'Mainly clear'], 2: ['⛅', 'Partly cloudy'], 3: ['☁️', 'Overcast'], 45: ['🌫', 'Fog'], 48: ['🌫', 'Depositing rime fog'], 51: ['🌦', 'Light drizzle'], 53: ['🌦', 'Moderate drizzle'], 55: ['🌧', 'Dense drizzle'], 56: ['🌧', 'Light freezing drizzle'], 57: ['🌧', 'Dense freezing drizzle'], 61: ['🌧', 'Slight rain'], 63: ['🌧', 'Moderate rain'], 65: ['🌧', 'Heavy rain'], 66: ['🌧', 'Light freezing rain'], 67: ['🌧', 'Heavy freezing rain'], 71: ['🌨', 'Slight snow fall'], 73: ['🌨', 'Moderate snow fall'], 75: ['❄️', 'Heavy snow fall'], 77: ['🌨', 'Snow grains'], 80: ['🌦', 'Slight rain showers'], 81: ['🌧', 'Moderate rain showers'], 82: ['⛈', 'Violent rain showers'], 85: ['🌨', 'Slight snow showers'], 86: ['❄️', 'Heavy snow showers'], 95: ['⛈', 'Thunderstorm'], 96: ['⛈', 'Thunderstorm with slight hail'], 99: ['⛈', 'Thunderstorm with heavy hail'] };
+function wmo(c) { return WMO[c] || ['🌡', '']; }
 
-/* — everything else: the honest iframe — */
+/* — everything else: the site itself, in a sandboxed frame — */
 webPage('__frame', {
     title: 'Live site', fav: { ch: '🌐', c: '#5f6368' },
     render: function () {
         var u = liveUrl();
-        var host = u.split('/')[0];
-        return '<div class="cr-frame"><div class="cr-framebar"><span>🌐 Loading the real <b>' + esc(host) + '</b> in a window' + liveChip() + '</span>' +
-            '<span class="cr-framenote">big sites refuse to be framed — if it stays blank, that’s ' + esc(host) + ' saying no</span>' +
-            '<button class="cr-chip" id="crFrameOut">Open in a real tab ↗</button></div>' +
-            '<div class="cr-framewrap"><div class="cr-frameload" id="crFrameLoad"><span class="cr-lvspin"></span></div>' +
-            '<iframe class="cr-frameifr" id="crFrameIfr" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" referrerpolicy="no-referrer" src="https://' + esc(u) + '"></iframe></div></div>';
+        if (navigator.onLine === false) return crErrPage('offline', u.split(/[\/?#]/)[0]);
+        return '<div class="cr-frame"><iframe class="cr-frameifr" id="crFrameIfr" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" referrerpolicy="no-referrer" src="https://' + esc(u) + '"></iframe></div>';
     },
-    init: function (view) {
-        var u = liveUrl();
-        var f = view.querySelector('#crFrameIfr'), ld = view.querySelector('#crFrameLoad'), out = view.querySelector('#crFrameOut');
-        if (f) f.addEventListener('load', function () { if (ld) ld.hidden = true; });
-        setTimeout(function () { if (ld && view.isConnected) ld.hidden = true; }, 6000);   // blocked frames still "load"; don't spin forever
-        if (out) out.addEventListener('click', function () { window.open('https://' + u, '_blank', 'noopener'); });
-    }
+    init: function (view) { crErrWire(view); }
 });
 
 /* ═════════════ URL parsing / navigation engine ═════════════ */
@@ -6971,8 +8213,8 @@ function crParse(input) {
 function crSite(url) {
     var key = crResolveKey(url);
     if (key) return WEB[key];
-    /* a real-looking domain the museum doesn't know: try the actual site in a
-       sandboxed frame. chrome:// nonsense and word salad still get the dino. */
+    /* a domain the copy has no page of its own for: the site itself, in a
+       sandboxed frame. chrome:// nonsense and word salad get Chrome's error page. */
     var bare = String(url || '').replace(/^https?:\/\//i, '').replace(/^www\./i, '');
     if (/^[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}(:\d+)?(\/|\?|#|$)/i.test(bare)) return WEB.__frame;
     return WEB.__err;
@@ -6987,6 +8229,7 @@ function crTitleOf(url) {
     if (CR && CR.incog && CR.privTitles && CR.privTitles[String(url)]) return CR.privTitles[String(url)];   // a private page's, kept on the window only
     if (LIVE_TITLES[String(url)]) return LIVE_TITLES[String(url)];   // a live page told us its real name
     var s = crSite(url);
+    if (s === WEB.__err && /^chrome:/i.test(String(url))) return String(url).replace(/^(chrome:\/\/[^\/?#]*)$/i, '$1/');   // not http: Chrome titles the page by the whole address
     if (s === WEB.__err || s === WEB.__frame) return String(url).replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0];
     return typeof s.title === 'function' ? s.title(crQOf(url), url) : s.title;
 }
@@ -7002,6 +8245,7 @@ function crNav(url, opts) {
     if (opts.replace) { t.hist[t.hi] = url; }
     else if (!opts.nopush) { t.hist = t.hist.slice(0, t.hi + 1); t.hist.push(url); t.hi = t.hist.length - 1; }
     t.url = url;
+    if (t.fscroll) delete t.fscroll[url];                  // a new entry starts at the top (or its #fragment): Back, Forward, Reload and a tab switch restore
     var s = crSite(url);
     if (!CR.incog && s !== WEB.__err && !s.nohist && s.host !== 'chrome://history')          // incognito keeps its word
         { var h = crHist(); h.unshift({ u: url, t: crTitleOf(url), ts: Date.now() }); if (h.length > 200) h.length = 200; crjSet('hist', h); }
@@ -7183,18 +8427,18 @@ function crSuggestPick() {
 }
 
 /* ═════════════ dino ═════════════ */
-function crDinoStop() { if (CR && CR.dinoRaf) { cancelAnimationFrame(CR.dinoRaf); CR.dinoRaf = 0; } }
+function crDinoStop() { if (CR && CR.dinoRaf) { cancelAnimationFrame(CR.dinoRaf); CR.dinoRaf = 0; } if (CR) CR.dinoHere = false; }
 function crDinoBoot(view) {
     var cv = view.querySelector('#crDinoCv'); if (!cv) return;
     var x = cv.getContext('2d'), W = cv.width, H = cv.height, G = H - 24;
-    var d = { y: G, vy: 0, duck: false, run: false, dead: false, t: 0, speed: 4.4, score: 0, obs: [], clouds: [{ x: 480, y: 30 }, { x: 200, y: 52 }], next: 60 };
+    var d = { y: G, vy: 0, duck: false, run: false, dead: false, t: 0, speed: 4.4, score: 0, hi: +recall('chrome_dino_hi', 0) || 0, obs: [], clouds: [{ x: 480, y: 30 }, { x: 200, y: 52 }], next: 60 };
     CR.dino = d;
     function jump() {
         if (d.dead) { boot(); return; }
         if (!d.run) d.run = true;
         if (d.y >= G) d.vy = -10.4;
     }
-    function boot() { d.obs = []; d.score = 0; d.speed = 4.4; d.dead = false; d.run = true; d.y = G; d.vy = 0; d.next = 60; var tip = view.querySelector('#crDinoTip'); if (tip) tip.textContent = 'Run, pixel lizard, run.'; }
+    function boot() { d.obs = []; d.score = 0; d.speed = 4.4; d.dead = false; d.run = true; d.y = G; d.vy = 0; d.next = 60; }
     CR.dinoJump = jump;
     cv.addEventListener('pointerdown', jump);
     function drawDino() {
@@ -7211,6 +8455,7 @@ function crDinoBoot(view) {
         x.fillRect(39, yy - 6, 3, 4 + step * 2);
     }
     function tick() {                                                 // one frame of logic + paint (rAF-free, so tests can step it)
+        var w = Math.min(600, (cv.parentNode && cv.parentNode.clientWidth) || 600); if (w !== cv.width) cv.width = w; W = cv.width;   // the box can change width after mount (Maximize, a phone turned): the bitmap follows it, as the Runner's adjustDimensions does, so nothing is stretched or squeezed
         x.fillStyle = '#fff'; x.fillRect(0, 0, W, H);
         x.fillStyle = '#535353';
         for (var gx = 0; gx < W; gx += 11) x.fillRect(gx + (Math.floor(d.t) * 2) % 11 * -1, G + 8, 6, 1);   // scrolling ground
@@ -7235,16 +8480,16 @@ function crDinoBoot(view) {
                     d.dead = true; d.run = false;
                     var hi = Math.max(+recall('chrome_dino_hi', 0), Math.floor(d.score));
                     store('chrome_dino_hi', String(hi));
-                    var hud = view.querySelector('.cr-dinohud span'); if (hud) hud.textContent = 'HI ' + String(hi).padStart(5, '0');
-                    var tip = view.querySelector('#crDinoTip'); if (tip) tip.textContent = 'G A M E  O V E R — space to try again. The cactus sends its regards.';
+                    d.hi = hi;
                 }
             }
         }
         x.fillStyle = '#2d8a43';
         d.obs.forEach(function (o) { x.fillRect(o.x, G + 6 - o.h, o.w, o.h); x.fillRect(o.x - 4, G + 6 - o.h + 6, 4, 6); x.fillRect(o.x + o.w, G + 6 - o.h + 9, 4, 6); });
         drawDino();
-        var sc = view.querySelector('#crDinoScore'); if (sc) sc.textContent = String(Math.floor(d.score)).padStart(5, '0');
-        if (d.dead) { x.fillStyle = '#535353'; x.font = '14px monospace'; x.textAlign = 'center'; x.fillText('G A M E   O V E R', W / 2, 56); }
+        x.fillStyle = '#535353'; x.font = '11px monospace'; x.textAlign = 'right';   // the score at the top right, the high score before it, as the Runner draws them
+        x.fillText((d.hi ? 'HI ' + String(d.hi).padStart(5, '0') + '  ' : '') + String(Math.floor(d.score)).padStart(5, '0'), W - 10, 16);
+        if (d.dead) { x.font = '14px monospace'; x.textAlign = 'center'; x.fillText('G A M E   O V E R', W / 2, 56); }
     }
     function loop() { if (!CR.el.classList.contains('mini')) tick(); CR.dinoRaf = requestAnimationFrame(loop); }   // minimized = paused, run survives
     if (location.search.indexOf('dev') >= 0) window.__crDino = { jump: jump, tick: tick, state: d };   // headless-test hook, room-pages convention
@@ -7341,12 +8586,25 @@ function initChrome(el) {
     CR.keyFn = function (e) {
         if (!CR || CR.el.classList.contains('mini')) return;
         if (activeApp !== 'chrome') return;                            // Chrome must be the focused window
-        if (crTab().url !== 'chrome://dino') return;
+        if (crTab().url !== 'chrome://dino' && !CR.dinoHere) return;   // dinoHere: the offline page's runner
         var a = document.activeElement;
         if (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return;  // omnibox, find bar, any field
         if (e.code === 'Space' || e.key === 'ArrowUp') { e.preventDefault(); if (CR.dinoJump) CR.dinoJump(); }
     };
     document.addEventListener('keydown', CR.keyFn);
+    /* a site favicon that did not load (offline, blocked): Chrome's default icon in its
+       place (error does not bubble: capture). Not while the document is still loading:
+       an image drawn during parsing can fire error and load all the same, so those are
+       looked at once the page has loaded. */
+    function favGone(im) { CR_NOFAV[im.getAttribute('src')] = 1; im.outerHTML = crFav({ ch: '🌐', c: '#5f6368' }, im.classList.contains('big') ? 'big' : ''); }
+    el.addEventListener('error', function (e) {
+        var im = e.target;
+        if (!im || im.tagName !== 'IMG' || !im.classList || !im.classList.contains('cr-fav') || document.readyState !== 'complete') return;
+        favGone(im);
+    }, true);
+    if (document.readyState !== 'complete') window.addEventListener('load', function () {
+        Array.prototype.forEach.call(el.querySelectorAll('img.cr-fav'), function (im) { if (im.complete && !im.naturalWidth) favGone(im); });
+    });
 
     crChrome(); crTabs(); crPage();
 }
@@ -7369,7 +8627,7 @@ function crIncogSwap() {
     CR.held = CR.incog ? null : { tabs: CR.tabs, active: CR.active, closed: CR.closed };
     CR.incog = !CR.incog;
     CR.ghpPriv = null;                                    // the private window's GitHub answer goes with it
-    CR.ghxPriv = null; CR.privTitles = null;              // and every other GitHub answer, and the titles its pages learned
+    CR.ghxPriv = null; CR.privTitles = null; CR.privSrc = null; CR.privWk = null; CR.privSerp = null;   // and every other GitHub answer, the titles its pages learned, the documents it drew, its appearance choices, the results pages it drew
     GHP = null;                                           // and its view, which the title and search results would read
     if (held && held.tabs && held.tabs.length) {
         CR.tabs = held.tabs; CR.active = Math.min(Math.max(held.active, 0), held.tabs.length - 1); CR.closed = held.closed;
@@ -7550,7 +8808,7 @@ function crCtxMenu(e) {
         if (a === 'back') crBack();
         else if (a === 'fwd') crFwd();
         else if (a === 'rld') crPage();
-        else if (a === 'sav') crSaveFile(crTitleOf(t.url), CR.el.querySelector('#crView').innerHTML);
+        else if (a === 'sav') { var s0 = crSite(t.url); crSaveFile(crTitleOf(t.url), (s0.source && s0.source(t.url)) || CR.el.querySelector('#crView').innerHTML); }   // a page drawn in a frame hands over its own document
         else if (a === 'prt') toast('Saved as bloom.pdf to a printer that isn’t real.');
         else if (a === 'src') crNewTab('view-source:' + t.url);
         else toast('Inspected. It’s pixels all the way down.');
@@ -12053,7 +13311,10 @@ function closeFind() {
     var w = openWins[find.appId];
     if (w) {
         var bar = findBar(find.appId); if (bar) bar.hidden = true;
-        var root = w.el.querySelector('.win-content'); if (root) unmarkAll(root);
+        var root = w.el.querySelector('.win-content');
+        var fr = root && root.querySelector('iframe.cr-wk');            // runFind marks inside the frame's own document
+        if (fr && fr.contentDocument && fr.contentDocument.body) root = fr.contentDocument.body;
+        if (root) unmarkAll(root);
         var back = w.el.querySelector('.np-back'); if (back) back.textContent = '';
     }
     find.appId = null; find.marks = []; find.idx = -1;
@@ -12103,6 +13364,8 @@ function runFind(keep) {
     var q = find.q.toLowerCase();
     if (find.appId === 'notepad') { npFind(w.el, q, keep ? find.idx : -1); paintCount(); return; }
     var root = w.el.querySelector('.win-content');
+    var fr = root.querySelector('iframe.cr-wk');            // a page drawn in a frame of its own (Wikipedia): search its document
+    if (fr && fr.contentDocument && fr.contentDocument.body) root = fr.contentDocument.body;
     unmarkAll(root);
     find.marks = q ? markMatches(root, q) : [];
     find.idx = find.marks.length ? 0 : -1;

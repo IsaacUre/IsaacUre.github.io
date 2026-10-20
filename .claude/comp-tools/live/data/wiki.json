@@ -1,0 +1,422 @@
+{
+ "parse": {
+  "parse": {
+   "title": "Harness test article",
+   "pageid": 1,
+   "revid": 123456789,
+   "text": "<div class=\"mw-content-ltr mw-parser-output\" lang=\"en\" dir=\"ltr\"><style data-mw-deduplicate=\"TemplateStyles:r1\">.mw-parser-output .citation q{quotes:\"\\\"\"\"\\\"\"\"'\"\"'\"}.mw-parser-output .cs1-maint{display:none}</style><div role=\"note\" class=\"hatnote navigation-not-searchable\">For the harness itself, see <a href=\"/wiki/Harness_(disambiguation)\" class=\"mw-redirect\" title=\"Harness (disambiguation)\">Harness (disambiguation)</a>.</div>\n<table class=\"infobox vcard\"><tbody><tr><th colspan=\"2\" class=\"infobox-above\">Harness test article</th></tr><tr><th scope=\"row\" class=\"infobox-label\">Kind</th><td class=\"infobox-data\">Fixture</td></tr><tr><th scope=\"row\" class=\"infobox-label\">Lines</th><td class=\"infobox-data\">A few</td></tr></tbody></table>\n<p>A <b>harness test article</b> is a page of made-up text that this repository's own checks feed to the Wikipedia copy, so the copy can be driven without the network. It links to <a href=\"/wiki/Second_test_article\" title=\"Second test article\">another page</a>, to a <a href=\"/wiki/Missing_test_article\" class=\"new\" title=\"Missing test article (page does not exist)\">missing one</a>, and to <a rel=\"nofollow\" class=\"external text\" href=\"https://example.com/\">the outside</a>.<sup id=\"cite_ref-1\" class=\"reference\"><a href=\"#cite_note-1\"><span class=\"cite-bracket\">[</span>1<span class=\"cite-bracket\">]</span></a></sup></p>\n<figure class=\"mw-default-size\" typeof=\"mw:File/Thumb\"><a href=\"/wiki/File:Fixture.png\" class=\"mw-file-description\"><img src=\"//upload.wikimedia.org/fixture/220px-Fixture.png\" decoding=\"async\" width=\"220\" height=\"140\" class=\"mw-file-element\" srcset=\"//upload.wikimedia.org/fixture/330px-Fixture.png 1.5x\" data-file-width=\"880\" data-file-height=\"560\"></a><figcaption>A picture that is also a fixture</figcaption></figure>\n<p class=\"harness-links\">A <a href=\"/w/index.php?title=Missing_test_article&amp;action=edit&amp;redlink=1\" class=\"new\" title=\"Missing test article (page does not exist)\">red link</a>, a <a href=\"/w/index.php?title=Talk:Missing_test_article&amp;action=edit&amp;redlink=1\" class=\"new\" title=\"Talk:Missing test article (page does not exist)\">red talk link</a>, a <span class=\"cs1-maint\">maintenance note</span>.</p><div class=\"mw-heading mw-heading2\"><h2 id=\"History\">History</h2><span class=\"mw-editsection\"><span class=\"mw-editsection-bracket\">[</span><a href=\"/w/index.php?title=Harness_test_article&amp;action=edit&amp;section=1\" title=\"Edit section: History\"><span>edit</span></a><span class=\"mw-editsection-bracket\">]</span></span></div>\n<p>The history is short. The word <i>fixture</i> appears here so find-in-page has something to find.</p>\n<div class=\"mw-heading mw-heading3\"><h3 id=\"Early_days\">Early days</h3><span class=\"mw-editsection\"><span class=\"mw-editsection-bracket\">[</span><a href=\"/w/index.php?title=Harness_test_article&amp;action=edit&amp;section=2\" title=\"Edit section: Early days\"><span>edit</span></a><span class=\"mw-editsection-bracket\">]</span></span></div>\n<p>Early days were earlier.</p><p>Filler paragraph 1 of the harness article, long enough that every section can reach the top of the window when its line in the contents is clicked, the way a real article does.</p><p>Filler paragraph 2 of the harness article, long enough that every section can reach the top of the window when its line in the contents is clicked, the way a real article does.</p><p>Filler paragraph 3 of the harness article, long enough that every section can reach the top of the window when its line in the contents is clicked, the way a real article does.</p><p>Filler paragraph 4 of the harness article, long enough that every section can reach the top of the window when its line in the contents is clicked, the way a real article does.</p><p>Filler paragraph 5 of the harness article, long enough that every section can reach the top of the window when its line in the contents is clicked, the way a real article does.</p><p>Filler paragraph 6 of the harness article, long enough that every section can reach the top of the window when its line in the contents is clicked, the way a real article does.</p>\n<div class=\"mw-heading mw-heading3\"><h3 id=\"Later_days\">Later days</h3><span class=\"mw-editsection\"><span class=\"mw-editsection-bracket\">[</span><a href=\"/w/index.php?title=Harness_test_article&amp;action=edit&amp;section=3\" title=\"Edit section: Later days\"><span>edit</span></a><span class=\"mw-editsection-bracket\">]</span></span></div>\n<p>Later days were later.</p><p>Filler paragraph 1 of the harness article, long enough that every section can reach the top of the window when its line in the contents is clicked, the way a real article does.</p><p>Filler paragraph 2 of the harness article, long enough that every section can reach the top of the window when its line in the contents is clicked, the way a real article does.</p><p>Filler paragraph 3 of the harness article, long enough that every section can reach the top of the window when its line in the contents is clicked, the way a real article does.</p><p>Filler paragraph 4 of the harness article, long enough that every section can reach the top of the window when its line in the contents is clicked, the way a real article does.</p><p>Filler paragraph 5 of the harness article, long enough that every section can reach the top of the window when its line in the contents is clicked, the way a real article does.</p><p>Filler paragraph 6 of the harness article, long enough that every section can reach the top of the window when its line in the contents is clicked, the way a real article does.</p>\n<div class=\"mw-heading mw-heading2\"><h2 id=\"Design\">Design</h2><span class=\"mw-editsection\"><span class=\"mw-editsection-bracket\">[</span><a href=\"/w/index.php?title=Harness_test_article&amp;action=edit&amp;section=4\" title=\"Edit section: Design\"><span>edit</span></a><span class=\"mw-editsection-bracket\">]</span></span></div>\n<p>Designed to exercise the <a href=\"/wiki/Table_of_contents\" title=\"Table of contents\">table of contents</a>, the tabs and the menus.</p>\n<div class=\"mw-heading mw-heading2\"><h2 id=\"Reception\">Reception</h2><span class=\"mw-editsection\"><span class=\"mw-editsection-bracket\">[</span><a href=\"/w/index.php?title=Harness_test_article&amp;action=edit&amp;section=5\" title=\"Edit section: Reception\"><span>edit</span></a><span class=\"mw-editsection-bracket\">]</span></span></div>\n<p>Received as a fixture.</p><p>Filler paragraph 1 of the harness article, long enough that every section can reach the top of the window when its line in the contents is clicked, the way a real article does.</p><p>Filler paragraph 2 of the harness article, long enough that every section can reach the top of the window when its line in the contents is clicked, the way a real article does.</p><p>Filler paragraph 3 of the harness article, long enough that every section can reach the top of the window when its line in the contents is clicked, the way a real article does.</p><p>Filler paragraph 4 of the harness article, long enough that every section can reach the top of the window when its line in the contents is clicked, the way a real article does.</p><p>Filler paragraph 5 of the harness article, long enough that every section can reach the top of the window when its line in the contents is clicked, the way a real article does.</p><p>Filler paragraph 6 of the harness article, long enough that every section can reach the top of the window when its line in the contents is clicked, the way a real article does.</p>\n<div class=\"mw-heading mw-heading2\"><h2 id=\"See_also\">See also</h2><span class=\"mw-editsection\"><span class=\"mw-editsection-bracket\">[</span><a href=\"/w/index.php?title=Harness_test_article&amp;action=edit&amp;section=6\" title=\"Edit section: See also\"><span>edit</span></a><span class=\"mw-editsection-bracket\">]</span></span></div>\n<ul><li><a href=\"/wiki/Second_test_article\" title=\"Second test article\">Second test article</a></li></ul>\n<div class=\"mw-heading mw-heading2\"><h2 id=\"References\">References</h2><span class=\"mw-editsection\"><span class=\"mw-editsection-bracket\">[</span><a href=\"/w/index.php?title=Harness_test_article&amp;action=edit&amp;section=7\" title=\"Edit section: References\"><span>edit</span></a><span class=\"mw-editsection-bracket\">]</span></span></div>\n<div class=\"reflist\"><div class=\"mw-references-wrap\"><ol class=\"references\"><li id=\"cite_note-1\"><span class=\"mw-cite-backlink\"><b><a href=\"#cite_ref-1\">^</a></b></span> <span class=\"reference-text\">A fixture, cited.</span></li></ol></div></div>\n</div>",
+   "langlinks": [
+    {
+     "lang": "de",
+     "url": "https://de.wikipedia.org/wiki/Testartikel",
+     "langname": "German",
+     "autonym": "Deutsch",
+     "title": "Testartikel"
+    },
+    {
+     "lang": "fr",
+     "url": "https://fr.wikipedia.org/wiki/Article_de_test",
+     "langname": "French",
+     "autonym": "français",
+     "title": "Article de test"
+    },
+    {
+     "lang": "ja",
+     "url": "https://ja.wikipedia.org/wiki/%E3%83%86%E3%82%B9%E3%83%88",
+     "langname": "Japanese",
+     "autonym": "日本語",
+     "title": "テスト"
+    }
+   ],
+   "categorieshtml": "<div id=\"catlinks\" class=\"catlinks\" data-mw=\"interface\"><div id=\"mw-normal-catlinks\" class=\"mw-normal-catlinks\"><a href=\"/wiki/Help:Category\" title=\"Help:Category\">Categories</a>: <ul><li><a href=\"/wiki/Category:Fixtures\" title=\"Category:Fixtures\">Fixtures</a></li><li><a href=\"/wiki/Category:Test_pages\" title=\"Category:Test pages\">Test pages</a></li></ul></div></div>",
+   "displaytitle": "<span class=\"mw-page-title-main\">Harness test article</span>",
+   "indicators": {},
+   "sections": [
+    {
+     "toclevel": 1,
+     "level": "2",
+     "line": "History",
+     "number": "1",
+     "index": "1",
+     "fromtitle": "Harness_test_article",
+     "byteoffset": 0,
+     "anchor": "History",
+     "linkAnchor": "History"
+    },
+    {
+     "toclevel": 2,
+     "level": "3",
+     "line": "Early days",
+     "number": "1.1",
+     "index": "2",
+     "fromtitle": "Harness_test_article",
+     "byteoffset": 0,
+     "anchor": "Early_days",
+     "linkAnchor": "Early_days"
+    },
+    {
+     "toclevel": 2,
+     "level": "3",
+     "line": "Later days",
+     "number": "1.2",
+     "index": "3",
+     "fromtitle": "Harness_test_article",
+     "byteoffset": 0,
+     "anchor": "Later_days",
+     "linkAnchor": "Later_days"
+    },
+    {
+     "toclevel": 1,
+     "level": "2",
+     "line": "Design",
+     "number": "2",
+     "index": "4",
+     "fromtitle": "Harness_test_article",
+     "byteoffset": 0,
+     "anchor": "Design",
+     "linkAnchor": "Design"
+    },
+    {
+     "toclevel": 1,
+     "level": "2",
+     "line": "Reception",
+     "number": "3",
+     "index": "5",
+     "fromtitle": "Harness_test_article",
+     "byteoffset": 0,
+     "anchor": "Reception",
+     "linkAnchor": "Reception"
+    },
+    {
+     "toclevel": 1,
+     "level": "2",
+     "line": "See also",
+     "number": "4",
+     "index": "6",
+     "fromtitle": "Harness_test_article",
+     "byteoffset": 0,
+     "anchor": "See_also",
+     "linkAnchor": "See_also"
+    },
+    {
+     "toclevel": 1,
+     "level": "2",
+     "line": "References",
+     "number": "5",
+     "index": "7",
+     "fromtitle": "Harness_test_article",
+     "byteoffset": 0,
+     "anchor": "References",
+     "linkAnchor": "References"
+    }
+   ],
+   "headhtml": "<!DOCTYPE html>\n<html class=\"client-nojs vector-feature-language-in-header-enabled vector-feature-language-in-main-menu-disabled vector-feature-language-in-main-page-header-disabled vector-feature-page-tools-pinned-disabled vector-feature-toc-pinned-clientpref-1 vector-feature-main-menu-pinned-disabled vector-feature-limited-width-clientpref-1 vector-feature-limited-width-content-enabled vector-feature-custom-font-size-clientpref-1 vector-feature-appearance-pinned-clientpref-1 skin-theme-clientpref-day vector-sticky-header-enabled vector-toc-available skin-thumbsize-clientpref-standard skin-underline-clientpref-browser\" lang=\"en\" dir=\"ltr\">\n<head>\n<meta charset=\"UTF-8\">\n<title>Harness test article - Wikipedia</title>\n<link rel=\"stylesheet\" href=\"/w/load.php?lang=en&amp;modules=ext.cite.styles%7Cext.uls.interlanguage%7Cext.wikimediaBadges%7Cskins.vector.icons%2Cstyles%7Cskins.vector.search.codex.styles%7Cwikibase.client.init&amp;only=styles&amp;skin=vector-2022\">\n<link rel=\"stylesheet\" href=\"/w/load.php?lang=en&amp;modules=site.styles&amp;only=styles&amp;skin=vector-2022\">\n</head>"
+  }
+ },
+ "redirect": {
+  "parse": {
+   "title": "Harness test article",
+   "pageid": 1,
+   "revid": 123456789,
+   "text": "<div class=\"mw-content-ltr mw-parser-output\" lang=\"en\" dir=\"ltr\"><div role=\"note\" class=\"hatnote navigation-not-searchable\">For the harness itself, see <a href=\"/wiki/Harness_(disambiguation)\" class=\"mw-redirect\" title=\"Harness (disambiguation)\">Harness (disambiguation)</a>.</div>\n<table class=\"infobox vcard\"><tbody><tr><th colspan=\"2\" class=\"infobox-above\">Harness test article</th></tr><tr><th scope=\"row\" class=\"infobox-label\">Kind</th><td class=\"infobox-data\">Fixture</td></tr><tr><th scope=\"row\" class=\"infobox-label\">Lines</th><td class=\"infobox-data\">A few</td></tr></tbody></table>\n<p>A <b>harness test article</b> is a page of made-up text that this repository's own checks feed to the Wikipedia copy, so the copy can be driven without the network. It links to <a href=\"/wiki/Second_test_article\" title=\"Second test article\">another page</a>, to a <a href=\"/wiki/Missing_test_article\" class=\"new\" title=\"Missing test article (page does not exist)\">missing one</a>, and to <a rel=\"nofollow\" class=\"external text\" href=\"https://example.com/\">the outside</a>.<sup id=\"cite_ref-1\" class=\"reference\"><a href=\"#cite_note-1\"><span class=\"cite-bracket\">[</span>1<span class=\"cite-bracket\">]</span></a></sup></p>\n<figure class=\"mw-default-size\" typeof=\"mw:File/Thumb\"><a href=\"/wiki/File:Fixture.png\" class=\"mw-file-description\"><img src=\"//upload.wikimedia.org/fixture/220px-Fixture.png\" decoding=\"async\" width=\"220\" height=\"140\" class=\"mw-file-element\" srcset=\"//upload.wikimedia.org/fixture/330px-Fixture.png 1.5x\" data-file-width=\"880\" data-file-height=\"560\"></a><figcaption>A picture that is also a fixture</figcaption></figure>\n<div class=\"mw-heading mw-heading2\"><h2 id=\"History\">History</h2><span class=\"mw-editsection\"><span class=\"mw-editsection-bracket\">[</span><a href=\"/w/index.php?title=Harness_test_article&amp;action=edit&amp;section=1\" title=\"Edit section: History\"><span>edit</span></a><span class=\"mw-editsection-bracket\">]</span></span></div>\n<p>The history is short. The word <i>fixture</i> appears here so find-in-page has something to find.</p>\n<div class=\"mw-heading mw-heading3\"><h3 id=\"Early_days\">Early days</h3><span class=\"mw-editsection\"><span class=\"mw-editsection-bracket\">[</span><a href=\"/w/index.php?title=Harness_test_article&amp;action=edit&amp;section=2\" title=\"Edit section: Early days\"><span>edit</span></a><span class=\"mw-editsection-bracket\">]</span></span></div>\n<p>Early days were earlier.</p><p>Filler paragraph 1 of the harness article, long enough that every section can reach the top of the window when its line in the contents is clicked, the way a real article does.</p><p>Filler paragraph 2 of the harness article, long enough that every section can reach the top of the window when its line in the contents is clicked, the way a real article does.</p><p>Filler paragraph 3 of the harness article, long enough that every section can reach the top of the window when its line in the contents is clicked, the way a real article does.</p><p>Filler paragraph 4 of the harness article, long enough that every section can reach the top of the window when its line in the contents is clicked, the way a real article does.</p><p>Filler paragraph 5 of the harness article, long enough that every section can reach the top of the window when its line in the contents is clicked, the way a real article does.</p><p>Filler paragraph 6 of the harness article, long enough that every section can reach the top of the window when its line in the contents is clicked, the way a real article does.</p>\n<div class=\"mw-heading mw-heading3\"><h3 id=\"Later_days\">Later days</h3><span class=\"mw-editsection\"><span class=\"mw-editsection-bracket\">[</span><a href=\"/w/index.php?title=Harness_test_article&amp;action=edit&amp;section=3\" title=\"Edit section: Later days\"><span>edit</span></a><span class=\"mw-editsection-bracket\">]</span></span></div>\n<p>Later days were later.</p><p>Filler paragraph 1 of the harness article, long enough that every section can reach the top of the window when its line in the contents is clicked, the way a real article does.</p><p>Filler paragraph 2 of the harness article, long enough that every section can reach the top of the window when its line in the contents is clicked, the way a real article does.</p><p>Filler paragraph 3 of the harness article, long enough that every section can reach the top of the window when its line in the contents is clicked, the way a real article does.</p><p>Filler paragraph 4 of the harness article, long enough that every section can reach the top of the window when its line in the contents is clicked, the way a real article does.</p><p>Filler paragraph 5 of the harness article, long enough that every section can reach the top of the window when its line in the contents is clicked, the way a real article does.</p><p>Filler paragraph 6 of the harness article, long enough that every section can reach the top of the window when its line in the contents is clicked, the way a real article does.</p>\n<div class=\"mw-heading mw-heading2\"><h2 id=\"Design\">Design</h2><span class=\"mw-editsection\"><span class=\"mw-editsection-bracket\">[</span><a href=\"/w/index.php?title=Harness_test_article&amp;action=edit&amp;section=4\" title=\"Edit section: Design\"><span>edit</span></a><span class=\"mw-editsection-bracket\">]</span></span></div>\n<p>Designed to exercise the <a href=\"/wiki/Table_of_contents\" title=\"Table of contents\">table of contents</a>, the tabs and the menus.</p>\n<div class=\"mw-heading mw-heading2\"><h2 id=\"Reception\">Reception</h2><span class=\"mw-editsection\"><span class=\"mw-editsection-bracket\">[</span><a href=\"/w/index.php?title=Harness_test_article&amp;action=edit&amp;section=5\" title=\"Edit section: Reception\"><span>edit</span></a><span class=\"mw-editsection-bracket\">]</span></span></div>\n<p>Received as a fixture.</p><p>Filler paragraph 1 of the harness article, long enough that every section can reach the top of the window when its line in the contents is clicked, the way a real article does.</p><p>Filler paragraph 2 of the harness article, long enough that every section can reach the top of the window when its line in the contents is clicked, the way a real article does.</p><p>Filler paragraph 3 of the harness article, long enough that every section can reach the top of the window when its line in the contents is clicked, the way a real article does.</p><p>Filler paragraph 4 of the harness article, long enough that every section can reach the top of the window when its line in the contents is clicked, the way a real article does.</p><p>Filler paragraph 5 of the harness article, long enough that every section can reach the top of the window when its line in the contents is clicked, the way a real article does.</p><p>Filler paragraph 6 of the harness article, long enough that every section can reach the top of the window when its line in the contents is clicked, the way a real article does.</p>\n<div class=\"mw-heading mw-heading2\"><h2 id=\"See_also\">See also</h2><span class=\"mw-editsection\"><span class=\"mw-editsection-bracket\">[</span><a href=\"/w/index.php?title=Harness_test_article&amp;action=edit&amp;section=6\" title=\"Edit section: See also\"><span>edit</span></a><span class=\"mw-editsection-bracket\">]</span></span></div>\n<ul><li><a href=\"/wiki/Second_test_article\" title=\"Second test article\">Second test article</a></li></ul>\n<div class=\"mw-heading mw-heading2\"><h2 id=\"References\">References</h2><span class=\"mw-editsection\"><span class=\"mw-editsection-bracket\">[</span><a href=\"/w/index.php?title=Harness_test_article&amp;action=edit&amp;section=7\" title=\"Edit section: References\"><span>edit</span></a><span class=\"mw-editsection-bracket\">]</span></span></div>\n<div class=\"reflist\"><div class=\"mw-references-wrap\"><ol class=\"references\"><li id=\"cite_note-1\"><span class=\"mw-cite-backlink\"><b><a href=\"#cite_ref-1\">^</a></b></span> <span class=\"reference-text\">A fixture, cited.</span></li></ol></div></div>\n</div>",
+   "langlinks": [
+    {
+     "lang": "de",
+     "url": "https://de.wikipedia.org/wiki/Testartikel",
+     "langname": "German",
+     "autonym": "Deutsch",
+     "title": "Testartikel"
+    },
+    {
+     "lang": "fr",
+     "url": "https://fr.wikipedia.org/wiki/Article_de_test",
+     "langname": "French",
+     "autonym": "français",
+     "title": "Article de test"
+    },
+    {
+     "lang": "ja",
+     "url": "https://ja.wikipedia.org/wiki/%E3%83%86%E3%82%B9%E3%83%88",
+     "langname": "Japanese",
+     "autonym": "日本語",
+     "title": "テスト"
+    }
+   ],
+   "categorieshtml": "<div id=\"catlinks\" class=\"catlinks\" data-mw=\"interface\"><div id=\"mw-normal-catlinks\" class=\"mw-normal-catlinks\"><a href=\"/wiki/Help:Category\" title=\"Help:Category\">Categories</a>: <ul><li><a href=\"/wiki/Category:Fixtures\" title=\"Category:Fixtures\">Fixtures</a></li><li><a href=\"/wiki/Category:Test_pages\" title=\"Category:Test pages\">Test pages</a></li></ul></div></div>",
+   "displaytitle": "<span class=\"mw-page-title-main\">Harness test article</span>",
+   "indicators": {},
+   "sections": [
+    {
+     "toclevel": 1,
+     "level": "2",
+     "line": "History",
+     "number": "1",
+     "index": "1",
+     "fromtitle": "Harness_test_article",
+     "byteoffset": 0,
+     "anchor": "History",
+     "linkAnchor": "History"
+    },
+    {
+     "toclevel": 2,
+     "level": "3",
+     "line": "Early days",
+     "number": "1.1",
+     "index": "2",
+     "fromtitle": "Harness_test_article",
+     "byteoffset": 0,
+     "anchor": "Early_days",
+     "linkAnchor": "Early_days"
+    },
+    {
+     "toclevel": 2,
+     "level": "3",
+     "line": "Later days",
+     "number": "1.2",
+     "index": "3",
+     "fromtitle": "Harness_test_article",
+     "byteoffset": 0,
+     "anchor": "Later_days",
+     "linkAnchor": "Later_days"
+    },
+    {
+     "toclevel": 1,
+     "level": "2",
+     "line": "Design",
+     "number": "2",
+     "index": "4",
+     "fromtitle": "Harness_test_article",
+     "byteoffset": 0,
+     "anchor": "Design",
+     "linkAnchor": "Design"
+    },
+    {
+     "toclevel": 1,
+     "level": "2",
+     "line": "Reception",
+     "number": "3",
+     "index": "5",
+     "fromtitle": "Harness_test_article",
+     "byteoffset": 0,
+     "anchor": "Reception",
+     "linkAnchor": "Reception"
+    },
+    {
+     "toclevel": 1,
+     "level": "2",
+     "line": "See also",
+     "number": "4",
+     "index": "6",
+     "fromtitle": "Harness_test_article",
+     "byteoffset": 0,
+     "anchor": "See_also",
+     "linkAnchor": "See_also"
+    },
+    {
+     "toclevel": 1,
+     "level": "2",
+     "line": "References",
+     "number": "5",
+     "index": "7",
+     "fromtitle": "Harness_test_article",
+     "byteoffset": 0,
+     "anchor": "References",
+     "linkAnchor": "References"
+    }
+   ],
+   "headhtml": "<!DOCTYPE html>\n<html class=\"client-nojs vector-feature-language-in-header-enabled vector-feature-language-in-main-menu-disabled vector-feature-language-in-main-page-header-disabled vector-feature-page-tools-pinned-disabled vector-feature-toc-pinned-clientpref-1 vector-feature-main-menu-pinned-disabled vector-feature-limited-width-clientpref-1 vector-feature-limited-width-content-enabled vector-feature-custom-font-size-clientpref-1 vector-feature-appearance-pinned-clientpref-1 skin-theme-clientpref-day vector-sticky-header-enabled vector-toc-available skin-thumbsize-clientpref-standard skin-underline-clientpref-browser\" lang=\"en\" dir=\"ltr\">\n<head>\n<meta charset=\"UTF-8\">\n<title>Harness test article - Wikipedia</title>\n<link rel=\"stylesheet\" href=\"/w/load.php?lang=en&amp;modules=ext.cite.styles%7Cext.uls.interlanguage%7Cext.wikimediaBadges%7Cskins.vector.icons%2Cstyles%7Cskins.vector.search.codex.styles%7Cwikibase.client.init&amp;only=styles&amp;skin=vector-2022\">\n<link rel=\"stylesheet\" href=\"/w/load.php?lang=en&amp;modules=site.styles&amp;only=styles&amp;skin=vector-2022\">\n</head>",
+   "redirects": [
+    {
+     "from": "Harness fixture",
+     "to": "Harness test article"
+    }
+   ]
+  }
+ },
+ "info": {
+  "batchcomplete": true,
+  "query": {
+   "pages": [
+    {
+     "pageid": 1,
+     "ns": 0,
+     "title": "Harness test article",
+     "contentmodel": "wikitext",
+     "pagelanguage": "en",
+     "touched": "2026-10-19T00:00:00Z",
+     "lastrevid": 123456789,
+     "length": 2000,
+     "protection": [],
+     "restrictiontypes": [
+      "edit",
+      "move"
+     ],
+     "revisions": [
+      {
+       "timestamp": "2026-10-03T14:22:00Z"
+      }
+     ],
+     "pageprops": {
+      "wikibase_item": "Q1"
+     }
+    },
+    {
+     "ns": 1,
+     "title": "Talk:Harness test article",
+     "missing": true
+    }
+   ]
+  }
+ },
+ "second": {
+  "parse": {
+   "title": "Second test article",
+   "pageid": 2,
+   "revid": 2,
+   "text": "<div class=\"mw-content-ltr mw-parser-output\" lang=\"en\" dir=\"ltr\"><p>The <b>second test article</b> is shorter and has no sections.</p></div>",
+   "langlinks": [],
+   "categorieshtml": "",
+   "displaytitle": "<span class=\"mw-page-title-main\">Second test article</span>",
+   "indicators": {},
+   "sections": [],
+   "headhtml": "<!DOCTYPE html>\n<html class=\"client-nojs vector-feature-language-in-header-enabled vector-feature-language-in-main-menu-disabled vector-feature-language-in-main-page-header-disabled vector-feature-page-tools-pinned-disabled vector-feature-toc-pinned-clientpref-1 vector-feature-main-menu-pinned-disabled vector-feature-limited-width-clientpref-1 vector-feature-limited-width-content-enabled vector-feature-custom-font-size-clientpref-1 vector-feature-appearance-pinned-clientpref-1 skin-theme-clientpref-day vector-sticky-header-enabled vector-toc-not-available skin-thumbsize-clientpref-standard skin-underline-clientpref-browser\" lang=\"en\" dir=\"ltr\">\n<head>\n<meta charset=\"UTF-8\">\n<title>Second test article - Wikipedia</title>\n<link rel=\"stylesheet\" href=\"/w/load.php?lang=en&amp;modules=ext.cite.styles%7Cext.uls.interlanguage%7Cext.wikimediaBadges%7Cskins.vector.icons%2Cstyles%7Cskins.vector.search.codex.styles%7Cwikibase.client.init&amp;only=styles&amp;skin=vector-2022\">\n<link rel=\"stylesheet\" href=\"/w/load.php?lang=en&amp;modules=site.styles&amp;only=styles&amp;skin=vector-2022\">\n</head>"
+  }
+ },
+ "protected": {
+  "batchcomplete": true,
+  "query": {
+   "pages": [
+    {
+     "pageid": 2,
+     "ns": 0,
+     "title": "Second test article",
+     "protection": [
+      {
+       "type": "edit",
+       "level": "autoconfirmed",
+       "expiry": "infinity"
+      }
+     ],
+     "revisions": [
+      {
+       "timestamp": "2026-09-01T09:05:00Z"
+      }
+     ]
+    },
+    {
+     "ns": 1,
+     "title": "Talk:Second test article",
+     "pageid": 3
+    }
+   ]
+  }
+ },
+ "missing": {
+  "error": {
+   "code": "missingtitle",
+   "info": "The page you specified doesn't exist.",
+   "docref": "See https://en.wikipedia.org/w/api.php for API usage."
+  }
+ },
+ "suggest": {
+  "pages": [
+   {
+    "id": 1,
+    "key": "Harness_test_article",
+    "title": "Harness test article",
+    "excerpt": "Harness test article",
+    "matched_title": null,
+    "description": "fixture for the copy's checks",
+    "thumbnail": {
+     "mimetype": "image/png",
+     "width": 60,
+     "height": 38,
+     "duration": null,
+     "url": "//upload.wikimedia.org/fixture/60px-Fixture.png"
+    }
+   },
+   {
+    "id": 2,
+    "key": "Second_test_article",
+    "title": "Second test article",
+    "excerpt": "Second test article",
+    "matched_title": "Harness two",
+    "description": null,
+    "thumbnail": null
+   }
+  ]
+ },
+ "search": {
+  "batchcomplete": true,
+  "query": {
+   "searchinfo": {
+    "totalhits": 2,
+    "suggestion": "harness",
+    "suggestionsnippet": "<em>harness</em>"
+   },
+   "search": [
+    {
+     "ns": 0,
+     "title": "Harness test article",
+     "pageid": 1,
+     "size": 2000,
+     "wordcount": 120,
+     "snippet": "A <span class=\"searchmatch\">harness</span> test article is a page of made-up text",
+     "timestamp": "2026-10-03T14:22:00Z"
+    },
+    {
+     "ns": 0,
+     "title": "Second test article",
+     "pageid": 2,
+     "size": 300,
+     "wordcount": 12,
+     "snippet": "The second test article is shorter",
+     "timestamp": "2026-09-01T09:05:00Z"
+    }
+   ]
+  }
+ },
+ "nearmatch_none": {
+  "batchcomplete": true,
+  "query": {
+   "searchinfo": {
+    "totalhits": 0
+   },
+   "search": []
+  }
+ },
+ "random": {
+  "batchcomplete": true,
+  "query": {
+   "random": [
+    {
+     "id": 2,
+     "ns": 0,
+     "title": "Second test article"
+    }
+   ]
+  }
+ },
+ "pageimages": {
+  "batchcomplete": true,
+  "query": {
+   "pages": [
+    {
+     "pageid": 1,
+     "ns": 0,
+     "title": "Harness test article",
+     "thumbnail": {
+      "source": "//upload.wikimedia.org/fixture/180px-Fixture.png",
+      "width": 180,
+      "height": 115
+     }
+    },
+    {
+     "pageid": 2,
+     "ns": 0,
+     "title": "Second test article"
+    }
+   ]
+  }
+ }
+}
