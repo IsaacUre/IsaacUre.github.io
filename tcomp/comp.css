@@ -5775,7 +5775,7 @@ button.nn-drow b + i { display: inline-block; margin-left: 10px; }
 .ghx-hist b { font-weight: 600; }
 .cr-ghp .ghx-histi { position: relative; display: none; flex: none; align-items: center; justify-content: center; width: 28px; height: 28px; color: #1f2328; border-radius: 6px; }
 .cr-ghp .ghx-histi:hover { background: #818b981a; }
-.ghx-tipv { display: none; position: absolute; z-index: 30; top: calc(100% + 6px); right: 0; padding: 5px 8px; font-size: 12px; font-weight: 400; line-height: 1.5; color: #fff; background: #25292e; border-radius: 6px; white-space: nowrap; pointer-events: none; }   /* Primer's tooltip, below (data-direction s) */
+.ghx-tipv { display: none; position: absolute; z-index: 30; top: calc(100% + 4px); left: 50%; transform: translateX(-50%); padding: 4px 8px; font-size: 12px; font-weight: 400; line-height: 1.625; color: #fff; background: #25292e; border-radius: 6px; white-space: nowrap; pointer-events: none; }   /* Primer's TooltipV2, data-direction s: centred 4px below */
 .ghx-histi:hover .ghx-tipv, .ghx-histi:focus-visible .ghx-tipv { display: block; }
 @container (max-width: 1011px) { .cr-ghp .ghx-hist { display: none; } .cr-ghp .ghx-histi { display: inline-flex; } }   /* github.com: "N Commits" is d-none d-lg-flex, an icon link in its place */
 @container (max-width: 543px) { .ghx-lmeta { display: none; } }                                                     /* and the sha and time d-none d-sm-flex */
@@ -5941,6 +5941,7 @@ button.nn-drow b + i { display: inline-block; margin-left: 10px; }
     .cr-ghp.ghx-dark.ghp-navopen .ghp-drawer .ghp-search input { color: #1f2328; }
     .cr-ghp.ghx-dark.ghp-navopen .ghp-drawer .ghp-search input::placeholder, .cr-ghp.ghx-dark.ghp-navopen .ghp-drawer .ghp-search kbd { color: #59636e; }
     .cr-ghp.ghx-dark.ghp-navopen .ghp-drawer .ghp-search kbd { border-color: #d1d9e0; }
+    .cr-ghp.ghx-dark.ghp-navopen .ghp-drawer .ghp-signupm { color: #1f2328; border-color: #d1d9e0; }
 }
 .ghx-dark .ghp-burger, .ghx-dark .ghp-caret { color: #9198a1; }
 .ghx-homepage { max-width: 1280px; margin: 0 auto; padding: 0 16px 64px; }
@@ -6107,8 +6108,8 @@ button.nn-drow b + i { display: inline-block; margin-left: 10px; }
 .ghx-cnone { margin-top: 8px; }
 .ghx-cnone .ghx-blank { padding: 80px 40px; }
 .ghx-blankv { margin-bottom: 8px; color: #59636e; }
-.ghx-blankh { margin: 0 0 4px; font-size: 20px; font-weight: 600; line-height: 1.625; }
-.ghx-blankd { margin: 0; font-size: 16px; line-height: 1.5; color: #59636e; }
+.ghx-blankh { margin: 0 0 4px; font-size: 20px; font-weight: 600; line-height: 1.625; text-wrap: balance; }
+.ghx-blankd { margin: 0; font-size: 16px; line-height: 1.5; color: #59636e; text-wrap: balance; }
 .ghx-blankd strong { font-weight: 600; }   /* no colour of its own: it keeps the muted text */
 .ghx-blanka { margin: 16px 0; }
 @container ghxblank (max-width: 34rem) {   /* Primer's narrow Blankslate */
