@@ -2990,7 +2990,7 @@ webPage('google.com/search', {
         // sections at all: three spinners under a finished answer is a lie, and
         // github's anonymous search budget is 10/min.
         var offline = has && !!serpOffline(q);   // only skip the live sections when an answer actually exists
-        if (navigator.onLine !== false && (!has || offline)) (CR && CR.incog ? (CR.privSerp || (CR.privSerp = {})) : SERP_SEEN)[q] = 1;   // a page that asks no source (empty, a calculator, a conversion), drawn once while online: a tab switch or Back offline draws it again, as Chrome keeps the page; one that asks sources is vouched for by its own Wikipedia entry (serpGone)
+        if (navigator.onLine !== false && (!has || offline)) (CR && CR.incog ? (CR.privSerp || (CR.privSerp = Object.create(null))) : SERP_SEEN)[q] = 1;   // a page that asks no source (empty, a calculator, a conversion), drawn once while online: a tab switch or Back offline draws it again, as Chrome keeps the page; one that asks sources is vouched for by its own Wikipedia entry (serpGone)
         var sections = has && !offline ? (local +
             '<div class="cr-serpslot" id="crSerpKp"></div>' +
             '<div class="cr-serpsec cr-serpfeatslot" id="crSerpFeat"></div>' +
@@ -6331,7 +6331,7 @@ function wkRandom(view, url) {
 function wkSearch(view, url, r) {
     var q = String(r.q || '').trim(), limit = Math.min(500, Math.max(1, Math.floor(+(r.params && r.params.limit)) || 20)), offset = r.offset || 0;
     var profile = (r.params && r.params.profile) || 'default';
-    var nsl = Object.keys(r.params || {}).filter(function (k) { return /^ns\d+$/.test(k); }).map(function (k) { return k.slice(2); });
+    var nsl = Object.keys(r.params || {}).filter(function (k) { return /^ns\d+$/.test(k); }).map(function (k) { return k.slice(2); }).sort(function (a, b) { return a - b; });   // in namespace order, as core's form lists its checkboxes
     if (!nsl.length) nsl = ['0'];
     var nsq = profile === 'images' ? '&srnamespace=6' : profile === 'all' ? '&srnamespace=*' : profile === 'advanced' ? '&srnamespace=' + nsl.join('|') : '';
     var nsp = profile === 'advanced' ? nsl.map(function (n) { return 'ns' + n + '=1'; }).join('&') : '';   // the pager and Did you mean carry them (SpecialSearch::powerSearchOptions)
