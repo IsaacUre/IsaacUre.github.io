@@ -3480,7 +3480,8 @@ function ghpHeader(back, signup) {        // signup: the Sign up link's own addr
         '<button class="ghp-burger" type="button" aria-label="Toggle navigation">' + ghpIc('three-bars') + '</button>' +
         crLink('github.com', ghpIc('mark-github', '', 32), 'ghp-logo').replace('<button ', '<button aria-label="Homepage" ') +
         '<div class="ghp-drawer"><nav class="ghp-mktg" aria-label="Global">' + nav.map(function (n) { return ghpExt(n[1], esc(n[0]) + ghpIc('triangle-down', 'ghp-caret'), 'ghp-mitem'); }).join('') + ghpExt('https://github.com/pricing', 'Pricing', 'ghp-mitem') + '</nav>' +
-        '<label class="ghp-search">' + ghpIc('search') + '<input class="ghp-q" type="text" placeholder="Search" spellcheck="false" autocomplete="off" aria-label="Search or jump to"><kbd>/</kbd></label></div>' +   // one menu for both, as github.com's header has it
+        '<label class="ghp-search">' + ghpIc('search') + '<input class="ghp-q" type="text" placeholder="Search" spellcheck="false" autocomplete="off" aria-label="Search or jump to"><kbd>/</kbd></label>' +
+        ghpExt(signup || 'https://github.com/signup?ref_cta=Sign+up&ref_loc=header+logged+out&ref_page=%2F%3Cuser-name%3E&source=header', 'Sign up', 'ghp-signup ghp-signupm') + '</div>' +   // one menu for the nav, the search and (on a narrow page) Sign up, as github.com's header has it
         ghpExt(ghpSignin(back), 'Sign in', 'ghp-signin') +
         ghpExt(signup || 'https://github.com/signup?ref_cta=Sign+up&ref_loc=header+logged+out&ref_page=%2F%3Cuser-name%3E&source=header', 'Sign up', 'ghp-signup') +
     '</header>';
@@ -5086,8 +5087,8 @@ function ghxRefPath(st) {                 // where github.com serves the ref's r
 function ghxTitleRef(st) { return st.refKind === 'sha' && st.refSha ? st.refSha : st.ref; }   // titles name a commit by its whole sha, even one typed short
 function ghxBrName(name) { return '<span class="ghx-brname">' + esc(name) + '</span>'; }   // Primer's BranchName
 function ghxBlank(icon, head, desc, action, cls) {   // Primer's Blankslate: a 32px picture, a heading, a line, a button
-    return '<div class="ghx-blank' + (cls ? ' ' + cls : '') + '"><span class="ghx-blankv">' + ghpIc(icon, '', 32) + '</span><h2 class="ghx-blankh">' + head + '</h2><p class="ghx-blankd">' + desc + '</p>' +
-        (action ? '<div class="ghx-blanka">' + action + '</div>' : '') + '</div>';
+    return '<div class="ghx-blankc"><div class="ghx-blank' + (cls ? ' ' + cls : '') + '"><span class="ghx-blankv">' + ghpIc(icon, '', 32) + '</span><h2 class="ghx-blankh">' + head + '</h2><p class="ghx-blankd">' + desc + '</p>' +
+        (action ? '<div class="ghx-blanka">' + action + '</div>' : '') + '</div></div>';
 }
 
 /* —— the repository header: context crumbs and tabs, then the title row ——
@@ -5154,7 +5155,7 @@ function ghxLatestBar(st, c, count, histPath) {
     var ppl = ghxPeople(c), when = c.commit && c.commit.author && c.commit.author.date, sha = String(c.sha || '').slice(0, 7);
     var hh = 'github.com/' + o + '/' + r + '/commits/' + ghxEnc(st.ref) + '/' + (histPath === null ? '' : ghxEnc(histPath)), hl = histPath === null ? nnum(count).toLocaleString() + ' Commits' : 'History';
     var hist = crLink(hh, ghpIc('history') + '<span>' + (histPath === null ? '<b>' + nnum(count).toLocaleString() + '</b> Commits' : 'History') + '</span>', 'ghx-hist') +   // under 1012px wide only its icon, named as github.com names it
-        crLink(hh, ghpIc('history'), 'ghx-histi').replace('<button ', '<button aria-label="View commit history for this file." title="' + esc(hl) + '" ');
+        crLink(hh, ghpIc('history') + '<span class="ghx-tipv" role="tooltip" aria-hidden="true" id="ghxHistTip">' + esc(hl) + '</span>', 'ghx-histi').replace('<button ', '<button aria-label="View commit history for this file." aria-describedby="ghxHistTip" ');
     return '<div class="ghx-latest">' + ghxAvs(ppl, 20) + '<span class="ghx-lwho">' + ghxWho(ppl, o + '/' + r) + '</span>' +
         '<span class="ghx-lmsg">' + ghxMsgLinks(o, r, c.sha, c.commit && c.commit.message, 'ghx-mlink') + '</span>' +
         '<span class="ghx-lmeta">' + crLink('github.com/' + o + '/' + r + '/commit/' + c.sha, sha, 'ghx-sha') + ' · <time datetime="' + esc(when || '') + '">' + ghpAgo(when) + '</time></span>' + hist + '</div>';
@@ -5403,7 +5404,8 @@ function ghxB64(s) {                      // the contents API's base64 (with new
 function ghxRouteRepo(parts) {
     var o = parts[0], r = parts[1], kind = parts[2] || '', segs = [];
     for (var i = 3; i < parts.length; i++) { try { segs.push(decodeURIComponent(parts[i])); } catch (e) { return { kind: 'other', o: o, r: r }; } }   // a broken %-escape: github.com answers 400
-    if (segs.join('/').split('/').some(function (x) { return x === '.' || x === '..'; })) return { kind: 'other', o: o, r: r };   // a decoded ../ never reaches the API's path
+    segs = segs.join('/').split('/').filter(Boolean);   // claude%2Fcart-gti-run is claude/cart-gti-run, as github.com reads it
+    if (segs.some(function (x) { return x === '.' || x === '..'; })) return { kind: 'other', o: o, r: r };   // a decoded ../ never reaches the API's path
     var rt = { kind: '', o: o, r: r, segs: segs, refN: 1, ref: segs.length ? segs[0] : '', path: segs.slice(1).join('/') };
     if (kind === '' || kind === 'tree') rt.kind = rt.path ? 'tree' : 'root';
     else if (kind === 'blob' && rt.path) rt.kind = 'blob';
@@ -5424,8 +5426,8 @@ function ghxSplit(st, n) {                 // the route's first n segments are t
    short sha is made whole, as github.com's titles and links have it. done() once it is known; a name that is none of
    them is github.com's "Cannot find a valid ref" (ghxNoRefAt) instead. */
 function ghxResolveRef(st, db, done) {
-    var rt = st.route, segs = rt.segs, api = GHP_API + '/repos/' + st.owner + '/' + st.repo, max = segs.length - (rt.kind === 'blob' ? 1 : 0);   // a file's address keeps a segment for its name
-    function take(n, kind, sha) { ghxSplit(st, n); st.refKind = kind; st.refSha = sha || null; done(); }
+    var rt = st.route, segs = rt.segs, api = GHP_API + '/repos/' + st.owner + '/' + st.repo, max = segs.length;   // blob/<branch> with no name left: github.com says the branch has no such path
+    function take(n, kind, sha) { ghxSplit(st, n); st.refKind = kind; st.refSha = sha || null; if (sha) st.ref = rt.ref = sha; done(); }   // a commit is named by its whole sha in every link, as on github.com
     function whole(name) { var n = name.split('/').length; return n <= max && segs.slice(0, n).join('/') === name ? n : 0; }
     function longest(list, pre) {
         var best = 0;
@@ -5435,6 +5437,15 @@ function ghxResolveRef(st, db, done) {
     if (rt.kind === 'commit') { done(); return; }                                   // commit/<sha>: the commit answers for itself
     if (!segs.length) { st.ref = rt.ref = db; st.refKind = 'heads'; done(); return; }   // the bare address: the default branch
     if (ghxIsSha(segs[0])) { take(1, 'sha', segs[0].toLowerCase()); return; }
+    function probe(n) {                    // a commit list's answer says whether the first n segments are a ref; no answer at all leaves the page as drawn, its ref unclaimed
+        if (n > max) { ghxNoRefAt(st); return; }
+        var cand = segs.slice(0, n).join('/');
+        ghxGet(st, api + '/commits?per_page=1&sha=' + encodeURIComponent(cand), null, function (e, cs) {
+            var full = !e && Array.isArray(cs) && cs[0] && typeof cs[0].sha === 'string' ? cs[0].sha.toLowerCase() : '';
+            if (full) { if (n === 1 && /^[0-9a-f]{4,40}$/i.test(cand) && full.indexOf(cand.toLowerCase()) === 0) take(1, 'sha', full); else take(n, null); }
+            else if (e === 'http404' || e === 'http422') probe(n + 1);
+        });
+    }
     if (whole(db)) { take(whole(db), 'heads'); return; }                            // git keeps no other branch under the default branch's name
     ghxGet(st, api + '/git/matching-refs/heads/' + encodeURIComponent(segs[0]), null, function (e1, heads) {
         var n = e1 ? 0 : longest(heads, 'refs/heads/');
@@ -5442,7 +5453,7 @@ function ghxResolveRef(st, db, done) {
         ghxGet(st, api + '/git/matching-refs/tags/' + encodeURIComponent(segs[0]), null, function (e2, tags) {
             var m = e2 ? 0 : longest(tags, 'refs/tags/');
             if (m) { take(m, 'tags'); return; }
-            if (e1 || e2) { take(1, null); return; }                                // no answer: the first segment, and the links that need the ref's kind wait
+            if (e1 || e2) { probe(1); return; }                                     // the refs could not be listed: each split is asked about in turn
             if (!/^[0-9a-f]{4,39}$/i.test(segs[0])) { ghxNoRefAt(st); return; }
             ghxGet(st, api + '/commits?per_page=1&sha=' + encodeURIComponent(segs[0]), null, function (e3, cs) {   // a short sha
                 var c = !e3 && Array.isArray(cs) && cs[0], full = c && typeof c.sha === 'string' ? c.sha.toLowerCase() : '';
@@ -5456,16 +5467,16 @@ function ghxResolveRef(st, db, done) {
 function ghxNoRefAt(st) {                  // no branch, tag or commit by that name
     var rt = st.route;
     st.resolving = false;
-    if (rt.kind === 'commits') { ghxSplit(st, 1); st.commits = []; st.cmore = false; }   // github.com's list for it: "No commits history"
+    if (rt.kind === 'commits') { ghxSplit(st, rt.segs.length); st.commits = []; st.cmore = false; }   // github.com's list for it: "No commits history", the whole rest on its button
     else if (rt.segs.length > 1) st.noref = rt.segs.join('/');                           // "Cannot find a valid ref in" the rest of the address
-    else st.missing = true;                                                               // tree/<name> and nothing after it: github.com's own 404
+    else st.missing = st.missingRef = true;                                               // tree/<name> and nothing after it: github.com's own 404
     liveTitle(st.url, ghxRepoTitle(st)); ghxPaint(st, 'all');
 }
 function ghxLoad(st) {                     // what the route's kind asks GitHub for, once the repository is known
     var k = st.route.kind;
     if (k === 'root') ghxRepoMeta(st);
     if (k === 'root' || k === 'tree') ghxFolder(st);
-    else if (k === 'blob') ghxBlob(st);
+    else if (k === 'blob') { if (st.route.path) ghxBlob(st); else ghxNoPath(st); }   // blob/<branch> alone: "does not contain the path ." 
     else if (k === 'commits') ghxCommits(st);
     else if (k === 'commit') ghxCommit(st);
 }
@@ -5506,7 +5517,7 @@ function ghxRepoMeta(st) {                // the sidebar's parts and the branch 
 }
 function ghxBranchRow(st, inFolder) {
     var o = st.owner, r = st.repo;
-    var lbl = st.noref != null ? st.noref : ghxRefLabel(st.ref), tag = st.refKind === 'tags' && st.noref == null;
+    var lbl = st.noref != null ? st.noref : st.nopath ? st.ref : ghxRefLabel(st.ref), tag = st.refKind === 'tags' && !inFolder;   // "tag" on the overview only: a folder's, a file's and a missing path's button says "branch", as github.com's do
     var sel = '<button type="button" class="ghp-btn ghx-btnsm ghx-branch" aria-label="' + esc(lbl) + (tag ? ' tag' : ' branch') + '">' + ghpIc(tag ? 'tag' : 'git-branch') + '<span class="ghx-bname">' + esc(lbl) + '</span>' + ghpIc('triangle-down', 'ghp-caret') + '</button>';
     if (inFolder) return sel;
     return '<div class="ghx-brow" id="ghxBranchRow">' + sel +
@@ -5548,7 +5559,7 @@ function ghxRepoBody(st) {
     }
     if (st.nopath) {                       // github.com's words for a path the ref does not have; a folder keeps its Files pane, branch and crumbs
         return head + '<div class="ghx-wrap">' + (k === 'tree' ? ghxFilePane() + ghxFolderCrumbs(st, st.route.path, false) : '') +
-            ghxBlank('alert-24', '404 - page not found', 'The ' + ghxBrName(ghxRefLabel(st.ref)) + ' branch of <strong>' + esc(r) + '</strong> does not contain the path <strong>' + esc(st.route.path) + '.</strong>',
+            ghxBlank('alert-24', '404 - page not found', 'The ' + ghxBrName(st.ref) + ' branch of <strong>' + esc(r) + '</strong> does not contain the path <strong>' + esc(st.route.path) + '.</strong>',
                 crLink('github.com/' + o + '/' + r, 'Return to the repository overview', 'ghp-btn ghx-btnp'), 'ghx-blankb') + '</div>';
     }
     if (k === 'root') {
@@ -5570,7 +5581,12 @@ function ghxPaint(st, parts) {
     if (!ghxAlive(st)) return;
     var v = st.view;
     function put(id, html) { var el = v.querySelector('#' + id); if (el) el.innerHTML = html; }
-    if (parts === 'all') { var root = v.querySelector('.cr-ghp'); if (root) root.outerHTML = ghxPage(st); }
+    if (parts === 'all') {
+        var root = v.querySelector('.cr-ghp'), q0 = root && root.querySelector('.ghp-q'), keep = q0 && { v: q0.value, f: document.activeElement === q0, a: q0.selectionStart, b: q0.selectionEnd, o: root.classList.contains('ghp-navopen') };
+        if (root) root.outerHTML = ghxPage(st);
+        var q1 = keep && v.querySelector('.ghp-q');   // what the visitor was typing outlives the redraw
+        if (q1) { q1.value = keep.v; if (keep.o) v.querySelector('.cr-ghp').classList.add('ghp-navopen'); if (keep.f) { q1.focus(); try { q1.setSelectionRange(keep.a, keep.b); } catch (x) {} } }
+    }
     else parts.forEach(function (p) {
         if (p === 'head') put('ghxHead', ghxRepoHead(st));
         else if (p === 'side') put('ghxSide', ghxSide(st));
@@ -5586,7 +5602,7 @@ function ghxPaint(st, parts) {
 }
 function ghxRepoTitle(st) {
     var o = st.owner, r = st.repo, R = st.R, k = st.route.kind, full = o + '/' + r;
-    if (st.missing) return 'Page not found · GitHub';
+    if (st.missing) return st.missingRef ? 'Page not found · GitHub · GitHub' : 'Page not found · GitHub';   // sic, for a ref: github.com's own <title>
     if (st.nopath || st.noref != null) return 'File not found · GitHub';
     if (st.resolving) return (R ? R.full_name : full) + ' · GitHub';
     if (k === 'root' && R && st.db && st.ref !== st.db) return 'GitHub - ' + R.full_name + ' at ' + ghxTitleRef(st) + ' · GitHub';   // another branch, a tag or a commit
@@ -5697,7 +5713,7 @@ function ghxCommitsInner(st) {
     var which = path ? '<nav class="ghx-hfor" aria-label="Breadcrumbs">History for ' + crLink('github.com/' + o + '/' + r + '/commits', esc(r), 'ghx-hlinkl') +
             path.split('/').map(function (s) { acc += (acc ? '/' : '') + s; return ' / ' + crLink('github.com/' + o + '/' + r + '/commits/' + ghxEnc(st.ref) + '/' + ghxEnc(acc), esc(s), 'ghx-hlinkl'); }).join('') +
             ' on ' + crLink('github.com/' + o + '/' + r + '/tree/' + ghxEnc(st.ref), esc(ghxRefLabel(st.ref)), 'ghx-hlinkl') + '</nav>'
-        : '<button type="button" class="ghp-btn ghx-btnsm">' + ghpIc('git-branch') + esc(ghxRefLabel(st.ref || '')) + ghpIc('triangle-down', 'ghp-caret') + '</button>';
+        : '<button type="button" class="ghp-btn ghx-btnsm" aria-label="' + esc(ghxRefLabel(st.ref || '')) + (st.refKind === 'tags' ? ' tag' : ' branch') + '">' + ghpIc(st.refKind === 'tags' ? 'tag' : 'git-branch') + esc(ghxRefLabel(st.ref || '')) + ghpIc('triangle-down', 'ghp-caret') + '</button>';
     var h = '<div class="ghx-chead"><h1 class="ghx-ch">Commits</h1></div><div class="ghx-cfilters">' + which +
         '<span class="ghx-grow"></span><button type="button" class="ghp-btn ghx-btnsm">' + ghpIc('people') + 'All users' + ghpIc('triangle-down', 'ghp-caret') + '</button>' +
         '<button type="button" class="ghp-btn ghx-btnsm">' + ghpIc('clock') + 'All time' + ghpIc('triangle-down', 'ghp-caret') + '</button></div>';
@@ -5886,10 +5902,11 @@ function ghxHomeFoot() {                  // github.com's own, larger footer
 /* —— someone else's month of activity, by GitHub's search API (10 searches a minute, anonymous) ——
    Commits: the commit search covers default branches, as the contribution
    rules do. A month of up to 500 is read page by page (100 a page), so the
-   per-repository numbers are the search's own; past that, the repositories on
-   its first page are each counted on their own. Either way a month costs at
-   most eight searches, inside the ten a minute GitHub allows without signing
-   in. Pull requests and issues: the issue search, with their state now. */
+   per-repository numbers are the search's own; past that, the first five
+   repositories on its first page are each counted on their own, and the month
+   is shown only if those counts make up its whole total. Either way a month
+   costs at most eight searches, inside the ten a minute GitHub allows without
+   signing in. Pull requests and issues: the issue search, with their state now. */
 function ghxMonth(st, login, mk, cb) {
     var from = ghpMonthStart(mk), to = ghpMonthEnd(mk), act = ghpNoAct(), left = 3, partial = false, S = GHP_API + '/search/';
     act.issues = {};
@@ -5908,7 +5925,10 @@ function ghxMonth(st, login, mk, cb) {
             repos.forEach(function (f) {
                 ghxGet(st, S + 'commits?q=' + encodeURIComponent('author:' + login + ' repo:' + f + ' author-date:' + from + '..' + to) + '&per_page=1', null, function (e2, j2) {
                     if (!e2 && j2) act.commits[f] = nnum(j2.total_count); else partial = true;
-                    if (--k === 0) fin();
+                    if (--k === 0) {
+                        if (Object.keys(act.commits).reduce(function (t, x) { return t + act.commits[x]; }, 0) !== total) partial = true;   // a repository past the first page or past the five: not the month's own numbers, so not shown
+                        fin();
+                    }
                 });
             });
         });

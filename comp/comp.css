@@ -1204,6 +1204,8 @@ button.cr-iu-skip { position: absolute; right: 1rem; bottom: 1rem; z-index: 11; 
 .ghp-navopen .ghp-drawer { display: flex; position: absolute; z-index: 25; top: 64px; left: 0; right: 0; flex-direction: column; align-items: stretch; padding: 8px 16px 16px; background: #fff; border-bottom: 1px solid #d1d9e0; box-shadow: 0 8px 24px #424a5333; }
 .ghp-navopen .ghp-mktg { display: flex; flex-direction: column; align-items: stretch; margin: 0; }
 .ghp-navopen .ghp-search { display: flex; flex: none; margin-top: 8px; }
+.cr-ghp .ghp-drawer .ghp-signupm { display: none; }
+@container (max-width: 1011px) { .cr-ghp.ghp-navopen .ghp-drawer .ghp-signupm { display: block; margin-top: 8px; text-align: center; } }   /* github.com's menu: the search, then Sign up (Sign in stays in the bar) */
 /* the tab row */
 .ghp-tabs { margin-top: 24px; box-shadow: inset 0 -1px 0 #d1d9e0b3; }
 .ghp-tabsin { display: flex; align-items: center; gap: 8px; min-height: 48px; max-width: 1280px; margin: 0 auto; padding: 0 16px; overflow-x: auto; overflow-y: hidden; }
@@ -1965,7 +1967,7 @@ body.no-crt .screen::after { display: none; }
 .ghx-rtabs .ghp-tab.on::after { bottom: -9px; }
 .ghx-wrap { max-width: 1280px; margin: 0 auto; padding: 16px; }
 #ghxHead .ghx-wrap { padding-bottom: 0; }
-#ghxHead + .ghx-wrap { padding-top: 0; }
+#ghxHead:has(.ghx-titlerow) + .ghx-wrap { padding-top: 0; }   /* the title row's own padding stands in for it; off the overview there is none */
 .ghx-titlerow { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding-bottom: 16px; margin-bottom: 16px; border-bottom: 1px solid #d1d9e0b3; }
 .ghx-title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; font-size: 20px; line-height: 30px; }
 .ghx-av { display: inline-block; flex: none; border-radius: 50%; background: #fff; box-shadow: 0 0 0 1px #1f232826; vertical-align: middle; }
@@ -2018,17 +2020,19 @@ body.no-crt .screen::after { display: none; }
 .ghx-latest { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 12px 16px; font-size: 14px; background: #f6f8fa; border-bottom: 1px solid #d1d9e0; border-radius: 6px 6px 0 0; }
 .ghx-avs { display: inline-flex; flex: none; }
 .ghx-avs .ghx-av + .ghx-av { margin-left: -6px; }
-.ghx-lwho { flex: none; white-space: nowrap; }
+.ghx-lwho { flex: 0 1 auto; min-width: 0; overflow: clip; text-overflow: ellipsis; white-space: nowrap; }   /* gives way only when nothing else can; clip, so focus never scrolls it */
 .cr-ghp .ghx-who { color: #1f2328; }
 .ghx-who b, b.ghx-who { font-weight: 600; }
 .ghx-lmsg { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ghx-lmeta { flex: none; font-size: 12px; color: #59636e; white-space: nowrap; }
+.ghx-lmeta { flex: 0 1 auto; min-width: 0; overflow: clip; text-overflow: ellipsis; font-size: 12px; color: #59636e; white-space: nowrap; }
 .cr-ghp .ghx-sha { font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #59636e; }
 .cr-ghp .ghx-hist { display: inline-flex; flex: none; align-items: center; gap: 4px; padding: 0 4px; font-size: 14px; color: #1f2328; white-space: nowrap; }
 .cr-ghp .ghx-hist:hover { color: #0969da; text-decoration: none; }
 .ghx-hist b { font-weight: 600; }
-.cr-ghp .ghx-histi { display: none; flex: none; align-items: center; justify-content: center; width: 28px; height: 28px; color: #1f2328; border-radius: 6px; }
+.cr-ghp .ghx-histi { position: relative; display: none; flex: none; align-items: center; justify-content: center; width: 28px; height: 28px; color: #1f2328; border-radius: 6px; }
 .cr-ghp .ghx-histi:hover { background: #818b981a; }
+.ghx-tipv { display: none; position: absolute; z-index: 30; top: calc(100% + 6px); right: 0; padding: 5px 8px; font-size: 12px; font-weight: 400; line-height: 1.5; color: #fff; background: #25292e; border-radius: 6px; white-space: nowrap; pointer-events: none; }   /* Primer's tooltip, below (data-direction s) */
+.ghx-histi:hover .ghx-tipv, .ghx-histi:focus-visible .ghx-tipv { display: block; }
 @container (max-width: 1011px) { .cr-ghp .ghx-hist { display: none; } .cr-ghp .ghx-histi { display: inline-flex; } }   /* github.com: "N Commits" is d-none d-lg-flex, an icon link in its place */
 @container (max-width: 543px) { .ghx-lmeta { display: none; } }                                                     /* and the sha and time d-none d-sm-flex */
 .ghx-files { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 14px; }
@@ -2352,16 +2356,23 @@ body.no-crt .screen::after { display: none; }
 .ghx-dnote { margin: 0; padding: 16px; text-align: center; color: #59636e; }
 .ghx-dview .ghx-seg { display: inline-flex; align-items: center; }
 /* "404 - page not found" (a path the ref has not got, or no such ref), "No commits history", and a history's "History for" line */
-.ghx-blank { display: flex; flex-direction: column; align-items: center; padding: 32px; text-align: center; }   /* Primer's Blankslate */
-.ghx-blankb { margin: 16px 0; border: 1px solid #d1d9e0; border-radius: 6px; }
+.ghx-blankc { container: ghxblank / inline-size; }
+.ghx-blank { display: flex; flex-direction: column; align-items: center; padding: 32px; text-align: center; }   /* @primer/react's Blankslate, data-size medium */
+.ghx-blankc:has(.ghx-blankb) { margin: 16px 0; }
+.ghx-blankb { border: 1px solid #d1d9e0; border-radius: 6px; }
 .ghx-cnone { margin-top: 8px; }
 .ghx-cnone .ghx-blank { padding: 80px 40px; }
 .ghx-blankv { margin-bottom: 8px; color: #59636e; }
-.ghx-blankh { margin: 0 0 4px; font-size: 20px; font-weight: 600; line-height: 1.5; }
-.ghx-blankd { margin: 0; color: #59636e; }
-.ghx-blankd strong { color: #1f2328; font-weight: 600; }
-.ghx-blanka { margin-top: 16px; }
-.ghx-brname { display: inline-block; padding: 0 6px; font: 12px/20px ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; color: #0969da; background: #ddf4ff; border-radius: 6px; }
+.ghx-blankh { margin: 0 0 4px; font-size: 20px; font-weight: 600; line-height: 1.625; }
+.ghx-blankd { margin: 0; font-size: 16px; line-height: 1.5; color: #59636e; }
+.ghx-blankd strong { font-weight: 600; }   /* no colour of its own: it keeps the muted text */
+.ghx-blanka { margin: 16px 0; }
+@container ghxblank (max-width: 34rem) {   /* Primer's narrow Blankslate */
+    .ghx-blank { padding: 20px; } .ghx-cnone .ghx-blank { padding: 44px 28px; }
+    .ghx-blankh { font-size: 16px; line-height: 1.5; } .ghx-blankd { font-size: 14px; }
+    .ghx-blankv svg { width: 24px; height: 24px; } .ghx-blanka { margin-bottom: 4px; }
+}
+.ghx-brname { display: inline-block; padding: 2px 6px; font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; font-size: 12px; color: #59636e; background: #ddf4ff; border-radius: 6px; }   /* Primer's BranchName, a span: muted */
 .cr-ghp .ghx-btnp { padding: 0 12px; color: #fff; background: #1f883d; border: 1px solid #1f232826; }
 .cr-ghp .ghx-btnp:hover { background: #1c8139; text-decoration: none; }
 .ghx-hfor { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; font-size: 14px; color: #59636e; }
