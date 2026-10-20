@@ -34,9 +34,21 @@ copies ask for is answered by a mock, and every other one is refused.
   shapes (the titles say so). `news.css` is a stub: the site's own stylesheet
   is not kept here.
 - The results page's sources (`drive_web.js`): Wikipedia's search and summary,
-  GitHub's repository search, Algolia, Open-Meteo, with one made-up answer each.
+  GitHub's repository search, Algolia, Open-Meteo, with one made-up answer each
+  for a query with `harness` in it and nothing for any other.
 
 The clock is pinned (`hn.json`'s `now`, 2026-10-19 12:00 UTC) so the ages hold.
+Three of the front page's stories are 34, 100 and 400 days old, for the age
+wording; the thread's story has its replies in the site's order (`kids`), which
+differs from Algolia's, and a deleted comment with a live reply under it.
+
+Two things the mocks do on purpose: a document request to either site (a page
+the copy does not draw, typed in) comes back with `X-Frame-Options: DENY`, as
+the sites send it, so the checks see the refusal Chrome shows; and a click on
+such a link is checked through `window.open`, which the checks wrap, because
+the window it opens cannot load here. Playwright's Chromium aborts any request
+for a bare `/favicon.ico`, so the Hacker News copy's icon is the one the site's
+own `<link rel="icon">` names (`y18.svg`), which loads.
 
 ## What the copies draw from
 

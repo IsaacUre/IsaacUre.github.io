@@ -376,6 +376,14 @@ function openTaskView() {
         }
         var st = w.el.querySelectorAll('textarea'), dt = clone.querySelectorAll('textarea');
         for (var ti = 0; ti < st.length; ti++) if (dt[ti]) dt[ti].value = st[ti].value;
+        // a page drawn in a frame of its own (Wikipedia, Hacker News) changes its live
+        // document (theme, pinned contents, find marks): the clone's srcdoc is the page
+        // as first drawn, so the card is drawn from the document as it stands
+        var sf = w.el.querySelectorAll('iframe.cr-wk'), df = clone.querySelectorAll('iframe.cr-wk');
+        for (var fi = 0; fi < sf.length; fi++) {
+            var fd = null; try { fd = sf[fi].contentDocument; } catch (err) {}
+            if (df[fi] && fd && fd.documentElement) df[fi].srcdoc = '<!doctype html>' + fd.documentElement.outerHTML;
+        }
         var item = document.createElement('div'); item.className = 'tv-item'; item.setAttribute('data-id', id);
         item.tabIndex = 0; item.setAttribute('role', 'button');            // keyboard-reachable card
         item.setAttribute('aria-label', 'Switch to ' + a.title);
@@ -2419,9 +2427,11 @@ function crSet() { return crj('set', { bmbar: 1, engine: 'google' }); }
 function crEngine() { return crSet().engine === 'ure' ? 'URE Search' : 'Google'; }
 
 /* ── tiny favicon chips ── */
+var CR_NOFAV = Object.create(null);                      // site favicons that did not load (offline, blocked): Chrome's default globe from then on
 function crFav(f, cls) {
     if (!f) f = { ch: '?', c: '#9aa0a6' };
     if (f.ic) return ic(f.ic, 'cr-fav ' + (cls || ''));
+    if (f.img && CR_NOFAV[f.img]) f = { ch: '🌐', c: '#5f6368' };
     if (f.img) return '<img class="cr-fav img ' + (cls || '') + '" src="' + esc(f.img) + '" alt="" referrerpolicy="no-referrer">';   // a site's own favicon
     return '<span class="cr-fav chip ' + (cls || '') + '" style="background:' + f.c + '">' + esc(f.ch) + '</span>';
 }
@@ -2468,13 +2478,12 @@ webPage('chrome://newtab', {
    page the live layer actually loads. The local curated corpus rides along as
    its own instant section. — */
 webPage('google.com/search', {
-    title: function (q) { return q + ' - ' + crEngine() + ' Search'; }, fav: { ch: 'G', c: '#4285f4' }, dynamic: true,
+    title: function (q) { return navigator.onLine === false ? 'www.google.com' : q + ' - ' + crEngine() + ' Search'; }, fav: { ch: 'G', c: '#4285f4' }, dynamic: true,
     render: function (q) {
+        if (navigator.onLine === false) return crErrPage('offline', 'www.google.com');
         q = q || '';
         var has = !!q.trim();
         var ql = q.toLowerCase();
-        var snippet = '';
-        if (/dino|dinosaur|t-?rex/.test(ql)) snippet = '<div class="cr-snip"><b>chrome://dino</b><p>You appear to be looking for the dinosaur. He is employed here.</p>' + crLink('chrome://dino', 'Play the dino game', 'cr-snipl') + '</div>';
         var local = '';
         if (has) {
             var corpus = Object.keys(WEB).map(function (k) { return WEB[k]; }).filter(function (s) { return s.searchable; });
@@ -2495,14 +2504,14 @@ webPage('google.com/search', {
         // sections at all: three spinners under a finished answer is a lie, and
         // github's anonymous search budget is 10/min.
         var offline = has && !!serpOffline(q);   // only skip the live sections when an answer actually exists
-        var sections = has && !offline ? (snippet + local +
+        var sections = has && !offline ? (local +
             '<div class="cr-serpslot" id="crSerpKp"></div>' +
             '<div class="cr-serpsec cr-serpfeatslot" id="crSerpFeat"></div>' +
             load('crSerpWiki') +
             '<div class="cr-serpslot" id="crSerpImg"></div>' +
             load('crSerpGH') +
             '<div class="cr-serpslot" id="crSerpSO"></div>' +
-            load('crSerpHN')) : (has ? snippet + local : '');
+            load('crSerpHN')) : (has ? local : '');
         return '<div class="cr-serp">' +
             '<div class="cr-serphead">' + (crEngine() === 'Google' ? '<span class="cr-serplogo"><b style="color:#4285f4">G</b><b style="color:#ea4335">o</b><b style="color:#fbbc05">o</b><b style="color:#4285f4">g</b><b style="color:#34a853">l</b><b style="color:#ea4335">e</b></span>' : '<span class="cr-serplogo"><b style="color:#d81e05">URE</b></span>') +
               '<label class="cr-serpbox">' + ic('ic-search') + '<input class="cr-serpq" value="' + esc(q) + '" spellcheck="false" autocomplete="off"></label></div>' +
@@ -2511,6 +2520,7 @@ webPage('google.com/search', {
             sections + '</div>';
     },
     init: function (view) {
+        if (view.querySelector('.cr-neterror')) { crErrWire(view); return; }
         var q = view.querySelector('.cr-serpq');
         var query = q ? q.value : crQOf(crTab().url);
         if (q) q.addEventListener('keydown', function (e) { if (e.key === 'Enter' && q.value.trim()) crNav('google.com/search?q=' + encodeURIComponent(q.value.trim())); });
@@ -2540,13 +2550,15 @@ webPage('google.com/search', {
         var kpTerm = (intent.kind === 'map' || intent.kind === 'weather') ? intent.place : query;
         if (/^(general|code|map|weather)$/.test(intent.kind) && String(kpTerm).trim().split(/\s+/).length <= 5)
             serpKnowledge(kpTerm, function (h) { fill('crSerpKp', h); });
-        if (intent.kind === 'code') serpSO(query, function (h) { fill('crSerpSO', h); });
-        if (/^(general|code)$/.test(intent.kind)) serpImages(query, function (h) { fill('crSerpImg', h); });
+        var wantSO = intent.kind === 'code', wantImg = /^(general|code)$/.test(intent.kind);
+        if (wantSO) serpSO(query, function (h) { fill('crSerpSO', h); done(); });
+        if (wantImg) serpImages(query, function (h) { fill('crSerpImg', h); done(); });
 
         serpWiki(query, true, function (featHtml, restHtml, total, suggest) {
             if (!view.isConnected) return;
             fill('crSerpFeat', featHtml);
             fill('crSerpWiki', restHtml);
+            done();
             /* wikipedia suggests variants even for correctly-spelled queries
                ("Douglas Adams" → "douglas adam's"); only ask when the suggestion
                differs by more than case, spacing, and punctuation */
@@ -2554,8 +2566,16 @@ webPage('google.com/search', {
             if (suggest && dymKey(suggest) !== dymKey(query))
                 fill('crSerpDym', '<p class="cr-dym">Did you mean ' + crLink('google.com/search?q=' + encodeURIComponent(suggest), esc(suggest), 'cr-dymlink') + '?</p>');
         });
-        serpGH(query, function (h) { fill('crSerpGH', h); });
-        serpHN(query, function (h) { fill('crSerpHN', h); });
+        serpGH(query, function (h) { fill('crSerpGH', h); done(); });
+        serpHN(query, function (h) { fill('crSerpHN', h); done(); });
+        /* the sources all back, and none of them had anything: Google's own page for that */
+        var left = 3 + (wantSO ? 1 : 0) + (wantImg ? 1 : 0);
+        function done() {
+            if (--left || !view.isConnected) return;
+            if (view.querySelector('.cr-res, .cr-serpfeat, .cr-kp, .cr-ansbox, .cr-wxans, .cr-imgcell, #crSerpAns > *')) return;
+            var el = view.querySelector('#crSerpDym');
+            if (el && !el.textContent) el.innerHTML = '<div class="cr-serpnone"><p role="heading" aria-level="3">Your search - <em>' + esc(query) + '</em> - did not match any documents.</p><p>Suggestions:</p><ul><li>Make sure that all words are spelled correctly.</li><li>Try different keywords.</li><li>Try more general keywords.</li><li>Try fewer keywords.</li></ul></div>';
+        }
     }
 });
 
@@ -4060,12 +4080,8 @@ webPage('mail.google.com', {
 /* — chrome://dino — */
 webPage('chrome://dino', {
     title: 'chrome://dino', fav: { ic: 'ic-chrome' },
-    render: function () {
-        return '<div class="cr-dino"><div class="cr-dinohud"><span>HI ' + String(+recall('chrome_dino_hi', 0)).padStart(5, '0') + '</span><span id="crDinoScore">00000</span></div>' +
-            '<canvas id="crDinoCv" width="600" height="160"></canvas>' +
-            '<p class="cr-dinotip" id="crDinoTip">Press SPACE, ↑, or click to jump. The desert is procedurally hostile.</p></div>';
-    },
-    init: function (view) { crDinoBoot(view); }
+    render: function () { return crErrPage('dino', 'chrome://dino'); },   // Chromium's error page with the game's instruction and no error code (localized_error.cc show_game_instructions)
+    init: function (view) { var ne = view.querySelector('.cr-neterror'); if (ne) crDinoMount(ne); crDinoBoot(view); }
 });
 
 /* — the error page: Chrome's own, for an address that is not a site — */
@@ -4073,7 +4089,7 @@ webPage('__err', {
     title: 'Site can’t be reached', fav: { ch: '!', c: '#9aa0a6' },
     render: function (host) {
         var u = String(crTab().url || '');
-        if (/^chrome:/i.test(u)) return crErrPage('invalid', u.replace(/\/?$/, '/'));   // chrome://nothing: Chrome's page for an address it has no page for
+        if (/^chrome:/i.test(u)) return crErrPage('invalid', u.replace(/^(chrome:\/\/[^\/?#]*)$/i, '$1/'));   // chrome://nothing: Chrome's page for an address it has no page for
         return crErrPage('dns', host || '');
     },
     init: function (view) { crErrWire(view); }
@@ -4187,7 +4203,8 @@ webPage('__viewsource', {
         var target = String(crTab().url).replace(/^(view-source:)+/i, '');
         var s = crSite(target);
         if (s === WEB['__viewsource']) s = WEB.__err;   // never render ourselves — that way lies recursion
-        var html = s === WEB.__err ? s.render(String(target).split('/')[0]) : (s.source && s.source(target)) || s.render(crQOf(target));
+        if (s === WEB.__frame || (s.source && !s.source(target))) return '<div class="cr-src"><ol></ol></div>';   // not drawn yet: init loads it, and the page lists itself when it lands
+        var html = s === WEB.__err ? s.render(String(target).split('/')[0]) : s.source ? s.source(target) : s.render(crQOf(target));
         var lines = html.replace(/></g, '>\n<').split('\n');
         return '<div class="cr-src"><ol>' + lines.map(function (ln) {
             var h = esc(ln)
@@ -4196,6 +4213,12 @@ webPage('__viewsource', {
                 .replace(/(&lt;\/?)([a-z][a-z0-9-]*)/gi, '$1<i class="st">$2</i>');
             return '<li>' + h + '</li>';
         }).join('') + '</ol></div>';
+    },
+    init: function (view) {
+        var target = String(crTab().url).replace(/^(view-source:)+/i, ''), s = crSite(target);
+        if (!s.source || s.source(target) || !s.init) return;
+        var box = document.createElement('div'); box.hidden = true; view.appendChild(box);
+        s.init(box);                                           // liveUrl() strips view-source:, so the site loads the target here
     }
 });
 
@@ -4262,21 +4285,40 @@ function crErrPage(kind, host, code) {
     var DNS = ['Check your DNS settings', 'Contact your network administrator if you\'re not sure what this means.'];
     var PROXY = ['If you use a proxy server...', 'Check your proxy settings or contact your network administrator to make sure the proxy server is working. If you don\'t believe you should be using a proxy server: You can disable any proxies configured for a connection from the settings page.'];
     var heading = 'This site can’t be reached', summary = '', list = [], errcode = '', reload = true, details = [], icon = 'icon-generic';
-    if (kind === 'offline') { heading = 'No internet'; list = ['Checking the network cables, modem, and router', 'Reconnecting to Wi-Fi', diag]; errcode = 'ERR_INTERNET_DISCONNECTED'; reload = false; icon = 'icon-offline'; details = [CONN]; }
+    /* offline (and chrome://dino): the heading is the game's instruction for the device
+       (neterror.ts updateInitialInstruction), "No internet" is the summary the page hides,
+       and there are no buttons (localized_error.cc: SHOW_NO_BUTTONS, no details) */
+    var play = navigator.maxTouchPoints === 0 ? 'Press space to play' : (window.matchMedia && window.matchMedia('(hover: hover)').matches ? 'Tap the dino or press space to play' : 'Tap the dino to play');
+    if (kind === 'offline') { heading = play; summary = 'No internet'; list = ['Checking the network cables, modem, and router', 'Reconnecting to Wi-Fi', diag]; errcode = 'ERR_INTERNET_DISCONNECTED'; reload = false; icon = 'icon-offline'; }
+    else if (kind === 'dino') { heading = play; reload = false; icon = 'icon-offline'; }
     else if (kind === 'timeout') { summary = H + ' took too long to respond.'; list = ['Checking the connection', help('Checking the proxy and the firewall'), diag]; errcode = 'ERR_CONNECTION_TIMED_OUT'; details = [CONN, PROXY]; }
-    else if (kind === 'empty') { summary = H + ' didn’t send any data.'; errcode = 'ERR_EMPTY_RESPONSE'; }
-    else if (kind === 'invalid') { summary = 'The webpage at ' + H + ' might be temporarily down or it may have moved permanently to a new web address.'; errcode = 'ERR_INVALID_URL'; }
-    else if (kind === 'http') { heading = 'This page isn’t working'; summary = code === 504 ? H + ' took too long to respond.' : code >= 500 && code <= 503 ? H + ' is currently unable to handle this request.' : 'If the problem continues, contact the site owner.'; errcode = 'HTTP ERROR ' + nnum(code); }
+    else if (kind === 'empty') { heading = 'This page isn’t working'; summary = H + ' didn’t send any data.'; errcode = 'ERR_EMPTY_RESPONSE'; }
+    else if (kind === 'invalid') { summary = 'The webpage at ' + H + ' might be temporarily down or it may have moved permanently to a new web address.'; errcode = 'ERR_INVALID_URL'; reload = false; }
+    else if (kind === 'http') {
+        var HS = '<span>' + esc(host || '') + '</span>';
+        heading = code === 403 ? 'Access to ' + HS + ' was denied' : code === 404 || code === 410 ? 'This ' + HS + ' page can’t be found' : 'This page isn’t working';
+        summary = code === 403 ? 'You don\'t have authorization to view this page.' : code === 404 ? 'No webpage was found for the web address: <strong>' + esc('https://' + liveUrl()) + '</strong>' : code === 410 ? 'It may have been moved or deleted.'
+            : code === 504 ? H + ' took too long to respond.' : code >= 500 && code <= 503 ? H + ' is currently unable to handle this request.' : 'If the problem continues, contact the site owner.';
+        reload = code !== 410 && code !== 501; errcode = 'HTTP ERROR ' + nnum(code);
+    }
     else { summary = H + '’s server IP address could not be found.'; list = ['Checking the connection', help('Checking the proxy, firewall, and DNS configuration'), diag]; errcode = 'ERR_NAME_NOT_RESOLVED'; details = [CONN, DNS, PROXY]; }
     return '<div class="cr-neterror" data-kind="' + kind + '"><div id="main-frame-error" class="interstitial-wrapper"><div id="main-content">' +
         '<div class="icon ' + icon + '" style="background-image: url(' + CR_NETERR_ICON[icon === 'icon-offline' ? 'offline' : 'generic'][0] + '); background-image: image-set(url(' + CR_NETERR_ICON[icon === 'icon-offline' ? 'offline' : 'generic'][0] + ') 1x, url(' + CR_NETERR_ICON[icon === 'icon-offline' ? 'offline' : 'generic'][1] + ') 2x);"></div><div id="main-message"><h1><span>' + heading + '</span></h1>' +
         (summary ? '<p>' + summary + '</p>' : '') +
         (list.length ? '<div id="suggestions-list"><p>Try:</p><ul class="' + (list.length === 1 ? 'single-suggestion' : '') + '">' + list.map(function (s) { return '<li>' + s + '</li>'; }).join('') + '</ul></div>' : '') +
         '<div class="error-code">' + errcode + '</div></div></div>' +
-        '<div id="buttons" class="nav-wrapper"><div id="control-buttons"' + (reload ? '' : ' hidden') + '><button id="reload-button" class="blue-button text-button">Reload</button></div>' +
-        (details.length ? '<button id="details-button" class="secondary-button text-button small-link">Details</button>' : '') + '</div>' +
+        '<div id="buttons" class="nav-wrapper suggested-left"><div id="control-buttons"' + (reload ? '' : ' hidden') + '><button id="reload-button" class="blue-button text-button">Reload</button></div>' +   // suggested-left: Windows puts Reload left and Details right
+        (details.length ? '<button id="details-button" class="secondary-button text-button small-link' + (reload ? '' : ' singular') + '">Details</button>' : '') + '</div>' +
         (details.length ? '<div id="details">' + details.map(function (d) { return '<div class="suggestions"><div class="suggestion-header">' + d[0] + '</div><div class="suggestion-body">' + d[1] + '</div></div>'; }).join('') + '</div>' : '') +
         '</div></div>';
+}
+/* the runner's canvas in the page, where the icon was (neterror.css .runner-container) */
+function crDinoMount(ne) {
+    var wrap = ne.querySelector('.interstitial-wrapper'); if (!wrap) return;
+    var rc = document.createElement('div'); rc.className = 'runner-container';
+    rc.innerHTML = '<canvas id="crDinoCv" class="runner-canvas" width="600" height="150"></canvas>';
+    wrap.insertBefore(rc, wrap.firstChild);
+    var ic0 = ne.querySelector('.icon-offline'); if (ic0) ic0.style.visibility = 'hidden';
 }
 /* the page's two buttons, the help links, and the dinosaur: the offline page's
    runner starts on Space or a jump, as Chrome's does */
@@ -4291,9 +4333,11 @@ function crErrWire(view) {
     if (ne.getAttribute('data-kind') === 'offline') {
         var start = function () {
             document.removeEventListener('keydown', onKey);
-            if (!view.isConnected) return;
-            view.innerHTML = WEB['chrome://dino'].render();
-            CR.dinoHere = true; crDinoBoot(view);
+            if (!view.isConnected || ne.querySelector('.runner-container')) return;
+            crDinoMount(ne);
+            crDinoBoot(view);
+            CR.dinoHere = true;                                  // after the boot: its crDinoStop() clears the flag
+            if (CR.dinoJump) CR.dinoJump();                      // the Space that opened the runner starts the run, as the Runner's does
         };
         var onKey = function (e) {
             if (!view.isConnected || !CR) { document.removeEventListener('keydown', onKey); return; }
@@ -4321,7 +4365,7 @@ function liveFill(view, url, html, title) {
     if (!view.isConnected) return;
     view.innerHTML = html;
     crErrWire(view);
-    liveTitle(url, title || String(url));                   // a page that did not load is titled by its address, as in Chrome
+    liveTitle(url, title || String(url).replace(/^https?:\/\//i, '').split(/[\/?#]/)[0]);   // a page that did not load is titled by its host, as Chrome's error page is (localized_error.cc)
     if (find.appId === 'chrome' && findOpenNow()) runFind();
 }
 /* a live page tells the tab (and the history entry the nav just wrote) its real name */
@@ -4385,7 +4429,7 @@ function serpWiki(q, feat, done) {
         var list = feat ? hits.slice(1, 5) : hits.slice(0, 5);
         var rows = list.map(function (h) {
             var u = 'en.wikipedia.org/wiki/' + h.title.replace(/ /g, '_');
-            return serpRow(u, 'en.wikipedia.org › wiki › ' + esc(h.title), { ch: 'W', c: '#202122' }, h.title, snipHighlight(h.snippet, q) + '…');
+            return serpRow(u, 'en.wikipedia.org › wiki › ' + esc(h.title), WK_DEF.fav, h.title, snipHighlight(h.snippet, q) + '…');
         }).join('');
         // a single-hit query has no "rest" — show only the featured card, no contradictory empty note
         done(featHtml, serpSection('', null, rows), total, sug);
@@ -4409,7 +4453,7 @@ function serpHN(q, done) {
         if (!hits.length) { done(''); return; }
         var rows = hits.slice(0, 4).map(function (h) {
             var item = 'news.ycombinator.com/item?id=' + h.objectID;
-            return serpRow(item, 'news.ycombinator.com › item', { ch: 'Y', c: '#ff6600' }, h.title,
+            return serpRow(item, 'news.ycombinator.com › item', WEB['news.ycombinator.com'].fav, h.title,
                 '<span class="cr-serpmeta">' + nnum(h.points) + ' points · ' + nnum(h.num_comments) + ' comments · ' + esc(h.author || '?') + '</span>');
         }).join('');
         done(serpSection('Discussions and forums', null, rows));   // Google's own name for this block
@@ -4792,17 +4836,17 @@ function wkRoute(path) {
         if (params.search !== undefined) r.title = 'Special:Search';
         else if (params.title) r.title = wkTitleNorm(params.title);
         else return r;
-        r.action = params.action || 'view';
-        if (params.oldid || params.diff) r.kind = 'frame';
     }
     else return { kind: 'frame', hash: hash, params: params };
+    r.action = params.action || 'view';                        // the query string counts on a /wiki/ path too
+    if (params.oldid || params.diff || params.curid) r.kind = 'frame';
     if (/^Special:Random$/i.test(r.title)) r.kind = 'random';
     else if ((m = r.title.match(/^Special:Search(?:\/(.*))?$/i))) {
         r.kind = 'search';
         r.q = params.search !== undefined ? params.search : (m[1] || '');
         r.full = !!params.fulltext; r.offset = +params.offset || 0;
     }
-    else if (/^Special:/i.test(r.title) || r.action !== 'view') r.kind = 'frame';
+    else if (/^(Special|Category|File|Image):/i.test(r.title) || r.action !== 'view') r.kind = 'frame';   // what action=parse cannot draw (a category's members, a file's page) is the real page
     return r;
 }
 function wkPlural(n, one, many) { return n === 1 ? one : many; }
@@ -4863,7 +4907,7 @@ function wkPinHeader(id, feature, label, pinned, tag) {
 function wkAk(tip, key) { return tip ? tip + (key ? ' [alt-shift-' + key + ']' : '') : null; }
 /* the main menu: MediaWiki:Sidebar as the English Wikipedia sets it (ONWIKI), in
    Vector's MainMenu.mustache. Tooltips are core's where core has one. */
-function wkMainMenu(pinned, langs) {
+function wkMainMenu(pinned) {
     var nav = wkMenu('p-navigation', 'mw-portlet mw-portlet-navigation', 'Navigation',
         wkLi('n-mainpage-description', '', '/wiki/Main_Page', 'Main page', { title: wkAk('Visit the main page', 'z'), accesskey: 'z' }) +
         wkLi('n-contents', '', '/wiki/Wikipedia:Contents', WK_MSG.contents) +
@@ -4879,7 +4923,7 @@ function wkMainMenu(pinned, langs) {
         wkLi('n-upload', '', '/wiki/Wikipedia:File_upload_wizard', 'Upload file', { title: 'Upload files' }) +
         wkLi('n-specialpages', '', '/wiki/Special:SpecialPages', 'Special pages'));
     return '<div id="vector-main-menu" class="vector-main-menu vector-pinnable-element">' +
-        wkPinHeader('vector-main-menu', 'main-menu-pinned', 'Main menu', pinned) + nav + inter + (langs || '') + '</div>';   // is-languages-included: the Main Page's languages live here
+        wkPinHeader('vector-main-menu', 'main-menu-pinned', 'Main menu', pinned) + nav + inter + '</div>';
 }
 /* the languages: core's SkinLanguageHelper rows (interlanguage-link interwiki-xx,
    the title "Page – Language", lang/hreflang, ULS's data- attributes) */
@@ -4892,16 +4936,18 @@ function wkLangItems(langs) {
 /* LanguageDropdown.mustache with VectorComponentLanguageDropdown's classes */
 function wkLangButton(langs, exists) {
     var n = (langs || []).length;
-    if (!exists || !n) {
+    if (!exists) {                                             // a talk page or a missing one: the empty variant (VectorComponentLanguageDropdown)
         return wkDropdown({ id: 'p-lang-btn', label: n ? n + wkPlural(n, ' language', ' languages') : 'Add languages', cls: 'mw-portlet mw-portlet-lang mw-portlet-lang-icon-only', icon: 'language',
             labelCls: 'cdx-button--icon-only mw-portlet-lang-heading-empty', cbCls: 'mw-interlanguage-selector-empty',
             ariaDesc: n ? 'Go to an article in another language. Available in ' + n + wkPlural(n, ' language', ' languages') : 'This article is only available in this language. Add the article for other languages',
             inner: '<div class="mw-portlet-empty-language-selector-body">Page contents not supported in other languages.</div>' });
     }
-    return wkDropdown({ id: 'p-lang-btn', label: n + wkPlural(n, ' language', ' languages'), cls: 'mw-portlet mw-portlet-lang', icon: 'language-progressive',
+    /* an article: the progressive button, "Add languages" when it has none (with
+       ULS's uls-after-portlet-link span after the empty list) */
+    return wkDropdown({ id: 'p-lang-btn', label: n ? n + wkPlural(n, ' language', ' languages') : 'Add languages', cls: 'mw-portlet mw-portlet-lang', icon: 'language-progressive',
         labelCls: 'cdx-button--action-progressive mw-portlet-lang-heading-' + n, cbCls: 'mw-interlanguage-selector',
-        ariaDesc: 'Go to an article in another language. Available in ' + n + wkPlural(n, ' language', ' languages'),
-        inner: '<div class="vector-menu-content"><ul class="vector-menu-content-list">' + wkLangItems(langs) + '</ul></div>' });
+        ariaDesc: n ? 'Go to an article in another language. Available in ' + n + wkPlural(n, ' language', ' languages') : 'This article is only available in this language. Add the article for other languages',
+        inner: '<div class="vector-menu-content"><ul class="vector-menu-content-list">' + wkLangItems(langs) + '</ul>' + (n ? '' : '<div class="after-portlet after-portlet-lang"><span class="uls-after-portlet-link"></span></div>') + '</div>' });
 }
 /* TableOfContents.mustache, __list and __line, from action=parse's sections */
 function wkTocTree(sections) {
@@ -4942,34 +4988,46 @@ function wkInline(html) {
     })(d.body.firstChild);
     return out;
 }
-/* the page tools: VectorComponentPageTools (the views collapse into General
-   first, then the toolbox, then Actions, then the portlets the sidebar has
-   after TOOLBOX: Collection's Print/export) */
+/* the page tools: VectorComponentPageTools (Actions, which takes the -more
+   copies of the views, then General, the toolbox, then the portlets the sidebar
+   has after TOOLBOX: Collection's Print/export, Wikibase's In other projects) */
+/* Wikibase's link (SidebarHookHandler: t-wikibase in the wikibase-otherprojects
+   portlet, "In other projects") */
+function wkWikidataLi(q) { return wkLi('t-wikibase', 'wb-otherproject-link wb-otherproject-wikibase-dataitem', 'https://www.wikidata.org/wiki/Special:EntityPage/' + q, 'Wikidata item', { title: wkAk('Structured data on this page hosted by Wikidata', 'g'), accesskey: 'g' }); }
 function wkPageTools(p, pinned) {
     var t = p.title, enc = wkEnc(t), idx = '/w/index.php?title=' + enc;
-    var views = p.missing ? wkLi('ca-edit-more', 'vector-menu-item--collapsible', idx + '&action=edit', 'Create', { title: wkAk('Edit this page', 'e'), accesskey: 'e' })
-        : wkLi('ca-view-more', 'vector-menu-item--collapsible', '/wiki/' + enc, 'Read') +
-          (p.protectedEdit ? wkLi('ca-viewsource-more', 'vector-menu-item--collapsible', idx + '&action=edit', 'View source', { title: wkAk('This page is protected.\nYou can view its source', 'e'), accesskey: 'e' })
-                           : wkLi('ca-edit-more', 'vector-menu-item--collapsible', idx + '&action=edit', 'Edit', { title: wkAk('Edit this page', 'e'), accesskey: 'e' })) +
-          wkLi('ca-history-more', 'vector-menu-item--collapsible', idx + '&action=history', 'View history', { title: wkAk('Past revisions of this page', 'h'), accesskey: 'h' });
-    var tb = views +
-        wkLi('t-whatlinkshere', '', '/wiki/Special:WhatLinksHere/' + enc, 'What links here', { title: wkAk('A list of all wiki pages that link here', 'j'), accesskey: 'j' }) +
+    var open = '<div id="vector-page-tools" class="vector-page-tools vector-pinnable-element">' + wkPinHeader('vector-page-tools', 'page-tools-pinned', 'Tools', pinned);
+    var upload = wkLi('t-upload', '', '//en.wikipedia.org/wiki/Wikipedia:File_Upload_Wizard', 'Upload file', { title: wkAk('Upload files', 'u'), accesskey: 'u' });   // $wgUploadNavigationUrl, enwiki (T44263)
+    var print = wkLi('t-print', '', '#', 'Printable version', { title: wkAk('Printable version of this page', 'p'), accesskey: 'p' });
+    var shortener = function (full) { return wkLi('t-urlshortener', '', '/w/index.php?title=Special:UrlShortener&url=' + encodeURIComponent(full), 'Get shortened URL'); };
+    /* a special page: no views, no permalink or page information (Skin::buildNavUrls
+       adds those for an article), no Cite or Print/export (they need a revision);
+       upload, print and UrlShortener's link remain */
+    if (p.special) return open +
+        wkMenu('p-cactions', 'mw-portlet mw-portlet-cactions emptyPortlet vector-has-collapsible-items', 'Actions', '') +
+        wkMenu('p-tb', 'mw-portlet mw-portlet-tb', 'General', upload + print + shortener('https://' + liveUrl())) + '</div>';
+    /* the views again, -more copies with core's icons, which the skin merges into
+       Actions and shows below the mobile width (VectorComponentPageTools::getMenus) */
+    var views = p.missing ? wkLi('ca-edit-more', 'vector-menu-item--collapsible', idx + '&action=edit', 'Create', { title: wkAk('Create this page', 'e'), accesskey: 'e' }, 'edit')
+        : wkLi('ca-view-more', 'selected vector-menu-item--collapsible', '/wiki/' + enc, 'Read', null, 'eye') +
+          (p.protectedEdit ? wkLi('ca-viewsource-more', 'vector-menu-item--collapsible', idx + '&action=edit', 'View source', { title: wkAk('This page is protected.\nYou can view its source', 'e'), accesskey: 'e' }, 'editLock')
+                           : wkLi('ca-edit-more', 'vector-menu-item--collapsible', idx + '&action=edit', 'Edit', { title: wkAk('Edit this page', 'e'), accesskey: 'e' }, 'edit')) +
+          wkLi('ca-history-more', 'vector-menu-item--collapsible', idx + '&action=history', 'View history', { title: wkAk('Past revisions of this page', 'h'), accesskey: 'h' }, 'history');
+    var tb = wkLi('t-whatlinkshere', '', '/wiki/Special:WhatLinksHere/' + enc, 'What links here', { title: wkAk('A list of all wiki pages that link here', 'j'), accesskey: 'j' }) +
         wkLi('t-recentchangeslinked', '', '/wiki/Special:RecentChangesLinked/' + enc, 'Related changes', { title: wkAk('Recent changes in pages linked from this page', 'k'), accesskey: 'k' }) +
-        wkLi('t-upload', '', '/wiki/Wikipedia:File_upload_wizard', 'Upload file', { title: wkAk('Upload files', 'u'), accesskey: 'u' }) +
-        wkLi('t-specialpages', '', '/wiki/Special:SpecialPages', 'Special pages', { accesskey: 'q' }) +
-        (p.missing ? '' :
+        upload +
+        (p.missing ? print :
             wkLi('t-permalink', '', idx + '&oldid=' + (p.revid || ''), 'Permanent link', { title: 'Permanent link to this revision of this page' }) +
             wkLi('t-info', '', idx + '&action=info', 'Page information', { title: 'More information about this page' }) +
             wkLi('t-cite', '', '/w/index.php?title=Special:CiteThisPage&page=' + enc + '&id=' + (p.revid || '') + '&wpFormIdentifier=titleform', 'Cite this page', { title: 'Information on how to cite this page' }) +
-            wkLi('t-urlshortener', '', '/w/index.php?title=Special:UrlShortener&url=https%3A%2F%2Fen.wikipedia.org%2Fwiki%2F' + encodeURIComponent(enc), 'Get shortened URL') +
-            wkLi('t-urlshortener-qrcode', '', '/w/index.php?title=Special:QrCode&url=https%3A%2F%2Fen.wikipedia.org%2Fwiki%2F' + encodeURIComponent(enc), 'Download QR code') +
-            (p.wikibase ? wkLi('t-wikibase', '', 'https://www.wikidata.org/wiki/Special:EntityPage/' + esc(p.wikibase), 'Wikidata item', { title: wkAk('Structured data on this page hosted by Wikidata', 'g'), accesskey: 'g' }) : ''));
-    var menus = wkMenu('p-tb', 'mw-portlet mw-portlet-tb vector-has-collapsible-items', 'General', tb) +
-        wkMenu('p-cactions', 'mw-portlet mw-portlet-cactions emptyPortlet vector-has-collapsible-items', 'Actions', '') +
+            shortener('https://en.wikipedia.org/wiki/' + enc) +
+            wkLi('t-urlshortener-qrcode', '', '/w/index.php?title=Special:QrCode&url=https%3A%2F%2Fen.wikipedia.org%2Fwiki%2F' + encodeURIComponent(enc), 'Download QR code'));
+    var menus = wkMenu('p-cactions', 'mw-portlet mw-portlet-cactions emptyPortlet vector-has-collapsible-items', 'Actions', views) +
+        wkMenu('p-tb', 'mw-portlet mw-portlet-tb', 'General', tb) +
         (p.missing ? '' : wkMenu('p-coll-print_export', 'mw-portlet mw-portlet-coll-print_export', 'Print/export',
-            wkLi('coll-download-as-rl', '', '/w/index.php?title=Special:DownloadAsPdf&page=' + enc + '&action=show-download-screen', 'Download as PDF', { title: 'Download this page as a PDF file' }) +
-            wkLi('t-print', '', '#', 'Printable version', { title: wkAk('Printable version of this page', 'p'), accesskey: 'p' })));
-    return '<div id="vector-page-tools" class="vector-page-tools vector-pinnable-element">' + wkPinHeader('vector-page-tools', 'page-tools-pinned', 'Tools', pinned) + menus + '</div>';
+            wkLi('coll-download-as-rl', '', '/w/index.php?title=Special:DownloadAsPdf&page=' + enc + '&action=show-download-screen', 'Download as PDF', { title: 'Download this page as a PDF file' }) + print)) +
+        (p.wikibase ? wkMenu('p-wikibase-otherprojects', 'mw-portlet mw-portlet-wikibase-otherprojects', 'In other projects', wkWikidataLi(p.wikibase)) : '');
+    return open + menus + '</div>';
 }
 /* the Appearance menu as skins.vector.clientPreferences builds it client-side
    (mw.util.addPortlet + Vector's portlet hook, Codex radios) */
@@ -4993,10 +5051,10 @@ function wkAppearance(prefs, pinned) {
 /* the visitor's client preferences (what Wikipedia keeps in the
    mwclientpreferences cookie), shared by both copies like every save here */
 function wkPrefs() {
-    var p = crj('wk', {}) || {};
+    var p = (CR && CR.incog ? CR.privWk : crj('wk', {})) || {};   // a private window's choices live on the window
     return { fs: /^[012]$/.test(p.fs) ? p.fs : '1', lw: p.lw === '0' ? '0' : '1', theme: /^(os|day|night)$/.test(p.theme) ? p.theme : 'day', toc: p.toc === '0' ? '0' : '1', app: p.app === '0' ? '0' : '1' };
 }
-function wkPrefSet(k, v) { var p = crj('wk', {}) || {}; p[k] = v; crjSet('wk', p); }
+function wkPrefSet(k, v) { if (CR && CR.incog) { var q = CR.privWk || (CR.privWk = {}); q[k] = v; return; } var p = crj('wk', {}) || {}; p[k] = v; crjSet('wk', p); }
 /* the <html> class list: Wikipedia's own, from the head it serves for the page
    (action=parse&prop=headhtml&useskin=vector-2022), with the visitor's client
    preferences applied the way the skin's scripts apply them, and client-js in
@@ -5053,7 +5111,7 @@ function wkSrcOk(v) {
 }
 function wkStyleOk(s) {
     s = String(s);
-    if (/expression\s*\(|behavior\s*:|-moz-binding|@import|javascript:/i.test(s)) return false;
+    if (/expression\s*\(|behavior\s*:|-moz-binding|@import|javascript:|\\|image-set\s*\(|-webkit-image-set\s*\(|\bimage\s*\(|\bsrc\s*\(/i.test(s)) return false;   // no escapes, no image() functions: only a plain url() to the sites' own hosts passes below
     var rest = s.replace(/url\(\s*["']?(\/\/upload\.wikimedia\.org\/|https:\/\/upload\.wikimedia\.org\/|\/w\/|\/static\/)[^)]*\)/gi, '');
     return !/url\s*\(/i.test(rest);
 }
@@ -5069,7 +5127,7 @@ function wkClean(html) {
         for (var i = el.attributes.length - 1; i >= 0; i--) {
             var a = el.attributes[i], n = a.name.toLowerCase(), v = a.value;
             if (/^on/.test(n) || n === 'srcdoc' || n === 'formaction' || n === 'ping' || n === 'target' || n === 'http-equiv') el.removeAttribute(a.name);
-            else if (n === 'href' || n === 'xlink:href' || n === 'action' || n === 'cite' || n === 'longdesc') { if (!wkUrlOk(v)) el.removeAttribute(a.name); }
+            else if (n === 'href' || n === 'xlink:href' || n === 'action' || n === 'cite' || n === 'longdesc') { if (!wkUrlOk(v) || ((tag === 'IMAGE' || tag === 'USE' || tag === 'FEIMAGE') && !wkSrcOk(v))) el.removeAttribute(a.name); }   // an SVG image's href fetches like a src
             else if (n === 'src' || n === 'poster' || n === 'data' || n === 'background') { if (!wkSrcOk(v)) el.removeAttribute(a.name); }
             else if (n === 'srcset') { if (!v.split(',').every(function (c) { return wkSrcOk(c.trim().split(/\s+/)[0]); })) el.removeAttribute(a.name); }
             else if (n === 'style') { if (!wkStyleOk(v)) el.removeAttribute(a.name); }
@@ -5080,9 +5138,9 @@ function wkClean(html) {
 /* ── the frame ──
    srcdoc, sandboxed with scripts off; the parent keeps the document handle
    and wires the page's behaviour onto it. */
-function wkFrame(view, html, wire) {
+function wkFrame(view, html, wire, name) {
     var f = document.createElement('iframe');
-    f.className = 'cr-wk'; f.setAttribute('sandbox', 'allow-same-origin'); f.setAttribute('title', 'Wikipedia');
+    f.className = 'cr-wk'; f.setAttribute('sandbox', 'allow-same-origin'); f.setAttribute('title', name || 'Wikipedia');
     f.addEventListener('load', function () {
         if (!view.isConnected) return;
         var d = f.contentDocument; if (!d || !d.body) return;
@@ -5102,6 +5160,20 @@ function wkTarget(href, base) {
     if (/^en\.m\.wikipedia\.org$/.test(host)) return WK + u.pathname.replace(/^\/w\/index\.php$/, '/w/index.php') + u.search.replace(/[?&]mobileaction=[^&]*/, '') + u.hash;
     return host + u.pathname + u.search + u.hash;
 }
+/* the pages a frame cannot show. Wikipedia sends X-Frame-Options: DENY
+   ($wgEditPageFrameOptions) on everything but a page view (Article::view: an
+   article, a Category: or File: page, ?oldid= without diff=) and Special:Search;
+   Hacker News sends it on every page. A link to one opens a window of its own. */
+function liveNoFrame(to) {
+    var s = String(to || ''), l = s.toLowerCase();
+    if (l.indexOf(WK + '/') === 0) {
+        var r = wkRoute(s.slice(WK.length + 1));
+        return r.kind === 'frame' && !(r.action === 'view' && r.params && !r.params.diff && (r.params.oldid || /^(Category|File|Image):/i.test(r.title || '')));
+    }
+    if (l.indexOf(HN + '/') === 0) return hnRoute(s.slice(HN.length + 1)).kind === 'frame';
+    return false;
+}
+function liveOpen(to) { window.open('https://' + to, '_blank', 'noopener,noreferrer'); }
 /* scroll a frame to an id or a decoded fragment, the way a browser lands on #Foo */
 function wkJump(d, frag) {
     if (!frag) { d.defaultView.scrollTo(0, 0); return; }
@@ -5127,21 +5199,23 @@ function liveWireFrame(f, d, p, base, hooks) {
     p.onScroll = onScroll;
     d.addEventListener('click', function (e) {
         if (hooks.click && hooks.click(e)) return;
-        var a = e.target.closest ? e.target.closest('a[href]') : null;
+        var a = e.target.closest ? e.target.closest('a[href], area[href]') : null;   // an image map's areas link too (ImageMap)
         if (!a) return;
         e.preventDefault();
         var href = a.getAttribute('href') || '';
         if (/^#/.test(href)) { wkJump(d, href.slice(1)); return; }
         var to = wkTarget(href, base); if (!to) return;
+        if (liveNoFrame(to)) { liveOpen(to); return; }
         if (e.ctrlKey || e.metaKey) { crBgTab(to, CR.active + 1); return; }
         onScroll();
         crNav(to);
     });
     d.addEventListener('auxclick', function (e) {
-        var a = e.button === 1 && e.target.closest ? e.target.closest('a[href]') : null;
+        var a = e.button === 1 && e.target.closest ? e.target.closest('a[href], area[href]') : null;
         if (!a) return;
         e.preventDefault();
-        var to = wkTarget(a.getAttribute('href') || '', base); if (to) crBgTab(to, CR.active + 1);
+        var to = wkTarget(a.getAttribute('href') || '', base);
+        if (to && liveNoFrame(to)) liveOpen(to); else if (to) crBgTab(to, CR.active + 1);
     });
     d.addEventListener('mousedown', function () { if (activeApp !== 'chrome') focusWin('chrome'); });
     d.addEventListener('keydown', function (e) {
@@ -5178,7 +5252,20 @@ function wkWire(f, d, p) {
     }
     liveWireFrame(f, d, p, base, {
         click: function (e) {
-            var a = e.target.closest ? e.target.closest('a[href]') : null;
+            /* searchToggle.js and stickyHeader.js: the collapsed header's search icon and the
+               sticky header's open their box in place; a click outside the box closes it */
+            Array.prototype.forEach.call(d.querySelectorAll('.vector-header-search-toggled'), function (h) {
+                var sb = h.querySelector('.vector-search-box');
+                if (sb && !sb.contains(e.target) && !e.target.closest('.cdx-typeahead-search .cdx-menu-item__content')) h.classList.remove('vector-header-search-toggled');
+            });
+            var stog = e.target.closest('.mw-header .search-toggle, .vector-sticky-header-search-toggle');
+            if (stog) {
+                e.preventDefault();
+                var hc = stog.closest('.vector-header-container'), hd = hc && hc.firstElementChild;
+                if (hd) { hd.classList.add('vector-header-search-toggled'); var si = hd.querySelector('.vector-search-box input[type="search"]'); if (si) setTimeout(function () { si.focus(); }); }
+                return true;
+            }
+            var a = e.target.closest ? e.target.closest('a[href], area[href]') : null;
             if (a) {
                 var href = a.getAttribute('href') || '';
                 if (a.id === 't-print' || a.id === 't-print-more') { e.preventDefault(); toast('Saved as bloom.pdf to a printer that isn’t real.'); return true; }
@@ -5223,6 +5310,11 @@ function wkWire(f, d, p) {
     });
     wkSearchWire(d, '#searchInput');
     wkSearchWire(d, '#vector-sticky-search-form input');
+    /* Special:Search's own form: a GET of its fields (the scriptless sandbox blocks a real submit) */
+    var sInp = p.special === 'Search' && d.querySelector('#searchText input'), sBtn = sInp && d.querySelector('#search input[type="submit"]');
+    function sGo(e) { e.preventDefault(); crNav(WK + '/w/index.php?search=' + encodeURIComponent(sInp.value) + '&title=Special:Search&profile=' + encodeURIComponent((d.querySelector('#search input[name="profile"]') || {}).value || 'default') + '&fulltext=1'); }
+    if (sInp) sInp.addEventListener('keydown', function (e) { if (e.key === 'Enter') sGo(e); });
+    if (sBtn) sBtn.addEventListener('click', sGo);
 }
 /* the contents' active entry: the item, its top-level parent expanded */
 function wkTocActivate(d, li) {
@@ -5265,7 +5357,7 @@ function wkCtx(e, f, d, base) {
     CR.el.querySelector('#crMenu').hidden = true; CR.el.querySelector('#crSuggest').hidden = true;
     var inp = e.target.closest('input, textarea');
     if (inp && !inp.readOnly && !inp.disabled) { bctxInput(host, fake, inp, null, dark); return; }
-    var a = e.target.closest('a[href]');
+    var a = e.target.closest('a[href], area[href]');
     var href = a ? wkTarget(a.getAttribute('href') || '', base) : null;
     if (href) {
         openBctx(host, fake, [
@@ -5275,8 +5367,8 @@ function wkCtx(e, f, d, base) {
             { k: 'lcp', t: 'Copy link address' },
             { k: 'lsv', t: 'Save link as…' }
         ], function (act) {
-            if (act === 'lnt') crBgTab(href, CR.active + 1);
-            else if (act === 'lni') { if (CR.incog) crNewTab(href); else { crIncogSwap(); crNav(href); } }
+            if (act === 'lnt') { if (liveNoFrame(href)) liveOpen(href); else crBgTab(href, CR.active + 1); }
+            else if (act === 'lni') { if (liveNoFrame(href)) liveOpen(href); else if (CR.incog) crNewTab(href); else { crIncogSwap(); crNav(href); } }
             else if (act === 'lcp') { setClip(crFullURL(href)); crBubble('Link address copied'); }
             else if (act === 'lsv') crSaveFile(crTitleOf(href), '<p>' + esc(crFullURL(href)) + '</p>');
         }, dark);
@@ -5356,19 +5448,20 @@ function wkSearchWire(d, sel) {
         });
     }
     function fetchSug(q) {
-        var hit = WK_SUG_CACHE[q];
+        var priv = !!(CR && CR.incog), hit = priv ? null : WK_SUG_CACHE[q];   // private keystrokes leave no crumbs
+        function keep(pages) { if (!priv) { WK_SUG_CACHE[q] = pages; if (Object.keys(WK_SUG_CACHE).length > 60) WK_SUG_CACHE = Object.create(null); } }
         if (hit) { state.pages = hit; paint(); return; }
         liveGet(WK_REST + '/v1/search/title?q=' + encodeURIComponent(q) + '&limit=10', function (err, j) {
             if (err || !j || !j.pages) {                       // the action API's prefix search stands in when the REST one does not answer
                 liveGet(WK_API + 'action=query&generator=prefixsearch&gpssearch=' + encodeURIComponent(q) + '&gpslimit=10&prop=description|pageimages&piprop=thumbnail&pithumbsize=60&redirects=1', function (e2, j2) {
                     if (e2 || !j2 || !j2.query || state.q !== q) return;
                     var pages = (j2.query.pages || []).sort(function (a, b) { return nnum(a.index) - nnum(b.index); }).map(function (x) { return { title: x.title, description: x.description, thumbnail: x.thumbnail ? { url: x.thumbnail.source } : null }; });
-                    WK_SUG_CACHE[q] = pages; state.pages = pages; paint();
+                    keep(pages); state.pages = pages; paint();
                 });
                 return;
             }
             if (state.q !== q) return;
-            WK_SUG_CACHE[q] = j.pages; state.pages = j.pages; paint();
+            keep(j.pages); state.pages = j.pages; paint();
         });
     }
     inp.addEventListener('input', function () {
@@ -5430,20 +5523,20 @@ function wkSearchBox(primary, formId, loc) {
         '<button class="cdx-button cdx-search-input__end-button">Search</button></form></div></div></div>';
 }
 /* UserLinks.mustache for a logged-out reader (VectorComponentUserLinks): Donate,
-   Create account and Log in inline, with the same three plus Contributions and
-   Talk behind the personal-tools button */
+   Create account and Log in inline, with the same three behind a dropdown the
+   skin only shows below the tablet width (vector-user-links-dropdown--collapsible:
+   three items or fewer). Temporary accounts are on ($wgAutoCreateTempUser, known),
+   so core adds no Talk or Contributions for a reader who is not logged in. */
 function wkUserLinks(title, sticky) {
-    var ret = '&returnto=' + wkEnc(title), sfx = sticky ? '-sticky-header' : '';
+    var ret = '&returnto=' + wkEnc(title), sfx = sticky ? '-sticky-header' : '', coll = sticky ? '' : 'vector-menu-item--collapsible';   // stickyHeader.js strips the collapsible class from its copy
     var donate = 'https://donate.wikimedia.org/?wmf_source=donate&wmf_medium=sidebar&wmf_campaign=en.wikipedia.org&uselang=en';
-    var inline = wkLi('pt-sitesupport-2', 'user-links-collapsible-item', donate, 'Donate', { title: 'Support us' }) +
-        wkLi('pt-createaccount-2', 'user-links-collapsible-item', '/w/index.php?title=Special:CreateAccount' + ret, 'Create account', { title: 'You are encouraged to create an account and log in; however, it is not mandatory' }) +
-        wkLi('pt-login-2', 'user-links-collapsible-item', '/w/index.php?title=Special:UserLogin' + ret, 'Log in', { title: wkAk('You are encouraged to log in; however, it is not mandatory', 'o'), accesskey: 'o' });
-    var menu = wkLi('pt-sitesupport' + sfx, 'user-links-collapsible-item', donate, 'Donate', { title: 'Support us' }, 'heart') +
-        wkLi('pt-createaccount' + sfx, 'user-links-collapsible-item', '/w/index.php?title=Special:CreateAccount' + ret, 'Create account', { title: 'You are encouraged to create an account and log in; however, it is not mandatory' }, 'userAdd') +
-        wkLi('pt-login' + sfx, 'user-links-collapsible-item', '/w/index.php?title=Special:UserLogin' + ret, 'Log in', { title: wkAk('You are encouraged to log in; however, it is not mandatory', 'o'), accesskey: 'o' }, 'logIn') +
-        wkLi('pt-anoncontribs' + sfx, '', '/wiki/Special:MyContributions', 'Contributions', { title: wkAk('A list of edits made from this IP address', 'y'), accesskey: 'y' }, 'userContributions') +
-        wkLi('pt-anontalk' + sfx, '', '/wiki/Special:MyTalk', 'Talk', { title: wkAk('Discussion about edits from this IP address', 'n'), accesskey: 'n' }, 'userTalk');
-    var dropdown = wkDropdown({ id: 'vector-user-links-dropdown' + sfx, label: 'Personal tools', cls: 'vector-user-menu vector-button-flush-right vector-user-menu-logged-out', icon: 'ellipsis', tip: 'Personal settings',
+    var inline = wkLi('pt-sitesupport-2', 'vector-menu-item--collapsible', donate, 'Donate', { title: 'Support us', 'data-mw-donate-attempt': 'top_link' }) +
+        wkLi('pt-createaccount-2', 'vector-menu-item--collapsible', '/w/index.php?title=Special:CreateAccount' + ret, 'Create account', { title: 'You are encouraged to create an account and log in; however, it is not mandatory' }) +
+        wkLi('pt-login-2', 'vector-menu-item--collapsible', '/w/index.php?title=Special:UserLogin' + ret, 'Log in', { title: wkAk('You are encouraged to log in; however, it is not mandatory', 'o'), accesskey: 'o' });
+    var menu = wkLi('pt-sitesupport' + sfx, coll, donate, 'Donate', { title: 'Support us', 'data-mw-donate-attempt': 'top_link' }, 'heart') +
+        wkLi('pt-createaccount' + sfx, coll, '/w/index.php?title=Special:CreateAccount' + ret, 'Create account', { title: 'You are encouraged to create an account and log in; however, it is not mandatory' }, 'userAdd') +
+        wkLi('pt-login' + sfx, coll, '/w/index.php?title=Special:UserLogin' + ret, 'Log in', { title: wkAk('You are encouraged to log in; however, it is not mandatory', 'o'), accesskey: 'o' }, 'logIn');
+    var dropdown = wkDropdown({ id: 'vector-user-links-dropdown' + sfx, label: 'Personal tools', cls: 'vector-user-menu vector-button-flush-right vector-user-menu-logged-out vector-user-links-dropdown--collapsible', icon: 'userAvatar', tip: 'More options',
         inner: wkMenu('p-personal' + sfx, 'mw-portlet mw-portlet-personal', '', menu) });
     if (sticky) return dropdown;
     return '<nav class="vector-user-links vector-user-links-wide" aria-label="Personal tools"><div class="vector-user-links-main">' +
@@ -5468,27 +5561,34 @@ function wkDocument(p) {
     var links = wkStyleLinks(p.headhtml);
     if (p.special) links.push('https://en.wikipedia.org/w/load.php?lang=en&modules=mediawiki.special.search.styles%7Coojs-ui-core.styles%7Coojs-ui.styles.indicators%7Coojs-ui.styles.icons-content%7Coojs-ui.styles.icons-interactions&only=styles&skin=vector-2022');
     var display = p.display && /mw-page-title/.test(p.display) ? p.display : '<span class="mw-page-title-main">' + (p.display ? wkInline(p.display) : esc(p.title)) + '</span>';
-    var langsTop = !p.isMain && !p.special;
+    /* the language button sits by the title, except on the Main Page, where the wiki puts
+       it at the foot of the content (language-in-main-page-header-disabled: SkinVector22
+       isLanguagesInContentAt('bottom'), skin.mustache after the categories) */
+    var langsTop = !p.special && (!p.isMain || /\bvector-feature-language-in-main-page-header-enabled\b/.test(htmlClass));
+    var langsBottom = p.isMain && !langsTop && /\bvector-feature-language-in-header-enabled\b/.test(htmlClass);
     var langBtn = langsTop ? wkLangButton(p.langs, !p.missing && !ns.talk) : '';
     var indicators = '<div class="mw-indicators">' + Object.keys(p.indicators || {}).map(function (k) { return '<div id="mw-indicator-' + esc(k) + '" class="mw-indicator">' + wkClean(p.indicators[k]) + '</div>'; }).join('') + '</div>';
     /* tabs (SkinTemplate::buildContentNavigationUrls; Vector's vector-tab-noicon) */
     var tabs = '';
-    if (p.special) tabs = wkLi('ca-nstab-special', 'selected vector-tab-noicon', '/wiki/' + enc, 'Special page', { title: WK_NSTIP.special });
+    if (p.special) tabs = '';                                  // Vector 2022 draws no tab for a special page
     else {
         var subjSel = !ns.talk, talkNew = p.talkExists === false;
-        tabs = wkLi('ca-nstab-' + ns.id, (subjSel ? 'selected ' : '') + (p.missing && subjSel ? 'new ' : '') + 'vector-tab-noicon', '/wiki/' + wkEnc(ns.subject), WK_NSTAB[ns.id] || 'Page', { title: wkAk(WK_NSTIP[ns.id] || null, 'c'), accesskey: 'c' }) +
+        /* nstab-mainpage on the Main Page (SkinTemplate::buildContentNavigationUrls); a selected tab is
+           never a red link (T294129), but a missing page's still links to the editor with redlink=1 */
+        var subjGone = p.missing && subjSel, subjLabel = /^Main Page$/i.test(ns.subject) ? 'Main Page' : WK_NSTAB[ns.id] || 'Page';
+        tabs = wkLi('ca-nstab-' + ns.id, (subjSel ? 'selected ' : '') + 'vector-tab-noicon', subjGone ? '/w/index.php?title=' + wkEnc(ns.subject) + '&action=edit&redlink=1' : '/wiki/' + wkEnc(ns.subject), subjLabel, { title: wkAk(WK_NSTIP[ns.id] ? WK_NSTIP[ns.id] + (subjGone ? ' (page does not exist)' : '') : null, 'c'), accesskey: 'c' }) +
             wkLi('ca-talk', (ns.talk ? 'selected ' : '') + (talkNew && !ns.talk ? 'new ' : '') + 'vector-tab-noicon', talkNew ? '/w/index.php?title=' + wkEnc(ns.talkTitle) + '&action=edit&redlink=1' : '/wiki/' + wkEnc(ns.talkTitle), 'Talk', { rel: 'discussion', title: wkAk('Discussion about the content page' + (talkNew ? ' (page does not exist)' : ''), 't'), accesskey: 't' });
     }
     var views = '';
     if (!p.special) {
-        views = p.missing ? wkLi('ca-edit', 'vector-menu-item--collapsible vector-tab-noicon', idx + '&action=edit', 'Create', { title: wkAk('Edit this page', 'e'), accesskey: 'e' })
+        views = p.missing ? wkLi('ca-edit', 'vector-menu-item--collapsible vector-tab-noicon', idx + '&action=edit', 'Create', { title: wkAk('Create this page', 'e'), accesskey: 'e' })
             : wkLi('ca-view', 'selected vector-menu-item--collapsible vector-tab-noicon', '/wiki/' + enc, 'Read') +
               (p.protectedEdit ? wkLi('ca-viewsource', 'vector-menu-item--collapsible vector-tab-noicon', idx + '&action=edit', 'View source', { title: wkAk('This page is protected.\nYou can view its source', 'e'), accesskey: 'e' })
                                : wkLi('ca-edit', 'vector-menu-item--collapsible vector-tab-noicon', idx + '&action=edit', 'Edit', { title: wkAk('Edit this page', 'e'), accesskey: 'e' })) +
               wkLi('ca-history', 'vector-menu-item--collapsible vector-tab-noicon', idx + '&action=history', 'View history', { title: wkAk('Past revisions of this page', 'h'), accesskey: 'h' });
     }
     var toc = tocOn ? wkToc(p.sections, tocPinned) : '';
-    var mainMenu = wkMainMenu(false, p.isMain && p.langs && p.langs.length ? wkMenu('p-lang', 'mw-portlet mw-portlet-lang', 'Languages', wkLangItems(p.langs)) : '');
+    var mainMenu = wkMainMenu(false);
     var tools = wkPageTools(p, false);
     var lm = p.lastmod ? wkDate(p.lastmod) : null;
     var footerInfo = (lm && isArticle ? '<li id="footer-info-lastmod"> This page was last edited on ' + lm.date + ', at ' + lm.time + '<span class="anonymous-show">&#160;(UTC)</span>.</li>' : '') +   // ONWIKI MediaWiki:Lastmodifiedat adds the (UTC)
@@ -5504,7 +5604,7 @@ function wkDocument(p) {
         '<li id="footer-places-mobileview"><a href="//en.m.wikipedia.org/w/index.php?title=' + enc + '&amp;mobileaction=toggle_view_mobile" class="noprint stopMobileRedirectToggle">Mobile view</a></li>';
     var footerIcons = '<li id="footer-copyrightico"><a href="https://www.wikimedia.org/" class="cdx-button cdx-button--fake-button cdx-button--size-large cdx-button--fake-button--enabled"><picture><source media="(min-width: 500px)" srcset="/static/images/footer/wikimedia-button.svg" width="84" height="29"><img src="/static/images/footer/wikimedia.svg" width="25" height="25" alt="Wikimedia Foundation" lang="en" loading="lazy"></picture></a></li>' +
         '<li id="footer-poweredbyico"><a href="https://www.mediawiki.org/" class="cdx-button cdx-button--fake-button cdx-button--size-large cdx-button--fake-button--enabled"><picture><source media="(min-width: 500px)" srcset="/w/resources/assets/poweredby_mediawiki.svg" width="88" height="31"><img src="/w/resources/assets/mediawiki_compact.svg" alt="Powered by MediaWiki" lang="en" width="25" height="25" loading="lazy"></picture></a></li>';
-    var stickyIcons = (ns.talk ? '' : '<a href="/wiki/' + wkEnc(ns.talkTitle) + '" class="cdx-button cdx-button--fake-button cdx-button--fake-button--enabled cdx-button--weight-quiet cdx-button--icon-only" id="ca-talk-sticky-header" tabindex="-1" data-event-name="talk-sticky-header">' + wkIcon('speechBubbles') + '<span></span></a>') +
+    var stickyIcons = (ns.talk || p.special ? '' : '<a href="/wiki/' + wkEnc(ns.talkTitle) + '" class="cdx-button cdx-button--fake-button cdx-button--fake-button--enabled cdx-button--weight-quiet cdx-button--icon-only" id="ca-talk-sticky-header" tabindex="-1" data-event-name="talk-sticky-header">' + wkIcon('speechBubbles') + '<span></span></a>') +
         (ns.talk ? '<a href="/wiki/' + wkEnc(ns.subject) + '" class="cdx-button cdx-button--fake-button cdx-button--fake-button--enabled cdx-button--weight-quiet cdx-button--icon-only" id="ca-subject-sticky-header" tabindex="-1" data-event-name="subject-sticky-header">' + wkIcon('article') + '<span></span></a>' : '') +
         (p.missing || p.special ? '' : '<a href="' + idx + '&action=history" class="cdx-button cdx-button--fake-button cdx-button--fake-button--enabled cdx-button--weight-quiet cdx-button--icon-only" id="ca-history-sticky-header" tabindex="-1" data-event-name="history-sticky-header">' + wkIcon('wikimedia-history') + '<span></span></a>') +
         (p.special ? '' : '<a href="' + idx + '&action=edit" class="cdx-button cdx-button--fake-button cdx-button--fake-button--enabled cdx-button--weight-quiet cdx-button--icon-only" id="' + (p.protectedEdit ? 'ca-viewsource-sticky-header' : 'ca-edit-sticky-header') + '" tabindex="-1" data-event-name="' + (p.protectedEdit ? 've-edit-protected-sticky-header' : 'wikitext-edit-sticky-header') + '">' + wkIcon(p.protectedEdit ? 'wikimedia-editLock' : 'wikimedia-wikiText') + '<span></span></a>');
@@ -5531,7 +5631,7 @@ function wkDocument(p) {
             inner: '<div id="vector-page-titlebar-toc-unpinned-container" class="vector-unpinned-container">' + (tocPinned ? '' : toc) + '</div>' }) + '</nav>' : '') +
         '<h1 id="firstHeading" class="firstHeading mw-first-heading">' + display + '</h1>' + (langsTop ? langBtn : indicators) + '</header>' +
         '<div class="vector-page-toolbar"><div class="vector-page-toolbar-container"><div id="left-navigation"><nav aria-label="Namespaces">' +
-        '<div id="p-associated-pages" class="vector-menu vector-menu-tabs mw-portlet mw-portlet-associated-pages"><div class="vector-menu-content"><ul class="vector-menu-content-list">' + tabs + '</ul></div></div></nav></div>' +
+        '<div id="p-associated-pages" class="vector-menu vector-menu-tabs mw-portlet mw-portlet-associated-pages' + (tabs ? '' : ' emptyPortlet') + '"><div class="vector-menu-content"><ul class="vector-menu-content-list">' + tabs + '</ul></div></div></nav></div>' +
         '<div id="right-navigation" class="vector-collapsible"><nav aria-label="Views"><div id="p-views" class="vector-menu vector-menu-tabs mw-portlet mw-portlet-views' + (views ? '' : ' emptyPortlet') + '"><div class="vector-menu-content"><ul class="vector-menu-content-list">' + views + '</ul></div></div></nav>' +
         '<nav class="vector-page-tools-landmark" aria-label="Page tools">' + wkDropdown({ id: 'vector-page-tools-dropdown', label: 'Tools', cls: 'vector-page-tools-dropdown', icon: 'verticalEllipsis',
             inner: '<div id="vector-page-tools-unpinned-container" class="vector-unpinned-container">' + tools + '</div>' }) + '</nav></div></div></div>' +
@@ -5539,8 +5639,8 @@ function wkDocument(p) {
         '<nav class="vector-appearance-landmark" aria-label="Appearance"><div id="vector-appearance-pinned-container" class="vector-pinned-container">' + (WK_CUR.appPinned ? wkAppearance(prefs, true) : '') + '</div></nav></div></div>' +
         '<div id="bodyContent" class="vector-body" aria-labelledby="firstHeading" data-mw-ve-target-container>' +
         '<div class="vector-body-before-content">' + (langsTop ? indicators : '') + (isArticle ? '<div id="siteSub" class="noprint">' + WK_MSG.tagline + '</div>' : '') +
-        '<div id="contentSub">' + (p.redirectFrom ? '<span class="mw-redirectedfrom">(Redirected from <a href="/w/index.php?title=' + wkEnc(p.redirectFrom) + '&amp;redirect=no" class="mw-redirect" title="' + esc(p.redirectFrom) + '">' + esc(p.redirectFrom) + '</a>)</span>' : '') + '</div>' + (p.subtitle || '') + '</div>' +
-        '<div id="mw-content-text" class="mw-body-content">' + (p.html || '') + '</div>' + (p.cats || '') + '</div></main></div>' +
+        '<div id="contentSub">' + (p.redirectPage ? '<span id="redirectsub">Redirect page</span>' : '') + (p.redirectFrom ? '<span class="mw-redirectedfrom">(Redirected from <a href="/w/index.php?title=' + wkEnc(p.redirectFrom) + '&amp;redirect=no" class="mw-redirect" title="' + esc(p.redirectFrom) + '">' + esc(p.redirectFrom) + '</a>)</span>' : '') + '</div>' + (p.subtitle || '') + '</div>' +
+        '<div id="mw-content-text" class="mw-body-content">' + (p.html || '') + '</div>' + (p.cats || '') + (langsBottom ? wkLangButton(p.langs, true) : '') + '</div></main></div>' +
         '<div class="mw-footer-container"><footer id="footer" class="mw-footer">' + (footerInfo ? '<ul id="footer-info">' + footerInfo + '</ul>' : '') + '<ul id="footer-places">' + footerPlaces + '</ul><ul id="footer-icons" class="noprint">' + footerIcons + '</ul></footer></div></div></div>' +
         '<div class="vector-header-container vector-sticky-header-container no-font-mode-scale"><div id="vector-sticky-header" class="vector-sticky-header"><div class="vector-sticky-header-start">' +
         '<div class="vector-sticky-header-icon-start vector-button-flush-left" aria-hidden="true"><button class="cdx-button cdx-button--weight-quiet cdx-button--icon-only vector-sticky-header-search-toggle" tabindex="-1" data-event-name="ui.vector-sticky-search-form.icon">' + wkIcon('search') + '<span>Search</span></button></div>' +
@@ -5549,14 +5649,14 @@ function wkDocument(p) {
             inner: '<div id="vector-sticky-header-toc-unpinned-container" class="vector-unpinned-container"></div>' }) + '</nav>' : '') +
         '<div class="vector-sticky-header-context-bar-primary" aria-hidden="true">' + display + '</div></div></div>' +
         '<div class="vector-sticky-header-end" aria-hidden="true"><div class="vector-sticky-header-icons">' + stickyIcons + '</div><div class="vector-sticky-header-buttons">' +
-        (nL && langsTop && !p.missing ? '<button class="cdx-button cdx-button--weight-quiet" id="p-lang-btn-sticky-header" tabindex="-1" data-event-name="ui.dropdown-p-lang-btn-sticky-header">' + wkIcon('wikimedia-language') + '<span>' + nL + wkPlural(nL, ' language', ' languages') + '</span></button>' : '') +
+        (nL && !p.special && !p.missing && !ns.talk ? '<button class="cdx-button cdx-button--weight-quiet" id="p-lang-btn-sticky-header" tabindex="-1" data-event-name="ui.dropdown-p-lang-btn-sticky-header">' + wkIcon('wikimedia-language') + '<span>' + nL + wkPlural(nL, ' language', ' languages') + '</span></button>' : '') +
         '</div><div class="vector-sticky-header-icon-end"><div class="vector-user-links">' + wkUserLinks(p.title, true) + '</div></div></div></div></div>' +
         '</body></html>';
     return html;
 }
 function wkTabTitle(p) {
     if (p.isMain) return 'Wikipedia, the free encyclopedia';           // ONWIKI MediaWiki:Pagetitle-view-mainpage
-    return (p.special === 'Search' ? 'Search results for "' + (p.q || '') + '"' : p.title) + ' - Wikipedia';
+    return (p.special === 'Search' ? (p.q ? 'Search results for "' + p.q + '"' : 'Search') : p.title) + ' - Wikipedia';   // searchresults-title only for a term
 }
 /* what the info request adds once it lands: the last edit, the edit tab's
    state, the talk tab's redness, the Wikidata item */
@@ -5592,27 +5692,38 @@ function wkApplyInfo(d, p) {
         }
     }
     if (i.wikibase && !d.getElementById('t-wikibase')) {
-        var tb = d.querySelector('#p-tb ul');
-        if (tb) { var box = d.createElement('div'); box.innerHTML = wkLi('t-wikibase', '', 'https://www.wikidata.org/wiki/Special:EntityPage/' + esc(i.wikibase), 'Wikidata item', { title: wkAk('Structured data on this page hosted by Wikidata', 'g'), accesskey: 'g' }); tb.appendChild(box.firstChild); }
+        var tools = d.getElementById('vector-page-tools');
+        if (tools) { var box = d.createElement('div'); box.innerHTML = wkMenu('p-wikibase-otherprojects', 'mw-portlet mw-portlet-wikibase-otherprojects', 'In other projects', wkWikidataLi(i.wikibase)); tools.appendChild(box.firstChild); }
     }
 }
 /* ── loading ── */
 var WK_SRC = Object.create(null);                          // url → the document last drawn for it (view-source:, Save as…), session-only
+function wkSrcPut(url, doc) {
+    var priv = !!(CR && CR.incog), m = priv ? CR.privSrc : WK_SRC;
+    if (!m || Object.keys(m).length > 8) m = Object.create(null);
+    m[url] = doc;
+    if (priv) CR.privSrc = m; else WK_SRC = m;             // a private page's document stays on the private window
+}
+function wkSrcGet(url) {
+    var u = String(url || '').replace(/^https?:\/\//i, '').replace(/^www\./i, ''), m = CR && CR.incog ? CR.privSrc : WK_SRC;
+    return (m && m[u]) || '';
+}
 function wkShow(view, url, p) {
     if (!view.isConnected) return;
     var doc = wkDocument(p);
-    if (Object.keys(WK_SRC).length > 8) WK_SRC = Object.create(null);
-    WK_SRC[url] = doc;
+    wkSrcPut(url, doc);
+    if (/^view-source:/i.test(crTab().url)) { crPage(); return; }   // loaded for a view-source tab: list it
     wkFrame(view, doc, function (f, d) { p.doc = d; wkWire(f, d, p); wkApplyInfo(d, p); });
     liveTitle(url, wkTabTitle(p));
 }
 function wkFail(view, url, err, r) { liveFill(view, url, liveFail(err, WK, r)); }
 function wkArticle(view, url, r) {
+    var follow = !(r.params && r.params.redirect === 'no'), rdq = follow ? '&redirects=1' : '';   // redirect=no shows the redirect page itself
     var p = { title: r.title, hash: r.hash, isMain: /^Main Page$/i.test(r.title) };
-    var parseUrl = WK_API + 'action=parse&redirects=1&useskin=vector-2022&disabletoc=1&disablelimitreport=1&prop=text%7Csections%7Clanglinks%7Ccategorieshtml%7Cdisplaytitle%7Crevid%7Cindicators%7Cheadhtml&page=' + encodeURIComponent(r.title);
+    var parseUrl = WK_API + 'action=parse' + rdq + '&useskin=vector-2022&disabletoc=1&disablelimitreport=1&prop=text%7Csections%7Clanglinks%7Ccategorieshtml%7Cdisplaytitle%7Crevid%7Cindicators%7Cheadhtml&page=' + encodeURIComponent(r.title);
     function info(title) {
         var ns = wkNs(title);
-        liveGet(WK_API + 'action=query&redirects=1&prop=info%7Crevisions%7Cpageprops&inprop=protection&rvprop=timestamp&ppprop=wikibase_item&titles=' + encodeURIComponent(title + '|' + ns.talkTitle), function (err, j) {
+        liveGet(WK_API + 'action=query' + rdq + '&prop=info%7Crevisions%7Cpageprops&inprop=protection&rvprop=timestamp&ppprop=wikibase_item&titles=' + encodeURIComponent(title + '|' + ns.talkTitle), function (err, j) {
             if (err || !j || !j.query || !view.isConnected) return;
             var pages = j.query.pages || [], me = null, talk = null;
             pages.forEach(function (pg) { if (pg.title === title) me = pg; else if (pg.title === ns.talkTitle) talk = pg; });
@@ -5631,26 +5742,38 @@ function wkArticle(view, url, r) {
         if (!view.isConnected) return;
         if (!err && j && j.error && (j.error.code === 'missingtitle' || j.error.code === 'invalidtitle' || j.error.code === 'nosuchpageid')) {
             p.missing = true;
-            var enc = wkEnc(p.title);
-            p.html = j.error.code === 'invalidtitle'
-                ? '<div class="mw-content-ltr" lang="en" dir="ltr"><p>The requested page title was invalid, empty, or an incorrectly linked inter-language or inter-wiki title. It may contain one or more characters that cannot be used in titles.</p></div>'
-                : '<div class="noarticletext mw-content-ltr" lang="en" dir="ltr"><p>There is currently no text in this page. You can <a href="/wiki/Special:Search/' + enc + '" title="Special:Search/' + esc(p.title) + '">search for this page title</a> in other pages, <span class="plainlinks"><a class="external text" href="https://en.wikipedia.org/w/index.php?title=Special:Log&amp;page=' + enc + '">search the related logs</a>, or <a class="external text" href="https://en.wikipedia.org/w/index.php?title=' + enc + '&amp;action=edit">create this page</a></span>.</p></div>';
-            if (j.error.code === 'invalidtitle') p.title = 'Bad title';
-            wkShow(view, url, p);
+            if (j.error.code === 'invalidtitle') {
+                p.title = 'Bad title';
+                p.html = '<div class="mw-content-ltr" lang="en" dir="ltr"><p>The requested page title was invalid, empty, or an incorrectly linked inter-language or inter-wiki title. It may contain one or more characters that cannot be used in titles.</p></div>';
+                wkShow(view, url, p);
+                return;
+            }
+            /* the wiki's own words for a page that is not there, as a reader who is not logged
+               in sees them (Article::showMissingArticle: noarticletextanon, which the English
+               Wikipedia sets ONWIKI), rendered for this title by the wiki itself */
+            liveGet(WK_API + 'action=parse&prop=text&disablelimitreport=1&wrapoutputclass=&contentmodel=wikitext&title=' + encodeURIComponent(p.title) + '&text=' + encodeURIComponent('<div class="noarticletext mw-content-ltr" dir="ltr" lang="en">\n{{int:noarticletextanon}}\n</div>'), function (e2, j2, r2) {
+                if (!view.isConnected) return;
+                if (e2 || !j2 || !j2.parse) { wkFail(view, url, e2 || 'empty', r2); return; }
+                p.html = wkClean(j2.parse.text);
+                wkShow(view, url, p);
+            });
             return;
         }
         if (err || !j || !j.parse) { wkFail(view, url, err || 'empty', resp); return; }
         var P = j.parse;
         if (P.title && P.title !== p.title) { p.title = P.title; info(P.title); }
         p.html = wkClean(P.text);
-        p.sections = P.sections || [];
+        p.sections = (P.sections || []).map(function (s) { var c = {}; for (var k in s) c[k] = s[k]; return c; });   // a copy: liveGet's cache hands out the same object, and the GTI splice renumbers
         p.langs = P.langlinks || [];
         p.cats = wkClean(P.categorieshtml || '');
         p.display = P.displaytitle || '';
         p.indicators = P.indicators || {};
         p.revid = P.revid;
         p.headhtml = P.headhtml || '';
-        p.redirectFrom = P.redirects && P.redirects[0] && P.redirects[0].from;
+        var rd0 = P.redirects && P.redirects[0];
+        p.redirectFrom = rd0 && rd0.from;
+        if (rd0 && rd0.tofragment && !p.hash) p.hash = rd0.tofragment;   // a redirect to a section lands on it
+        p.redirectPage = !follow && /class="redirectMsg"/.test(P.text || '');
         if (/^Volkswagen Golf GTI$/.test(p.title)) wkLoreGti(p);
         wkShow(view, url, p);
     });
@@ -5666,8 +5789,11 @@ function wkRandom(view, url) {
 }
 /* Special:Search: Go first (a near match opens the page), the full-text list otherwise */
 function wkSearch(view, url, r) {
-    var q = String(r.q || '').trim(), limit = 20, offset = r.offset || 0;
-    if (!q) { wkSearchShow(view, url, q, null, offset, limit); return; }
+    var q = String(r.q || '').trim(), limit = Math.min(500, Math.max(1, Math.floor(+(r.params && r.params.limit)) || 20)), offset = r.offset || 0;
+    var profile = (r.params && r.params.profile) || 'default';
+    var nsq = profile === 'images' ? '&srnamespace=6' : profile === 'all' ? '&srnamespace=*'
+        : profile === 'advanced' ? '&srnamespace=' + (Object.keys(r.params || {}).filter(function (k) { return /^ns\d+$/.test(k); }).map(function (k) { return k.slice(2); }).join('|') || '0') : '';
+    if (!q) { wkSearchShow(view, url, q, null, offset, limit, null, profile); return; }
     if (!r.full) {
         liveGet(WK_API + 'action=query&list=search&srwhat=nearmatch&srlimit=1&srsearch=' + encodeURIComponent(q), function (err, j) {
             if (!view.isConnected) return;
@@ -5677,22 +5803,23 @@ function wkSearch(view, url, r) {
         });
     } else fullText();
     function fullText() {
-        liveGet(WK_API + 'action=query&list=search&srsearch=' + encodeURIComponent(q) + '&srlimit=' + limit + '&sroffset=' + offset + '&srprop=snippet%7Csize%7Cwordcount%7Ctimestamp%7Credirecttitle%7Credirectsnippet%7Csectiontitle%7Csectionsnippet&srinfo=totalhits%7Csuggestion%7Csuggestionsnippet%7Crewrittenquery', function (err, j, resp) {
+        liveGet(WK_API + 'action=query&list=search&srsearch=' + encodeURIComponent(q) + nsq + '&srlimit=' + limit + '&sroffset=' + offset + '&srprop=snippet%7Csize%7Cwordcount%7Ctimestamp%7Credirecttitle%7Credirectsnippet%7Csectiontitle%7Csectionsnippet&srinfo=totalhits%7Csuggestion%7Csuggestionsnippet%7Crewrittenquery', function (err, j, resp) {
             if (!view.isConnected) return;
             if (err || !j || !j.query) { wkFail(view, url, err || 'empty', resp); return; }
             var res = j.query;
             var titles = (res.search || []).map(function (h) { return h.title; });
-            if (!titles.length) { wkSearchShow(view, url, q, res, offset, limit); return; }
+            if (!titles.length) { wkSearchShow(view, url, q, res, offset, limit, null, profile); return; }
             liveGet(WK_API + 'action=query&prop=pageimages&piprop=thumbnail&pithumbsize=180&pilimit=50&titles=' + encodeURIComponent(titles.join('|')), function (e2, j2) {
                 if (!view.isConnected) return;
                 var thumbs = Object.create(null);
                 if (!e2 && j2 && j2.query) (j2.query.pages || []).forEach(function (pg) { if (pg.thumbnail && wkSrcOk(pg.thumbnail.source)) thumbs[pg.title] = pg.thumbnail; });
-                wkSearchShow(view, url, q, res, offset, limit, thumbs);
+                wkSearchShow(view, url, q, res, offset, limit, thumbs, profile);
             });
         });
     }
 }
-function wkSearchShow(view, url, q, res, offset, limit, thumbs) {
+function wkSearchShow(view, url, q, res, offset, limit, thumbs, profile) {
+    profile = profile || 'default';
     var hits = res ? (res.search || []) : [], total = res && res.searchinfo ? nnum(res.searchinfo.totalhits) : 0;
     var sUrl = function (params) { return '/w/index.php?search=' + encodeURIComponent(q) + '&title=Special:Search&profile=' + (params.profile || 'default') + '&fulltext=1' + (params.offset ? '&offset=' + params.offset : '') + (params.limit ? '&limit=' + params.limit : '') + (params.ns ? '&' + params.ns : ''); };
     var info = total > 0 && offset < total ? '<div class="results-info" data-mw-num-results-offset="' + offset + '" data-mw-num-results-total="' + total + '" data-mw-num-results-approximate-total="false">' +
@@ -5701,12 +5828,12 @@ function wkSearchShow(view, url, q, res, offset, limit, thumbs) {
         '<div class="oo-ui-layout oo-ui-labelElement oo-ui-fieldLayout oo-ui-fieldLayout-align-top oo-ui-actionFieldLayout"><div class="oo-ui-fieldLayout-body"><div class="oo-ui-fieldLayout-field">' +
         '<div class="oo-ui-actionFieldLayout-input"><div id="searchText" class="oo-ui-widget oo-ui-widget-enabled oo-ui-inputWidget oo-ui-textInputWidget oo-ui-textInputWidget-type-search oo-ui-searchInputWidget oo-ui-iconElement oo-ui-indicatorElement"><input type="search" tabindex="0" name="search" value="' + esc(q) + '" title="Search Wikipedia" autocapitalize="none" class="oo-ui-inputWidget-input"><span class="oo-ui-iconElement-icon oo-ui-icon-search"></span><span class="oo-ui-indicatorElement-indicator oo-ui-indicator-clear"></span></div></div>' +
         '<span class="oo-ui-actionFieldLayout-button"><span class="oo-ui-widget oo-ui-widget-enabled oo-ui-inputWidget oo-ui-buttonElement oo-ui-buttonElement-framed oo-ui-labelElement oo-ui-flaggedElement-progressive oo-ui-flaggedElement-primary oo-ui-buttonInputWidget"><input type="submit" tabindex="0" value="Search" class="oo-ui-inputWidget-input oo-ui-buttonElement-button"></span></span></div></div></div>' + info +
-        '<input type="hidden" name="title" value="Special:Search"><input type="hidden" name="profile" value="default"><input type="hidden" name="fulltext" value="1"></div>' +
+        '<input type="hidden" name="title" value="Special:Search"><input type="hidden" name="profile" value="' + esc(profile) + '"><input type="hidden" name="fulltext" value="1"></div>' +
         '<div class="mw-search-visualclear"></div><div class="mw-search-profile-tabs"><div class="search-types"><ul>' +
-        '<li class="current"><a href="' + esc(sUrl({ profile: 'default', ns: 'ns0=1' })) + '" title="Search in (Main)">Content pages</a></li>' +
-        '<li class="normal"><a href="' + esc(sUrl({ profile: 'images', ns: 'ns6=1' })) + '" title="Search for files">Multimedia</a></li>' +
-        '<li class="normal"><a href="' + esc(sUrl({ profile: 'all' })) + '" title="Search all of content (including talk pages)">Everything</a></li>' +
-        '<li class="normal"><a href="' + esc(sUrl({ profile: 'advanced', ns: 'ns0=1' })) + '" title="Search in custom namespaces">Advanced</a></li></ul></div><div style="clear:both"></div></div></form></div>';
+        '<li class="' + (profile === 'default' ? 'current' : 'normal') + '"><a href="' + esc(sUrl({ profile: 'default', ns: 'ns0=1' })) + '" title="Search in (Main)">Content pages</a></li>' +
+        '<li class="' + (profile === 'images' ? 'current' : 'normal') + '"><a href="' + esc(sUrl({ profile: 'images', ns: 'ns6=1' })) + '" title="Search for files">Multimedia</a></li>' +
+        '<li class="' + (profile === 'all' ? 'current' : 'normal') + '"><a href="' + esc(sUrl({ profile: 'all' })) + '" title="Search all of content (including talk pages)">Everything</a></li>' +
+        '<li class="' + (profile === 'advanced' ? 'current' : 'normal') + '"><a href="' + esc(sUrl({ profile: 'advanced', ns: 'ns0=1' })) + '" title="Search in custom namespaces">Advanced</a></li></ul></div><div style="clear:both"></div></div></form></div>';
     var body = form;
     if (q) {
         var notes = '';
@@ -5736,7 +5863,7 @@ function wkSearchShow(view, url, q, res, offset, limit, thumbs) {
             (hits.length ? '<div class="mw-search-results-container"><ul class="mw-search-results">' + list + '</ul></div>' : '<p class="mw-search-nonefound">There were no results matching the query.</p>') +
             '<div class="mw-search-visualclear"></div>' + pager + '</div>';
     }
-    var p = { title: 'Search results', special: 'Search', q: q, html: '<div class="mw-content-ltr" lang="en" dir="ltr">' + body + '</div>', sections: [], langs: [], hash: '' };
+    var p = { title: 'Special:Search', display: q ? 'Search results' : 'Search', special: 'Search', q: q, html: '<div class="mw-content-ltr" lang="en" dir="ltr">' + body + '</div>', sections: [], langs: [], hash: '' };
     wkShow(view, url, p);
 }
 /* the house's own footnote to the Golf GTI article: the car called Argent. The
@@ -5781,7 +5908,7 @@ var WK_DEF = {
     stitle: 'Wikipedia, the free encyclopedia', sdesc: 'Wikipedia is a free online encyclopedia, created and edited by volunteers around the world and hosted by the Wikimedia Foundation.', skey: 'wikipedia encyclopedia article',
     render: function () { var r = wkRoute(livePath(WK)); return r.kind === 'frame' ? WEB.__frame.render() : '<div class="cr-wkwait"></div>'; },
     init: function (view) { var r = wkRoute(livePath(WK)); if (r.kind === 'frame') { WEB.__frame.init(view); return; } wkLoad(view, r); },
-    source: function (url) { var u = String(url || '').replace(/^https?:\/\//i, '').replace(/^www\./i, ''); return WK_SRC[u] || ''; }
+    source: wkSrcGet
 };
 webPage('en.wikipedia.org', WK_DEF);
 webPage('en.wikipedia.org/wiki/Volkswagen_Golf_GTI', {
@@ -5823,9 +5950,10 @@ function hnAge(ts) {
     if (m < 60) return n(m, 'minute');
     if (m < 1440) return n(Math.floor(m / 60), 'hour');
     var d = Math.floor(m / 1440);
-    if (d < 30) return n(d, 'day');
+    if (d < 90) return n(d, 'day');
     if (d < 365) return n(Math.floor(d / 30), 'month');
-    return n(Math.floor(d / 365), 'year');
+    var t = new Date(nnum(ts) * 1000);                    // a year on: the date, as the site writes it (UTC, AP month names)
+    return 'on ' + ['Jan', 'Feb', 'March', 'April', 'May', 'June', 'July', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'][t.getUTCMonth()] + ' ' + t.getUTCDate() + ', ' + t.getUTCFullYear();
 }
 function hnIso(ts) { var d = new Date(nnum(ts) * 1000); return isNaN(d) ? '' : d.toISOString().slice(0, 19) + ' ' + nnum(ts); }
 /* the domain after the title: the host without www, and for GitHub the account too */
@@ -5850,18 +5978,19 @@ function hnFoot() {
         '<form method="get" action="https://hn.algolia.com/">Search: <input type="text" name="q" size="17" autocorrect="off" spellcheck="false" autocapitalize="off" autocomplete="false"></form></center></td></tr>';
 }
 /* a story's two rows: the title line and the subtext */
-function hnStoryRows(s, rank, goto) {
+function hnStoryRows(s, rank, goto, onItem) {
     var id = nnum(s.id), job = s.type === 'job', url = s.url && /^https?:\/\//i.test(s.url) && wkUrlOk(s.url) ? s.url : '', site = url ? hnSite(url) : '';
     var title = '<span class="titleline"><a href="' + esc(url || 'item?id=' + id) + '"' + (url ? ' rel="noreferrer"' : '') + '>' + esc(s.title || '') + '</a>' +
         (site ? '<span class="sitebit comhead"> (<a href="from?site=' + esc(site.split('/')[0]) + '"><span class="sitestr">' + esc(site) + '</span></a>)</span>' : '') + '</span>';
     var sub;
-    if (job) sub = '<span class="age" title="' + esc(hnIso(s.time)) + '"><a href="item?id=' + id + '">' + hnAge(s.time) + '</a></span> | <a href="hide?id=' + id + '&amp;goto=' + esc(goto) + '">hide</a>';
+    if (job) sub = '<span class="age" title="' + esc(hnIso(s.time)) + '"><a href="item?id=' + id + '">' + hnAge(s.time) + '</a></span> | <a href="hide?id=' + id + '&amp;goto=' + esc(encodeURIComponent(goto)) + '">hide</a>';
     else sub = '<span class="subline"><span class="score" id="score_' + id + '">' + hnPlural(s.score, 'point').replace('&nbsp;', ' ') + '</span> by <a href="user?id=' + esc(s.by || '') + '" class="hnuser">' + esc(s.by || '') + '</a> ' +
-        '<span class="age" title="' + esc(hnIso(s.time)) + '"><a href="item?id=' + id + '">' + hnAge(s.time) + '</a></span> <span id="unv_' + id + '"></span> | <a href="hide?id=' + id + '&amp;goto=' + esc(goto) + '">hide</a> | ' +
-        '<a href="item?id=' + id + '">' + (nnum(s.descendants) ? hnPlural(s.descendants, 'comment') : 'discuss') + '</a></span>';
+        '<span class="age" title="' + esc(hnIso(s.time)) + '"><a href="item?id=' + id + '">' + hnAge(s.time) + '</a></span> <span id="unv_' + id + '"></span> | <a href="hide?id=' + id + '&amp;goto=' + esc(encodeURIComponent(goto)) + '">hide</a>' +
+        (onItem ? ' | <a href="https://hn.algolia.com/?query=' + esc(encodeURIComponent(s.title || '')) + '&amp;type=story&amp;dateRange=all&amp;sort=byDate&amp;storyText=false&amp;prefix&amp;page=0" class="hnpast">past</a> | <a href="fave?id=' + id + '">favorite</a>' : '') +
+        ' | <a href="item?id=' + id + '">' + (nnum(s.descendants) ? hnPlural(s.descendants, 'comment') : 'discuss') + '</a></span>';
     return '<tr class="athing submission" id="' + id + '">' +
         '<td align="right" valign="top" class="title">' + (rank ? '<span class="rank">' + rank + '.</span>' : '') + '</td>' +
-        '<td valign="top" class="votelinks"><center>' + (job ? '' : '<a id="up_' + id + '" href="vote?id=' + id + '&amp;how=up&amp;goto=' + esc(goto) + '"><div class="votearrow" title="upvote"></div></a>') + '</center></td>' +
+        '<td valign="top" class="votelinks"><center>' + (job ? '' : '<a id="up_' + id + '" href="vote?id=' + id + '&amp;how=up&amp;goto=' + esc(encodeURIComponent(goto)) + '"><div class="votearrow" title="upvote"></div></a>') + '</center></td>' +
         '<td class="title">' + title + '</td></tr>' +
         '<tr><td colspan="2"></td><td class="subtext">' + sub + '</td></tr>';
 }
@@ -5874,9 +6003,9 @@ function hnDocument(op, title, inner) {
 function hnShow(view, url, op, title, inner, p) {
     if (!view.isConnected) return;
     var doc = hnDocument(op, title, inner);
-    if (Object.keys(WK_SRC).length > 8) WK_SRC = Object.create(null);
-    WK_SRC[url] = doc;
-    wkFrame(view, doc, function (f, d) { hnWire(f, d, p || {}); });
+    wkSrcPut(url, doc);
+    if (/^view-source:/i.test(crTab().url)) { crPage(); return; }
+    wkFrame(view, doc, function (f, d) { hnWire(f, d, p || {}); }, 'Hacker News');
     liveTitle(url, title);
 }
 function hnWire(f, d, p) {
@@ -5885,19 +6014,29 @@ function hnWire(f, d, p) {
             var tg = e.target.closest ? e.target.closest('a.togg') : null;
             if (!tg) return false;
             e.preventDefault();
-            /* collapse: the comment's own rows go, and every reply beneath it (deeper indent) */
+            /* as the site's recoll: flip this row, open every comment, then fold each
+               collapsed one (its text and arrow go, and every reply beneath it) */
             var tr = tg.closest('tr.comtr'); if (!tr) return true;
-            var ind = +tr.querySelector('td.ind').getAttribute('indent'), hide = !tr.classList.contains('coll');
-            tr.classList.toggle('coll', hide); tr.classList.toggle('noshow', false);
-            var n = 0;
-            for (var r = tr.nextElementSibling; r; r = r.nextElementSibling) {
-                var cell = r.querySelector('td.ind'); if (!cell || +cell.getAttribute('indent') <= ind) break;
-                r.classList.toggle('noshow', hide); n++;
-            }
-            tg.textContent = hide ? '[' + (n + 1) + ' more]' : '[–]';
+            tr.classList.toggle('coll');
+            var rows = Array.prototype.slice.call(tr.parentNode.querySelectorAll('tr.comtr'));
+            function ind(r) { return +r.querySelector('td.ind').getAttribute('indent'); }
+            rows.forEach(function (r) { r.classList.remove('noshow'); r.querySelector('div.comment').classList.remove('noshow'); r.querySelector('td.votelinks').classList.remove('nosee'); r.querySelector('a.togg').textContent = '[–]'; });
+            rows.forEach(function (r, i) {
+                if (!r.classList.contains('coll') || r.classList.contains('noshow')) return;
+                for (var j = i + 1, k = ind(r); j < rows.length && ind(rows[j]) > k; j++) rows[j].classList.add('noshow');
+                var a = r.querySelector('a.togg'); a.textContent = '[' + a.getAttribute('n') + ' more]';
+                r.querySelector('div.comment').classList.add('noshow'); r.querySelector('td.votelinks').classList.add('nosee');
+            });
             return true;
         }
     });
+    /* the forms. The sandbox blocks a submit before any submit event, so the keys and
+       the buttons are taken instead: the footer's search goes to Algolia's site; a
+       comment from a reader not logged in goes to the login page, in a window */
+    var sq = d.querySelector('form[action="https://hn.algolia.com/"] input[name="q"]');
+    if (sq) sq.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); crNav('hn.algolia.com/?' + new URLSearchParams({ q: sq.value }).toString()); } });
+    var cb = d.querySelector('form[action="comment"] input[type="submit"]'), cg = d.querySelector('form[action="comment"] input[name="goto"]');
+    if (cb) cb.addEventListener('click', function (e) { e.preventDefault(); liveOpen(HN + '/login?goto=' + encodeURIComponent(cg ? cg.value : 'news')); });
 }
 function hnFail(view, url, err, r) { liveFill(view, url, liveFail(err, HN, r)); }
 /* a list page: the ids in the site's order, then each item */
@@ -5921,37 +6060,107 @@ function hnList(view, url, r) {
         });
     });
 }
-/* a thread, from the Algolia tree */
+/* a thread. The text comes from the Algolia HN API (one request for the whole
+   tree); the order comes from Hacker News' own API, whose kids are "in ranked
+   display order" (the story's, and each comment's that has replies, up to a
+   budget); an item Algolia has not indexed yet is built from the site's API
+   alone. A deleted comment with live replies stays as its [deleted] row. */
+function hnFbItem(id, cb) { liveGet(HN_FB + 'item/' + nnum(id) + '.json', function (e, it) { cb(e ? undefined : it); }); }
+function hnRank(kids, order) {
+    if (!Array.isArray(order) || !order.length) return kids || [];
+    var pos = Object.create(null); order.forEach(function (id, i) { pos[nnum(id)] = i; });
+    return (kids || []).slice().sort(function (a, b) { var x = a && nnum(a.id) in pos ? pos[nnum(a.id)] : 1e9, y = b && nnum(b.id) in pos ? pos[nnum(b.id)] : 1e9; return x - y; });
+}
+/* the site's API alone: the item and its kids, in their order, as the Algolia shape */
+function hnFbTree(it, budget, cb) {
+    var node = { id: it.id, type: it.type, author: it.by, text: it.text, title: it.title, url: it.url, points: it.score, created_at_i: it.time, parent_id: it.parent, story_id: it.id, children: [], kids: it.kids || [] };
+    var ids = (it.kids || []).slice(0, Math.max(0, budget.n)); budget.n -= ids.length;
+    if (!ids.length) { cb(node); return; }
+    var left = ids.length, got = new Array(ids.length);
+    ids.forEach(function (id, i) {
+        hnFbItem(id, function (k) {
+            if (!k || k.type !== 'comment') { got[i] = null; if (!--left) done(); return; }
+            hnFbTree(k, budget, function (sub) { if (k.deleted || k.dead) { sub.author = null; sub.text = null; } got[i] = sub; if (!--left) done(); });
+        });
+    });
+    function done() { node.children = got.filter(Boolean); cb(node); }
+}
 function hnItem(view, url, r) {
-    liveGet(HN_ALG + 'items/' + r.id, function (err, j, resp) {
+    var fb, alg, algErr, algResp, left = 2;
+    hnFbItem(r.id, function (it) { fb = it; if (!--left) build(); });
+    liveGet(HN_ALG + 'items/' + r.id, function (err, j, resp) { alg = j; algErr = err; algResp = resp; if (!--left) build(); });
+    function build() {
         if (!view.isConnected) return;
-        if (err === 'http404' || (!err && j && !j.id)) { hnShow(view, url, 'item', 'Hacker News', hnTop('') + '<tr id="pagespace" title="" style="height:10px"></tr><tr><td>No such item.</td></tr>' + hnFoot()); return; }
-        if (err || !j || !j.id) { hnFail(view, url, err || 'empty', resp); return; }
-        var story = j.type === 'story' || j.type === 'job' || j.type === 'poll' ? j : null;
-        var count = 0;
-        function walk(kids, depth) {
-            return (kids || []).map(function (k) {
-                if (!k || k.type !== 'comment' || !k.author || !k.text) return '';
-                count++;
+        if (fb === null || (fb === undefined && (algErr === 'http404' || (!algErr && alg && !alg.id)))) { hnShow(view, url, 'item', 'Hacker News', hnTop('') + '<tr id="pagespace" title="" style="height:10px"></tr><tr><td>No such item.</td></tr>' + hnFoot()); return; }
+        if (alg && alg.id && !algErr) { order(alg); return; }
+        if (fb && fb.id) { hnFbTree(fb, { n: 150 }, function (tree) { draw(tree); }); return; }   // Algolia has not got it yet
+        hnFail(view, url, algErr || 'empty', algResp);
+    }
+    /* the site's order for the story's replies and for each comment's (one request per comment with replies, up to 80) */
+    function order(j) {
+        var want = [], budget = 80;
+        (function collect(kids) { (kids || []).forEach(function (k) { if (k && k.type === 'comment' && k.children && k.children.length && want.length < budget) { want.push(k); collect(k.children); } }); })(j.children);
+        var left = want.length + 1, kidsOf = Object.create(null);
+        function go() { if (--left) return; if (!view.isConnected) return; j.kids = fb && fb.kids; j.kidsOf = kidsOf; draw(j); }
+        want.forEach(function (k) { hnFbItem(k.id, function (it) { if (it && it.kids) kidsOf[nnum(k.id)] = it.kids; go(); }); });
+        go();
+    }
+    function draw(j) {
+        var story = j.type === 'story' || j.type === 'job' || j.type === 'poll' ? j : null, cid = nnum(j.id), isCom = j.type === 'comment';
+        var count = 0, flat = [], kidsOf = j.kidsOf || {};
+        function walk(kids, depth, parent, root, order) {
+            var prev = null;
+            hnRank(kids, order).forEach(function (k) {
+                if (!k || k.type !== 'comment') return;
+                var gone = !k.author || !k.text;
+                if (gone && !hnCount(k.children)) return;
+                if (!gone) count++;
                 var id = nnum(k.id);
-                return '<tr class="athing comtr" id="' + id + '"><td><table border="0"><tr><td class="ind" indent="' + depth + '"><img src="https://news.ycombinator.com/s.gif" height="1" width="' + (depth * 40) + '"></td>' +
-                    '<td valign="top" class="votelinks"><center><a id="up_' + id + '" href="vote?id=' + id + '&amp;how=up&amp;goto=item%3Fid%3D' + nnum(j.id) + '"><div class="votearrow" title="upvote"></div></a></center></td>' +
-                    '<td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead"><a href="user?id=' + esc(k.author) + '" class="hnuser">' + esc(k.author) + '</a> <span class="age" title="' + esc(hnIso(k.created_at_i)) + '"><a href="item?id=' + id + '">' + hnAge(k.created_at_i) + '</a></span> <span id="unv_' + id + '"></span><span class="navs"> | <a href="#' + id + '" class="clicky">next</a> <a class="togg clicky" id="' + id + '" n="' + (1 + hnCount(k.children)) + '">[–]</a><span class="onstory"></span></span></span></div><br>' +
-                    '<div class="comment"><div class="commtext c00">' + wkClean(k.text) + '</div><div class="reply"><p><font size="1"><u><a href="reply?id=' + id + '&amp;goto=item%3Fid%3D' + nnum(j.id) + '%23' + id + '">reply</a></u></font></p></div></div></td></tr></table></td></tr>' +
-                    walk(k.children, depth + 1).join('');
+                flat.push({ k: k, id: id, depth: depth, parent: parent, root: root, prev: prev, gone: gone });
+                prev = id;
+                walk(k.children, depth + 1, id, depth ? root : id, kidsOf[id] || k.kids);
             });
         }
-        var comments = walk(j.children, 0).join('');
+        walk(j.children, 0, null, null, j.kids);
+        flat.forEach(function (c, i) { var n = i + 1; while (n < flat.length && flat[n].depth > c.depth) n++; c.next = n < flat.length ? flat[n].id : null; });
+        function nav(to, label) { return ' | <a href="#' + to + '" class="clicky" aria-hidden="true">' + label + '</a>'; }
+        var comments = flat.map(function (c) {
+            var k = c.k, id = c.id, depth = c.depth;
+            var navs = '<span class="navs">' + (depth > 1 ? nav(c.root, 'root') : '') + (c.parent ? nav(c.parent, 'parent') : '') + (c.prev ? nav(c.prev, 'prev') : '') + (c.next ? nav(c.next, 'next') : '') +
+                ' <a class="togg clicky" id="' + id + '" n="' + (1 + hnCount(k.children)) + '" href="javascript:void(0)">[–]</a><span class="onstory"></span></span>';
+            var age = '<span class="age" title="' + esc(hnIso(k.created_at_i)) + '"><a href="item?id=' + id + '">' + hnAge(k.created_at_i) + '</a></span> <span id="unv_' + id + '"></span>';
+            var head = c.gone ? age + navs : '<a href="user?id=' + esc(k.author) + '" class="hnuser">' + esc(k.author) + '</a> ' + age + navs;
+            var body = c.gone ? '<div class="commtext c00">[deleted]</div><div class="reply"></div>'
+                : '<div class="commtext c00">' + wkClean(k.text) + '</div><div class="reply"><p><font size="1"><u><a href="reply?id=' + id + '&amp;goto=item%3Fid%3D' + cid + '%23' + id + '">reply</a></u></font></p></div>';
+            return '<tr class="athing comtr" id="' + id + '"><td><table border="0"><tr><td class="ind" indent="' + depth + '"><img src="https://news.ycombinator.com/s.gif" height="1" width="' + (depth * 40) + '"></td>' +
+                '<td valign="top" class="votelinks"><center>' + (c.gone ? '<img src="https://news.ycombinator.com/s.gif" height="1" width="14">' : '<a id="up_' + id + '" href="vote?id=' + id + '&amp;how=up&amp;goto=item%3Fid%3D' + cid + '"><div class="votearrow" title="upvote"></div></a>') + '</center></td>' +
+                '<td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">' + head + '</span></div><br>' +
+                '<div class="comment">' + body + '</div></td></tr></table></td></tr>';
+        }).join('');
         var s = story ? { id: j.id, type: j.type, by: j.author, score: j.points, time: j.created_at_i, title: j.title, url: j.url, descendants: count } : null;
-        var top = s ? hnStoryRows(s, 0, 'item?id=' + nnum(j.id)) : '';
-        var text = j.text ? '<tr style="height:2px"></tr><tr><td colspan="2"></td><td><div class="toptext">' + wkClean(j.text) + '</div></td></tr>' : '';
-        var form = '<tr style="height:10px"></tr><tr><td colspan="2"></td><td><form action="comment" method="post"><input type="hidden" name="parent" value="' + nnum(j.id) + '"><input type="hidden" name="goto" value="item?id=' + nnum(j.id) + '"><textarea name="text" rows="8" cols="80" wrap="virtual"></textarea><br><br><input type="submit" value="add comment"></form></td></tr>';
-        var inner = hnTop('') + '<tr id="pagespace" title="' + esc(j.title || '') + '" style="height:10px"></tr><tr><td><table class="fatitem" border="0">' + top + text + form + '</table><br><br>' +
-            '<table border="0" class="comment-tree">' + comments + '</table><br><br></td></tr>' + hnFoot();
-        hnShow(view, url, 'item', (j.title || (j.author ? j.author + "'s comment" : 'Hacker News')) + ' | Hacker News', inner, { hash: wkRoute('x#' + (String(url).split('#')[1] || '')).hash });
-    });
+        var plain = snipText(j.text || '').replace(/\s+/g, ' ').trim();
+        var name = j.title || (plain ? (plain.length > 80 ? plain.slice(0, 80) + '...' : plain) : 'Hacker News');   // item-page: the title, or the text ellipsized
+        function finish(onstory) {
+            if (!view.isConnected) return;
+            var top = s ? hnStoryRows(s, 0, 'item?id=' + cid, true)
+                : isCom ? '<tr class="athing" id="' + cid + '"><td class="ind"></td><td valign="top" class="votelinks"><center><a id="up_' + cid + '" href="vote?id=' + cid + '&amp;how=up&amp;goto=item%3Fid%3D' + cid + '"><div class="votearrow" title="upvote"></div></a></center></td>' +
+                    '<td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead"><a href="user?id=' + esc(j.author || '') + '" class="hnuser">' + esc(j.author || '') + '</a> <span class="age" title="' + esc(hnIso(j.created_at_i)) + '"><a href="item?id=' + cid + '">' + hnAge(j.created_at_i) + '</a></span> <span id="unv_' + cid + '"></span>' +
+                    '<span class="navs"> | <a href="item?id=' + nnum(j.parent_id) + '">parent</a> | <a href="context?id=' + cid + '">context</a> | <a href="fave?id=' + cid + '">favorite</a><span class="onstory">' + onstory + '</span></span></span></div><br>' +
+                    '<div class="comment"><div class="commtext c00">' + wkClean(j.text || '') + '</div></div></td></tr>' : '';
+            var text = !isCom && j.text ? '<tr style="height:2px"></tr><tr><td colspan="2"></td><td><div class="toptext">' + wkClean(j.text) + '</div></td></tr>' : '';
+            var form = '<tr style="height:10px"></tr><tr><td colspan="2"></td><td><form action="comment" method="post"><input type="hidden" name="parent" value="' + cid + '"><input type="hidden" name="goto" value="item?id=' + cid + '"><textarea name="text" rows="8" cols="80" wrap="virtual"></textarea><br><br><input type="submit" value="add comment"></form></td></tr>';
+            var inner = hnTop('') + '<tr id="pagespace" title="' + esc(name) + '" style="height:10px"></tr><tr><td><table class="fatitem" border="0">' + top + text + form + '</table><br><br>' +
+                '<table border="0" class="comment-tree">' + comments + '</table><br><br></td></tr>' + hnFoot();
+            hnShow(view, url, 'item', name + ' | Hacker News', inner, { hash: wkRoute('x#' + (String(url).split('#')[1] || '')).hash });
+        }
+        if (isCom && j.story_id && nnum(j.story_id) !== cid) hnFbItem(j.story_id, function (st) {   // "on: <the story>", its title cut to 50
+            var ot = st && st.title ? (st.title.length > 50 ? st.title.slice(0, 50) + '...' : st.title) : '';
+            finish(ot ? ' | on: <a href="item?id=' + nnum(j.story_id) + '">' + esc(ot) + '</a>' : '');
+        });
+        else finish('');
+    }
 }
-function hnCount(kids) { var n = 0; (kids || []).forEach(function (k) { if (k && k.type === 'comment' && k.author && k.text) n += 1 + hnCount(k.children); }); return n; }
+function hnCount(kids) { var n = 0; (kids || []).forEach(function (k) { if (k && k.type === 'comment') n += (k.author && k.text ? 1 : 0) + hnCount(k.children); }); return n; }
 /* a profile */
 function hnUser(view, url, r) {
     liveGet(HN_FB + 'user/' + encodeURIComponent(r.id) + '.json', function (err, u, resp) {
@@ -5962,18 +6171,18 @@ function hnUser(view, url, r) {
         var cs = isNaN(created) ? '' : M[created.getUTCMonth()] + ' ' + created.getUTCDate() + ', ' + created.getUTCFullYear();
         var inner = hnTop('') + '<tr id="pagespace" title="Profile: ' + esc(u.id) + '" style="height:10px"></tr><tr><td><table border="0">' +
             '<tr class="athing"><td valign="top">user:</td><td><a href="user?id=' + esc(u.id) + '" class="hnuser">' + esc(u.id) + '</a></td></tr>' +
-            '<tr><td valign="top">created:</td><td>' + esc(cs) + '</td></tr>' +
+            '<tr><td valign="top">created:</td><td><a href="front?day=' + (isNaN(created) ? '' : created.toISOString().slice(0, 10)) + '">' + esc(cs) + '</a></td></tr>' +
             '<tr><td valign="top">karma:</td><td>' + nnum(u.karma) + '</td></tr>' +
             '<tr><td valign="top">about:</td><td>' + wkClean(u.about || '') + '</td></tr>' +
-            '<tr><td></td><td><a href="submitted?id=' + esc(u.id) + '">submissions</a></td></tr>' +
-            '<tr><td></td><td><a href="threads?id=' + esc(u.id) + '">comments</a></td></tr>' +
-            '<tr><td></td><td><a href="favorites?id=' + esc(u.id) + '">favorites</a></td></tr></table><br><br></td></tr>' + hnFoot();
+            '<tr><td></td><td><a href="submitted?id=' + esc(u.id) + '"><u>submissions</u></a></td></tr>' +
+            '<tr><td></td><td><a href="threads?id=' + esc(u.id) + '"><u>comments</u></a></td></tr>' +
+            '<tr><td></td><td><a href="favorites?id=' + esc(u.id) + '"><u>favorites</u></a></td></tr></table><br><br></td></tr>' + hnFoot();
         hnShow(view, url, 'user', 'Profile: ' + u.id + ' | Hacker News', inner);
     });
 }
 webPage('news.ycombinator.com', {
     live: true,
-    title: 'Hacker News', fav: { img: 'https://news.ycombinator.com/favicon.ico' }, searchable: true,
+    title: 'Hacker News', fav: { img: 'https://news.ycombinator.com/y18.svg' }, searchable: true,   // the icon the site's own <link rel="icon"> names
     stitle: 'Hacker News', sdesc: 'Hacker News, from Y Combinator.', skey: 'hacker news hn tech front page',
     render: function () { var r = hnRoute(livePath(HN)); return r.kind === 'frame' ? WEB.__frame.render() : '<div class="cr-wkwait"></div>'; },
     init: function (view) {
@@ -5983,7 +6192,7 @@ webPage('news.ycombinator.com', {
         else if (r.kind === 'item') hnItem(view, url, r);
         else hnUser(view, url, r);
     },
-    source: function (url) { var u = String(url || '').replace(/^https?:\/\//i, '').replace(/^www\./i, ''); return WK_SRC[u] || ''; }
+    source: wkSrcGet
 });
 
 /* — GitHub: the rest of github.com —
@@ -7394,9 +7603,10 @@ webPage('__frame', {
     title: 'Live site', fav: { ch: '🌐', c: '#5f6368' },
     render: function () {
         var u = liveUrl();
+        if (navigator.onLine === false) return crErrPage('offline', u.split(/[\/?#]/)[0]);
         return '<div class="cr-frame"><iframe class="cr-frameifr" id="crFrameIfr" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" referrerpolicy="no-referrer" src="https://' + esc(u) + '"></iframe></div>';
     },
-    init: function () {}
+    init: function (view) { crErrWire(view); }
 });
 
 /* ═════════════ URL parsing / navigation engine ═════════════ */
@@ -7455,6 +7665,7 @@ function crTitleOf(url) {
     if (CR && CR.incog && CR.privTitles && CR.privTitles[String(url)]) return CR.privTitles[String(url)];   // a private page's, kept on the window only
     if (LIVE_TITLES[String(url)]) return LIVE_TITLES[String(url)];   // a live page told us its real name
     var s = crSite(url);
+    if (s === WEB.__err && /^chrome:/i.test(String(url))) return String(url).replace(/^(chrome:\/\/[^\/?#]*)$/i, '$1/');   // not http: Chrome titles the page by the whole address
     if (s === WEB.__err || s === WEB.__frame) return String(url).replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0];
     return typeof s.title === 'function' ? s.title(crQOf(url), url) : s.title;
 }
@@ -7470,6 +7681,7 @@ function crNav(url, opts) {
     if (opts.replace) { t.hist[t.hi] = url; }
     else if (!opts.nopush) { t.hist = t.hist.slice(0, t.hi + 1); t.hist.push(url); t.hi = t.hist.length - 1; }
     t.url = url;
+    if (t.fscroll) delete t.fscroll[url];                  // a new entry starts at the top (or its #fragment): Back, Forward, Reload and a tab switch restore
     var s = crSite(url);
     if (!CR.incog && s !== WEB.__err && !s.nohist && s.host !== 'chrome://history')          // incognito keeps its word
         { var h = crHist(); h.unshift({ u: url, t: crTitleOf(url), ts: Date.now() }); if (h.length > 200) h.length = 200; crjSet('hist', h); }
@@ -7655,14 +7867,14 @@ function crDinoStop() { if (CR && CR.dinoRaf) { cancelAnimationFrame(CR.dinoRaf)
 function crDinoBoot(view) {
     var cv = view.querySelector('#crDinoCv'); if (!cv) return;
     var x = cv.getContext('2d'), W = cv.width, H = cv.height, G = H - 24;
-    var d = { y: G, vy: 0, duck: false, run: false, dead: false, t: 0, speed: 4.4, score: 0, obs: [], clouds: [{ x: 480, y: 30 }, { x: 200, y: 52 }], next: 60 };
+    var d = { y: G, vy: 0, duck: false, run: false, dead: false, t: 0, speed: 4.4, score: 0, hi: +recall('chrome_dino_hi', 0) || 0, obs: [], clouds: [{ x: 480, y: 30 }, { x: 200, y: 52 }], next: 60 };
     CR.dino = d;
     function jump() {
         if (d.dead) { boot(); return; }
         if (!d.run) d.run = true;
         if (d.y >= G) d.vy = -10.4;
     }
-    function boot() { d.obs = []; d.score = 0; d.speed = 4.4; d.dead = false; d.run = true; d.y = G; d.vy = 0; d.next = 60; var tip = view.querySelector('#crDinoTip'); if (tip) tip.textContent = 'Run, pixel lizard, run.'; }
+    function boot() { d.obs = []; d.score = 0; d.speed = 4.4; d.dead = false; d.run = true; d.y = G; d.vy = 0; d.next = 60; }
     CR.dinoJump = jump;
     cv.addEventListener('pointerdown', jump);
     function drawDino() {
@@ -7703,16 +7915,16 @@ function crDinoBoot(view) {
                     d.dead = true; d.run = false;
                     var hi = Math.max(+recall('chrome_dino_hi', 0), Math.floor(d.score));
                     store('chrome_dino_hi', String(hi));
-                    var hud = view.querySelector('.cr-dinohud span'); if (hud) hud.textContent = 'HI ' + String(hi).padStart(5, '0');
-                    var tip = view.querySelector('#crDinoTip'); if (tip) tip.textContent = 'G A M E  O V E R — space to try again. The cactus sends its regards.';
+                    d.hi = hi;
                 }
             }
         }
         x.fillStyle = '#2d8a43';
         d.obs.forEach(function (o) { x.fillRect(o.x, G + 6 - o.h, o.w, o.h); x.fillRect(o.x - 4, G + 6 - o.h + 6, 4, 6); x.fillRect(o.x + o.w, G + 6 - o.h + 9, 4, 6); });
         drawDino();
-        var sc = view.querySelector('#crDinoScore'); if (sc) sc.textContent = String(Math.floor(d.score)).padStart(5, '0');
-        if (d.dead) { x.fillStyle = '#535353'; x.font = '14px monospace'; x.textAlign = 'center'; x.fillText('G A M E   O V E R', W / 2, 56); }
+        x.fillStyle = '#535353'; x.font = '11px monospace'; x.textAlign = 'right';   // the score at the top right, the high score before it, as the Runner draws them
+        x.fillText((d.hi ? 'HI ' + String(d.hi).padStart(5, '0') + '  ' : '') + String(Math.floor(d.score)).padStart(5, '0'), W - 10, 16);
+        if (d.dead) { x.font = '14px monospace'; x.textAlign = 'center'; x.fillText('G A M E   O V E R', W / 2, 56); }
     }
     function loop() { if (!CR.el.classList.contains('mini')) tick(); CR.dinoRaf = requestAnimationFrame(loop); }   // minimized = paused, run survives
     if (location.search.indexOf('dev') >= 0) window.__crDino = { jump: jump, tick: tick, state: d };   // headless-test hook, room-pages convention
@@ -7815,6 +8027,19 @@ function initChrome(el) {
         if (e.code === 'Space' || e.key === 'ArrowUp') { e.preventDefault(); if (CR.dinoJump) CR.dinoJump(); }
     };
     document.addEventListener('keydown', CR.keyFn);
+    /* a site favicon that did not load (offline, blocked): Chrome's default icon in its
+       place (error does not bubble: capture). Not while the document is still loading:
+       an image drawn during parsing can fire error and load all the same, so those are
+       looked at once the page has loaded. */
+    function favGone(im) { CR_NOFAV[im.getAttribute('src')] = 1; im.outerHTML = crFav({ ch: '🌐', c: '#5f6368' }, im.classList.contains('big') ? 'big' : ''); }
+    el.addEventListener('error', function (e) {
+        var im = e.target;
+        if (!im || im.tagName !== 'IMG' || !im.classList || !im.classList.contains('cr-fav') || document.readyState !== 'complete') return;
+        favGone(im);
+    }, true);
+    if (document.readyState !== 'complete') window.addEventListener('load', function () {
+        Array.prototype.forEach.call(el.querySelectorAll('img.cr-fav'), function (im) { if (im.complete && !im.naturalWidth) favGone(im); });
+    });
 
     crChrome(); crTabs(); crPage();
 }
@@ -7837,7 +8062,7 @@ function crIncogSwap() {
     CR.held = CR.incog ? null : { tabs: CR.tabs, active: CR.active, closed: CR.closed };
     CR.incog = !CR.incog;
     CR.ghpPriv = null;                                    // the private window's GitHub answer goes with it
-    CR.ghxPriv = null; CR.privTitles = null;              // and every other GitHub answer, and the titles its pages learned
+    CR.ghxPriv = null; CR.privTitles = null; CR.privSrc = null; CR.privWk = null;   // and every other GitHub answer, the titles its pages learned, the documents it drew, its appearance choices
     GHP = null;                                           // and its view, which the title and search results would read
     if (held && held.tabs && held.tabs.length) {
         CR.tabs = held.tabs; CR.active = Math.min(Math.max(held.active, 0), held.tabs.length - 1); CR.closed = held.closed;
@@ -8666,7 +8891,10 @@ function closeFind() {
     var w = openWins[find.appId];
     if (w) {
         var bar = findBar(find.appId); if (bar) bar.hidden = true;
-        var root = w.el.querySelector('.win-content'); if (root) unmarkAll(root);
+        var root = w.el.querySelector('.win-content');
+        var fr = root && root.querySelector('iframe.cr-wk');            // runFind marks inside the frame's own document
+        if (fr && fr.contentDocument && fr.contentDocument.body) root = fr.contentDocument.body;
+        if (root) unmarkAll(root);
         var back = w.el.querySelector('.np-back'); if (back) back.textContent = '';
     }
     find.appId = null; find.marks = []; find.idx = -1;

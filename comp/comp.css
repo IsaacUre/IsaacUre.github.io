@@ -877,7 +877,7 @@ mark.fnd.cur { background: #ff9632; color: #15151a; }
 .cr-bmchip:hover { background: #f1f3f4; }
 
 /* page view */
-.cr-view { flex: 1 1 auto; min-height: 0; overflow-y: auto; background: #fff; outline: 0;
+.cr-view { container: crview / size; flex: 1 1 auto; min-height: 0; overflow-y: auto; background: #fff; outline: 0;
     user-select: text; -webkit-user-select: text; }   /* pages are real enough to select — and to right-click → Search */
 .cr-view ::selection { background: #a8c7fa; }
 .cr-view::-webkit-scrollbar-thumb { background: rgba(0,0,0,.28); border: 2px solid transparent; background-clip: padding-box; border-radius: 6px; }
@@ -983,10 +983,6 @@ mark.fnd.cur { background: #ff9632; color: #15151a; }
 .cr-serptabs { display: flex; gap: 18px; font-size: .74rem; color: #5f6368; border-bottom: 1px solid #e8eaed; padding: 4px 2px 8px; margin-bottom: 8px; }
 .cr-serptabs span { cursor: pointer; }
 .cr-serptabs .on { color: #1a73e8; border-bottom: 2px solid #1a73e8; padding-bottom: 6px; margin-bottom: -9px; }
-.cr-snip { border: 1px solid #dfe1e5; border-radius: 8px; padding: 12px 14px; margin-bottom: 16px; }
-.cr-snip b { font-size: .92rem; }
-.cr-snip p { font-size: .78rem; color: #4d5156; margin: 6px 0; line-height: 1.5; }
-.cr-snipl { color: #1a73e8; font-size: .74rem; }
 /* min-width:0 + wrap: a single unbroken token in a snippet (a long URL, a
    chemical name) otherwise widens the flex column and pushes the whole
    results page into horizontal scroll */
@@ -1521,10 +1517,7 @@ button.cr-iu-skip { position: absolute; right: 1rem; bottom: 1rem; z-index: 11; 
 .cr-gmfoot { font-size: .7rem; color: #9aa0a6; padding: 14px 8px; }
 
 /* dino */
-.cr-dino { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100%; padding: 20px; background: #fff; }
-.cr-dinohud { width: min(600px, 100%); display: flex; justify-content: space-between; font-family: var(--f-term); font-size: 1rem; color: #535353; letter-spacing: 2px; }
-#crDinoCv { width: min(600px, 100%); image-rendering: pixelated; cursor: pointer; }
-.cr-dinotip { font-size: .72rem; color: #80868b; margin-top: 14px; }
+.cr-neterror #crDinoCv { cursor: pointer; image-rendering: pixelated; max-width: 100%; width: 600px; }
 
 /* error page */
 
@@ -1660,8 +1653,13 @@ button.cr-iu-skip { position: absolute; right: 1rem; bottom: 1rem; z-index: 11; 
 /* Chrome's own error page: Chromium's neterror.css, interstitial_core.css and
    interstitial_common.css, scoped under .cr-neterror; Windows' Segoe UI at 75% of the 125% root */
 .cr-neterror { min-height: 100%; box-sizing: border-box; background: #fff; color: rgb(95, 99, 104); font-family: 'Segoe UI', Tahoma, sans-serif; font-size: 15px; line-height: normal; word-wrap: break-word; text-align: left; }
-.cr-neterror a { color: rgb(88, 88, 88); }
-.cr-neterror .interstitial-wrapper { box-sizing: border-box; font-size: 1em; line-height: 1.6em; margin: 14vh auto 0; max-width: 600px; width: 100%; }
+.cr-neterror a { color: rgb(88, 88, 88); text-decoration: none; }
+.cr-neterror .interstitial-wrapper { box-sizing: border-box; font-size: 1em; line-height: 1.6em; margin: 14cqh auto 0; max-width: 600px; width: 100%; position: relative; }
+/* the offline page: the runner where the icon was (neterror.css .offline rules) */
+.cr-neterror[data-kind="offline"] #main-message > p, .cr-neterror[data-kind="dino"] #main-message > p { display: none; }
+.cr-neterror[data-kind="offline"] .interstitial-wrapper, .cr-neterror[data-kind="dino"] .interstitial-wrapper { line-height: 1.55; margin: 0 auto; padding-top: 100px; }
+.cr-neterror .runner-container { direction: ltr; height: 150px; max-width: 600px; overflow: hidden; position: absolute; top: 35px; width: 600px; }
+.cr-neterror .runner-canvas { height: 150px; max-width: 600px; opacity: 1; overflow: hidden; position: absolute; top: 0; z-index: 10; }
 .cr-neterror h1 { color: rgb(32, 33, 36); font-size: 1.6em; font-weight: normal; line-height: 1.25em; margin: 0 0 16px; word-wrap: break-word; }
 .cr-neterror h1 span { font-weight: 500; }
 .cr-neterror p { margin: 1em 0; }
@@ -1679,16 +1677,25 @@ button.cr-iu-skip { position: absolute; right: 1rem; bottom: 1rem; z-index: 11; 
 .cr-neterror .secondary-button:hover { background: rgb(248, 249, 250); border-color: rgb(128, 134, 139); text-decoration: none; }
 .cr-neterror .secondary-button:active { border-color: white; box-shadow: 0 1px 2px 0 rgba(60, 64, 67, .3), 0 2px 6px 2px rgba(60, 64, 67, .15); }
 .cr-neterror #details-button { box-shadow: none; min-width: 0; }
+.cr-neterror .suggested-left > #control-buttons { float: left; }
+.cr-neterror .suggested-left > #details-button { float: right; }
+.cr-neterror .suggested-left .secondary-button { margin-inline-end: 0; margin-inline-start: 16px; }
+.cr-neterror #details-button.singular { float: none; }
 .cr-neterror #details { margin: 0 0 50px; }
 .cr-neterror #details p:not(:first-of-type) { margin-top: 20px; }
 .cr-neterror .suggestions { margin-top: 18px; }
 .cr-neterror .suggestion-header { font-weight: bold; margin-bottom: 4px; }
 .cr-neterror .suggestion-body { color: #777; }
 .cr-neterror #main-frame-error:not(.showing-details) #details { display: none; }
-.cr-neterror #main-frame-error.showing-details #main-content { display: none; }
+/* Details hides the message only on a short or a narrow view (neterror.css's media queries, on the tab's view) */
+@container crview ((min-width: 240px) and (max-width: 420px) and (min-height: 401px)) or ((min-height: 240px) and (max-height: 560px) and (min-width: 421px)) { .cr-neterror #main-frame-error.showing-details #main-content { display: none; } }
+@container crview (min-width: 421px) and (min-height: 500px) and (max-height: 560px) { .cr-neterror .interstitial-wrapper { margin-top: 10cqh; } }
 .cr-neterror [hidden] { display: none; }
 /* the results page */
 .cr-serpsec { margin: 6px 0 14px; }
+.cr-serpnone { font-size: 14px; color: #202124; margin: 8px 0 20px; }
+.cr-serpnone p { margin: 0 0 1em; }
+.cr-serpnone ul { margin: 0; padding-left: 24px; list-style: disc; }
 .cr-serph { font-size: 12px; font-weight: 700; color: #5f6368; margin: 14px 0 6px; text-transform: none; letter-spacing: .02em; }
 .cr-serpmeta { color: #5f6368; font-size: 12px; }
 .cr-serpfeatslot:empty { display: none; }

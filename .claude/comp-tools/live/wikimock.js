@@ -24,13 +24,20 @@ function wikimock(mode, log) {
     if (host !== 'en.wikipedia.org') return route.abort('blockedbyclient');
     if (p === '/w/load.php') return route.fulfill({ status: 200, contentType: 'text/css', body: /modules=site\.styles|typeahead|special\.search/.test(u.search) ? '' : CSS });
     if (p === '/w/rest.php/v1/search/title') { if (mode.restDown) return json({ httpCode: 500 }, 500); return json(D.suggest); }
-    if (p !== '/w/api.php') return route.abort('blockedbyclient');
+    if (p !== '/w/api.php') return route.fulfill({ status: 200, contentType: 'text/html', headers: { 'x-frame-options': 'DENY' }, body: '<!doctype html><title>stand-in</title><p>a page the mock does not have</p>' });   // a document: refused in a frame, as the site refuses all but views
     const action = q.get('action');
     if (mode.slow) await new Promise(r => setTimeout(r, mode.slow));
     if (action === 'parse') {
+      if (q.has('text')) {   // a message rendered for a title (the missing page's noarticletextanon): the mock's own words, labelled as such
+        return json({ parse: { title: q.get('title') || 'API', pageid: 0, text: '<div class="noarticletext mw-content-ltr" dir="ltr" lang="en"><p>The harness has no page with this exact name. (The mock\'s stand-in for the wiki\'s own noarticletextanon.)</p></div>' } });
+      }
       const page = (q.get('page') || '').replace(/_/g, ' ');
       const k = KNOWN[page];
       if (!k) return json(D.missing);
+      if (page === 'Main Page') return json({ parse: Object.assign({}, D.parse.parse, { title: 'Main Page', displaytitle: 'Main Page' }) });   // the harness article under the wiki's own front-page title
+      if (k === 'redirect' && !q.has('redirects')) {   // redirect=no: the redirect page itself
+        return json({ parse: { title: page, pageid: 9, revid: 9, text: '<div class="mw-content-ltr mw-parser-output" lang="en" dir="ltr"><div class="redirectMsg"><p>Redirect to:</p><ul class="redirectText"><li><a href="/wiki/Harness_test_article" title="Harness test article">Harness test article</a></li></ul></div></div>', langlinks: [], categorieshtml: '', displaytitle: page, indicators: {}, sections: [], headhtml: D.parse.parse.headhtml } });
+      }
       return json(D[k]);
     }
     if (action === 'query') {

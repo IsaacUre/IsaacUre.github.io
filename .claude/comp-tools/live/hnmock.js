@@ -4,7 +4,8 @@
 const fs = require('fs');
 const D = JSON.parse(fs.readFileSync(__dirname + '/data/hn.json', 'utf8'));
 const GIF1 = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
-const CSS_STUB = 'body{font-family:Verdana,Geneva,sans-serif;font-size:10pt;color:#828282}.title a{color:#000}.subtext,.comhead,.yclinks{font-size:7pt}.pagetop a{color:#000}.noshow{display:none}.votearrow{width:10px;height:10px;border:0;margin:3px 2px 6px;background:#9a9a9a}td.title{padding-right:4px}';
+const CSS_STUB = 'body{font-family:Verdana,Geneva,sans-serif;font-size:10pt;color:#828282}.title a{color:#000}.subtext,.comhead,.yclinks{font-size:7pt}.pagetop a{color:#000}.noshow{display:none}.nosee{visibility:hidden;pointer-events:none}.votearrow{width:10px;height:10px;border:0;margin:3px 2px 6px;background:#9a9a9a}td.title{padding-right:4px}';
+function findNode(t, id) { if (t.id === id) return t; for (const c of t.children || []) { const f = findNode(c, id); if (f) return f; } return null; }
 function hnmock(mode, log) {
   mode = mode || {};
   return async route => {
@@ -16,7 +17,7 @@ function hnmock(mode, log) {
       if (p === '/news.css') return route.fulfill({ status: 200, contentType: 'text/css', body: CSS_STUB });
       if (/\.(svg)$/.test(p)) return route.fulfill({ status: 200, contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"><rect width="18" height="18" fill="#f60"/></svg>' });
       if (/\.(gif|ico)$/.test(p)) return route.fulfill({ status: 200, contentType: 'image/gif', body: GIF1 });
-      return route.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><title>real site stand-in</title><p>the real site, in a window</p>' });
+      return route.fulfill({ status: 200, contentType: 'text/html', headers: { 'x-frame-options': 'DENY', 'content-security-policy': "frame-ancestors 'self'" }, body: '<!doctype html><title>real site stand-in</title><p>the real site, in a window</p>' });   // the site refuses to be framed
     }
     if (host === 'hacker-news.firebaseio.com') {
       let m;
@@ -27,7 +28,7 @@ function hnmock(mode, log) {
     }
     if (host === 'hn.algolia.com') {
       let m;
-      if ((m = /^\/api\/v1\/items\/(\d+)$/.exec(p))) return m[1] === '1001' ? json(D.thread) : json({ error: 'Not Found' }, 404);
+      if ((m = /^\/api\/v1\/items\/(\d+)$/.exec(p))) { const n = findNode(D.thread, +m[1]); return n ? json(n) : json({ error: 'Not Found' }, 404); }   // the thread, or a comment's subtree
       return json({ hits: [] });
     }
     return route.abort('blockedbyclient');
