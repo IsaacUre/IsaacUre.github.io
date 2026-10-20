@@ -1658,7 +1658,7 @@ button.cr-iu-skip { position: absolute; right: 1rem; bottom: 1rem; z-index: 11; 
 /* the offline page: the runner where the icon was (neterror.css .offline rules) */
 .cr-neterror[data-kind="offline"] #main-message > p, .cr-neterror[data-kind="dino"] #main-message > p { display: none; }
 .cr-neterror[data-kind="offline"] .interstitial-wrapper, .cr-neterror[data-kind="dino"] .interstitial-wrapper { line-height: 1.55; margin: 0 auto; padding-top: 100px; }
-.cr-neterror .runner-container { direction: ltr; height: 150px; max-width: 600px; overflow: hidden; position: absolute; top: 35px; width: 600px; }
+.cr-neterror .runner-container { direction: ltr; height: 150px; max-width: 600px; overflow: hidden; position: absolute; top: 35px; width: 100%; }
 .cr-neterror .runner-canvas { height: 150px; max-width: 600px; opacity: 1; overflow: hidden; position: absolute; top: 0; z-index: 10; }
 .cr-neterror h1 { color: rgb(32, 33, 36); font-size: 1.6em; font-weight: normal; line-height: 1.25em; margin: 0 0 16px; word-wrap: break-word; }
 .cr-neterror h1 span { font-weight: 500; }

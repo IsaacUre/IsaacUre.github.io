@@ -102,6 +102,7 @@
    "kids": [
     2004,
     2001,
+    2008,
     2005
    ],
    "url": "https://example.com/fixtures/1"
@@ -430,7 +431,7 @@
    "time": 1792299480,
    "title": "Harness story 31: a made-up headline",
    "score": 313,
-   "descendants": 17,
+   "descendants": 0,
    "kids": [],
    "url": "https://example.com/fixtures/31"
   },
@@ -516,7 +517,9 @@
    "time": 1792410600,
    "text": "<pre><code>a code block</code></pre>",
    "parent": 1001,
-   "kids": []
+   "kids": [
+    2007
+   ]
   },
   "2006": {
    "id": 2006,
@@ -536,6 +539,37 @@
    "kids": [
     2006
    ]
+  },
+  "2007": {
+   "id": 2007,
+   "type": "comment",
+   "by": "fixture_user_5",
+   "time": 1792410300,
+   "text": "<p>A dead reply, which Algolia still carries.</p>",
+   "parent": 2004,
+   "dead": true,
+   "kids": []
+  },
+  "2008": {
+   "id": 2008,
+   "type": "comment",
+   "by": "fixture_user_5",
+   "time": 1792410600,
+   "text": "<p>A dead comment with a live reply.</p>",
+   "parent": 1001,
+   "dead": true,
+   "kids": [
+    2009
+   ]
+  },
+  "2009": {
+   "id": 2009,
+   "type": "comment",
+   "by": "fixture_user_1",
+   "time": 1792410900,
+   "text": "<p>Still here under it.</p>",
+   "parent": 2008,
+   "kids": []
   }
  },
  "users": {
@@ -603,7 +637,22 @@
     "text": "<pre><code>a code block</code></pre>",
     "parent_id": 1001,
     "story_id": 1001,
-    "children": []
+    "children": [
+     {
+      "id": 2007,
+      "created_at": "2026-10-19T11:45:00.000Z",
+      "created_at_i": 1792410300,
+      "type": "comment",
+      "author": "fixture_user_5",
+      "title": null,
+      "url": null,
+      "text": "<p>A dead reply, which Algolia still carries.</p>",
+      "points": null,
+      "parent_id": 2004,
+      "story_id": 1001,
+      "children": []
+     }
+    ]
    },
    {
     "id": 2005,
@@ -625,6 +674,35 @@
       "text": "<p>A reply under a deleted comment.</p>",
       "points": null,
       "parent_id": 2005,
+      "story_id": 1001,
+      "children": []
+     }
+    ]
+   },
+   {
+    "id": 2008,
+    "created_at": "2026-10-19T11:50:00.000Z",
+    "created_at_i": 1792410600,
+    "type": "comment",
+    "author": "fixture_user_5",
+    "title": null,
+    "url": null,
+    "text": "<p>A dead comment with a live reply.</p>",
+    "points": null,
+    "parent_id": 1001,
+    "story_id": 1001,
+    "children": [
+     {
+      "id": 2009,
+      "created_at": "2026-10-19T11:55:00.000Z",
+      "created_at_i": 1792410900,
+      "type": "comment",
+      "author": "fixture_user_1",
+      "title": null,
+      "url": null,
+      "text": "<p>Still here under it.</p>",
+      "points": null,
+      "parent_id": 2008,
       "story_id": 1001,
       "children": []
      }

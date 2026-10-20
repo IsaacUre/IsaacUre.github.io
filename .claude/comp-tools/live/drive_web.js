@@ -94,8 +94,15 @@ async function run(browser, base, tag) {
   await nav(A.page, 'google.com/search?q=zzqx+nothing+at+all'); await settle(A);
   check(tag + ' A a query no source has anything for: Google\'s own words', (await txt(A.page, '.cr-serpnone p[role="heading"]')) === 'Your search - zzqx nothing at all - did not match any documents.' && await A.page.$$eval('.cr-serpnone li', l => l.length === 4 && l[0].textContent === 'Make sure that all words are spelled correctly.'));
   await clean(A, tag + ' A none');
+  await nav(A.page, 'google.com/search?q=harness+one+two+three+four+five'); await settle(A);
+  await nav(A.page, 'google.com/search?q=harness'); await settle(A);
+  await A.page.click('#crBack'); await settle(A);
+  check(tag + ' A a results page drawn again from the cache keeps its results and no no-results line', await A.page.$$eval('.cr-res', l => l.length >= 3) && !(await has(A.page, '.cr-serpnone')));
+  await A.ctx.setOffline(true); await A.page.click('#crPlus'); await A.page.waitForTimeout(200); await A.page.click('.cr-tab[data-ti="0"]'); await A.page.waitForTimeout(400);
+  check(tag + ' A offline, a loaded results tab keeps its page and its title on a tab switch', (await title(A.page)) === 'harness one two three four five - Google Search' && await A.page.$$eval('.cr-res', l => l.length >= 3) && !(await has(A.page, '.cr-neterror')));
+  await A.ctx.setOffline(false);
   await nav(A.page, 'google.com/search?q=weather+houston'); await settle(A);
-  check(tag + ' A the weather card: Open-Meteo\'s words for the code, its name as the source', /Partly cloudy/.test(await txt(A.page, '.cr-wxans .cr-anssub')) && (await txt(A.page, '.cr-wxans .cr-kpmore')) === 'Open-Meteo' && !/Full forecast/.test(await txt(A.page, '#crView')));
+  check(tag + ' A the weather card: Open-Meteo\'s words for the code, its name as the source, and no no-results line beside it', /Partly cloudy/.test(await txt(A.page, '.cr-wxans .cr-anssub')) && (await txt(A.page, '.cr-wxans .cr-kpmore')) === 'Open-Meteo' && !/Full forecast/.test(await txt(A.page, '#crView')) && !(await has(A.page, '.cr-serpnone')));
   await A.page.click('.cr-wxans .cr-kpmore'); await A.page.waitForTimeout(700);
   check(tag + ' A Open-Meteo opens as the site itself, in a frame, with nothing above it', (await url(A.page)) === 'open-meteo.com' && await A.page.$eval('#crView', v => v.children.length === 1 && v.firstElementChild.className === 'cr-frame' && v.querySelectorAll('iframe').length === 1 && /^https:\/\/open-meteo\.com/.test(v.querySelector('iframe').getAttribute('src'))) && !(await has(A.page, '.cr-framebar')));
   await clean(A, tag + ' A frame');
